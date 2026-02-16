@@ -16,11 +16,15 @@ export function BoardCard({
 					ref={provided.innerRef}
 					{...provided.draggableProps}
 					{...provided.dragHandleProps}
-					className={`mb-2 rounded-lg border-2 bg-zinc-800 p-3 shadow-md ${
+					className={`mb-2 rounded border-2 bg-zinc-800 p-3 shadow-md ${
 						snapshot.isDragging
-							? "border-zinc-500 shadow-lg"
+							? "shadow-lg"
 							: "cursor-grab border-zinc-700 card-interactive"
 					}`}
+					style={{
+						...provided.draggableProps.style,
+						...(snapshot.isDragging ? { borderColor: "var(--col-accent)" } : undefined),
+					}}
 				>
 					<p className="text-sm font-medium leading-snug text-zinc-100">{card.title}</p>
 					{card.body ? (
