@@ -5,9 +5,11 @@ import type { BoardCard as BoardCardModel } from "@/kanban/types";
 export function BoardCard({
 	card,
 	index,
+	onClick,
 }: {
 	card: BoardCardModel;
 	index: number;
+	onClick?: () => void;
 }): React.ReactElement {
 	return (
 		<Draggable draggableId={card.id} index={index}>
@@ -16,6 +18,11 @@ export function BoardCard({
 					ref={provided.innerRef}
 					{...provided.draggableProps}
 					{...provided.dragHandleProps}
+					onClick={() => {
+						if (!snapshot.isDragging && onClick) {
+							onClick();
+						}
+					}}
 					className={`mb-2 rounded border-2 bg-zinc-800 p-3 shadow-md ${
 						snapshot.isDragging
 							? "shadow-lg"

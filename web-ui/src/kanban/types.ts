@@ -13,3 +13,9 @@ export interface BoardColumn {
 export interface BoardData {
 	columns: BoardColumn[];
 }
+
+export interface CardSelection {
+	card: BoardCard;
+	column: BoardColumn;
+	allColumns: BoardColumn[];
+}

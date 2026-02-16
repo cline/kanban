@@ -3,24 +3,19 @@ import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
-import type { BoardColumn as BoardColumnModel } from "@/kanban/types";
-
-const columnAccentColors: Record<string, string> = {
-	backlog: "#71717a",
-	planning: "#3b82f6",
-	running: "#f59e0b",
-	review: "#a855f7",
-	done: "#22c55e",
-};
+import { columnAccentColors } from "@/kanban/data/column-colors";
+import type { BoardCard as BoardCardModel, BoardColumn as BoardColumnModel } from "@/kanban/types";
 
 export function BoardColumn({
 	column,
 	index,
 	onAddCard,
+	onCardClick,
 }: {
 	column: BoardColumnModel;
 	index: number;
 	onAddCard?: (title: string) => void;
+	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
 	const [isAdding, setIsAdding] = useState(false);
 	const [newTitle, setNewTitle] = useState("");
@@ -86,7 +81,12 @@ export function BoardColumn({
 									}
 								>
 									{column.cards.map((card, cardIndex) => (
-										<BoardCard key={card.id} card={card} index={cardIndex} />
+										<BoardCard
+											key={card.id}
+											card={card}
+											index={cardIndex}
+											onClick={() => onCardClick?.(card)}
+										/>
 									))}
 									{cardProvided.placeholder}
 

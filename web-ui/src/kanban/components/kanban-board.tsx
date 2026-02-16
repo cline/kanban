@@ -1,8 +1,9 @@
 import { DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { BoardColumn } from "@/kanban/components/board-column";
 import { initialBoardData } from "@/kanban/data/board-data";
+import type { BoardCard, BoardColumn as BoardColumnModel, CardSelection } from "@/kanban/types";
 
 function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
 	const result = Array.from(list);
@@ -13,8 +14,13 @@ function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
 	return result;
 }
 
-export function KanbanBoard(): React.ReactElement {
+export function KanbanBoard({
+	onCardSelect,
+}: {
+	onCardSelect?: (selection: CardSelection) => void;
+}): React.ReactElement {
 	const [data, setData] = useState(initialBoardData);
+	const dragOccurredRef = useRef(false);
 
 	const handleAddCard = useCallback((columnId: string, title: string) => {
 		setData((prev) => ({
@@ -33,7 +39,26 @@ export function KanbanBoard(): React.ReactElement {
 		}));
 	}, []);
 
+	const handleCardClick = useCallback(
+		(card: BoardCard, column: BoardColumnModel) => {
+			if (dragOccurredRef.current || !onCardSelect) return;
+			onCardSelect({
+				card,
+				column,
+				allColumns: data.columns,
+			});
+		},
+		[onCardSelect],
+	);
+
+	function onDragStart() {
+		dragOccurredRef.current = true;
+	}
+
 	function onDragEnd(result: DropResult) {
+		requestAnimationFrame(() => {
+			dragOccurredRef.current = false;
+		});
 		const { source, destination, type } = result;
 
 		if (!destination) {
@@ -81,7 +106,7 @@ export function KanbanBoard(): React.ReactElement {
 	}
 
 	return (
-		<DragDropContext onDragEnd={onDragEnd}>
+		<DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
 			<Droppable droppableId="board" type="COLUMN" direction="horizontal">
 				{(provided) => (
 					<section
@@ -95,6 +120,7 @@ export function KanbanBoard(): React.ReactElement {
 								column={column}
 								index={index}
 								onAddCard={(title) => handleAddCard(column.id, title)}
+								onCardClick={(card) => handleCardClick(card, column)}
 							/>
 						))}
 						{provided.placeholder}
