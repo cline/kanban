@@ -1,6 +1,6 @@
 # ACP Client Reference: formulahendry/vscode-acp
 
-Located at ~/Repositories/kanbanana/vscode-acp
+Located at ~/Repositories/kanban-idea/vscode-acp
 
 This is a comprehensive technical reference for the vscode-acp codebase (a VS Code extension implementing an ACP client). You can use this to understand how an ACP client works and as a reference for building your own.
 

@@ -1,7 +1,7 @@
 You are continuing development of Kanbanana.
 
 Context loading checklist:
-1. Read `.plan/docs/ideation_chat.md` to understand product vision and philosophy.
+1. Read `.plan/docs/ideation-chat.md` to understand product vision and philosophy.
 2. Read `.plan/01-kanbanana-orchestration/plan.md`, `.plan/01-kanbanana-orchestration/status.md`, and `.plan/01-kanbanana-orchestration/notes.md`.
 3. Read the active phase files:
    - `.plan/01-kanbanana-orchestration/<active-phase>/plan.md`

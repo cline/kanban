@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cline --kanban</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0d0f13;
+    --surface: #161820;
+    --surface-hover: #1c1f2b;
+    --surface-raised: #1e2130;
+    --border: #2a2d3a;
+    --border-light: #353849;
+    --text: #e4e4e7;
+    --text-muted: #8b8d98;
+    --text-dim: #5c5e6a;
+    --purple: #9663f1;
+    --purple-glow: rgba(150, 99, 241, 0.15);
+    --purple-dim: rgba(150, 99, 241, 0.4);
+    --blue: #B1B9F9;
+    --blue-glow: rgba(177, 185, 249, 0.1);
+    --green: #4ade80;
+    --green-dim: rgba(74, 222, 128, 0.15);
+    --yellow: #facc15;
+    --yellow-dim: rgba(250, 204, 21, 0.15);
+    --orange: #fb923c;
+    --orange-dim: rgba(251, 146, 60, 0.15);
+    --red: #f87171;
+    --red-dim: rgba(248, 113, 113, 0.15);
+    --column-todo: #6366f1;
+    --column-progress: #f59e0b;
+    --column-review: #8b5cf6;
+    --column-done: #22c55e;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-icon {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--purple), var(--blue));
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: #fff;
+  }
+
+  .logo-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .logo-text span {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .repo-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .repo-badge svg { flex-shrink: 0; }
+
+  .stat-pills {
+    display: flex;
+    gap: 8px;
+  }
+
+  .stat-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .stat-pill.active {
+    background: var(--yellow-dim);
+    color: var(--yellow);
+  }
+
+  .stat-pill.review {
+    background: var(--purple-glow);
+    color: var(--purple);
+  }
+
+  .stat-pill.done {
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .stat-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .mode-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    background: var(--green-dim);
+    border: 1px solid rgba(74, 222, 128, 0.2);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--green);
+  }
+
+  .mode-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .btn-new {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: var(--purple);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+
+  .btn-new:hover {
+    background: #a474f7;
+    box-shadow: 0 0 20px var(--purple-glow);
+  }
+
+  /* Board */
+  .board {
+    display: flex;
+    gap: 16px;
+    padding: 20px 28px;
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .column {
+    flex: 1;
+    min-width: 300px;
+    max-width: 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px 10px 4px;
+  }
+
+  .column-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .column-indicator {
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+  }
+
+  .column-count {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-raised);
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .column-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    padding-right: 4px;
+    flex: 1;
+  }
+
+  .column-cards::-webkit-scrollbar { width: 4px; }
+  .column-cards::-webkit-scrollbar-track { background: transparent; }
+  .column-cards::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .card:hover {
+    border-color: var(--border-light);
+    background: var(--surface-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+
+  .card-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-tags {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .tag-feature { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+  .tag-bug { background: var(--red-dim); color: var(--red); }
+  .tag-perf { background: var(--orange-dim); color: var(--orange); }
+  .tag-refactor { background: rgba(6, 182, 212, 0.15); color: #22d3ee; }
+  .tag-test { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+  .tag-docs { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+
+  .card-worktree {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Progress card specific */
+  .card.in-progress {
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+
+  .card.needs-input {
+    border-color: rgba(150, 99, 241, 0.5);
+    box-shadow: 0 0 0 1px rgba(150, 99, 241, 0.1);
+  }
+
+  .card-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .status-working {
+    background: var(--yellow-dim);
+    color: var(--yellow);
+  }
+
+  .status-input {
+    background: var(--purple-glow);
+    color: var(--purple);
+    animation: input-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes input-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(150, 99, 241, 0); }
+    50% { box-shadow: 0 0 8px 2px rgba(150, 99, 241, 0.15); }
+  }
+
+  .spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status-icon-bell {
+    font-size: 12px;
+  }
+
+  .card-progress {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+
+  .card-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
+  .progress-yellow { background: var(--yellow); }
+  .progress-purple { background: var(--purple); }
+
+  /* Review card */
+  .card.in-review {
+    border-color: rgba(139, 92, 246, 0.3);
+  }
+
+  .review-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .review-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .review-btn:hover {
+    border-color: var(--purple);
+    color: var(--text);
+    background: var(--purple-glow);
+  }
+
+  .review-btn.primary {
+    background: var(--purple);
+    border-color: var(--purple);
+    color: #fff;
+  }
+
+  .review-btn.primary:hover {
+    background: #a474f7;
+  }
+
+  /* Done card */
+  .card.done {
+    opacity: 0.7;
+    border-color: var(--border);
+  }
+
+  .card.done:hover { opacity: 0.85; }
+
+  .done-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--green);
+  }
+
+  .done-check {
+    width: 16px;
+    height: 16px;
+    background: var(--green-dim);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+  }
+
+  /* Terminal preview on card */
+  .card-terminal-preview {
+    background: #0a0c10;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    max-height: 60px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .card-terminal-preview::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(transparent, #0a0c10);
+  }
+
+  .terminal-line { white-space: nowrap; }
+  .t-green { color: var(--green); }
+  .t-yellow { color: var(--yellow); }
+  .t-purple { color: var(--purple); }
+  .t-blue { color: var(--blue); }
+  .t-dim { color: var(--text-dim); }
+
+  /* Modal overlay */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+
+  .modal-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    width: 720px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    transform: scale(0.96) translateY(8px);
+    transition: transform 0.2s;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+  }
+
+  .modal-overlay.active .modal {
+    transform: scale(1) translateY(0);
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .modal-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .modal-branch {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 3px 8px;
+    background: var(--surface-raised);
+    border-radius: 4px;
+  }
+
+  .modal-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: var(--surface-raised);
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+
+  .modal-close:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .modal-terminal {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 22px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    background: #0a0c10;
+    min-height: 340px;
+    max-height: 50vh;
+  }
+
+  .modal-terminal::-webkit-scrollbar { width: 6px; }
+  .modal-terminal::-webkit-scrollbar-track { background: transparent; }
+  .modal-terminal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .modal-input-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--border);
+  }
+
+  .modal-input-prompt {
+    color: var(--purple);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .modal-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    outline: none;
+  }
+
+  .modal-input::placeholder {
+    color: var(--text-dim);
+  }
+
+  .modal-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 22px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .modal-status-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .modal-stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .modal-stat-label { color: var(--text-dim); }
+  .modal-stat-value { color: var(--text-muted); font-weight: 500; }
+
+  /* Add card placeholder */
+  .add-card {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-dim);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .add-card:hover {
+    border-color: var(--purple-dim);
+    color: var(--text-muted);
+    background: var(--purple-glow);
+  }
+
+  /* Drag ghost */
+  .card.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+  }
+
+  .column-cards.drag-over {
+    background: var(--purple-glow);
+    border-radius: 10px;
+  }
+
+  /* New card form */
+  .new-card-form {
+    background: var(--surface);
+    border: 1px solid var(--purple-dim);
+    border-radius: 10px;
+    padding: 14px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .new-card-form.active { display: flex; }
+
+  .new-card-input {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+  }
+
+  .new-card-input::placeholder { color: var(--text-dim); }
+
+  .new-card-textarea {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+    resize: none;
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .new-card-textarea::placeholder { color: var(--text-dim); }
+
+  .new-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .new-card-btn {
+    padding: 5px 12px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .new-card-btn.cancel {
+    background: var(--surface-raised);
+    color: var(--text-muted);
+  }
+
+  .new-card-btn.create {
+    background: var(--purple);
+    color: #fff;
+  }
+
+  .new-card-btn.create:hover { background: #a474f7; }
+
+  /* Cursor blink */
+  .cursor {
+    display: inline-block;
+    width: 7px;
+    height: 14px;
+    background: var(--purple);
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* Typing animation */
+  .typing-dots {
+    display: inline-flex;
+    gap: 3px;
+    margin-left: 4px;
+  }
+
+  .typing-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: typing-bounce 1.4s ease-in-out infinite;
+  }
+
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typing-bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* Cost badge */
+  .cost-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">
+      <div class="logo-icon">C</div>
+      <div class="logo-text">cline <span>--kanban</span></div>
+    </div>
+    <div class="repo-badge">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.5A2.5 2.5 0 014.5 0h8.75a.75.75 0 01.75.75v12.5a.75.75 0 01-.75.75h-2.5a.75.75 0 110-1.5h1.75v-2h-8a1 1 0 00-.714 1.7.75.75 0 01-1.072 1.05A2.495 2.495 0 012 11.5v-9zm10.5-1h-8a1 1 0 00-1 1v6.708A2.486 2.486 0 014.5 9h8V1.5zm-8 11h8v2h-8a1 1 0 010-2z"/></svg>
+      acme-corp/web-platform
+    </div>
+    <div class="stat-pills">
+      <div class="stat-pill active"><div class="stat-dot"></div> 3 active</div>
+      <div class="stat-pill review"><div class="stat-dot"></div> 2 review</div>
+      <div class="stat-pill done"><div class="stat-dot"></div> 4 done</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="mode-badge">
+      <div class="mode-dot"></div>
+      auto-approve
+    </div>
+    <button class="btn-new" onclick="showNewCardForm()">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>
+      New task
+    </button>
+  </div>
+</div>
+
+<!-- Board -->
+<div class="board">
+
+  <!-- TODO Column -->
+  <div class="column">
+    <div class="column-header">
+      <div class="column-title">
+        <div class="column-indicator" style="background: var(--column-todo)"></div>
+        Todo
+      </div>
+      <div class="column-count">2</div>
+    </div>
+    <div class="column-cards" id="todo-cards">
+      <!-- New card form -->
+      <div class="new-card-form" id="new-card-form">
+        <input class="new-card-input" placeholder="Task title..." id="new-card-title" />
+        <textarea class="new-card-textarea" placeholder="Description (optional)..." id="new-card-desc"></textarea>
+        <div class="new-card-actions">
+          <button class="new-card-btn cancel" onclick="hideNewCardForm()">Cancel</button>
+          <button class="new-card-btn create" onclick="createCard()">Create</button>
+        </div>
+      </div>
+
+      <div class="card" draggable="true" ondragstart="dragStart(event)" data-id="todo-1" onclick="openModal('todo-1')">
+        <div class="card-title">Add dark mode toggle to settings page</div>
+        <div class="card-desc">Users need a way to switch between light and dark themes. Add a toggle in the preferences panel.</div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-feature">feature</span>
+          </div>
+          <div class="card-worktree">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75v-.878a2.25 2.25 0 111.5 0v.878a2.25 2.25 0 01-2.25 2.25h-1.5v2.128a2.251 2.251 0 11-1.5 0V8.5h-1.5A2.25 2.25 0 013.5 6.25v-.878a2.25 2.25 0 111.5 0z"/></svg>
+            worktree-5
+          </div>
+        </div>
+      </div>
+
+      <div class="card" draggable="true" ondragstart="dragStart(event)" data-id="todo-2" onclick="openModal('todo-2')">
+        <div class="card-title">Write unit tests for payment processing module</div>
+        <div class="card-desc">Coverage is at 34% for the payment module. Need tests for edge cases: refunds, partial payments, currency conversion.</div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-test">test</span>
+          </div>
+          <div class="card-worktree">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75v-.878a2.25 2.25 0 111.5 0v.878a2.25 2.25 0 01-2.25 2.25h-1.5v2.128a2.251 2.251 0 11-1.5 0V8.5h-1.5A2.25 2.25 0 013.5 6.25v-.878a2.25 2.25 0 111.5 0z"/></svg>
+            worktree-6
+          </div>
+        </div>
+      </div>
+
+      <div class="add-card" onclick="showNewCardForm()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>
+        Add task
+      </div>
+    </div>
+  </div>
+
+  <!-- IN PROGRESS Column -->
+  <div class="column">
+    <div class="column-header">
+      <div class="column-title">
+        <div class="column-indicator" style="background: var(--column-progress)"></div>
+        In Progress
+      </div>
+      <div class="column-count">3</div>
+    </div>
+    <div class="column-cards" id="progress-cards">
+
+      <div class="card in-progress" draggable="true" ondragstart="dragStart(event)" data-id="prog-1" onclick="openModal('prog-1')">
+        <div class="card-status-bar status-working">
+          <div class="spinner"></div>
+          Working...
+        </div>
+        <div class="card-title">Migrate authentication to OAuth 2.0 PKCE flow</div>
+        <div class="card-terminal-preview">
+          <div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Reading</span> src/auth/provider.ts</div>
+          <div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Reading</span> src/auth/tokens.ts</div>
+          <div class="terminal-line"><span class="t-dim">$</span> <span class="t-yellow">Editing</span> src/auth/oauth-client.ts</div>
+          <div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Creating</span> src/auth/pkce.ts</div>
+        </div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-feature">feature</span>
+            <span class="tag tag-refactor">refactor</span>
+          </div>
+          <div class="cost-badge">$0.42</div>
+        </div>
+        <div class="card-progress">
+          <div class="card-progress-fill progress-yellow" style="width: 65%"></div>
+        </div>
+      </div>
+
+      <div class="card needs-input" draggable="true" ondragstart="dragStart(event)" data-id="prog-2" onclick="openModal('prog-2')">
+        <div class="card-status-bar status-input">
+          <span class="status-icon-bell">&#128276;</span>
+          Needs input
+        </div>
+        <div class="card-title">Fix race condition in WebSocket reconnection logic</div>
+        <div class="card-desc" style="color: var(--purple); font-size: 11px; font-style: italic;">
+          "Found 3 potential fixes. Which approach do you prefer for handling concurrent reconnects?"
+        </div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-bug">bug</span>
+          </div>
+          <div class="cost-badge">$0.18</div>
+        </div>
+        <div class="card-progress">
+          <div class="card-progress-fill progress-purple" style="width: 40%"></div>
+        </div>
+      </div>
+
+      <div class="card in-progress" draggable="true" ondragstart="dragStart(event)" data-id="prog-3" onclick="openModal('prog-3')">
+        <div class="card-status-bar status-working">
+          <div class="spinner"></div>
+          Running tests...
+        </div>
+        <div class="card-title">Optimize database queries for user dashboard</div>
+        <div class="card-terminal-preview">
+          <div class="terminal-line"><span class="t-green">PASS</span> <span class="t-dim">tests/queries/</span>user-stats.test.ts</div>
+          <div class="terminal-line"><span class="t-green">PASS</span> <span class="t-dim">tests/queries/</span>activity-feed.test.ts</div>
+          <div class="terminal-line"><span class="t-yellow">RUN </span> <span class="t-dim">tests/queries/</span>dashboard-agg.test.ts</div>
+        </div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-perf">perf</span>
+          </div>
+          <div class="cost-badge">$0.31</div>
+        </div>
+        <div class="card-progress">
+          <div class="card-progress-fill progress-yellow" style="width: 82%"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- READY FOR REVIEW Column -->
+  <div class="column">
+    <div class="column-header">
+      <div class="column-title">
+        <div class="column-indicator" style="background: var(--column-review)"></div>
+        Ready for Review
+      </div>
+      <div class="column-count">2</div>
+    </div>
+    <div class="column-cards" id="review-cards">
+
+      <div class="card in-review" draggable="true" ondragstart="dragStart(event)" data-id="rev-1" onclick="openModal('rev-1')">
+        <div class="card-title">Implement rate limiting middleware</div>
+        <div class="card-desc">Added sliding window rate limiter with Redis backend. Supports per-route and per-user limits. 12 files changed, all tests passing.</div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-feature">feature</span>
+          </div>
+          <div class="cost-badge">$0.67</div>
+        </div>
+        <div class="review-actions">
+          <button class="review-btn" onclick="event.stopPropagation()">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zm5.677-.177L9.573.677A.25.25 0 0110 .854V2.5h1A2.5 2.5 0 0113.5 5v5.628a2.251 2.251 0 11-1.5 0V5a1 1 0 00-1-1h-1v1.646a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354z"/></svg>
+            Open PR
+          </button>
+          <button class="review-btn primary" onclick="event.stopPropagation()">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M10.97 4.97a.75.75 0 011.07 1.05l-3.99 4.99a.75.75 0 01-1.08.02L4.324 8.384a.75.75 0 111.06-1.06l2.094 2.093 3.473-4.425z"/></svg>
+            Commit
+          </button>
+        </div>
+      </div>
+
+      <div class="card in-review" draggable="true" ondragstart="dragStart(event)" data-id="rev-2" onclick="openModal('rev-2')">
+        <div class="card-title">Add comprehensive API documentation</div>
+        <div class="card-desc">Generated OpenAPI 3.0 spec from route handlers. Added JSDoc comments to all public endpoints. Includes example requests and responses.</div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-docs">docs</span>
+          </div>
+          <div class="cost-badge">$0.23</div>
+        </div>
+        <div class="review-actions">
+          <button class="review-btn" onclick="event.stopPropagation()">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zm5.677-.177L9.573.677A.25.25 0 0110 .854V2.5h1A2.5 2.5 0 0113.5 5v5.628a2.251 2.251 0 11-1.5 0V5a1 1 0 00-1-1h-1v1.646a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354z"/></svg>
+            Open PR
+          </button>
+          <button class="review-btn primary" onclick="event.stopPropagation()">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M10.97 4.97a.75.75 0 011.07 1.05l-3.99 4.99a.75.75 0 01-1.08.02L4.324 8.384a.75.75 0 111.06-1.06l2.094 2.093 3.473-4.425z"/></svg>
+            Commit
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- DONE Column -->
+  <div class="column">
+    <div class="column-header">
+      <div class="column-title">
+        <div class="column-indicator" style="background: var(--column-done)"></div>
+        Done
+      </div>
+      <div class="column-count">4</div>
+    </div>
+    <div class="column-cards" id="done-cards">
+
+      <div class="card done" data-id="done-1" onclick="openModal('done-1')">
+        <div class="card-title">Set up CI/CD pipeline with GitHub Actions</div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-feature">feature</span>
+          </div>
+          <div class="cost-badge">$0.89</div>
+        </div>
+        <div class="done-info">
+          <div class="done-check">&#10003;</div>
+          PR #247 merged
+        </div>
+      </div>
+
+      <div class="card done" data-id="done-2" onclick="openModal('done-2')">
+        <div class="card-title">Fix memory leak in event listener cleanup</div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-bug">bug</span>
+          </div>
+          <div class="cost-badge">$0.15</div>
+        </div>
+        <div class="done-info">
+          <div class="done-check">&#10003;</div>
+          Committed to main
+        </div>
+      </div>
+
+      <div class="card done" data-id="done-3" onclick="openModal('done-3')">
+        <div class="card-title">Refactor user service to use repository pattern</div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-refactor">refactor</span>
+          </div>
+          <div class="cost-badge">$0.51</div>
+        </div>
+        <div class="done-info">
+          <div class="done-check">&#10003;</div>
+          PR #243 merged
+        </div>
+      </div>
+
+      <div class="card done" data-id="done-4" onclick="openModal('done-4')">
+        <div class="card-title">Add input validation for registration endpoint</div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag tag-bug">bug</span>
+          </div>
+          <div class="cost-badge">$0.08</div>
+        </div>
+        <div class="done-info">
+          <div class="done-check">&#10003;</div>
+          Committed to main
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <div class="modal-title" id="modal-title">Migrate authentication to OAuth 2.0 PKCE flow</div>
+        <div class="modal-branch" id="modal-branch">worktree-1</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    </div>
+    <div class="modal-terminal" id="modal-terminal">
+      <!-- Terminal output injected by JS -->
+    </div>
+    <div class="modal-input-area" id="modal-input-area">
+      <span class="modal-input-prompt">&#9654;</span>
+      <input class="modal-input" placeholder="Send a message to Cline..." id="modal-input" />
+    </div>
+    <div class="modal-status-bar">
+      <div class="modal-status-left">
+        <div class="modal-stat">
+          <span class="modal-stat-label">tokens:</span>
+          <span class="modal-stat-value" id="modal-tokens">24.3k</span>
+        </div>
+        <div class="modal-stat">
+          <span class="modal-stat-label">cost:</span>
+          <span class="modal-stat-value" id="modal-cost">$0.42</span>
+        </div>
+        <div class="modal-stat">
+          <span class="modal-stat-label">files changed:</span>
+          <span class="modal-stat-value" id="modal-files">7</span>
+        </div>
+      </div>
+      <div style="color: var(--text-dim); font-family: 'JetBrains Mono', monospace;">
+        claude-sonnet-4-5
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Card data for modals
+  const cardData = {
+    'prog-1': {
+      title: 'Migrate authentication to OAuth 2.0 PKCE flow',
+      branch: 'worktree-1',
+      tokens: '24.3k',
+      cost: '$0.42',
+      files: '7',
+      terminal: `<div class="terminal-line"><span class="t-purple">Cline</span> I'll migrate your authentication system from the current session-based flow to OAuth 2.0 with PKCE. Let me start by understanding the current implementation.</div>
+<br>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/auth/provider.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/auth/session.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/auth/tokens.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/config/auth.config.ts</div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> I can see the current flow uses server-side sessions with express-session. I'll create the PKCE implementation with proper code verifier/challenge generation, then update the auth provider to use it.</div>
+<br>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Create</span> src/auth/pkce.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-yellow">Edit</span> src/auth/oauth-client.ts <span class="t-dim">(+47 -12 lines)</span></div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-yellow">Edit</span> src/auth/provider.ts <span class="t-dim">(+23 -31 lines)</span></div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-yellow">Edit</span> src/auth/tokens.ts <span class="t-dim">(+8 -3 lines)</span></div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> Core PKCE flow is implemented. Now updating the callback handler and adding the token refresh logic with proper error handling.<span class="cursor"></span></div>`
+    },
+    'prog-2': {
+      title: 'Fix race condition in WebSocket reconnection logic',
+      branch: 'worktree-2',
+      tokens: '12.1k',
+      cost: '$0.18',
+      files: '3',
+      terminal: `<div class="terminal-line"><span class="t-purple">Cline</span> I'll investigate the WebSocket reconnection race condition. Let me trace the connection lifecycle.</div>
+<br>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/services/websocket.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/services/connection-manager.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Search</span> "reconnect" <span class="t-dim">across 14 files</span></div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> Found the issue. When the connection drops, both <span class="t-blue">onClose</span> and <span class="t-blue">onError</span> fire simultaneously, each triggering a reconnect attempt. I see three approaches:</div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> <span class="t-yellow">Option A:</span> Add a mutex lock around the reconnect function using a simple boolean flag. Simplest fix, but doesn't handle the backoff timer correctly.</div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> <span class="t-yellow">Option B:</span> Use an AbortController to cancel pending reconnect attempts when a new one starts. Clean cancellation semantics.</div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> <span class="t-yellow">Option C:</span> Refactor to a state machine (disconnected/connecting/connected/reconnecting). Most robust, but touches more files.</div>
+<br>
+<div class="terminal-line" style="color: var(--purple);">&#128276; Which approach do you prefer for handling concurrent reconnects?</div>`
+    },
+    'prog-3': {
+      title: 'Optimize database queries for user dashboard',
+      branch: 'worktree-3',
+      tokens: '18.7k',
+      cost: '$0.31',
+      files: '5',
+      terminal: `<div class="terminal-line"><span class="t-purple">Cline</span> I'll optimize the dashboard queries. Let me profile the current performance and identify bottlenecks.</div>
+<br>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/db/queries/dashboard.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/db/queries/user-stats.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Read</span> src/db/queries/activity-feed.ts</div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> Found N+1 query in the activity feed and missing index on user_stats.created_at. The dashboard makes 23 separate queries that can be consolidated into 4 with proper JOINs and CTEs.</div>
+<br>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-yellow">Edit</span> src/db/queries/dashboard.ts <span class="t-dim">(+62 -89 lines)</span></div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-green">Create</span> src/db/migrations/add-dashboard-indexes.ts</div>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-yellow">Edit</span> src/db/queries/activity-feed.ts <span class="t-dim">(+15 -41 lines)</span></div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> Queries optimized. Running the test suite now to verify nothing broke.</div>
+<br>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-blue">Run</span> npm test -- --grep "dashboard"</div>
+<br>
+<div class="terminal-line"><span class="t-green">PASS</span> <span class="t-dim">tests/queries/</span>user-stats.test.ts <span class="t-dim">(4 tests)</span></div>
+<div class="terminal-line"><span class="t-green">PASS</span> <span class="t-dim">tests/queries/</span>activity-feed.test.ts <span class="t-dim">(7 tests)</span></div>
+<div class="terminal-line"><span class="t-yellow">RUN </span> <span class="t-dim">tests/queries/</span>dashboard-agg.test.ts<span class="typing-dots"><span></span><span></span><span></span></span></div>`
+    },
+    'rev-1': {
+      title: 'Implement rate limiting middleware',
+      branch: 'worktree-4',
+      tokens: '41.2k',
+      cost: '$0.67',
+      files: '12',
+      terminal: `<div class="terminal-line"><span class="t-purple">Cline</span> Implementation complete. Here's a summary of what was done:</div>
+<br>
+<div class="terminal-line"><span class="t-green">Created:</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/middleware/rate-limiter.ts</div>
+<div class="terminal-line">&nbsp;&nbsp;src/middleware/rate-limiter.test.ts</div>
+<div class="terminal-line">&nbsp;&nbsp;src/services/redis-store.ts</div>
+<div class="terminal-line">&nbsp;&nbsp;src/config/rate-limits.ts</div>
+<br>
+<div class="terminal-line"><span class="t-yellow">Modified:</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/app.ts <span class="t-dim">(+4 lines)</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/routes/api.ts <span class="t-dim">(+12 lines)</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/routes/auth.ts <span class="t-dim">(+3 lines)</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/types/middleware.d.ts <span class="t-dim">(+8 lines)</span></div>
+<br>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-blue">Run</span> npm test</div>
+<div class="terminal-line"><span class="t-green">PASS</span> All 34 tests passing</div>
+<br>
+<div class="terminal-line"><span class="t-purple">Cline</span> The rate limiter uses a sliding window algorithm backed by Redis. Default limits are 100 req/min for authenticated users and 20 req/min for anonymous. Each route can override with a decorator: <span class="t-blue">@rateLimit({ max: 5, window: '1m' })</span></div>
+<br>
+<div class="terminal-line" style="color: var(--green);">&#10003; Ready for review. All tests passing, no lint errors.</div>`
+    },
+    'rev-2': {
+      title: 'Add comprehensive API documentation',
+      branch: 'worktree-7',
+      tokens: '15.8k',
+      cost: '$0.23',
+      files: '9',
+      terminal: `<div class="terminal-line"><span class="t-purple">Cline</span> I've generated comprehensive API documentation. Here's what was done:</div>
+<br>
+<div class="terminal-line"><span class="t-green">Created:</span></div>
+<div class="terminal-line">&nbsp;&nbsp;docs/openapi.yaml <span class="t-dim">(OpenAPI 3.0 spec)</span></div>
+<div class="terminal-line">&nbsp;&nbsp;docs/api-examples/ <span class="t-dim">(18 example requests)</span></div>
+<br>
+<div class="terminal-line"><span class="t-yellow">Modified:</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/routes/users.ts <span class="t-dim">(added JSDoc)</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/routes/auth.ts <span class="t-dim">(added JSDoc)</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/routes/payments.ts <span class="t-dim">(added JSDoc)</span></div>
+<div class="terminal-line">&nbsp;&nbsp;src/routes/webhooks.ts <span class="t-dim">(added JSDoc)</span></div>
+<br>
+<div class="terminal-line"><span class="t-dim">$</span> <span class="t-blue">Run</span> npx swagger-cli validate docs/openapi.yaml</div>
+<div class="terminal-line"><span class="t-green">&#10003;</span> OpenAPI spec is valid</div>
+<br>
+<div class="terminal-line" style="color: var(--green);">&#10003; Ready for review. Spec validated, all endpoints documented.</div>`
+    },
+    'todo-1': {
+      title: 'Add dark mode toggle to settings page',
+      branch: 'worktree-5',
+      tokens: '0',
+      cost: '$0.00',
+      files: '0',
+      terminal: `<div class="terminal-line" style="color: var(--text-dim);">Waiting to start. Drag to "In Progress" to begin.</div>`
+    },
+    'todo-2': {
+      title: 'Write unit tests for payment processing module',
+      branch: 'worktree-6',
+      tokens: '0',
+      cost: '$0.00',
+      files: '0',
+      terminal: `<div class="terminal-line" style="color: var(--text-dim);">Waiting to start. Drag to "In Progress" to begin.</div>`
+    },
+    'done-1': {
+      title: 'Set up CI/CD pipeline with GitHub Actions',
+      branch: 'worktree-8',
+      tokens: '52.1k',
+      cost: '$0.89',
+      files: '8',
+      terminal: `<div class="terminal-line"><span class="t-green">&#10003;</span> PR #247 merged into main</div>
+<div class="terminal-line"><span class="t-dim">Branch worktree-8 cleaned up</span></div>`
+    },
+    'done-2': {
+      title: 'Fix memory leak in event listener cleanup',
+      branch: 'worktree-9',
+      tokens: '8.4k',
+      cost: '$0.15',
+      files: '2',
+      terminal: `<div class="terminal-line"><span class="t-green">&#10003;</span> Committed directly to main</div>
+<div class="terminal-line"><span class="t-dim">Branch worktree-9 cleaned up</span></div>`
+    },
+    'done-3': {
+      title: 'Refactor user service to use repository pattern',
+      branch: 'worktree-10',
+      tokens: '31.5k',
+      cost: '$0.51',
+      files: '11',
+      terminal: `<div class="terminal-line"><span class="t-green">&#10003;</span> PR #243 merged into main</div>
+<div class="terminal-line"><span class="t-dim">Branch worktree-10 cleaned up</span></div>`
+    },
+    'done-4': {
+      title: 'Add input validation for registration endpoint',
+      branch: 'worktree-11',
+      tokens: '5.2k',
+      cost: '$0.08',
+      files: '3',
+      terminal: `<div class="terminal-line"><span class="t-green">&#10003;</span> Committed directly to main</div>
+<div class="terminal-line"><span class="t-dim">Branch worktree-11 cleaned up</span></div>`
+    }
+  };
+
+  // Modal
+  function openModal(cardId) {
+    const data = cardData[cardId];
+    if (!data) return;
+
+    document.getElementById('modal-title').textContent = data.title;
+    document.getElementById('modal-branch').textContent = data.branch;
+    document.getElementById('modal-tokens').textContent = data.tokens;
+    document.getElementById('modal-cost').textContent = data.cost;
+    document.getElementById('modal-files').textContent = data.files;
+    document.getElementById('modal-terminal').innerHTML = data.terminal;
+    document.getElementById('modal-overlay').classList.add('active');
+
+    // Scroll terminal to bottom
+    const terminal = document.getElementById('modal-terminal');
+    terminal.scrollTop = terminal.scrollHeight;
+
+    // Show/hide input based on card type
+    const inputArea = document.getElementById('modal-input-area');
+    if (cardId.startsWith('done')) {
+      inputArea.style.display = 'none';
+    } else {
+      inputArea.style.display = 'flex';
+    }
+  }
+
+  function closeModal(event) {
+    if (event && event.target !== event.currentTarget && !event.target.classList.contains('modal-close')) return;
+    document.getElementById('modal-overlay').classList.remove('active');
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal({ target: document.getElementById('modal-overlay'), currentTarget: document.getElementById('modal-overlay') });
+  });
+
+  // New card form
+  function showNewCardForm() {
+    const form = document.getElementById('new-card-form');
+    form.classList.add('active');
+    document.getElementById('new-card-title').focus();
+  }
+
+  function hideNewCardForm() {
+    const form = document.getElementById('new-card-form');
+    form.classList.remove('active');
+    document.getElementById('new-card-title').value = '';
+    document.getElementById('new-card-desc').value = '';
+  }
+
+  function createCard() {
+    const title = document.getElementById('new-card-title').value.trim();
+    if (!title) return;
+
+    const desc = document.getElementById('new-card-desc').value.trim();
+    const worktreeNum = Math.floor(Math.random() * 20) + 10;
+    const id = 'todo-new-' + Date.now();
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.setAttribute('draggable', 'true');
+    card.setAttribute('data-id', id);
+    card.setAttribute('ondragstart', 'dragStart(event)');
+    card.setAttribute('onclick', `openModal('${id}')`);
+    card.innerHTML = `
+      <div class="card-title">${title}</div>
+      ${desc ? `<div class="card-desc">${desc}</div>` : ''}
+      <div class="card-footer">
+        <div class="card-tags">
+          <span class="tag tag-feature">feature</span>
+        </div>
+        <div class="card-worktree">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75v-.878a2.25 2.25 0 111.5 0v.878a2.25 2.25 0 01-2.25 2.25h-1.5v2.128a2.251 2.251 0 11-1.5 0V8.5h-1.5A2.25 2.25 0 013.5 6.25v-.878a2.25 2.25 0 111.5 0z"/></svg>
+          worktree-${worktreeNum}
+        </div>
+      </div>
+    `;
+
+    cardData[id] = {
+      title,
+      branch: `worktree-${worktreeNum}`,
+      tokens: '0',
+      cost: '$0.00',
+      files: '0',
+      terminal: `<div class="terminal-line" style="color: var(--text-dim);">Waiting to start. Drag to "In Progress" to begin.</div>`
+    };
+
+    const addCard = document.querySelector('.add-card');
+    addCard.parentNode.insertBefore(card, addCard);
+    hideNewCardForm();
+
+    // Update count
+    const count = document.querySelector('#todo-cards').querySelectorAll('.card').length;
+    document.querySelector('.column:first-child .column-count').textContent = count;
+  }
+
+  // Drag and drop
+  let draggedCard = null;
+
+  function dragStart(event) {
+    draggedCard = event.target.closest('.card');
+    draggedCard.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+  }
+
+  document.querySelectorAll('.column-cards').forEach(col => {
+    col.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      col.classList.add('drag-over');
+    });
+
+    col.addEventListener('dragleave', () => {
+      col.classList.remove('drag-over');
+    });
+
+    col.addEventListener('drop', (e) => {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      if (draggedCard) {
+        col.appendChild(draggedCard);
+        draggedCard.classList.remove('dragging');
+
+        // Update all column counts
+        document.querySelectorAll('.column').forEach(column => {
+          const cards = column.querySelector('.column-cards').querySelectorAll('.card');
+          column.querySelector('.column-count').textContent = cards.length;
+        });
+
+        draggedCard = null;
+      }
+    });
+  });
+
+  document.addEventListener('dragend', () => {
+    if (draggedCard) {
+      draggedCard.classList.remove('dragging');
+      draggedCard = null;
+    }
+    document.querySelectorAll('.column-cards').forEach(col => col.classList.remove('drag-over'));
+  });
+
+  // Simulate typing in modal input
+  document.getElementById('modal-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const input = e.target;
+      const message = input.value.trim();
+      if (!message) return;
+
+      const terminal = document.getElementById('modal-terminal');
+      terminal.innerHTML += `<br><div class="terminal-line"><span class="t-blue">You</span> ${message}</div><br>`;
+      terminal.innerHTML += `<div class="terminal-line"><span class="t-purple">Cline</span> Got it, working on that now...<span class="typing-dots"><span></span><span></span><span></span></span></div>`;
+      terminal.scrollTop = terminal.scrollHeight;
+      input.value = '';
+    }
+  });
+</script>
+
+</body>
+</html>

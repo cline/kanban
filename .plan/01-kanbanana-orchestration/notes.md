@@ -1,7 +1,7 @@
 # Notes
 
 ## Source
-- Primary ideation source: `.plan/docs/ideation_chat.md`
+- Primary ideation source: `.plan/docs/ideation-chat.md`
 
 ## Confirmed Priorities
 1. Start with ACP-integrated Kanban webview.
