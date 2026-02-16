@@ -11,11 +11,18 @@ What NOT to add: Stuff you can figure out from reading a few files, obvious patt
 
 ---
 
-TypeScript guardrails
+TypeScript principles
 - No any types unless absolutely necessary.
 - Check node_modules for external API type definitions instead of guessing.
 - NEVER use inline imports. No await import("./foo.js"), no import("pkg").Type in type positions, and no dynamic imports for types. Always use standard top-level imports.
 - NEVER remove or downgrade code to fix type errors from outdated dependencies. Upgrade the dependency instead.
+
+Code quality
+- Write production-quality code, not prototypes
+- Break components into small, single-responsibility files. 
+- Extract shared logic into hooks and utilities. 
+- Prioritize maintainability and clean architecture over speed. 
+- Follow DRY principles and maintain clean architecture with clear separation of concerns.
 
 Git guardrails
 - NEVER commit unless user asks.
@@ -37,10 +44,11 @@ Agent Client Protocol (ACP)
 - @.plan/docs/ACP-SDK-notes.md for a reference to how the ACP SDK is implemented
 - @.plan/docs/ACP-reference-project.md for notes on ~/Repositories/kanbanana/vscode-acp, a client that implements ACP
 
-Webview UI (Primer)
-- Kanbanana web UI uses Primer as the primary design system: `@primer/react` and `@primer/octicons-react`.
-- Before any web UI implementation or refactor, read `@.plan/docs/primer-react-reference.md`.
-- Prefer Primer components and compound APIs first (`PageLayout`, `PageHeader`, `FormControl`, `ActionList`, etc.) before writing custom HTML/CSS.
-- Do not recreate UI primitives that Primer already provides (buttons, inputs, labels, lists, layout primitives, icons).
-- Keep custom CSS minimal and mostly for app-specific layout glue, not to restyle Primer components.
-- For Octicons, default to no `size` prop and only use named sizes (`small`, `medium`, `large`) when needed.
+web-ui Stack
+- Kanbanana web-ui uses shadcn/ui components with Tailwind CSS for styling and `lucide-react` for icons.
+- Prefer shadcn components first (`Button`, `Card`, `Dialog`, `Input`, `Label`, `Select`, etc.) before writing custom HTML/CSS.
+- Do not recreate UI primitives that shadcn already provides (buttons, inputs, labels, dialogs, cards, dropdowns, etc.).
+- Use Tailwind utility classes for styling; avoid custom CSS files unless absolutely necessary.
+- For Lucide icons, import directly from `lucide-react` and use the `size` prop (defaults to 24) or `className` with Tailwind sizing (`w-4 h-4`, `w-5 h-5`, etc.). 
+- Try to avoid hardcoded numeric values (widths, heights, padding, etc.). Use OOB spacing scale, sizing utilities, and responsive classes provided by Tailwind/Lucide instead.
+

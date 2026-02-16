@@ -1,6 +1,6 @@
 # Kanbanana Webview
 
-This package is currently a minimal TypeScript React baseline for the Kanbanana webview.
+This package provides the Kanbanana web UI shell and component foundation.
 
 ## Scripts
 - `npm run dev`
@@ -11,5 +11,9 @@ This package is currently a minimal TypeScript React baseline for the Kanbanana 
 
 ## Stack
 - React + TypeScript + Vite
+- Tailwind CSS v4
+- shadcn/ui-style component primitives
+- Lucide icons
+- Atlassian pragmatic drag-and-drop packages (installed for upcoming interaction wiring)
 - Vitest
 - Playwright
