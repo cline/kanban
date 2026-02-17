@@ -15,7 +15,7 @@ test("clicking a card opens detail view", async ({ page }) => {
 	await page.getByText("Implement board shell").click();
 	await expect(page.getByText("Agent Chat")).toBeVisible();
 	await expect(page.getByText("Changes")).toBeVisible();
-	await expect(page.getByText("Files")).toBeVisible();
+	await expect(page.getByText("Files", { exact: true })).toBeVisible();
 });
 
 test("escape key returns to board from detail view", async ({ page }) => {

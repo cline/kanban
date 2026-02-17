@@ -29,7 +29,7 @@ export function CardDetailView({
 		<div className="flex min-h-0 flex-1 overflow-hidden bg-zinc-950">
 			<ColumnContextPanel selection={selection} onCardSelect={onCardSelect} />
 			<div className="flex min-h-0 w-4/5 min-w-0">
-				<AgentChatPanel />
+				<AgentChatPanel cardId={selection.card.id} />
 				<DiffViewerPanel />
 				<FileTreePanel />
 			</div>
