@@ -16,6 +16,7 @@
 - Added persistent task-scoped ACP runtime sessions with turn reuse and server-side cancellation.
 - Added runtime git-backed workspace changes API and wired detail diff/file panels to runtime-first data.
 - Added lightweight ACP command detection signal in health endpoint and top bar runtime mode hint.
+- Added project-level runtime ACP setup API and UI dialog so ACP command can be configured without manual env setup.
 - Mapped implementation direction to `vibe-kanban` split-pane/task-detail patterns while keeping scope local-first and minimal.
 
 ## Next Up

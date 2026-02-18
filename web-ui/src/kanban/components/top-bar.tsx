@@ -4,10 +4,12 @@ export function TopBar({
 	onBack,
 	subtitle,
 	runtimeHint,
+	onOpenSettings,
 }: {
 	onBack?: () => void;
 	subtitle?: string;
 	runtimeHint?: string;
+	onOpenSettings?: () => void;
 }): React.ReactElement {
 	return (
 		<header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4">
@@ -40,6 +42,7 @@ export function TopBar({
 			</div>
 			<button
 				type="button"
+				onClick={onOpenSettings}
 				className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
 				aria-label="Settings"
 			>

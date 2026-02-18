@@ -26,6 +26,14 @@ export interface RuntimeWorkspaceChangesResponse {
 export interface RuntimeAcpHealthResponse {
 	available: boolean;
 	configuredCommand: string | null;
+	commandSource: "env" | "project" | "none";
 	detectedCommands?: string[];
 	reason?: string;
+}
+
+export interface RuntimeConfigResponse {
+	acpCommand: string | null;
+	commandSource: "env" | "project" | "none";
+	configPath: string;
+	detectedCommands: string[];
 }

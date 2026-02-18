@@ -134,9 +134,12 @@ export interface RuntimeAcpTurnResponse {
 	availableCommands?: RuntimeAvailableCommand[];
 }
 
+export type RuntimeAcpCommandSource = "env" | "project" | "none";
+
 export interface RuntimeAcpHealthResponse {
 	available: boolean;
 	configuredCommand: string | null;
+	commandSource: RuntimeAcpCommandSource;
 	detectedCommands?: string[];
 	reason?: string;
 }
@@ -176,4 +179,15 @@ export interface RuntimeWorkspaceChangesResponse {
 	repoRoot: string;
 	generatedAt: number;
 	files: RuntimeWorkspaceFileChange[];
+}
+
+export interface RuntimeConfigResponse {
+	acpCommand: string | null;
+	commandSource: RuntimeAcpCommandSource;
+	configPath: string;
+	detectedCommands: string[];
+}
+
+export interface RuntimeConfigSaveRequest {
+	acpCommand: string | null;
 }

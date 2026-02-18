@@ -10,11 +10,15 @@ import { fileURLToPath } from "node:url";
 import { createSampleBoard } from "./index.js";
 import type {
 	RuntimeAcpCancelRequest,
+	RuntimeAcpCommandSource,
 	RuntimeAcpHealthResponse,
 	RuntimeAcpTurnRequest,
+	RuntimeConfigResponse,
+	RuntimeConfigSaveRequest,
 	RuntimeWorkspaceChangesRequest,
 } from "./runtime/acp/api-contract.js";
 import { cancelAcpTurn, runAcpTurn, shutdownAcpRuntimeSessions } from "./runtime/acp/run-acp-turn.js";
+import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
 import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
 
 interface CliOptions {
@@ -149,12 +153,27 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
 	return JSON.parse(body) as T;
 }
 
-function getConfiguredAcpCommand(): string | null {
-	const command = process.env.KANBANANA_ACP_COMMAND?.trim();
-	if (!command) {
-		return null;
+function resolveAcpCommand(projectConfigCommand: string | null): {
+	command: string | null;
+	source: RuntimeAcpCommandSource;
+} {
+	const envCommand = process.env.KANBANANA_ACP_COMMAND?.trim();
+	if (envCommand) {
+		return {
+			command: envCommand,
+			source: "env",
+		};
 	}
-	return command;
+	if (projectConfigCommand) {
+		return {
+			command: projectConfigCommand,
+			source: "project",
+		};
+	}
+	return {
+		command: null,
+		source: "none",
+	};
 }
 
 function detectInstalledAcpCommands(): string[] {
@@ -201,6 +220,13 @@ function validateWorkspaceChangesRequest(query: URLSearchParams): RuntimeWorkspa
 	return { taskId };
 }
 
+function validateRuntimeConfigSaveRequest(body: RuntimeConfigSaveRequest): RuntimeConfigSaveRequest {
+	if (typeof body.acpCommand !== "string" && body.acpCommand !== null) {
+		throw new Error("Invalid runtime config payload.");
+	}
+	return body;
+}
+
 async function readAsset(rootDir: string, requestPathname: string): Promise<{ content: Buffer; contentType: string }> {
 	let resolvedPath = resolveAssetPath(rootDir, requestPathname);
 
@@ -241,6 +267,7 @@ function openInBrowser(url: string): void {
 
 async function startServer(port: number | null): Promise<{ url: string; close: () => Promise<void> }> {
 	const webUiDir = getWebUiDir();
+	let runtimeConfig = await loadRuntimeConfig(process.cwd());
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -256,13 +283,19 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 			const pathname = normalizeRequestPath(requestUrl.pathname);
 
 			if (pathname === "/api/acp/health" && req.method === "GET") {
-				const configuredCommand = getConfiguredAcpCommand();
+				const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
 				const detectedCommands = detectInstalledAcpCommands();
-				const payload: RuntimeAcpHealthResponse = configuredCommand
-					? { available: true, configuredCommand, detectedCommands }
+				const payload: RuntimeAcpHealthResponse = resolved.command
+					? {
+							available: true,
+							configuredCommand: resolved.command,
+							commandSource: resolved.source,
+							detectedCommands,
+						}
 					: {
 							available: false,
 							configuredCommand: null,
+							commandSource: "none",
 							detectedCommands,
 							reason: "Set KANBANANA_ACP_COMMAND to an ACP provider command (for example: codex --acp).",
 						};
@@ -271,8 +304,8 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 			}
 
 			if (pathname === "/api/acp/turn" && req.method === "POST") {
-				const configuredCommand = getConfiguredAcpCommand();
-				if (!configuredCommand) {
+				const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
+				if (!resolved.command) {
 					sendJson(res, 501, {
 						error: "ACP command is not configured. Set KANBANANA_ACP_COMMAND.",
 					});
@@ -282,11 +315,42 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 				try {
 					const body = validateTurnRequest(await readJsonBody<RuntimeAcpTurnRequest>(req));
 					const response = await runAcpTurn({
-						commandLine: configuredCommand,
+						commandLine: resolved.command,
 						cwd: process.cwd(),
 						request: body,
 					});
 					sendJson(res, 200, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/runtime/config" && req.method === "GET") {
+				const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
+				const payload: RuntimeConfigResponse = {
+					acpCommand: runtimeConfig.acpCommand,
+					commandSource: resolved.source,
+					configPath: runtimeConfig.configPath,
+					detectedCommands: detectInstalledAcpCommands(),
+				};
+				sendJson(res, 200, payload);
+				return;
+			}
+
+			if (pathname === "/api/runtime/config" && req.method === "PUT") {
+				try {
+					const body = validateRuntimeConfigSaveRequest(await readJsonBody<RuntimeConfigSaveRequest>(req));
+					runtimeConfig = await saveRuntimeConfig(process.cwd(), body.acpCommand);
+					const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
+					const payload: RuntimeConfigResponse = {
+						acpCommand: runtimeConfig.acpCommand,
+						commandSource: resolved.source,
+						configPath: runtimeConfig.configPath,
+						detectedCommands: detectInstalledAcpCommands(),
+					};
+					sendJson(res, 200, payload);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					sendJson(res, 500, { error: message });

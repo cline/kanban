@@ -30,8 +30,10 @@ This phase proves the central promise: Kanban UI can dispatch ACP-backed agent w
 16. Wired detail diff/file panels to runtime workspace data with fallback to ACP artifact-derived data.
 17. Added runtime ACP health signal in top bar ("Mock ACP mode") with lightweight installed-command detection.
 18. Cross-checked layout and panel behavior against `vibe-kanban` references to keep split-pane and scroll behavior function-first.
+19. Added project-level ACP runtime config (`.kanbanana/config.json`) with server API (`/api/runtime/config`) and precedence handling (`KANBANANA_ACP_COMMAND` overrides project config).
+20. Added in-app runtime settings dialog (top-right settings) to configure ACP command without shell env edits.
 
 ## Risks
 1. ACP behavior differences between providers may require adapter normalization.
-2. Runtime ACP still depends on `KANBANANA_ACP_COMMAND` for provider selection; detection is advisory, not auto-configuration.
+2. Runtime ACP command suggestions (`codex --acp`, `claude --acp`, `gemini --acp`) are heuristics and may differ by installed agent version.
 3. Workspace changes are currently derived from the active repo root and not yet from per-task worktrees.

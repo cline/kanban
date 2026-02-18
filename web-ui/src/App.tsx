@@ -6,6 +6,7 @@ import { BrowserAcpClient } from "@/kanban/acp/browser-acp-client";
 import { useTaskChatSessions } from "@/kanban/chat/hooks/use-task-chat-sessions";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
+import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
 import { TopBar } from "@/kanban/components/top-bar";
 import { useRuntimeAcpHealth } from "@/kanban/runtime/use-runtime-acp-health";
 import {
@@ -24,7 +25,8 @@ const acpClient = new BrowserAcpClient();
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => loadBoardState());
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-	const { health: runtimeAcpHealth } = useRuntimeAcpHealth();
+	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const { health: runtimeAcpHealth, refresh: refreshRuntimeAcpHealth } = useRuntimeAcpHealth();
 
 	const handleTaskRunComplete = useCallback((taskId: string) => {
 		setBoard((currentBoard) => {
@@ -150,7 +152,12 @@ export default function App(): ReactElement {
 
 	return (
 		<div className="flex h-svh min-w-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
-			<TopBar onBack={selectedCard ? handleBack : undefined} subtitle={selectedCard?.column.title} runtimeHint={runtimeHint} />
+			<TopBar
+				onBack={selectedCard ? handleBack : undefined}
+				subtitle={selectedCard?.column.title}
+				runtimeHint={runtimeHint}
+				onOpenSettings={() => setIsSettingsOpen(true)}
+			/>
 			<div className={selectedCard ? "hidden" : "flex h-full min-h-0 flex-1 overflow-hidden"}>
 				<KanbanBoard
 					data={board}
@@ -172,6 +179,13 @@ export default function App(): ReactElement {
 					}
 				/>
 			) : null}
+			<RuntimeSettingsDialog
+				open={isSettingsOpen}
+				onOpenChange={setIsSettingsOpen}
+				onSaved={() => {
+					void refreshRuntimeAcpHealth();
+				}}
+			/>
 		</div>
 	);
 }
