@@ -32,6 +32,7 @@ This phase proves the central promise: Kanban UI can dispatch ACP-backed agent w
 18. Cross-checked layout and panel behavior against `vibe-kanban` references to keep split-pane and scroll behavior function-first.
 19. Added project-level ACP runtime config (`.kanbanana/config.json`) with server API (`/api/runtime/config`) and precedence handling (`KANBANANA_ACP_COMMAND` overrides project config).
 20. Added in-app runtime settings dialog (top-right settings) to configure ACP command without shell env edits.
+21. Tightened runtime reliability behavior: runtime errors now surface in chat and do not silently fall back to mock unless runtime endpoints are unavailable.
 
 ## Risks
 1. ACP behavior differences between providers may require adapter normalization.

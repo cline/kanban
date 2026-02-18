@@ -322,7 +322,8 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 					sendJson(res, 200, response);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
+					const status = message.includes("already has an active ACP turn") ? 409 : 500;
+					sendJson(res, status, { error: message });
 				}
 				return;
 			}

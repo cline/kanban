@@ -17,6 +17,7 @@
 - Added runtime git-backed workspace changes API and wired detail diff/file panels to runtime-first data.
 - Added lightweight ACP command detection signal in health endpoint and top bar runtime mode hint.
 - Added project-level runtime ACP setup API and UI dialog so ACP command can be configured without manual env setup.
+- Added runtime error handling so ACP failures surface in chat and only true runtime-unavailable cases fall back to mock.
 - Mapped implementation direction to `vibe-kanban` split-pane/task-detail patterns while keeping scope local-first and minimal.
 
 ## Next Up

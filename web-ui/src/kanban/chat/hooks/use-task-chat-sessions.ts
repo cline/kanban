@@ -169,6 +169,12 @@ export function useTaskChatSessions({
 						updateSession(task.id, (session) => ({ ...session, status: "idle" }));
 						onTaskRunComplete(task.id);
 					},
+					onError: () => {
+						updateSession(task.id, (session) => ({
+							...session,
+							status: "idle",
+						}));
+					},
 				},
 			);
 

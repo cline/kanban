@@ -12,6 +12,15 @@ interface RuntimeTurnError {
 	error: string;
 }
 
+class RuntimeTurnFailure extends Error {
+	constructor(
+		message: string,
+		public readonly shouldFallback: boolean,
+	) {
+		super(message);
+	}
+}
+
 export class BrowserAcpClient implements AcpClient {
 	private readonly fallback = new MockAcpClient();
 
@@ -33,7 +42,10 @@ export class BrowserAcpClient implements AcpClient {
 
 				if (!response.ok) {
 					const errorBody = (await response.json().catch(() => null)) as RuntimeTurnError | null;
-					throw new Error(errorBody?.error ?? `Runtime ACP request failed with ${response.status}`);
+					throw new RuntimeTurnFailure(
+						errorBody?.error ?? `Runtime ACP request failed with ${response.status}`,
+						response.status === 404 || response.status === 501,
+					);
 				}
 
 				const payload = (await response.json()) as RuntimeTurnResponse;
@@ -45,13 +57,33 @@ export class BrowserAcpClient implements AcpClient {
 				}
 				callbacks.onStatus("idle");
 				callbacks.onComplete();
-			} catch {
+			} catch (error) {
 				if (abortController.signal.aborted) {
 					callbacks.onStatus("cancelled");
 					return;
 				}
-				activeFallback = this.fallback.runTurn(request, callbacks);
-				await activeFallback.done;
+
+				if (error instanceof RuntimeTurnFailure && error.shouldFallback) {
+					activeFallback = this.fallback.runTurn(request, callbacks);
+					await activeFallback.done;
+					return;
+				}
+				if (error instanceof TypeError) {
+					activeFallback = this.fallback.runTurn(request, callbacks);
+					await activeFallback.done;
+					return;
+				}
+
+				const message = error instanceof Error ? error.message : String(error);
+				callbacks.onEntry({
+					type: "agent_message",
+					id: `runtime-error-${Date.now()}`,
+					timestamp: Date.now(),
+					text: `Runtime ACP error: ${message}`,
+					isStreaming: false,
+				});
+				callbacks.onStatus("idle");
+				callbacks.onError?.(message);
 			}
 		})();
 

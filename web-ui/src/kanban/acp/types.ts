@@ -12,6 +12,7 @@ export interface AcpTurnCallbacks {
 	onStatus: (status: ChatSessionStatus) => void;
 	onComplete: () => void;
 	onAvailableCommands?: (commands: Array<{ name: string; description: string; input?: { hint?: string } }>) => void;
+	onError?: (message: string) => void;
 }
 
 export interface AcpTurnController {
