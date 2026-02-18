@@ -19,6 +19,8 @@ This phase proves the central promise: Kanban UI can dispatch ACP-backed agent w
 5. Wired board lifecycle to start runs when cards enter in-progress and move to ready-for-review on run completion.
 6. Implemented functional diff and file panels from task session artifacts.
 7. Updated smoke tests and validated with Playwright.
+8. Added CLI runtime boot path that serves packaged `web-ui` assets locally and launches browser by default.
+9. Updated root build pipeline to package `web-ui` assets into `dist/web-ui` for CLI runtime serving.
 
 ## Risks
 1. ACP behavior differences between providers may require adapter normalization.

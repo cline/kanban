@@ -11,6 +11,7 @@
 - Implemented functional Kanban UI slice with task CRUD, drag/drop lifecycle, task-scoped chat sessions, and persisted board/session state.
 - Added ACP adapter interface with working mock turn runner and wired in-progress to ready-for-review automation.
 - Implemented functional task diff and file panels from ACP tool-call artifacts.
+- Added CLI local runtime launch path that serves the built web UI and opens browser from `kanbanana`.
 
 ## Next Up
 1. Wire real CLI boot path so `kanbanana` serves and opens the web app.
