@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { RuntimeConfigResponse } from "@/kanban/runtime/types";
+import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 
 interface RuntimeConfigError {
 	error: string;
@@ -11,7 +11,10 @@ export interface UseRuntimeConfigResult {
 	isLoading: boolean;
 	isSaving: boolean;
 	load: () => Promise<void>;
-	save: (acpCommand: string | null) => Promise<RuntimeConfigResponse | null>;
+	save: (nextConfig: {
+		acpCommand: string | null;
+		shortcuts?: RuntimeProjectShortcut[];
+	}) => Promise<RuntimeConfigResponse | null>;
 }
 
 export function useRuntimeConfig(open: boolean): UseRuntimeConfigResult {
@@ -39,7 +42,11 @@ export function useRuntimeConfig(open: boolean): UseRuntimeConfigResult {
 		}
 	}, [open]);
 
-	const save = useCallback(async (acpCommand: string | null): Promise<RuntimeConfigResponse | null> => {
+	const save = useCallback(
+		async (nextConfig: {
+			acpCommand: string | null;
+			shortcuts?: RuntimeProjectShortcut[];
+		}): Promise<RuntimeConfigResponse | null> => {
 		setIsSaving(true);
 		try {
 			const response = await fetch("/api/runtime/config", {
@@ -47,7 +54,7 @@ export function useRuntimeConfig(open: boolean): UseRuntimeConfigResult {
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ acpCommand }),
+				body: JSON.stringify(nextConfig),
 			});
 			if (!response.ok) {
 				const payload = (await response.json().catch(() => null)) as RuntimeConfigError | null;
@@ -61,7 +68,9 @@ export function useRuntimeConfig(open: boolean): UseRuntimeConfigResult {
 		} finally {
 			setIsSaving(false);
 		}
-	}, []);
+	},
+		[],
+	);
 
 	useEffect(() => {
 		void load();

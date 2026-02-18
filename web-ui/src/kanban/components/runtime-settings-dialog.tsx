@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
+import type { RuntimeProjectShortcut } from "@/kanban/runtime/types";
 
 const suggestedByBinary: Record<string, string> = {
 	codex: "codex --acp",
@@ -21,13 +22,15 @@ export function RuntimeSettingsDialog({
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open);
 	const [commandInput, setCommandInput] = useState("");
+	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 
 	useEffect(() => {
 		if (!open) {
 			return;
 		}
 		setCommandInput(config?.acpCommand ?? "");
-	}, [config?.acpCommand, open]);
+		setShortcuts(config?.shortcuts ?? []);
+	}, [config?.acpCommand, config?.shortcuts, open]);
 
 	const suggestions = useMemo(() => {
 		const detected = config?.detectedCommands ?? [];
@@ -41,7 +44,10 @@ export function RuntimeSettingsDialog({
 
 	const handleSave = async () => {
 		const next = commandInput.trim();
-		await save(next ? next : null);
+		await save({
+			acpCommand: next ? next : null,
+			shortcuts,
+		});
 		onSaved();
 		onOpenChange(false);
 	};
@@ -87,6 +93,77 @@ export function RuntimeSettingsDialog({
 						</div>
 					) : null}
 					<p className="text-xs text-zinc-500">Project config path: {config?.configPath ?? ".kanbanana/config.json"}</p>
+					<div className="space-y-2 rounded border border-zinc-800 p-3">
+						<div className="flex items-center justify-between">
+							<p className="text-xs text-zinc-400">Script shortcuts</p>
+							<button
+								type="button"
+								onClick={() =>
+									setShortcuts((current) => [
+										...current,
+										{
+											id: crypto.randomUUID(),
+											label: "Run",
+											command: "",
+										},
+									])
+								}
+								className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+							>
+								Add
+							</button>
+						</div>
+						<div className="space-y-2">
+							{shortcuts.map((shortcut) => (
+								<div key={shortcut.id} className="grid grid-cols-[1fr_2fr_auto] gap-2">
+									<input
+										value={shortcut.label}
+										onChange={(event) =>
+											setShortcuts((current) =>
+												current.map((item) =>
+													item.id === shortcut.id
+														? {
+																...item,
+																label: event.target.value,
+															}
+														: item,
+												),
+											)
+										}
+										placeholder="Label"
+										className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100"
+									/>
+									<input
+										value={shortcut.command}
+										onChange={(event) =>
+											setShortcuts((current) =>
+												current.map((item) =>
+													item.id === shortcut.id
+														? {
+																...item,
+																command: event.target.value,
+															}
+														: item,
+												),
+											)
+										}
+										placeholder="Command"
+										className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100"
+									/>
+									<button
+										type="button"
+										onClick={() => setShortcuts((current) => current.filter((item) => item.id !== shortcut.id))}
+										className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+									>
+										Remove
+									</button>
+								</div>
+							))}
+							{shortcuts.length === 0 ? (
+								<p className="text-xs text-zinc-500">No shortcuts configured yet.</p>
+							) : null}
+						</div>
+					</div>
 					{hasEnvOverride ? (
 						<p className="text-xs text-amber-300">`KANBANANA_ACP_COMMAND` is set and currently overrides project config.</p>
 					) : null}

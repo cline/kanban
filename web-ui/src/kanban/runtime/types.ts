@@ -36,4 +36,20 @@ export interface RuntimeConfigResponse {
 	commandSource: "env" | "project" | "none";
 	configPath: string;
 	detectedCommands: string[];
+	shortcuts: RuntimeProjectShortcut[];
+}
+
+export interface RuntimeProjectShortcut {
+	id: string;
+	label: string;
+	command: string;
+	icon?: string;
+}
+
+export interface RuntimeShortcutRunResponse {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+	combinedOutput: string;
+	durationMs: number;
 }

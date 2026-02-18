@@ -186,8 +186,29 @@ export interface RuntimeConfigResponse {
 	commandSource: RuntimeAcpCommandSource;
 	configPath: string;
 	detectedCommands: string[];
+	shortcuts: RuntimeProjectShortcut[];
 }
 
 export interface RuntimeConfigSaveRequest {
 	acpCommand: string | null;
+	shortcuts?: RuntimeProjectShortcut[];
+}
+
+export interface RuntimeProjectShortcut {
+	id: string;
+	label: string;
+	command: string;
+	icon?: string;
+}
+
+export interface RuntimeShortcutRunRequest {
+	command: string;
+}
+
+export interface RuntimeShortcutRunResponse {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+	combinedOutput: string;
+	durationMs: number;
 }

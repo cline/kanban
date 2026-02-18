@@ -15,6 +15,8 @@ import type {
 	RuntimeAcpTurnRequest,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
+	RuntimeShortcutRunRequest,
+	RuntimeShortcutRunResponse,
 	RuntimeWorkspaceChangesRequest,
 } from "./runtime/acp/api-contract.js";
 import { cancelAcpTurn, runAcpTurn, shutdownAcpRuntimeSessions } from "./runtime/acp/run-acp-turn.js";
@@ -224,7 +226,32 @@ function validateRuntimeConfigSaveRequest(body: RuntimeConfigSaveRequest): Runti
 	if (typeof body.acpCommand !== "string" && body.acpCommand !== null) {
 		throw new Error("Invalid runtime config payload.");
 	}
+	if (body.shortcuts && !Array.isArray(body.shortcuts)) {
+		throw new Error("Invalid runtime shortcuts payload.");
+	}
+	for (const shortcut of body.shortcuts ?? []) {
+		if (
+			typeof shortcut.id !== "string" ||
+			typeof shortcut.label !== "string" ||
+			typeof shortcut.command !== "string"
+		) {
+			throw new Error("Invalid runtime shortcut entry.");
+		}
+	}
 	return body;
+}
+
+function validateShortcutRunRequest(body: RuntimeShortcutRunRequest): RuntimeShortcutRunRequest {
+	if (typeof body.command !== "string") {
+		throw new Error("Invalid shortcut run payload.");
+	}
+	const command = body.command.trim();
+	if (!command) {
+		throw new Error("Shortcut command cannot be empty.");
+	}
+	return {
+		command,
+	};
 }
 
 async function readAsset(rootDir: string, requestPathname: string): Promise<{ content: Buffer; contentType: string }> {
@@ -263,6 +290,65 @@ function openInBrowser(url: string): void {
 	}
 	const child = spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
 	child.unref();
+}
+
+async function runShortcutCommand(command: string, cwd: string): Promise<RuntimeShortcutRunResponse> {
+	const startedAt = Date.now();
+	const outputLimitBytes = 64 * 1024;
+
+	return await new Promise<RuntimeShortcutRunResponse>((resolve, reject) => {
+		const child = spawn(command, {
+			cwd,
+			shell: true,
+			env: process.env,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+
+		if (!child.stdout || !child.stderr) {
+			reject(new Error("Shortcut process did not expose stdout/stderr."));
+			return;
+		}
+
+		let stdout = "";
+		let stderr = "";
+
+		const appendOutput = (current: string, chunk: string): string => {
+			const next = current + chunk;
+			if (next.length <= outputLimitBytes) {
+				return next;
+			}
+			return next.slice(0, outputLimitBytes);
+		};
+
+		child.stdout.on("data", (chunk: Buffer | string) => {
+			stdout = appendOutput(stdout, String(chunk));
+		});
+
+		child.stderr.on("data", (chunk: Buffer | string) => {
+			stderr = appendOutput(stderr, String(chunk));
+		});
+
+		child.on("error", (error) => {
+			reject(error);
+		});
+
+		const timeout = setTimeout(() => {
+			child.kill("SIGTERM");
+		}, 60_000);
+
+		child.on("close", (code) => {
+			clearTimeout(timeout);
+			const exitCode = typeof code === "number" ? code : 1;
+			const combinedOutput = [stdout.trim(), stderr.trim()].filter(Boolean).join("\n");
+			resolve({
+				exitCode,
+				stdout: stdout.trim(),
+				stderr: stderr.trim(),
+				combinedOutput,
+				durationMs: Date.now() - startedAt,
+			});
+		});
+	});
 }
 
 async function startServer(port: number | null): Promise<{ url: string; close: () => Promise<void> }> {
@@ -335,6 +421,7 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 					commandSource: resolved.source,
 					configPath: runtimeConfig.configPath,
 					detectedCommands: detectInstalledAcpCommands(),
+					shortcuts: runtimeConfig.shortcuts,
 				};
 				sendJson(res, 200, payload);
 				return;
@@ -343,15 +430,31 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 			if (pathname === "/api/runtime/config" && req.method === "PUT") {
 				try {
 					const body = validateRuntimeConfigSaveRequest(await readJsonBody<RuntimeConfigSaveRequest>(req));
-					runtimeConfig = await saveRuntimeConfig(process.cwd(), body.acpCommand);
+					runtimeConfig = await saveRuntimeConfig(process.cwd(), {
+						acpCommand: body.acpCommand,
+						shortcuts: body.shortcuts ?? runtimeConfig.shortcuts,
+					});
 					const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
 					const payload: RuntimeConfigResponse = {
 						acpCommand: runtimeConfig.acpCommand,
 						commandSource: resolved.source,
 						configPath: runtimeConfig.configPath,
 						detectedCommands: detectInstalledAcpCommands(),
+						shortcuts: runtimeConfig.shortcuts,
 					};
 					sendJson(res, 200, payload);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/runtime/shortcut/run" && req.method === "POST") {
+				try {
+					const body = validateShortcutRunRequest(await readJsonBody<RuntimeShortcutRunRequest>(req));
+					const response = await runShortcutCommand(body.command, process.cwd());
+					sendJson(res, 200, response);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					sendJson(res, 500, { error: message });

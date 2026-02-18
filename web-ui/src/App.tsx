@@ -20,6 +20,8 @@ import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
 import { TopBar } from "@/kanban/components/top-bar";
 import { useRuntimeAcpHealth } from "@/kanban/runtime/use-runtime-acp-health";
+import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
+import type { RuntimeShortcutRunResponse } from "@/kanban/runtime/types";
 import {
 	addTaskToColumn,
 	applyDragResult,
@@ -40,7 +42,13 @@ export default function App(): ReactElement {
 	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 	const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
 	const [newTaskTitle, setNewTaskTitle] = useState("");
+	const [runningShortcutId, setRunningShortcutId] = useState<string | null>(null);
+	const [lastShortcutOutput, setLastShortcutOutput] = useState<{
+		label: string;
+		result: RuntimeShortcutRunResponse;
+	} | null>(null);
 	const { health: runtimeAcpHealth, refresh: refreshRuntimeAcpHealth } = useRuntimeAcpHealth();
+	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } = useRuntimeProjectConfig();
 
 	const handleTaskRunComplete = useCallback((taskId: string) => {
 		setBoard((currentBoard) => {
@@ -152,6 +160,52 @@ export default function App(): ReactElement {
 		setIsCreateTaskOpen(false);
 	}, [handleAddCard, newTaskTitle]);
 
+	const handleRunShortcut = useCallback(
+		async (shortcutId: string) => {
+			const shortcut = runtimeProjectConfig?.shortcuts.find((item) => item.id === shortcutId);
+			if (!shortcut) {
+				return;
+			}
+
+			setRunningShortcutId(shortcutId);
+			try {
+				const response = await fetch("/api/runtime/shortcut/run", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						command: shortcut.command,
+					}),
+				});
+				if (!response.ok) {
+					const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+					throw new Error(payload?.error ?? `Shortcut run failed with ${response.status}`);
+				}
+				const result = (await response.json()) as RuntimeShortcutRunResponse;
+				setLastShortcutOutput({
+					label: shortcut.label,
+					result,
+				});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				setLastShortcutOutput({
+					label: shortcut.label,
+					result: {
+						exitCode: 1,
+						stdout: "",
+						stderr: message,
+						combinedOutput: message,
+						durationMs: 0,
+					},
+				});
+			} finally {
+				setRunningShortcutId(null);
+			}
+		},
+		[runtimeProjectConfig?.shortcuts],
+	);
+
 	const handleDragEnd = useCallback(
 		(result: DropResult) => {
 			const applied = applyDragResult(board, result);
@@ -219,7 +273,29 @@ export default function App(): ReactElement {
 				subtitle={selectedCard?.column.title}
 				runtimeHint={runtimeHint}
 				onOpenSettings={() => setIsSettingsOpen(true)}
+				shortcuts={runtimeProjectConfig?.shortcuts ?? []}
+				runningShortcutId={runningShortcutId}
+				onRunShortcut={handleRunShortcut}
 			/>
+			{lastShortcutOutput ? (
+				<div className="border-b border-zinc-800 bg-zinc-900 px-4 py-2">
+					<div className="mb-1 flex items-center justify-between">
+						<p className="text-xs text-zinc-400">
+							{lastShortcutOutput.label} finished with exit code {lastShortcutOutput.result.exitCode}
+						</p>
+						<button
+							type="button"
+							onClick={() => setLastShortcutOutput(null)}
+							className="text-xs text-zinc-500 hover:text-zinc-300"
+						>
+							Clear
+						</button>
+					</div>
+					<pre className="max-h-32 overflow-auto rounded bg-zinc-950 p-2 text-xs text-zinc-300">
+						{lastShortcutOutput.result.combinedOutput || "(no output)"}
+					</pre>
+				</div>
+			) : null}
 			<div className={selectedCard ? "hidden" : "flex h-full min-h-0 flex-1 overflow-hidden"}>
 				<KanbanBoard
 					data={board}
@@ -246,6 +322,7 @@ export default function App(): ReactElement {
 				onOpenChange={setIsSettingsOpen}
 				onSaved={() => {
 					void refreshRuntimeAcpHealth();
+					void refreshRuntimeProjectConfig();
 				}}
 			/>
 			<CommandDialog open={isCommandPaletteOpen} onOpenChange={setIsCommandPaletteOpen}>

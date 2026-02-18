@@ -19,6 +19,7 @@
 - Added project-level runtime ACP setup API and UI dialog so ACP command can be configured without manual env setup.
 - Added runtime error handling so ACP failures surface in chat and only true runtime-unavailable cases fall back to mock.
 - Pulled forward keyboard-first baseline: command palette task search/open (`Cmd/Ctrl+K`), quick-create (`C`), and detail arrow navigation.
+- Added shared project shortcut config, editable shortcut buttons, runtime shortcut execution, and inline output preview.
 - Mapped implementation direction to `vibe-kanban` split-pane/task-detail patterns while keeping scope local-first and minimal.
 
 ## Next Up

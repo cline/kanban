@@ -1,15 +1,23 @@
 import { ArrowLeft, Settings } from "lucide-react";
 
+import type { RuntimeProjectShortcut } from "@/kanban/runtime/types";
+
 export function TopBar({
 	onBack,
 	subtitle,
 	runtimeHint,
 	onOpenSettings,
+	shortcuts,
+	runningShortcutId,
+	onRunShortcut,
 }: {
 	onBack?: () => void;
 	subtitle?: string;
 	runtimeHint?: string;
 	onOpenSettings?: () => void;
+	shortcuts?: RuntimeProjectShortcut[];
+	runningShortcutId?: string | null;
+	onRunShortcut?: (shortcutId: string) => void;
 }): React.ReactElement {
 	return (
 		<header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4">
@@ -40,14 +48,27 @@ export function TopBar({
 					</span>
 				) : null}
 			</div>
-			<button
-				type="button"
-				onClick={onOpenSettings}
-				className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-				aria-label="Settings"
-			>
-				<Settings className="size-4" />
-			</button>
+			<div className="flex items-center gap-2">
+				{shortcuts?.map((shortcut) => (
+					<button
+						key={shortcut.id}
+						type="button"
+						onClick={() => onRunShortcut?.(shortcut.id)}
+						className="rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-600"
+						disabled={runningShortcutId === shortcut.id}
+					>
+						{runningShortcutId === shortcut.id ? `Running ${shortcut.label}...` : shortcut.label}
+					</button>
+				))}
+				<button
+					type="button"
+					onClick={onOpenSettings}
+					className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+					aria-label="Settings"
+				>
+					<Settings className="size-4" />
+				</button>
+			</div>
 		</header>
 	);
 }
