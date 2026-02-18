@@ -40,9 +40,9 @@ When closing issues via commit:
 
 Agent Client Protocol (ACP)
 - ACP is a protocol that lets us interface with CLI agents like codex. When working on anything ACP related, you can use:
-- @.plan/docs/ACP-docs.md for all of ACP's documentation
-- @.plan/docs/ACP-SDK-notes.md for a reference to how the ACP SDK is implemented
-- @.plan/docs/ACP-reference-project.md for notes on ~/Repositories/kanbanana/vscode-acp, a client that implements ACP
+- .plan/docs/ACP-docs.md for all of ACP's documentation
+- .plan/docs/ACP-SDK-notes.md for a reference to how the ACP SDK is implemented
+- .plan/docs/ACP-reference-project.md for notes on ~/Repositories/kanbanana/vscode-acp, a client that implements ACP
 
 web-ui Stack
 - Kanbanana web-ui uses shadcn/ui components with Tailwind CSS for styling and `lucide-react` for icons.
