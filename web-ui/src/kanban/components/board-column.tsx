@@ -14,11 +14,11 @@ export function BoardColumn({
 }: {
 	column: BoardColumnModel;
 	index: number;
-	onAddCard?: (title: string) => void;
+	onAddCard?: (body: string) => void;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
 	const [isAdding, setIsAdding] = useState(false);
-	const [newTitle, setNewTitle] = useState("");
+	const [newBody, setNewBody] = useState("");
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const scrollableRef = useRef<HTMLDivElement | null>(null);
 
@@ -32,11 +32,11 @@ export function BoardColumn({
 	}, [isAdding]);
 
 	function handleSubmit() {
-		const trimmed = newTitle.trim();
+		const trimmed = newBody.trim();
 		if (trimmed && onAddCard) {
 			onAddCard(trimmed);
 		}
-		setNewTitle("");
+		setNewBody("");
 		setIsAdding(false);
 	}
 
@@ -94,19 +94,19 @@ export function BoardColumn({
 										isAdding ? (
 											<input
 												ref={inputRef}
-												value={newTitle}
-												onChange={(e) => setNewTitle(e.target.value)}
+												value={newBody}
+												onChange={(e) => setNewBody(e.target.value)}
 												onKeyDown={(e) => {
 													if (e.key === "Enter") {
 														handleSubmit();
 													}
 													if (e.key === "Escape") {
-														setNewTitle("");
+														setNewBody("");
 														setIsAdding(false);
 													}
 												}}
 												onBlur={handleSubmit}
-												placeholder="Task title..."
+												placeholder="New task..."
 												className="w-full shrink-0 rounded-lg border-2 border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
 											/>
 										) : (

@@ -22,7 +22,7 @@ export function KanbanBoard({
 	const [data, setData] = useState(initialBoardData);
 	const dragOccurredRef = useRef(false);
 
-	const handleAddCard = useCallback((columnId: string, title: string) => {
+	const handleAddCard = useCallback((columnId: string, body: string) => {
 		setData((prev) => ({
 			...prev,
 			columns: prev.columns.map((col) =>
@@ -31,7 +31,7 @@ export function KanbanBoard({
 							...col,
 							cards: [
 								...col.cards,
-								{ id: crypto.randomUUID(), title, body: "" },
+								{ id: crypto.randomUUID(), body },
 							],
 						}
 					: col,
@@ -119,7 +119,7 @@ export function KanbanBoard({
 								key={column.id}
 								column={column}
 								index={index}
-								onAddCard={(title) => handleAddCard(column.id, title)}
+								onAddCard={(body) => handleAddCard(column.id, body)}
 								onCardClick={(card) => handleCardClick(card, column)}
 							/>
 						))}

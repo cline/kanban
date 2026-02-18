@@ -33,10 +33,7 @@ export function BoardCard({
 						...(snapshot.isDragging ? { borderColor: "var(--col-accent)" } : undefined),
 					}}
 				>
-					<p className="text-sm font-medium leading-snug text-zinc-100">{card.title}</p>
-					{card.body ? (
-						<p className="mt-1 line-clamp-2 text-sm leading-relaxed text-zinc-400">{card.body}</p>
-					) : null}
+					<p className="text-sm leading-snug text-zinc-100 line-clamp-3">{card.body}</p>
 				</article>
 			)}
 		</Draggable>
