@@ -39,13 +39,48 @@ export function CardDetailView({
 
 	useEffect(() => {
 		function handleKeyDown(event: KeyboardEvent) {
+			const target = event.target as HTMLElement | null;
+			const isTypingTarget =
+				target?.tagName === "INPUT" ||
+				target?.tagName === "TEXTAREA" ||
+				target?.isContentEditable;
+			if (isTypingTarget) {
+				return;
+			}
+
 			if (event.key === "Escape") {
 				onBack();
+				return;
+			}
+
+			const cards = selection.column.cards;
+			const currentIndex = cards.findIndex((card) => card.id === selection.card.id);
+			if (currentIndex === -1) {
+				return;
+			}
+
+			if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+				event.preventDefault();
+				const previousIndex = (currentIndex - 1 + cards.length) % cards.length;
+				const previousCard = cards[previousIndex];
+				if (previousCard) {
+					onCardSelect(previousCard.id);
+				}
+				return;
+			}
+
+			if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+				event.preventDefault();
+				const nextIndex = (currentIndex + 1) % cards.length;
+				const nextCard = cards[nextIndex];
+				if (nextCard) {
+					onCardSelect(nextCard.id);
+				}
 			}
 		}
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [onBack]);
+	}, [onBack, onCardSelect, selection.card.id, selection.column.cards]);
 
 	useEffect(() => {
 		if (selectedPath && availablePaths.includes(selectedPath)) {

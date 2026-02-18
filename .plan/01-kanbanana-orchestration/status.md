@@ -18,6 +18,7 @@
 - Added lightweight ACP command detection signal in health endpoint and top bar runtime mode hint.
 - Added project-level runtime ACP setup API and UI dialog so ACP command can be configured without manual env setup.
 - Added runtime error handling so ACP failures surface in chat and only true runtime-unavailable cases fall back to mock.
+- Pulled forward keyboard-first baseline: command palette task search/open (`Cmd/Ctrl+K`), quick-create (`C`), and detail arrow navigation.
 - Mapped implementation direction to `vibe-kanban` split-pane/task-detail patterns while keeping scope local-first and minimal.
 
 ## Next Up
@@ -26,9 +27,8 @@
 3. Prepare task-scoped workspace paths so runtime workspace changes can switch from repo-root to worktree-aware scope in phase 03.
 
 ## Open Decisions
-1. Exact keyboard command for global search palette in phase 09.
-2. Initial shape of minimal usage/subscription placeholder in phase 11.
-3. Default behavior when ACP provider is installed but unauthenticated.
+1. Initial shape of minimal usage/subscription placeholder in phase 11.
+2. Default behavior when ACP provider is installed but unauthenticated.
 
 ## Blockers
 - None currently.

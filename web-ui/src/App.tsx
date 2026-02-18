@@ -2,6 +2,17 @@ import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 
+import { Button } from "@/components/ui/button";
+import {
+	CommandDialog,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+	CommandShortcut,
+} from "@/components/ui/command";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { BrowserAcpClient } from "@/kanban/acp/browser-acp-client";
 import { useTaskChatSessions } from "@/kanban/chat/hooks/use-task-chat-sessions";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
@@ -26,6 +37,9 @@ export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => loadBoardState());
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+	const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
+	const [newTaskTitle, setNewTaskTitle] = useState("");
 	const { health: runtimeAcpHealth, refresh: refreshRuntimeAcpHealth } = useRuntimeAcpHealth();
 
 	const handleTaskRunComplete = useCallback((taskId: string) => {
@@ -51,6 +65,16 @@ export default function App(): ReactElement {
 		}
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
+
+	const searchableTasks = useMemo(() => {
+		return board.columns.flatMap((column) =>
+			column.cards.map((card) => ({
+				id: card.id,
+				title: card.title,
+				columnTitle: column.title,
+			})),
+		);
+	}, [board.columns]);
 
 	useEffect(() => {
 		persistBoardState(board);
@@ -82,6 +106,34 @@ export default function App(): ReactElement {
 		}
 	}, [board.columns, getSession, startTaskRun]);
 
+	useEffect(() => {
+		const handleKeyDown = (event: KeyboardEvent) => {
+			const target = event.target as HTMLElement | null;
+			const isTypingTarget =
+				target?.tagName === "INPUT" ||
+				target?.tagName === "TEXTAREA" ||
+				target?.isContentEditable;
+			if (isTypingTarget) {
+				return;
+			}
+
+			const key = event.key.toLowerCase();
+			if ((event.metaKey || event.ctrlKey) && key === "k") {
+				event.preventDefault();
+				setIsCommandPaletteOpen((current) => !current);
+				return;
+			}
+
+			if (!event.metaKey && !event.ctrlKey && key === "c") {
+				event.preventDefault();
+				setIsCreateTaskOpen(true);
+			}
+		};
+
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, []);
+
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);
 	}, []);
@@ -89,6 +141,16 @@ export default function App(): ReactElement {
 	const handleAddCard = useCallback((columnId: BoardColumnId, title: string) => {
 		setBoard((currentBoard) => addTaskToColumn(currentBoard, columnId, { title }));
 	}, []);
+
+	const handleCreateTask = useCallback(() => {
+		const title = newTaskTitle.trim();
+		if (!title) {
+			return;
+		}
+		handleAddCard("backlog", title);
+		setNewTaskTitle("");
+		setIsCreateTaskOpen(false);
+	}, [handleAddCard, newTaskTitle]);
 
 	const handleDragEnd = useCallback(
 		(result: DropResult) => {
@@ -186,6 +248,62 @@ export default function App(): ReactElement {
 					void refreshRuntimeAcpHealth();
 				}}
 			/>
+			<CommandDialog open={isCommandPaletteOpen} onOpenChange={setIsCommandPaletteOpen}>
+				<CommandInput placeholder="Search tasks..." />
+				<CommandList>
+					<CommandEmpty>No tasks found.</CommandEmpty>
+					<CommandGroup heading="Tasks">
+						{searchableTasks.map((task) => (
+							<CommandItem
+								key={task.id}
+								onSelect={() => {
+									setSelectedTaskId(task.id);
+									setIsCommandPaletteOpen(false);
+								}}
+							>
+								<span className="truncate">{task.title}</span>
+								<CommandShortcut>{task.columnTitle}</CommandShortcut>
+							</CommandItem>
+						))}
+					</CommandGroup>
+				</CommandList>
+			</CommandDialog>
+			<Dialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen}>
+				<DialogContent className="border-zinc-800 bg-zinc-900 text-zinc-100">
+					<DialogHeader>
+						<DialogTitle>Create Task</DialogTitle>
+						<DialogDescription className="text-zinc-400">
+							New tasks are added to Backlog.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-1">
+						<label htmlFor="task-title-input" className="text-xs text-zinc-400">
+							Title
+						</label>
+						<input
+							id="task-title-input"
+							value={newTaskTitle}
+							onChange={(event) => setNewTaskTitle(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter" && !event.shiftKey) {
+									event.preventDefault();
+									handleCreateTask();
+								}
+							}}
+							className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+							placeholder="Describe the task"
+						/>
+					</div>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setIsCreateTaskOpen(false)}>
+							Cancel
+						</Button>
+						<Button onClick={handleCreateTask} disabled={!newTaskTitle.trim()}>
+							Create
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
