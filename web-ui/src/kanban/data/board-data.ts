@@ -36,7 +36,7 @@ export const initialBoardData: BoardData = {
 		},
 		{
 			id: "running",
-			title: "Running",
+			title: "Acting",
 			cards: [
 				{
 					id: "r-1",
@@ -63,7 +63,7 @@ export const initialBoardData: BoardData = {
 		},
 		{
 			id: "done",
-			title: "Done",
+			title: "Trash",
 			cards: [
 				{
 					id: "d-1",
