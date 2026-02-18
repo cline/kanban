@@ -55,9 +55,14 @@ function ColumnSection({
 										: undefined
 								}
 							>
-								<p className="text-sm leading-snug text-zinc-100 line-clamp-3">
-									{card.body}
+								<p className="text-sm font-medium leading-snug text-zinc-100 line-clamp-2">
+									{card.title}
 								</p>
+								{card.description ? (
+									<p className="mt-1 text-xs leading-snug text-zinc-400 line-clamp-2">
+										{card.description}
+									</p>
+								) : null}
 							</article>
 						);
 					})}
@@ -75,24 +80,18 @@ export function ColumnContextPanel({
 	onCardSelect,
 }: {
 	selection: CardSelection;
-	onCardSelect: (selection: CardSelection) => void;
+	onCardSelect: (taskId: string) => void;
 }): React.ReactElement {
 	return (
 		<section className="flex min-h-0 w-1/5 flex-col border-r border-zinc-800 bg-zinc-900">
-			<div className="min-h-0 flex-1 overflow-y-auto">
+			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
 				{selection.allColumns.map((column) => (
 					<ColumnSection
 						key={column.id}
 						column={column}
 						selectedCardId={selection.card.id}
 						defaultOpen={column.id === selection.column.id || (column.id !== "backlog" && column.id !== "done")}
-						onCardClick={(card) =>
-							onCardSelect({
-								card,
-								column,
-								allColumns: selection.allColumns,
-							})
-						}
+						onCardClick={(card) => onCardSelect(card.id)}
 					/>
 				))}
 			</div>

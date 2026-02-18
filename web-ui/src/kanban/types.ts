@@ -1,10 +1,15 @@
+export type BoardColumnId = "backlog" | "todo" | "in_progress" | "ready_for_review" | "done";
+
 export interface BoardCard {
 	id: string;
-	body: string;
+	title: string;
+	description: string;
+	createdAt: number;
+	updatedAt: number;
 }
 
 export interface BoardColumn {
-	id: string;
+	id: BoardColumnId;
 	title: string;
 	cards: BoardCard[];
 }

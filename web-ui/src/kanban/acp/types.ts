@@ -1,0 +1,23 @@
+import type { ChatSessionStatus, ChatTimelineEntry } from "@/kanban/chat/types";
+
+export interface AcpTurnRequest {
+	taskId: string;
+	taskTitle: string;
+	taskDescription: string;
+	prompt: string;
+}
+
+export interface AcpTurnCallbacks {
+	onEntry: (entry: ChatTimelineEntry) => void;
+	onStatus: (status: ChatSessionStatus) => void;
+	onComplete: () => void;
+}
+
+export interface AcpTurnController {
+	cancel: () => void;
+	done: Promise<void>;
+}
+
+export interface AcpClient {
+	runTurn(request: AcpTurnRequest, callbacks: AcpTurnCallbacks): AcpTurnController;
+}

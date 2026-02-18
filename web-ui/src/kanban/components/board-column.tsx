@@ -14,13 +14,12 @@ export function BoardColumn({
 }: {
 	column: BoardColumnModel;
 	index: number;
-	onAddCard?: (body: string) => void;
+	onAddCard?: (title: string) => void;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
 	const [isAdding, setIsAdding] = useState(false);
-	const [newBody, setNewBody] = useState("");
+	const [newTitle, setNewTitle] = useState("");
 	const inputRef = useRef<HTMLInputElement | null>(null);
-	const scrollableRef = useRef<HTMLDivElement | null>(null);
 
 	const accentColor = columnAccentColors[column.id] ?? "#71717a";
 	const canAdd = column.id === "backlog" && onAddCard;
@@ -32,11 +31,11 @@ export function BoardColumn({
 	}, [isAdding]);
 
 	function handleSubmit() {
-		const trimmed = newBody.trim();
+		const trimmed = newTitle.trim();
 		if (trimmed && onAddCard) {
 			onAddCard(trimmed);
 		}
-		setNewBody("");
+		setNewTitle("");
 		setIsAdding(false);
 	}
 
@@ -46,7 +45,7 @@ export function BoardColumn({
 				<section
 					ref={columnProvided.innerRef}
 					{...columnProvided.draggableProps}
-					className={`flex min-h-0 min-w-0 flex-1 flex-col border-r border-zinc-800 bg-zinc-900 ${
+					className={`flex h-full min-h-0 min-w-0 flex-1 flex-col border-r border-zinc-800 bg-zinc-900 ${
 						columnSnapshot.isDragging ? "shadow-2xl" : ""
 					}`}
 				>
@@ -68,12 +67,9 @@ export function BoardColumn({
 						<Droppable droppableId={column.id} type="CARD">
 							{(cardProvided, cardSnapshot) => (
 								<div
-									ref={(el) => {
-										cardProvided.innerRef(el);
-										scrollableRef.current = el;
-									}}
+									ref={cardProvided.innerRef}
 									{...cardProvided.droppableProps}
-									className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2"
+									className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-2"
 									style={
 										cardSnapshot.isDraggingOver
 											? { backgroundColor: `${accentColor}15`, boxShadow: `inset 2px 0 0 0 ${accentColor}66, inset -2px 0 0 0 ${accentColor}66` }
@@ -94,19 +90,19 @@ export function BoardColumn({
 										isAdding ? (
 											<input
 												ref={inputRef}
-												value={newBody}
-												onChange={(e) => setNewBody(e.target.value)}
+												value={newTitle}
+												onChange={(e) => setNewTitle(e.target.value)}
 												onKeyDown={(e) => {
 													if (e.key === "Enter") {
 														handleSubmit();
 													}
 													if (e.key === "Escape") {
-														setNewBody("");
+														setNewTitle("");
 														setIsAdding(false);
 													}
 												}}
 												onBlur={handleSubmit}
-												placeholder="New task..."
+												placeholder="Task title..."
 												className="w-full shrink-0 rounded-lg border-2 border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
 											/>
 										) : (
