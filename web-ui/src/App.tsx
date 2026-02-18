@@ -2,11 +2,12 @@ import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 
-import { MockAcpClient } from "@/kanban/acp/mock-acp-client";
+import { BrowserAcpClient } from "@/kanban/acp/browser-acp-client";
 import { useTaskChatSessions } from "@/kanban/chat/hooks/use-task-chat-sessions";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { TopBar } from "@/kanban/components/top-bar";
+import { useRuntimeAcpHealth } from "@/kanban/runtime/use-runtime-acp-health";
 import {
 	addTaskToColumn,
 	applyDragResult,
@@ -18,11 +19,12 @@ import {
 } from "@/kanban/state/board-state";
 import type { BoardColumnId, BoardData } from "@/kanban/types";
 
-const acpClient = new MockAcpClient();
+const acpClient = new BrowserAcpClient();
 
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => loadBoardState());
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+	const { health: runtimeAcpHealth } = useRuntimeAcpHealth();
 
 	const handleTaskRunComplete = useCallback((taskId: string) => {
 		setBoard((currentBoard) => {
@@ -134,10 +136,21 @@ export default function App(): ReactElement {
 	);
 
 	const detailSession = selectedCard ? getSession(selectedCard.card.id) : null;
+	const runtimeHint = useMemo(() => {
+		if (!runtimeAcpHealth || runtimeAcpHealth.available) {
+			return undefined;
+		}
+
+		const detected = runtimeAcpHealth.detectedCommands?.join(", ");
+		if (detected) {
+			return `Mock ACP mode (detected: ${detected})`;
+		}
+		return "Mock ACP mode";
+	}, [runtimeAcpHealth]);
 
 	return (
 		<div className="flex h-svh min-w-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
-			<TopBar onBack={selectedCard ? handleBack : undefined} subtitle={selectedCard?.column.title} />
+			<TopBar onBack={selectedCard ? handleBack : undefined} subtitle={selectedCard?.column.title} runtimeHint={runtimeHint} />
 			<div className={selectedCard ? "hidden" : "flex h-full min-h-0 flex-1 overflow-hidden"}>
 				<KanbanBoard
 					data={board}

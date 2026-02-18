@@ -21,3 +21,9 @@
 1. Multi-agent race is intentionally not part of the early critical path.
 2. Advanced provider strategy is postponed until core execution loop is stable.
 
+## Vibe-Kanban Reference Alignment
+1. Use the `ProjectKanban` and `Workspaces` split-pane model as functional inspiration: fixed page shell with per-pane scrolling (`min-h-0` and `overflow-hidden` on containers).
+2. Keep detail view as a three-pane functional layout: conversation, inline diff sections, and file tree with change stats.
+3. Keep runtime and UI decoupled through typed API contracts, with client-side graceful fallback when runtime APIs are unavailable.
+4. Keep scope intentionally narrower than vibe-kanban for now: no cloud auth/accounts, no remote org/project sync, no advanced review comments system.
+5. Keep phase ordering from PSN, but borrow implementation patterns from vibe-kanban where they directly improve local-first orchestration.

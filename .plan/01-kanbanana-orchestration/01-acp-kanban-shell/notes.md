@@ -21,7 +21,17 @@ This phase proves the central promise: Kanban UI can dispatch ACP-backed agent w
 7. Updated smoke tests and validated with Playwright.
 8. Added CLI runtime boot path that serves packaged `web-ui` assets locally and launches browser by default.
 9. Updated root build pipeline to package `web-ui` assets into `dist/web-ui` for CLI runtime serving.
+10. Added runtime ACP API endpoints (`/api/acp/health`, `/api/acp/turn`) with request validation and error handling.
+11. Added ACP SDK subprocess turn runner on Node side, including initialize/session/prompt flow and session update capture.
+12. Added browser ACP client that calls runtime ACP API and falls back to local mock behavior when ACP is unavailable.
+13. Reworked runtime ACP from one-turn subprocesses to persistent task-scoped ACP sessions with session reuse across prompts.
+14. Added runtime ACP cancellation endpoint (`/api/acp/cancel`) and wired browser client cancel to session-level `session/cancel`.
+15. Added runtime workspace changes endpoint (`/api/workspace/changes`) backed by local git diff/status and file snapshots.
+16. Wired detail diff/file panels to runtime workspace data with fallback to ACP artifact-derived data.
+17. Added runtime ACP health signal in top bar ("Mock ACP mode") with lightweight installed-command detection.
+18. Cross-checked layout and panel behavior against `vibe-kanban` references to keep split-pane and scroll behavior function-first.
 
 ## Risks
 1. ACP behavior differences between providers may require adapter normalization.
-2. Browser-only mock runtime cannot yet read real repo files or git diffs, so runtime API wiring is still required for production behavior.
+2. Runtime ACP still depends on `KANBANANA_ACP_COMMAND` for provider selection; detection is advisory, not auto-configuration.
+3. Workspace changes are currently derived from the active repo root and not yet from per-task worktrees.

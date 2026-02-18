@@ -1,13 +1,21 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createSampleBoard } from "./index.js";
+import type {
+	RuntimeAcpCancelRequest,
+	RuntimeAcpHealthResponse,
+	RuntimeAcpTurnRequest,
+	RuntimeWorkspaceChangesRequest,
+} from "./runtime/acp/api-contract.js";
+import { cancelAcpTurn, runAcpTurn, shutdownAcpRuntimeSessions } from "./runtime/acp/run-acp-turn.js";
+import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
 
 interface CliOptions {
 	help: boolean;
@@ -111,6 +119,88 @@ function resolveAssetPath(rootDir: string, urlPathname: string): string {
 	return absolutePath;
 }
 
+function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
+	response.writeHead(statusCode, {
+		"Content-Type": "application/json; charset=utf-8",
+		"Cache-Control": "no-store",
+	});
+	response.end(JSON.stringify(payload));
+}
+
+async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
+	const chunks: Uint8Array[] = [];
+	let totalBytes = 0;
+	const maxBytes = 1024 * 1024;
+
+	for await (const chunk of request) {
+		const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+		totalBytes += bytes.byteLength;
+		if (totalBytes > maxBytes) {
+			throw new Error("Request body too large.");
+		}
+		chunks.push(bytes);
+	}
+
+	const body = Buffer.concat(chunks).toString("utf8");
+	if (!body.trim()) {
+		throw new Error("Request body is empty.");
+	}
+
+	return JSON.parse(body) as T;
+}
+
+function getConfiguredAcpCommand(): string | null {
+	const command = process.env.KANBANANA_ACP_COMMAND?.trim();
+	if (!command) {
+		return null;
+	}
+	return command;
+}
+
+function detectInstalledAcpCommands(): string[] {
+	const candidates = ["codex", "claude", "gemini"];
+	const lookupCommand = process.platform === "win32" ? "where" : "which";
+	const detected: string[] = [];
+
+	for (const candidate of candidates) {
+		const result = spawnSync(lookupCommand, [candidate], {
+			stdio: "ignore",
+		});
+		if (result.status === 0) {
+			detected.push(candidate);
+		}
+	}
+
+	return detected;
+}
+
+function validateTurnRequest(body: RuntimeAcpTurnRequest): RuntimeAcpTurnRequest {
+	if (
+		typeof body.taskId !== "string" ||
+		typeof body.taskTitle !== "string" ||
+		typeof body.taskDescription !== "string" ||
+		typeof body.prompt !== "string"
+	) {
+		throw new Error("Invalid turn request payload.");
+	}
+	return body;
+}
+
+function validateCancelRequest(body: RuntimeAcpCancelRequest): RuntimeAcpCancelRequest {
+	if (typeof body.taskId !== "string") {
+		throw new Error("Invalid cancel request payload.");
+	}
+	return body;
+}
+
+function validateWorkspaceChangesRequest(query: URLSearchParams): RuntimeWorkspaceChangesRequest {
+	const taskId = query.get("taskId");
+	if (!taskId) {
+		throw new Error("Missing taskId query parameter.");
+	}
+	return { taskId };
+}
+
 async function readAsset(rootDir: string, requestPathname: string): Promise<{ content: Buffer; contentType: string }> {
 	let resolvedPath = resolveAssetPath(rootDir, requestPathname);
 
@@ -164,6 +254,75 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 		try {
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
+
+			if (pathname === "/api/acp/health" && req.method === "GET") {
+				const configuredCommand = getConfiguredAcpCommand();
+				const detectedCommands = detectInstalledAcpCommands();
+				const payload: RuntimeAcpHealthResponse = configuredCommand
+					? { available: true, configuredCommand, detectedCommands }
+					: {
+							available: false,
+							configuredCommand: null,
+							detectedCommands,
+							reason: "Set KANBANANA_ACP_COMMAND to an ACP provider command (for example: codex --acp).",
+						};
+				sendJson(res, 200, payload);
+				return;
+			}
+
+			if (pathname === "/api/acp/turn" && req.method === "POST") {
+				const configuredCommand = getConfiguredAcpCommand();
+				if (!configuredCommand) {
+					sendJson(res, 501, {
+						error: "ACP command is not configured. Set KANBANANA_ACP_COMMAND.",
+					});
+					return;
+				}
+
+				try {
+					const body = validateTurnRequest(await readJsonBody<RuntimeAcpTurnRequest>(req));
+					const response = await runAcpTurn({
+						commandLine: configuredCommand,
+						cwd: process.cwd(),
+						request: body,
+					});
+					sendJson(res, 200, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/acp/cancel" && req.method === "POST") {
+				try {
+					const body = validateCancelRequest(await readJsonBody<RuntimeAcpCancelRequest>(req));
+					const cancelled = await cancelAcpTurn(body.taskId);
+					sendJson(res, 200, { cancelled });
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/workspace/changes" && req.method === "GET") {
+				try {
+					validateWorkspaceChangesRequest(requestUrl.searchParams);
+					const response = await getWorkspaceChanges(process.cwd());
+					sendJson(res, 200, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname.startsWith("/api/")) {
+				sendJson(res, 404, { error: "Not found" });
+				return;
+			}
+
 			const asset = await readAsset(webUiDir, pathname);
 			res.writeHead(200, {
 				"Content-Type": asset.contentType,
@@ -237,6 +396,7 @@ async function run(): Promise<void> {
 	console.log("Press Ctrl+C to stop.");
 
 	const shutdown = async () => {
+		await shutdownAcpRuntimeSessions();
 		await runtime.close();
 		process.exit(0);
 	};

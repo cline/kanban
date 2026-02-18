@@ -65,6 +65,18 @@ function runMockTurn(request: AcpTurnRequest, callbacks: AcpTurnCallbacks): AcpT
 	const followupEditToolId = `${turnId}-edit-secondary`;
 
 	callbacks.onStatus("thinking");
+	callbacks.onEntry({
+		type: "user_message",
+		id: `${turnId}-user`,
+		timestamp: Date.now(),
+		text: request.prompt,
+	});
+	callbacks.onAvailableCommands?.([
+		{ name: "plan", description: "Create or update a plan for this task", input: { hint: "what to plan" } },
+		{ name: "review", description: "Review changes and risks for this task" },
+		{ name: "test", description: "Run project tests for this task" },
+		{ name: "search", description: "Search codebase for relevant files", input: { hint: "query" } },
+	]);
 
 	scheduleWithTracking(timeouts, 200, () => {
 		callbacks.onEntry({

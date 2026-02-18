@@ -8,6 +8,7 @@ import {
 	type FileTreeNode,
 } from "@/kanban/chat/utils/session-artifacts";
 import type { ChatTimelineEntry } from "@/kanban/chat/types";
+import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
 
 interface FileDiffStats {
 	added: number;
@@ -85,17 +86,33 @@ function FileTreeRow({
 
 export function FileTreePanel({
 	timeline,
+	workspaceFiles,
 	selectedPath,
 	onSelectPath,
 }: {
 	timeline: ChatTimelineEntry[];
+	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string) => void;
 }): React.ReactElement {
-	const referencedPaths = useMemo(() => extractReferencedPaths(timeline), [timeline]);
+	const referencedPaths = useMemo(() => {
+		if (workspaceFiles && workspaceFiles.length > 0) {
+			return workspaceFiles.map((file) => file.path);
+		}
+		return extractReferencedPaths(timeline);
+	}, [workspaceFiles, timeline]);
 	const tree = useMemo(() => buildFileTree(referencedPaths), [referencedPaths]);
 	const diffStatsByPath = useMemo(() => {
 		const stats: Record<string, FileDiffStats> = {};
+		if (workspaceFiles && workspaceFiles.length > 0) {
+			for (const file of workspaceFiles) {
+				stats[file.path] = {
+					added: file.additions,
+					removed: file.deletions,
+				};
+			}
+			return stats;
+		}
 		for (const entry of extractDiffEntries(timeline)) {
 			const existing = stats[entry.path] ?? { added: 0, removed: 0 };
 			existing.added += countLines(entry.newText);
@@ -103,7 +120,7 @@ export function FileTreePanel({
 			stats[entry.path] = existing;
 		}
 		return stats;
-	}, [timeline]);
+	}, [timeline, workspaceFiles]);
 
 	return (
 		<div className="flex min-h-0 min-w-0 flex-[0.6] flex-col">

@@ -12,11 +12,16 @@
 - Added ACP adapter interface with working mock turn runner and wired in-progress to ready-for-review automation.
 - Implemented functional task diff and file panels from ACP tool-call artifacts.
 - Added CLI local runtime launch path that serves the built web UI and opens browser from `kanbanana`.
+- Added runtime ACP API routes and ACP SDK subprocess turn execution path with browser-side fallback.
+- Added persistent task-scoped ACP runtime sessions with turn reuse and server-side cancellation.
+- Added runtime git-backed workspace changes API and wired detail diff/file panels to runtime-first data.
+- Added lightweight ACP command detection signal in health endpoint and top bar runtime mode hint.
+- Mapped implementation direction to `vibe-kanban` split-pane/task-detail patterns while keeping scope local-first and minimal.
 
 ## Next Up
-1. Wire real CLI boot path so `kanbanana` serves and opens the web app.
-2. Replace mock ACP runner with real ACP subprocess transport for initial provider.
-3. Add runtime API for real file tree and git diff data from the active task workspace.
+1. Run one real ACP provider end-to-end validation using `KANBANANA_ACP_COMMAND`.
+2. Start phase `02-runtime-reliability` (timeouts, stuck-task handling, clearer recoverability UX).
+3. Prepare task-scoped workspace paths so runtime workspace changes can switch from repo-root to worktree-aware scope in phase 03.
 
 ## Open Decisions
 1. Exact keyboard command for global search palette in phase 09.
@@ -27,4 +32,4 @@
 - None currently.
 
 ## Resume From Here
-- Continue with `01-acp-kanban-shell`, focusing next on runtime/CLI integration and real ACP transport.
+- Continue with `01-acp-kanban-shell` for one final real-provider validation pass, then advance to `02-runtime-reliability`.

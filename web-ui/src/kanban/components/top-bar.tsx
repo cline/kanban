@@ -3,9 +3,11 @@ import { ArrowLeft, Settings } from "lucide-react";
 export function TopBar({
 	onBack,
 	subtitle,
+	runtimeHint,
 }: {
 	onBack?: () => void;
 	subtitle?: string;
+	runtimeHint?: string;
 }): React.ReactElement {
 	return (
 		<header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4">
@@ -29,6 +31,11 @@ export function TopBar({
 						<span className="text-zinc-600">/</span>
 						<span className="text-sm font-medium text-zinc-400">{subtitle}</span>
 					</>
+				) : null}
+				{runtimeHint ? (
+					<span className="ml-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">
+						{runtimeHint}
+					</span>
 				) : null}
 			</div>
 			<button

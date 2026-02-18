@@ -122,29 +122,19 @@ export function useTaskChatSessions({
 	}, []);
 
 	const runTurn = useCallback(
-		(task: BoardCard, prompt: string, includeUserMessage: boolean) => {
+		(task: BoardCard, prompt: string) => {
 			const activeSession = sessions[task.id] ?? createEmptySession(task.id);
 			if (isBusy(activeSession.status)) {
 				return;
 			}
 
-				activeCancelsRef.current[task.id]?.();
+			activeCancelsRef.current[task.id]?.();
 
-				updateSession(task.id, (session) => {
-					const userEntry: ChatTimelineEntry = {
-						type: "user_message",
-						id: `user-${Date.now()}`,
-						timestamp: Date.now(),
-						text: prompt,
-					};
-					const timeline = includeUserMessage
-						? [...session.timeline, userEntry]
-						: session.timeline;
-
+			updateSession(task.id, (session) => {
 				return {
 					...session,
 					status: "thinking",
-					timeline,
+					timeline: session.timeline,
 				};
 			});
 
@@ -163,6 +153,16 @@ export function useTaskChatSessions({
 						updateSession(task.id, (session) => ({
 							...session,
 							timeline: upsertTimelineEntry(session.timeline, entry),
+						}));
+					},
+					onAvailableCommands: (commands) => {
+						updateSession(task.id, (session) => ({
+							...session,
+							availableCommands: commands.map((command) => ({
+								name: command.name,
+								description: command.description,
+								input: command.input?.hint ? { hint: command.input.hint } : undefined,
+							})),
 						}));
 					},
 					onComplete: () => {
@@ -186,14 +186,14 @@ export function useTaskChatSessions({
 	const startTaskRun = useCallback(
 		(task: BoardCard) => {
 			const kickoffPrompt = task.description || task.title;
-			runTurn(task, kickoffPrompt, false);
+			runTurn(task, kickoffPrompt);
 		},
 		[runTurn],
 	);
 
 	const sendPrompt = useCallback(
 		(task: BoardCard, text: string) => {
-			runTurn(task, text, true);
+			runTurn(task, text);
 		},
 		[runTurn],
 	);

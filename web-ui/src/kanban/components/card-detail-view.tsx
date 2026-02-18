@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ChatSessionState } from "@/kanban/chat/types";
 import { extractReferencedPaths } from "@/kanban/chat/utils/session-artifacts";
@@ -6,6 +6,7 @@ import { AgentChatPanel } from "@/kanban/components/detail-panels/agent-chat-pan
 import { ColumnContextPanel } from "@/kanban/components/detail-panels/column-context-panel";
 import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
+import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspace-changes";
 import type { CardSelection } from "@/kanban/types";
 
 export function CardDetailView({
@@ -26,7 +27,15 @@ export function CardDetailView({
 	onPermissionRespond: (messageId: string, optionId: string) => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
-	const availablePaths = useMemo(() => extractReferencedPaths(session.timeline), [session.timeline]);
+	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(selection.card.id);
+	const previousStatusRef = useRef(session.status);
+	const runtimeFiles = workspaceChanges?.files ?? null;
+	const availablePaths = useMemo(() => {
+		if (runtimeFiles && runtimeFiles.length > 0) {
+			return runtimeFiles.map((file) => file.path);
+		}
+		return extractReferencedPaths(session.timeline);
+	}, [runtimeFiles, session.timeline]);
 
 	useEffect(() => {
 		function handleKeyDown(event: KeyboardEvent) {
@@ -45,6 +54,14 @@ export function CardDetailView({
 		setSelectedPath(availablePaths[0] ?? null);
 	}, [availablePaths, selectedPath]);
 
+	useEffect(() => {
+		const previousStatus = previousStatusRef.current;
+		previousStatusRef.current = session.status;
+		if (previousStatus !== "idle" && session.status === "idle") {
+			void refresh();
+		}
+	}, [refresh, session.status]);
+
 	return (
 		<div className="flex min-h-0 flex-1 overflow-hidden bg-zinc-900">
 			<ColumnContextPanel selection={selection} onCardSelect={onCardSelect} />
@@ -57,10 +74,16 @@ export function CardDetailView({
 				/>
 				<DiffViewerPanel
 					timeline={session.timeline}
+					workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
 					selectedPath={selectedPath}
 					onSelectedPathChange={setSelectedPath}
 				/>
-				<FileTreePanel timeline={session.timeline} selectedPath={selectedPath} onSelectPath={setSelectedPath} />
+				<FileTreePanel
+					timeline={session.timeline}
+					workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+					selectedPath={selectedPath}
+					onSelectPath={setSelectedPath}
+				/>
 			</div>
 		</div>
 	);

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import { extractDiffEntries } from "@/kanban/chat/utils/session-artifacts";
 import type { ChatTimelineEntry } from "@/kanban/chat/types";
+import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
 
 function DiffLine({ prefix, text, tone }: { prefix: string; text: string; tone: string }): React.ReactElement {
 	const lines = text.split("\n");
@@ -19,14 +20,28 @@ function DiffLine({ prefix, text, tone }: { prefix: string; text: string; tone: 
 
 export function DiffViewerPanel({
 	timeline,
+	workspaceFiles,
 	selectedPath,
 	onSelectedPathChange,
 }: {
 	timeline: ChatTimelineEntry[];
+	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
 	onSelectedPathChange: (path: string) => void;
 }): React.ReactElement {
-	const diffEntries = useMemo(() => extractDiffEntries(timeline), [timeline]);
+	const diffEntries = useMemo(() => {
+		if (workspaceFiles && workspaceFiles.length > 0) {
+			return workspaceFiles.map((file, index) => ({
+				id: `workspace-${file.path}-${index}`,
+				path: file.path,
+				oldText: file.oldText,
+				newText: file.newText ?? "",
+				timestamp: 0,
+				toolTitle: `${file.status} (${file.additions}+/${file.deletions}-)`,
+			}));
+		}
+		return extractDiffEntries(timeline);
+	}, [workspaceFiles, timeline]);
 	const groupedByPath = useMemo(() => {
 		const map = new Map<string, typeof diffEntries>();
 		for (const entry of diffEntries) {
@@ -73,14 +88,16 @@ export function DiffViewerPanel({
 										<div className="flex items-center justify-between border-b border-zinc-800 px-2 py-1.5">
 											<span className="text-[11px] text-zinc-400">{entry.toolTitle}</span>
 											<span className="text-[11px] text-zinc-600">
-												{new Date(entry.timestamp).toLocaleTimeString()}
+												{entry.timestamp > 0 ? new Date(entry.timestamp).toLocaleTimeString() : "workspace"}
 											</span>
 										</div>
 										<div className="space-y-1 p-2">
 											{entry.oldText != null ? (
 												<DiffLine prefix="-" text={entry.oldText} tone="text-red-300/80" />
 											) : null}
-											<DiffLine prefix="+" text={entry.newText} tone="text-emerald-300/80" />
+											{entry.newText ? (
+												<DiffLine prefix="+" text={entry.newText} tone="text-emerald-300/80" />
+											) : null}
 										</div>
 									</section>
 								))}
