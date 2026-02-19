@@ -4,6 +4,7 @@ export interface BoardCard {
 	id: string;
 	title: string;
 	description: string;
+	baseRef?: string | null;
 	createdAt: number;
 	updatedAt: number;
 }

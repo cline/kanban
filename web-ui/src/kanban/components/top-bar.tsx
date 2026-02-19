@@ -10,6 +10,8 @@ export function TopBar({
 	onBack,
 	subtitle,
 	workspacePath,
+	workspaceHint,
+	repoHint,
 	runtimeHint,
 	onOpenSettings,
 	shortcuts,
@@ -19,6 +21,8 @@ export function TopBar({
 	onBack?: () => void;
 	subtitle?: string;
 	workspacePath?: string;
+	workspaceHint?: string;
+	repoHint?: string;
 	runtimeHint?: string;
 	onOpenSettings?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
@@ -71,6 +75,16 @@ export function TopBar({
 							})}
 						</div>
 					</>
+				) : null}
+				{workspaceHint ? (
+					<span className="ml-2 rounded border border-border bg-card px-2 py-0.5 text-[11px] text-muted-foreground">
+						{workspaceHint}
+					</span>
+				) : null}
+				{repoHint ? (
+					<span className="ml-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">
+						{repoHint}
+					</span>
 				) : null}
 				{runtimeHint ? (
 					<span className="ml-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">

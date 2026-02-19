@@ -13,7 +13,10 @@ export interface UseRuntimeWorkspaceChangesResult {
 	refresh: () => Promise<void>;
 }
 
-export function useRuntimeWorkspaceChanges(taskId: string | null): UseRuntimeWorkspaceChangesResult {
+export function useRuntimeWorkspaceChanges(
+	taskId: string | null,
+	baseRef?: string | null,
+): UseRuntimeWorkspaceChangesResult {
 	const [changes, setChanges] = useState<RuntimeWorkspaceChangesResponse | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isRuntimeAvailable, setIsRuntimeAvailable] = useState(true);
@@ -27,7 +30,13 @@ export function useRuntimeWorkspaceChanges(taskId: string | null): UseRuntimeWor
 
 		setIsLoading(true);
 		try {
-			const response = await fetch(`/api/workspace/changes?taskId=${encodeURIComponent(taskId)}`);
+			const params = new URLSearchParams({
+				taskId,
+			});
+			if (baseRef !== undefined) {
+				params.set("baseRef", baseRef ?? "");
+			}
+			const response = await fetch(`/api/workspace/changes?${params.toString()}`);
 			if (!response.ok) {
 				const payload = (await response.json().catch(() => null)) as RuntimeWorkspaceError | null;
 				throw new Error(payload?.error ?? `Workspace request failed with ${response.status}`);
@@ -42,7 +51,7 @@ export function useRuntimeWorkspaceChanges(taskId: string | null): UseRuntimeWor
 		} finally {
 			setIsLoading(false);
 		}
-	}, [taskId]);
+	}, [baseRef, taskId]);
 
 	useEffect(() => {
 		void refresh();

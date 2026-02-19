@@ -189,6 +189,7 @@ export function useTaskChatSessions({
 					taskTitle: task.title,
 					taskDescription: task.description,
 					prompt,
+					baseRef: task.baseRef ?? null,
 				},
 				{
 					onStatus: (status) => {

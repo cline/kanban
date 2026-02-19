@@ -5,6 +5,7 @@ export interface AcpTurnRequest {
 	taskTitle: string;
 	taskDescription: string;
 	prompt: string;
+	baseRef?: string | null;
 }
 
 export interface AcpTurnCallbacks {

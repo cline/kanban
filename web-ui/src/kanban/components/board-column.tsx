@@ -1,6 +1,5 @@
 import { Draggable, Droppable } from "@hello-pangea/dnd";
 import { Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors } from "@/kanban/data/column-colors";
@@ -9,35 +8,16 @@ import type { BoardCard as BoardCardModel, BoardColumn as BoardColumnModel } fro
 export function BoardColumn({
 	column,
 	index,
-	onAddCard,
+	onCreateTask,
 	onCardClick,
 }: {
 	column: BoardColumnModel;
 	index: number;
-	onAddCard?: (title: string) => void;
+	onCreateTask?: () => void;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
-	const [isAdding, setIsAdding] = useState(false);
-	const [newTitle, setNewTitle] = useState("");
-	const inputRef = useRef<HTMLInputElement | null>(null);
-
 	const accentColor = columnAccentColors[column.id] ?? "#71717a";
-	const canAdd = column.id === "backlog" && onAddCard;
-
-	useEffect(() => {
-		if (isAdding && inputRef.current) {
-			inputRef.current.focus();
-		}
-	}, [isAdding]);
-
-	function handleSubmit() {
-		const trimmed = newTitle.trim();
-		if (trimmed && onAddCard) {
-			onAddCard(trimmed);
-		}
-		setNewTitle("");
-		setIsAdding(false);
-	}
+	const canCreate = column.id === "backlog" && onCreateTask;
 
 	return (
 		<Draggable draggableId={column.id} index={index}>
@@ -77,6 +57,17 @@ export function BoardColumn({
 											: undefined
 									}
 								>
+									{canCreate ? (
+										<button
+											type="button"
+											onClick={onCreateTask}
+											className="mb-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:border-muted-foreground/80"
+										>
+											<Plus className="size-4" />
+											Create task
+										</button>
+									) : null}
+
 									{column.cards.map((card, cardIndex) => (
 										<BoardCard
 											key={card.id}
@@ -86,37 +77,6 @@ export function BoardColumn({
 										/>
 									))}
 									{cardProvided.placeholder}
-
-									{canAdd ? (
-										isAdding ? (
-											<input
-												ref={inputRef}
-												value={newTitle}
-												onChange={(e) => setNewTitle(e.target.value)}
-												onKeyDown={(e) => {
-													if (e.key === "Enter") {
-														handleSubmit();
-													}
-													if (e.key === "Escape") {
-														setNewTitle("");
-														setIsAdding(false);
-													}
-												}}
-												onBlur={handleSubmit}
-												placeholder="Task title..."
-												className="w-full shrink-0 rounded-lg border-2 border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-amber-500 focus:outline-none"
-											/>
-										) : (
-											<button
-												type="button"
-												onClick={() => setIsAdding(true)}
-												className="flex w-full shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-											>
-												<Plus className="size-4" />
-												New task
-											</button>
-										)
-									) : null}
 								</div>
 							)}
 						</Droppable>

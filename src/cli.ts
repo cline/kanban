@@ -19,15 +19,24 @@ import type {
 	RuntimeConfigSaveRequest,
 	RuntimeShortcutRunRequest,
 	RuntimeShortcutRunResponse,
+	RuntimeTaskWorkspaceInfoRequest,
 	RuntimeWorkspaceChangesRequest,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
+	RuntimeWorktreeDeleteRequest,
+	RuntimeWorktreeEnsureRequest,
 } from "./runtime/acp/api-contract.js";
 import { probeAcpCommand } from "./runtime/acp/probe-acp-command.js";
 import { cancelAcpTurn, runAcpTurn, shutdownAcpRuntimeSessions } from "./runtime/acp/run-acp-turn.js";
 import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
 import { loadWorkspaceState, saveWorkspaceState } from "./runtime/state/workspace-state.js";
 import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
+import {
+	deleteTaskWorktree,
+	ensureTaskWorktree,
+	getTaskWorkspaceInfo,
+	resolveTaskCwd,
+} from "./runtime/workspace/task-worktree.js";
 
 interface CliOptions {
 	help: boolean;
@@ -285,6 +294,9 @@ function validateTurnRequest(body: RuntimeAcpTurnRequest): RuntimeAcpTurnRequest
 	) {
 		throw new Error("Invalid turn request payload.");
 	}
+	if (typeof body.baseRef !== "string" && body.baseRef !== null && body.baseRef !== undefined) {
+		throw new Error("Invalid turn request payload.");
+	}
 	return body;
 }
 
@@ -313,7 +325,53 @@ function validateWorkspaceChangesRequest(query: URLSearchParams): RuntimeWorkspa
 	if (!taskId) {
 		throw new Error("Missing taskId query parameter.");
 	}
-	return { taskId };
+	return {
+		taskId,
+		baseRef: query.has("baseRef") ? (query.get("baseRef") ?? "").trim() || null : undefined,
+	};
+}
+
+function validateTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWorkspaceInfoRequest {
+	const taskId = query.get("taskId");
+	if (!taskId) {
+		throw new Error("Missing taskId query parameter.");
+	}
+	return {
+		taskId,
+		baseRef: query.has("baseRef") ? (query.get("baseRef") ?? "").trim() || null : undefined,
+	};
+}
+
+function validateWorktreeEnsureRequest(body: RuntimeWorktreeEnsureRequest): RuntimeWorktreeEnsureRequest {
+	if (typeof body.taskId !== "string") {
+		throw new Error("Invalid worktree ensure payload.");
+	}
+	if (typeof body.baseRef !== "string" && body.baseRef !== null && body.baseRef !== undefined) {
+		throw new Error("Invalid worktree ensure payload.");
+	}
+	return {
+		taskId: body.taskId,
+		baseRef:
+			body.baseRef === undefined ? undefined : typeof body.baseRef === "string" ? body.baseRef.trim() || null : null,
+	};
+}
+
+function validateWorktreeDeleteRequest(body: RuntimeWorktreeDeleteRequest): RuntimeWorktreeDeleteRequest {
+	if (typeof body.taskId !== "string") {
+		throw new Error("Invalid worktree delete payload.");
+	}
+	return body;
+}
+
+async function resolveTaskBaseRef(cwd: string, taskId: string): Promise<string | null> {
+	const workspace = await loadWorkspaceState(cwd);
+	for (const column of workspace.board.columns) {
+		const card = column.cards.find((candidate) => candidate.id === taskId);
+		if (card) {
+			return typeof card.baseRef === "string" ? card.baseRef.trim() || null : null;
+		}
+	}
+	return null;
 }
 
 function validateWorkspaceStateSaveRequest(body: RuntimeWorkspaceStateSaveRequest): RuntimeWorkspaceStateSaveRequest {
@@ -521,6 +579,18 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 
 				try {
 					const body = validateTurnRequest(await readJsonBody<RuntimeAcpTurnRequest>(req));
+					const taskBaseRef =
+						body.baseRef === undefined
+							? await resolveTaskBaseRef(process.cwd(), body.taskId)
+							: typeof body.baseRef === "string"
+								? body.baseRef.trim() || null
+								: null;
+					const taskCwd = await resolveTaskCwd({
+						cwd: process.cwd(),
+						taskId: body.taskId,
+						baseRef: taskBaseRef,
+						ensure: true,
+					});
 					const wantsStream = requestUrl.searchParams.get("stream") === "1";
 					if (wantsStream) {
 						res.writeHead(200, {
@@ -545,7 +615,7 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 						try {
 							const response = await runAcpTurn({
 								commandLine: resolved.command,
-								cwd: process.cwd(),
+								cwd: taskCwd,
 								request: body,
 								listeners: {
 									onEntry: (entry) => writeEvent({ type: "entry", entry }),
@@ -566,7 +636,7 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 
 					const response = await runAcpTurn({
 						commandLine: resolved.command,
-						cwd: process.cwd(),
+						cwd: taskCwd,
 						request: body,
 					});
 					sendJson(res, 200, response);
@@ -638,8 +708,65 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 
 			if (pathname === "/api/workspace/changes" && req.method === "GET") {
 				try {
-					validateWorkspaceChangesRequest(requestUrl.searchParams);
-					const response = await getWorkspaceChanges(process.cwd());
+					const query = validateWorkspaceChangesRequest(requestUrl.searchParams);
+					const taskBaseRef =
+						query.baseRef === undefined ? await resolveTaskBaseRef(process.cwd(), query.taskId) : query.baseRef;
+					const taskCwd = await resolveTaskCwd({
+						cwd: process.cwd(),
+						taskId: query.taskId,
+						baseRef: taskBaseRef,
+						ensure: false,
+					});
+					const response = await getWorkspaceChanges(taskCwd);
+					sendJson(res, 200, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/workspace/worktree/ensure" && req.method === "POST") {
+				try {
+					const body = validateWorktreeEnsureRequest(await readJsonBody<RuntimeWorktreeEnsureRequest>(req));
+					const response = await ensureTaskWorktree({
+						cwd: process.cwd(),
+						taskId: body.taskId,
+						baseRef: body.baseRef,
+					});
+					sendJson(res, response.ok ? 200 : 500, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/workspace/worktree/delete" && req.method === "POST") {
+				try {
+					const body = validateWorktreeDeleteRequest(await readJsonBody<RuntimeWorktreeDeleteRequest>(req));
+					const response = await deleteTaskWorktree({
+						cwd: process.cwd(),
+						taskId: body.taskId,
+					});
+					sendJson(res, response.ok ? 200 : 500, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/workspace/task-context" && req.method === "GET") {
+				try {
+					const query = validateTaskWorkspaceInfoRequest(requestUrl.searchParams);
+					const taskBaseRef =
+						query.baseRef === undefined ? await resolveTaskBaseRef(process.cwd(), query.taskId) : query.baseRef;
+					const response = await getTaskWorkspaceInfo({
+						cwd: process.cwd(),
+						taskId: query.taskId,
+						baseRef: taskBaseRef,
+					});
 					sendJson(res, 200, response);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);

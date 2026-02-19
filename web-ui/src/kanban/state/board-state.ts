@@ -6,6 +6,7 @@ import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } 
 export interface TaskDraft {
 	title: string;
 	description?: string;
+	baseRef?: string | null;
 }
 
 export interface TaskMoveEvent {
@@ -27,10 +28,15 @@ function createTask(draft: TaskDraft): BoardCard {
 	const now = Date.now();
 	const title = draft.title.trim();
 	const description = draft.description?.trim() ?? "";
+	const baseRef =
+		typeof draft.baseRef === "string"
+			? (draft.baseRef.trim() || null)
+			: null;
 	return {
 		id: crypto.randomUUID(),
 		title,
 		description,
+		baseRef,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -66,6 +72,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		id?: unknown;
 		title?: unknown;
 		description?: unknown;
+		baseRef?: unknown;
 		body?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
@@ -90,6 +97,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		id: typeof card.id === "string" && card.id ? card.id : crypto.randomUUID(),
 		title,
 		description,
+		baseRef: typeof card.baseRef === "string" ? (card.baseRef.trim() || null) : null,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
 	};

@@ -126,6 +126,7 @@ export interface RuntimeAcpTurnRequest {
 	taskTitle: string;
 	taskDescription: string;
 	prompt: string;
+	baseRef?: string | null;
 }
 
 export interface RuntimeAcpTurnResponse {
@@ -216,6 +217,7 @@ export interface RuntimeWorkspaceFileChange {
 
 export interface RuntimeWorkspaceChangesRequest {
 	taskId: string;
+	baseRef?: string | null;
 }
 
 export interface RuntimeWorkspaceChangesResponse {
@@ -265,6 +267,7 @@ export interface RuntimeBoardCard {
 	id: string;
 	title: string;
 	description: string;
+	baseRef?: string | null;
 	createdAt: number;
 	updatedAt: number;
 }
@@ -289,6 +292,7 @@ export interface RuntimeChatSessionState {
 export interface RuntimeWorkspaceStateResponse {
 	repoPath: string;
 	statePath: string;
+	git: RuntimeGitRepositoryInfo;
 	board: RuntimeBoardData;
 	sessions: Record<string, RuntimeChatSessionState>;
 }
@@ -304,4 +308,54 @@ export interface RuntimeShortcutRunResponse {
 	stderr: string;
 	combinedOutput: string;
 	durationMs: number;
+}
+
+export interface RuntimeGitRepositoryInfo {
+	hasGit: boolean;
+	currentBranch: string | null;
+	defaultBranch: string | null;
+	branches: string[];
+}
+
+export interface RuntimeWorktreeEnsureRequest {
+	taskId: string;
+	baseRef?: string | null;
+}
+
+export interface RuntimeWorktreeEnsureResponse {
+	ok: boolean;
+	enabled: boolean;
+	path: string;
+	baseRef: string | null;
+	baseCommit: string | null;
+	error?: string;
+}
+
+export interface RuntimeWorktreeDeleteRequest {
+	taskId: string;
+}
+
+export interface RuntimeWorktreeDeleteResponse {
+	ok: boolean;
+	enabled: boolean;
+	removed: boolean;
+	error?: string;
+}
+
+export interface RuntimeTaskWorkspaceInfoRequest {
+	taskId: string;
+	baseRef?: string | null;
+}
+
+export interface RuntimeTaskWorkspaceInfoResponse {
+	taskId: string;
+	mode: "local" | "worktree";
+	path: string;
+	exists: boolean;
+	deleted: boolean;
+	baseRef: string | null;
+	hasGit: boolean;
+	branch: string | null;
+	isDetached: boolean;
+	headCommit: string | null;
 }

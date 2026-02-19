@@ -11,6 +11,7 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeChatSessionState,
+	RuntimeGitRepositoryInfo,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
 } from "../acp/api-contract.js";
@@ -44,6 +45,13 @@ interface WorkspaceIndexFile {
 	repoPathToId: Record<string, string>;
 }
 
+export interface RuntimeWorkspaceContext {
+	repoPath: string;
+	workspaceId: string;
+	statePath: string;
+	git: RuntimeGitRepositoryInfo;
+}
+
 function createEmptyBoard(): RuntimeBoardData {
 	return {
 		columns: BOARD_COLUMNS.map((column) => ({
@@ -62,11 +70,11 @@ function createEmptyWorkspaceIndex(): WorkspaceIndexFile {
 	};
 }
 
-function getRuntimeHomePath(): string {
+export function getRuntimeHomePath(): string {
 	return join(homedir(), RUNTIME_HOME_DIR);
 }
 
-function getWorkspacesRootPath(): string {
+export function getWorkspacesRootPath(): string {
 	return join(getRuntimeHomePath(), WORKSPACES_DIR);
 }
 
@@ -74,7 +82,7 @@ function getWorkspaceIndexPath(): string {
 	return join(getWorkspacesRootPath(), INDEX_FILENAME);
 }
 
-function getWorkspaceDirectoryPath(workspaceId: string): string {
+export function getWorkspaceDirectoryPath(workspaceId: string): string {
 	return join(getWorkspacesRootPath(), workspaceId);
 }
 
@@ -118,6 +126,7 @@ function normalizeBoardCard(card: unknown): RuntimeBoardCard | null {
 		id?: unknown;
 		title?: unknown;
 		description?: unknown;
+		baseRef?: unknown;
 		body?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
@@ -139,6 +148,7 @@ function normalizeBoardCard(card: unknown): RuntimeBoardCard | null {
 				: typeof source.body === "string"
 					? source.body
 					: "",
+		baseRef: typeof source.baseRef === "string" ? source.baseRef.trim() || null : null,
 		createdAt: typeof source.createdAt === "number" ? source.createdAt : now,
 		updatedAt: typeof source.updatedAt === "number" ? source.updatedAt : now,
 	};
@@ -364,22 +374,8 @@ function ensureWorkspaceEntry(
 	};
 }
 
-function toWorkspaceStateResponse(
-	repoPath: string,
-	workspaceId: string,
-	board: RuntimeBoardData,
-	sessions: Record<string, RuntimeChatSessionState>,
-): RuntimeWorkspaceStateResponse {
-	return {
-		repoPath,
-		statePath: getWorkspaceDirectoryPath(workspaceId),
-		board,
-		sessions,
-	};
-}
-
-function detectGitRoot(cwd: string): string | null {
-	const result = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+function runGitCapture(cwd: string, args: string[]): string | null {
+	const result = spawnSync("git", args, {
 		cwd,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
@@ -387,8 +383,82 @@ function detectGitRoot(cwd: string): string | null {
 	if (result.status !== 0 || typeof result.stdout !== "string") {
 		return null;
 	}
-	const root = result.stdout.trim();
-	return root ? root : null;
+	const value = result.stdout.trim();
+	return value.length > 0 ? value : null;
+}
+
+function detectGitRoot(cwd: string): string | null {
+	return runGitCapture(cwd, ["rev-parse", "--show-toplevel"]);
+}
+
+function detectGitCurrentBranch(repoPath: string): string | null {
+	return runGitCapture(repoPath, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+}
+
+function detectGitBranches(repoPath: string): string[] {
+	const output = runGitCapture(repoPath, [
+		"for-each-ref",
+		"--format=%(refname:short)",
+		"refs/heads",
+		"refs/remotes/origin",
+	]);
+	if (!output) {
+		return [];
+	}
+
+	const unique = new Set<string>();
+	for (const line of output.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed === "origin/HEAD" || trimmed === "HEAD") {
+			continue;
+		}
+		const normalized = trimmed.startsWith("origin/") ? trimmed.slice("origin/".length) : trimmed;
+		if (!normalized || normalized === "HEAD") {
+			continue;
+		}
+		unique.add(normalized);
+	}
+	return Array.from(unique).sort((left, right) => left.localeCompare(right));
+}
+
+function detectGitDefaultBranch(repoPath: string, branches: string[]): string | null {
+	const remoteHead = runGitCapture(repoPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+	if (remoteHead) {
+		const normalized = remoteHead.startsWith("origin/") ? remoteHead.slice("origin/".length) : remoteHead;
+		if (normalized) {
+			return normalized;
+		}
+	}
+	if (branches.includes("main")) {
+		return "main";
+	}
+	if (branches.includes("master")) {
+		return "master";
+	}
+	return branches[0] ?? null;
+}
+
+function detectGitRepositoryInfo(repoPath: string): RuntimeGitRepositoryInfo {
+	if (!detectGitRoot(repoPath)) {
+		return {
+			hasGit: false,
+			currentBranch: null,
+			defaultBranch: null,
+			branches: [],
+		};
+	}
+
+	const currentBranch = detectGitCurrentBranch(repoPath);
+	const branches = detectGitBranches(repoPath);
+	const orderedBranches = currentBranch && !branches.includes(currentBranch) ? [currentBranch, ...branches] : branches;
+	const defaultBranch = detectGitDefaultBranch(repoPath, orderedBranches);
+
+	return {
+		hasGit: true,
+		currentBranch,
+		defaultBranch,
+		branches: orderedBranches,
+	};
 }
 
 async function resolveWorkspacePath(cwd: string): Promise<string> {
@@ -413,7 +483,21 @@ async function resolveWorkspacePath(cwd: string): Promise<string> {
 	}
 }
 
-export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceStateResponse> {
+function toWorkspaceStateResponse(
+	context: RuntimeWorkspaceContext,
+	board: RuntimeBoardData,
+	sessions: Record<string, RuntimeChatSessionState>,
+): RuntimeWorkspaceStateResponse {
+	return {
+		repoPath: context.repoPath,
+		statePath: context.statePath,
+		git: context.git,
+		board,
+		sessions,
+	};
+}
+
+export async function loadWorkspaceContext(cwd: string): Promise<RuntimeWorkspaceContext> {
 	const repoPath = await resolveWorkspacePath(cwd);
 	let index = await readWorkspaceIndex();
 	const ensured = ensureWorkspaceEntry(index, repoPath);
@@ -422,44 +506,52 @@ export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceS
 		await writeWorkspaceIndex(index);
 	}
 
-	const board = normalizeBoard(await readJsonFile(getWorkspaceBoardPath(ensured.entry.workspaceId)));
-	const sessions = normalizeSessions(await readJsonFile(getWorkspaceSessionsPath(ensured.entry.workspaceId)));
+	return {
+		repoPath,
+		workspaceId: ensured.entry.workspaceId,
+		statePath: getWorkspaceDirectoryPath(ensured.entry.workspaceId),
+		git: detectGitRepositoryInfo(repoPath),
+	};
+}
 
-	return toWorkspaceStateResponse(repoPath, ensured.entry.workspaceId, board, sessions);
+export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceStateResponse> {
+	const context = await loadWorkspaceContext(cwd);
+	const board = normalizeBoard(await readJsonFile(getWorkspaceBoardPath(context.workspaceId)));
+	const sessions = normalizeSessions(await readJsonFile(getWorkspaceSessionsPath(context.workspaceId)));
+	return toWorkspaceStateResponse(context, board, sessions);
 }
 
 export async function saveWorkspaceState(
 	cwd: string,
 	payload: RuntimeWorkspaceStateSaveRequest,
 ): Promise<RuntimeWorkspaceStateResponse> {
-	const repoPath = await resolveWorkspacePath(cwd);
-	let index = await readWorkspaceIndex();
-	const ensured = ensureWorkspaceEntry(index, repoPath);
-	index = ensured.index;
-
+	const context = await loadWorkspaceContext(cwd);
 	const board = normalizeBoard(payload.board);
 	const sessions = normalizeSessions(payload.sessions);
 
-	await writeJsonFileAtomic(getWorkspaceBoardPath(ensured.entry.workspaceId), board);
-	await writeJsonFileAtomic(getWorkspaceSessionsPath(ensured.entry.workspaceId), sessions);
+	await writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), board);
+	await writeJsonFileAtomic(getWorkspaceSessionsPath(context.workspaceId), sessions);
 
 	const now = Date.now();
+	const index = await readWorkspaceIndex();
+	const existing = index.entries[context.workspaceId];
 	const updatedEntry: WorkspaceIndexEntry = {
-		...ensured.entry,
+		workspaceId: context.workspaceId,
+		repoPath: context.repoPath,
+		createdAt: existing?.createdAt ?? now,
 		updatedAt: now,
 	};
-	index = {
+	await writeWorkspaceIndex({
 		version: INDEX_VERSION,
 		entries: {
 			...index.entries,
-			[updatedEntry.workspaceId]: updatedEntry,
+			[context.workspaceId]: updatedEntry,
 		},
 		repoPathToId: {
 			...index.repoPathToId,
-			[repoPath]: updatedEntry.workspaceId,
+			[context.repoPath]: context.workspaceId,
 		},
-	};
-	await writeWorkspaceIndex(index);
+	});
 
-	return toWorkspaceStateResponse(repoPath, updatedEntry.workspaceId, board, sessions);
+	return toWorkspaceStateResponse(context, board, sessions);
 }

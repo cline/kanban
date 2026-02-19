@@ -33,7 +33,10 @@ export function CardDetailView({
 	sendDisabledReason?: string;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
-	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(selection.card.id);
+	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(
+		selection.card.id,
+		selection.card.baseRef ?? null,
+	);
 	const previousStatusRef = useRef(session.status);
 	const runtimeFiles = workspaceChanges?.files ?? null;
 	const availablePaths = useMemo(() => {
