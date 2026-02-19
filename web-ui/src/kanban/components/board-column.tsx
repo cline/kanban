@@ -46,7 +46,7 @@ export function BoardColumn({
 					ref={columnProvided.innerRef}
 					{...columnProvided.draggableProps}
 					data-column-id={column.id}
-					className={`flex h-full min-h-0 min-w-0 flex-1 flex-col border-r border-zinc-800 bg-zinc-900 ${
+					className={`flex h-full min-h-0 min-w-0 flex-1 flex-col border-r border-border bg-background ${
 						columnSnapshot.isDragging ? "shadow-2xl" : ""
 					}`}
 				>
@@ -60,7 +60,7 @@ export function BoardColumn({
 							style={{ backgroundColor: `${accentColor}65` }}
 						>
 							<div className="flex items-center gap-2">
-								<span className="text-sm font-semibold text-zinc-200">{column.title}</span>
+								<span className="text-sm font-semibold text-foreground">{column.title}</span>
 								<span className="text-xs font-medium text-white/60">{column.cards.length}</span>
 							</div>
 						</div>
@@ -104,13 +104,13 @@ export function BoardColumn({
 												}}
 												onBlur={handleSubmit}
 												placeholder="Task title..."
-												className="w-full shrink-0 rounded-lg border-2 border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
+												className="w-full shrink-0 rounded-lg border-2 border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-amber-500 focus:outline-none"
 											/>
 										) : (
 											<button
 												type="button"
 												onClick={() => setIsAdding(true)}
-												className="flex w-full shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-zinc-500 transition-colors hover:text-zinc-300"
+												className="flex w-full shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
 											>
 												<Plus className="size-4" />
 												New task

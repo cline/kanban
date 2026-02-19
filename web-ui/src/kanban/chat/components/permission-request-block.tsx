@@ -46,10 +46,10 @@ export function PermissionRequestBlock({
 				<Shield className="size-4 text-amber-400" />
 				<span className="text-sm text-amber-400">Permission Required</span>
 			</div>
-			<p className="mt-1 break-words text-sm text-zinc-300 [overflow-wrap:anywhere]">"{request.toolCallTitle}"</p>
+			<p className="mt-1 break-words text-sm text-foreground [overflow-wrap:anywhere]">"{request.toolCallTitle}"</p>
 
 			{resolved ? (
-				<p className="mt-2 text-xs italic text-zinc-500">
+				<p className="mt-2 text-xs italic text-muted-foreground">
 					{selectedOption ? selectedOption.name : "Resolved"}
 				</p>
 			) : (

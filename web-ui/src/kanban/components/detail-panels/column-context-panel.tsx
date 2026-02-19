@@ -28,8 +28,8 @@ function ColumnSection({
 				style={{ backgroundColor: `${accentColor}65` }}
 			>
 				<div className="flex items-center gap-2">
-					<Chevron className="size-3.5 text-zinc-400" />
-					<span className="text-sm font-semibold text-zinc-200">{column.title}</span>
+					<Chevron className="size-3.5 text-muted-foreground" />
+					<span className="text-sm font-semibold text-foreground">{column.title}</span>
 					<span className="text-xs font-medium text-white/60">{column.cards.length}</span>
 				</div>
 			</button>
@@ -44,10 +44,10 @@ function ColumnSection({
 							<article
 								key={card.id}
 								onClick={() => onCardClick(card)}
-								className={`mb-2 cursor-pointer rounded border-2 bg-zinc-800 p-3 shadow-md ${
+								className={`mb-2 cursor-pointer rounded border-2 bg-card p-3 shadow-md ${
 									isSelected
 										? "shadow-lg"
-										: "border-zinc-700 card-interactive"
+										: "border-border card-interactive"
 								}`}
 								style={
 									isSelected
@@ -55,11 +55,11 @@ function ColumnSection({
 										: undefined
 								}
 							>
-								<p className="text-sm font-medium leading-snug text-zinc-100 line-clamp-2">
+								<p className="text-sm font-medium leading-snug text-foreground line-clamp-2">
 									{card.title}
 								</p>
 								{card.description ? (
-									<p className="mt-1 text-xs leading-snug text-zinc-400 line-clamp-2">
+									<p className="mt-1 text-xs leading-snug text-muted-foreground line-clamp-2">
 										{card.description}
 									</p>
 								) : null}
@@ -67,7 +67,7 @@ function ColumnSection({
 						);
 					})}
 					{column.cards.length === 0 ? (
-						<p className="px-1 py-2 text-xs text-zinc-600">No cards</p>
+						<p className="px-1 py-2 text-xs text-muted-foreground/80">No cards</p>
 					) : null}
 				</div>
 			) : null}
@@ -83,14 +83,14 @@ export function ColumnContextPanel({
 	onCardSelect: (taskId: string) => void;
 }): React.ReactElement {
 	return (
-		<section className="flex min-h-0 w-1/5 flex-col border-r border-zinc-800 bg-zinc-900">
+		<section className="flex min-h-0 w-1/5 flex-col border-r border-border bg-background">
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
 				{selection.allColumns.map((column) => (
 					<ColumnSection
 						key={column.id}
 						column={column}
 						selectedCardId={selection.card.id}
-						defaultOpen={column.id === selection.column.id || (column.id !== "backlog" && column.id !== "done")}
+						defaultOpen={column.id === selection.column.id || (column.id !== "backlog" && column.id !== "trash")}
 						onCardClick={(card) => onCardSelect(card.id)}
 					/>
 				))}

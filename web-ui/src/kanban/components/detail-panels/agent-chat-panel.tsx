@@ -8,14 +8,18 @@ export function AgentChatPanel({
 	onSend,
 	onCancel,
 	onPermissionRespond,
+	sendDisabled,
+	sendDisabledReason,
 }: {
 	session: ChatSessionState;
 	onSend: (text: string) => void;
 	onCancel: () => void;
 	onPermissionRespond: (messageId: string, optionId: string) => void;
+	sendDisabled?: boolean;
+	sendDisabledReason?: string;
 }): React.ReactElement {
 	return (
-		<div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-zinc-800">
+		<div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-border bg-background">
 			<ChatMessageList
 				timeline={session.timeline}
 				onPermissionRespond={onPermissionRespond}
@@ -28,6 +32,8 @@ export function AgentChatPanel({
 				availableCommands={session.availableCommands}
 				onSend={onSend}
 				onCancel={onCancel}
+				disabled={sendDisabled}
+				disabledReason={sendDisabledReason}
 			/>
 		</div>
 	);

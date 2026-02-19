@@ -116,7 +116,7 @@ export interface UseTaskChatSessionsResult {
 	sessions: Record<string, ChatSessionState>;
 	getSession: (taskId: string) => ChatSessionState;
 	ensureSession: (taskId: string) => void;
-	startTaskRun: (task: BoardCard) => void;
+	startTaskRun: (task: BoardCard, prompt?: string) => void;
 	sendPrompt: (task: BoardCard, text: string) => void;
 	cancelPrompt: (taskId: string) => void;
 	respondToPermission: (taskId: string, messageId: string, optionId: string) => void;
@@ -238,8 +238,8 @@ export function useTaskChatSessions({
 	);
 
 	const startTaskRun = useCallback(
-		(task: BoardCard) => {
-			const kickoffPrompt = task.description || task.title;
+		(task: BoardCard, prompt?: string) => {
+			const kickoffPrompt = prompt?.trim() || task.description || task.title;
 			runTurn(task, kickoffPrompt);
 		},
 		[runTurn],

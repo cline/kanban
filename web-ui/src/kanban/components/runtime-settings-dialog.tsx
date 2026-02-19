@@ -125,16 +125,16 @@ export function RuntimeSettingsDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="border-zinc-800 bg-zinc-900 text-zinc-100">
+			<DialogContent className="border-border bg-card text-foreground">
 				<DialogHeader>
 					<DialogTitle>ACP Runtime Setup</DialogTitle>
-					<DialogDescription className="text-zinc-400">
+					<DialogDescription className="text-muted-foreground">
 						Set and verify the ACP command Kanbanana should run for task sessions.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-3">
 					<div className="space-y-1">
-						<label htmlFor="acp-command-input" className="text-xs text-zinc-400">
+						<label htmlFor="acp-command-input" className="text-xs text-muted-foreground">
 							ACP command (project)
 						</label>
 						<div className="flex items-center gap-2">
@@ -146,7 +146,7 @@ export function RuntimeSettingsDialog({
 									setProbeResult(null);
 								}}
 								placeholder="npx @zed-industries/codex-acp@latest"
-								className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+								className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
 								disabled={isLoading || isSaving || isProbing}
 							/>
 							<Button
@@ -170,20 +170,20 @@ export function RuntimeSettingsDialog({
 						)
 					) : null}
 
-					<div className="space-y-2 rounded border border-zinc-800 p-3">
+					<div className="space-y-2 rounded border border-border p-3">
 						<div className="flex items-center justify-between gap-2">
-							<p className="text-xs text-zinc-400">Supported ACP commands</p>
-							<p className="text-[11px] text-zinc-500">
+							<p className="text-xs text-muted-foreground">Supported ACP commands</p>
+							<p className="text-[11px] text-muted-foreground">
 								Detected binaries: {(config?.detectedCommands ?? []).join(", ") || "none"}
 							</p>
 						</div>
 						<div className="space-y-2">
 							{supportedAgents.map((agent) => (
-								<div key={agent.id} className="rounded border border-zinc-800 bg-zinc-950/70 p-2">
+								<div key={agent.id} className="rounded border border-border bg-background/70 p-2">
 									<div className="flex items-center justify-between gap-3">
 										<div className="min-w-0">
-											<p className="text-sm text-zinc-100">{agent.label}</p>
-											<p className="truncate font-mono text-[11px] text-zinc-500">{agent.command}</p>
+											<p className="text-sm text-foreground">{agent.label}</p>
+											<p className="truncate font-mono text-[11px] text-muted-foreground">{agent.command}</p>
 										</div>
 										<Button
 											type="button"
@@ -198,25 +198,25 @@ export function RuntimeSettingsDialog({
 											{agent.configured ? "Selected" : "Use"}
 										</Button>
 									</div>
-									<p className="mt-1 text-[11px] text-zinc-400">{renderAgentState(agent)}</p>
+									<p className="mt-1 text-[11px] text-muted-foreground">{renderAgentState(agent)}</p>
 								</div>
 							))}
 							{supportedAgents.length === 0 ? (
-								<p className="text-xs text-zinc-500">No supported ACP commands were returned by runtime.</p>
+								<p className="text-xs text-muted-foreground">No supported ACP commands were returned by runtime.</p>
 							) : null}
 						</div>
 					</div>
 
 					{effectiveCommand ? (
-						<p className="text-xs text-zinc-500">Current runtime command: {effectiveCommand}</p>
+						<p className="text-xs text-muted-foreground">Current runtime command: {effectiveCommand}</p>
 					) : (
 						<p className="text-xs text-amber-300">No ACP command is configured yet.</p>
 					)}
-					<p className="text-xs text-zinc-500">Global config path: {config?.configPath ?? "~/.kanbanana/config.json"}</p>
+					<p className="text-xs text-muted-foreground">Global config path: {config?.configPath ?? "~/.kanbanana/config.json"}</p>
 
-					<div className="space-y-2 rounded border border-zinc-800 p-3">
+					<div className="space-y-2 rounded border border-border p-3">
 						<div className="flex items-center justify-between">
-							<p className="text-xs text-zinc-400">Script shortcuts</p>
+							<p className="text-xs text-muted-foreground">Script shortcuts</p>
 							<button
 								type="button"
 								onClick={() =>
@@ -229,7 +229,7 @@ export function RuntimeSettingsDialog({
 										},
 									])
 								}
-								className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+								className="rounded border border-border px-2 py-1 text-xs text-foreground hover:border-muted-foreground/80"
 							>
 								Add
 							</button>
@@ -252,7 +252,7 @@ export function RuntimeSettingsDialog({
 											)
 										}
 										placeholder="Label"
-										className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100"
+										className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground"
 									/>
 									<input
 										value={shortcut.command}
@@ -269,18 +269,18 @@ export function RuntimeSettingsDialog({
 											)
 										}
 										placeholder="Command"
-										className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100"
+										className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground"
 									/>
 									<button
 										type="button"
 										onClick={() => setShortcuts((current) => current.filter((item) => item.id !== shortcut.id))}
-										className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+										className="rounded border border-border px-2 py-1 text-xs text-foreground hover:border-muted-foreground/80"
 									>
 										Remove
 									</button>
 								</div>
 							))}
-							{shortcuts.length === 0 ? <p className="text-xs text-zinc-500">No shortcuts configured yet.</p> : null}
+							{shortcuts.length === 0 ? <p className="text-xs text-muted-foreground">No shortcuts configured yet.</p> : null}
 						</div>
 					</div>
 

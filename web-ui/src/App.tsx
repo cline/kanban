@@ -38,7 +38,6 @@ import {
 import type { BoardColumnId, BoardData } from "@/kanban/types";
 
 const acpClient = new BrowserAcpClient();
-const KICKOFF_COLUMNS = new Set<BoardColumnId>(["todo", "in_progress"]);
 const WORKSPACE_STATE_PERSIST_DEBOUNCE_MS = 300;
 
 export default function App(): ReactElement {
@@ -61,10 +60,10 @@ export default function App(): ReactElement {
 	const handleTaskRunComplete = useCallback((taskId: string) => {
 		setBoard((currentBoard) => {
 			const columnId = getTaskColumnId(currentBoard, taskId);
-			if (!columnId || columnId === "ready_for_review" || columnId === "done") {
+			if (columnId !== "in_progress") {
 				return currentBoard;
 			}
-			const moved = moveTaskToColumn(currentBoard, taskId, "ready_for_review");
+			const moved = moveTaskToColumn(currentBoard, taskId, "review");
 			return moved.moved ? moved.board : currentBoard;
 		});
 	}, []);
@@ -168,7 +167,7 @@ export default function App(): ReactElement {
 			return;
 		}
 		for (const column of board.columns) {
-			if (!KICKOFF_COLUMNS.has(column.id)) {
+			if (column.id !== "in_progress") {
 				continue;
 			}
 			for (const task of column.cards) {
@@ -296,11 +295,7 @@ export default function App(): ReactElement {
 				return;
 			}
 
-			const movedOutOfBacklog =
-				applied.moveEvent.fromColumnId === "backlog" && KICKOFF_COLUMNS.has(applied.moveEvent.toColumnId);
-			const movedToInProgress = applied.moveEvent.toColumnId === "in_progress";
-
-			if (movedOutOfBacklog || movedToInProgress) {
+			if (applied.moveEvent.toColumnId === "in_progress") {
 				const movedSelection = findCardSelection(applied.board, applied.moveEvent.taskId);
 				if (movedSelection) {
 					startTaskRun(movedSelection.card);
@@ -322,8 +317,9 @@ export default function App(): ReactElement {
 
 			let activeBoard = board;
 			let activeTask = selectedCard.card;
+			let activeColumnId = selectedCard.column.id;
 
-			if (selectedCard.column.id !== "in_progress") {
+			if (selectedCard.column.id === "review") {
 				const moved = moveTaskToColumn(board, selectedCard.card.id, "in_progress");
 				if (moved.moved) {
 					activeBoard = moved.board;
@@ -331,18 +327,42 @@ export default function App(): ReactElement {
 					const nextSelection = findCardSelection(moved.board, selectedCard.card.id);
 					if (nextSelection) {
 						activeTask = nextSelection.card;
+						activeColumnId = nextSelection.column.id;
 					}
 				}
 			}
 
-			if (getTaskColumnId(activeBoard, activeTask.id) === "in_progress") {
+			const latestColumnId = getTaskColumnId(activeBoard, activeTask.id) ?? activeColumnId;
+			if (latestColumnId === "in_progress") {
 				sendPrompt(activeTask, text);
 			}
 		},
 		[board, selectedCard, sendPrompt],
 	);
 
+	const handleMoveToTrash = useCallback(() => {
+		if (!selectedTaskId) {
+			return;
+		}
+		setBoard((currentBoard) => {
+			const moved = moveTaskToColumn(currentBoard, selectedTaskId, "trash");
+			return moved.moved ? moved.board : currentBoard;
+		});
+	}, [selectedTaskId]);
+
 	const detailSession = selectedCard ? getSession(selectedCard.card.id) : null;
+	const sendDisabledReason = useMemo(() => {
+		if (!selectedCard) {
+			return undefined;
+		}
+		if (selectedCard.column.id === "backlog") {
+			return "Move this card to In Progress to start agent work.";
+		}
+		if (selectedCard.column.id === "trash") {
+			return "This card is in Trash. Move it to In Progress to resume work.";
+		}
+		return undefined;
+	}, [selectedCard]);
 	const runtimeHint = useMemo(() => {
 		if (!runtimeAcpHealth || runtimeAcpHealth.available) {
 			return undefined;
@@ -360,7 +380,7 @@ export default function App(): ReactElement {
 	}, [runtimeAcpHealth]);
 
 	return (
-		<div className="flex h-svh min-w-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+		<div className="flex h-svh min-w-0 flex-col overflow-hidden bg-background text-foreground">
 			<TopBar
 				onBack={selectedCard ? handleBack : undefined}
 				subtitle={selectedCard?.column.title}
@@ -372,20 +392,20 @@ export default function App(): ReactElement {
 				onRunShortcut={handleRunShortcut}
 			/>
 			{lastShortcutOutput ? (
-				<div className="border-b border-zinc-800 bg-zinc-900 px-4 py-2">
+				<div className="border-b border-border bg-background px-4 py-2">
 					<div className="mb-1 flex items-center justify-between">
-						<p className="text-xs text-zinc-400">
+						<p className="text-xs text-muted-foreground">
 							{lastShortcutOutput.label} finished with exit code {lastShortcutOutput.result.exitCode}
 						</p>
 						<button
 							type="button"
 							onClick={() => setLastShortcutOutput(null)}
-							className="text-xs text-zinc-500 hover:text-zinc-300"
+							className="text-xs text-muted-foreground hover:text-foreground"
 						>
 							Clear
 						</button>
 					</div>
-					<pre className="max-h-32 overflow-auto rounded bg-zinc-950 p-2 text-xs text-zinc-300">
+					<pre className="max-h-32 overflow-auto rounded bg-nav p-2 text-xs text-foreground">
 						{lastShortcutOutput.result.combinedOutput || "(no output)"}
 					</pre>
 				</div>
@@ -409,6 +429,9 @@ export default function App(): ReactElement {
 					onPermissionRespond={(messageId, optionId) =>
 						respondToPermission(selectedCard.card.id, messageId, optionId)
 					}
+					onMoveToTrash={handleMoveToTrash}
+					sendDisabled={Boolean(sendDisabledReason)}
+					sendDisabledReason={sendDisabledReason}
 				/>
 			) : null}
 			<RuntimeSettingsDialog
@@ -440,15 +463,15 @@ export default function App(): ReactElement {
 				</CommandList>
 			</CommandDialog>
 			<Dialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen}>
-				<DialogContent className="border-zinc-800 bg-zinc-900 text-zinc-100">
+				<DialogContent className="border-border bg-card text-foreground">
 					<DialogHeader>
 						<DialogTitle>Create Task</DialogTitle>
-						<DialogDescription className="text-zinc-400">
+						<DialogDescription className="text-muted-foreground">
 							New tasks are added to Backlog.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-1">
-						<label htmlFor="task-title-input" className="text-xs text-zinc-400">
+						<label htmlFor="task-title-input" className="text-xs text-muted-foreground">
 							Title
 						</label>
 						<input
@@ -461,7 +484,7 @@ export default function App(): ReactElement {
 									handleCreateTask();
 								}
 							}}
-							className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+							className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
 							placeholder="Describe the task"
 						/>
 					</div>

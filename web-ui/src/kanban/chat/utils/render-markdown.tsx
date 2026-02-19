@@ -46,7 +46,7 @@ const markdownComponents: Components = {
 		}
 		return (
 			<code
-				className={cn("break-all rounded bg-zinc-900 px-1 py-0.5 font-mono text-xs", className)}
+				className={cn("break-all rounded bg-background px-1 py-0.5 font-mono text-xs", className)}
 				{...props}
 			/>
 		);
@@ -54,7 +54,7 @@ const markdownComponents: Components = {
 	pre: ({ className, ...props }) => (
 		<pre
 			className={cn(
-				"my-2 min-w-0 overflow-x-auto whitespace-pre-wrap break-words rounded bg-zinc-900 p-3 font-mono text-xs leading-relaxed",
+				"my-2 min-w-0 overflow-x-auto whitespace-pre-wrap break-words rounded bg-background p-3 font-mono text-xs leading-relaxed",
 				className,
 			)}
 			{...props}

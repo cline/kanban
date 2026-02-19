@@ -12,10 +12,9 @@ test("renders kanban top bar and columns", async ({ page }) => {
 	await expect(page.getByTestId("workspace-path")).toBeVisible();
 	await expect(page).toHaveTitle(/Kanbanana/);
 	await expect(page.getByText("Backlog", { exact: true })).toBeVisible();
-	await expect(page.getByText("To Do", { exact: true })).toBeVisible();
 	await expect(page.getByText("In Progress", { exact: true })).toBeVisible();
-	await expect(page.getByText("Ready for Review", { exact: true })).toBeVisible();
-	await expect(page.getByText("Done", { exact: true })).toBeVisible();
+	await expect(page.getByText("Review", { exact: true })).toBeVisible();
+	await expect(page.getByText("Trash", { exact: true })).toBeVisible();
 	await expect(page.getByRole("button", { name: "New task" })).toBeVisible();
 });
 
@@ -24,8 +23,8 @@ test("creating and opening a task shows the detail view", async ({ page }) => {
 	const taskTitle = "Smoke task";
 	await createTaskFromBacklog(page, taskTitle);
 	await page.getByText(taskTitle, { exact: true }).click();
-	await expect(page.getByText("Type / for commands", { exact: true })).toBeVisible();
-	await expect(page.getByText("No diff yet. Move this task out of Backlog to kick off agent work.")).toBeVisible();
+	await expect(page.getByText("Move this card to In Progress to start agent work.", { exact: true })).toBeVisible();
+	await expect(page.getByText("No diff yet. Move this task to In Progress to kick off agent work.")).toBeVisible();
 	await expect(page.getByText("Files touched by ACP tool calls will appear here.")).toBeVisible();
 });
 
@@ -34,7 +33,7 @@ test("escape key returns to board from detail view", async ({ page }) => {
 	const taskTitle = "Escape task";
 	await createTaskFromBacklog(page, taskTitle);
 	await page.getByText(taskTitle, { exact: true }).click();
-	await expect(page.getByText("Type / for commands", { exact: true })).toBeVisible();
+	await expect(page.getByText("Move this card to In Progress to start agent work.", { exact: true })).toBeVisible();
 	await page.keyboard.press("Escape");
 	await expect(page.getByText("Backlog", { exact: true })).toBeVisible();
 });

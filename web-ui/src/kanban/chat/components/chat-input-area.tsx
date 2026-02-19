@@ -12,15 +12,20 @@ export function ChatInputArea({
 	availableCommands,
 	onSend,
 	onCancel,
+	disabled,
+	disabledReason,
 }: {
 	status: ChatSessionStatus;
 	availableCommands: ChatSlashCommand[];
 	onSend: (text: string) => void;
 	onCancel: () => void;
+	disabled?: boolean;
+	disabledReason?: string;
 }): React.ReactElement {
 	const [inputValue, setInputValue] = useState("");
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const isBusy = status !== "idle";
+	const isInputDisabled = isBusy || Boolean(disabled);
 
 	const { isOpen: isPickerOpen, filteredCommands, selectCommand } =
 		useSlashCommands(inputValue, availableCommands);
@@ -36,10 +41,10 @@ export function ChatInputArea({
 
 	const handleSend = useCallback(() => {
 		const trimmed = inputValue.trim();
-		if (!trimmed || isBusy) return;
+		if (!trimmed || isInputDisabled) return;
 		onSend(trimmed);
 		setInputValue("");
-	}, [inputValue, isBusy, onSend]);
+	}, [inputValue, isInputDisabled, onSend]);
 
 	const handleKeyDown = useCallback(
 		(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -53,7 +58,7 @@ export function ChatInputArea({
 	);
 
 	return (
-		<div className="border-t border-zinc-800 bg-zinc-900 p-3">
+		<div className="border-t border-border bg-background p-3">
 			<div className="relative">
 				{isPickerOpen ? (
 					<SlashCommandPicker
@@ -67,15 +72,19 @@ export function ChatInputArea({
 					value={inputValue}
 					onChange={(e) => setInputValue(e.target.value)}
 					onKeyDown={handleKeyDown}
-					disabled={isBusy}
-					placeholder={isBusy ? "Agent is working..." : "Send a message..."}
+					disabled={isInputDisabled}
+					placeholder={
+						isBusy
+							? "Agent is working..."
+							: disabledReason || (disabled ? "Move this card to In Progress to start agent work." : "Send a message...")
+					}
 					rows={1}
-					className="min-h-9 resize-none border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:border-zinc-600 focus-visible:ring-0"
+					className="min-h-9 resize-none border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-0"
 				/>
 			</div>
 
 			<div className="mt-2 flex items-center justify-between">
-				<span className="text-xs text-zinc-600">Type / for commands</span>
+				<span className="text-xs text-muted-foreground">{disabledReason ?? "Type / for commands"}</span>
 				{isBusy ? (
 					<Button
 						variant="destructive"
@@ -90,7 +99,7 @@ export function ChatInputArea({
 					<Button
 						size="sm"
 						onClick={handleSend}
-						disabled={!inputValue.trim()}
+						disabled={!inputValue.trim() || isInputDisabled}
 						className="bg-amber-500 text-zinc-900 hover:bg-amber-400"
 					>
 						<SendHorizontal className="size-3.5" />

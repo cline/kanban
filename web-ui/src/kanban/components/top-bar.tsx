@@ -29,13 +29,13 @@ export function TopBar({
 	const isAbsolutePath = Boolean(workspacePath && (workspacePath.startsWith("/") || workspacePath.startsWith("\\")));
 
 	return (
-		<header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4">
+		<header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-nav px-4">
 			<div className="flex min-w-0 items-center gap-2">
 				{onBack ? (
 					<button
 						type="button"
 						onClick={onBack}
-						className="rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+						className="rounded-md p-1 text-muted-foreground hover:bg-card hover:text-foreground"
 						aria-label="Back to board"
 					>
 						<ArrowLeft className="size-4" />
@@ -47,15 +47,15 @@ export function TopBar({
 				<span className="text-base font-semibold tracking-tight text-amber-300">Kanbanana</span>
 				{subtitle ? (
 					<>
-						<span className="text-zinc-600">/</span>
-						<span className="text-sm font-medium text-zinc-400">{subtitle}</span>
+						<span className="text-muted-foreground/80">/</span>
+						<span className="text-sm font-medium text-muted-foreground">{subtitle}</span>
 					</>
 				) : null}
 				{workspacePath ? (
 					<>
-						<span className="text-zinc-700">|</span>
+						<span className="text-muted-foreground/80">|</span>
 						<div
-							className="min-w-0 max-w-[40rem] truncate font-mono text-xs text-zinc-500"
+							className="min-w-0 max-w-[40rem] truncate font-mono text-xs text-muted-foreground"
 							title={workspacePath}
 							data-testid="workspace-path"
 						>
@@ -65,7 +65,7 @@ export function TopBar({
 								return (
 									<span key={`${segment}-${index}`}>
 										{index === 0 ? "" : "/"}
-										<span className={isLast ? "text-zinc-100" : "text-zinc-500"}>{segment}</span>
+										<span className={isLast ? "text-foreground" : "text-muted-foreground"}>{segment}</span>
 									</span>
 								);
 							})}
@@ -84,7 +84,7 @@ export function TopBar({
 						key={shortcut.id}
 						type="button"
 						onClick={() => onRunShortcut?.(shortcut.id)}
-						className="rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-600"
+						className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:border-muted-foreground/80"
 						disabled={runningShortcutId === shortcut.id}
 					>
 						{runningShortcutId === shortcut.id ? `Running ${shortcut.label}...` : shortcut.label}
@@ -93,7 +93,7 @@ export function TopBar({
 				<button
 					type="button"
 					onClick={onOpenSettings}
-					className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+					className="rounded-md p-1.5 text-muted-foreground hover:bg-card hover:text-foreground"
 					aria-label="Settings"
 					data-testid="open-settings-button"
 				>
