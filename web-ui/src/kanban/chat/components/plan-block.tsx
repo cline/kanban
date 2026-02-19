@@ -21,7 +21,9 @@ function PlanEntryRow({ entry }: { entry: ChatPlanEntry }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-2 py-0.5">
 			<Icon className={`size-3.5 shrink-0 ${iconClass}`} />
-			<span className={`min-w-0 flex-1 text-sm ${textClass}`}>{entry.content}</span>
+			<span className={`min-w-0 flex-1 break-words text-sm ${textClass} [overflow-wrap:anywhere]`}>
+				{entry.content}
+			</span>
 			<span className={`shrink-0 text-xs ${priorityColors[entry.priority]}`}>
 				{entry.priority}
 			</span>

@@ -33,11 +33,8 @@ export function AgentThoughtBlock({ thought }: { thought: ChatAgentThought }): R
 				</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				<pre className="mt-1 whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-500">
+				<pre className="mt-1 min-w-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-zinc-500 [overflow-wrap:anywhere]">
 					{thought.text}
-					{thought.isStreaming ? (
-						<span className="ml-0.5 inline-block h-3 w-1 animate-pulse rounded-sm bg-zinc-500" />
-					) : null}
 				</pre>
 			</CollapsibleContent>
 		</Collapsible>

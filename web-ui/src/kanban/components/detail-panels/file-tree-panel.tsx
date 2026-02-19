@@ -50,10 +50,10 @@ function FileTreeRow({
 				}}
 				className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors ${
 					isSelected
-						? "bg-zinc-800 text-zinc-100"
+						? "cursor-pointer bg-zinc-800 text-zinc-100"
 						: isDirectory
-							? "text-zinc-400"
-							: "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
+							? "cursor-default text-zinc-400"
+							: "cursor-pointer text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
 				}`}
 				style={{ paddingLeft: `${depth * 0.75 + 0.5}rem` }}
 			>

@@ -46,14 +46,14 @@ export function PermissionRequestBlock({
 				<Shield className="size-4 text-amber-400" />
 				<span className="text-sm text-amber-400">Permission Required</span>
 			</div>
-			<p className="mt-1 text-sm text-zinc-300">"{request.toolCallTitle}"</p>
+			<p className="mt-1 break-words text-sm text-zinc-300 [overflow-wrap:anywhere]">"{request.toolCallTitle}"</p>
 
 			{resolved ? (
 				<p className="mt-2 text-xs italic text-zinc-500">
 					{selectedOption ? selectedOption.name : "Resolved"}
 				</p>
 			) : (
-				<div className="mt-3 flex gap-2">
+				<div className="mt-3 flex flex-wrap gap-2">
 					{request.options.map((option) => (
 						<PermissionButton
 							key={option.optionId}

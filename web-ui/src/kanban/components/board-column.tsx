@@ -45,6 +45,7 @@ export function BoardColumn({
 				<section
 					ref={columnProvided.innerRef}
 					{...columnProvided.draggableProps}
+					data-column-id={column.id}
 					className={`flex h-full min-h-0 min-w-0 flex-1 flex-col border-r border-zinc-800 bg-zinc-900 ${
 						columnSnapshot.isDragging ? "shadow-2xl" : ""
 					}`}

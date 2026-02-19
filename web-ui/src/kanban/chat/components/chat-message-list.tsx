@@ -78,7 +78,7 @@ export function ChatMessageList({
 	return (
 		<div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
 			<ScrollArea className="h-full overscroll-contain">
-				<div className="space-y-3 px-3 py-4">
+				<div className="min-w-0 space-y-3 px-3 py-4">
 					{timeline.map((entry) => (
 						<TimelineEntry
 							key={entry.id}

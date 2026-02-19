@@ -29,11 +29,11 @@ const safeUrlTransform: UrlTransform = (url) => {
 
 const markdownComponents: Components = {
 	p: ({ className, ...props }) => (
-		<p className={cn("leading-relaxed [&:not(:first-child)]:mt-2", className)} {...props} />
+		<p className={cn("break-words leading-relaxed [&:not(:first-child)]:mt-2", className)} {...props} />
 	),
 	a: ({ className, ...props }) => (
 		<a
-			className={cn("text-blue-400 underline hover:text-blue-300", className)}
+			className={cn("break-all text-blue-400 underline hover:text-blue-300", className)}
 			target="_blank"
 			rel="noreferrer noopener"
 			{...props}
@@ -46,7 +46,7 @@ const markdownComponents: Components = {
 		}
 		return (
 			<code
-				className={cn("rounded bg-zinc-900 px-1 py-0.5 font-mono text-xs", className)}
+				className={cn("break-all rounded bg-zinc-900 px-1 py-0.5 font-mono text-xs", className)}
 				{...props}
 			/>
 		);
@@ -54,7 +54,7 @@ const markdownComponents: Components = {
 	pre: ({ className, ...props }) => (
 		<pre
 			className={cn(
-				"my-2 overflow-x-auto rounded bg-zinc-900 p-3 font-mono text-xs leading-relaxed",
+				"my-2 min-w-0 overflow-x-auto whitespace-pre-wrap break-words rounded bg-zinc-900 p-3 font-mono text-xs leading-relaxed",
 				className,
 			)}
 			{...props}

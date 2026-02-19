@@ -18,6 +18,7 @@ export function BoardCard({
 					ref={provided.innerRef}
 					{...provided.draggableProps}
 					{...provided.dragHandleProps}
+					data-task-id={card.id}
 					onClick={() => {
 						if (!snapshot.isDragging && onClick) {
 							onClick();
