@@ -22,6 +22,7 @@ import {
 
 import type {
 	RuntimeAcpTurnResponse,
+	RuntimeAcpTurnStatus,
 	RuntimeAvailableCommand,
 	RuntimePermissionOption,
 	RuntimeTimelineEntry,
@@ -33,10 +34,17 @@ import type {
 
 const TURN_TIMEOUT_MS = 5 * 60_000;
 const SESSION_SHUTDOWN_TIMEOUT_MS = 5_000;
+const SESSION_INIT_TIMEOUT_MS = 20_000;
 
 interface RunTurnRequest {
 	taskId: string;
 	prompt: string;
+}
+
+interface TurnStreamListeners {
+	onEntry?: (entry: RuntimeTimelineEntry) => void;
+	onStatus?: (status: RuntimeAcpTurnStatus) => void;
+	onAvailableCommands?: (commands: RuntimeAvailableCommand[]) => void;
 }
 
 interface AcpTaskSessionCreateOptions {
@@ -44,6 +52,24 @@ interface AcpTaskSessionCreateOptions {
 	commandLine: string;
 	cwd: string;
 	onClosed: () => void;
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<T>((_, reject) => {
+				timeoutHandle = setTimeout(() => {
+					reject(new Error(`${label} timed out after ${ms}ms`));
+				}, ms);
+			}),
+		]);
+	} finally {
+		if (timeoutHandle) {
+			clearTimeout(timeoutHandle);
+		}
+	}
 }
 
 function toRuntimeToolKind(kind: string | null | undefined): RuntimeToolKind {
@@ -151,25 +177,105 @@ function mapAvailableCommands(commands: AvailableCommand[]): RuntimeAvailableCom
 class TurnCollector {
 	private readonly turnId = randomUUID();
 	private readonly entries: RuntimeTimelineEntry[];
+	private readonly listeners?: TurnStreamListeners;
 	private readonly messageState = {
-		agent: "",
-		thought: "",
+		agent: {
+			activeId: null as string | null,
+			text: "",
+			sequence: 0,
+		},
+		thought: {
+			activeId: null as string | null,
+			text: "",
+			sequence: 0,
+		},
 	};
 	private availableCommands: RuntimeAvailableCommand[] | undefined;
 
-	constructor(prompt: string) {
+	constructor(prompt: string, listeners?: TurnStreamListeners) {
+		this.listeners = listeners;
 		const now = Date.now();
-		this.entries = [
-			{
-				type: "user_message",
-				id: `turn-${this.turnId}-user`,
-				timestamp: now,
-				text: prompt,
-			},
-		];
+		const userEntry: RuntimeTimelineEntry = {
+			type: "user_message",
+			id: `turn-${this.turnId}-user`,
+			timestamp: now,
+			text: prompt,
+		};
+		this.entries = [userEntry];
+		this.listeners?.onEntry?.(userEntry);
+		this.listeners?.onStatus?.("thinking");
+	}
+
+	private upsertEntry(entry: RuntimeTimelineEntry): void {
+		appendOrUpdateEntry(this.entries, entry);
+		this.listeners?.onEntry?.(entry);
+	}
+
+	private closeAgentMessage(): void {
+		if (!this.messageState.agent.activeId) {
+			return;
+		}
+		const activeId = this.messageState.agent.activeId;
+		const activeEntry = this.entries.find(
+			(entry): entry is Extract<RuntimeTimelineEntry, { type: "agent_message" }> =>
+				entry.type === "agent_message" && entry.id === activeId,
+		);
+		if (activeEntry?.isStreaming) {
+			this.upsertEntry({
+				...activeEntry,
+				isStreaming: false,
+			});
+		}
+		this.messageState.agent.activeId = null;
+		this.messageState.agent.text = "";
+	}
+
+	private closeThoughtMessage(): void {
+		if (!this.messageState.thought.activeId) {
+			return;
+		}
+		const activeId = this.messageState.thought.activeId;
+		const activeEntry = this.entries.find(
+			(entry): entry is Extract<RuntimeTimelineEntry, { type: "agent_thought" }> =>
+				entry.type === "agent_thought" && entry.id === activeId,
+		);
+		if (activeEntry?.isStreaming) {
+			this.upsertEntry({
+				...activeEntry,
+				isStreaming: false,
+			});
+		}
+		this.messageState.thought.activeId = null;
+		this.messageState.thought.text = "";
+	}
+
+	private closeStreamingMessages(options?: { keep?: "agent" | "thought" }): void {
+		if (options?.keep !== "agent") {
+			this.closeAgentMessage();
+		}
+		if (options?.keep !== "thought") {
+			this.closeThoughtMessage();
+		}
+	}
+
+	finalizeStreaming(): void {
+		this.closeStreamingMessages();
+
+		for (const entry of this.entries) {
+			if ((entry.type === "agent_message" || entry.type === "agent_thought") && entry.isStreaming) {
+				const finalized = {
+					...entry,
+					isStreaming: false,
+				};
+				appendOrUpdateEntry(this.entries, finalized);
+				this.listeners?.onEntry?.(finalized);
+			}
+		}
 	}
 
 	async requestPermission(request: RequestPermissionRequest): Promise<RequestPermissionResponse> {
+		this.closeStreamingMessages();
+
 		const selected = request.options[0];
 		const permissionEntry: RuntimeTimelineEntry = {
 			type: "permission_request",
@@ -183,7 +289,7 @@ class TurnCollector {
 			resolved: true,
 			selectedOptionId: selected?.optionId,
 		};
-		appendOrUpdateEntry(this.entries, permissionEntry);
+		this.upsertEntry(permissionEntry);
 
 		if (!selected) {
 			return {
@@ -207,29 +313,44 @@ class TurnCollector {
 
 		switch (update.sessionUpdate) {
 			case "agent_message_chunk": {
-				this.messageState.agent += textFromContentBlock(update.content);
-				appendOrUpdateEntry(this.entries, {
+				this.closeStreamingMessages({ keep: "agent" });
+				if (!this.messageState.agent.activeId) {
+					this.messageState.agent.sequence += 1;
+					this.messageState.agent.activeId = `turn-${this.turnId}-agent-message-${this.messageState.agent.sequence}`;
+					this.messageState.agent.text = "";
+				}
+				this.messageState.agent.text += textFromContentBlock(update.content);
+				this.listeners?.onStatus?.("thinking");
+				this.upsertEntry({
 					type: "agent_message",
-					id: `turn-${this.turnId}-agent-message`,
+					id: this.messageState.agent.activeId,
 					timestamp,
-					text: this.messageState.agent,
-					isStreaming: false,
+					text: this.messageState.agent.text,
+					isStreaming: true,
 				});
 				break;
 			}
 			case "agent_thought_chunk": {
-				this.messageState.thought += textFromContentBlock(update.content);
-				appendOrUpdateEntry(this.entries, {
+				this.closeStreamingMessages({ keep: "thought" });
+				if (!this.messageState.thought.activeId) {
+					this.messageState.thought.sequence += 1;
+					this.messageState.thought.activeId = `turn-${this.turnId}-agent-thought-${this.messageState.thought.sequence}`;
+					this.messageState.thought.text = "";
+				}
+				this.messageState.thought.text += textFromContentBlock(update.content);
+				this.listeners?.onStatus?.("thinking");
+				this.upsertEntry({
 					type: "agent_thought",
-					id: `turn-${this.turnId}-agent-thought`,
+					id: this.messageState.thought.activeId,
 					timestamp,
-					text: this.messageState.thought,
-					isStreaming: false,
+					text: this.messageState.thought.text,
+					isStreaming: true,
 				});
 				break;
 			}
 			case "tool_call":
 			case "tool_call_update": {
+				this.closeStreamingMessages();
 				const existing = this.entries.find(
 					(entry): entry is Extract<RuntimeTimelineEntry, { type: "tool_call" }> =>
 						entry.type === "tool_call" && entry.toolCall.toolCallId === update.toolCallId,
@@ -242,7 +363,8 @@ class TurnCollector {
 					locations: update.locations ? toRuntimeLocations(update.locations) : existing?.toolCall.locations,
 					content: update.content ? toRuntimeToolContents(update.content) : existing?.toolCall.content,
 				};
-				appendOrUpdateEntry(this.entries, {
+				this.listeners?.onStatus?.(toolCall.status === "in_progress" ? "tool_running" : "thinking");
+				this.upsertEntry({
 					type: "tool_call",
 					id: `turn-${this.turnId}-tool-${update.toolCallId}`,
 					timestamp,
@@ -251,7 +373,9 @@ class TurnCollector {
 				break;
 			}
 			case "plan": {
-				appendOrUpdateEntry(this.entries, {
+				this.closeStreamingMessages();
+				this.listeners?.onStatus?.("thinking");
+				this.upsertEntry({
 					type: "plan",
 					id: `turn-${this.turnId}-plan`,
 					timestamp,
@@ -265,6 +389,7 @@ class TurnCollector {
 			}
 			case "available_commands_update": {
 				this.availableCommands = mapAvailableCommands(update.availableCommands);
+				this.listeners?.onAvailableCommands?.(this.availableCommands);
 				break;
 			}
 			default:
@@ -413,54 +538,85 @@ class AcpTaskSession {
 		}
 
 		const clientProxy = new RuntimeClientProxy();
+		let stderrBuffer = "";
+		child.stderr.on("data", (chunk: Buffer | string) => {
+			stderrBuffer += String(chunk);
+		});
 		const stream = ndJsonStream(
 			Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
 			Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
 		);
 		const connection = new ClientSideConnection(() => clientProxy, stream);
 
-		const session = await (async () => {
-			const initializeResponse = await connection.initialize({
-				protocolVersion: PROTOCOL_VERSION,
-				clientInfo: {
-					name: "kanbanana",
-					version: "0.1.0",
-					title: "Kanbanana",
-				},
-				clientCapabilities: {
-					fs: {
-						readTextFile: true,
-						writeTextFile: true,
-					},
-				},
-			});
+		let session: string;
+		try {
+			session = await (async () => {
+				const initializeResponse = await withTimeout(
+					connection.initialize({
+						protocolVersion: PROTOCOL_VERSION,
+						clientInfo: {
+							name: "kanbanana",
+							version: "0.1.0",
+							title: "Kanbanana",
+						},
+						clientCapabilities: {
+							fs: {
+								readTextFile: true,
+								writeTextFile: true,
+							},
+						},
+					}),
+					SESSION_INIT_TIMEOUT_MS,
+					"ACP initialize",
+				);
 
-			let sessionId: string;
-			try {
-				const newSession = await connection.newSession({
-					cwd: options.cwd,
-					mcpServers: [],
-				});
-				sessionId = newSession.sessionId;
-			} catch (error) {
-				if (!isAuthRequiredError(error)) {
-					throw error;
+				let sessionId: string;
+				try {
+					const newSession = await withTimeout(
+						connection.newSession({
+							cwd: options.cwd,
+							mcpServers: [],
+						}),
+						SESSION_INIT_TIMEOUT_MS,
+						"ACP session/new",
+					);
+					sessionId = newSession.sessionId;
+				} catch (error) {
+					if (!isAuthRequiredError(error)) {
+						throw error;
+					}
+
+					const method = initializeResponse.authMethods?.[0];
+					if (!method) {
+						throw new Error("ACP provider requires authentication but did not expose an auth method.");
+					}
+					await withTimeout(
+						connection.authenticate({ methodId: method.id }),
+						SESSION_INIT_TIMEOUT_MS,
+						"ACP authenticate",
+					);
+					const newSession = await withTimeout(
+						connection.newSession({
+							cwd: options.cwd,
+							mcpServers: [],
+						}),
+						SESSION_INIT_TIMEOUT_MS,
+						"ACP session/new",
+					);
+					sessionId = newSession.sessionId;
 				}
 
-				const method = initializeResponse.authMethods?.[0];
-				if (!method) {
-					throw new Error("ACP provider requires authentication but did not expose an auth method.");
-				}
-				await connection.authenticate({ methodId: method.id });
-				const newSession = await connection.newSession({
-					cwd: options.cwd,
-					mcpServers: [],
-				});
-				sessionId = newSession.sessionId;
-			}
-
-			return sessionId;
-		})();
+				return sessionId;
+			})();
+		} catch (error) {
+			child.kill("SIGTERM");
+			const message = error instanceof Error ? error.message : String(error);
+			const stderr = stderrBuffer.trim();
+			const context =
+				`Failed to initialize ACP session for task ${options.taskId}. ` +
+				"Verify the configured command starts the agent in ACP mode (for example: npx @zed-industries/codex-acp@latest).";
+			throw new Error(stderr ? `${context}\n${message}\n${stderr}` : `${context}\n${message}`);
+		}
 
 		const created = new AcpTaskSession({
 			taskId: options.taskId,
@@ -490,6 +646,7 @@ class AcpTaskSession {
 			},
 			sessionUpdate: async () => {},
 		});
+		created.stderrBuffer = stderrBuffer;
 		child.stderr.on("data", (chunk: Buffer | string) => {
 			created.stderrBuffer += String(chunk);
 		});
@@ -505,7 +662,7 @@ class AcpTaskSession {
 		return this.disposed;
 	}
 
-	async runTurn(request: RunTurnRequest): Promise<RuntimeAcpTurnResponse> {
+	async runTurn(request: RunTurnRequest, listeners?: TurnStreamListeners): Promise<RuntimeAcpTurnResponse> {
 		if (this.disposed) {
 			throw new Error(`ACP session for task ${request.taskId} is no longer available.`);
 		}
@@ -513,7 +670,7 @@ class AcpTaskSession {
 			throw new Error(`Task ${this.taskId} already has an active ACP turn.`);
 		}
 
-		const collector = new TurnCollector(request.prompt);
+		const collector = new TurnCollector(request.prompt, listeners);
 		this.clientProxy.setHandlers({
 			requestPermission: async (permissionRequest) => collector.requestPermission(permissionRequest),
 			sessionUpdate: async (notification) => collector.onSessionUpdate(notification),
@@ -534,8 +691,12 @@ class AcpTaskSession {
 						},
 					],
 				});
+				collector.finalizeStreaming();
+				listeners?.onStatus?.("idle");
 				return collector.toResponse(promptResponse.stopReason);
 			} catch (error) {
+				collector.finalizeStreaming();
+				listeners?.onStatus?.("idle");
 				const message = error instanceof Error ? error.message : String(error);
 				const stderr = this.stderrBuffer.trim();
 				throw new Error(stderr ? `${message}\n${stderr}` : message);
@@ -592,10 +753,11 @@ export class AcpRuntimeSessionManager {
 		commandLine: string;
 		cwd: string;
 		request: RunTurnRequest;
+		listeners?: TurnStreamListeners;
 	}): Promise<RuntimeAcpTurnResponse> {
 		const session = await this.getOrCreateSession(options.commandLine, options.cwd, options.request.taskId);
 		try {
-			return await session.runTurn(options.request);
+			return await session.runTurn(options.request, options.listeners);
 		} catch (error) {
 			if (session.isDisposed()) {
 				this.sessions.delete(options.request.taskId);

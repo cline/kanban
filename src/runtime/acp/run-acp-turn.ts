@@ -1,4 +1,10 @@
-import type { RuntimeAcpTurnRequest, RuntimeAcpTurnResponse } from "./api-contract.js";
+import type {
+	RuntimeAcpTurnRequest,
+	RuntimeAcpTurnResponse,
+	RuntimeAcpTurnStatus,
+	RuntimeAvailableCommand,
+	RuntimeTimelineEntry,
+} from "./api-contract.js";
 import { AcpRuntimeSessionManager } from "./session-manager.js";
 
 const sessionManager = new AcpRuntimeSessionManager();
@@ -7,6 +13,11 @@ interface RunAcpTurnOptions {
 	commandLine: string;
 	cwd: string;
 	request: RuntimeAcpTurnRequest;
+	listeners?: {
+		onEntry?: (entry: RuntimeTimelineEntry) => void;
+		onStatus?: (status: RuntimeAcpTurnStatus) => void;
+		onAvailableCommands?: (commands: RuntimeAvailableCommand[]) => void;
+	};
 }
 
 export async function runAcpTurn(options: RunAcpTurnOptions): Promise<RuntimeAcpTurnResponse> {
@@ -17,6 +28,7 @@ export async function runAcpTurn(options: RunAcpTurnOptions): Promise<RuntimeAcp
 			taskId: options.request.taskId,
 			prompt: options.request.prompt,
 		},
+		listeners: options.listeners,
 	});
 }
 

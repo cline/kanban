@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 interface RuntimeConfigFileShape {
@@ -17,6 +18,13 @@ export interface RuntimeConfigState {
 	configPath: string;
 	acpCommand: string | null;
 	shortcuts: RuntimeProjectShortcut[];
+}
+
+const RUNTIME_HOME_DIR = ".kanbanana";
+const CONFIG_FILENAME = "config.json";
+
+function getRuntimeHomePath(): string {
+	return join(homedir(), RUNTIME_HOME_DIR);
 }
 
 function normalizeCommand(command: string | null | undefined): string | null {
@@ -63,34 +71,39 @@ function normalizeShortcuts(shortcuts: RuntimeProjectShortcut[] | null | undefin
 	return normalized;
 }
 
-export function getRuntimeConfigPath(cwd: string): string {
-	return join(cwd, ".kanbanana", "config.json");
+export function getRuntimeConfigPath(): string {
+	return join(getRuntimeHomePath(), CONFIG_FILENAME);
 }
 
-export async function loadRuntimeConfig(cwd: string): Promise<RuntimeConfigState> {
-	const configPath = getRuntimeConfigPath(cwd);
+function getLegacyRuntimeHomePath(cwd: string): string {
+	return join(cwd, RUNTIME_HOME_DIR);
+}
+
+function getLegacyRuntimeConfigPath(cwd: string): string {
+	return join(getLegacyRuntimeHomePath(cwd), CONFIG_FILENAME);
+}
+
+function toRuntimeConfigState(configPath: string, parsed: RuntimeConfigFileShape | null): RuntimeConfigState {
+	return {
+		configPath,
+		acpCommand: normalizeCommand(parsed?.acpCommand),
+		shortcuts: normalizeShortcuts(parsed?.shortcuts),
+	};
+}
+
+async function readRuntimeConfigFile(configPath: string): Promise<RuntimeConfigFileShape | null> {
 	try {
 		const raw = await readFile(configPath, "utf8");
-		const parsed = JSON.parse(raw) as RuntimeConfigFileShape;
-		return {
-			configPath,
-			acpCommand: normalizeCommand(parsed.acpCommand),
-			shortcuts: normalizeShortcuts(parsed.shortcuts),
-		};
+		return JSON.parse(raw) as RuntimeConfigFileShape;
 	} catch {
-		return {
-			configPath,
-			acpCommand: null,
-			shortcuts: [],
-		};
+		return null;
 	}
 }
 
-export async function saveRuntimeConfig(
-	cwd: string,
+async function writeRuntimeConfigFile(
+	configPath: string,
 	config: { acpCommand: string | null; shortcuts: RuntimeProjectShortcut[] },
 ): Promise<RuntimeConfigState> {
-	const configPath = getRuntimeConfigPath(cwd);
 	const normalizedCommand = normalizeCommand(config.acpCommand);
 	const normalizedShortcuts = normalizeShortcuts(config.shortcuts);
 
@@ -113,4 +126,54 @@ export async function saveRuntimeConfig(
 		acpCommand: normalizedCommand,
 		shortcuts: normalizedShortcuts,
 	};
+}
+
+async function removeLegacyRuntimeState(cwd: string): Promise<void> {
+	const legacyRuntimeHomePath = getLegacyRuntimeHomePath(cwd);
+	if (legacyRuntimeHomePath === getRuntimeHomePath()) {
+		return;
+	}
+
+	await rm(legacyRuntimeHomePath, { recursive: true, force: true });
+}
+
+export async function loadRuntimeConfig(cwd: string): Promise<RuntimeConfigState> {
+	const configPath = getRuntimeConfigPath();
+	const parsedGlobalConfig = await readRuntimeConfigFile(configPath);
+	if (parsedGlobalConfig) {
+		await removeLegacyRuntimeState(cwd);
+		return toRuntimeConfigState(configPath, parsedGlobalConfig);
+	}
+
+	const legacyConfigPath = getLegacyRuntimeConfigPath(cwd);
+	const parsedLegacyConfig = await readRuntimeConfigFile(legacyConfigPath);
+	if (parsedLegacyConfig) {
+		const migrated = await writeRuntimeConfigFile(configPath, {
+			acpCommand: normalizeCommand(parsedLegacyConfig.acpCommand),
+			shortcuts: normalizeShortcuts(parsedLegacyConfig.shortcuts),
+		});
+		await removeLegacyRuntimeState(cwd);
+		return migrated;
+	}
+
+	await removeLegacyRuntimeState(cwd);
+
+	return {
+		configPath,
+		acpCommand: null,
+		shortcuts: [],
+	};
+}
+
+export async function saveRuntimeConfig(
+	cwd: string,
+	config: {
+		acpCommand: string | null;
+		shortcuts: RuntimeProjectShortcut[];
+	},
+): Promise<RuntimeConfigState> {
+	const configPath = getRuntimeConfigPath();
+	const savedConfig = await writeRuntimeConfigFile(configPath, config);
+	await removeLegacyRuntimeState(cwd);
+	return savedConfig;
 }

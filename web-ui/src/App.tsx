@@ -34,6 +34,7 @@ import {
 import type { BoardColumnId, BoardData } from "@/kanban/types";
 
 const acpClient = new BrowserAcpClient();
+const KICKOFF_COLUMNS = new Set<BoardColumnId>(["todo", "in_progress"]);
 
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => loadBoardState());
@@ -53,11 +54,11 @@ export default function App(): ReactElement {
 	const handleTaskRunComplete = useCallback((taskId: string) => {
 		setBoard((currentBoard) => {
 			const columnId = getTaskColumnId(currentBoard, taskId);
-			if (columnId !== "in_progress") {
+			if (!columnId || columnId === "ready_for_review" || columnId === "done") {
 				return currentBoard;
 			}
 			const moved = moveTaskToColumn(currentBoard, taskId, "ready_for_review");
-			return moved.board;
+			return moved.moved ? moved.board : currentBoard;
 		});
 	}, []);
 
@@ -101,15 +102,15 @@ export default function App(): ReactElement {
 	}, [ensureSession, selectedCard]);
 
 	useEffect(() => {
-		const inProgressColumn = board.columns.find((column) => column.id === "in_progress");
-		if (!inProgressColumn) {
-			return;
-		}
-
-		for (const task of inProgressColumn.cards) {
-			const session = getSession(task.id);
-			if (session.status === "idle" && session.timeline.length === 0) {
-				startTaskRun(task);
+		for (const column of board.columns) {
+			if (!KICKOFF_COLUMNS.has(column.id)) {
+				continue;
+			}
+			for (const task of column.cards) {
+				const session = getSession(task.id);
+				if (session.status === "idle" && session.timeline.length === 0) {
+					startTaskRun(task);
+				}
 			}
 		}
 	}, [board.columns, getSession, startTaskRun]);
@@ -211,7 +212,15 @@ export default function App(): ReactElement {
 			const applied = applyDragResult(board, result);
 			setBoard(applied.board);
 
-			if (applied.moveEvent?.toColumnId === "in_progress") {
+			if (!applied.moveEvent) {
+				return;
+			}
+
+			const movedOutOfBacklog =
+				applied.moveEvent.fromColumnId === "backlog" && KICKOFF_COLUMNS.has(applied.moveEvent.toColumnId);
+			const movedToInProgress = applied.moveEvent.toColumnId === "in_progress";
+
+			if (movedOutOfBacklog || movedToInProgress) {
 				const movedSelection = findCardSelection(applied.board, applied.moveEvent.taskId);
 				if (movedSelection) {
 					startTaskRun(movedSelection.card);
@@ -259,11 +268,15 @@ export default function App(): ReactElement {
 			return undefined;
 		}
 
+		if (runtimeAcpHealth.reason) {
+			return runtimeAcpHealth.reason;
+		}
+
 		const detected = runtimeAcpHealth.detectedCommands?.join(", ");
 		if (detected) {
-			return `Mock ACP mode (detected: ${detected})`;
+			return `ACP not configured (${detected})`;
 		}
-		return "Mock ACP mode";
+		return "ACP not configured";
 	}, [runtimeAcpHealth]);
 
 	return (

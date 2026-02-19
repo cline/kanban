@@ -65,6 +65,7 @@ export function TopBar({
 					onClick={onOpenSettings}
 					className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
 					aria-label="Settings"
+					data-testid="open-settings-button"
 				>
 					<Settings className="size-4" />
 				</button>

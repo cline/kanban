@@ -10,6 +10,7 @@ import type {
 import type { BoardCard } from "@/kanban/types";
 
 const SESSION_STORAGE_KEY = "kanbanana.task-sessions.v1";
+const SESSION_PERSIST_DEBOUNCE_MS = 250;
 
 const defaultCommands: ChatSlashCommand[] = [
 	{ name: "plan", description: "Create or update a plan for this task", input: { hint: "what to plan" } },
@@ -62,6 +63,15 @@ function isBusy(status: ChatSessionStatus): boolean {
 	return status !== "idle" && status !== "cancelled";
 }
 
+function createOptimisticUserEntry(text: string): ChatTimelineEntry {
+	return {
+		type: "user_message",
+		id: `local-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		timestamp: Date.now(),
+		text,
+	};
+}
+
 export interface UseTaskChatSessionsResult {
 	getSession: (taskId: string) => ChatSessionState;
 	ensureSession: (taskId: string) => void;
@@ -85,7 +95,12 @@ export function useTaskChatSessions({
 		if (typeof window === "undefined") {
 			return;
 		}
-		window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions));
+		const timeoutId = window.setTimeout(() => {
+			window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions));
+		}, SESSION_PERSIST_DEBOUNCE_MS);
+		return () => {
+			window.clearTimeout(timeoutId);
+		};
 	}, [sessions]);
 
 	useEffect(() => {
@@ -134,7 +149,7 @@ export function useTaskChatSessions({
 				return {
 					...session,
 					status: "thinking",
-					timeline: session.timeline,
+					timeline: [...session.timeline, createOptimisticUserEntry(prompt)],
 				};
 			});
 
@@ -150,6 +165,9 @@ export function useTaskChatSessions({
 						updateSession(task.id, (session) => ({ ...session, status }));
 					},
 					onEntry: (entry) => {
+						if (entry.type === "user_message") {
+							return;
+						}
 						updateSession(task.id, (session) => ({
 							...session,
 							timeline: upsertTimelineEntry(session.timeline, entry),

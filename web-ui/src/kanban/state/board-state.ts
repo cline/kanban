@@ -4,6 +4,14 @@ import { createInitialBoardData } from "@/kanban/data/board-data";
 import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } from "@/kanban/types";
 
 const BOARD_STORAGE_KEY = "kanbanana.board.v1";
+const LEGACY_SEED_TASK_IDS = new Set([
+	"task-backlog-1",
+	"task-backlog-2",
+	"task-todo-1",
+	"task-progress-1",
+	"task-review-1",
+	"task-done-1",
+]);
 
 export interface TaskDraft {
 	title: string;
@@ -136,6 +144,10 @@ function normalizeBoardData(rawBoard: unknown): BoardData | null {
 				normalizedColumn.cards.push(card);
 			}
 		}
+	}
+
+	for (const column of normalizedColumns) {
+		column.cards = column.cards.filter((card) => !LEGACY_SEED_TASK_IDS.has(card.id));
 	}
 
 	return { columns: normalizedColumns };

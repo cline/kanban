@@ -134,6 +134,40 @@ export interface RuntimeAcpTurnResponse {
 	availableCommands?: RuntimeAvailableCommand[];
 }
 
+export type RuntimeAcpTurnStatus = "thinking" | "tool_running" | "idle";
+
+export interface RuntimeAcpTurnStreamEntryEvent {
+	type: "entry";
+	entry: RuntimeTimelineEntry;
+}
+
+export interface RuntimeAcpTurnStreamStatusEvent {
+	type: "status";
+	status: RuntimeAcpTurnStatus;
+}
+
+export interface RuntimeAcpTurnStreamCommandsEvent {
+	type: "available_commands";
+	commands: RuntimeAvailableCommand[];
+}
+
+export interface RuntimeAcpTurnStreamCompleteEvent {
+	type: "complete";
+	stopReason: string;
+}
+
+export interface RuntimeAcpTurnStreamErrorEvent {
+	type: "error";
+	error: string;
+}
+
+export type RuntimeAcpTurnStreamEvent =
+	| RuntimeAcpTurnStreamEntryEvent
+	| RuntimeAcpTurnStreamStatusEvent
+	| RuntimeAcpTurnStreamCommandsEvent
+	| RuntimeAcpTurnStreamCompleteEvent
+	| RuntimeAcpTurnStreamErrorEvent;
+
 export type RuntimeAcpCommandSource = "env" | "project" | "none";
 
 export interface RuntimeAcpHealthResponse {
@@ -150,6 +184,15 @@ export interface RuntimeAcpCancelRequest {
 
 export interface RuntimeAcpCancelResponse {
 	cancelled: boolean;
+}
+
+export interface RuntimeAcpProbeRequest {
+	command: string;
+}
+
+export interface RuntimeAcpProbeResponse {
+	ok: boolean;
+	reason?: string;
 }
 
 export type RuntimeWorkspaceFileStatus =
@@ -183,10 +226,21 @@ export interface RuntimeWorkspaceChangesResponse {
 
 export interface RuntimeConfigResponse {
 	acpCommand: string | null;
+	effectiveCommand: string | null;
 	commandSource: RuntimeAcpCommandSource;
 	configPath: string;
 	detectedCommands: string[];
+	supportedAgents: RuntimeSupportedAcpAgent[];
 	shortcuts: RuntimeProjectShortcut[];
+}
+
+export interface RuntimeSupportedAcpAgent {
+	id: string;
+	label: string;
+	binary: string;
+	command: string;
+	installed: boolean;
+	configured: boolean;
 }
 
 export interface RuntimeConfigSaveRequest {

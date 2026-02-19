@@ -31,12 +31,28 @@ export interface RuntimeAcpHealthResponse {
 	reason?: string;
 }
 
+export interface RuntimeAcpProbeResponse {
+	ok: boolean;
+	reason?: string;
+}
+
 export interface RuntimeConfigResponse {
 	acpCommand: string | null;
+	effectiveCommand: string | null;
 	commandSource: "env" | "project" | "none";
 	configPath: string;
 	detectedCommands: string[];
+	supportedAgents: RuntimeSupportedAcpAgent[];
 	shortcuts: RuntimeProjectShortcut[];
+}
+
+export interface RuntimeSupportedAcpAgent {
+	id: string;
+	label: string;
+	binary: string;
+	command: string;
+	installed: boolean;
+	configured: boolean;
 }
 
 export interface RuntimeProjectShortcut {

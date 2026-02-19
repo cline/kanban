@@ -12,13 +12,16 @@ import type {
 	RuntimeAcpCancelRequest,
 	RuntimeAcpCommandSource,
 	RuntimeAcpHealthResponse,
+	RuntimeAcpProbeRequest,
 	RuntimeAcpTurnRequest,
+	RuntimeAcpTurnStreamEvent,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
 	RuntimeShortcutRunRequest,
 	RuntimeShortcutRunResponse,
 	RuntimeWorkspaceChangesRequest,
 } from "./runtime/acp/api-contract.js";
+import { probeAcpCommand } from "./runtime/acp/probe-acp-command.js";
 import { cancelAcpTurn, runAcpTurn, shutdownAcpRuntimeSessions } from "./runtime/acp/run-acp-turn.js";
 import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
 import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
@@ -28,7 +31,14 @@ interface CliOptions {
 	version: boolean;
 	json: boolean;
 	noOpen: boolean;
-	port: number | null;
+	port: number;
+}
+
+interface SupportedAcpAgentDefinition {
+	id: string;
+	label: string;
+	binary: string;
+	command: string;
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -46,12 +56,41 @@ const MIME_TYPES: Record<string, string> = {
 	".txt": "text/plain; charset=utf-8",
 };
 
+const SUPPORTED_ACP_AGENTS: SupportedAcpAgentDefinition[] = [
+	{
+		id: "codex_acp_bridge",
+		label: "OpenAI Codex (ACP bridge)",
+		binary: "npx",
+		command: "npx @zed-industries/codex-acp@latest",
+	},
+	{
+		id: "claude_acp_bridge",
+		label: "Claude Code (ACP bridge)",
+		binary: "npx",
+		command: "npx @zed-industries/claude-code-acp@latest",
+	},
+	{
+		id: "gemini_npx_acp",
+		label: "Gemini CLI (npx ACP)",
+		binary: "npx",
+		command: "npx @google/gemini-cli@latest --experimental-acp",
+	},
+	{
+		id: "gemini_local_acp",
+		label: "Gemini CLI (local install)",
+		binary: "gemini",
+		command: "gemini --experimental-acp",
+	},
+];
+
+const DEFAULT_PORT = 8484;
+
 function parseCliOptions(argv: string[]): CliOptions {
 	let help = false;
 	let version = false;
 	let json = false;
 	let noOpen = false;
-	let port: number | null = null;
+	let port = DEFAULT_PORT;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -104,6 +143,8 @@ function printHelp(): void {
 	console.log("");
 	console.log("Usage:");
 	console.log("  kanbanana [--port <number>] [--no-open] [--json] [--help] [--version]");
+	console.log("");
+	console.log(`Default port: ${DEFAULT_PORT}`);
 }
 
 function shouldFallbackToIndexHtml(pathname: string): boolean {
@@ -179,7 +220,7 @@ function resolveAcpCommand(projectConfigCommand: string | null): {
 }
 
 function detectInstalledAcpCommands(): string[] {
-	const candidates = ["codex", "claude", "gemini"];
+	const candidates = ["npx", "codex", "claude", "gemini"];
 	const lookupCommand = process.platform === "win32" ? "where" : "which";
 	const detected: string[] = [];
 
@@ -193,6 +234,43 @@ function detectInstalledAcpCommands(): string[] {
 	}
 
 	return detected;
+}
+
+function normalizeCommandLineValue(commandLine: string | null | undefined): string | null {
+	if (!commandLine) {
+		return null;
+	}
+	const trimmed = commandLine.trim().toLowerCase();
+	if (!trimmed) {
+		return null;
+	}
+	return trimmed.replace(/\s+/g, " ");
+}
+
+function buildRuntimeConfigResponse(
+	runtimeConfig: Awaited<ReturnType<typeof loadRuntimeConfig>>,
+): RuntimeConfigResponse {
+	const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
+	const detectedCommands = detectInstalledAcpCommands();
+	const detectedSet = new Set(detectedCommands);
+	const normalizedEffectiveCommand = normalizeCommandLineValue(resolved.command);
+
+	return {
+		acpCommand: runtimeConfig.acpCommand,
+		effectiveCommand: resolved.command,
+		commandSource: resolved.source,
+		configPath: runtimeConfig.configPath,
+		detectedCommands,
+		supportedAgents: SUPPORTED_ACP_AGENTS.map((agent) => ({
+			id: agent.id,
+			label: agent.label,
+			binary: agent.binary,
+			command: agent.command,
+			installed: detectedSet.has(agent.binary),
+			configured: normalizedEffectiveCommand === normalizeCommandLineValue(agent.command),
+		})),
+		shortcuts: runtimeConfig.shortcuts,
+	};
 }
 
 function validateTurnRequest(body: RuntimeAcpTurnRequest): RuntimeAcpTurnRequest {
@@ -212,6 +290,19 @@ function validateCancelRequest(body: RuntimeAcpCancelRequest): RuntimeAcpCancelR
 		throw new Error("Invalid cancel request payload.");
 	}
 	return body;
+}
+
+function validateAcpProbeRequest(body: RuntimeAcpProbeRequest): RuntimeAcpProbeRequest {
+	if (typeof body.command !== "string") {
+		throw new Error("Invalid ACP probe payload.");
+	}
+	const command = body.command.trim();
+	if (!command) {
+		throw new Error("ACP probe command cannot be empty.");
+	}
+	return {
+		command,
+	};
 }
 
 function validateWorkspaceChangesRequest(query: URLSearchParams): RuntimeWorkspaceChangesRequest {
@@ -351,7 +442,7 @@ async function runShortcutCommand(command: string, cwd: string): Promise<Runtime
 	});
 }
 
-async function startServer(port: number | null): Promise<{ url: string; close: () => Promise<void> }> {
+async function startServer(port: number): Promise<{ url: string; close: () => Promise<void> }> {
 	const webUiDir = getWebUiDir();
 	let runtimeConfig = await loadRuntimeConfig(process.cwd());
 
@@ -371,7 +462,19 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 			if (pathname === "/api/acp/health" && req.method === "GET") {
 				const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
 				const detectedCommands = detectInstalledAcpCommands();
-				const payload: RuntimeAcpHealthResponse = resolved.command
+				if (!resolved.command) {
+					sendJson(res, 200, {
+						available: false,
+						configuredCommand: null,
+						commandSource: "none",
+						detectedCommands,
+						reason: "Set an ACP command in Settings (for example: npx @zed-industries/codex-acp@latest).",
+					} satisfies RuntimeAcpHealthResponse);
+					return;
+				}
+
+				const probe = await probeAcpCommand(resolved.command, process.cwd());
+				const healthPayload: RuntimeAcpHealthResponse = probe.ok
 					? {
 							available: true,
 							configuredCommand: resolved.command,
@@ -380,12 +483,14 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 						}
 					: {
 							available: false,
-							configuredCommand: null,
-							commandSource: "none",
+							configuredCommand: resolved.command,
+							commandSource: resolved.source,
 							detectedCommands,
-							reason: "Set KANBANANA_ACP_COMMAND to an ACP provider command (for example: codex --acp).",
+							reason:
+								probe.reason ??
+								`Configured ACP command '${resolved.command}' did not complete ACP initialization.`,
 						};
-				sendJson(res, 200, payload);
+				sendJson(res, 200, healthPayload);
 				return;
 			}
 
@@ -393,13 +498,56 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 				const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
 				if (!resolved.command) {
 					sendJson(res, 501, {
-						error: "ACP command is not configured. Set KANBANANA_ACP_COMMAND.",
+						error: "ACP command is not configured. Open Settings and choose an ACP agent command.",
 					});
 					return;
 				}
 
 				try {
 					const body = validateTurnRequest(await readJsonBody<RuntimeAcpTurnRequest>(req));
+					const wantsStream = requestUrl.searchParams.get("stream") === "1";
+					if (wantsStream) {
+						res.writeHead(200, {
+							"Content-Type": "application/x-ndjson; charset=utf-8",
+							"Cache-Control": "no-store",
+							Connection: "keep-alive",
+						});
+						res.socket?.setNoDelay(true);
+						res.flushHeaders();
+
+						const writeEvent = (event: RuntimeAcpTurnStreamEvent): void => {
+							if (res.writableEnded) {
+								return;
+							}
+							res.write(`${JSON.stringify(event)}\n`);
+						};
+						const handleClose = () => {
+							void cancelAcpTurn(body.taskId);
+						};
+						req.once("close", handleClose);
+
+						try {
+							const response = await runAcpTurn({
+								commandLine: resolved.command,
+								cwd: process.cwd(),
+								request: body,
+								listeners: {
+									onEntry: (entry) => writeEvent({ type: "entry", entry }),
+									onStatus: (status) => writeEvent({ type: "status", status }),
+									onAvailableCommands: (commands) => writeEvent({ type: "available_commands", commands }),
+								},
+							});
+							writeEvent({ type: "complete", stopReason: response.stopReason });
+						} catch (error) {
+							const message = error instanceof Error ? error.message : String(error);
+							writeEvent({ type: "error", error: message });
+						} finally {
+							req.off("close", handleClose);
+							res.end();
+						}
+						return;
+					}
+
 					const response = await runAcpTurn({
 						commandLine: resolved.command,
 						cwd: process.cwd(),
@@ -415,14 +563,7 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 			}
 
 			if (pathname === "/api/runtime/config" && req.method === "GET") {
-				const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
-				const payload: RuntimeConfigResponse = {
-					acpCommand: runtimeConfig.acpCommand,
-					commandSource: resolved.source,
-					configPath: runtimeConfig.configPath,
-					detectedCommands: detectInstalledAcpCommands(),
-					shortcuts: runtimeConfig.shortcuts,
-				};
+				const payload = buildRuntimeConfigResponse(runtimeConfig);
 				sendJson(res, 200, payload);
 				return;
 			}
@@ -434,14 +575,7 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 						acpCommand: body.acpCommand,
 						shortcuts: body.shortcuts ?? runtimeConfig.shortcuts,
 					});
-					const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
-					const payload: RuntimeConfigResponse = {
-						acpCommand: runtimeConfig.acpCommand,
-						commandSource: resolved.source,
-						configPath: runtimeConfig.configPath,
-						detectedCommands: detectInstalledAcpCommands(),
-						shortcuts: runtimeConfig.shortcuts,
-					};
+					const payload = buildRuntimeConfigResponse(runtimeConfig);
 					sendJson(res, 200, payload);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
@@ -467,6 +601,18 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 					const body = validateCancelRequest(await readJsonBody<RuntimeAcpCancelRequest>(req));
 					const cancelled = await cancelAcpTurn(body.taskId);
 					sendJson(res, 200, { cancelled });
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/runtime/acp/probe" && req.method === "POST") {
+				try {
+					const body = validateAcpProbeRequest(await readJsonBody<RuntimeAcpProbeRequest>(req));
+					const result = await probeAcpCommand(body.command, process.cwd());
+					sendJson(res, 200, result);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					sendJson(res, 500, { error: message });
@@ -505,7 +651,7 @@ async function startServer(port: number | null): Promise<{ url: string; close: (
 
 	await new Promise<void>((resolveListen, rejectListen) => {
 		server.once("error", rejectListen);
-		server.listen(port ?? 0, "127.0.0.1", () => {
+		server.listen(port, "127.0.0.1", () => {
 			server.off("error", rejectListen);
 			resolveListen();
 		});
