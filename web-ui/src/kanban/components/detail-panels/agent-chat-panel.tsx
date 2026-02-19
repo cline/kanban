@@ -8,6 +8,8 @@ export function AgentChatPanel({
 	onSend,
 	onCancel,
 	onPermissionRespond,
+	showMoveToTrash,
+	onMoveToTrash,
 	sendDisabled,
 	sendDisabledReason,
 }: {
@@ -15,6 +17,8 @@ export function AgentChatPanel({
 	onSend: (text: string) => void;
 	onCancel: () => void;
 	onPermissionRespond: (messageId: string, optionId: string) => void;
+	showMoveToTrash?: boolean;
+	onMoveToTrash?: () => void;
 	sendDisabled?: boolean;
 	sendDisabledReason?: string;
 }): React.ReactElement {
@@ -32,6 +36,8 @@ export function AgentChatPanel({
 				availableCommands={session.availableCommands}
 				onSend={onSend}
 				onCancel={onCancel}
+				showMoveToTrash={showMoveToTrash}
+				onMoveToTrash={onMoveToTrash}
 				disabled={sendDisabled}
 				disabledReason={sendDisabledReason}
 			/>

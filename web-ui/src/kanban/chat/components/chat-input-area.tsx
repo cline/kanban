@@ -12,6 +12,8 @@ export function ChatInputArea({
 	availableCommands,
 	onSend,
 	onCancel,
+	showMoveToTrash,
+	onMoveToTrash,
 	disabled,
 	disabledReason,
 }: {
@@ -19,6 +21,8 @@ export function ChatInputArea({
 	availableCommands: ChatSlashCommand[];
 	onSend: (text: string) => void;
 	onCancel: () => void;
+	showMoveToTrash?: boolean;
+	onMoveToTrash?: () => void;
 	disabled?: boolean;
 	disabledReason?: string;
 }): React.ReactElement {
@@ -58,8 +62,21 @@ export function ChatInputArea({
 	);
 
 	return (
-		<div className="border-t border-border bg-background p-3">
-			<div className="relative">
+		<div className="bg-background">
+			{showMoveToTrash && onMoveToTrash ? (
+				<div className="border-t border-border px-3 py-2">
+					<Button
+						variant="destructive"
+						size="sm"
+						onClick={onMoveToTrash}
+						className="w-full border border-red-500/30 bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-400"
+					>
+						Move to trash
+					</Button>
+				</div>
+			) : null}
+			<div className="border-t border-border p-3">
+				<div className="relative">
 				{isPickerOpen ? (
 					<SlashCommandPicker
 						commands={filteredCommands}
@@ -81,31 +98,32 @@ export function ChatInputArea({
 					rows={1}
 					className="min-h-9 resize-none border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-0"
 				/>
-			</div>
+				</div>
 
-			<div className="mt-2 flex items-center justify-between">
-				<span className="text-xs text-muted-foreground">{disabledReason ?? "Type / for commands"}</span>
-				{isBusy ? (
-					<Button
-						variant="destructive"
-						size="sm"
-						onClick={onCancel}
-						className="border border-red-500/30 bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-400"
-					>
-						<Square className="size-3" />
-						Cancel
-					</Button>
-				) : (
-					<Button
-						size="sm"
-						onClick={handleSend}
-						disabled={!inputValue.trim() || isInputDisabled}
-						className="bg-amber-500 text-zinc-900 hover:bg-amber-400"
-					>
-						<SendHorizontal className="size-3.5" />
-						Send
-					</Button>
-				)}
+				<div className="mt-2 flex items-center justify-between">
+					<span className="text-xs text-muted-foreground">{disabledReason ?? "Type / for commands"}</span>
+					{isBusy ? (
+						<Button
+							variant="destructive"
+							size="sm"
+							onClick={onCancel}
+							className="border border-red-500/30 bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-400"
+						>
+							<Square className="size-3" />
+							Cancel
+						</Button>
+					) : (
+						<Button
+							size="sm"
+							onClick={handleSend}
+							disabled={!inputValue.trim() || isInputDisabled}
+							className="bg-amber-500 text-zinc-900 hover:bg-amber-400"
+						>
+							<SendHorizontal className="size-3.5" />
+							Send
+						</Button>
+					)}
+				</div>
 			</div>
 		</div>
 	);
