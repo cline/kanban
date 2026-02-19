@@ -4,6 +4,6 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: "node",
-		exclude: ["apps/**", "web-ui/**", "**/node_modules/**", "**/dist/**"],
+		exclude: ["apps/**", "web-ui/**", "**/node_modules/**", "**/dist/**", ".worktrees/**"],
 	},
 });

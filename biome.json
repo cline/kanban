@@ -25,7 +25,8 @@
 			"vitest.config.ts",
 			"!dist/**/*",
 			"!node_modules/**/*",
-			"!!**/node_modules"
+			"!!**/node_modules",
+			"!.worktrees/**/*"
 		]
 	},
 	"plugins": ["grit/no-process-env-destructure.grit"],
