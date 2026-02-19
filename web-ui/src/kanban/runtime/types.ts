@@ -70,7 +70,7 @@ export interface RuntimeShortcutRunResponse {
 	durationMs: number;
 }
 
-export type RuntimeBoardColumnId = "backlog" | "todo" | "in_progress" | "ready_for_review" | "done";
+export type RuntimeBoardColumnId = "backlog" | "in_progress" | "review" | "trash";
 
 export interface RuntimeBoardCard {
 	id: string;

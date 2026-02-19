@@ -3,15 +3,6 @@ import type { DropResult } from "@hello-pangea/dnd";
 import { createInitialBoardData } from "@/kanban/data/board-data";
 import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } from "@/kanban/types";
 
-const LEGACY_SEED_TASK_IDS = new Set([
-	"task-backlog-1",
-	"task-backlog-2",
-	"task-todo-1",
-	"task-progress-1",
-	"task-review-1",
-	"task-done-1",
-]);
-
 export interface TaskDraft {
 	title: string;
 	description?: string;
@@ -60,12 +51,9 @@ function withUpdatedColumns(board: BoardData, columns: BoardColumn[]): BoardData
 }
 
 function normalizeColumnId(id: string): BoardColumnId | null {
-	if (id === "backlog" || id === "todo" || id === "in_progress" || id === "ready_for_review" || id === "done") {
+	if (id === "backlog" || id === "in_progress" || id === "review" || id === "trash") {
 		return id;
 	}
-	if (id === "planning") return "todo";
-	if (id === "running") return "in_progress";
-	if (id === "review") return "ready_for_review";
 	return null;
 }
 
@@ -143,10 +131,6 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 				normalizedColumn.cards.push(card);
 			}
 		}
-	}
-
-	for (const column of normalizedColumns) {
-		column.cards = column.cards.filter((card) => !LEGACY_SEED_TASK_IDS.has(card.id));
 	}
 
 	return { columns: normalizedColumns };

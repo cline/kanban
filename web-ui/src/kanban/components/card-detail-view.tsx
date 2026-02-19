@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { ChatSessionState } from "@/kanban/chat/types";
 import { extractReferencedPaths } from "@/kanban/chat/utils/session-artifacts";
 import { AgentChatPanel } from "@/kanban/components/detail-panels/agent-chat-panel";
@@ -17,6 +18,9 @@ export function CardDetailView({
 	onSendPrompt,
 	onCancelPrompt,
 	onPermissionRespond,
+	onMoveToTrash,
+	sendDisabled,
+	sendDisabledReason,
 }: {
 	selection: CardSelection;
 	session: ChatSessionState;
@@ -25,6 +29,9 @@ export function CardDetailView({
 	onSendPrompt: (text: string) => void;
 	onCancelPrompt: () => void;
 	onPermissionRespond: (messageId: string, optionId: string) => void;
+	onMoveToTrash: () => void;
+	sendDisabled?: boolean;
+	sendDisabledReason?: string;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(selection.card.id);
@@ -98,27 +105,43 @@ export function CardDetailView({
 	}, [refresh, session.status]);
 
 	return (
-		<div className="flex min-h-0 flex-1 overflow-hidden bg-zinc-900">
+		<div className="flex min-h-0 flex-1 overflow-hidden bg-background">
 			<ColumnContextPanel selection={selection} onCardSelect={onCardSelect} />
-			<div className="flex h-full min-h-0 w-4/5 min-w-0 overflow-hidden bg-zinc-900">
-				<AgentChatPanel
-					session={session}
-					onSend={onSendPrompt}
-					onCancel={onCancelPrompt}
-					onPermissionRespond={onPermissionRespond}
-				/>
-				<DiffViewerPanel
-					timeline={session.timeline}
-					workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-					selectedPath={selectedPath}
-					onSelectedPathChange={setSelectedPath}
-				/>
-				<FileTreePanel
-					timeline={session.timeline}
-					workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-					selectedPath={selectedPath}
-					onSelectPath={setSelectedPath}
-				/>
+			<div className="flex h-full min-h-0 w-4/5 min-w-0 flex-col overflow-hidden bg-background">
+				{selection.column.id === "review" ? (
+					<div className="flex shrink-0 items-center justify-end border-b border-border px-3 py-2">
+						<Button
+							variant="destructive"
+							size="sm"
+							onClick={onMoveToTrash}
+							className="border border-red-500/30 bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-400"
+						>
+							Move to trash
+						</Button>
+					</div>
+				) : null}
+				<div className="flex min-h-0 flex-1 overflow-hidden">
+					<AgentChatPanel
+						session={session}
+						onSend={onSendPrompt}
+						onCancel={onCancelPrompt}
+						onPermissionRespond={onPermissionRespond}
+						sendDisabled={sendDisabled}
+						sendDisabledReason={sendDisabledReason}
+					/>
+					<DiffViewerPanel
+						timeline={session.timeline}
+						workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+						selectedPath={selectedPath}
+						onSelectedPathChange={setSelectedPath}
+					/>
+					<FileTreePanel
+						timeline={session.timeline}
+						workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+						selectedPath={selectedPath}
+						onSelectPath={setSelectedPath}
+					/>
+				</div>
 			</div>
 		</div>
 	);

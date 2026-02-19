@@ -385,11 +385,11 @@ function UnifiedDiff({
 				? "bg-emerald-500/10 text-emerald-200"
 				: row.variant === "removed"
 					? "bg-red-500/10 text-red-200"
-					: "text-zinc-400";
+					: "text-muted-foreground";
 
 		return (
 			<div key={row.key} className={`grid grid-cols-[2rem_minmax(0,1fr)] gap-1 rounded-none px-0 py-0.5 font-mono text-xs ${rowToneClass}`}>
-				<span className="select-none pr-1 text-right text-zinc-600">{row.lineNumber ?? ""}</span>
+				<span className="select-none pr-1 text-right text-muted-foreground/80">{row.lineNumber ?? ""}</span>
 				<DiffRowText row={row} />
 			</div>
 		);
@@ -408,7 +408,7 @@ function UnifiedDiff({
 						<button
 							type="button"
 							onClick={() => toggleBlock(item.block.id)}
-							className="grid w-full cursor-pointer grid-cols-[2rem_minmax(0,1fr)] gap-1 rounded border border-zinc-700 bg-zinc-800/85 px-0.5 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-700/80 hover:text-zinc-100"
+							className="grid w-full cursor-pointer grid-cols-[2rem_minmax(0,1fr)] gap-1 rounded border border-border bg-card px-0.5 py-1 text-left text-xs text-foreground hover:bg-secondary hover:text-foreground"
 						>
 							<span />
 							<span className="flex items-center gap-1.5">
@@ -586,10 +586,12 @@ export function DiffViewerPanel({
 	}, [scrollToPath, selectedPath]);
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-zinc-800">
+		<div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-border bg-background">
 			{groupedByPath.length === 0 ? (
 				<div className="flex flex-1 items-center justify-center px-4 text-center">
-					<p className="text-sm text-zinc-600">No diff yet. Move this task out of Backlog to kick off agent work.</p>
+					<p className="text-sm text-muted-foreground/80">
+						No diff yet. Move this task to In Progress to kick off agent work.
+					</p>
 				</div>
 			) : (
 				<div
@@ -606,7 +608,7 @@ export function DiffViewerPanel({
 								ref={(node) => {
 									sectionElementsRef.current[group.path] = node;
 								}}
-								className="rounded-lg border border-zinc-800 bg-zinc-900/80"
+								className="rounded-lg border border-border bg-card"
 							>
 								<button
 									type="button"
@@ -630,17 +632,17 @@ export function DiffViewerPanel({
 									}}
 									aria-expanded={isExpanded}
 									aria-current={selectedPath === group.path ? "true" : undefined}
-									className={`flex w-full min-w-0 cursor-pointer items-center justify-between gap-2 bg-amber-500/15 px-2 py-1.5 text-left hover:bg-amber-500/20 ${
+									className={`flex w-full min-w-0 cursor-pointer items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-secondary ${
 										isExpanded
-											? "rounded-t border border-amber-500/25"
-											: "rounded border border-amber-500/25"
+											? "rounded-t-lg border-b border-border"
+											: "rounded-lg"
 									}`}
 								>
 									<div className="flex min-w-0 items-center gap-1.5">
-										<Chevron className="size-3 text-amber-300/80" />
+										<Chevron className="size-3 text-muted-foreground" />
 										<span
 											title={group.path}
-											className={`min-w-0 truncate font-mono text-xs ${selectedPath === group.path ? "text-amber-100" : "text-amber-200/90"}`}
+											className={`min-w-0 truncate font-mono text-xs ${selectedPath === group.path ? "text-foreground" : "text-foreground"}`}
 										>
 											{truncatePathMiddle(group.path)}
 										</span>
@@ -655,7 +657,7 @@ export function DiffViewerPanel({
 										{group.entries.map((entry, index) => (
 											<div
 												key={entry.id}
-												className={index === 0 ? "overflow-x-auto" : "overflow-x-auto border-t border-zinc-800"}
+												className={index === 0 ? "overflow-x-auto" : "overflow-x-auto border-t border-border"}
 											>
 												<UnifiedDiff oldText={entry.oldText} newText={entry.newText} />
 											</div>

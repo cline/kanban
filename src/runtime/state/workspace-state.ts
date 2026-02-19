@@ -24,10 +24,9 @@ const INDEX_VERSION = 1;
 
 const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "backlog", title: "Backlog" },
-	{ id: "todo", title: "To Do" },
 	{ id: "in_progress", title: "In Progress" },
-	{ id: "ready_for_review", title: "Ready for Review" },
-	{ id: "done", title: "Done" },
+	{ id: "review", title: "Review" },
+	{ id: "trash", title: "Trash" },
 ];
 
 const VALID_SESSION_STATUSES = new Set(["idle", "thinking", "tool_running", "cancelled"]);
@@ -104,23 +103,8 @@ async function writeJsonFileAtomic(path: string, payload: unknown): Promise<void
 }
 
 function normalizeColumnId(input: unknown): RuntimeBoardColumnId | null {
-	if (
-		input === "backlog" ||
-		input === "todo" ||
-		input === "in_progress" ||
-		input === "ready_for_review" ||
-		input === "done"
-	) {
+	if (input === "backlog" || input === "in_progress" || input === "review" || input === "trash") {
 		return input;
-	}
-	if (input === "planning") {
-		return "todo";
-	}
-	if (input === "running") {
-		return "in_progress";
-	}
-	if (input === "review") {
-		return "ready_for_review";
 	}
 	return null;
 }

@@ -1,7 +1,6 @@
 export const columnAccentColors: Record<string, string> = {
-	backlog: "#71717a",
-	todo: "#3b82f6",
+	backlog: "#6e7681",
 	in_progress: "#f59e0b",
-	ready_for_review: "#22c55e",
-	done: "#14b8a6",
+	review: "#238636",
+	trash: "#da3633",
 };

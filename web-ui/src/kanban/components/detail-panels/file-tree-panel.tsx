@@ -50,10 +50,10 @@ function FileTreeRow({
 				}}
 				className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors ${
 					isSelected
-						? "cursor-pointer bg-zinc-800 text-zinc-100"
+						? "cursor-pointer bg-card text-foreground"
 						: isDirectory
-							? "cursor-default text-zinc-400"
-							: "cursor-pointer text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
+							? "cursor-default text-muted-foreground"
+							: "cursor-pointer text-muted-foreground hover:bg-card hover:text-foreground"
 				}`}
 				style={{ paddingLeft: `${depth * 0.75 + 0.5}rem` }}
 			>
@@ -123,11 +123,11 @@ export function FileTreePanel({
 	}, [timeline, workspaceFiles]);
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-[0.6] flex-col">
+		<div className="flex min-h-0 min-w-0 flex-[0.6] flex-col bg-background">
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
 				{tree.length === 0 ? (
 					<div className="flex h-full items-center justify-center px-3 text-center">
-						<p className="text-sm text-zinc-600">Files touched by ACP tool calls will appear here.</p>
+						<p className="text-sm text-muted-foreground/80">Files touched by ACP tool calls will appear here.</p>
 					</div>
 				) : (
 					<div className="space-y-0.5">

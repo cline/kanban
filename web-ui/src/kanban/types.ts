@@ -1,4 +1,4 @@
-export type BoardColumnId = "backlog" | "todo" | "in_progress" | "ready_for_review" | "done";
+export type BoardColumnId = "backlog" | "in_progress" | "review" | "trash";
 
 export interface BoardCard {
 	id: string;

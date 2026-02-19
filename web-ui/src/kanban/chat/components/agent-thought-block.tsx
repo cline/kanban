@@ -21,8 +21,8 @@ export function AgentThoughtBlock({ thought }: { thought: ChatAgentThought }): R
 	const Chevron = open ? ChevronDown : ChevronRight;
 
 	return (
-		<Collapsible open={open} onOpenChange={setOpen} className="border-l-2 border-zinc-600 pl-3">
-			<CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-400">
+		<Collapsible open={open} onOpenChange={setOpen} className="border-l-2 border-muted-foreground/80 pl-3">
+			<CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
 				<Chevron className="size-3" />
 				<span>
 					{thought.isStreaming ? (
@@ -33,7 +33,7 @@ export function AgentThoughtBlock({ thought }: { thought: ChatAgentThought }): R
 				</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				<pre className="mt-1 min-w-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-zinc-500 [overflow-wrap:anywhere]">
+				<pre className="mt-1 min-w-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
 					{thought.text}
 				</pre>
 			</CollapsibleContent>

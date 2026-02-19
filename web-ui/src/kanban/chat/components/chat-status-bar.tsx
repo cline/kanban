@@ -6,9 +6,9 @@ const statusDisplay: Record<
 	Exclude<ChatSessionStatus, "idle">,
 	{ Icon: React.ElementType; label: string; iconClass: string }
 > = {
-	thinking: { Icon: Loader2, label: "Agent is thinking...", iconClass: "animate-spin text-zinc-400" },
+	thinking: { Icon: Loader2, label: "Agent is thinking...", iconClass: "animate-spin text-muted-foreground" },
 	tool_running: { Icon: Loader2, label: "Running tool...", iconClass: "animate-spin text-amber-400" },
-	cancelled: { Icon: Ban, label: "Cancelled", iconClass: "text-zinc-500" },
+	cancelled: { Icon: Ban, label: "Cancelled", iconClass: "text-muted-foreground" },
 };
 
 export function ChatStatusBar({ status }: { status: ChatSessionStatus }): React.ReactElement | null {
@@ -17,9 +17,9 @@ export function ChatStatusBar({ status }: { status: ChatSessionStatus }): React.
 	const { Icon, label, iconClass } = statusDisplay[status];
 
 	return (
-		<div className="flex items-center gap-2 border-t border-zinc-800 px-3 py-1.5">
+		<div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
 			<Icon className={`size-3 ${iconClass}`} />
-			<span className="text-xs text-zinc-400">{label}</span>
+			<span className="text-xs text-muted-foreground">{label}</span>
 		</div>
 	);
 }
