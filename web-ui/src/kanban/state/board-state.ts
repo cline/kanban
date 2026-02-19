@@ -3,7 +3,6 @@ import type { DropResult } from "@hello-pangea/dnd";
 import { createInitialBoardData } from "@/kanban/data/board-data";
 import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } from "@/kanban/types";
 
-const BOARD_STORAGE_KEY = "kanbanana.board.v1";
 const LEGACY_SEED_TASK_IDS = new Set([
 	"task-backlog-1",
 	"task-backlog-2",
@@ -108,7 +107,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	};
 }
 
-function normalizeBoardData(rawBoard: unknown): BoardData | null {
+export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 	if (!rawBoard || typeof rawBoard !== "object") {
 		return null;
 	}
@@ -151,33 +150,6 @@ function normalizeBoardData(rawBoard: unknown): BoardData | null {
 	}
 
 	return { columns: normalizedColumns };
-}
-
-export function loadBoardState(): BoardData {
-	if (typeof window === "undefined") {
-		return createInitialBoardData();
-	}
-
-	const raw = window.localStorage.getItem(BOARD_STORAGE_KEY);
-	if (!raw) {
-		return createInitialBoardData();
-	}
-
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		const normalized = normalizeBoardData(parsed);
-		if (!normalized) {
-			return createInitialBoardData();
-		}
-		return normalized;
-	} catch {
-		return createInitialBoardData();
-	}
-}
-
-export function persistBoardState(board: BoardData): void {
-	if (typeof window === "undefined") return;
-	window.localStorage.setItem(BOARD_STORAGE_KEY, JSON.stringify(board));
 }
 
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {

@@ -20,10 +20,13 @@ import type {
 	RuntimeShortcutRunRequest,
 	RuntimeShortcutRunResponse,
 	RuntimeWorkspaceChangesRequest,
+	RuntimeWorkspaceStateResponse,
+	RuntimeWorkspaceStateSaveRequest,
 } from "./runtime/acp/api-contract.js";
 import { probeAcpCommand } from "./runtime/acp/probe-acp-command.js";
 import { cancelAcpTurn, runAcpTurn, shutdownAcpRuntimeSessions } from "./runtime/acp/run-acp-turn.js";
 import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
+import { loadWorkspaceState, saveWorkspaceState } from "./runtime/state/workspace-state.js";
 import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
 
 interface CliOptions {
@@ -196,7 +199,7 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
 	return JSON.parse(body) as T;
 }
 
-function resolveAcpCommand(projectConfigCommand: string | null): {
+function resolveAcpCommand(configCommand: string | null): {
 	command: string | null;
 	source: RuntimeAcpCommandSource;
 } {
@@ -207,10 +210,10 @@ function resolveAcpCommand(projectConfigCommand: string | null): {
 			source: "env",
 		};
 	}
-	if (projectConfigCommand) {
+	if (configCommand) {
 		return {
-			command: projectConfigCommand,
-			source: "project",
+			command: configCommand,
+			source: "config",
 		};
 	}
 	return {
@@ -311,6 +314,19 @@ function validateWorkspaceChangesRequest(query: URLSearchParams): RuntimeWorkspa
 		throw new Error("Missing taskId query parameter.");
 	}
 	return { taskId };
+}
+
+function validateWorkspaceStateSaveRequest(body: RuntimeWorkspaceStateSaveRequest): RuntimeWorkspaceStateSaveRequest {
+	if (!body || typeof body !== "object") {
+		throw new Error("Invalid workspace state payload.");
+	}
+	if (!body.board || typeof body.board !== "object") {
+		throw new Error("Workspace state payload is missing board data.");
+	}
+	if (!body.sessions || typeof body.sessions !== "object" || Array.isArray(body.sessions)) {
+		throw new Error("Workspace state payload is missing sessions data.");
+	}
+	return body;
 }
 
 function validateRuntimeConfigSaveRequest(body: RuntimeConfigSaveRequest): RuntimeConfigSaveRequest {
@@ -624,6 +640,31 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 				try {
 					validateWorkspaceChangesRequest(requestUrl.searchParams);
 					const response = await getWorkspaceChanges(process.cwd());
+					sendJson(res, 200, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/workspace/state" && req.method === "GET") {
+				try {
+					const response: RuntimeWorkspaceStateResponse = await loadWorkspaceState(process.cwd());
+					sendJson(res, 200, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/workspace/state" && req.method === "PUT") {
+				try {
+					const body = validateWorkspaceStateSaveRequest(
+						await readJsonBody<RuntimeWorkspaceStateSaveRequest>(req),
+					);
+					const response: RuntimeWorkspaceStateResponse = await saveWorkspaceState(process.cwd(), body);
 					sendJson(res, 200, response);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);

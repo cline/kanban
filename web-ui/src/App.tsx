@@ -19,26 +19,33 @@ import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
 import { TopBar } from "@/kanban/components/top-bar";
+import { createInitialBoardData } from "@/kanban/data/board-data";
 import { useRuntimeAcpHealth } from "@/kanban/runtime/use-runtime-acp-health";
 import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
-import type { RuntimeShortcutRunResponse } from "@/kanban/runtime/types";
+import type {
+	RuntimeShortcutRunResponse,
+	RuntimeWorkspaceStateResponse,
+	RuntimeWorkspaceStateSaveRequest,
+} from "@/kanban/runtime/types";
 import {
 	addTaskToColumn,
 	applyDragResult,
 	findCardSelection,
 	getTaskColumnId,
-	loadBoardState,
 	moveTaskToColumn,
-	persistBoardState,
+	normalizeBoardData,
 } from "@/kanban/state/board-state";
 import type { BoardColumnId, BoardData } from "@/kanban/types";
 
 const acpClient = new BrowserAcpClient();
 const KICKOFF_COLUMNS = new Set<BoardColumnId>(["todo", "in_progress"]);
+const WORKSPACE_STATE_PERSIST_DEBOUNCE_MS = 300;
 
 export default function App(): ReactElement {
-	const [board, setBoard] = useState<BoardData>(() => loadBoardState());
+	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+	const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+	const [isWorkspaceStateReady, setIsWorkspaceStateReady] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 	const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
@@ -62,7 +69,7 @@ export default function App(): ReactElement {
 		});
 	}, []);
 
-	const { getSession, ensureSession, startTaskRun, sendPrompt, cancelPrompt, respondToPermission } =
+	const { sessions, hydrateSessions, getSession, ensureSession, startTaskRun, sendPrompt, cancelPrompt, respondToPermission } =
 		useTaskChatSessions({
 			acpClient,
 			onTaskRunComplete: handleTaskRunComplete,
@@ -86,8 +93,63 @@ export default function App(): ReactElement {
 	}, [board.columns]);
 
 	useEffect(() => {
-		persistBoardState(board);
-	}, [board]);
+		let cancelled = false;
+		const loadWorkspaceState = async () => {
+			try {
+				const response = await fetch("/api/workspace/state");
+				if (!response.ok) {
+					throw new Error(`Workspace state request failed with ${response.status}`);
+				}
+				const payload = (await response.json()) as RuntimeWorkspaceStateResponse;
+				if (cancelled) {
+					return;
+				}
+				const normalized = normalizeBoardData(payload.board) ?? createInitialBoardData();
+				setWorkspacePath(payload.repoPath);
+				setBoard(normalized);
+				hydrateSessions(payload.sessions);
+			} catch {
+				if (!cancelled) {
+					setWorkspacePath(null);
+					setBoard(createInitialBoardData());
+					hydrateSessions({});
+				}
+			} finally {
+				if (!cancelled) {
+					setIsWorkspaceStateReady(true);
+				}
+			}
+		};
+
+		void loadWorkspaceState();
+		return () => {
+			cancelled = true;
+		};
+	}, [hydrateSessions]);
+
+	useEffect(() => {
+		if (!isWorkspaceStateReady) {
+			return;
+		}
+		const timeoutId = window.setTimeout(() => {
+			const payload: RuntimeWorkspaceStateSaveRequest = {
+				board,
+				sessions,
+			};
+			void fetch("/api/workspace/state", {
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(payload),
+			}).catch(() => {
+				// Keep the UI usable even if persistence is temporarily unavailable.
+			});
+		}, WORKSPACE_STATE_PERSIST_DEBOUNCE_MS);
+		return () => {
+			window.clearTimeout(timeoutId);
+		};
+	}, [board, isWorkspaceStateReady, sessions]);
 
 	useEffect(() => {
 		if (selectedTaskId && !selectedCard) {
@@ -102,6 +164,9 @@ export default function App(): ReactElement {
 	}, [ensureSession, selectedCard]);
 
 	useEffect(() => {
+		if (!isWorkspaceStateReady) {
+			return;
+		}
 		for (const column of board.columns) {
 			if (!KICKOFF_COLUMNS.has(column.id)) {
 				continue;
@@ -113,7 +178,22 @@ export default function App(): ReactElement {
 				}
 			}
 		}
-	}, [board.columns, getSession, startTaskRun]);
+	}, [board.columns, getSession, isWorkspaceStateReady, startTaskRun]);
+
+	const workspaceTitle = useMemo(() => {
+		if (!workspacePath) {
+			return null;
+		}
+		const segments = workspacePath.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
+		if (segments.length === 0) {
+			return workspacePath;
+		}
+		return segments[segments.length - 1] ?? workspacePath;
+	}, [workspacePath]);
+
+	useEffect(() => {
+		document.title = workspaceTitle ? `${workspaceTitle} | Kanbanana` : "Kanbanana";
+	}, [workspaceTitle]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -284,6 +364,7 @@ export default function App(): ReactElement {
 			<TopBar
 				onBack={selectedCard ? handleBack : undefined}
 				subtitle={selectedCard?.column.title}
+				workspacePath={workspacePath ?? undefined}
 				runtimeHint={runtimeHint}
 				onOpenSettings={() => setIsSettingsOpen(true)}
 				shortcuts={runtimeProjectConfig?.shortcuts ?? []}

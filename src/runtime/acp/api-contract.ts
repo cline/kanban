@@ -168,7 +168,7 @@ export type RuntimeAcpTurnStreamEvent =
 	| RuntimeAcpTurnStreamCompleteEvent
 	| RuntimeAcpTurnStreamErrorEvent;
 
-export type RuntimeAcpCommandSource = "env" | "project" | "none";
+export type RuntimeAcpCommandSource = "env" | "config" | "none";
 
 export interface RuntimeAcpHealthResponse {
 	available: boolean;
@@ -257,6 +257,45 @@ export interface RuntimeProjectShortcut {
 
 export interface RuntimeShortcutRunRequest {
 	command: string;
+}
+
+export type RuntimeBoardColumnId = "backlog" | "todo" | "in_progress" | "ready_for_review" | "done";
+
+export interface RuntimeBoardCard {
+	id: string;
+	title: string;
+	description: string;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface RuntimeBoardColumn {
+	id: RuntimeBoardColumnId;
+	title: string;
+	cards: RuntimeBoardCard[];
+}
+
+export interface RuntimeBoardData {
+	columns: RuntimeBoardColumn[];
+}
+
+export interface RuntimeChatSessionState {
+	sessionId: string;
+	status: RuntimeAcpTurnStatus | "cancelled";
+	timeline: RuntimeTimelineEntry[];
+	availableCommands: RuntimeAvailableCommand[];
+}
+
+export interface RuntimeWorkspaceStateResponse {
+	repoPath: string;
+	statePath: string;
+	board: RuntimeBoardData;
+	sessions: Record<string, RuntimeChatSessionState>;
+}
+
+export interface RuntimeWorkspaceStateSaveRequest {
+	board: RuntimeBoardData;
+	sessions: Record<string, RuntimeChatSessionState>;
 }
 
 export interface RuntimeShortcutRunResponse {

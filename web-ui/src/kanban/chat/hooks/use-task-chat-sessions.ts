@@ -9,9 +9,6 @@ import type {
 } from "@/kanban/chat/types";
 import type { BoardCard } from "@/kanban/types";
 
-const SESSION_STORAGE_KEY = "kanbanana.task-sessions.v1";
-const SESSION_PERSIST_DEBOUNCE_MS = 250;
-
 const defaultCommands: ChatSlashCommand[] = [
 	{ name: "plan", description: "Create or update a plan for this task", input: { hint: "what to plan" } },
 	{ name: "review", description: "Review changes and risks for this task" },
@@ -28,25 +25,68 @@ function createEmptySession(taskId: string): ChatSessionState {
 	};
 }
 
-function loadSessions(): Record<string, ChatSessionState> {
-	if (typeof window === "undefined") {
-		return {};
+function normalizeSessionStatus(status: unknown): ChatSessionStatus {
+	if (status === "thinking" || status === "tool_running" || status === "cancelled" || status === "idle") {
+		return status;
 	}
+	return "idle";
+}
 
-	const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
-	if (!raw) {
-		return {};
+function normalizeAvailableCommands(commands: unknown): ChatSlashCommand[] {
+	if (!Array.isArray(commands)) {
+		return defaultCommands;
 	}
-
-	try {
-		const parsed = JSON.parse(raw) as Record<string, ChatSessionState>;
-		if (!parsed || typeof parsed !== "object") {
-			return {};
+	const normalized: ChatSlashCommand[] = [];
+	for (const command of commands) {
+		if (!command || typeof command !== "object") {
+			continue;
 		}
-		return parsed;
-	} catch {
+		const candidate = command as { name?: unknown; description?: unknown; input?: unknown };
+		if (typeof candidate.name !== "string" || typeof candidate.description !== "string") {
+			continue;
+		}
+		let input: ChatSlashCommand["input"];
+		if (candidate.input && typeof candidate.input === "object") {
+			const hint = (candidate.input as { hint?: unknown }).hint;
+			if (typeof hint === "string") {
+				input = { hint };
+			}
+		}
+		normalized.push({
+			name: candidate.name,
+			description: candidate.description,
+			input,
+		});
+	}
+	return normalized.length > 0 ? normalized : defaultCommands;
+}
+
+function normalizeSessions(raw: unknown): Record<string, ChatSessionState> {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
 		return {};
 	}
+	const sessions: Record<string, ChatSessionState> = {};
+	for (const [taskId, value] of Object.entries(raw as Record<string, unknown>)) {
+		if (!value || typeof value !== "object") {
+			continue;
+		}
+		const source = value as {
+			sessionId?: unknown;
+			status?: unknown;
+			timeline?: unknown;
+			availableCommands?: unknown;
+		};
+		sessions[taskId] = {
+			sessionId:
+				typeof source.sessionId === "string" && source.sessionId
+					? source.sessionId
+					: `task-${taskId}`,
+			status: normalizeSessionStatus(source.status),
+			timeline: Array.isArray(source.timeline) ? (source.timeline as ChatTimelineEntry[]) : [],
+			availableCommands: normalizeAvailableCommands(source.availableCommands),
+		};
+	}
+	return sessions;
 }
 
 function upsertTimelineEntry(timeline: ChatTimelineEntry[], nextEntry: ChatTimelineEntry): ChatTimelineEntry[] {
@@ -73,12 +113,14 @@ function createOptimisticUserEntry(text: string): ChatTimelineEntry {
 }
 
 export interface UseTaskChatSessionsResult {
+	sessions: Record<string, ChatSessionState>;
 	getSession: (taskId: string) => ChatSessionState;
 	ensureSession: (taskId: string) => void;
 	startTaskRun: (task: BoardCard) => void;
 	sendPrompt: (task: BoardCard, text: string) => void;
 	cancelPrompt: (taskId: string) => void;
 	respondToPermission: (taskId: string, messageId: string, optionId: string) => void;
+	hydrateSessions: (nextSessions: unknown) => void;
 }
 
 export function useTaskChatSessions({
@@ -88,20 +130,8 @@ export function useTaskChatSessions({
 	acpClient: AcpClient;
 	onTaskRunComplete: (taskId: string) => void;
 }): UseTaskChatSessionsResult {
-	const [sessions, setSessions] = useState<Record<string, ChatSessionState>>(() => loadSessions());
+	const [sessions, setSessions] = useState<Record<string, ChatSessionState>>({});
 	const activeCancelsRef = useRef<Record<string, () => void>>({});
-
-	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
-		}
-		const timeoutId = window.setTimeout(() => {
-			window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions));
-		}, SESSION_PERSIST_DEBOUNCE_MS);
-		return () => {
-			window.clearTimeout(timeoutId);
-		};
-	}, [sessions]);
 
 	useEffect(() => {
 		return () => {
@@ -256,16 +286,22 @@ export function useTaskChatSessions({
 		[updateSession],
 	);
 
+	const hydrateSessions = useCallback((nextSessions: unknown) => {
+		setSessions(normalizeSessions(nextSessions));
+	}, []);
+
 	const getSession = useMemo(() => {
 		return (taskId: string): ChatSessionState => sessions[taskId] ?? createEmptySession(taskId);
 	}, [sessions]);
 
 	return {
+		sessions,
 		getSession,
 		ensureSession,
 		startTaskRun,
 		sendPrompt,
 		cancelPrompt,
 		respondToPermission,
+		hydrateSessions,
 	};
 }

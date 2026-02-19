@@ -2,9 +2,14 @@ import { ArrowLeft, Settings } from "lucide-react";
 
 import type { RuntimeProjectShortcut } from "@/kanban/runtime/types";
 
+function getWorkspacePathSegments(path: string): string[] {
+	return path.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
+}
+
 export function TopBar({
 	onBack,
 	subtitle,
+	workspacePath,
 	runtimeHint,
 	onOpenSettings,
 	shortcuts,
@@ -13,15 +18,19 @@ export function TopBar({
 }: {
 	onBack?: () => void;
 	subtitle?: string;
+	workspacePath?: string;
 	runtimeHint?: string;
 	onOpenSettings?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
 	runningShortcutId?: string | null;
 	onRunShortcut?: (shortcutId: string) => void;
 }): React.ReactElement {
+	const workspaceSegments = workspacePath ? getWorkspacePathSegments(workspacePath) : [];
+	const isAbsolutePath = Boolean(workspacePath && (workspacePath.startsWith("/") || workspacePath.startsWith("\\")));
+
 	return (
 		<header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4">
-			<div className="flex items-center gap-2">
+			<div className="flex min-w-0 items-center gap-2">
 				{onBack ? (
 					<button
 						type="button"
@@ -40,6 +49,27 @@ export function TopBar({
 					<>
 						<span className="text-zinc-600">/</span>
 						<span className="text-sm font-medium text-zinc-400">{subtitle}</span>
+					</>
+				) : null}
+				{workspacePath ? (
+					<>
+						<span className="text-zinc-700">|</span>
+						<div
+							className="min-w-0 max-w-[40rem] truncate font-mono text-xs text-zinc-500"
+							title={workspacePath}
+							data-testid="workspace-path"
+						>
+							<span>{isAbsolutePath ? "/" : ""}</span>
+							{workspaceSegments.map((segment, index) => {
+								const isLast = index === workspaceSegments.length - 1;
+								return (
+									<span key={`${segment}-${index}`}>
+										{index === 0 ? "" : "/"}
+										<span className={isLast ? "text-zinc-100" : "text-zinc-500"}>{segment}</span>
+									</span>
+								);
+							})}
+						</div>
 					</>
 				) : null}
 				{runtimeHint ? (
