@@ -43,6 +43,37 @@ node dist/cli.js
 
 This mode serves built web assets from `dist/web-ui` and does not hot reload the web UI.
 
+## Run `kanbanana` from any directory
+
+Create a global npm link from this repo:
+
+```bash
+npm run build
+npm link
+```
+
+Verify:
+
+```bash
+which kanbanana
+kanbanana --version
+```
+
+Then run from any project directory:
+
+```bash
+cd /path/to/your/project
+kanbanana
+```
+
+After local code changes, run `npm run build` again before using the linked command.
+
+Remove the global link:
+
+```bash
+npm unlink -g kanbanana
+```
+
 ## Useful checks
 
 ```bash
