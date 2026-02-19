@@ -1,4 +1,5 @@
 The following is a chatgpt session where I discussed my idea for Kanbanana.
+Note: This is a historical ideation transcript. References to repo-local `.kanbanana` state are outdated, and runtime state now lives in global `~/.kanbanana`.
 
 # User
 
@@ -227,4 +228,3 @@ One thing I really like that we should add is a script shortcut button. Essentia
 The point is that it runs something, it runs some commands that would then "run the application". There could be other sorts of things here too, like a test shortcut button. What this would do is maybe open up a little preview of the command output under the button or something. I'm not sure exactly what that looks like.
 
 These buttons, these shortcuts you set up would save this for a configuration file in the project itself. Before we talked about having a global home directory level can banana, but in this case, since it's tied to a project, it would be project level. You would have a doc camp banana in your repository with this configuration file for these shortcuts, and you could then come in and share with your team. I think that's really cool to have something like that too. Wonder if there are other things we would put here that are at the project level, that are kind of worth sharing with your team, essentially that use can banana.
-

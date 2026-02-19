@@ -16,7 +16,7 @@
 2. One task card maps to one CLI process.
 3. Ready-for-review does not auto-transition to done.
 4. Worktree cleanup should follow explicit user move to done.
-5. ACP command resolution should prioritize `KANBANANA_ACP_COMMAND` and fall back to project config in `.kanbanana/config.json`.
+5. ACP command resolution should prioritize `KANBANANA_ACP_COMMAND` and fall back to global config in `~/.kanbanana/config.json`.
 
 ## Deferred by Design
 1. Multi-agent race is intentionally not part of the early critical path.

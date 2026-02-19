@@ -16,11 +16,16 @@
 - Added persistent task-scoped ACP runtime sessions with turn reuse and server-side cancellation.
 - Added runtime git-backed workspace changes API and wired detail diff/file panels to runtime-first data.
 - Added lightweight ACP command detection signal in health endpoint and top bar runtime mode hint.
-- Added project-level runtime ACP setup API and UI dialog so ACP command can be configured without manual env setup.
+- Added runtime ACP setup API and UI dialog so ACP command can be configured without manual env setup, persisted in global `~/.kanbanana/config.json`.
 - Added runtime error handling so ACP failures surface in chat and only true runtime-unavailable cases fall back to mock.
 - Pulled forward keyboard-first baseline: command palette task search/open (`Cmd/Ctrl+K`), quick-create (`C`), and detail arrow navigation.
 - Added shared project shortcut config, editable shortcut buttons, runtime shortcut execution, and inline output preview.
 - Mapped implementation direction to `vibe-kanban` split-pane/task-detail patterns while keeping scope local-first and minimal.
+- Removed seeded board demo data and migrated legacy localStorage seed cards out of persisted board state.
+- Changed kickoff behavior so tasks moved out of Backlog into active columns auto-start ACP runs.
+- Removed browser-side mock ACP fallback and now surface runtime misconfiguration/network issues directly in task chat.
+- Expanded runtime settings/config to enumerate supported ACP agents with installed/configured status and effective command visibility.
+- Added Playwright smoke coverage for empty-board task creation/opening flow and the settings button dialog path.
 
 ## Next Up
 1. Run one real ACP provider end-to-end validation using `KANBANANA_ACP_COMMAND`.

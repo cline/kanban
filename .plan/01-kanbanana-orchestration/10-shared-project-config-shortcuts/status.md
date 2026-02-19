@@ -10,7 +10,7 @@
 ## Next Tasks
 1. Add optional icon picker and standardized icon rendering for shortcut buttons.
 2. Add stronger execution guardrails (timeouts are in place, but UX warnings/confirmations are still minimal).
-3. Add lightweight docs/example `.kanbanana/config.json` for team onboarding.
+3. Add lightweight docs/example `~/.kanbanana/config.json` for onboarding.
 
 ## Resume From Here
-- Continue from current `.kanbanana/config.json` schema, top-bar shortcut buttons, and output preview panel.
+- Continue from current `~/.kanbanana/config.json` schema, top-bar shortcut buttons, and output preview panel.

@@ -11,11 +11,11 @@ It should let users dispatch many tasks, monitor progress, and review outcomes f
    - exposes local API and event stream
    - runs ACP orchestration and task lifecycle
 3. Scope resolution:
-   - inside a repo/workspace: use project scope at `<repo>/.kanbanana`
-   - outside a repo/workspace: use global scope at `~/.kanbanana`
+   - board and runtime APIs operate on the current working repo/workspace
+   - runtime config/state storage is global at `~/.kanbanana`
 4. Storage model:
-   - `~/.kanbanana` for global config/state/logs
-   - `<repo>/.kanbanana` for project config/state/logs
+   - `~/.kanbanana` for runtime config/state/logs
+   - repo data remains in repo files, git metadata, and worktrees when enabled
 5. Repo structure direction:
    - `web-ui` for webview UI
    - `packages/cli` for command entrypoint and server bootstrap
@@ -51,7 +51,7 @@ It should let users dispatch many tasks, monitor progress, and review outcomes f
 9. `09-keyboard-speed-ux`
    - Add keyboard-first navigation and command palette flow.
 10. `10-shared-project-config-shortcuts`
-   - Add repo-shared `.kanbanana` config and script shortcut buttons.
+   - Add global runtime config shortcuts and script shortcut buttons.
 11. `11-polish-packaging`
    - Add onboarding polish, packaging hardening, and minimal usage/subscription page.
 
