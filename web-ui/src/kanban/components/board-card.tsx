@@ -7,11 +7,15 @@ export function BoardCard({
 	card,
 	index,
 	sessionSummary,
+	selected = false,
+	accentColor,
 	onClick,
 }: {
 	card: BoardCardModel;
 	index: number;
 	sessionSummary?: RuntimeTaskSessionSummary;
+	selected?: boolean;
+	accentColor?: string;
 	onClick?: () => void;
 }): React.ReactElement {
 	return (
@@ -30,11 +34,15 @@ export function BoardCard({
 					className={`mb-2 rounded border-2 bg-card p-3 shadow-md ${
 						snapshot.isDragging
 							? "shadow-lg"
-							: "cursor-grab border-border card-interactive"
+							: selected
+								? "cursor-grab shadow-lg"
+								: "cursor-grab border-border card-interactive"
 					}`}
 					style={{
 						...provided.draggableProps.style,
-						...(snapshot.isDragging ? { borderColor: "var(--col-accent)" } : undefined),
+						...((snapshot.isDragging || selected)
+							? { borderColor: accentColor ?? "var(--col-accent)" }
+							: undefined),
 					}}
 				>
 					<p className="text-sm font-medium leading-snug text-foreground line-clamp-2">{card.title}</p>

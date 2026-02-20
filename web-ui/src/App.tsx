@@ -756,7 +756,11 @@ export default function App(): ReactElement {
 	);
 
 	const handleDragEnd = useCallback(
-		(result: DropResult) => {
+		(result: DropResult, options?: { selectDroppedTask?: boolean }) => {
+			if (options?.selectDroppedTask && result.type === "CARD" && result.destination) {
+				setSelectedTaskId(result.draggableId);
+			}
+
 			const applied = applyDragResult(board, result);
 
 			const moveEvent = applied.moveEvent;
@@ -808,6 +812,13 @@ export default function App(): ReactElement {
 			}
 		},
 		[board, ensureTaskWorkspace, requestMoveTaskToTrash, startTaskSession],
+	);
+
+	const handleDetailTaskDragEnd = useCallback(
+		(result: DropResult) => {
+			handleDragEnd(result, { selectDroppedTask: true });
+		},
+		[handleDragEnd],
 	);
 
 	const handleCardSelect = useCallback((taskId: string) => {
@@ -893,6 +904,24 @@ export default function App(): ReactElement {
 			"After preserving the work, you can safely move this task to Trash.",
 		];
 	}, [pendingTrashWarning]);
+	const inlineTaskCreator = isInlineTaskCreateOpen ? (
+		<TaskInlineCreateCard
+			prompt={newTaskPrompt}
+			onPromptChange={setNewTaskPrompt}
+			onCreate={handleCreateTask}
+			onCancel={handleCancelCreateTask}
+			startInPlanMode={newTaskStartInPlanMode}
+			onStartInPlanModeChange={setNewTaskStartInPlanMode}
+			workspaceMode={newTaskWorkspaceMode}
+			onWorkspaceModeChange={setNewTaskWorkspaceMode}
+			workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
+			canUseWorktree={canUseWorktree}
+			branchRef={newTaskBranchRef}
+			branchOptions={createTaskBranchOptions}
+			onBranchRefChange={setNewTaskBranchRef}
+			disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
+		/>
+	) : undefined;
 
 	return (
 		<div className="flex h-svh min-w-0 flex-col overflow-hidden bg-background text-foreground">
@@ -920,26 +949,7 @@ export default function App(): ReactElement {
 					taskSessions={sessions}
 					onCardSelect={handleCardSelect}
 					onCreateTask={handleOpenCreateTask}
-					inlineTaskCreator={
-						isInlineTaskCreateOpen ? (
-							<TaskInlineCreateCard
-								prompt={newTaskPrompt}
-								onPromptChange={setNewTaskPrompt}
-								onCreate={handleCreateTask}
-								onCancel={handleCancelCreateTask}
-								startInPlanMode={newTaskStartInPlanMode}
-								onStartInPlanModeChange={setNewTaskStartInPlanMode}
-								workspaceMode={newTaskWorkspaceMode}
-								onWorkspaceModeChange={setNewTaskWorkspaceMode}
-								workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
-								canUseWorktree={canUseWorktree}
-								branchRef={newTaskBranchRef}
-								branchOptions={createTaskBranchOptions}
-								onBranchRefChange={setNewTaskBranchRef}
-								disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
-							/>
-						) : undefined
-					}
+					inlineTaskCreator={inlineTaskCreator}
 					onDragEnd={handleDragEnd}
 				/>
 			</div>
@@ -947,9 +957,13 @@ export default function App(): ReactElement {
 				<CardDetailView
 					selection={selectedCard}
 					sessionSummary={detailSession}
+					taskSessions={sessions}
 					onSessionSummary={upsertSession}
 					onBack={handleBack}
 					onCardSelect={handleCardSelect}
+					onTaskDragEnd={handleDetailTaskDragEnd}
+					onCreateTask={handleOpenCreateTask}
+					inlineTaskCreator={inlineTaskCreator}
 					onMoveToTrash={handleMoveToTrash}
 				/>
 			) : null}

@@ -1,4 +1,6 @@
+import type { DropResult } from "@hello-pangea/dnd";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
 import { ColumnContextPanel } from "@/kanban/components/detail-panels/column-context-panel";
@@ -13,16 +15,24 @@ const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 1500;
 export function CardDetailView({
 	selection,
 	sessionSummary,
+	taskSessions,
 	onSessionSummary,
 	onBack,
 	onCardSelect,
+	onTaskDragEnd,
+	onCreateTask,
+	inlineTaskCreator,
 	onMoveToTrash,
 }: {
 	selection: CardSelection;
 	sessionSummary: RuntimeTaskSessionSummary | null;
+	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
 	onBack: () => void;
 	onCardSelect: (taskId: string) => void;
+	onTaskDragEnd: (result: DropResult) => void;
+	onCreateTask?: () => void;
+	inlineTaskCreator?: ReactNode;
 	onMoveToTrash: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -115,7 +125,14 @@ export function CardDetailView({
 
 	return (
 		<div className="flex min-h-0 flex-1 overflow-hidden bg-background">
-			<ColumnContextPanel selection={selection} onCardSelect={onCardSelect} />
+			<ColumnContextPanel
+				selection={selection}
+				onCardSelect={onCardSelect}
+				taskSessions={taskSessions}
+				onTaskDragEnd={onTaskDragEnd}
+				onCreateTask={onCreateTask}
+				inlineTaskCreator={inlineTaskCreator}
+			/>
 			<div className="flex h-full min-h-0 w-4/5 min-w-0 flex-col overflow-hidden bg-background">
 				<div className="flex min-h-0 flex-1 overflow-hidden">
 					<AgentTerminalPanel
