@@ -1,13 +1,13 @@
 import { execFile } from "node:child_process";
 import { access, lstat, mkdir, readdir, rm, symlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
-} from "../acp/api-contract.js";
+} from "../api-contract.js";
 import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
 
 const execFileAsync = promisify(execFile);
@@ -30,6 +30,22 @@ function normalizeTaskId(taskId: string): string {
 		throw new Error("Invalid task id for worktree path.");
 	}
 	return normalized;
+}
+
+function getWorkspaceFolderLabel(repoPath: string): string {
+	const trimmed = repoPath.trim().replace(/[\\/]+$/g, "");
+	const folder = basename(trimmed);
+	if (!folder) {
+		return "workspace";
+	}
+	const cleaned = [...folder]
+		.filter((char) => {
+			const code = char.charCodeAt(0);
+			return code >= 32 && code !== 127;
+		})
+		.join("")
+		.trim();
+	return cleaned || "workspace";
 }
 
 function toPlatformRelativePath(path: string): string {
@@ -80,12 +96,18 @@ async function readGitHeadInfo(cwd: string): Promise<{
 	};
 }
 
-function getWorktreesRootPath(workspaceId: string): string {
-	return join(getRuntimeHomePath(), WORKTREES_DIR, workspaceId);
+function getWorktreesRootPath(taskId: string): string {
+	const normalizedTaskId = normalizeTaskId(taskId);
+	return join(getRuntimeHomePath(), WORKTREES_DIR, normalizedTaskId);
 }
 
-function getTaskWorktreePath(workspaceId: string, taskId: string): string {
-	return join(getWorktreesRootPath(workspaceId), normalizeTaskId(taskId));
+function getWorktreesBaseRootPath(): string {
+	return join(getRuntimeHomePath(), WORKTREES_DIR);
+}
+
+function getTaskWorktreePath(repoPath: string, taskId: string): string {
+	const workspaceLabel = getWorkspaceFolderLabel(repoPath);
+	return join(getWorktreesRootPath(taskId), workspaceLabel);
 }
 
 function shouldSkipSymlink(relativePath: string): boolean {
@@ -222,7 +244,7 @@ export async function ensureTaskWorktree(options: {
 			};
 		}
 
-		const worktreePath = getTaskWorktreePath(context.workspaceId, taskId);
+		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
 		const existingCommit = await tryRunGit(["-C", worktreePath, "rev-parse", "HEAD"]);
 		if (existingCommit === baseCommit) {
 			return {
@@ -277,8 +299,8 @@ export async function deleteTaskWorktree(options: {
 			};
 		}
 
-		const rootPath = getWorktreesRootPath(context.workspaceId);
-		const worktreePath = getTaskWorktreePath(context.workspaceId, taskId);
+		const rootPath = getWorktreesBaseRootPath();
+		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
 		const removed = await removeTaskWorktreeInternal(context.repoPath, worktreePath);
 		await pruneEmptyParents(rootPath, dirname(worktreePath));
 
@@ -326,7 +348,7 @@ export async function resolveTaskCwd(options: {
 		return ensured.path;
 	}
 
-	const worktreePath = getTaskWorktreePath(context.workspaceId, options.taskId);
+	const worktreePath = getTaskWorktreePath(context.repoPath, options.taskId);
 	return (await pathExists(worktreePath)) ? worktreePath : context.repoPath;
 }
 
@@ -357,7 +379,7 @@ export async function getTaskWorkspaceInfo(options: {
 		};
 	}
 
-	const worktreePath = getTaskWorktreePath(context.workspaceId, taskId);
+	const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
 	const exists = await pathExists(worktreePath);
 	if (!exists) {
 		return {

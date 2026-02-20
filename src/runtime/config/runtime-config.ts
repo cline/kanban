@@ -1,30 +1,41 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-interface RuntimeConfigFileShape {
-	acpCommand?: string;
-	shortcuts?: RuntimeProjectShortcut[];
-}
+import type { RuntimeAgentId, RuntimeProjectShortcut } from "../api-contract.js";
 
-export interface RuntimeProjectShortcut {
-	id: string;
-	label: string;
-	command: string;
-	icon?: string;
+interface RuntimeConfigFileShape {
+	selectedAgentId?: RuntimeAgentId;
+	customAgentCommand?: string | null;
+	shortcuts?: RuntimeProjectShortcut[];
 }
 
 export interface RuntimeConfigState {
 	configPath: string;
-	acpCommand: string | null;
+	selectedAgentId: RuntimeAgentId;
+	customAgentCommand: string | null;
 	shortcuts: RuntimeProjectShortcut[];
 }
 
 const RUNTIME_HOME_DIR = ".kanbanana";
 const CONFIG_FILENAME = "config.json";
+const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 
 function getRuntimeHomePath(): string {
 	return join(homedir(), RUNTIME_HOME_DIR);
+}
+
+function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): RuntimeAgentId {
+	if (
+		agentId === "claude" ||
+		agentId === "codex" ||
+		agentId === "gemini" ||
+		agentId === "opencode" ||
+		agentId === "custom"
+	) {
+		return agentId;
+	}
+	return DEFAULT_AGENT_ID;
 }
 
 function normalizeCommand(command: string | null | undefined): string | null {
@@ -75,18 +86,14 @@ export function getRuntimeConfigPath(): string {
 	return join(getRuntimeHomePath(), CONFIG_FILENAME);
 }
 
-function getLegacyRuntimeHomePath(cwd: string): string {
-	return join(cwd, RUNTIME_HOME_DIR);
-}
-
-function getLegacyRuntimeConfigPath(cwd: string): string {
-	return join(getLegacyRuntimeHomePath(cwd), CONFIG_FILENAME);
-}
-
 function toRuntimeConfigState(configPath: string, parsed: RuntimeConfigFileShape | null): RuntimeConfigState {
+	const selectedAgentId = normalizeAgentId(parsed?.selectedAgentId);
+	const customAgentCommand = normalizeCommand(parsed?.customAgentCommand);
+
 	return {
 		configPath,
-		acpCommand: normalizeCommand(parsed?.acpCommand),
+		selectedAgentId,
+		customAgentCommand,
 		shortcuts: normalizeShortcuts(parsed?.shortcuts),
 	};
 }
@@ -100,20 +107,19 @@ async function readRuntimeConfigFile(configPath: string): Promise<RuntimeConfigF
 	}
 }
 
-async function writeRuntimeConfigFile(
-	configPath: string,
-	config: { acpCommand: string | null; shortcuts: RuntimeProjectShortcut[] },
-): Promise<RuntimeConfigState> {
-	const normalizedCommand = normalizeCommand(config.acpCommand);
-	const normalizedShortcuts = normalizeShortcuts(config.shortcuts);
+async function writeRuntimeConfigFile(configPath: string, config: RuntimeConfigState): Promise<RuntimeConfigState> {
+	const selectedAgentId = normalizeAgentId(config.selectedAgentId);
+	const customAgentCommand = normalizeCommand(config.customAgentCommand);
+	const shortcuts = normalizeShortcuts(config.shortcuts);
 
 	await mkdir(dirname(configPath), { recursive: true });
 	await writeFile(
 		configPath,
 		JSON.stringify(
 			{
-				acpCommand: normalizedCommand,
-				shortcuts: normalizedShortcuts,
+				selectedAgentId,
+				customAgentCommand,
+				shortcuts,
 			},
 			null,
 			2,
@@ -123,57 +129,38 @@ async function writeRuntimeConfigFile(
 
 	return {
 		configPath,
-		acpCommand: normalizedCommand,
-		shortcuts: normalizedShortcuts,
+		selectedAgentId,
+		customAgentCommand,
+		shortcuts,
 	};
 }
 
-async function removeLegacyRuntimeState(cwd: string): Promise<void> {
-	const legacyRuntimeHomePath = getLegacyRuntimeHomePath(cwd);
-	if (legacyRuntimeHomePath === getRuntimeHomePath()) {
-		return;
-	}
-
-	await rm(legacyRuntimeHomePath, { recursive: true, force: true });
-}
-
-export async function loadRuntimeConfig(cwd: string): Promise<RuntimeConfigState> {
+export async function loadRuntimeConfig(): Promise<RuntimeConfigState> {
 	const configPath = getRuntimeConfigPath();
 	const parsedGlobalConfig = await readRuntimeConfigFile(configPath);
 	if (parsedGlobalConfig) {
-		await removeLegacyRuntimeState(cwd);
 		return toRuntimeConfigState(configPath, parsedGlobalConfig);
 	}
 
-	const legacyConfigPath = getLegacyRuntimeConfigPath(cwd);
-	const parsedLegacyConfig = await readRuntimeConfigFile(legacyConfigPath);
-	if (parsedLegacyConfig) {
-		const migrated = await writeRuntimeConfigFile(configPath, {
-			acpCommand: normalizeCommand(parsedLegacyConfig.acpCommand),
-			shortcuts: normalizeShortcuts(parsedLegacyConfig.shortcuts),
-		});
-		await removeLegacyRuntimeState(cwd);
-		return migrated;
-	}
-
-	await removeLegacyRuntimeState(cwd);
-
 	return {
 		configPath,
-		acpCommand: null,
+		selectedAgentId: DEFAULT_AGENT_ID,
+		customAgentCommand: null,
 		shortcuts: [],
 	};
 }
 
-export async function saveRuntimeConfig(
-	cwd: string,
-	config: {
-		acpCommand: string | null;
-		shortcuts: RuntimeProjectShortcut[];
-	},
-): Promise<RuntimeConfigState> {
+export async function saveRuntimeConfig(config: {
+	selectedAgentId: RuntimeAgentId;
+	customAgentCommand: string | null;
+	shortcuts: RuntimeProjectShortcut[];
+}): Promise<RuntimeConfigState> {
 	const configPath = getRuntimeConfigPath();
-	const savedConfig = await writeRuntimeConfigFile(configPath, config);
-	await removeLegacyRuntimeState(cwd);
+	const savedConfig = await writeRuntimeConfigFile(configPath, {
+		configPath,
+		selectedAgentId: config.selectedAgentId,
+		customAgentCommand: config.customAgentCommand,
+		shortcuts: config.shortcuts,
+	});
 	return savedConfig;
 }

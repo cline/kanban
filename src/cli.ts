@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -9,28 +9,32 @@ import { fileURLToPath } from "node:url";
 
 import { createSampleBoard } from "./index.js";
 import type {
-	RuntimeAcpCancelRequest,
-	RuntimeAcpCommandSource,
-	RuntimeAcpHealthResponse,
-	RuntimeAcpProbeRequest,
-	RuntimeAcpTurnRequest,
-	RuntimeAcpTurnStreamEvent,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
 	RuntimeShortcutRunRequest,
 	RuntimeShortcutRunResponse,
+	RuntimeSlashCommandsResponse,
+	RuntimeTaskSessionListResponse,
+	RuntimeTaskSessionStartRequest,
+	RuntimeTaskSessionStartResponse,
+	RuntimeTaskSessionStopRequest,
+	RuntimeTaskSessionStopResponse,
 	RuntimeTaskWorkspaceInfoRequest,
 	RuntimeWorkspaceChangesRequest,
+	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
 	RuntimeWorktreeDeleteRequest,
 	RuntimeWorktreeEnsureRequest,
-} from "./runtime/acp/api-contract.js";
-import { probeAcpCommand } from "./runtime/acp/probe-acp-command.js";
-import { cancelAcpTurn, runAcpTurn, shutdownAcpRuntimeSessions } from "./runtime/acp/run-acp-turn.js";
+} from "./runtime/api-contract.js";
 import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
 import { loadWorkspaceState, saveWorkspaceState } from "./runtime/state/workspace-state.js";
+import { buildRuntimeConfigResponse, resolveAgentCommand } from "./runtime/terminal/agent-registry.js";
+import { TerminalSessionManager } from "./runtime/terminal/session-manager.js";
+import { discoverRuntimeSlashCommands } from "./runtime/terminal/slash-commands.js";
+import { createTerminalWebSocketBridge } from "./runtime/terminal/ws-server.js";
 import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
+import { searchWorkspaceFiles } from "./runtime/workspace/search-workspace-files.js";
 import {
 	deleteTaskWorktree,
 	ensureTaskWorktree,
@@ -44,13 +48,6 @@ interface CliOptions {
 	json: boolean;
 	noOpen: boolean;
 	port: number;
-}
-
-interface SupportedAcpAgentDefinition {
-	id: string;
-	label: string;
-	binary: string;
-	command: string;
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -67,33 +64,6 @@ const MIME_TYPES: Record<string, string> = {
 	".map": "application/json; charset=utf-8",
 	".txt": "text/plain; charset=utf-8",
 };
-
-const SUPPORTED_ACP_AGENTS: SupportedAcpAgentDefinition[] = [
-	{
-		id: "codex_acp_bridge",
-		label: "OpenAI Codex (ACP bridge)",
-		binary: "npx",
-		command: "npx @zed-industries/codex-acp@latest",
-	},
-	{
-		id: "claude_acp_bridge",
-		label: "Claude Code (ACP bridge)",
-		binary: "npx",
-		command: "npx @zed-industries/claude-code-acp@latest",
-	},
-	{
-		id: "gemini_npx_acp",
-		label: "Gemini CLI (npx ACP)",
-		binary: "npx",
-		command: "npx @google/gemini-cli@latest --experimental-acp",
-	},
-	{
-		id: "gemini_local_acp",
-		label: "Gemini CLI (local install)",
-		binary: "gemini",
-		command: "gemini --experimental-acp",
-	},
-];
 
 const DEFAULT_PORT = 8484;
 
@@ -208,118 +178,6 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
 	return JSON.parse(body) as T;
 }
 
-function resolveAcpCommand(configCommand: string | null): {
-	command: string | null;
-	source: RuntimeAcpCommandSource;
-} {
-	const envCommand = process.env.KANBANANA_ACP_COMMAND?.trim();
-	if (envCommand) {
-		return {
-			command: envCommand,
-			source: "env",
-		};
-	}
-	if (configCommand) {
-		return {
-			command: configCommand,
-			source: "config",
-		};
-	}
-	return {
-		command: null,
-		source: "none",
-	};
-}
-
-function detectInstalledAcpCommands(): string[] {
-	const candidates = ["npx", "codex", "claude", "gemini"];
-	const lookupCommand = process.platform === "win32" ? "where" : "which";
-	const detected: string[] = [];
-
-	for (const candidate of candidates) {
-		const result = spawnSync(lookupCommand, [candidate], {
-			stdio: "ignore",
-		});
-		if (result.status === 0) {
-			detected.push(candidate);
-		}
-	}
-
-	return detected;
-}
-
-function normalizeCommandLineValue(commandLine: string | null | undefined): string | null {
-	if (!commandLine) {
-		return null;
-	}
-	const trimmed = commandLine.trim().toLowerCase();
-	if (!trimmed) {
-		return null;
-	}
-	return trimmed.replace(/\s+/g, " ");
-}
-
-function buildRuntimeConfigResponse(
-	runtimeConfig: Awaited<ReturnType<typeof loadRuntimeConfig>>,
-): RuntimeConfigResponse {
-	const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
-	const detectedCommands = detectInstalledAcpCommands();
-	const detectedSet = new Set(detectedCommands);
-	const normalizedEffectiveCommand = normalizeCommandLineValue(resolved.command);
-
-	return {
-		acpCommand: runtimeConfig.acpCommand,
-		effectiveCommand: resolved.command,
-		commandSource: resolved.source,
-		configPath: runtimeConfig.configPath,
-		detectedCommands,
-		supportedAgents: SUPPORTED_ACP_AGENTS.map((agent) => ({
-			id: agent.id,
-			label: agent.label,
-			binary: agent.binary,
-			command: agent.command,
-			installed: detectedSet.has(agent.binary),
-			configured: normalizedEffectiveCommand === normalizeCommandLineValue(agent.command),
-		})),
-		shortcuts: runtimeConfig.shortcuts,
-	};
-}
-
-function validateTurnRequest(body: RuntimeAcpTurnRequest): RuntimeAcpTurnRequest {
-	if (
-		typeof body.taskId !== "string" ||
-		typeof body.taskTitle !== "string" ||
-		typeof body.taskDescription !== "string" ||
-		typeof body.prompt !== "string"
-	) {
-		throw new Error("Invalid turn request payload.");
-	}
-	if (typeof body.baseRef !== "string" && body.baseRef !== null && body.baseRef !== undefined) {
-		throw new Error("Invalid turn request payload.");
-	}
-	return body;
-}
-
-function validateCancelRequest(body: RuntimeAcpCancelRequest): RuntimeAcpCancelRequest {
-	if (typeof body.taskId !== "string") {
-		throw new Error("Invalid cancel request payload.");
-	}
-	return body;
-}
-
-function validateAcpProbeRequest(body: RuntimeAcpProbeRequest): RuntimeAcpProbeRequest {
-	if (typeof body.command !== "string") {
-		throw new Error("Invalid ACP probe payload.");
-	}
-	const command = body.command.trim();
-	if (!command) {
-		throw new Error("ACP probe command cannot be empty.");
-	}
-	return {
-		command,
-	};
-}
-
 function validateWorkspaceChangesRequest(query: URLSearchParams): RuntimeWorkspaceChangesRequest {
 	const taskId = query.get("taskId");
 	if (!taskId) {
@@ -339,6 +197,27 @@ function validateTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWo
 	return {
 		taskId,
 		baseRef: query.has("baseRef") ? (query.get("baseRef") ?? "").trim() || null : undefined,
+	};
+}
+
+function validateWorkspaceFileSearchRequest(query: URLSearchParams): { query: string; limit?: number } {
+	const rawQuery = query.get("q") ?? query.get("query") ?? "";
+	const normalizedQuery = rawQuery.trim();
+	if (!normalizedQuery) {
+		return { query: "" };
+	}
+
+	const rawLimit = query.get("limit");
+	if (rawLimit == null || rawLimit.trim() === "") {
+		return { query: normalizedQuery };
+	}
+	const parsedLimit = Number.parseInt(rawLimit, 10);
+	if (!Number.isFinite(parsedLimit)) {
+		throw new Error("Invalid file search limit parameter.");
+	}
+	return {
+		query: normalizedQuery,
+		limit: parsedLimit,
 	};
 }
 
@@ -363,17 +242,6 @@ function validateWorktreeDeleteRequest(body: RuntimeWorktreeDeleteRequest): Runt
 	return body;
 }
 
-async function resolveTaskBaseRef(cwd: string, taskId: string): Promise<string | null> {
-	const workspace = await loadWorkspaceState(cwd);
-	for (const column of workspace.board.columns) {
-		const card = column.cards.find((candidate) => candidate.id === taskId);
-		if (card) {
-			return typeof card.baseRef === "string" ? card.baseRef.trim() || null : null;
-		}
-	}
-	return null;
-}
-
 function validateWorkspaceStateSaveRequest(body: RuntimeWorkspaceStateSaveRequest): RuntimeWorkspaceStateSaveRequest {
 	if (!body || typeof body !== "object") {
 		throw new Error("Invalid workspace state payload.");
@@ -388,7 +256,16 @@ function validateWorkspaceStateSaveRequest(body: RuntimeWorkspaceStateSaveReques
 }
 
 function validateRuntimeConfigSaveRequest(body: RuntimeConfigSaveRequest): RuntimeConfigSaveRequest {
-	if (typeof body.acpCommand !== "string" && body.acpCommand !== null) {
+	if (
+		body.selectedAgentId !== "claude" &&
+		body.selectedAgentId !== "codex" &&
+		body.selectedAgentId !== "gemini" &&
+		body.selectedAgentId !== "opencode" &&
+		body.selectedAgentId !== "custom"
+	) {
+		throw new Error("Invalid runtime config payload.");
+	}
+	if (typeof body.customAgentCommand !== "string" && body.customAgentCommand !== null) {
 		throw new Error("Invalid runtime config payload.");
 	}
 	if (body.shortcuts && !Array.isArray(body.shortcuts)) {
@@ -417,6 +294,37 @@ function validateShortcutRunRequest(body: RuntimeShortcutRunRequest): RuntimeSho
 	return {
 		command,
 	};
+}
+
+function validateTaskSessionStartRequest(body: RuntimeTaskSessionStartRequest): RuntimeTaskSessionStartRequest {
+	if (typeof body.taskId !== "string" || typeof body.prompt !== "string") {
+		throw new Error("Invalid task session start payload.");
+	}
+	if (typeof body.baseRef !== "string" && body.baseRef !== null && body.baseRef !== undefined) {
+		throw new Error("Invalid task session start payload.");
+	}
+	if (typeof body.startInPlanMode !== "boolean" && body.startInPlanMode !== undefined) {
+		throw new Error("Invalid task session start payload.");
+	}
+	return body;
+}
+
+function validateTaskSessionStopRequest(body: RuntimeTaskSessionStopRequest): RuntimeTaskSessionStopRequest {
+	if (typeof body.taskId !== "string") {
+		throw new Error("Invalid task session stop payload.");
+	}
+	return body;
+}
+
+async function resolveTaskBaseRef(cwd: string, taskId: string): Promise<string | null> {
+	const workspace = await loadWorkspaceState(cwd);
+	for (const column of workspace.board.columns) {
+		const card = column.cards.find((candidate) => candidate.id === taskId);
+		if (card) {
+			return typeof card.baseRef === "string" ? card.baseRef.trim() || null : null;
+		}
+	}
+	return null;
 }
 
 async function readAsset(rootDir: string, requestPathname: string): Promise<{ content: Buffer; contentType: string }> {
@@ -516,9 +424,90 @@ async function runShortcutCommand(command: string, cwd: string): Promise<Runtime
 	});
 }
 
-async function startServer(port: number): Promise<{ url: string; close: () => Promise<void> }> {
+function moveTaskToTrash(
+	board: RuntimeWorkspaceStateResponse["board"],
+	taskId: string,
+): RuntimeWorkspaceStateResponse["board"] {
+	const columns = board.columns.map((column) => ({
+		...column,
+		cards: [...column.cards],
+	}));
+	let removedCard: RuntimeWorkspaceStateResponse["board"]["columns"][number]["cards"][number] | undefined;
+
+	for (const column of columns) {
+		const cardIndex = column.cards.findIndex((candidate) => candidate.id === taskId);
+		if (cardIndex === -1) {
+			continue;
+		}
+		removedCard = column.cards[cardIndex];
+		column.cards.splice(cardIndex, 1);
+		break;
+	}
+
+	if (!removedCard) {
+		return board;
+	}
+	const trashColumnIndex = columns.findIndex((column) => column.id === "trash");
+	if (trashColumnIndex === -1) {
+		return board;
+	}
+	const trashColumn = columns[trashColumnIndex];
+	if (!trashColumn.cards.some((candidate) => candidate.id === taskId)) {
+		trashColumn.cards.push({
+			...removedCard,
+			updatedAt: Date.now(),
+		});
+	}
+	return {
+		columns,
+	};
+}
+
+async function persistInterruptedSessions(
+	cwd: string,
+	interruptedTaskIds: string[],
+	terminalManager: TerminalSessionManager,
+): Promise<void> {
+	if (interruptedTaskIds.length === 0) {
+		return;
+	}
+	const workspaceState = await loadWorkspaceState(cwd);
+	let nextBoard = workspaceState.board;
+	for (const taskId of interruptedTaskIds) {
+		nextBoard = moveTaskToTrash(nextBoard, taskId);
+	}
+	const nextSessions = {
+		...workspaceState.sessions,
+	};
+	for (const taskId of interruptedTaskIds) {
+		const summary = terminalManager.getSummary(taskId);
+		if (summary) {
+			nextSessions[taskId] = {
+				...summary,
+				state: "interrupted",
+				reviewReason: "interrupted",
+				updatedAt: Date.now(),
+			};
+		}
+	}
+	await saveWorkspaceState(cwd, {
+		board: nextBoard,
+		sessions: nextSessions,
+	});
+}
+
+async function startServer(
+	port: number,
+): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
 	const webUiDir = getWebUiDir();
-	let runtimeConfig = await loadRuntimeConfig(process.cwd());
+	let runtimeConfig = await loadRuntimeConfig();
+	const terminalManager = new TerminalSessionManager();
+	try {
+		const existingWorkspace = await loadWorkspaceState(process.cwd());
+		terminalManager.hydrateFromRecord(existingWorkspace.sessions);
+	} catch {
+		// Workspace state will be created on demand.
+	}
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -533,52 +522,84 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
 
-			if (pathname === "/api/acp/health" && req.method === "GET") {
-				const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
-				const detectedCommands = detectInstalledAcpCommands();
-				if (!resolved.command) {
-					sendJson(res, 200, {
-						available: false,
-						configuredCommand: null,
-						commandSource: "none",
-						detectedCommands,
-						reason: "Set an ACP command in Settings (for example: npx @zed-industries/codex-acp@latest).",
-					} satisfies RuntimeAcpHealthResponse);
-					return;
-				}
-
-				const probe = await probeAcpCommand(resolved.command, process.cwd());
-				const healthPayload: RuntimeAcpHealthResponse = probe.ok
-					? {
-							available: true,
-							configuredCommand: resolved.command,
-							commandSource: resolved.source,
-							detectedCommands,
-						}
-					: {
-							available: false,
-							configuredCommand: resolved.command,
-							commandSource: resolved.source,
-							detectedCommands,
-							reason:
-								probe.reason ??
-								`Configured ACP command '${resolved.command}' did not complete ACP initialization.`,
-						};
-				sendJson(res, 200, healthPayload);
+			if (pathname === "/api/runtime/config" && req.method === "GET") {
+				const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(runtimeConfig);
+				sendJson(res, 200, payload);
 				return;
 			}
 
-			if (pathname === "/api/acp/turn" && req.method === "POST") {
-				const resolved = resolveAcpCommand(runtimeConfig.acpCommand);
-				if (!resolved.command) {
-					sendJson(res, 501, {
-						error: "ACP command is not configured. Open Settings and choose an ACP agent command.",
-					});
-					return;
-				}
-
+			if (pathname === "/api/runtime/slash-commands" && req.method === "GET") {
 				try {
-					const body = validateTurnRequest(await readJsonBody<RuntimeAcpTurnRequest>(req));
+					const resolved = resolveAgentCommand(runtimeConfig);
+					if (!resolved) {
+						sendJson(res, 200, {
+							agentId: null,
+							commands: [],
+							error: "No runnable agent command is configured.",
+						} satisfies RuntimeSlashCommandsResponse);
+						return;
+					}
+					const taskId = requestUrl.searchParams.get("taskId")?.trim();
+					let commandCwd = process.cwd();
+					if (taskId) {
+						const taskBaseRef = await resolveTaskBaseRef(process.cwd(), taskId);
+						commandCwd = await resolveTaskCwd({
+							cwd: process.cwd(),
+							taskId,
+							baseRef: taskBaseRef,
+							ensure: false,
+						});
+					}
+					const discovered = await discoverRuntimeSlashCommands(resolved, commandCwd);
+					sendJson(res, 200, {
+						agentId: resolved.agentId,
+						commands: discovered.commands,
+						error: discovered.error,
+					} satisfies RuntimeSlashCommandsResponse);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/runtime/config" && req.method === "PUT") {
+				try {
+					const body = validateRuntimeConfigSaveRequest(await readJsonBody<RuntimeConfigSaveRequest>(req));
+					runtimeConfig = await saveRuntimeConfig({
+						selectedAgentId: body.selectedAgentId,
+						customAgentCommand: body.customAgentCommand,
+						shortcuts: body.shortcuts ?? runtimeConfig.shortcuts,
+					});
+					const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(runtimeConfig);
+					sendJson(res, 200, payload);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/runtime/task-sessions" && req.method === "GET") {
+				const payload: RuntimeTaskSessionListResponse = {
+					sessions: terminalManager.listSummaries(),
+				};
+				sendJson(res, 200, payload);
+				return;
+			}
+
+			if (pathname === "/api/runtime/task-session/start" && req.method === "POST") {
+				try {
+					const body = validateTaskSessionStartRequest(await readJsonBody<RuntimeTaskSessionStartRequest>(req));
+					const resolved = resolveAgentCommand(runtimeConfig);
+					if (!resolved) {
+						sendJson(res, 400, {
+							ok: false,
+							summary: null,
+							error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
+						} satisfies RuntimeTaskSessionStartResponse);
+						return;
+					}
 					const taskBaseRef =
 						body.baseRef === undefined
 							? await resolveTaskBaseRef(process.cwd(), body.taskId)
@@ -591,81 +612,47 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 						baseRef: taskBaseRef,
 						ensure: true,
 					});
-					const wantsStream = requestUrl.searchParams.get("stream") === "1";
-					if (wantsStream) {
-						res.writeHead(200, {
-							"Content-Type": "application/x-ndjson; charset=utf-8",
-							"Cache-Control": "no-store",
-							Connection: "keep-alive",
-						});
-						res.socket?.setNoDelay(true);
-						res.flushHeaders();
-
-						const writeEvent = (event: RuntimeAcpTurnStreamEvent): void => {
-							if (res.writableEnded) {
-								return;
-							}
-							res.write(`${JSON.stringify(event)}\n`);
-						};
-						const handleClose = () => {
-							void cancelAcpTurn(body.taskId);
-						};
-						req.once("close", handleClose);
-
-						try {
-							const response = await runAcpTurn({
-								commandLine: resolved.command,
-								cwd: taskCwd,
-								request: body,
-								listeners: {
-									onEntry: (entry) => writeEvent({ type: "entry", entry }),
-									onStatus: (status) => writeEvent({ type: "status", status }),
-									onAvailableCommands: (commands) => writeEvent({ type: "available_commands", commands }),
-								},
-							});
-							writeEvent({ type: "complete", stopReason: response.stopReason });
-						} catch (error) {
-							const message = error instanceof Error ? error.message : String(error);
-							writeEvent({ type: "error", error: message });
-						} finally {
-							req.off("close", handleClose);
-							res.end();
-						}
-						return;
-					}
-
-					const response = await runAcpTurn({
-						commandLine: resolved.command,
+					const summary = await terminalManager.startTaskSession({
+						taskId: body.taskId,
+						agentId: resolved.agentId,
+						binary: resolved.binary,
+						args: resolved.args,
 						cwd: taskCwd,
-						request: body,
+						prompt: body.prompt,
+						startInPlanMode: body.startInPlanMode,
+						cols: body.cols,
+						rows: body.rows,
 					});
-					sendJson(res, 200, response);
+					sendJson(res, 200, {
+						ok: true,
+						summary,
+					} satisfies RuntimeTaskSessionStartResponse);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					const status = message.includes("already has an active ACP turn") ? 409 : 500;
-					sendJson(res, status, { error: message });
+					sendJson(res, 500, {
+						ok: false,
+						summary: null,
+						error: message,
+					} satisfies RuntimeTaskSessionStartResponse);
 				}
 				return;
 			}
 
-			if (pathname === "/api/runtime/config" && req.method === "GET") {
-				const payload = buildRuntimeConfigResponse(runtimeConfig);
-				sendJson(res, 200, payload);
-				return;
-			}
-
-			if (pathname === "/api/runtime/config" && req.method === "PUT") {
+			if (pathname === "/api/runtime/task-session/stop" && req.method === "POST") {
 				try {
-					const body = validateRuntimeConfigSaveRequest(await readJsonBody<RuntimeConfigSaveRequest>(req));
-					runtimeConfig = await saveRuntimeConfig(process.cwd(), {
-						acpCommand: body.acpCommand,
-						shortcuts: body.shortcuts ?? runtimeConfig.shortcuts,
-					});
-					const payload = buildRuntimeConfigResponse(runtimeConfig);
-					sendJson(res, 200, payload);
+					const body = validateTaskSessionStopRequest(await readJsonBody<RuntimeTaskSessionStopRequest>(req));
+					const summary = terminalManager.stopTaskSession(body.taskId);
+					sendJson(res, 200, {
+						ok: Boolean(summary),
+						summary,
+					} satisfies RuntimeTaskSessionStopResponse);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
+					sendJson(res, 500, {
+						ok: false,
+						summary: null,
+						error: message,
+					} satisfies RuntimeTaskSessionStopResponse);
 				}
 				return;
 			}
@@ -675,30 +662,6 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 					const body = validateShortcutRunRequest(await readJsonBody<RuntimeShortcutRunRequest>(req));
 					const response = await runShortcutCommand(body.command, process.cwd());
 					sendJson(res, 200, response);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/acp/cancel" && req.method === "POST") {
-				try {
-					const body = validateCancelRequest(await readJsonBody<RuntimeAcpCancelRequest>(req));
-					const cancelled = await cancelAcpTurn(body.taskId);
-					sendJson(res, 200, { cancelled });
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/runtime/acp/probe" && req.method === "POST") {
-				try {
-					const body = validateAcpProbeRequest(await readJsonBody<RuntimeAcpProbeRequest>(req));
-					const result = await probeAcpCommand(body.command, process.cwd());
-					sendJson(res, 200, result);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					sendJson(res, 500, { error: message });
@@ -775,9 +738,28 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 				return;
 			}
 
+			if (pathname === "/api/workspace/files/search" && req.method === "GET") {
+				try {
+					const query = validateWorkspaceFileSearchRequest(requestUrl.searchParams);
+					const files = await searchWorkspaceFiles(process.cwd(), query.query, query.limit);
+					const response: RuntimeWorkspaceFileSearchResponse = {
+						query: query.query,
+						files,
+					};
+					sendJson(res, 200, response);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
 			if (pathname === "/api/workspace/state" && req.method === "GET") {
 				try {
 					const response: RuntimeWorkspaceStateResponse = await loadWorkspaceState(process.cwd());
+					for (const summary of terminalManager.listSummaries()) {
+						response.sessions[summary.taskId] = summary;
+					}
 					sendJson(res, 200, response);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
@@ -791,6 +773,9 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 					const body = validateWorkspaceStateSaveRequest(
 						await readJsonBody<RuntimeWorkspaceStateSaveRequest>(req),
 					);
+					for (const summary of terminalManager.listSummaries()) {
+						body.sessions[summary.taskId] = summary;
+					}
 					const response: RuntimeWorkspaceStateResponse = await saveWorkspaceState(process.cwd(), body);
 					sendJson(res, 200, response);
 				} catch (error) {
@@ -816,6 +801,11 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 			res.end("Not Found");
 		}
 	});
+	const terminalWebSocketBridge = createTerminalWebSocketBridge({
+		server,
+		terminalManager,
+		isTerminalWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/ws",
+	});
 
 	await new Promise<void>((resolveListen, rejectListen) => {
 		server.once("error", rejectListen);
@@ -831,19 +821,30 @@ async function startServer(port: number): Promise<{ url: string; close: () => Pr
 	}
 	const url = `http://127.0.0.1:${address.port}`;
 
+	const close = async () => {
+		await terminalWebSocketBridge.close();
+		await new Promise<void>((resolveClose, rejectClose) => {
+			server.close((error) => {
+				if (error) {
+					rejectClose(error);
+					return;
+				}
+				resolveClose();
+			});
+		});
+	};
+
+	const shutdown = async () => {
+		const interrupted = terminalManager.markInterruptedAndStopAll();
+		const interruptedTaskIds = interrupted.map((summary) => summary.taskId);
+		await persistInterruptedSessions(process.cwd(), interruptedTaskIds, terminalManager);
+		await close();
+	};
+
 	return {
 		url,
-		close: async () => {
-			await new Promise<void>((resolveClose, rejectClose) => {
-				server.close((error) => {
-					if (error) {
-						rejectClose(error);
-						return;
-					}
-					resolveClose();
-				});
-			});
-		},
+		close,
+		shutdown,
 	};
 }
 
@@ -877,16 +878,34 @@ async function run(): Promise<void> {
 	}
 	console.log("Press Ctrl+C to stop.");
 
-	const shutdown = async () => {
-		await shutdownAcpRuntimeSessions();
-		await runtime.close();
-		process.exit(0);
+	let isShuttingDown = false;
+	const shutdown = async (signal: "SIGINT" | "SIGTERM") => {
+		if (isShuttingDown) {
+			process.exit(130);
+			return;
+		}
+		isShuttingDown = true;
+		const forceExitTimer = setTimeout(() => {
+			console.error(`Forced exit after ${signal} timeout.`);
+			process.exit(130);
+		}, 3000);
+		forceExitTimer.unref();
+		try {
+			await runtime.shutdown();
+			clearTimeout(forceExitTimer);
+			process.exit(130);
+		} catch (error) {
+			clearTimeout(forceExitTimer);
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(`Shutdown failed: ${message}`);
+			process.exit(1);
+		}
 	};
 	process.on("SIGINT", () => {
-		void shutdown();
+		void shutdown("SIGINT");
 	});
 	process.on("SIGTERM", () => {
-		void shutdown();
+		void shutdown("SIGTERM");
 	});
 }
 

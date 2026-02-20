@@ -5,16 +5,15 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import type {
-	RuntimeAvailableCommand,
 	RuntimeBoardCard,
 	RuntimeBoardColumn,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
-	RuntimeChatSessionState,
 	RuntimeGitRepositoryInfo,
+	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
-} from "../acp/api-contract.js";
+} from "../api-contract.js";
 
 const RUNTIME_HOME_DIR = ".kanbanana";
 const WORKSPACES_DIR = "workspaces";
@@ -22,6 +21,7 @@ const INDEX_FILENAME = "index.json";
 const BOARD_FILENAME = "board.json";
 const SESSIONS_FILENAME = "sessions.json";
 const INDEX_VERSION = 1;
+const TASK_ID_LENGTH = 5;
 
 const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "backlog", title: "Backlog" },
@@ -30,13 +30,12 @@ const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "trash", title: "Trash" },
 ];
 
-const VALID_SESSION_STATUSES = new Set(["idle", "thinking", "tool_running", "cancelled"]);
+const VALID_SESSION_STATES = new Set(["idle", "running", "awaiting_review", "failed", "interrupted"]);
+const VALID_REVIEW_REASONS = new Set(["attention", "exit", "error", "interrupted"]);
 
 interface WorkspaceIndexEntry {
 	workspaceId: string;
 	repoPath: string;
-	createdAt: number;
-	updatedAt: number;
 }
 
 interface WorkspaceIndexFile {
@@ -68,6 +67,28 @@ function createEmptyWorkspaceIndex(): WorkspaceIndexFile {
 		entries: {},
 		repoPathToId: {},
 	};
+}
+
+function createDefaultSessionSummary(taskId: string): RuntimeTaskSessionSummary {
+	return {
+		taskId,
+		state: "idle",
+		agentId: null,
+		workspacePath: null,
+		pid: null,
+		startedAt: null,
+		updatedAt: Date.now(),
+		lastOutputAt: null,
+		lastActivityLine: null,
+		reviewReason: null,
+		exitCode: null,
+	};
+}
+
+function createShortTaskId(): string {
+	return Math.random()
+		.toString(36)
+		.slice(2, 2 + TASK_ID_LENGTH);
 }
 
 export function getRuntimeHomePath(): string {
@@ -126,28 +147,28 @@ function normalizeBoardCard(card: unknown): RuntimeBoardCard | null {
 		id?: unknown;
 		title?: unknown;
 		description?: unknown;
+		prompt?: unknown;
+		startInPlanMode?: unknown;
 		baseRef?: unknown;
-		body?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
 	};
 
-	const titleFromBody = typeof source.body === "string" ? source.body : "";
-	const title = typeof source.title === "string" ? source.title.trim() : titleFromBody.trim();
+	const title = typeof source.title === "string" ? source.title.trim() : "";
 	if (!title) {
 		return null;
 	}
 
 	const now = Date.now();
+	const description = typeof source.description === "string" ? source.description : "";
+	const prompt = typeof source.prompt === "string" ? source.prompt : description.trim() || title;
+
 	return {
-		id: typeof source.id === "string" && source.id ? source.id : `task-${Math.random().toString(36).slice(2, 10)}`,
+		id: typeof source.id === "string" && source.id ? source.id : createShortTaskId(),
 		title,
-		description:
-			typeof source.description === "string"
-				? source.description
-				: typeof source.body === "string"
-					? source.body
-					: "",
+		description,
+		prompt,
+		startInPlanMode: typeof source.startInPlanMode === "boolean" ? source.startInPlanMode : false,
 		baseRef: typeof source.baseRef === "string" ? source.baseRef.trim() || null : null,
 		createdAt: typeof source.createdAt === "number" ? source.createdAt : now,
 		updatedAt: typeof source.updatedAt === "number" ? source.updatedAt : now,
@@ -197,60 +218,65 @@ function normalizeBoard(rawBoard: unknown): RuntimeBoardData {
 	};
 }
 
-function normalizeAvailableCommands(raw: unknown): RuntimeAvailableCommand[] {
-	if (!Array.isArray(raw)) {
-		return [];
+function normalizeSessionState(value: unknown): RuntimeTaskSessionSummary["state"] {
+	if (typeof value === "string" && VALID_SESSION_STATES.has(value)) {
+		return value as RuntimeTaskSessionSummary["state"];
 	}
-
-	const commands: RuntimeAvailableCommand[] = [];
-	for (const entry of raw) {
-		if (!entry || typeof entry !== "object") {
-			continue;
-		}
-		const candidate = entry as { name?: unknown; description?: unknown; input?: unknown };
-		if (typeof candidate.name !== "string" || typeof candidate.description !== "string") {
-			continue;
-		}
-		const input =
-			candidate.input &&
-			typeof candidate.input === "object" &&
-			typeof (candidate.input as { hint?: unknown }).hint === "string"
-				? { hint: (candidate.input as { hint: string }).hint }
-				: undefined;
-		commands.push({
-			name: candidate.name,
-			description: candidate.description,
-			input,
-		});
-	}
-
-	return commands;
+	return "idle";
 }
 
-function normalizeSessions(rawSessions: unknown): Record<string, RuntimeChatSessionState> {
+function normalizeReviewReason(value: unknown): RuntimeTaskSessionSummary["reviewReason"] {
+	if (typeof value === "string" && VALID_REVIEW_REASONS.has(value)) {
+		return value as RuntimeTaskSessionSummary["reviewReason"];
+	}
+	return null;
+}
+
+function normalizeSessions(rawSessions: unknown): Record<string, RuntimeTaskSessionSummary> {
 	if (!rawSessions || typeof rawSessions !== "object" || Array.isArray(rawSessions)) {
 		return {};
 	}
 
-	const sessions: Record<string, RuntimeChatSessionState> = {};
+	const sessions: Record<string, RuntimeTaskSessionSummary> = {};
 	for (const [taskId, value] of Object.entries(rawSessions as Record<string, unknown>)) {
 		if (!value || typeof value !== "object") {
 			continue;
 		}
 		const source = value as {
-			sessionId?: unknown;
-			status?: unknown;
-			timeline?: unknown;
-			availableCommands?: unknown;
+			taskId?: unknown;
+			state?: unknown;
+			agentId?: unknown;
+			workspacePath?: unknown;
+			pid?: unknown;
+			startedAt?: unknown;
+			updatedAt?: unknown;
+			lastOutputAt?: unknown;
+			lastActivityLine?: unknown;
+			reviewReason?: unknown;
+			exitCode?: unknown;
 		};
 
+		const base = createDefaultSessionSummary(taskId);
 		sessions[taskId] = {
-			sessionId: typeof source.sessionId === "string" && source.sessionId ? source.sessionId : `task-${taskId}`,
-			status: VALID_SESSION_STATUSES.has(source.status as string)
-				? (source.status as RuntimeChatSessionState["status"])
-				: "idle",
-			timeline: Array.isArray(source.timeline) ? (source.timeline as RuntimeChatSessionState["timeline"]) : [],
-			availableCommands: normalizeAvailableCommands(source.availableCommands),
+			...base,
+			taskId: typeof source.taskId === "string" && source.taskId ? source.taskId : taskId,
+			state: normalizeSessionState(source.state),
+			agentId:
+				source.agentId === "claude" ||
+				source.agentId === "codex" ||
+				source.agentId === "gemini" ||
+				source.agentId === "opencode" ||
+				source.agentId === "custom"
+					? source.agentId
+					: null,
+			workspacePath: typeof source.workspacePath === "string" ? source.workspacePath : null,
+			pid: typeof source.pid === "number" ? source.pid : null,
+			startedAt: typeof source.startedAt === "number" ? source.startedAt : null,
+			updatedAt: typeof source.updatedAt === "number" ? source.updatedAt : base.updatedAt,
+			lastOutputAt: typeof source.lastOutputAt === "number" ? source.lastOutputAt : null,
+			lastActivityLine: typeof source.lastActivityLine === "string" ? source.lastActivityLine : null,
+			reviewReason: normalizeReviewReason(source.reviewReason),
+			exitCode: typeof source.exitCode === "number" ? source.exitCode : null,
 		};
 	}
 
@@ -271,12 +297,7 @@ function normalizeWorkspaceIndex(rawIndex: unknown): WorkspaceIndexFile {
 			if (!value || typeof value !== "object") {
 				continue;
 			}
-			const candidate = value as {
-				workspaceId?: unknown;
-				repoPath?: unknown;
-				createdAt?: unknown;
-				updatedAt?: unknown;
-			};
+			const candidate = value as { workspaceId?: unknown; repoPath?: unknown };
 			const entryRepoPath = typeof candidate.repoPath === "string" ? candidate.repoPath.trim() : "";
 			if (!entryRepoPath) {
 				continue;
@@ -286,8 +307,6 @@ function normalizeWorkspaceIndex(rawIndex: unknown): WorkspaceIndexFile {
 			entries[entryId] = {
 				workspaceId: entryId,
 				repoPath: entryRepoPath,
-				createdAt: typeof candidate.createdAt === "number" ? candidate.createdAt : Date.now(),
-				updatedAt: typeof candidate.updatedAt === "number" ? candidate.updatedAt : Date.now(),
 			};
 			repoPathToId[entryRepoPath] = entryId;
 		}
@@ -329,7 +348,6 @@ function hashWorkspacePath(repoPath: string, salt = ""): string {
 function ensureWorkspaceEntry(
 	index: WorkspaceIndexFile,
 	repoPath: string,
-	now = Date.now(),
 ): { index: WorkspaceIndexFile; entry: WorkspaceIndexEntry; changed: boolean } {
 	const existingWorkspaceId = index.repoPathToId[repoPath];
 	if (existingWorkspaceId) {
@@ -353,8 +371,6 @@ function ensureWorkspaceEntry(
 	const entry: WorkspaceIndexEntry = {
 		workspaceId,
 		repoPath,
-		createdAt: now,
-		updatedAt: now,
 	};
 
 	return {
@@ -486,7 +502,7 @@ async function resolveWorkspacePath(cwd: string): Promise<string> {
 function toWorkspaceStateResponse(
 	context: RuntimeWorkspaceContext,
 	board: RuntimeBoardData,
-	sessions: Record<string, RuntimeChatSessionState>,
+	sessions: Record<string, RuntimeTaskSessionSummary>,
 ): RuntimeWorkspaceStateResponse {
 	return {
 		repoPath: context.repoPath,
@@ -531,27 +547,6 @@ export async function saveWorkspaceState(
 
 	await writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), board);
 	await writeJsonFileAtomic(getWorkspaceSessionsPath(context.workspaceId), sessions);
-
-	const now = Date.now();
-	const index = await readWorkspaceIndex();
-	const existing = index.entries[context.workspaceId];
-	const updatedEntry: WorkspaceIndexEntry = {
-		workspaceId: context.workspaceId,
-		repoPath: context.repoPath,
-		createdAt: existing?.createdAt ?? now,
-		updatedAt: now,
-	};
-	await writeWorkspaceIndex({
-		version: INDEX_VERSION,
-		entries: {
-			...index.entries,
-			[context.workspaceId]: updatedEntry,
-		},
-		repoPathToId: {
-			...index.repoPathToId,
-			[context.repoPath]: context.workspaceId,
-		},
-	});
 
 	return toWorkspaceStateResponse(context, board, sessions);
 }

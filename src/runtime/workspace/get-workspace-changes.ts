@@ -7,7 +7,7 @@ import type {
 	RuntimeWorkspaceChangesResponse,
 	RuntimeWorkspaceFileChange,
 	RuntimeWorkspaceFileStatus,
-} from "../acp/api-contract.js";
+} from "../api-contract.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;

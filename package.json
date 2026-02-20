@@ -55,6 +55,7 @@
     "check": "npm run lint && npm run typecheck && npm run test",
     "test": "vitest run",
     "test:watch": "vitest",
+    "postinstall": "node scripts/fix-node-pty-helper-perms.mjs",
     "prepare": "husky",
     "prepublishOnly": "npm run build && npm run check"
   },
@@ -62,6 +63,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.3.5",
     "@types/node": "^22.10.5",
+    "@types/ws": "^8.18.1",
     "husky": "^9.1.7",
     "shx": "^0.4.0",
     "tsx": "^4.20.3",
@@ -69,6 +71,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.14.1"
+    "node-pty": "^1.1.0-beta34",
+    "ws": "^8.18.0"
   }
 }
