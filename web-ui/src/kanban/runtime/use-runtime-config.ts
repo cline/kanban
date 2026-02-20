@@ -13,7 +13,6 @@ export interface UseRuntimeConfigResult {
 	load: () => Promise<void>;
 	save: (nextConfig: {
 		selectedAgentId: RuntimeAgentId;
-		customAgentCommand: string | null;
 		shortcuts?: RuntimeProjectShortcut[];
 	}) => Promise<RuntimeConfigResponse | null>;
 }
@@ -46,7 +45,6 @@ export function useRuntimeConfig(open: boolean): UseRuntimeConfigResult {
 	const save = useCallback(
 		async (nextConfig: {
 			selectedAgentId: RuntimeAgentId;
-			customAgentCommand: string | null;
 			shortcuts?: RuntimeProjectShortcut[];
 		}): Promise<RuntimeConfigResponse | null> => {
 			setIsSaving(true);

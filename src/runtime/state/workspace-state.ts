@@ -266,7 +266,7 @@ function normalizeSessions(rawSessions: unknown): Record<string, RuntimeTaskSess
 				source.agentId === "codex" ||
 				source.agentId === "gemini" ||
 				source.agentId === "opencode" ||
-				source.agentId === "custom"
+				source.agentId === "cline"
 					? source.agentId
 					: null,
 			workspacePath: typeof source.workspacePath === "string" ? source.workspacePath : null,

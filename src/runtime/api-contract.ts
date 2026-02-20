@@ -178,7 +178,7 @@ export interface RuntimeShortcutRunResponse {
 	durationMs: number;
 }
 
-export type RuntimeAgentId = "claude" | "codex" | "gemini" | "opencode" | "custom";
+export type RuntimeAgentId = "claude" | "codex" | "gemini" | "opencode" | "cline";
 
 export interface RuntimeAgentDefinition {
 	id: RuntimeAgentId;
@@ -192,9 +192,9 @@ export interface RuntimeAgentDefinition {
 
 export interface RuntimeConfigResponse {
 	selectedAgentId: RuntimeAgentId;
-	customAgentCommand: string | null;
 	effectiveCommand: string | null;
-	configPath: string;
+	globalConfigPath: string;
+	projectConfigPath: string;
 	detectedCommands: string[];
 	agents: RuntimeAgentDefinition[];
 	shortcuts: RuntimeProjectShortcut[];
@@ -202,7 +202,6 @@ export interface RuntimeConfigResponse {
 
 export interface RuntimeConfigSaveRequest {
 	selectedAgentId: RuntimeAgentId;
-	customAgentCommand: string | null;
 	shortcuts?: RuntimeProjectShortcut[];
 }
 

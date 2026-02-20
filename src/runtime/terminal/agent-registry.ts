@@ -12,7 +12,7 @@ export interface ResolvedAgentCommand {
 }
 
 interface AgentTemplate {
-	id: Exclude<RuntimeAgentId, "custom">;
+	id: RuntimeAgentId;
 	label: string;
 	binary: string;
 	defaultArgs: string[];
@@ -42,6 +42,12 @@ const AGENT_TEMPLATES: AgentTemplate[] = [
 		label: "OpenCode",
 		binary: "opencode",
 		defaultArgs: [],
+	},
+	{
+		id: "cline",
+		label: "Cline CLI",
+		binary: "cline",
+		defaultArgs: ["--yolo"],
 	},
 ];
 
@@ -129,79 +135,8 @@ function joinCommand(binary: string, args: string[]): string {
 	return [binary, ...args.map(quoteForDisplay)].join(" ");
 }
 
-export function parseCommandLine(commandLine: string): { binary: string; args: string[] } | null {
-	const input = commandLine.trim();
-	if (!input) {
-		return null;
-	}
-
-	const tokens: string[] = [];
-	let current = "";
-	let quote: "single" | "double" | null = null;
-	let escaping = false;
-
-	for (let index = 0; index < input.length; index += 1) {
-		const char = input[index];
-		if (escaping) {
-			current += char;
-			escaping = false;
-			continue;
-		}
-		if (char === "\\" && quote !== "single") {
-			escaping = true;
-			continue;
-		}
-		if (quote === "single") {
-			if (char === "'") {
-				quote = null;
-			} else {
-				current += char;
-			}
-			continue;
-		}
-		if (quote === "double") {
-			if (char === '"') {
-				quote = null;
-			} else {
-				current += char;
-			}
-			continue;
-		}
-		if (char === "'") {
-			quote = "single";
-			continue;
-		}
-		if (char === '"') {
-			quote = "double";
-			continue;
-		}
-		if (/\s/.test(char)) {
-			if (current) {
-				tokens.push(current);
-				current = "";
-			}
-			continue;
-		}
-		current += char;
-	}
-
-	if (escaping || quote) {
-		return null;
-	}
-	if (current) {
-		tokens.push(current);
-	}
-	if (tokens.length === 0) {
-		return null;
-	}
-	return {
-		binary: tokens[0] ?? "",
-		args: tokens.slice(1),
-	};
-}
-
 export function detectInstalledCommands(): string[] {
-	const candidates = ["claude", "codex", "gemini", "opencode", "npx"];
+	const candidates = ["claude", "codex", "gemini", "opencode", "cline", "npx"];
 	const detected: string[] = [];
 
 	for (const candidate of candidates) {
@@ -229,52 +164,7 @@ function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: stri
 	});
 }
 
-function getCustomDefinition(runtimeConfig: RuntimeConfigState): RuntimeAgentDefinition {
-	const parsed = parseCommandLine(runtimeConfig.customAgentCommand ?? "");
-	const binary = parsed?.binary ?? "";
-	return {
-		id: "custom",
-		label: "Custom command",
-		binary,
-		command: runtimeConfig.customAgentCommand ?? "",
-		defaultArgs: [],
-		installed: Boolean(binary),
-		configured: runtimeConfig.selectedAgentId === "custom",
-	};
-}
-
 export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): ResolvedAgentCommand | null {
-	if (runtimeConfig.selectedAgentId === "custom") {
-		const commandLine = runtimeConfig.customAgentCommand?.trim() ?? "";
-		const parsed = parseCommandLine(commandLine);
-		if (!parsed || !parsed.binary) {
-			return null;
-		}
-		if (isBinaryAvailableOnPath(parsed.binary)) {
-			return {
-				agentId: "custom",
-				label: "Custom command",
-				command: commandLine || parsed.binary,
-				binary: parsed.binary,
-				args: parsed.args,
-			};
-		}
-		if (isBinaryResolvableInShell(parsed.binary)) {
-			const shellLaunch = toShellLaunchCommand(commandLine);
-			if (!shellLaunch) {
-				return null;
-			}
-			return {
-				agentId: "custom",
-				label: "Custom command",
-				command: commandLine || parsed.binary,
-				binary: shellLaunch.binary,
-				args: shellLaunch.args,
-			};
-		}
-		return null;
-	}
-
 	const selected = AGENT_TEMPLATES.find((template) => template.id === runtimeConfig.selectedAgentId);
 	if (!selected) {
 		return null;
@@ -307,15 +197,15 @@ export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Resolved
 
 export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): RuntimeConfigResponse {
 	const detectedCommands = detectInstalledCommands();
-	const agents = [...getCuratedDefinitions(runtimeConfig, detectedCommands), getCustomDefinition(runtimeConfig)];
+	const agents = getCuratedDefinitions(runtimeConfig, detectedCommands);
 	const resolved = resolveAgentCommand(runtimeConfig);
 	const effectiveCommand = resolved ? joinCommand(resolved.binary, resolved.args) : null;
 
 	return {
 		selectedAgentId: runtimeConfig.selectedAgentId,
-		customAgentCommand: runtimeConfig.customAgentCommand,
 		effectiveCommand,
-		configPath: runtimeConfig.configPath,
+		globalConfigPath: runtimeConfig.globalConfigPath,
+		projectConfigPath: runtimeConfig.projectConfigPath,
 		detectedCommands,
 		agents,
 		shortcuts: runtimeConfig.shortcuts,

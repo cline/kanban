@@ -261,11 +261,8 @@ function validateRuntimeConfigSaveRequest(body: RuntimeConfigSaveRequest): Runti
 		body.selectedAgentId !== "codex" &&
 		body.selectedAgentId !== "gemini" &&
 		body.selectedAgentId !== "opencode" &&
-		body.selectedAgentId !== "custom"
+		body.selectedAgentId !== "cline"
 	) {
-		throw new Error("Invalid runtime config payload.");
-	}
-	if (typeof body.customAgentCommand !== "string" && body.customAgentCommand !== null) {
 		throw new Error("Invalid runtime config payload.");
 	}
 	if (body.shortcuts && !Array.isArray(body.shortcuts)) {
@@ -500,7 +497,7 @@ async function startServer(
 	port: number,
 ): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
 	const webUiDir = getWebUiDir();
-	let runtimeConfig = await loadRuntimeConfig();
+	let runtimeConfig = await loadRuntimeConfig(process.cwd());
 	const terminalManager = new TerminalSessionManager();
 	try {
 		const existingWorkspace = await loadWorkspaceState(process.cwd());
@@ -566,9 +563,8 @@ async function startServer(
 			if (pathname === "/api/runtime/config" && req.method === "PUT") {
 				try {
 					const body = validateRuntimeConfigSaveRequest(await readJsonBody<RuntimeConfigSaveRequest>(req));
-					runtimeConfig = await saveRuntimeConfig({
+					runtimeConfig = await saveRuntimeConfig(process.cwd(), {
 						selectedAgentId: body.selectedAgentId,
-						customAgentCommand: body.customAgentCommand,
 						shortcuts: body.shortcuts ?? runtimeConfig.shortcuts,
 					});
 					const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(runtimeConfig);

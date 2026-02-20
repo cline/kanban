@@ -10,7 +10,7 @@ const DISCOVERY_CACHE_TTL_MS = 60_000;
 const DISCOVERY_TIMEOUT_MS = 20_000;
 const DISCOVERY_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 
-type CommandFamily = "claude" | "codex" | "gemini" | "opencode" | "unknown";
+type CommandFamily = "claude" | "codex" | "gemini" | "opencode" | "cline" | "unknown";
 
 interface SlashCommandCacheEntry {
 	expiresAt: number;
@@ -52,6 +52,10 @@ const OPENCODE_DEFAULT_COMMANDS: RuntimeSlashCommandDescription[] = [
 	{ name: "agents", description: "List agents." },
 	{ name: "status", description: "Show current session status." },
 	{ name: "mcp", description: "Show MCP status." },
+];
+
+const CLINE_DEFAULT_COMMANDS: RuntimeSlashCommandDescription[] = [
+	{ name: "help", description: "Show available commands." },
 ];
 
 function normalizeSlashName(input: string): string {
@@ -96,6 +100,9 @@ function inferCommandFamily(command: ResolvedAgentCommand): CommandFamily {
 	if (command.agentId === "opencode") {
 		return "opencode";
 	}
+	if (command.agentId === "cline") {
+		return "cline";
+	}
 	const binaryName = basename(command.binary).toLowerCase();
 	if (binaryName.includes("claude")) {
 		return "claude";
@@ -108,6 +115,9 @@ function inferCommandFamily(command: ResolvedAgentCommand): CommandFamily {
 	}
 	if (binaryName.includes("opencode")) {
 		return "opencode";
+	}
+	if (binaryName.includes("cline")) {
+		return "cline";
 	}
 	return "unknown";
 }
@@ -124,6 +134,9 @@ function getDefaultCommands(family: CommandFamily): RuntimeSlashCommandDescripti
 	}
 	if (family === "opencode") {
 		return OPENCODE_DEFAULT_COMMANDS;
+	}
+	if (family === "cline") {
+		return CLINE_DEFAULT_COMMANDS;
 	}
 	return [{ name: "help", description: "Show available commands." }];
 }

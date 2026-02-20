@@ -75,7 +75,7 @@ export interface RuntimeGitRepositoryInfo {
 	branches: string[];
 }
 
-export type RuntimeAgentId = "claude" | "codex" | "gemini" | "opencode" | "custom";
+export type RuntimeAgentId = "claude" | "codex" | "gemini" | "opencode" | "cline";
 
 export interface RuntimeAgentDefinition {
 	id: RuntimeAgentId;
@@ -96,9 +96,9 @@ export interface RuntimeProjectShortcut {
 
 export interface RuntimeConfigResponse {
 	selectedAgentId: RuntimeAgentId;
-	customAgentCommand: string | null;
 	effectiveCommand: string | null;
-	configPath: string;
+	globalConfigPath: string;
+	projectConfigPath: string;
 	detectedCommands: string[];
 	agents: RuntimeAgentDefinition[];
 	shortcuts: RuntimeProjectShortcut[];

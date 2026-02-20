@@ -1,24 +1,28 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import type { RuntimeAgentId, RuntimeProjectShortcut } from "../api-contract.js";
 
-interface RuntimeConfigFileShape {
+interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
-	customAgentCommand?: string | null;
+}
+
+interface RuntimeProjectConfigFileShape {
 	shortcuts?: RuntimeProjectShortcut[];
 }
 
 export interface RuntimeConfigState {
-	configPath: string;
+	globalConfigPath: string;
+	projectConfigPath: string;
 	selectedAgentId: RuntimeAgentId;
-	customAgentCommand: string | null;
 	shortcuts: RuntimeProjectShortcut[];
 }
 
 const RUNTIME_HOME_DIR = ".kanbanana";
 const CONFIG_FILENAME = "config.json";
+const PROJECT_CONFIG_DIR = ".kanbanana";
+const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 
 function getRuntimeHomePath(): string {
@@ -31,19 +35,11 @@ function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): 
 		agentId === "codex" ||
 		agentId === "gemini" ||
 		agentId === "opencode" ||
-		agentId === "custom"
+		agentId === "cline"
 	) {
 		return agentId;
 	}
 	return DEFAULT_AGENT_ID;
-}
-
-function normalizeCommand(command: string | null | undefined): string | null {
-	if (typeof command !== "string") {
-		return null;
-	}
-	const trimmed = command.trim();
-	return trimmed ? trimmed : null;
 }
 
 function normalizeShortcut(shortcut: RuntimeProjectShortcut): RuntimeProjectShortcut | null {
@@ -82,85 +78,106 @@ function normalizeShortcuts(shortcuts: RuntimeProjectShortcut[] | null | undefin
 	return normalized;
 }
 
-export function getRuntimeConfigPath(): string {
+export function getRuntimeGlobalConfigPath(): string {
 	return join(getRuntimeHomePath(), CONFIG_FILENAME);
 }
 
-function toRuntimeConfigState(configPath: string, parsed: RuntimeConfigFileShape | null): RuntimeConfigState {
-	const selectedAgentId = normalizeAgentId(parsed?.selectedAgentId);
-	const customAgentCommand = normalizeCommand(parsed?.customAgentCommand);
+export function getRuntimeProjectConfigPath(cwd: string): string {
+	return join(resolve(cwd), PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
+}
 
+function toRuntimeConfigState({
+	globalConfigPath,
+	projectConfigPath,
+	globalConfig,
+	projectConfig,
+}: {
+	globalConfigPath: string;
+	projectConfigPath: string;
+	globalConfig: RuntimeGlobalConfigFileShape | null;
+	projectConfig: RuntimeProjectConfigFileShape | null;
+}): RuntimeConfigState {
 	return {
-		configPath,
-		selectedAgentId,
-		customAgentCommand,
-		shortcuts: normalizeShortcuts(parsed?.shortcuts),
+		globalConfigPath,
+		projectConfigPath,
+		selectedAgentId: normalizeAgentId(globalConfig?.selectedAgentId),
+		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
 	};
 }
 
-async function readRuntimeConfigFile(configPath: string): Promise<RuntimeConfigFileShape | null> {
+async function readRuntimeConfigFile<T>(configPath: string): Promise<T | null> {
 	try {
 		const raw = await readFile(configPath, "utf8");
-		return JSON.parse(raw) as RuntimeConfigFileShape;
+		return JSON.parse(raw) as T;
 	} catch {
 		return null;
 	}
 }
 
-async function writeRuntimeConfigFile(configPath: string, config: RuntimeConfigState): Promise<RuntimeConfigState> {
-	const selectedAgentId = normalizeAgentId(config.selectedAgentId);
-	const customAgentCommand = normalizeCommand(config.customAgentCommand);
-	const shortcuts = normalizeShortcuts(config.shortcuts);
-
+async function writeRuntimeGlobalConfigFile(
+	configPath: string,
+	config: { selectedAgentId: RuntimeAgentId },
+): Promise<void> {
 	await mkdir(dirname(configPath), { recursive: true });
 	await writeFile(
 		configPath,
 		JSON.stringify(
 			{
-				selectedAgentId,
-				customAgentCommand,
-				shortcuts,
+				selectedAgentId: normalizeAgentId(config.selectedAgentId),
 			},
 			null,
 			2,
 		),
 		"utf8",
 	);
-
-	return {
-		configPath,
-		selectedAgentId,
-		customAgentCommand,
-		shortcuts,
-	};
 }
 
-export async function loadRuntimeConfig(): Promise<RuntimeConfigState> {
-	const configPath = getRuntimeConfigPath();
-	const parsedGlobalConfig = await readRuntimeConfigFile(configPath);
-	if (parsedGlobalConfig) {
-		return toRuntimeConfigState(configPath, parsedGlobalConfig);
-	}
-
-	return {
+async function writeRuntimeProjectConfigFile(
+	configPath: string,
+	config: { shortcuts: RuntimeProjectShortcut[] },
+): Promise<void> {
+	await mkdir(dirname(configPath), { recursive: true });
+	await writeFile(
 		configPath,
-		selectedAgentId: DEFAULT_AGENT_ID,
-		customAgentCommand: null,
-		shortcuts: [],
-	};
+		JSON.stringify(
+			{
+				shortcuts: normalizeShortcuts(config.shortcuts),
+			},
+			null,
+			2,
+		),
+		"utf8",
+	);
 }
 
-export async function saveRuntimeConfig(config: {
-	selectedAgentId: RuntimeAgentId;
-	customAgentCommand: string | null;
-	shortcuts: RuntimeProjectShortcut[];
-}): Promise<RuntimeConfigState> {
-	const configPath = getRuntimeConfigPath();
-	const savedConfig = await writeRuntimeConfigFile(configPath, {
-		configPath,
-		selectedAgentId: config.selectedAgentId,
-		customAgentCommand: config.customAgentCommand,
-		shortcuts: config.shortcuts,
+export async function loadRuntimeConfig(cwd: string): Promise<RuntimeConfigState> {
+	const globalConfigPath = getRuntimeGlobalConfigPath();
+	const projectConfigPath = getRuntimeProjectConfigPath(cwd);
+	const globalConfig = await readRuntimeConfigFile<RuntimeGlobalConfigFileShape>(globalConfigPath);
+	const projectConfig = await readRuntimeConfigFile<RuntimeProjectConfigFileShape>(projectConfigPath);
+	return toRuntimeConfigState({
+		globalConfigPath,
+		projectConfigPath,
+		globalConfig,
+		projectConfig,
 	});
-	return savedConfig;
+}
+
+export async function saveRuntimeConfig(
+	cwd: string,
+	config: {
+		selectedAgentId: RuntimeAgentId;
+		shortcuts: RuntimeProjectShortcut[];
+	},
+): Promise<RuntimeConfigState> {
+	const globalConfigPath = getRuntimeGlobalConfigPath();
+	const projectConfigPath = getRuntimeProjectConfigPath(cwd);
+	await writeRuntimeGlobalConfigFile(globalConfigPath, { selectedAgentId: config.selectedAgentId });
+	await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts: config.shortcuts });
+	return {
+		globalConfigPath,
+		projectConfigPath,
+		selectedAgentId: normalizeAgentId(config.selectedAgentId),
+		shortcuts: normalizeShortcuts(config.shortcuts),
+	};
 }

@@ -118,7 +118,7 @@ function formatSpawnFailure(binary: string, error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
 	const normalized = message.toLowerCase();
 	if (normalized.includes("posix_spawnp failed") || normalized.includes("enoent")) {
-		return `Failed to launch "${binary}". Command not found. Install the agent CLI, or set a custom absolute command path in Settings.`;
+		return `Failed to launch "${binary}". Command not found. Install a supported agent CLI and select it in Settings.`;
 	}
 	return `Failed to launch "${binary}": ${message}`;
 }
@@ -195,6 +195,25 @@ function buildLaunchCommand(request: StartTaskSessionRequest): LaunchCommand {
 		}
 		if (prompt) {
 			args.push("-i", prompt);
+			return {
+				args,
+				env,
+				writesPromptInternally: true,
+			};
+		}
+		return {
+			args,
+			env,
+			writesPromptInternally: false,
+		};
+	}
+
+	if (request.agentId === "cline") {
+		if (request.startInPlanMode) {
+			args.push("--plan");
+		}
+		if (prompt) {
+			args.push(prompt);
 			return {
 				args,
 				env,
