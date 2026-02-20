@@ -2,8 +2,7 @@ import { diffLines, diffWordsWithSpace } from "diff";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { buildFileTree, extractDiffEntries, extractReferencedPaths } from "@/kanban/chat/utils/session-artifacts";
-import type { ChatTimelineEntry } from "@/kanban/chat/types";
+import { buildFileTree } from "@/kanban/utils/file-tree";
 import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
 
 const CONTEXT_RADIUS = 3;
@@ -425,12 +424,10 @@ function UnifiedDiff({
 }
 
 export function DiffViewerPanel({
-	timeline,
 	workspaceFiles,
 	selectedPath,
 	onSelectedPathChange,
 }: {
-	timeline: ChatTimelineEntry[];
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
 	onSelectedPathChange: (path: string) => void;
@@ -444,24 +441,18 @@ export function DiffViewerPanel({
 	const programmaticScrollClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const diffEntries = useMemo(() => {
-		if (workspaceFiles && workspaceFiles.length > 0) {
-			return workspaceFiles.map((file, index) => ({
-				id: `workspace-${file.path}-${index}`,
-				path: file.path,
-				oldText: file.oldText,
-				newText: file.newText ?? "",
-				timestamp: 0,
-				toolTitle: `${file.status} (${file.additions}+/${file.deletions}-)`,
-			}));
-		}
-		return extractDiffEntries(timeline);
-	}, [workspaceFiles, timeline]);
+		return (workspaceFiles ?? []).map((file, index) => ({
+			id: `workspace-${file.path}-${index}`,
+			path: file.path,
+			oldText: file.oldText,
+			newText: file.newText ?? "",
+			timestamp: 0,
+			toolTitle: `${file.status} (${file.additions}+/${file.deletions}-)`,
+		}));
+	}, [workspaceFiles]);
 
 	const groupedByPath = useMemo((): FileDiffGroup[] => {
-		const sourcePaths =
-			workspaceFiles && workspaceFiles.length > 0
-				? workspaceFiles.map((file) => file.path)
-				: extractReferencedPaths(timeline);
+		const sourcePaths = workspaceFiles?.map((file) => file.path) ?? [];
 		const orderedPaths = flattenFilePathsForDisplay(sourcePaths);
 		const orderIndex = new Map(orderedPaths.map((path, index) => [path, index]));
 		const map = new Map<string, FileDiffGroup>();
@@ -493,7 +484,7 @@ export function DiffViewerPanel({
 			}
 			return a.path.localeCompare(b.path);
 		});
-	}, [diffEntries, timeline, workspaceFiles]);
+	}, [diffEntries, workspaceFiles]);
 
 	const resolveActivePath = useCallback((): string | null => {
 		const container = scrollContainerRef.current;
@@ -590,7 +581,7 @@ export function DiffViewerPanel({
 			{groupedByPath.length === 0 ? (
 				<div className="flex flex-1 items-center justify-center px-4 text-center">
 					<p className="text-sm text-muted-foreground/80">
-						No diff yet. Move this task to In Progress to kick off agent work.
+						No diff yet for this task.
 					</p>
 				</div>
 			) : (

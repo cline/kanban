@@ -3,16 +3,19 @@ import { Plus } from "lucide-react";
 
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors } from "@/kanban/data/column-colors";
+import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard as BoardCardModel, BoardColumn as BoardColumnModel } from "@/kanban/types";
 
 export function BoardColumn({
 	column,
 	index,
+	taskSessions,
 	onCreateTask,
 	onCardClick,
 }: {
 	column: BoardColumnModel;
 	index: number;
+	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
@@ -73,6 +76,7 @@ export function BoardColumn({
 											key={card.id}
 											card={card}
 											index={cardIndex}
+											sessionSummary={taskSessions[card.id]}
 											onClick={() => onCardClick?.(card)}
 										/>
 									))}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/kanban/runtime/types";
+import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 
 interface RuntimeConfigError {
 	error: string;
@@ -12,7 +12,8 @@ export interface UseRuntimeConfigResult {
 	isSaving: boolean;
 	load: () => Promise<void>;
 	save: (nextConfig: {
-		acpCommand: string | null;
+		selectedAgentId: RuntimeAgentId;
+		customAgentCommand: string | null;
 		shortcuts?: RuntimeProjectShortcut[];
 	}) => Promise<RuntimeConfigResponse | null>;
 }
@@ -44,31 +45,32 @@ export function useRuntimeConfig(open: boolean): UseRuntimeConfigResult {
 
 	const save = useCallback(
 		async (nextConfig: {
-			acpCommand: string | null;
+			selectedAgentId: RuntimeAgentId;
+			customAgentCommand: string | null;
 			shortcuts?: RuntimeProjectShortcut[];
 		}): Promise<RuntimeConfigResponse | null> => {
-		setIsSaving(true);
-		try {
-			const response = await fetch("/api/runtime/config", {
-				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(nextConfig),
-			});
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as RuntimeConfigError | null;
-				throw new Error(payload?.error ?? `Runtime config save failed with ${response.status}`);
+			setIsSaving(true);
+			try {
+				const response = await fetch("/api/runtime/config", {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(nextConfig),
+				});
+				if (!response.ok) {
+					const payload = (await response.json().catch(() => null)) as RuntimeConfigError | null;
+					throw new Error(payload?.error ?? `Runtime config save failed with ${response.status}`);
+				}
+				const payload = (await response.json()) as RuntimeConfigResponse;
+				setConfig(payload);
+				return payload;
+			} catch {
+				return null;
+			} finally {
+				setIsSaving(false);
 			}
-			const payload = (await response.json()) as RuntimeConfigResponse;
-			setConfig(payload);
-			return payload;
-		} catch {
-			return null;
-		} finally {
-			setIsSaving(false);
-		}
-	},
+		},
 		[],
 	);
 

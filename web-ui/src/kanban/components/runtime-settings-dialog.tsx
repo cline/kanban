@@ -1,16 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
-import type {
-	RuntimeAcpProbeResponse,
-	RuntimeProjectShortcut,
-	RuntimeSupportedAcpAgent,
-} from "@/kanban/runtime/types";
+import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 
-interface RuntimeErrorPayload {
-	error?: string;
+const AGENT_INSTALL_URLS: Partial<Record<RuntimeAgentId, string>> = {
+	claude: "https://docs.anthropic.com/en/docs/claude-code/quickstart",
+	codex: "https://github.com/openai/codex",
+	gemini: "https://github.com/google-gemini/gemini-cli",
+	opencode: "https://github.com/sst/opencode",
+};
+
+function getAgentState(agent: RuntimeAgentDefinition): string {
+	if (agent.installed) {
+		return "Installed";
+	}
+	return "Not installed";
 }
 
 export function RuntimeSettingsDialog({
@@ -23,83 +29,45 @@ export function RuntimeSettingsDialog({
 	onSaved: () => void;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open);
-	const [commandInput, setCommandInput] = useState("");
+	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
+	const [customCommand, setCustomCommand] = useState("");
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
-	const [isProbing, setIsProbing] = useState(false);
-	const [probeResult, setProbeResult] = useState<RuntimeAcpProbeResponse | null>(null);
+
+	const supportedAgents = useMemo(() => {
+		return (config?.agents ?? []).filter((agent) => agent.id !== "custom");
+	}, [config?.agents]);
 
 	useEffect(() => {
 		if (!open) {
 			return;
 		}
-		setCommandInput(config?.acpCommand ?? "");
+		const configuredAgentId = config?.selectedAgentId ?? null;
+		const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
+		const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
+		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
+		setCustomCommand(config?.customAgentCommand ?? "");
 		setShortcuts(config?.shortcuts ?? []);
 		setSaveError(null);
-		setProbeResult(null);
-	}, [config?.acpCommand, config?.shortcuts, open]);
-
-	const hasEnvOverride = config?.commandSource === "env";
-	const supportedAgents = config?.supportedAgents ?? [];
-	const effectiveCommand = config?.effectiveCommand?.trim() || null;
-
-	const probeCommand = async (command: string): Promise<RuntimeAcpProbeResponse> => {
-		const trimmed = command.trim();
-		if (!trimmed) {
-			return {
-				ok: false,
-				reason: "ACP command is empty.",
-			};
-		}
-
-		setIsProbing(true);
-		try {
-			const response = await fetch("/api/runtime/acp/probe", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ command: trimmed }),
-			});
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as RuntimeErrorPayload | null;
-				return {
-					ok: false,
-					reason: payload?.error ?? `ACP probe failed with ${response.status}`,
-				};
-			}
-			return (await response.json()) as RuntimeAcpProbeResponse;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return {
-				ok: false,
-				reason: message,
-			};
-		} finally {
-			setIsProbing(false);
-		}
-	};
-
-	const handleProbe = async () => {
-		setSaveError(null);
-		const result = await probeCommand(commandInput);
-		setProbeResult(result);
-	};
+	}, [config?.customAgentCommand, config?.selectedAgentId, config?.shortcuts, open, supportedAgents]);
 
 	const handleSave = async () => {
 		setSaveError(null);
-		const next = commandInput.trim();
-		if (next) {
-			const result = await probeCommand(next);
-			setProbeResult(result);
-			if (!result.ok) {
-				setSaveError(result.reason ?? "ACP command probe failed.");
+		const trimmedCustomCommand = customCommand.trim();
+		if (selectedAgentId === "custom" && !trimmedCustomCommand) {
+			setSaveError("Custom command cannot be empty.");
+			return;
+		}
+		if (selectedAgentId !== "custom") {
+			const selectedAgent = supportedAgents.find((agent) => agent.id === selectedAgentId);
+			if (!selectedAgent || !selectedAgent.installed) {
+				setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
 				return;
 			}
 		}
-
 		const saved = await save({
-			acpCommand: next ? next : null,
+			selectedAgentId,
+			customAgentCommand: trimmedCustomCommand || null,
 			shortcuts,
 		});
 		if (!saved) {
@@ -110,107 +78,96 @@ export function RuntimeSettingsDialog({
 		onOpenChange(false);
 	};
 
-	const renderAgentState = (agent: RuntimeSupportedAcpAgent): string => {
-		if (agent.configured && agent.installed) {
-			return "Configured";
-		}
-		if (agent.configured && !agent.installed) {
-			return "Configured, dependency missing";
-		}
-		if (agent.installed) {
-			return "Installed";
-		}
-		return "Not installed";
-	};
-
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="border-border bg-card text-foreground">
 				<DialogHeader>
-					<DialogTitle>ACP Runtime Setup</DialogTitle>
+					<DialogTitle>Agent Runtime Setup</DialogTitle>
 					<DialogDescription className="text-muted-foreground">
-						Set and verify the ACP command Kanbanana should run for task sessions.
+						Choose one installed agent. If an agent is missing, use Install.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-3">
-					<div className="space-y-1">
-						<label htmlFor="acp-command-input" className="text-xs text-muted-foreground">
-							ACP command (project)
-						</label>
-						<div className="flex items-center gap-2">
-							<input
-								id="acp-command-input"
-								value={commandInput}
-								onChange={(event) => {
-									setCommandInput(event.target.value);
-									setProbeResult(null);
-								}}
-								placeholder="npx @zed-industries/codex-acp@latest"
-								className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
-								disabled={isLoading || isSaving || isProbing}
-							/>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => {
-									void handleProbe();
-								}}
-								disabled={isLoading || isSaving || isProbing || !commandInput.trim()}
-							>
-								{isProbing ? "Testing..." : "Test"}
-							</Button>
-						</div>
-					</div>
-
-					{probeResult ? (
-						probeResult.ok ? (
-							<p className="text-xs text-emerald-300">ACP probe succeeded for this command.</p>
-						) : (
-							<p className="whitespace-pre-wrap text-xs text-red-300">{probeResult.reason ?? "ACP probe failed."}</p>
-						)
-					) : null}
-
 					<div className="space-y-2 rounded border border-border p-3">
 						<div className="flex items-center justify-between gap-2">
-							<p className="text-xs text-muted-foreground">Supported ACP commands</p>
+							<p className="text-xs text-muted-foreground">Supported agents</p>
 							<p className="text-[11px] text-muted-foreground">
-								Detected binaries: {(config?.detectedCommands ?? []).join(", ") || "none"}
+								{(config?.detectedCommands ?? []).join(", ") || "No agent binaries detected"}
 							</p>
 						</div>
 						<div className="space-y-2">
-							{supportedAgents.map((agent) => (
-								<div key={agent.id} className="rounded border border-border bg-background/70 p-2">
-									<div className="flex items-center justify-between gap-3">
-										<div className="min-w-0">
-											<p className="text-sm text-foreground">{agent.label}</p>
-											<p className="truncate font-mono text-[11px] text-muted-foreground">{agent.command}</p>
+							{supportedAgents.map((agent) => {
+								const installUrl = AGENT_INSTALL_URLS[agent.id];
+								return (
+									<div key={agent.id} className="rounded border border-border bg-background/70 p-2">
+										<div className="flex items-center justify-between gap-3">
+											<div className="min-w-0">
+												<p className="text-sm text-foreground">{agent.label}</p>
+												{agent.command ? (
+													<p className="truncate font-mono text-[11px] text-muted-foreground">{agent.command}</p>
+												) : null}
+											</div>
+											{agent.installed ? (
+												<Button
+													type="button"
+													variant={agent.id === selectedAgentId ? "secondary" : "outline"}
+													size="sm"
+													onClick={() => setSelectedAgentId(agent.id)}
+													disabled={isLoading || isSaving}
+												>
+													{agent.id === selectedAgentId ? "Selected" : "Use"}
+												</Button>
+											) : installUrl ? (
+												<Button type="button" variant="outline" size="sm" asChild>
+													<a href={installUrl} target="_blank" rel="noreferrer">
+														Install
+													</a>
+												</Button>
+											) : (
+												<Button type="button" variant="outline" size="sm" disabled>
+													Install
+												</Button>
+											)}
 										</div>
-										<Button
-											type="button"
-											variant={agent.configured ? "secondary" : "outline"}
-											size="sm"
-											onClick={() => {
-												setCommandInput(agent.command);
-												setProbeResult(null);
-											}}
-											disabled={isLoading || isSaving || isProbing}
-										>
-											{agent.configured ? "Selected" : "Use"}
-										</Button>
+										<p className="mt-1 text-[11px] text-muted-foreground">{getAgentState(agent)}</p>
 									</div>
-									<p className="mt-1 text-[11px] text-muted-foreground">{renderAgentState(agent)}</p>
-								</div>
-							))}
+								);
+							})}
 							{supportedAgents.length === 0 ? (
-								<p className="text-xs text-muted-foreground">No supported ACP commands were returned by runtime.</p>
+								<p className="text-xs text-muted-foreground">No supported agents discovered.</p>
 							) : null}
 						</div>
 					</div>
 
-					{effectiveCommand ? (
-						<p className="text-xs text-muted-foreground">Current runtime command: {effectiveCommand}</p>
+					<div className="space-y-2 rounded border border-border p-3">
+						<div className="flex items-center justify-between gap-3">
+							<div>
+								<p className="text-xs text-muted-foreground">Custom command</p>
+								<p className="text-[11px] text-muted-foreground">Use if your agent binary is non-standard.</p>
+							</div>
+							<Button
+								type="button"
+								variant={selectedAgentId === "custom" ? "secondary" : "outline"}
+								size="sm"
+								onClick={() => setSelectedAgentId("custom")}
+								disabled={isLoading || isSaving}
+							>
+								{selectedAgentId === "custom" ? "Selected" : "Use custom"}
+							</Button>
+						</div>
+						<input
+							value={customCommand}
+							onChange={(event) => setCustomCommand(event.target.value)}
+							placeholder="claude --dangerously-skip-permissions"
+							className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+							disabled={isLoading || isSaving}
+						/>
+					</div>
+
+					{config?.effectiveCommand ? (
+						<p className="text-xs text-muted-foreground">Current runtime command: {config.effectiveCommand}</p>
 					) : (
-						<p className="text-xs text-amber-300">No ACP command is configured yet.</p>
+						<p className="text-xs text-amber-300">No runnable agent command configured yet.</p>
 					)}
 					<p className="text-xs text-muted-foreground">Global config path: {config?.configPath ?? "~/.kanbanana/config.json"}</p>
 
@@ -244,9 +201,9 @@ export function RuntimeSettingsDialog({
 												current.map((item) =>
 													item.id === shortcut.id
 														? {
-																...item,
-																label: event.target.value,
-															}
+															...item,
+															label: event.target.value,
+														}
 														: item,
 												),
 											)
@@ -261,9 +218,9 @@ export function RuntimeSettingsDialog({
 												current.map((item) =>
 													item.id === shortcut.id
 														? {
-																...item,
-																command: event.target.value,
-															}
+															...item,
+															command: event.target.value,
+														}
 														: item,
 												),
 											)
@@ -284,18 +241,13 @@ export function RuntimeSettingsDialog({
 						</div>
 					</div>
 
-					{hasEnvOverride ? (
-						<p className="text-xs text-amber-300">
-							`KANBANANA_ACP_COMMAND` is set and currently overrides project config.
-						</p>
-					) : null}
 					{saveError ? <p className="whitespace-pre-wrap text-xs text-red-300">{saveError}</p> : null}
 				</div>
 				<DialogFooter>
-					<Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isProbing}>
+					<Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
 						Cancel
 					</Button>
-					<Button onClick={() => void handleSave()} disabled={isLoading || isSaving || isProbing}>
+					<Button onClick={() => void handleSave()} disabled={isLoading || isSaving}>
 						Save
 					</Button>
 				</DialogFooter>

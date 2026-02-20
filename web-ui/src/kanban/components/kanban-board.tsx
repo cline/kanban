@@ -2,15 +2,18 @@ import { DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
 import { useCallback, useRef } from "react";
 
 import { BoardColumn } from "@/kanban/components/board-column";
+import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardData } from "@/kanban/types";
 
 export function KanbanBoard({
 	data,
+	taskSessions,
 	onCardSelect,
 	onCreateTask,
 	onDragEnd,
 }: {
 	data: BoardData;
+	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCardSelect: (taskId: string) => void;
 	onCreateTask: () => void;
 	onDragEnd: (result: DropResult) => void;
@@ -45,6 +48,7 @@ export function KanbanBoard({
 								key={column.id}
 								column={column}
 								index={index}
+								taskSessions={taskSessions}
 								onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
 								onCardClick={(card) => {
 									if (!dragOccurredRef.current) {

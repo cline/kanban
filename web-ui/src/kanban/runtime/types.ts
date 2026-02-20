@@ -23,51 +23,26 @@ export interface RuntimeWorkspaceChangesResponse {
 	files: RuntimeWorkspaceFileChange[];
 }
 
-export interface RuntimeAcpHealthResponse {
-	available: boolean;
-	configuredCommand: string | null;
-	commandSource: "env" | "config" | "none";
-	detectedCommands?: string[];
-	reason?: string;
+export interface RuntimeWorkspaceFileSearchMatch {
+	path: string;
+	name: string;
+	changed: boolean;
 }
 
-export interface RuntimeAcpProbeResponse {
-	ok: boolean;
-	reason?: string;
+export interface RuntimeWorkspaceFileSearchResponse {
+	query: string;
+	files: RuntimeWorkspaceFileSearchMatch[];
 }
 
-export interface RuntimeConfigResponse {
-	acpCommand: string | null;
-	effectiveCommand: string | null;
-	commandSource: "env" | "config" | "none";
-	configPath: string;
-	detectedCommands: string[];
-	supportedAgents: RuntimeSupportedAcpAgent[];
-	shortcuts: RuntimeProjectShortcut[];
+export interface RuntimeSlashCommandDescription {
+	name: string;
+	description: string | null;
 }
 
-export interface RuntimeSupportedAcpAgent {
-	id: string;
-	label: string;
-	binary: string;
-	command: string;
-	installed: boolean;
-	configured: boolean;
-}
-
-export interface RuntimeProjectShortcut {
-	id: string;
-	label: string;
-	command: string;
-	icon?: string;
-}
-
-export interface RuntimeShortcutRunResponse {
-	exitCode: number;
-	stdout: string;
-	stderr: string;
-	combinedOutput: string;
-	durationMs: number;
+export interface RuntimeSlashCommandsResponse {
+	agentId: RuntimeAgentId | null;
+	commands: RuntimeSlashCommandDescription[];
+	error: string | null;
 }
 
 export type RuntimeBoardColumnId = "backlog" | "in_progress" | "review" | "trash";
@@ -76,6 +51,8 @@ export interface RuntimeBoardCard {
 	id: string;
 	title: string;
 	description: string;
+	prompt: string;
+	startInPlanMode: boolean;
 	baseRef?: string | null;
 	createdAt: number;
 	updatedAt: number;
@@ -91,106 +68,66 @@ export interface RuntimeBoardData {
 	columns: RuntimeBoardColumn[];
 }
 
-export type RuntimeChatSessionStatus = "idle" | "thinking" | "tool_running" | "cancelled";
-
-export interface RuntimeChatTimelineUserMessage {
-	type: "user_message";
-	id: string;
-	timestamp: number;
-	text: string;
+export interface RuntimeGitRepositoryInfo {
+	hasGit: boolean;
+	currentBranch: string | null;
+	defaultBranch: string | null;
+	branches: string[];
 }
 
-export interface RuntimeChatTimelineAgentMessage {
-	type: "agent_message";
-	id: string;
-	timestamp: number;
-	text: string;
-	isStreaming: boolean;
+export type RuntimeAgentId = "claude" | "codex" | "gemini" | "opencode" | "custom";
+
+export interface RuntimeAgentDefinition {
+	id: RuntimeAgentId;
+	label: string;
+	binary: string;
+	command: string;
+	defaultArgs: string[];
+	installed: boolean;
+	configured: boolean;
 }
 
-export interface RuntimeChatTimelineAgentThought {
-	type: "agent_thought";
+export interface RuntimeProjectShortcut {
 	id: string;
-	timestamp: number;
-	text: string;
-	isStreaming: boolean;
+	label: string;
+	command: string;
+	icon?: string;
 }
 
-export interface RuntimeChatTimelineToolCallMessage {
-	type: "tool_call";
-	id: string;
-	timestamp: number;
-	toolCall: {
-		toolCallId: string;
-		title: string;
-		kind: "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other";
-		status: "pending" | "in_progress" | "completed" | "failed";
-		content?: Array<
-			| {
-					type: "content";
-					content: { type: "text"; text: string };
-			  }
-			| {
-					type: "diff";
-					path: string;
-					oldText: string | null;
-					newText: string;
-			  }
-		>;
-		locations?: Array<{
-			path: string;
-			line?: number;
-		}>;
-	};
+export interface RuntimeConfigResponse {
+	selectedAgentId: RuntimeAgentId;
+	customAgentCommand: string | null;
+	effectiveCommand: string | null;
+	configPath: string;
+	detectedCommands: string[];
+	agents: RuntimeAgentDefinition[];
+	shortcuts: RuntimeProjectShortcut[];
 }
 
-export interface RuntimeChatTimelinePlanMessage {
-	type: "plan";
-	id: string;
-	timestamp: number;
-	entries: Array<{
-		content: string;
-		status: "pending" | "in_progress" | "completed";
-		priority: "high" | "medium" | "low";
-	}>;
+export interface RuntimeShortcutRunResponse {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+	combinedOutput: string;
+	durationMs: number;
 }
 
-export interface RuntimeChatTimelinePermissionMessage {
-	type: "permission_request";
-	id: string;
-	timestamp: number;
-	request: {
-		toolCallId: string;
-		toolCallTitle: string;
-		options: Array<{
-			optionId: string;
-			name: string;
-			kind: "allow_once" | "allow_always" | "reject_once" | "reject_always";
-		}>;
-	};
-	resolved: boolean;
-	selectedOptionId?: string;
-}
+export type RuntimeTaskSessionState = "idle" | "running" | "awaiting_review" | "failed" | "interrupted";
 
-export type RuntimeChatTimelineEntry =
-	| RuntimeChatTimelineUserMessage
-	| RuntimeChatTimelineAgentMessage
-	| RuntimeChatTimelineAgentThought
-	| RuntimeChatTimelineToolCallMessage
-	| RuntimeChatTimelinePlanMessage
-	| RuntimeChatTimelinePermissionMessage;
+export type RuntimeTaskSessionReviewReason = "attention" | "exit" | "error" | "interrupted" | null;
 
-export interface RuntimeChatSessionState {
-	sessionId: string;
-	status: RuntimeChatSessionStatus;
-	timeline: RuntimeChatTimelineEntry[];
-	availableCommands: Array<{
-		name: string;
-		description: string;
-		input?: {
-			hint?: string;
-		};
-	}>;
+export interface RuntimeTaskSessionSummary {
+	taskId: string;
+	state: RuntimeTaskSessionState;
+	agentId: RuntimeAgentId | null;
+	workspacePath: string | null;
+	pid: number | null;
+	startedAt: number | null;
+	updatedAt: number;
+	lastOutputAt: number | null;
+	lastActivityLine: string | null;
+	reviewReason: RuntimeTaskSessionReviewReason;
+	exitCode: number | null;
 }
 
 export interface RuntimeWorkspaceStateResponse {
@@ -198,19 +135,12 @@ export interface RuntimeWorkspaceStateResponse {
 	statePath: string;
 	git: RuntimeGitRepositoryInfo;
 	board: RuntimeBoardData;
-	sessions: Record<string, RuntimeChatSessionState>;
+	sessions: Record<string, RuntimeTaskSessionSummary>;
 }
 
 export interface RuntimeWorkspaceStateSaveRequest {
 	board: RuntimeBoardData;
-	sessions: Record<string, RuntimeChatSessionState>;
-}
-
-export interface RuntimeGitRepositoryInfo {
-	hasGit: boolean;
-	currentBranch: string | null;
-	defaultBranch: string | null;
-	branches: string[];
+	sessions: Record<string, RuntimeTaskSessionSummary>;
 }
 
 export interface RuntimeWorktreeEnsureRequest {
@@ -255,3 +185,74 @@ export interface RuntimeTaskWorkspaceInfoResponse {
 	isDetached: boolean;
 	headCommit: string | null;
 }
+
+export interface RuntimeTaskSessionListResponse {
+	sessions: RuntimeTaskSessionSummary[];
+}
+
+export interface RuntimeTaskSessionStartResponse {
+	ok: boolean;
+	summary: RuntimeTaskSessionSummary | null;
+	error?: string;
+}
+
+export interface RuntimeTaskSessionStartRequest {
+	taskId: string;
+	prompt: string;
+	startInPlanMode?: boolean;
+	baseRef?: string | null;
+	cols?: number;
+	rows?: number;
+}
+
+export interface RuntimeTaskSessionStopResponse {
+	ok: boolean;
+	summary: RuntimeTaskSessionSummary | null;
+	error?: string;
+}
+
+export interface RuntimeTerminalWsInputMessage {
+	type: "input";
+	data: string;
+}
+
+export interface RuntimeTerminalWsResizeMessage {
+	type: "resize";
+	cols: number;
+	rows: number;
+}
+
+export interface RuntimeTerminalWsStopMessage {
+	type: "stop";
+}
+
+export type RuntimeTerminalWsClientMessage =
+	| RuntimeTerminalWsInputMessage
+	| RuntimeTerminalWsResizeMessage
+	| RuntimeTerminalWsStopMessage;
+
+export interface RuntimeTerminalWsOutputMessage {
+	type: "output";
+	data: string;
+}
+
+export interface RuntimeTerminalWsStateMessage {
+	type: "state";
+	summary: RuntimeTaskSessionSummary;
+}
+
+export interface RuntimeTerminalWsErrorMessage {
+	type: "error";
+	message: string;
+}
+
+export interface RuntimeTerminalWsExitMessage {
+	type: "exit";
+	code: number | null;
+}
+
+export type RuntimeTerminalWsServerMessage =
+	| RuntimeTerminalWsOutputMessage
+	| RuntimeTerminalWsStateMessage
+	| RuntimeTerminalWsErrorMessage
+	| RuntimeTerminalWsExitMessage;

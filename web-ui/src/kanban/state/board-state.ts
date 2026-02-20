@@ -6,6 +6,8 @@ import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } 
 export interface TaskDraft {
 	title: string;
 	description?: string;
+	prompt?: string;
+	startInPlanMode?: boolean;
 	baseRef?: string | null;
 }
 
@@ -14,6 +16,8 @@ export interface TaskMoveEvent {
 	fromColumnId: BoardColumnId;
 	toColumnId: BoardColumnId;
 }
+
+const TASK_ID_LENGTH = 5;
 
 function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
 	const result = Array.from(list);
@@ -24,18 +28,35 @@ function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
 	return result;
 }
 
-function createTask(draft: TaskDraft): BoardCard {
+function createShortTaskId(): string {
+	return crypto.randomUUID().replaceAll("-", "").slice(0, TASK_ID_LENGTH);
+}
+
+function createUniqueTaskId(existingIds: Set<string>): string {
+	for (let attempt = 0; attempt < 16; attempt += 1) {
+		const candidate = createShortTaskId();
+		if (!existingIds.has(candidate)) {
+			return candidate;
+		}
+	}
+	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`.slice(0, TASK_ID_LENGTH);
+}
+
+function createTask(draft: TaskDraft, existingIds: Set<string>): BoardCard {
 	const now = Date.now();
 	const title = draft.title.trim();
 	const description = draft.description?.trim() ?? "";
+	const prompt = draft.prompt?.trim() || description || title;
 	const baseRef =
 		typeof draft.baseRef === "string"
 			? (draft.baseRef.trim() || null)
 			: null;
 	return {
-		id: crypto.randomUUID(),
+		id: createUniqueTaskId(existingIds),
 		title,
 		description,
+		prompt,
+		startInPlanMode: Boolean(draft.startInPlanMode),
 		baseRef,
 		createdAt: now,
 		updatedAt: now,
@@ -72,31 +93,32 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		id?: unknown;
 		title?: unknown;
 		description?: unknown;
+		prompt?: unknown;
+		startInPlanMode?: unknown;
 		baseRef?: unknown;
-		body?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
 	};
 
-	const titleFromBody = typeof card.body === "string" ? card.body : "";
-	const title = typeof card.title === "string" ? card.title.trim() : titleFromBody.trim();
+	const title = typeof card.title === "string" ? card.title.trim() : "";
 	if (!title) {
 		return null;
 	}
 
-	const description =
-		typeof card.description === "string"
-			? card.description
-			: typeof card.body === "string"
-				? card.body
-				: "";
+	const description = typeof card.description === "string" ? card.description : "";
+	const prompt =
+		typeof card.prompt === "string"
+			? card.prompt
+			: description.trim() || title;
 
 	const now = Date.now();
 
 	return {
-		id: typeof card.id === "string" && card.id ? card.id : crypto.randomUUID(),
+		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(),
 		title,
 		description,
+		prompt,
+		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		baseRef: typeof card.baseRef === "string" ? (card.baseRef.trim() || null) : null,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
@@ -147,6 +169,12 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {
 	const title = draft.title.trim();
 	if (!title) return board;
+	const existingIds = new Set<string>();
+	for (const column of board.columns) {
+		for (const card of column.cards) {
+			existingIds.add(card.id);
+		}
+	}
 
 	const columns = board.columns.map((column) => {
 		if (column.id !== columnId) {
@@ -154,7 +182,7 @@ export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft
 		}
 		return {
 			...column,
-			cards: [...column.cards, createTask(draft)],
+			cards: [...column.cards, createTask(draft, existingIds)],
 		};
 	});
 

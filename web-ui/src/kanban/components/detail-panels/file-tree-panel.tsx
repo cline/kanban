@@ -3,23 +3,13 @@ import { useMemo } from "react";
 
 import {
 	buildFileTree,
-	extractDiffEntries,
-	extractReferencedPaths,
 	type FileTreeNode,
-} from "@/kanban/chat/utils/session-artifacts";
-import type { ChatTimelineEntry } from "@/kanban/chat/types";
+} from "@/kanban/utils/file-tree";
 import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
 
 interface FileDiffStats {
 	added: number;
 	removed: number;
-}
-
-function countLines(text: string): number {
-	if (!text) {
-		return 0;
-	}
-	return text.split("\n").length;
 }
 
 function FileTreeRow({
@@ -85,49 +75,35 @@ function FileTreeRow({
 }
 
 export function FileTreePanel({
-	timeline,
 	workspaceFiles,
 	selectedPath,
 	onSelectPath,
 }: {
-	timeline: ChatTimelineEntry[];
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string) => void;
 }): React.ReactElement {
 	const referencedPaths = useMemo(() => {
-		if (workspaceFiles && workspaceFiles.length > 0) {
-			return workspaceFiles.map((file) => file.path);
-		}
-		return extractReferencedPaths(timeline);
-	}, [workspaceFiles, timeline]);
+		return workspaceFiles?.map((file) => file.path) ?? [];
+	}, [workspaceFiles]);
 	const tree = useMemo(() => buildFileTree(referencedPaths), [referencedPaths]);
 	const diffStatsByPath = useMemo(() => {
 		const stats: Record<string, FileDiffStats> = {};
-		if (workspaceFiles && workspaceFiles.length > 0) {
-			for (const file of workspaceFiles) {
-				stats[file.path] = {
-					added: file.additions,
-					removed: file.deletions,
-				};
-			}
-			return stats;
-		}
-		for (const entry of extractDiffEntries(timeline)) {
-			const existing = stats[entry.path] ?? { added: 0, removed: 0 };
-			existing.added += countLines(entry.newText);
-			existing.removed += entry.oldText ? countLines(entry.oldText) : 0;
-			stats[entry.path] = existing;
+		for (const file of workspaceFiles ?? []) {
+			stats[file.path] = {
+				added: file.additions,
+				removed: file.deletions,
+			};
 		}
 		return stats;
-	}, [timeline, workspaceFiles]);
+	}, [workspaceFiles]);
 
 	return (
 		<div className="flex min-h-0 min-w-0 flex-[0.6] flex-col bg-background">
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
 				{tree.length === 0 ? (
 					<div className="flex h-full items-center justify-center px-3 text-center">
-						<p className="text-sm text-muted-foreground/80">Files touched by ACP tool calls will appear here.</p>
+						<p className="text-sm text-muted-foreground/80">Changed files will appear here.</p>
 					</div>
 				) : (
 					<div className="space-y-0.5">

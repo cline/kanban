@@ -4,6 +4,8 @@ export interface BoardCard {
 	id: string;
 	title: string;
 	description: string;
+	prompt: string;
+	startInPlanMode: boolean;
 	baseRef?: string | null;
 	createdAt: number;
 	updatedAt: number;

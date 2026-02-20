@@ -1,50 +1,42 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import type { ChatSessionState } from "@/kanban/chat/types";
-import { extractReferencedPaths } from "@/kanban/chat/utils/session-artifacts";
-import { AgentChatPanel } from "@/kanban/components/detail-panels/agent-chat-panel";
+import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
 import { ColumnContextPanel } from "@/kanban/components/detail-panels/column-context-panel";
 import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
 import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspace-changes";
+import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { CardSelection } from "@/kanban/types";
+
+const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 1500;
 
 export function CardDetailView({
 	selection,
-	session,
+	sessionSummary,
+	onSessionSummary,
 	onBack,
 	onCardSelect,
-	onSendPrompt,
-	onCancelPrompt,
-	onPermissionRespond,
 	onMoveToTrash,
-	sendDisabled,
-	sendDisabledReason,
 }: {
 	selection: CardSelection;
-	session: ChatSessionState;
+	sessionSummary: RuntimeTaskSessionSummary | null;
+	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
 	onBack: () => void;
 	onCardSelect: (taskId: string) => void;
-	onSendPrompt: (text: string) => void;
-	onCancelPrompt: () => void;
-	onPermissionRespond: (messageId: string, optionId: string) => void;
 	onMoveToTrash: () => void;
-	sendDisabled?: boolean;
-	sendDisabledReason?: string;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(
 		selection.card.id,
 		selection.card.baseRef ?? null,
 	);
-	const previousStatusRef = useRef(session.status);
 	const runtimeFiles = workspaceChanges?.files ?? null;
 	const availablePaths = useMemo(() => {
-		if (runtimeFiles && runtimeFiles.length > 0) {
-			return runtimeFiles.map((file) => file.path);
+		if (!runtimeFiles || runtimeFiles.length === 0) {
+			return [];
 		}
-		return extractReferencedPaths(session.timeline);
-	}, [runtimeFiles, session.timeline]);
+		return runtimeFiles.map((file) => file.path);
+	}, [runtimeFiles]);
 
 	useEffect(() => {
 		function handleKeyDown(event: KeyboardEvent) {
@@ -99,36 +91,46 @@ export function CardDetailView({
 	}, [availablePaths, selectedPath]);
 
 	useEffect(() => {
-		const previousStatus = previousStatusRef.current;
-		previousStatusRef.current = session.status;
-		if (previousStatus !== "idle" && session.status === "idle") {
-			void refresh();
+		void refresh();
+	}, [refresh, sessionSummary?.state]);
+
+	useEffect(() => {
+		const state = sessionSummary?.state;
+		const shouldPoll = state === "running" || state === "awaiting_review";
+		if (!shouldPoll) {
+			return;
 		}
-	}, [refresh, session.status]);
+
+		const intervalId = window.setInterval(() => {
+			if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+				return;
+			}
+			void refresh();
+		}, WORKSPACE_CHANGES_POLL_INTERVAL_MS);
+
+		return () => {
+			window.clearInterval(intervalId);
+		};
+	}, [refresh, sessionSummary?.state]);
 
 	return (
 		<div className="flex min-h-0 flex-1 overflow-hidden bg-background">
 			<ColumnContextPanel selection={selection} onCardSelect={onCardSelect} />
 			<div className="flex h-full min-h-0 w-4/5 min-w-0 flex-col overflow-hidden bg-background">
 				<div className="flex min-h-0 flex-1 overflow-hidden">
-					<AgentChatPanel
-						session={session}
-						onSend={onSendPrompt}
-						onCancel={onCancelPrompt}
-						onPermissionRespond={onPermissionRespond}
+					<AgentTerminalPanel
+						taskId={selection.card.id}
+						summary={sessionSummary}
+						onSummary={onSessionSummary}
 						showMoveToTrash={selection.column.id === "review"}
 						onMoveToTrash={onMoveToTrash}
-						sendDisabled={sendDisabled}
-						sendDisabledReason={sendDisabledReason}
 					/>
 					<DiffViewerPanel
-						timeline={session.timeline}
 						workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
 						selectedPath={selectedPath}
 						onSelectedPathChange={setSelectedPath}
 					/>
 					<FileTreePanel
-						timeline={session.timeline}
 						workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
 						selectedPath={selectedPath}
 						onSelectPath={setSelectedPath}

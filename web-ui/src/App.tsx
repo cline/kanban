@@ -2,7 +2,6 @@ import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
 	CommandDialog,
 	CommandEmpty,
@@ -12,19 +11,24 @@ import {
 	CommandList,
 	CommandShortcut,
 } from "@/components/ui/command";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BrowserAcpClient } from "@/kanban/acp/browser-acp-client";
-import { useTaskChatSessions } from "@/kanban/chat/hooks/use-task-chat-sessions";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
+import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
 import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
+import { TaskCreateDialog, type TaskWorkspaceMode } from "@/kanban/components/task-create-dialog";
+import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
 import { TopBar } from "@/kanban/components/top-bar";
 import { createInitialBoardData } from "@/kanban/data/board-data";
-import { useRuntimeAcpHealth } from "@/kanban/runtime/use-runtime-acp-health";
 import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
+import { useRuntimeTaskSessions } from "@/kanban/runtime/use-runtime-task-sessions";
+import {
+	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
+	splitPromptToTitleDescription,
+} from "@/kanban/utils/task-prompt";
 import type {
 	RuntimeGitRepositoryInfo,
 	RuntimeShortcutRunResponse,
+	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
@@ -41,15 +45,12 @@ import {
 } from "@/kanban/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/kanban/types";
 
-const acpClient = new BrowserAcpClient();
 const WORKSPACE_STATE_PERSIST_DEBOUNCE_MS = 300;
 const TASK_WORKSPACE_MODE_STORAGE_KEY = "kanbanana.task-workspace-mode";
-
-type TaskWorkspaceMode = "local" | "worktree";
+const TASK_START_IN_PLAN_MODE_STORAGE_KEY = "kanbanana.task-start-in-plan-mode";
 
 interface PendingTrashWarningState {
 	taskId: string;
-	fromColumnId: BoardColumnId;
 	fileCount: number;
 	taskTitle: string;
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
@@ -70,18 +71,76 @@ function loadPersistedTaskWorkspaceMode(): TaskWorkspaceMode {
 	return "worktree";
 }
 
+function loadPersistedTaskStartInPlanMode(): boolean {
+	if (typeof window === "undefined") {
+		return false;
+	}
+	try {
+		const value = window.localStorage.getItem(TASK_START_IN_PLAN_MODE_STORAGE_KEY);
+		return value === "true";
+	} catch {
+		// Ignore storage access failures and use defaults.
+	}
+	return false;
+}
+
+function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary {
+	return {
+		taskId,
+		state: "idle",
+		agentId: null,
+		workspacePath: null,
+		pid: null,
+		startedAt: null,
+		updatedAt: Date.now(),
+		lastOutputAt: null,
+		lastActivityLine: null,
+		reviewReason: null,
+		exitCode: null,
+	};
+}
+
+function mergeTaskSessions(
+	current: Record<string, RuntimeTaskSessionSummary>,
+	nextFromRuntime: Record<string, RuntimeTaskSessionSummary>,
+): Record<string, RuntimeTaskSessionSummary> {
+	let changed = false;
+	const next = { ...current };
+	for (const [taskId, summary] of Object.entries(nextFromRuntime)) {
+		const existing = next[taskId];
+		if (!existing || existing.updatedAt <= summary.updatedAt) {
+			next[taskId] = summary;
+			if (!existing || existing.updatedAt !== summary.updatedAt || existing.state !== summary.state) {
+				changed = true;
+			}
+		}
+	}
+	return changed ? next : current;
+}
+
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
+	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const [workspacePath, setWorkspacePath] = useState<string | null>(null);
 	const [workspaceGit, setWorkspaceGit] = useState<RuntimeGitRepositoryInfo | null>(null);
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
 		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
-	const [isWorkspaceStateReady, setIsWorkspaceStateReady] = useState(false);
+	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
+	const [isDocumentVisible, setIsDocumentVisible] = useState<boolean>(() => {
+		if (typeof document === "undefined") {
+			return true;
+		}
+		return document.visibilityState === "visible";
+	});
+	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 	const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
-	const [newTaskTitle, setNewTaskTitle] = useState("");
+	const [newTaskPrompt, setNewTaskPrompt] = useState("");
+	const [newTaskStartInPlanMode, setNewTaskStartInPlanMode] = useState<boolean>(() =>
+		loadPersistedTaskStartInPlanMode(),
+	);
 	const [newTaskWorkspaceMode, setNewTaskWorkspaceMode] = useState<TaskWorkspaceMode>(() =>
 		loadPersistedTaskWorkspaceMode(),
 	);
@@ -93,25 +152,15 @@ export default function App(): ReactElement {
 		label: string;
 		result: RuntimeShortcutRunResponse;
 	} | null>(null);
-	const { health: runtimeAcpHealth, refresh: refreshRuntimeAcpHealth } = useRuntimeAcpHealth();
 	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } = useRuntimeProjectConfig();
+	const { sessions: runtimeTaskSessions, refresh: refreshRuntimeTaskSessions } = useRuntimeTaskSessions();
 
-	const handleTaskRunComplete = useCallback((taskId: string) => {
-		setBoard((currentBoard) => {
-			const columnId = getTaskColumnId(currentBoard, taskId);
-			if (columnId !== "in_progress") {
-				return currentBoard;
-			}
-			const moved = moveTaskToColumn(currentBoard, taskId, "review");
-			return moved.moved ? moved.board : currentBoard;
-		});
+	const upsertSession = useCallback((summary: RuntimeTaskSessionSummary) => {
+		setSessions((current) => ({
+			...current,
+			[summary.taskId]: summary,
+		}));
 	}, []);
-
-	const { sessions, hydrateSessions, getSession, ensureSession, startTaskRun, sendPrompt, cancelPrompt, respondToPermission } =
-		useTaskChatSessions({
-			acpClient,
-			onTaskRunComplete: handleTaskRunComplete,
-		});
 
 	const ensureTaskWorkspace = useCallback(async (task: BoardCard): Promise<{ ok: boolean; message?: string }> => {
 		try {
@@ -141,6 +190,53 @@ export default function App(): ReactElement {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return { ok: false, message };
+		}
+	}, []);
+
+	const startTaskSession = useCallback(async (task: BoardCard): Promise<{ ok: boolean; message?: string }> => {
+		try {
+			const kickoffPrompt = task.prompt.trim() || task.description.trim() || task.title;
+			const response = await fetch("/api/runtime/task-session/start", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					taskId: task.id,
+					prompt: kickoffPrompt,
+					startInPlanMode: task.startInPlanMode,
+					baseRef: task.baseRef ?? null,
+				}),
+			});
+			const payload = (await response.json().catch(() => null)) as
+				| { ok?: boolean; error?: string; summary?: RuntimeTaskSessionSummary | null }
+				| null;
+			if (!response.ok || !payload || !payload.ok || !payload.summary) {
+				return {
+					ok: false,
+					message: payload?.error ?? `Task session start failed with ${response.status}.`,
+				};
+			}
+			upsertSession(payload.summary);
+			void refreshRuntimeTaskSessions();
+			return { ok: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return { ok: false, message };
+		}
+	}, [refreshRuntimeTaskSessions, upsertSession]);
+
+	const stopTaskSession = useCallback(async (taskId: string): Promise<void> => {
+		try {
+			await fetch("/api/runtime/task-session/stop", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ taskId }),
+			});
+		} catch {
+			// Ignore stop errors during cleanup.
 		}
 	}, []);
 
@@ -233,6 +329,33 @@ export default function App(): ReactElement {
 	}, [board.columns]);
 
 	useEffect(() => {
+		setSessions((current) => mergeTaskSessions(current, runtimeTaskSessions));
+	}, [runtimeTaskSessions]);
+
+	useEffect(() => {
+		setBoard((currentBoard) => {
+			let nextBoard = currentBoard;
+			for (const summary of Object.values(runtimeTaskSessions)) {
+				const columnId = getTaskColumnId(nextBoard, summary.taskId);
+				if (summary.state === "awaiting_review" && columnId === "in_progress") {
+					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
+					if (moved.moved) {
+						nextBoard = moved.board;
+					}
+					continue;
+				}
+				if (summary.state === "interrupted" && columnId && columnId !== "trash") {
+					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
+					if (moved.moved) {
+						nextBoard = moved.board;
+					}
+				}
+			}
+			return nextBoard;
+		});
+	}, [runtimeTaskSessions]);
+
+	useEffect(() => {
 		let cancelled = false;
 		const loadSelectedTaskWorkspaceInfo = async () => {
 			if (!selectedCard) {
@@ -269,9 +392,7 @@ export default function App(): ReactElement {
 		};
 
 		append(workspaceGit.currentBranch, "(current)");
-		const mainCandidate = workspaceGit.branches.includes("main")
-			? "main"
-			: workspaceGit.defaultBranch;
+		const mainCandidate = workspaceGit.branches.includes("main") ? "main" : workspaceGit.defaultBranch;
 		append(mainCandidate, mainCandidate && mainCandidate !== workspaceGit.currentBranch ? "(default)" : undefined);
 		for (const branch of workspaceGit.branches) {
 			append(branch);
@@ -289,46 +410,70 @@ export default function App(): ReactElement {
 		return workspaceGit.currentBranch ?? workspaceGit.defaultBranch ?? createTaskBranchOptions[0]?.value ?? "";
 	}, [createTaskBranchOptions, workspaceGit]);
 
-	useEffect(() => {
-		let cancelled = false;
-		const loadWorkspaceState = async () => {
+	const loadWorkspaceStateFromRuntime = useCallback(
+		async (options?: { preserveLocalStateOnFailure?: boolean }) => {
+			setIsWorkspaceStateRefreshing(true);
 			try {
 				const response = await fetch("/api/workspace/state");
 				if (!response.ok) {
 					throw new Error(`Workspace state request failed with ${response.status}`);
 				}
 				const payload = (await response.json()) as RuntimeWorkspaceStateResponse;
-				if (cancelled) {
-					return;
-				}
 				const normalized = normalizeBoardData(payload.board) ?? createInitialBoardData();
 				setWorkspacePath(payload.repoPath);
 				setWorkspaceGit(payload.git);
 				setBoard(normalized);
-				hydrateSessions(payload.sessions);
+				setSessions(payload.sessions ?? {});
 				setWorktreeError(null);
-			} catch {
-				if (!cancelled) {
+				setCanPersistWorkspaceState(true);
+			} catch (error) {
+				if (!options?.preserveLocalStateOnFailure) {
 					setWorkspacePath(null);
 					setWorkspaceGit(null);
 					setBoard(createInitialBoardData());
-					hydrateSessions({});
+					setSessions({});
 				}
+				setCanPersistWorkspaceState(false);
+				const message = error instanceof Error ? error.message : String(error);
+				setWorktreeError(message);
 			} finally {
-				if (!cancelled) {
-					setIsWorkspaceStateReady(true);
-				}
+				setIsWorkspaceStateRefreshing(false);
 			}
-		};
+		},
+		[],
+	);
 
-		void loadWorkspaceState();
+	useEffect(() => {
+		let cancelled = false;
+		void loadWorkspaceStateFromRuntime().then(() => {
+			if (cancelled) {
+				return;
+			}
+		});
 		return () => {
 			cancelled = true;
 		};
-	}, [hydrateSessions]);
+	}, [loadWorkspaceStateFromRuntime]);
 
 	useEffect(() => {
-		if (!isWorkspaceStateReady) {
+		if (typeof document === "undefined") {
+			return;
+		}
+		const handleVisibilityChange = () => {
+			const visible = document.visibilityState === "visible";
+			setIsDocumentVisible(visible);
+			if (visible) {
+				void loadWorkspaceStateFromRuntime({ preserveLocalStateOnFailure: true });
+			}
+		};
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+		return () => {
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+		};
+	}, [loadWorkspaceStateFromRuntime]);
+
+	useEffect(() => {
+		if (!canPersistWorkspaceState || !isDocumentVisible || isWorkspaceStateRefreshing) {
 			return;
 		}
 		const timeoutId = window.setTimeout(() => {
@@ -342,14 +487,22 @@ export default function App(): ReactElement {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify(payload),
-			}).catch(() => {
-				// Keep the UI usable even if persistence is temporarily unavailable.
-			});
+			})
+				.then(() => {})
+				.catch(() => {
+					// Keep the UI usable even if persistence is temporarily unavailable.
+				});
 		}, WORKSPACE_STATE_PERSIST_DEBOUNCE_MS);
 		return () => {
 			window.clearTimeout(timeoutId);
 		};
-	}, [board, isWorkspaceStateReady, sessions]);
+	}, [
+		board,
+		canPersistWorkspaceState,
+		isDocumentVisible,
+		isWorkspaceStateRefreshing,
+		sessions,
+	]);
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
@@ -361,6 +514,17 @@ export default function App(): ReactElement {
 			// Ignore storage access failures.
 		}
 	}, [newTaskWorkspaceMode]);
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+		try {
+			window.localStorage.setItem(TASK_START_IN_PLAN_MODE_STORAGE_KEY, String(newTaskStartInPlanMode));
+		} catch {
+			// Ignore storage access failures.
+		}
+	}, [newTaskStartInPlanMode]);
 
 	useEffect(() => {
 		if (!canUseWorktree && newTaskWorkspaceMode === "worktree") {
@@ -397,12 +561,6 @@ export default function App(): ReactElement {
 			setSelectedTaskId(null);
 		}
 	}, [selectedTaskId, selectedCard]);
-
-	useEffect(() => {
-		if (selectedCard) {
-			ensureSession(selectedCard.card.id);
-		}
-	}, [ensureSession, selectedCard]);
 
 	const workspaceTitle = useMemo(() => {
 		if (!workspacePath) {
@@ -456,11 +614,16 @@ export default function App(): ReactElement {
 	}, []);
 
 	const handleCreateTask = useCallback(() => {
-		const title = newTaskTitle.trim();
-		if (!title) {
+		const prompt = newTaskPrompt.trim();
+		if (!prompt) {
 			return;
 		}
 		if (newTaskWorkspaceMode === "worktree" && (!canUseWorktree || !(newTaskBranchRef || defaultTaskBranchRef))) {
+			return;
+		}
+		const parsedPrompt = splitPromptToTitleDescription(prompt);
+		const title = parsedPrompt.title.trim();
+		if (!title) {
 			return;
 		}
 		const baseRef =
@@ -470,19 +633,30 @@ export default function App(): ReactElement {
 		setBoard((currentBoard) =>
 			addTaskToColumn(currentBoard, "backlog", {
 				title,
+				description: parsedPrompt.description,
+				prompt,
+				startInPlanMode: newTaskStartInPlanMode,
 				baseRef,
 			}),
 		);
-		setNewTaskTitle("");
+		setNewTaskPrompt("");
 		if (canUseWorktree) {
 			setNewTaskBranchRef(defaultTaskBranchRef);
 		}
 		setIsCreateTaskOpen(false);
 		setWorktreeError(null);
-	}, [canUseWorktree, defaultTaskBranchRef, newTaskBranchRef, newTaskTitle, newTaskWorkspaceMode]);
+	}, [
+		canUseWorktree,
+		defaultTaskBranchRef,
+		newTaskBranchRef,
+		newTaskPrompt,
+		newTaskStartInPlanMode,
+		newTaskWorkspaceMode,
+	]);
 
 	const performMoveTaskToTrash = useCallback(
 		async (task: BoardCard): Promise<void> => {
+			await stopTaskSession(task.id);
 			setBoard((currentBoard) => {
 				const moved = moveTaskToColumn(currentBoard, task.id, "trash");
 				return moved.moved ? moved.board : currentBoard;
@@ -493,11 +667,11 @@ export default function App(): ReactElement {
 				setSelectedTaskWorkspaceInfo(info);
 			}
 		},
-		[cleanupTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId],
+		[cleanupTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, stopTaskSession],
 	);
 
 	const requestMoveTaskToTrash = useCallback(
-		async (taskId: string, fromColumnId: BoardColumnId): Promise<void> => {
+		async (taskId: string, _fromColumnId: BoardColumnId): Promise<void> => {
 			const selection = findCardSelection(board, taskId);
 			if (!selection) {
 				return;
@@ -515,7 +689,6 @@ export default function App(): ReactElement {
 						: await fetchTaskWorkspaceInfo(selection.card);
 				setPendingTrashWarning({
 					taskId,
-					fromColumnId,
 					fileCount: changeCount,
 					taskTitle: selection.card.title,
 					workspaceInfo,
@@ -608,67 +781,30 @@ export default function App(): ReactElement {
 							});
 							return;
 						}
+						const started = await startTaskSession(movedSelection.card);
+						if (!started.ok) {
+							setWorktreeError(started.message ?? "Could not start task session.");
+							setBoard((currentBoard) => {
+								const currentColumnId = getTaskColumnId(currentBoard, moveEvent.taskId);
+								if (currentColumnId !== "in_progress") {
+									return currentBoard;
+								}
+								const reverted = moveTaskToColumn(currentBoard, moveEvent.taskId, moveEvent.fromColumnId);
+								return reverted.moved ? reverted.board : currentBoard;
+							});
+							return;
+						}
 						setWorktreeError(null);
-						startTaskRun(movedSelection.card);
 					})();
 				}
-				return;
 			}
 		},
-		[board, ensureTaskWorkspace, requestMoveTaskToTrash, startTaskRun],
+		[board, ensureTaskWorkspace, requestMoveTaskToTrash, startTaskSession],
 	);
 
 	const handleCardSelect = useCallback((taskId: string) => {
 		setSelectedTaskId(taskId);
 	}, []);
-
-	const handleSendPrompt = useCallback(
-		(text: string) => {
-			if (!selectedCard) {
-				return;
-			}
-			const startedInReview = selectedCard.column.id === "review";
-			void (async () => {
-				let activeBoard = board;
-				let activeTask = selectedCard.card;
-				let activeColumnId = selectedCard.column.id;
-
-				if (startedInReview) {
-					const moved = moveTaskToColumn(board, selectedCard.card.id, "in_progress");
-					if (moved.moved) {
-						activeBoard = moved.board;
-						setBoard(moved.board);
-						const nextSelection = findCardSelection(moved.board, selectedCard.card.id);
-						if (nextSelection) {
-							activeTask = nextSelection.card;
-							activeColumnId = nextSelection.column.id;
-						}
-					}
-				}
-
-				const latestColumnId = getTaskColumnId(activeBoard, activeTask.id) ?? activeColumnId;
-				if (latestColumnId !== "in_progress") {
-					return;
-				}
-
-				const ensured = await ensureTaskWorkspace(activeTask);
-				if (!ensured.ok) {
-					setWorktreeError(ensured.message ?? "Could not set up task workspace.");
-					if (startedInReview) {
-						setBoard((currentBoard) => {
-							const movedBack = moveTaskToColumn(currentBoard, selectedCard.card.id, "review");
-							return movedBack.moved ? movedBack.board : currentBoard;
-						});
-					}
-					return;
-				}
-
-				setWorktreeError(null);
-				sendPrompt(activeTask, text);
-			})();
-		},
-		[board, ensureTaskWorkspace, selectedCard, sendPrompt],
-	);
 
 	const handleMoveToTrash = useCallback(() => {
 		if (!selectedCard) {
@@ -677,34 +813,17 @@ export default function App(): ReactElement {
 		void requestMoveTaskToTrash(selectedCard.card.id, selectedCard.column.id);
 	}, [requestMoveTaskToTrash, selectedCard]);
 
-	const detailSession = selectedCard ? getSession(selectedCard.card.id) : null;
-	const sendDisabledReason = useMemo(() => {
-		if (!selectedCard) {
-			return undefined;
-		}
-		if (selectedCard.column.id === "backlog") {
-			return "Move this card to In Progress to start agent work.";
-		}
-		if (selectedCard.column.id === "trash") {
-			return "This card is in Trash. Move it to In Progress to resume work.";
-		}
-		return undefined;
-	}, [selectedCard]);
+	const detailSession = selectedCard ? sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id) : null;
 	const runtimeHint = useMemo(() => {
-		if (!runtimeAcpHealth || runtimeAcpHealth.available) {
+		if (runtimeProjectConfig?.effectiveCommand) {
 			return undefined;
 		}
-
-		if (runtimeAcpHealth.reason) {
-			return runtimeAcpHealth.reason;
-		}
-
-		const detected = runtimeAcpHealth.detectedCommands?.join(", ");
+		const detected = runtimeProjectConfig?.detectedCommands?.join(", ");
 		if (detected) {
-			return `ACP not configured (${detected})`;
+			return `No agent configured (${detected})`;
 		}
-		return "ACP not configured";
-	}, [runtimeAcpHealth]);
+		return "No agent configured";
+	}, [runtimeProjectConfig?.detectedCommands, runtimeProjectConfig?.effectiveCommand]);
 	const repoHint = useMemo(() => {
 		if (!workspaceGit || workspaceGit.hasGit) {
 			return undefined;
@@ -781,42 +900,16 @@ export default function App(): ReactElement {
 				runningShortcutId={runningShortcutId}
 				onRunShortcut={handleRunShortcut}
 			/>
-			{worktreeError ? (
-				<div className="border-b border-border bg-background px-4 py-2">
-					<div className="flex items-center justify-between gap-3">
-						<p className="text-xs text-red-300">{worktreeError}</p>
-						<button
-							type="button"
-							onClick={() => setWorktreeError(null)}
-							className="text-xs text-muted-foreground hover:text-foreground"
-						>
-							Dismiss
-						</button>
-					</div>
-				</div>
-			) : null}
-			{lastShortcutOutput ? (
-				<div className="border-b border-border bg-background px-4 py-2">
-					<div className="mb-1 flex items-center justify-between">
-						<p className="text-xs text-muted-foreground">
-							{lastShortcutOutput.label} finished with exit code {lastShortcutOutput.result.exitCode}
-						</p>
-						<button
-							type="button"
-							onClick={() => setLastShortcutOutput(null)}
-							className="text-xs text-muted-foreground hover:text-foreground"
-						>
-							Clear
-						</button>
-					</div>
-					<pre className="max-h-32 overflow-auto rounded bg-nav p-2 text-xs text-foreground">
-						{lastShortcutOutput.result.combinedOutput || "(no output)"}
-					</pre>
-				</div>
-			) : null}
+			<RuntimeStatusBanners
+				worktreeError={worktreeError}
+				onDismissWorktreeError={() => setWorktreeError(null)}
+				shortcutOutput={lastShortcutOutput}
+				onClearShortcutOutput={() => setLastShortcutOutput(null)}
+			/>
 			<div className={selectedCard ? "hidden" : "flex h-full min-h-0 flex-1 overflow-hidden"}>
 				<KanbanBoard
 					data={board}
+					taskSessions={sessions}
 					onCardSelect={handleCardSelect}
 					onCreateTask={handleOpenCreateTask}
 					onDragEnd={handleDragEnd}
@@ -825,24 +918,17 @@ export default function App(): ReactElement {
 			{selectedCard && detailSession ? (
 				<CardDetailView
 					selection={selectedCard}
-					session={detailSession}
+					sessionSummary={detailSession}
+					onSessionSummary={upsertSession}
 					onBack={handleBack}
 					onCardSelect={handleCardSelect}
-					onSendPrompt={handleSendPrompt}
-					onCancelPrompt={() => cancelPrompt(selectedCard.card.id)}
-					onPermissionRespond={(messageId, optionId) =>
-						respondToPermission(selectedCard.card.id, messageId, optionId)
-					}
 					onMoveToTrash={handleMoveToTrash}
-					sendDisabled={Boolean(sendDisabledReason)}
-					sendDisabledReason={sendDisabledReason}
 				/>
 			) : null}
 			<RuntimeSettingsDialog
 				open={isSettingsOpen}
 				onOpenChange={setIsSettingsOpen}
 				onSaved={() => {
-					void refreshRuntimeAcpHealth();
 					void refreshRuntimeProjectConfig();
 				}}
 			/>
@@ -866,161 +952,55 @@ export default function App(): ReactElement {
 					</CommandGroup>
 				</CommandList>
 			</CommandDialog>
-			<Dialog
+			<TaskTrashWarningDialog
 				open={pendingTrashWarning !== null}
-				onOpenChange={(open) => {
-					if (!open) {
-						setPendingTrashWarning(null);
+				warning={
+					pendingTrashWarning
+						? {
+								taskTitle: pendingTrashWarning.taskTitle,
+								fileCount: pendingTrashWarning.fileCount,
+								workspacePath: pendingTrashWarning.workspaceInfo?.path ?? null,
+							}
+						: null
+				}
+				guidance={trashWarningGuidance}
+				onCancel={() => setPendingTrashWarning(null)}
+				onConfirm={() => {
+					if (!pendingTrashWarning) {
+						return;
+					}
+					const selection = findCardSelection(board, pendingTrashWarning.taskId);
+					setPendingTrashWarning(null);
+					if (!selection) {
+						return;
+					}
+					void performMoveTaskToTrash(selection.card);
+				}}
+			/>
+			<TaskCreateDialog
+				open={isCreateTaskOpen}
+				onOpenChange={setIsCreateTaskOpen}
+				prompt={newTaskPrompt}
+				onPromptChange={setNewTaskPrompt}
+				onCreate={handleCreateTask}
+				onCancel={() => {
+					setIsCreateTaskOpen(false);
+					setNewTaskPrompt("");
+					if (canUseWorktree) {
+						setNewTaskBranchRef(defaultTaskBranchRef);
 					}
 				}}
-			>
-				<DialogContent className="border-border bg-card text-foreground">
-					<DialogHeader>
-						<DialogTitle>Unsaved task changes detected</DialogTitle>
-						<DialogDescription className="text-muted-foreground">
-							{pendingTrashWarning
-								? `${pendingTrashWarning.taskTitle} has ${pendingTrashWarning.fileCount} changed file(s).`
-								: "This task has uncommitted changes."}
-						</DialogDescription>
-					</DialogHeader>
-					<div className="space-y-2 text-sm text-muted-foreground">
-						<p>
-							Moving to Trash will delete this task worktree. Preserve your work first, then trash the task.
-						</p>
-						{pendingTrashWarning?.workspaceInfo ? (
-							<p className="rounded border border-border bg-background px-3 py-2 font-mono text-xs text-foreground">
-								{pendingTrashWarning.workspaceInfo.path}
-							</p>
-						) : null}
-						{trashWarningGuidance.map((line) => (
-							<p key={line}>{line}</p>
-						))}
-					</div>
-					<DialogFooter>
-						<Button variant="outline" onClick={() => setPendingTrashWarning(null)}>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={() => {
-								if (!pendingTrashWarning) {
-									return;
-								}
-								const selection = findCardSelection(board, pendingTrashWarning.taskId);
-								setPendingTrashWarning(null);
-								if (!selection) {
-									return;
-								}
-								void performMoveTaskToTrash(selection.card);
-							}}
-						>
-							Move to Trash Anyway
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-			<Dialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen}>
-				<DialogContent className="border-border bg-card text-foreground">
-					<DialogHeader>
-						<DialogTitle>Create Task</DialogTitle>
-						<DialogDescription className="text-muted-foreground">
-							New tasks are added to Backlog.
-						</DialogDescription>
-					</DialogHeader>
-					<div className="space-y-1">
-						<label htmlFor="task-title-input" className="text-xs text-muted-foreground">
-							Title
-						</label>
-						<input
-							id="task-title-input"
-							value={newTaskTitle}
-							onChange={(event) => setNewTaskTitle(event.target.value)}
-							onKeyDown={(event) => {
-								if (event.key === "Enter" && !event.shiftKey) {
-									event.preventDefault();
-									handleCreateTask();
-								}
-							}}
-							className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
-							placeholder="Describe the task"
-						/>
-					</div>
-					<div className="space-y-1">
-						<label htmlFor="task-workspace-mode-select" className="text-xs text-muted-foreground">
-							Execution mode
-						</label>
-						<select
-							id="task-workspace-mode-select"
-							value={newTaskWorkspaceMode}
-							onChange={(event) => setNewTaskWorkspaceMode(event.target.value as TaskWorkspaceMode)}
-							className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
-						>
-							<option value="local">
-								{workspaceGit?.currentBranch
-									? `Local workspace (current branch: ${workspaceGit.currentBranch})`
-									: "Local workspace"}
-							</option>
-							<option value="worktree" disabled={!canUseWorktree}>
-								Isolated worktree
-							</option>
-						</select>
-						<p className="text-[11px] text-muted-foreground">
-							{newTaskWorkspaceMode === "local"
-								? "Runs directly in your current workspace."
-								: "Creates an isolated worktree when the task starts."}
-						</p>
-					</div>
-					<div className="space-y-1">
-						<label htmlFor="task-branch-select" className="text-xs text-muted-foreground">
-							Worktree base branch
-						</label>
-						<select
-							id="task-branch-select"
-							value={newTaskBranchRef}
-							onChange={(event) => setNewTaskBranchRef(event.target.value)}
-							disabled={newTaskWorkspaceMode !== "worktree" || !canUseWorktree}
-							className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring disabled:cursor-not-allowed disabled:opacity-60"
-						>
-							{createTaskBranchOptions.map((option) => (
-								<option key={option.value} value={option.value}>
-									{option.label}
-								</option>
-							))}
-							{createTaskBranchOptions.length === 0 ? (
-								<option value="">No branches detected</option>
-							) : null}
-						</select>
-						<p className="text-[11px] text-muted-foreground">
-							{newTaskWorkspaceMode === "worktree"
-								? "Branch/ref used when creating the isolated task worktree."
-								: "Disabled while local mode is selected."}
-						</p>
-					</div>
-					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => {
-								setIsCreateTaskOpen(false);
-								setNewTaskTitle("");
-								if (canUseWorktree) {
-									setNewTaskBranchRef(defaultTaskBranchRef);
-								}
-							}}
-						>
-							Cancel
-						</Button>
-						<Button
-							onClick={handleCreateTask}
-							disabled={
-								!newTaskTitle.trim() ||
-								(newTaskWorkspaceMode === "worktree" && (!canUseWorktree || !newTaskBranchRef))
-							}
-						>
-							Create
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+				startInPlanMode={newTaskStartInPlanMode}
+				onStartInPlanModeChange={setNewTaskStartInPlanMode}
+				workspaceMode={newTaskWorkspaceMode}
+				onWorkspaceModeChange={setNewTaskWorkspaceMode}
+				workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
+				canUseWorktree={canUseWorktree}
+				branchRef={newTaskBranchRef}
+				branchOptions={createTaskBranchOptions}
+				onBranchRefChange={setNewTaskBranchRef}
+				disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
+			/>
 		</div>
 	);
 }
