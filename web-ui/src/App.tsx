@@ -15,7 +15,7 @@ import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
 import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
-import { TaskCreateDialog, type TaskWorkspaceMode } from "@/kanban/components/task-create-dialog";
+import { TaskInlineCreateCard, type TaskWorkspaceMode } from "@/kanban/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
 import { TopBar } from "@/kanban/components/top-bar";
 import { createInitialBoardData } from "@/kanban/data/board-data";
@@ -136,7 +136,7 @@ export default function App(): ReactElement {
 	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-	const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
+	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskStartInPlanMode, setNewTaskStartInPlanMode] = useState<boolean>(() =>
 		loadPersistedTaskStartInPlanMode(),
@@ -545,7 +545,7 @@ export default function App(): ReactElement {
 	}, [canUseWorktree, createTaskBranchOptions, defaultTaskBranchRef, newTaskBranchRef]);
 
 	useEffect(() => {
-		if (!isCreateTaskOpen) {
+		if (!isInlineTaskCreateOpen) {
 			return;
 		}
 		if (!canUseWorktree) {
@@ -554,7 +554,7 @@ export default function App(): ReactElement {
 		if (canUseWorktree && !newTaskBranchRef) {
 			setNewTaskBranchRef(defaultTaskBranchRef);
 		}
-	}, [canUseWorktree, defaultTaskBranchRef, isCreateTaskOpen, newTaskBranchRef]);
+	}, [canUseWorktree, defaultTaskBranchRef, isInlineTaskCreateOpen, newTaskBranchRef]);
 
 	useEffect(() => {
 		if (selectedTaskId && !selectedCard) {
@@ -597,7 +597,7 @@ export default function App(): ReactElement {
 
 			if (!event.metaKey && !event.ctrlKey && key === "c") {
 				event.preventDefault();
-				setIsCreateTaskOpen(true);
+				setIsInlineTaskCreateOpen(true);
 			}
 		};
 
@@ -610,8 +610,16 @@ export default function App(): ReactElement {
 	}, []);
 
 	const handleOpenCreateTask = useCallback(() => {
-		setIsCreateTaskOpen(true);
+		setIsInlineTaskCreateOpen(true);
 	}, []);
+
+	const handleCancelCreateTask = useCallback(() => {
+		setIsInlineTaskCreateOpen(false);
+		setNewTaskPrompt("");
+		if (canUseWorktree) {
+			setNewTaskBranchRef(defaultTaskBranchRef);
+		}
+	}, [canUseWorktree, defaultTaskBranchRef]);
 
 	const handleCreateTask = useCallback(() => {
 		const prompt = newTaskPrompt.trim();
@@ -643,7 +651,7 @@ export default function App(): ReactElement {
 		if (canUseWorktree) {
 			setNewTaskBranchRef(defaultTaskBranchRef);
 		}
-		setIsCreateTaskOpen(false);
+		setIsInlineTaskCreateOpen(false);
 		setWorktreeError(null);
 	}, [
 		canUseWorktree,
@@ -912,6 +920,26 @@ export default function App(): ReactElement {
 					taskSessions={sessions}
 					onCardSelect={handleCardSelect}
 					onCreateTask={handleOpenCreateTask}
+					inlineTaskCreator={
+						isInlineTaskCreateOpen ? (
+							<TaskInlineCreateCard
+								prompt={newTaskPrompt}
+								onPromptChange={setNewTaskPrompt}
+								onCreate={handleCreateTask}
+								onCancel={handleCancelCreateTask}
+								startInPlanMode={newTaskStartInPlanMode}
+								onStartInPlanModeChange={setNewTaskStartInPlanMode}
+								workspaceMode={newTaskWorkspaceMode}
+								onWorkspaceModeChange={setNewTaskWorkspaceMode}
+								workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
+								canUseWorktree={canUseWorktree}
+								branchRef={newTaskBranchRef}
+								branchOptions={createTaskBranchOptions}
+								onBranchRefChange={setNewTaskBranchRef}
+								disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
+							/>
+						) : undefined
+					}
 					onDragEnd={handleDragEnd}
 				/>
 			</div>
@@ -976,30 +1004,6 @@ export default function App(): ReactElement {
 					}
 					void performMoveTaskToTrash(selection.card);
 				}}
-			/>
-			<TaskCreateDialog
-				open={isCreateTaskOpen}
-				onOpenChange={setIsCreateTaskOpen}
-				prompt={newTaskPrompt}
-				onPromptChange={setNewTaskPrompt}
-				onCreate={handleCreateTask}
-				onCancel={() => {
-					setIsCreateTaskOpen(false);
-					setNewTaskPrompt("");
-					if (canUseWorktree) {
-						setNewTaskBranchRef(defaultTaskBranchRef);
-					}
-				}}
-				startInPlanMode={newTaskStartInPlanMode}
-				onStartInPlanModeChange={setNewTaskStartInPlanMode}
-				workspaceMode={newTaskWorkspaceMode}
-				onWorkspaceModeChange={setNewTaskWorkspaceMode}
-				workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
-				canUseWorktree={canUseWorktree}
-				branchRef={newTaskBranchRef}
-				branchOptions={createTaskBranchOptions}
-				onBranchRefChange={setNewTaskBranchRef}
-				disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
 			/>
 		</div>
 	);

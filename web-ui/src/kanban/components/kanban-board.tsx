@@ -1,5 +1,6 @@
 import { DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
 import { useCallback, useRef } from "react";
+import type { ReactNode } from "react";
 
 import { BoardColumn } from "@/kanban/components/board-column";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
@@ -10,12 +11,14 @@ export function KanbanBoard({
 	taskSessions,
 	onCardSelect,
 	onCreateTask,
+	inlineTaskCreator,
 	onDragEnd,
 }: {
 	data: BoardData;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCardSelect: (taskId: string) => void;
 	onCreateTask: () => void;
+	inlineTaskCreator?: ReactNode;
 	onDragEnd: (result: DropResult) => void;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
@@ -50,6 +53,7 @@ export function KanbanBoard({
 								index={index}
 								taskSessions={taskSessions}
 								onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
+								inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
 								onCardClick={(card) => {
 									if (!dragOccurredRef.current) {
 										onCardSelect(card.id);

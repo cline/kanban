@@ -1,5 +1,6 @@
 import { Draggable, Droppable } from "@hello-pangea/dnd";
 import { Plus } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors } from "@/kanban/data/column-colors";
@@ -11,12 +12,14 @@ export function BoardColumn({
 	index,
 	taskSessions,
 	onCreateTask,
+	inlineTaskCreator,
 	onCardClick,
 }: {
 	column: BoardColumnModel;
 	index: number;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
+	inlineTaskCreator?: ReactNode;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
 	const accentColor = columnAccentColors[column.id] ?? "#71717a";
@@ -60,7 +63,7 @@ export function BoardColumn({
 											: undefined
 									}
 								>
-									{canCreate ? (
+									{canCreate && !inlineTaskCreator ? (
 										<button
 											type="button"
 											onClick={onCreateTask}
@@ -70,6 +73,7 @@ export function BoardColumn({
 											Create task
 										</button>
 									) : null}
+									{inlineTaskCreator}
 
 									{column.cards.map((card, cardIndex) => (
 										<BoardCard
