@@ -15,7 +15,7 @@ npm run install:all
 
 Run two terminals:
 
-1. Runtime server (API + ACP runtime):
+1. Runtime server (API + PTY agent runtime):
 
 ```bash
 npm run dev
