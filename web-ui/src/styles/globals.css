@@ -23,10 +23,10 @@
 }
 
 :root {
-	--nav: #010409;
-	--background: #0d1117;
+	--nav: #24292e;
+	--background: #1f2428;
 	--foreground: #e6edf3;
-	--card: #161b22;
+	--card: #24292e;
 	--card-foreground: #e6edf3;
 	--popover: #161b22;
 	--popover-foreground: #e6edf3;

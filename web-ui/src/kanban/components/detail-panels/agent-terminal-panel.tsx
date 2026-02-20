@@ -92,7 +92,7 @@ export function AgentTerminalPanel({
 			fontSize: 12,
 			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
 			theme: {
-				background: "#0D1117",
+				background: "#1F2428",
 				foreground: "#c9d1d9",
 				cursor: "#58a6ff",
 			},
