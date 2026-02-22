@@ -1,4 +1,4 @@
-import { File, Folder } from "lucide-react";
+import { Classes, Colors, Icon, NonIdealState } from "@blueprintjs/core";
 import { useMemo } from "react";
 
 import {
@@ -28,31 +28,26 @@ function FileTreeRow({
 	const isDirectory = node.type === "directory";
 	const isSelected = !isDirectory && node.path === selectedPath;
 	const fileStats = !isDirectory ? diffStatsByPath[node.path] : undefined;
+	const rowClassName = `kb-file-tree-row${isDirectory ? " kb-file-tree-row-directory" : ""}${isSelected ? " kb-file-tree-row-selected" : ""}`;
 
 	return (
 		<div>
 			<button
 				type="button"
+				className={rowClassName}
+				style={{ paddingLeft: depth * 12 + 8 }}
 				onClick={() => {
 					if (!isDirectory) {
 						onSelectPath(node.path);
 					}
 				}}
-				className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors ${
-					isSelected
-						? "cursor-pointer bg-card text-foreground"
-						: isDirectory
-							? "cursor-default text-muted-foreground"
-							: "cursor-pointer text-muted-foreground hover:bg-card hover:text-foreground"
-				}`}
-				style={{ paddingLeft: `${depth * 0.75 + 0.5}rem` }}
 			>
-				{isDirectory ? <Folder className="size-3.5 shrink-0" /> : <File className="size-3.5 shrink-0" />}
-				<span className="truncate">{node.name}</span>
+				<Icon icon={isDirectory ? "folder-close" : "document"} size={14} />
+				<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>{node.name}</span>
 				{fileStats ? (
-					<span className="ml-auto flex items-center gap-1 font-mono text-[10px]">
-						{fileStats.added > 0 ? <span className="text-emerald-400">+{fileStats.added}</span> : null}
-						{fileStats.removed > 0 ? <span className="text-red-400">-{fileStats.removed}</span> : null}
+					<span className={Classes.MONOSPACE_TEXT} style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4 }}>
+						{fileStats.added > 0 ? <span style={{ color: Colors.GREEN5 }}>+{fileStats.added}</span> : null}
+						{fileStats.removed > 0 ? <span style={{ color: Colors.RED5 }}>-{fileStats.removed}</span> : null}
 					</span>
 				) : null}
 			</button>
@@ -99,14 +94,17 @@ export function FileTreePanel({
 	}, [workspaceFiles]);
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-[0.6] flex-col bg-background">
-			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+		<div style={{ display: "flex", flex: "0.6 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
+			<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 8 }}>
 				{tree.length === 0 ? (
-					<div className="flex h-full items-center justify-center px-3 text-center">
-						<p className="text-sm text-muted-foreground/80">Changed files will appear here.</p>
+					<div className="kb-empty-state-center">
+						<NonIdealState
+							icon="folder-open"
+							description="Changed files will appear here."
+						/>
 					</div>
 				) : (
-					<div className="space-y-0.5">
+					<div>
 						{tree.map((node) => (
 							<FileTreeRow
 								key={node.path}

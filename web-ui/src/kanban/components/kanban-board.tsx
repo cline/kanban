@@ -44,7 +44,7 @@ export function KanbanBoard({
 					<section
 						ref={provided.innerRef}
 						{...provided.droppableProps}
-						className="flex h-full min-h-0 flex-1 overflow-hidden"
+						className="kb-board"
 					>
 						{data.columns.map((column, index) => (
 							<BoardColumn

@@ -1,7 +1,7 @@
+import { Card, Classes, Menu, MenuItem, Tag, TextArea } from "@blueprintjs/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
 
-import { Textarea } from "@/components/ui/textarea";
 import type {
 	RuntimeSlashCommandDescription,
 	RuntimeSlashCommandsResponse,
@@ -323,10 +323,10 @@ export function TaskPromptComposer({
 	const showSuggestions = isSuggestionPickerOpen && activeToken && (showMentionLoading || showSlashLoading || suggestions.length > 0);
 
 	return (
-		<div className="relative">
-			<Textarea
+		<div style={{ position: "relative" }}>
+			<TextArea
 				id={id}
-				ref={textareaRef}
+				inputRef={textareaRef}
 				value={value}
 				onChange={(event) => {
 					onValueChange(event.target.value);
@@ -335,53 +335,48 @@ export function TaskPromptComposer({
 				onKeyDown={handleTextareaKeyDown}
 				onClick={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
 				onKeyUp={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
-				onSelect={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
 				placeholder={placeholder}
 				disabled={disabled}
-				className="min-h-20 resize-y bg-background text-sm"
+				fill
+				style={{ minHeight: 80, resize: "vertical" }}
 			/>
 			{showSuggestions ? (
-				<div className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-md border border-border bg-card shadow-lg">
-					<div className="max-h-48 overflow-y-auto p-1">
-						{showMentionLoading ? (
-							<p className="px-2 py-1 text-xs text-muted-foreground">Loading files...</p>
-						) : showSlashLoading ? (
-							<p className="px-2 py-1 text-xs text-muted-foreground">Loading commands...</p>
-						) : (
-							suggestions.map((suggestion, index) => (
-								<button
+				<Card style={{ position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: 4, maxHeight: 256, overflowY: "auto", zIndex: 10 }} compact elevation={2}>
+					{showMentionLoading ? (
+						<p className={`${Classes.TEXT_MUTED} kb-suggestions-loading`}>Loading files...</p>
+					) : showSlashLoading ? (
+						<p className={`${Classes.TEXT_MUTED} kb-suggestions-loading`}>Loading commands...</p>
+					) : (
+						<Menu>
+							{suggestions.map((suggestion, index) => (
+								<MenuItem
 									key={suggestion.id}
-									type="button"
-									onMouseDown={(event) => {
+									active={index === selectedSuggestionIndex}
+									text={suggestion.label}
+									label={suggestion.detail}
+									className={Classes.MONOSPACE_TEXT}
+									labelElement={
+										suggestion.badge ? (
+											<Tag minimal>
+												{suggestion.badge}
+											</Tag>
+										) : undefined
+									}
+									onMouseDown={(event: React.MouseEvent) => {
 										event.preventDefault();
 										applySuggestion(suggestion);
 									}}
 									onMouseEnter={() => setSelectedSuggestionIndex(index)}
-									className={`flex w-full cursor-pointer items-start justify-between gap-2 rounded px-2 py-1.5 text-left text-xs ${
-										index === selectedSuggestionIndex ? "bg-accent text-accent-foreground" : "text-foreground"
-									}`}
-								>
-									<div className="min-w-0">
-										<div className="flex items-center gap-2">
-											<span className="truncate font-mono">{suggestion.label}</span>
-											{suggestion.badge ? (
-												<span className="rounded bg-accent px-1.5 py-0.5 text-[9px] uppercase tracking-wide">
-													{suggestion.badge}
-												</span>
-											) : null}
-										</div>
-										<span className="block truncate text-[10px] text-muted-foreground">{suggestion.detail}</span>
-									</div>
-								</button>
-							))
-						)}
-					</div>
+								/>
+							))}
+						</Menu>
+					)}
 					{activeToken?.kind === "slash" && slashCommandError ? (
-						<p className="border-t border-border px-2 py-1 text-[10px] text-muted-foreground">
+						<p className={`${Classes.TEXT_MUTED} kb-suggestions-loading`}>
 							Using fallback commands while discovery is unavailable.
 						</p>
 					) : null}
-				</div>
+				</Card>
 			) : null}
 		</div>
 	);

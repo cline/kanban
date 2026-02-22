@@ -1,3 +1,4 @@
+import { Colors } from "@blueprintjs/core";
 import type { DropResult } from "@hello-pangea/dnd";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -124,7 +125,7 @@ export function CardDetailView({
 	}, [refresh, sessionSummary?.state]);
 
 	return (
-		<div className="flex min-h-0 flex-1 overflow-hidden bg-background">
+		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: Colors.DARK_GRAY1 }}>
 			<ColumnContextPanel
 				selection={selection}
 				onCardSelect={onCardSelect}
@@ -133,8 +134,8 @@ export function CardDetailView({
 				onCreateTask={onCreateTask}
 				inlineTaskCreator={inlineTaskCreator}
 			/>
-			<div className="flex h-full min-h-0 w-4/5 min-w-0 flex-col overflow-hidden bg-background">
-				<div className="flex min-h-0 flex-1 overflow-hidden">
+			<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+				<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 					<AgentTerminalPanel
 						taskId={selection.card.id}
 						summary={sessionSummary}

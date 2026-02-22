@@ -1,7 +1,18 @@
+import {
+	AnchorButton,
+	Button,
+	Callout,
+	Classes,
+	Dialog,
+	DialogBody,
+	DialogFooter,
+	Divider,
+	Icon,
+	InputGroup,
+	Tag,
+} from "@blueprintjs/core";
 import { useEffect, useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 
@@ -13,11 +24,56 @@ const AGENT_INSTALL_URLS: Partial<Record<RuntimeAgentId, string>> = {
 	cline: "https://www.npmjs.com/package/cline",
 };
 
-function getAgentState(agent: RuntimeAgentDefinition): string {
-	if (agent.installed) {
-		return "Installed";
-	}
-	return "Not installed";
+function AgentRow({
+	agent,
+	isSelected,
+	onSelect,
+	disabled,
+}: {
+	agent: RuntimeAgentDefinition;
+	isSelected: boolean;
+	onSelect: () => void;
+	disabled: boolean;
+}): React.ReactElement {
+	const installUrl = AGENT_INSTALL_URLS[agent.id];
+
+	return (
+		<div
+			role="button"
+			tabIndex={0}
+			onClick={() => { if (agent.installed && !disabled) { onSelect(); } }}
+			onKeyDown={(event) => { if (event.key === "Enter" && agent.installed && !disabled) { onSelect(); } }}
+			style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0", cursor: agent.installed ? "pointer" : "default" }}
+		>
+			<div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0 }}>
+				<Icon icon={isSelected ? "selection" : "circle"} intent={isSelected ? "primary" : undefined} className={!agent.installed ? Classes.TEXT_DISABLED : undefined} style={{ marginTop: 2 }} />
+				<div style={{ minWidth: 0 }}>
+					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+						<span>{agent.label}</span>
+						{agent.installed ? <Tag minimal intent="success">Installed</Tag> : null}
+					</div>
+					{agent.command ? (
+						<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`} style={{ margin: "2px 0 0" }}>
+							{agent.command}
+						</p>
+					) : null}
+				</div>
+			</div>
+			{!agent.installed && installUrl ? (
+				<AnchorButton
+					text="Install"
+					variant="outlined"
+					size="small"
+					href={installUrl}
+					target="_blank"
+					rel="noreferrer"
+					onClick={(event: React.MouseEvent) => event.stopPropagation()}
+				/>
+			) : !agent.installed ? (
+				<Button text="Install" variant="outlined" size="small" disabled />
+			) : null}
+		</div>
+	);
 }
 
 export function RuntimeSettingsDialog({
@@ -68,157 +124,125 @@ export function RuntimeSettingsDialog({
 	};
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-				<DialogContent className="border-border bg-card text-foreground">
-					<DialogHeader>
-						<DialogTitle>Settings</DialogTitle>
-					</DialogHeader>
-					<div className="space-y-3">
-						<div className="space-y-1">
-							<h3 className="text-sm font-semibold text-foreground">Global settings</h3>
-							<p className="text-xs text-muted-foreground">
-								Saved to: {config?.globalConfigPath ?? "~/.kanbanana/config.json"}
-							</p>
-						</div>
-						<div className="space-y-2 rounded border border-border p-3">
-							<h3 className="text-sm font-semibold text-foreground">Agent runtime</h3>
-							<div className="space-y-2">
-							{supportedAgents.map((agent) => {
-								const installUrl = AGENT_INSTALL_URLS[agent.id];
-								return (
-									<div key={agent.id} className="rounded border border-border bg-background/70 p-2">
-										<div className="flex items-center justify-between gap-3">
-											<div className="min-w-0">
-												<p className="text-sm text-foreground">{agent.label}</p>
-												{agent.command ? (
-													<p className="truncate font-mono text-[11px] text-muted-foreground">{agent.command}</p>
-												) : null}
-											</div>
-											{agent.installed ? (
-												<Button
-													type="button"
-													variant={agent.id === selectedAgentId ? "secondary" : "outline"}
-													size="sm"
-													onClick={() => setSelectedAgentId(agent.id)}
-													disabled={isLoading || isSaving}
-												>
-													{agent.id === selectedAgentId ? "Selected" : "Use"}
-												</Button>
-											) : installUrl ? (
-												<Button type="button" variant="outline" size="sm" asChild>
-													<a href={installUrl} target="_blank" rel="noreferrer">
-														Install
-													</a>
-												</Button>
-											) : (
-												<Button type="button" variant="outline" size="sm" disabled>
-													Install
-												</Button>
-											)}
-										</div>
-										<p className="mt-1 text-[11px] text-muted-foreground">{getAgentState(agent)}</p>
-									</div>
-								);
-							})}
-								{supportedAgents.length === 0 ? (
-									<p className="text-xs text-muted-foreground">No supported agents discovered.</p>
-								) : null}
-								{config?.effectiveCommand ? (
-									<p className="text-xs text-muted-foreground">Current runtime command: {config.effectiveCommand}</p>
-								) : (
-									<p className="text-xs text-amber-300">No runnable agent command configured yet.</p>
-								)}
-							</div>
-						</div>
+		<Dialog
+			isOpen={open}
+			onClose={() => onOpenChange(false)}
+			title="Settings"
+			icon="cog"
+		>
+			<DialogBody>
+				<h5 className={Classes.HEADING} style={{ margin: 0 }}>Global</h5>
+				<p
+					className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
+					style={{ margin: 0, wordBreak: "break-all", cursor: config?.globalConfigPath ? "pointer" : undefined }}
+					onClick={() => { if (config?.globalConfigPath) { window.open(`file://${config.globalConfigPath}`); } }}
+				>
+					{config?.globalConfigPath ?? "~/.kanbanana/config.json"}
+					{config?.globalConfigPath ? <Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} /> : null}
+				</p>
 
-						<div className="space-y-1 pt-1">
-							<h3 className="text-sm font-semibold text-foreground">Project settings</h3>
-							<p className="text-xs text-muted-foreground">
-								Saved to: {config?.projectConfigPath ?? "<project>/.kanbanana/config.json"}
-							</p>
-						</div>
-						<div className="space-y-2 rounded border border-border p-3">
-							<h3 className="text-sm font-semibold text-foreground">Script shortcuts</h3>
-							<div className="flex items-center justify-between">
-								<p className="text-xs text-muted-foreground">Configured shortcuts</p>
-							<button
-								type="button"
-								onClick={() =>
-									setShortcuts((current) => [
-										...current,
-										{
-											id: crypto.randomUUID(),
-											label: "Run",
-											command: "",
-										},
-									])
-								}
-								className="rounded border border-border px-2 py-1 text-xs text-foreground hover:border-muted-foreground/80"
-							>
-								Add
-							</button>
-						</div>
-						<div className="space-y-2">
-							{shortcuts.map((shortcut) => (
-								<div key={shortcut.id} className="grid grid-cols-[1fr_2fr_auto] gap-2">
-									<input
-										value={shortcut.label}
-										onChange={(event) =>
-											setShortcuts((current) =>
-												current.map((item) =>
-													item.id === shortcut.id
-														? {
-																...item,
-																label: event.target.value,
-															}
-														: item,
-												),
-											)
-										}
-										placeholder="Label"
-										className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground"
-									/>
-									<input
-										value={shortcut.command}
-										onChange={(event) =>
-											setShortcuts((current) =>
-												current.map((item) =>
-													item.id === shortcut.id
-														? {
-																...item,
-																command: event.target.value,
-															}
-														: item,
-												),
-											)
-										}
-										placeholder="Command"
-										className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground"
-									/>
-									<button
-										type="button"
-										onClick={() => setShortcuts((current) => current.filter((item) => item.id !== shortcut.id))}
-										className="rounded border border-border px-2 py-1 text-xs text-foreground hover:border-muted-foreground/80"
-									>
-										Remove
-									</button>
-								</div>
-							))}
-							{shortcuts.length === 0 ? <p className="text-xs text-muted-foreground">No shortcuts configured yet.</p> : null}
-						</div>
-					</div>
+				<h6 className={Classes.HEADING} style={{ margin: "12px 0 0" }}>Agent runtime</h6>
+				{supportedAgents.map((agent) => (
+					<AgentRow
+						key={agent.id}
+						agent={agent}
+						isSelected={agent.id === selectedAgentId}
+						onSelect={() => setSelectedAgentId(agent.id)}
+						disabled={isLoading || isSaving}
+					/>
+				))}
+				{supportedAgents.length === 0 ? (
+					<p className={Classes.TEXT_MUTED} style={{ padding: "8px 0" }}>No supported agents discovered.</p>
+				) : null}
 
-					{saveError ? <p className="whitespace-pre-wrap text-xs text-red-300">{saveError}</p> : null}
+				<Divider style={{ margin: "16px 0" }} />
+
+				<h5 className={Classes.HEADING} style={{ margin: 0 }}>Project</h5>
+				<p
+					className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
+					style={{ margin: 0, wordBreak: "break-all", cursor: config?.projectConfigPath ? "pointer" : undefined }}
+					onClick={() => { if (config?.projectConfigPath) { window.open(`file://${config.projectConfigPath}`); } }}
+				>
+					{config?.projectConfigPath ?? "<project>/.kanbanana/config.json"}
+					{config?.projectConfigPath ? <Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} /> : null}
+				</p>
+
+				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "12px 0 8px" }}>
+					<h6 className={Classes.HEADING} style={{ margin: 0 }}>Script shortcuts</h6>
+					<Button
+						icon="plus"
+						text="Add"
+						variant="minimal"
+						size="small"
+						onClick={() =>
+							setShortcuts((current) => [
+								...current,
+								{
+									id: crypto.randomUUID(),
+									label: "Run",
+									command: "",
+								},
+							])
+						}
+					/>
 				</div>
-				<DialogFooter>
-					<Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-						Cancel
-					</Button>
-					<Button onClick={() => void handleSave()} disabled={isLoading || isSaving}>
-						Save
-					</Button>
-				</DialogFooter>
-			</DialogContent>
+
+				{shortcuts.map((shortcut) => (
+					<div key={shortcut.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 8, marginBottom: 4 }}>
+						<InputGroup
+							value={shortcut.label}
+							onChange={(event) =>
+								setShortcuts((current) =>
+									current.map((item) =>
+										item.id === shortcut.id
+											? { ...item, label: event.target.value }
+											: item,
+									),
+								)
+							}
+							placeholder="Label"
+							size="small"
+						/>
+						<InputGroup
+							value={shortcut.command}
+							onChange={(event) =>
+								setShortcuts((current) =>
+									current.map((item) =>
+										item.id === shortcut.id
+											? { ...item, command: event.target.value }
+											: item,
+									),
+								)
+							}
+							placeholder="Command"
+							size="small"
+						/>
+						<Button
+							icon="cross"
+							variant="minimal"
+							size="small"
+							onClick={() => setShortcuts((current) => current.filter((item) => item.id !== shortcut.id))}
+						/>
+					</div>
+				))}
+				{shortcuts.length === 0 ? (
+					<p className={Classes.TEXT_MUTED}>No shortcuts configured.</p>
+				) : null}
+
+				{saveError ? (
+					<Callout intent="danger" compact style={{ marginTop: 12 }}>
+						{saveError}
+					</Callout>
+				) : null}
+			</DialogBody>
+			<DialogFooter
+				actions={
+					<>
+						<Button text="Cancel" variant="outlined" onClick={() => onOpenChange(false)} disabled={isSaving} />
+						<Button text="Save" intent="primary" onClick={() => void handleSave()} disabled={isLoading || isSaving} />
+					</>
+				}
+			/>
 		</Dialog>
 	);
 }

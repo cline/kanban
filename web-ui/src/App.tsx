@@ -1,16 +1,9 @@
+import { Classes, MenuItem } from "@blueprintjs/core";
+import { Omnibar, type ItemRenderer } from "@blueprintjs/select";
 import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 
-import {
-	CommandDialog,
-	CommandEmpty,
-	CommandGroup,
-	CommandInput,
-	CommandItem,
-	CommandList,
-	CommandShortcut,
-} from "@/components/ui/command";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
@@ -54,6 +47,12 @@ interface PendingTrashWarningState {
 	fileCount: number;
 	taskTitle: string;
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
+}
+
+interface SearchableTask {
+	id: string;
+	title: string;
+	columnTitle: string;
 }
 
 function loadPersistedTaskWorkspaceMode(): TaskWorkspaceMode {
@@ -117,6 +116,30 @@ function mergeTaskSessions(
 	}
 	return changed ? next : current;
 }
+
+const filterTask = (query: string, task: SearchableTask): boolean => {
+	const normalizedQuery = query.toLowerCase();
+	return task.title.toLowerCase().includes(normalizedQuery) ||
+		task.columnTitle.toLowerCase().includes(normalizedQuery);
+};
+
+const renderTask: ItemRenderer<SearchableTask> = (task, { handleClick, handleFocus, modifiers }) => {
+	if (!modifiers.matchesPredicate) {
+		return null;
+	}
+	return (
+		<MenuItem
+			key={task.id}
+			active={modifiers.active}
+			disabled={modifiers.disabled}
+			label={task.columnTitle}
+			text={task.title}
+			onClick={handleClick}
+			onFocus={handleFocus}
+			roleStructure="listoption"
+		/>
+	);
+};
 
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
@@ -318,7 +341,7 @@ export default function App(): ReactElement {
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
 
-	const searchableTasks = useMemo(() => {
+	const searchableTasks = useMemo((): SearchableTask[] => {
 		return board.columns.flatMap((column) =>
 			column.cards.map((card) => ({
 				id: card.id,
@@ -924,10 +947,9 @@ export default function App(): ReactElement {
 	) : undefined;
 
 	return (
-		<div className="flex h-svh min-w-0 flex-col overflow-hidden bg-background text-foreground">
+		<div className={Classes.DARK} style={{ display: "flex", flexDirection: "column", height: "100svh", minWidth: 0, overflow: "hidden" }}>
 			<TopBar
 				onBack={selectedCard ? handleBack : undefined}
-				subtitle={selectedCard?.column.title}
 				workspacePath={activeWorkspacePath}
 				workspaceHint={activeWorkspaceHint}
 				repoHint={repoHint}
@@ -943,7 +965,7 @@ export default function App(): ReactElement {
 				shortcutOutput={lastShortcutOutput}
 				onClearShortcutOutput={() => setLastShortcutOutput(null)}
 			/>
-			<div className={selectedCard ? "hidden" : "flex h-full min-h-0 flex-1 overflow-hidden"}>
+			<div className={selectedCard ? "kb-hidden" : "kb-board"}>
 				<KanbanBoard
 					data={board}
 					taskSessions={sessions}
@@ -974,26 +996,19 @@ export default function App(): ReactElement {
 					void refreshRuntimeProjectConfig();
 				}}
 			/>
-			<CommandDialog open={isCommandPaletteOpen} onOpenChange={setIsCommandPaletteOpen}>
-				<CommandInput placeholder="Search tasks..." />
-				<CommandList>
-					<CommandEmpty>No tasks found.</CommandEmpty>
-					<CommandGroup heading="Tasks">
-						{searchableTasks.map((task) => (
-							<CommandItem
-								key={task.id}
-								onSelect={() => {
-									setSelectedTaskId(task.id);
-									setIsCommandPaletteOpen(false);
-								}}
-							>
-								<span className="truncate">{task.title}</span>
-								<CommandShortcut>{task.columnTitle}</CommandShortcut>
-							</CommandItem>
-						))}
-					</CommandGroup>
-				</CommandList>
-			</CommandDialog>
+			<Omnibar<SearchableTask>
+				isOpen={isCommandPaletteOpen}
+				onClose={() => setIsCommandPaletteOpen(false)}
+				items={searchableTasks}
+				itemPredicate={filterTask}
+				itemRenderer={renderTask}
+				onItemSelect={(task) => {
+					setSelectedTaskId(task.id);
+					setIsCommandPaletteOpen(false);
+				}}
+				noResults={<MenuItem disabled text="No tasks found." roleStructure="listoption" />}
+				resetOnSelect
+			/>
 			<TaskTrashWarningDialog
 				open={pendingTrashWarning !== null}
 				warning={

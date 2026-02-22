@@ -1,3 +1,4 @@
+import { Card, Classes, Colors, Elevation, Text } from "@blueprintjs/core";
 import { Draggable } from "@hello-pangea/dnd";
 
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
@@ -8,54 +9,61 @@ export function BoardCard({
 	index,
 	sessionSummary,
 	selected = false,
-	accentColor,
 	onClick,
 }: {
 	card: BoardCardModel;
 	index: number;
 	sessionSummary?: RuntimeTaskSessionSummary;
 	selected?: boolean;
-	accentColor?: string;
 	onClick?: () => void;
 }): React.ReactElement {
 	return (
 		<Draggable draggableId={card.id} index={index}>
-			{(provided, snapshot) => (
-				<article
-					ref={provided.innerRef}
-					{...provided.draggableProps}
-					{...provided.dragHandleProps}
-					data-task-id={card.id}
-					onClick={() => {
-						if (!snapshot.isDragging && onClick) {
-							onClick();
-						}
-					}}
-					className={`mb-2 rounded border-2 bg-card p-3 shadow-md ${
-						snapshot.isDragging
-							? "shadow-lg"
-							: selected
-								? "cursor-grab shadow-lg"
-								: "cursor-grab border-border card-interactive"
-					}`}
-					style={{
-						...provided.draggableProps.style,
-						...((snapshot.isDragging || selected)
-							? { borderColor: accentColor ?? "var(--col-accent)" }
-							: undefined),
-					}}
-				>
-					<p className="text-sm font-medium leading-snug text-foreground line-clamp-2">{card.title}</p>
-					{card.description ? (
-						<p className="mt-1 text-xs leading-snug text-muted-foreground line-clamp-2">{card.description}</p>
-					) : null}
-					{sessionSummary?.lastActivityLine ? (
-						<p className="mt-2 border-t border-border pt-2 font-mono text-[11px] text-muted-foreground line-clamp-2">
-							{sessionSummary.lastActivityLine}
-						</p>
-					) : null}
-				</article>
-			)}
+			{(provided, snapshot) => {
+				const isDragging = snapshot.isDragging;
+
+				return (
+					<div
+						ref={provided.innerRef}
+						{...provided.draggableProps}
+						{...provided.dragHandleProps}
+						data-task-id={card.id}
+						onClick={() => {
+							if (!snapshot.isDragging && onClick) {
+								onClick();
+							}
+						}}
+						style={{
+							...provided.draggableProps.style,
+							marginBottom: 8,
+							cursor: "grab",
+						}}
+					>
+						<Card
+							elevation={isDragging ? Elevation.THREE : Elevation.ZERO}
+							interactive
+							selected={selected || isDragging}
+							compact
+						>
+							<Text ellipsize={false}>
+								<p className="kb-line-clamp-2" style={{ margin: 0, fontWeight: 500 }}>
+									{card.title}
+								</p>
+							</Text>
+							{card.description ? (
+								<p className={`${Classes.TEXT_MUTED} kb-line-clamp-2`} style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.4 }}>
+									{card.description}
+								</p>
+							) : null}
+							{sessionSummary?.lastActivityLine ? (
+								<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-line-clamp-2`} style={{ margin: "8px 0 0", paddingTop: 8, borderTop: `1px solid ${Colors.DARK_GRAY5}`, fontSize: 12 }}>
+									{sessionSummary.lastActivityLine}
+								</p>
+							) : null}
+						</Card>
+					</div>
+				);
+			}}
 		</Draggable>
 	);
 }

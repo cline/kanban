@@ -1,9 +1,9 @@
+import { Button, Classes, Colors } from "@blueprintjs/core";
 import { Draggable, Droppable } from "@hello-pangea/dnd";
-import { Plus } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
-import { columnAccentColors } from "@/kanban/data/column-colors";
+import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard as BoardCardModel, BoardColumn as BoardColumnModel } from "@/kanban/types";
 
@@ -22,7 +22,8 @@ export function BoardColumn({
 	inlineTaskCreator?: ReactNode;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
-	const accentColor = columnAccentColors[column.id] ?? "#71717a";
+	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
+	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
 
 	return (
@@ -32,22 +33,17 @@ export function BoardColumn({
 					ref={columnProvided.innerRef}
 					{...columnProvided.draggableProps}
 					data-column-id={column.id}
-					className={`flex h-full min-h-0 min-w-0 flex-1 flex-col border-r border-border bg-background ${
-						columnSnapshot.isDragging ? "shadow-2xl" : ""
-					}`}
+					className={columnSnapshot.isDragging ? Classes.ELEVATION_3 : undefined}
+					style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}
 				>
-					<div
-						className="flex min-h-0 flex-1 flex-col"
-						style={{ "--col-accent": accentColor } as React.CSSProperties}
-					>
+					<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minHeight: 0 }}>
 						<div
 							{...columnProvided.dragHandleProps}
-							className="flex h-11 cursor-grab items-center justify-between px-3"
-							style={{ backgroundColor: `${accentColor}65` }}
+							style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 40, padding: "0 12px", background: accentColor, borderBottom: `1px solid ${Colors.DARK_GRAY5}`, cursor: "grab" }}
 						>
-							<div className="flex items-center gap-2">
-								<span className="text-sm font-semibold text-foreground">{column.title}</span>
-								<span className="text-xs font-medium text-white/60">{column.cards.length}</span>
+							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+								<span style={{ fontWeight: 600 }}>{column.title}</span>
+								<span style={{ color: lightColor }}>{column.cards.length}</span>
 							</div>
 						</div>
 
@@ -56,22 +52,21 @@ export function BoardColumn({
 								<div
 									ref={cardProvided.innerRef}
 									{...cardProvided.droppableProps}
-									className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-2"
+									className="kb-column-cards"
 									style={
 										cardSnapshot.isDraggingOver
-											? { backgroundColor: `${accentColor}15`, boxShadow: `inset 2px 0 0 0 ${accentColor}66, inset -2px 0 0 0 ${accentColor}66` }
+											? { backgroundColor: `${accentColor}10`, boxShadow: `inset 2px 0 0 0 ${accentColor}66, inset -2px 0 0 0 ${accentColor}66` }
 											: undefined
 									}
 								>
 									{canCreate && !inlineTaskCreator ? (
-										<button
-											type="button"
+										<Button
+											icon="plus"
+											text="Create task"
+											fill
 											onClick={onCreateTask}
-											className="mb-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:border-muted-foreground/80"
-										>
-											<Plus className="size-4" />
-											Create task
-										</button>
+											style={{ marginBottom: 8, flexShrink: 0 }}
+										/>
 									) : null}
 									{inlineTaskCreator}
 

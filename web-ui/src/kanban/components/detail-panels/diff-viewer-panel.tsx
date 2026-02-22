@@ -1,7 +1,9 @@
 import { diffLines, diffWordsWithSpace } from "diff";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Button, Card, Classes, Colors, Icon, NonIdealState } from "@blueprintjs/core";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { panelSeparatorColor } from "@/kanban/data/column-colors";
 import { buildFileTree } from "@/kanban/utils/file-tree";
 import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
 
@@ -337,19 +339,19 @@ function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Record<string
 
 function DiffRowText({ row }: { row: UnifiedDiffRow }): React.ReactElement {
 	if (!row.segments) {
-		return <span className="min-w-0 whitespace-pre-wrap break-words">{row.text || " "}</span>;
+		return <span className="kb-diff-text">{row.text || " "}</span>;
 	}
 
 	return (
-		<span className="min-w-0 whitespace-pre-wrap break-words">
+		<span className="kb-diff-text">
 			{row.segments.map((segment) => (
 				<span
 					key={segment.key}
 					className={
 						segment.tone === "added"
-							? "rounded bg-emerald-500/25 px-0.5 text-emerald-100"
+							? "kb-diff-segment-added"
 							: segment.tone === "removed"
-								? "rounded bg-red-500/25 px-0.5 text-red-100"
+								? "kb-diff-segment-removed"
 								: undefined
 					}
 				>
@@ -379,16 +381,16 @@ function UnifiedDiff({
 	}, []);
 
 	const renderRow = useCallback((row: UnifiedDiffRow): React.ReactElement => {
-		const rowToneClass =
+		const rowClass =
 			row.variant === "added"
-				? "bg-emerald-500/10 text-emerald-200"
+				? "kb-diff-row kb-diff-row-added"
 				: row.variant === "removed"
-					? "bg-red-500/10 text-red-200"
-					: "text-muted-foreground";
+					? "kb-diff-row kb-diff-row-removed"
+					: "kb-diff-row kb-diff-row-context";
 
 		return (
-			<div key={row.key} className={`grid grid-cols-[2rem_minmax(0,1fr)] gap-1 rounded-none px-0 py-0.5 font-mono text-xs ${rowToneClass}`}>
-				<span className="select-none pr-1 text-right text-muted-foreground/80">{row.lineNumber ?? ""}</span>
+			<div key={row.key} className={rowClass}>
+				<span style={{ color: Colors.GRAY2, textAlign: "right", userSelect: "none" }}>{row.lineNumber ?? ""}</span>
 				<DiffRowText row={row} />
 			</div>
 		);
@@ -401,20 +403,18 @@ function UnifiedDiff({
 					return renderRow(item.row);
 				}
 
-				const Chevron = item.block.expanded ? ChevronDown : ChevronRight;
 				return (
-					<div key={item.block.id} className="space-y-1">
-						<button
-							type="button"
+					<div key={item.block.id}>
+						<Button
+							variant="minimal"
+							size="small"
+							fill
+							alignText="left"
+							icon={<Icon icon={item.block.expanded ? "chevron-down" : "chevron-right"} size={12} />}
+							text={`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
 							onClick={() => toggleBlock(item.block.id)}
-							className="grid w-full cursor-pointer grid-cols-[2rem_minmax(0,1fr)] gap-1 rounded border border-border bg-card px-0.5 py-1 text-left text-xs text-foreground hover:bg-secondary hover:text-foreground"
-						>
-							<span />
-							<span className="flex items-center gap-1.5">
-								<Chevron className="size-3" />
-								{item.block.expanded ? "Hide" : "Show"} {item.block.count} unmodified lines
-							</span>
-						</button>
+							style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0 }}
+						/>
 						{item.block.expanded ? item.block.rows.map((row) => renderRow(row)) : null}
 					</div>
 				);
@@ -577,84 +577,84 @@ export function DiffViewerPanel({
 	}, [scrollToPath, selectedPath]);
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-border bg-background">
+		<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}>
 			{groupedByPath.length === 0 ? (
-				<div className="flex flex-1 items-center justify-center px-4 text-center">
-					<p className="text-sm text-muted-foreground/80">
-						No diff yet for this task.
-					</p>
+				<div className="kb-empty-state-center" style={{ flex: 1 }}>
+					<NonIdealState
+						icon="document"
+						title="No diff yet"
+						description="Diffs will appear here when the task produces changes."
+					/>
 				</div>
 			) : (
 				<div
 					ref={scrollContainerRef}
 					onScroll={handleDiffScroll}
-					className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3"
+					style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 12 }}
 				>
 					{groupedByPath.map((group) => {
 						const isExpanded = expandedPaths[group.path] ?? true;
-						const Chevron = isExpanded ? ChevronDown : ChevronRight;
 						return (
 							<section
 								key={group.path}
 								ref={(node) => {
 									sectionElementsRef.current[group.path] = node;
 								}}
-								className="rounded-lg border border-border bg-card"
+								style={{ marginBottom: 12 }}
 							>
-								<button
-									type="button"
-									onClick={() => {
-										const container = scrollContainerRef.current;
-										const section = sectionElementsRef.current[group.path];
-										const previousTop = section?.getBoundingClientRect().top ?? null;
-										const nextExpanded = !(expandedPaths[group.path] ?? true);
-										suppressScrollSyncUntilRef.current = Date.now() + 250;
-										setExpandedPaths((prev) => ({
-											...prev,
-											[group.path]: nextExpanded,
-										}));
-										requestAnimationFrame(() => {
-											if (previousTop == null || !container || !section) {
-												return;
-											}
-											const nextTop = section.getBoundingClientRect().top;
-											container.scrollTop += nextTop - previousTop;
-										});
-									}}
-									aria-expanded={isExpanded}
-									aria-current={selectedPath === group.path ? "true" : undefined}
-									className={`flex w-full min-w-0 cursor-pointer items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-secondary ${
-										isExpanded
-											? "rounded-t-lg border-b border-border"
-											: "rounded-lg"
-									}`}
-								>
-									<div className="flex min-w-0 items-center gap-1.5">
-										<Chevron className="size-3 text-muted-foreground" />
-										<span
-											title={group.path}
-											className={`min-w-0 truncate font-mono text-xs ${selectedPath === group.path ? "text-foreground" : "text-foreground"}`}
-										>
-											{truncatePathMiddle(group.path)}
-										</span>
-									</div>
-									<div className="shrink-0 space-x-2 font-mono text-[11px]">
-										<span className="text-emerald-400">+{group.added}</span>
-										<span className="text-red-400">-{group.removed}</span>
-									</div>
-								</button>
-								{isExpanded ? (
-									<div className="space-y-0">
-										{group.entries.map((entry, index) => (
-											<div
-												key={entry.id}
-												className={index === 0 ? "overflow-x-auto" : "overflow-x-auto border-t border-border"}
-											>
-												<UnifiedDiff oldText={entry.oldText} newText={entry.newText} />
-											</div>
-										))}
-									</div>
-								) : null}
+								<Card compact interactive={false} style={{ overflow: "hidden", padding: 0 }}>
+									<Button
+										variant="minimal"
+										fill
+										alignText="left"
+										className="kb-diff-file-header"
+										aria-expanded={isExpanded}
+										aria-current={selectedPath === group.path ? "true" : undefined}
+										icon={<Icon icon={isExpanded ? "chevron-down" : "chevron-right"} size={12} />}
+										onClick={() => {
+											const container = scrollContainerRef.current;
+											const sectionEl = sectionElementsRef.current[group.path];
+											const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
+											const nextExpanded = !(expandedPaths[group.path] ?? true);
+											suppressScrollSyncUntilRef.current = Date.now() + 250;
+											setExpandedPaths((prev) => ({
+												...prev,
+												[group.path]: nextExpanded,
+											}));
+											requestAnimationFrame(() => {
+												if (previousTop == null || !container || !sectionEl) {
+													return;
+												}
+												const nextTop = sectionEl.getBoundingClientRect().top;
+												container.scrollTop += nextTop - previousTop;
+											});
+										}}
+										text={
+											<span className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`} title={group.path}>
+												{truncatePathMiddle(group.path)}
+											</span>
+										}
+										endIcon={
+											<span className={Classes.MONOSPACE_TEXT}>
+												<span style={{ color: Colors.GREEN5 }}>+{group.added}</span>
+												{" "}
+												<span style={{ color: Colors.RED5 }}>-{group.removed}</span>
+											</span>
+										}
+									/>
+									{isExpanded ? (
+										<div>
+											{group.entries.map((entry) => (
+												<div
+													key={entry.id}
+													className="kb-diff-entry"
+												>
+													<UnifiedDiff oldText={entry.oldText} newText={entry.newText} />
+												</div>
+											))}
+										</div>
+									) : null}
+								</Card>
 							</section>
 						);
 					})}

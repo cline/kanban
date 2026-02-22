@@ -1,3 +1,4 @@
+import { Button, Callout, Classes, Pre } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 
 import type { RuntimeShortcutRunResponse } from "@/kanban/runtime/types";
@@ -21,36 +22,26 @@ export function RuntimeStatusBanners({
 	return (
 		<>
 			{worktreeError ? (
-				<div className="border-b border-border bg-background px-4 py-2">
-					<div className="flex items-center justify-between gap-3">
-						<p className="text-xs text-red-300">{worktreeError}</p>
-						<button
-							type="button"
-							onClick={onDismissWorktreeError}
-							className="text-xs text-muted-foreground hover:text-foreground"
-						>
-							Dismiss
-						</button>
-					</div>
+				<div className="kb-status-banner">
+					<Callout intent="danger" compact>
+						<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+							<span>{worktreeError}</span>
+							<Button variant="minimal" size="small" text="Dismiss" onClick={onDismissWorktreeError} />
+						</div>
+					</Callout>
 				</div>
 			) : null}
 			{shortcutOutput ? (
-				<div className="border-b border-border bg-background px-4 py-2">
-					<div className="mb-1 flex items-center justify-between">
-						<p className="text-xs text-muted-foreground">
+				<div className="kb-status-banner">
+					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+						<span className={Classes.TEXT_MUTED}>
 							{shortcutOutput.label} finished with exit code {shortcutOutput.result.exitCode}
-						</p>
-						<button
-							type="button"
-							onClick={onClearShortcutOutput}
-							className="text-xs text-muted-foreground hover:text-foreground"
-						>
-							Clear
-						</button>
+						</span>
+						<Button variant="minimal" size="small" text="Clear" onClick={onClearShortcutOutput} />
 					</div>
-					<pre className="max-h-32 overflow-auto rounded bg-nav p-2 text-xs text-foreground">
+					<Pre style={{ maxHeight: 128, overflow: "auto" }}>
 						{shortcutOutput.result.combinedOutput || "(no output)"}
-					</pre>
+					</Pre>
 				</div>
 			) : null}
 		</>

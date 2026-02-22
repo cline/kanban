@@ -1,11 +1,12 @@
 import "@xterm/xterm/css/xterm.css";
 
+import { Button, Callout, Classes, Colors, Divider, Tag } from "@blueprintjs/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { panelSeparatorColor } from "@/kanban/data/column-colors";
 import { encodeTextToBase64, decodeBase64ToText } from "@/kanban/terminal/base64";
 import type {
 	RuntimeTaskSessionSummary,
@@ -37,6 +38,22 @@ function describeState(summary: RuntimeTaskSessionSummary | null): string {
 		return "Failed";
 	}
 	return "Idle";
+}
+
+function getStateIntent(summary: RuntimeTaskSessionSummary | null): "none" | "success" | "warning" | "danger" {
+	if (!summary) {
+		return "none";
+	}
+	if (summary.state === "running") {
+		return "success";
+	}
+	if (summary.state === "awaiting_review") {
+		return "warning";
+	}
+	if (summary.state === "interrupted" || summary.state === "failed") {
+		return "danger";
+	}
+	return "none";
 }
 
 export function AgentTerminalPanel({
@@ -92,9 +109,10 @@ export function AgentTerminalPanel({
 			fontSize: 12,
 			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
 			theme: {
-				background: "#1F2428",
-				foreground: "#c9d1d9",
-				cursor: "#58a6ff",
+				background: Colors.DARK_GRAY1,
+				foreground: Colors.LIGHT_GRAY5,
+				cursor: Colors.BLUE3,
+				selectionBackground: `${Colors.BLUE3}4D`,
 			},
 		});
 		const fitAddon = new FitAddon();
@@ -197,42 +215,45 @@ export function AgentTerminalPanel({
 
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
+	const statusIntent = useMemo(() => getStateIntent(summary), [summary]);
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-border bg-background">
+		<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}>
 			{showMoveToTrash && onMoveToTrash ? (
-				<div className="border-b border-border px-3 py-2">
-					<Button type="button" variant="destructive" className="w-full" onClick={onMoveToTrash}>
-						Move Card To Trash
-					</Button>
-				</div>
+				<>
+					<div style={{ padding: "8px 12px" }}>
+						<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
+					</div>
+					<Divider />
+				</>
 			) : null}
-			<div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 text-xs">
-				<div className="min-w-0 text-muted-foreground">
-					<span className="text-foreground">{statusLabel}</span>
-					{summary?.lastActivityLine ? <span className="ml-2 truncate">{summary.lastActivityLine}</span> : null}
+			<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px" }}>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+					<Tag intent={statusIntent} minimal>{statusLabel}</Tag>
+					{summary?.lastActivityLine ? (
+						<span className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}>{summary.lastActivityLine}</span>
+					) : null}
 				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					<Button type="button" variant="outline" size="sm" onClick={handleClear}>
-						Clear
-					</Button>
+				<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+					<Button text="Clear" variant="outlined" size="small" onClick={handleClear} />
 					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={() => {
-							void handleStop();
-						}}
+						text="Stop"
+						variant="outlined"
+						size="small"
+						onClick={() => { void handleStop(); }}
 						disabled={!canStop || isStopping}
-					>
-						Stop
-					</Button>
+					/>
 				</div>
 			</div>
-			<div className="min-h-0 flex-1 overflow-hidden p-2">
-				<div ref={containerRef} className="h-full w-full bg-background" />
+			<Divider />
+			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: 4 }}>
+				<div ref={containerRef} style={{ height: "100%", width: "100%" }} />
 			</div>
-			{lastError ? <p className="border-t border-border px-3 py-2 text-xs text-red-300">{lastError}</p> : null}
+			{lastError ? (
+				<Callout intent="danger" compact style={{ borderRadius: 0 }}>
+					{lastError}
+				</Callout>
+			) : null}
 		</div>
 	);
 }

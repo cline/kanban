@@ -1,4 +1,14 @@
-import { ArrowLeft, Settings } from "lucide-react";
+import {
+	Alignment,
+	Button,
+	Classes,
+	Colors,
+	Navbar,
+	NavbarDivider,
+	NavbarGroup,
+	NavbarHeading,
+	Tag,
+} from "@blueprintjs/core";
 
 import type { RuntimeProjectShortcut } from "@/kanban/runtime/types";
 
@@ -8,7 +18,6 @@ function getWorkspacePathSegments(path: string): string[] {
 
 export function TopBar({
 	onBack,
-	subtitle,
 	workspacePath,
 	workspaceHint,
 	repoHint,
@@ -19,7 +28,6 @@ export function TopBar({
 	onRunShortcut,
 }: {
 	onBack?: () => void;
-	subtitle?: string;
 	workspacePath?: string;
 	workspaceHint?: string;
 	repoHint?: string;
@@ -33,87 +41,65 @@ export function TopBar({
 	const isAbsolutePath = Boolean(workspacePath && (workspacePath.startsWith("/") || workspacePath.startsWith("\\")));
 
 	return (
-		<header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-nav px-4">
-			<div className="flex min-w-0 items-center gap-2">
+		<Navbar fixedToTop={false} style={{ height: 40, minHeight: 40, background: Colors.DARK_GRAY5, boxShadow: "none" }}>
+			<NavbarGroup align={Alignment.LEFT} style={{ height: 40 }}>
 				{onBack ? (
-					<button
-						type="button"
-						onClick={onBack}
-						className="rounded-md p-1 text-muted-foreground hover:bg-card hover:text-foreground"
-						aria-label="Back to board"
-					>
-						<ArrowLeft className="size-4" />
-					</button>
+					<Button icon="arrow-left" variant="minimal" onClick={onBack} aria-label="Back to board" style={{ marginLeft: -8, marginRight: 8 }} />
 				) : null}
-				<span className="text-lg" role="img" aria-label="banana">
-					🍌
-				</span>
-				<span className="text-base font-semibold tracking-tight text-amber-300">Kanbanana</span>
-				{subtitle ? (
-					<>
-						<span className="text-muted-foreground/80">/</span>
-						<span className="text-sm font-medium text-muted-foreground">{subtitle}</span>
-					</>
-				) : null}
+				<NavbarHeading style={{ marginRight: 8 }}>
+					<span role="img" aria-label="banana">🍌</span>
+				</NavbarHeading>
 				{workspacePath ? (
 					<>
-						<span className="text-muted-foreground/80">|</span>
-						<div
-							className="min-w-0 max-w-[40rem] truncate font-mono text-xs text-muted-foreground"
+						<NavbarDivider />
+						<span
+							className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
+							style={{ fontSize: 12, maxWidth: 640, color: Colors.GRAY4 }}
 							title={workspacePath}
 							data-testid="workspace-path"
 						>
-							<span>{isAbsolutePath ? "/" : ""}</span>
+							{isAbsolutePath ? "/" : ""}
 							{workspaceSegments.map((segment, index) => {
 								const isLast = index === workspaceSegments.length - 1;
 								return (
 									<span key={`${segment}-${index}`}>
 										{index === 0 ? "" : "/"}
-										<span className={isLast ? "text-foreground" : "text-muted-foreground"}>{segment}</span>
+										<span style={isLast ? { color: Colors.LIGHT_GRAY5 } : undefined}>{segment}</span>
 									</span>
 								);
 							})}
-						</div>
+						</span>
 					</>
 				) : null}
 				{workspaceHint ? (
-					<span className="ml-2 rounded border border-border bg-card px-2 py-0.5 text-[11px] text-muted-foreground">
-						{workspaceHint}
-					</span>
+					<Tag minimal className="kb-navbar-tag">{workspaceHint}</Tag>
 				) : null}
 				{repoHint ? (
-					<span className="ml-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">
-						{repoHint}
-					</span>
+					<Tag minimal intent="warning" className="kb-navbar-tag">{repoHint}</Tag>
 				) : null}
 				{runtimeHint ? (
-					<span className="ml-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">
-						{runtimeHint}
-					</span>
+					<Tag minimal intent="warning" className="kb-navbar-tag">{runtimeHint}</Tag>
 				) : null}
-			</div>
-			<div className="flex items-center gap-2">
+			</NavbarGroup>
+			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40 }}>
 				{shortcuts?.map((shortcut) => (
-					<button
+					<Button
 						key={shortcut.id}
-						type="button"
+						variant="outlined"
+						size="small"
+						text={runningShortcutId === shortcut.id ? `Running ${shortcut.label}...` : shortcut.label}
 						onClick={() => onRunShortcut?.(shortcut.id)}
-						className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:border-muted-foreground/80"
 						disabled={runningShortcutId === shortcut.id}
-					>
-						{runningShortcutId === shortcut.id ? `Running ${shortcut.label}...` : shortcut.label}
-					</button>
+					/>
 				))}
-				<button
-					type="button"
+				<Button
+					icon="cog"
+					variant="minimal"
 					onClick={onOpenSettings}
-					className="rounded-md p-1.5 text-muted-foreground hover:bg-card hover:text-foreground"
 					aria-label="Settings"
 					data-testid="open-settings-button"
-				>
-					<Settings className="size-4" />
-				</button>
-			</div>
-		</header>
+				/>
+			</NavbarGroup>
+		</Navbar>
 	);
 }

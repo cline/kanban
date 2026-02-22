@@ -1,49 +1,7 @@
-@import "tailwindcss";
-
-@theme inline {
-	--color-nav: var(--nav);
-	--color-background: var(--background);
-	--color-foreground: var(--foreground);
-	--color-card: var(--card);
-	--color-card-foreground: var(--card-foreground);
-	--color-popover: var(--popover);
-	--color-popover-foreground: var(--popover-foreground);
-	--color-primary: var(--primary);
-	--color-primary-foreground: var(--primary-foreground);
-	--color-secondary: var(--secondary);
-	--color-secondary-foreground: var(--secondary-foreground);
-	--color-muted: var(--muted);
-	--color-muted-foreground: var(--muted-foreground);
-	--color-accent: var(--accent);
-	--color-accent-foreground: var(--accent-foreground);
-	--color-destructive: var(--destructive);
-	--color-border: var(--border);
-	--color-input: var(--input);
-	--color-ring: var(--ring);
-}
-
-:root {
-	--nav: #24292e;
-	--background: #1f2428;
-	--foreground: #e6edf3;
-	--card: #24292e;
-	--card-foreground: #e6edf3;
-	--popover: #161b22;
-	--popover-foreground: #e6edf3;
-	--primary: #f59e0b;
-	--primary-foreground: #111827;
-	--secondary: #21262d;
-	--secondary-foreground: #c9d1d9;
-	--muted: #21262d;
-	--muted-foreground: #8b949e;
-	--accent: #21262d;
-	--accent-foreground: #e6edf3;
-	--destructive: oklch(0.396 0.141 25.723);
-	--border: #30363d;
-	--input: #30363d;
-	--ring: #58a6ff;
-	--radius: 0.625rem;
-}
+@import "normalize.css";
+@import "@blueprintjs/core/lib/css/blueprint.css";
+@import "@blueprintjs/icons/lib/css/blueprint-icons.css";
+@import "@blueprintjs/select/lib/css/blueprint-select.css";
 
 html,
 body,
@@ -52,20 +10,157 @@ body,
 	overflow: hidden;
 }
 
-body {
-	margin: 0;
-	font-family:
-		-apple-system,
-		BlinkMacSystemFont,
-		"Segoe UI",
-		"Noto Sans",
-		Helvetica,
-		Arial,
-		sans-serif;
-	background: var(--background);
-	-webkit-font-smoothing: antialiased;
+/* -- Shared layout -- */
+
+.kb-board {
+	display: flex;
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
 }
 
-.card-interactive:hover {
-	border-color: var(--col-accent);
+.kb-column-cards {
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 8px;
+}
+
+.kb-empty-state-center {
+	display: flex;
+	height: 100%;
+	align-items: center;
+	justify-content: center;
+}
+
+/* -- Shared UI patterns -- */
+
+.kb-status-banner {
+	padding: 8px 12px;
+}
+
+.kb-navbar-tag {
+	margin-left: 8px;
+}
+
+.kb-suggestions-loading {
+	padding: 4px 8px;
+	font-size: var(--bp-typography-size-body-small);
+}
+
+/* -- File tree rows (hover/variant selectors) -- */
+
+.kb-file-tree-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 4px 8px;
+	border: none;
+	border-radius: var(--bp-surface-border-radius);
+	background: none;
+	text-align: left;
+	font-family: inherit;
+	font-size: var(--bp-typography-size-body-small);
+	cursor: pointer;
+	color: var(--bp-palette-gray-4);
+}
+
+.kb-file-tree-row:hover:not(.kb-file-tree-row-directory) {
+	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.1);
+}
+
+.kb-file-tree-row-directory {
+	cursor: default;
+	color: var(--bp-palette-gray-3);
+}
+
+.kb-file-tree-row-selected {
+	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.2);
+	color: var(--bp-palette-light-gray-5);
+}
+
+/* -- Diff rows (variant selectors) -- */
+
+.kb-diff-row {
+	display: grid;
+	grid-template-columns: 2rem minmax(0, 1fr);
+	gap: 8px;
+	padding: 1px 2px 1px 0;
+	line-height: var(--bp-typography-line-height-large);
+	font-size: var(--bp-typography-size-body-small);
+}
+
+.kb-diff-row-added {
+	background: oklch(from var(--bp-intent-success-rest) l c h / 0.2);
+}
+
+.kb-diff-row-removed {
+	background: oklch(from var(--bp-intent-danger-rest) l c h / 0.2);
+}
+
+.kb-diff-row-context {
+	background: transparent;
+}
+
+.kb-diff-segment-added {
+	background: oklch(from var(--bp-intent-success-rest) l c h / 0.3);
+	border-radius: 2px;
+}
+
+.kb-diff-segment-removed {
+	background: oklch(from var(--bp-intent-danger-rest) l c h / 0.3);
+	border-radius: 2px;
+}
+
+.kb-diff-text {
+	min-width: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* -- Diff entry (sibling selector) -- */
+
+.kb-diff-entry {
+	overflow-x: auto;
+	padding-bottom: 4px;
+}
+
+.kb-diff-entry + .kb-diff-entry {
+	border-top: 1px solid var(--bp-palette-dark-gray-5);
+}
+
+/* -- Diff file header (aria-expanded selector) -- */
+
+.kb-diff-file-header {
+	border-bottom: 1px solid var(--bp-palette-dark-gray-5);
+	font-size: var(--bp-typography-size-body-small);
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.kb-diff-file-header[aria-expanded="false"] {
+	border-bottom: none;
+}
+
+/* -- Focus ring fix (Blueprint uses :focus, not :focus-visible) -- */
+
+:focus:not(:focus-visible) {
+	outline: none;
+}
+
+/* -- Utilities -- */
+
+.kb-line-clamp-2 {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.kb-hidden {
+	display: none;
 }
