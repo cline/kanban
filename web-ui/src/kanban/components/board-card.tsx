@@ -1,5 +1,6 @@
 import { Card, Classes, Colors, Elevation, Text } from "@blueprintjs/core";
 import { Draggable } from "@hello-pangea/dnd";
+import { createPortal } from "react-dom";
 
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard as BoardCardModel } from "@/kanban/types";
@@ -21,8 +22,7 @@ export function BoardCard({
 		<Draggable draggableId={card.id} index={index}>
 			{(provided, snapshot) => {
 				const isDragging = snapshot.isDragging;
-
-				return (
+				const draggableContent = (
 					<div
 						ref={provided.innerRef}
 						{...provided.draggableProps}
@@ -63,6 +63,11 @@ export function BoardCard({
 						</Card>
 					</div>
 				);
+
+				if (isDragging && typeof document !== "undefined") {
+					return createPortal(draggableContent, document.body);
+				}
+				return draggableContent;
 			}}
 		</Draggable>
 	);
