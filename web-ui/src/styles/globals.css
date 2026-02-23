@@ -19,6 +19,13 @@ body,
 	overflow: hidden;
 }
 
+.kb-home-layout {
+	display: flex;
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+}
+
 .kb-column-cards {
 	display: flex;
 	flex: 1 1 0;
@@ -49,6 +56,30 @@ body,
 .kb-suggestions-loading {
 	padding: 4px 8px;
 	font-size: var(--bp-typography-size-body-small);
+}
+
+/* -- Project navigation rows (hover-reveal actions) -- */
+
+.kb-project-row-actions {
+	opacity: 0;
+}
+
+.kb-project-row:hover {
+	background: var(--bp-palette-dark-gray-4);
+}
+
+.kb-project-row-selected,
+.kb-project-row-selected:hover {
+	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.15);
+	color: var(--bp-palette-blue-5);
+}
+
+.kb-project-row:hover .kb-project-row-actions {
+	opacity: 1;
+}
+
+.kb-project-count-tag {
+	font-size: var(--bp-typography-size-body-x-small);
 }
 
 /* -- File tree rows (hover/variant selectors) -- */

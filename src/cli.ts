@@ -1,34 +1,61 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { homedir } from "node:os";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { WebSocket, WebSocketServer } from "ws";
 
 import { createSampleBoard } from "./index.js";
 import type {
+	RuntimeBoardColumnId,
+	RuntimeBoardData,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
+	RuntimeProjectAddRequest,
+	RuntimeProjectAddResponse,
+	RuntimeProjectDirectoryPickerResponse,
+	RuntimeProjectRemoveRequest,
+	RuntimeProjectRemoveResponse,
+	RuntimeProjectSummary,
+	RuntimeProjectsResponse,
+	RuntimeProjectTaskCounts,
 	RuntimeShortcutRunRequest,
 	RuntimeShortcutRunResponse,
 	RuntimeSlashCommandsResponse,
-	RuntimeTaskSessionListResponse,
+	RuntimeStateStreamErrorMessage,
+	RuntimeStateStreamMessage,
+	RuntimeStateStreamProjectsMessage,
+	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamTaskSessionsMessage,
+	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionStartRequest,
 	RuntimeTaskSessionStartResponse,
 	RuntimeTaskSessionStopRequest,
 	RuntimeTaskSessionStopResponse,
+	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoRequest,
 	RuntimeWorkspaceChangesRequest,
 	RuntimeWorkspaceFileSearchResponse,
+	RuntimeWorkspaceStateConflictResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
 	RuntimeWorktreeDeleteRequest,
 	RuntimeWorktreeEnsureRequest,
 } from "./runtime/api-contract.js";
 import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
-import { loadWorkspaceState, saveWorkspaceState } from "./runtime/state/workspace-state.js";
+import {
+	listWorkspaceIndexEntries,
+	loadWorkspaceContext,
+	loadWorkspaceContextById,
+	loadWorkspaceState,
+	removeWorkspaceIndexEntry,
+	saveWorkspaceState,
+	WorkspaceStateConflictError,
+} from "./runtime/state/workspace-state.js";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "./runtime/terminal/agent-registry.js";
 import { TerminalSessionManager } from "./runtime/terminal/session-manager.js";
 import { discoverRuntimeSlashCommands } from "./runtime/terminal/slash-commands.js";
@@ -66,6 +93,7 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 const DEFAULT_PORT = 8484;
+const TASK_SESSION_STREAM_BATCH_MS = 150;
 
 function parseCliOptions(argv: string[]): CliOptions {
 	let help = false;
@@ -136,6 +164,25 @@ function shouldFallbackToIndexHtml(pathname: string): boolean {
 function normalizeRequestPath(urlPathname: string): string {
 	const trimmed = urlPathname === "/" ? "/index.html" : urlPathname;
 	return decodeURIComponent(trimmed.split("?")[0] ?? trimmed);
+}
+
+function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
+	const headerValue = request.headers["x-kanbanana-workspace-id"];
+	const headerWorkspaceId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+	if (typeof headerWorkspaceId === "string") {
+		const normalized = headerWorkspaceId.trim();
+		if (normalized) {
+			return normalized;
+		}
+	}
+	const queryWorkspaceId = requestUrl.searchParams.get("workspaceId");
+	if (typeof queryWorkspaceId === "string") {
+		const normalized = queryWorkspaceId.trim();
+		if (normalized) {
+			return normalized;
+		}
+	}
+	return null;
 }
 
 function resolveAssetPath(rootDir: string, urlPathname: string): string {
@@ -252,7 +299,175 @@ function validateWorkspaceStateSaveRequest(body: RuntimeWorkspaceStateSaveReques
 	if (!body.sessions || typeof body.sessions !== "object" || Array.isArray(body.sessions)) {
 		throw new Error("Workspace state payload is missing sessions data.");
 	}
+	if (
+		body.expectedRevision !== undefined &&
+		(typeof body.expectedRevision !== "number" ||
+			!Number.isInteger(body.expectedRevision) ||
+			body.expectedRevision < 0)
+	) {
+		throw new Error("Workspace state payload includes an invalid expectedRevision.");
+	}
 	return body;
+}
+
+function validateProjectAddRequest(body: RuntimeProjectAddRequest): RuntimeProjectAddRequest {
+	if (!body || typeof body !== "object" || typeof body.path !== "string") {
+		throw new Error("Invalid project add payload.");
+	}
+	const path = body.path.trim();
+	if (!path) {
+		throw new Error("Project path cannot be empty.");
+	}
+	return {
+		path,
+	};
+}
+
+function validateProjectRemoveRequest(body: RuntimeProjectRemoveRequest): RuntimeProjectRemoveRequest {
+	if (!body || typeof body !== "object" || typeof body.projectId !== "string") {
+		throw new Error("Invalid project remove payload.");
+	}
+	const projectId = body.projectId.trim();
+	if (!projectId) {
+		throw new Error("Project ID cannot be empty.");
+	}
+	return {
+		projectId,
+	};
+}
+
+function resolveProjectInputPath(inputPath: string, cwd: string): string {
+	if (inputPath === "~") {
+		return homedir();
+	}
+	if (inputPath.startsWith("~/") || inputPath.startsWith("~\\")) {
+		return resolve(homedir(), inputPath.slice(2));
+	}
+	return resolve(cwd, inputPath);
+}
+
+async function assertPathIsDirectory(path: string): Promise<void> {
+	const info = await stat(path);
+	if (!info.isDirectory()) {
+		throw new Error(`Project path is not a directory: ${path}`);
+	}
+}
+
+function getProjectName(path: string): string {
+	const normalized = path.replaceAll("\\", "/").replace(/\/+$/g, "");
+	if (!normalized) {
+		return path;
+	}
+	const segments = normalized.split("/").filter((segment) => segment.length > 0);
+	return segments[segments.length - 1] ?? normalized;
+}
+
+function createEmptyProjectTaskCounts(): RuntimeProjectTaskCounts {
+	return {
+		backlog: 0,
+		in_progress: 0,
+		review: 0,
+		trash: 0,
+	};
+}
+
+function countTasksByColumn(board: RuntimeBoardData): RuntimeProjectTaskCounts {
+	const counts = createEmptyProjectTaskCounts();
+	for (const column of board.columns) {
+		const count = column.cards.length;
+		switch (column.id) {
+			case "backlog":
+				counts.backlog += count;
+				break;
+			case "in_progress":
+				counts.in_progress += count;
+				break;
+			case "review":
+				counts.review += count;
+				break;
+			case "trash":
+				counts.trash += count;
+				break;
+		}
+	}
+	return counts;
+}
+
+function applyLiveSessionStateToProjectTaskCounts(
+	counts: RuntimeProjectTaskCounts,
+	board: RuntimeBoardData,
+	sessionSummaries: RuntimeWorkspaceStateResponse["sessions"],
+): RuntimeProjectTaskCounts {
+	const taskColumnById = new Map<string, RuntimeBoardColumnId>();
+	for (const column of board.columns) {
+		for (const card of column.cards) {
+			taskColumnById.set(card.id, column.id);
+		}
+	}
+	const next = {
+		...counts,
+	};
+	for (const summary of Object.values(sessionSummaries)) {
+		const columnId = taskColumnById.get(summary.taskId);
+		if (!columnId) {
+			continue;
+		}
+		if (summary.state === "awaiting_review" && columnId === "in_progress") {
+			next.in_progress = Math.max(0, next.in_progress - 1);
+			next.review += 1;
+			continue;
+		}
+		if (summary.state === "interrupted" && columnId !== "trash") {
+			next[columnId] = Math.max(0, next[columnId] - 1);
+			next.trash += 1;
+		}
+	}
+	return next;
+}
+
+function toProjectSummary(project: {
+	workspaceId: string;
+	repoPath: string;
+	taskCounts: RuntimeProjectTaskCounts;
+}): RuntimeProjectSummary {
+	return {
+		id: project.workspaceId,
+		path: project.repoPath,
+		name: getProjectName(project.repoPath),
+		taskCounts: project.taskCounts,
+	};
+}
+
+function pickDirectoryPathFromSystemDialog(): string | null {
+	if (process.platform === "darwin") {
+		const result = spawnSync(
+			"osascript",
+			["-e", 'POSIX path of (choose folder with prompt "Select a project folder")'],
+			{
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "pipe"],
+			},
+		);
+		if (result.status !== 0) {
+			return null;
+		}
+		const selected = typeof result.stdout === "string" ? result.stdout.trim() : "";
+		return selected || null;
+	}
+
+	if (process.platform === "linux") {
+		const result = spawnSync("zenity", ["--file-selection", "--directory", "--title=Select project folder"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		if (result.status !== 0) {
+			return null;
+		}
+		const selected = typeof result.stdout === "string" ? result.stdout.trim() : "";
+		return selected || null;
+	}
+
+	return null;
 }
 
 function validateRuntimeConfigSaveRequest(body: RuntimeConfigSaveRequest): RuntimeConfigSaveRequest {
@@ -360,6 +575,53 @@ function openInBrowser(url: string): void {
 	}
 	const child = spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
 	child.unref();
+}
+
+function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "EADDRINUSE"
+	);
+}
+
+async function canReachKanbananaServer(port: number, workspaceId: string): Promise<boolean> {
+	try {
+		const response = await fetch(`http://127.0.0.1:${port}/api/projects`, {
+			headers: {
+				"x-kanbanana-workspace-id": workspaceId,
+			},
+			signal: AbortSignal.timeout(1_500),
+		});
+		if (!response.ok) {
+			return false;
+		}
+		const payload = (await response.json().catch(() => null)) as RuntimeProjectsResponse | null;
+		return Boolean(payload && Array.isArray(payload.projects));
+	} catch {
+		return false;
+	}
+}
+
+async function tryOpenExistingServer(port: number, noOpen: boolean): Promise<boolean> {
+	const context = await loadWorkspaceContext(process.cwd());
+	const running = await canReachKanbananaServer(port, context.workspaceId);
+	if (!running) {
+		return false;
+	}
+	const projectUrl = `http://127.0.0.1:${port}/${encodeURIComponent(context.workspaceId)}`;
+	console.log(`Kanbanana already running at http://127.0.0.1:${port}`);
+	if (!noOpen) {
+		try {
+			openInBrowser(projectUrl);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.warn(`Could not open browser automatically: ${message}`);
+		}
+	}
+	console.log(`Project URL: ${projectUrl}`);
+	return true;
 }
 
 async function runShortcutCommand(command: string, cwd: string): Promise<RuntimeShortcutRunResponse> {
@@ -497,14 +759,266 @@ async function startServer(
 	port: number,
 ): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
 	const webUiDir = getWebUiDir();
-	let runtimeConfig = await loadRuntimeConfig(process.cwd());
-	const terminalManager = new TerminalSessionManager();
-	try {
-		const existingWorkspace = await loadWorkspaceState(process.cwd());
-		terminalManager.hydrateFromRecord(existingWorkspace.sessions);
-	} catch {
-		// Workspace state will be created on demand.
-	}
+	const initialWorkspace = await loadWorkspaceContext(process.cwd());
+	let activeWorkspaceId = initialWorkspace.workspaceId;
+	let activeWorkspacePath = initialWorkspace.repoPath;
+	const getActiveWorkspacePath = () => activeWorkspacePath;
+	const getActiveWorkspaceId = () => activeWorkspaceId;
+	let runtimeConfig = await loadRuntimeConfig(getActiveWorkspacePath());
+	const workspacePathsById = new Map<string, string>([[initialWorkspace.workspaceId, initialWorkspace.repoPath]]);
+	const projectTaskCountsByWorkspaceId = new Map<string, RuntimeProjectTaskCounts>();
+	const terminalManagersByWorkspaceId = new Map<string, TerminalSessionManager>();
+	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
+	const terminalSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
+	const pendingTaskSessionSummariesByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
+	const taskSessionBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
+	const runtimeStateClientsByWorkspaceId = new Map<string, Set<WebSocket>>();
+	const runtimeStateClients = new Set<WebSocket>();
+	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
+	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
+
+	const sendRuntimeStateMessage = (client: WebSocket, payload: RuntimeStateStreamMessage) => {
+		if (client.readyState !== WebSocket.OPEN) {
+			return;
+		}
+		try {
+			client.send(JSON.stringify(payload));
+		} catch {
+			// Ignore websocket write errors; close handlers clean up disconnected sockets.
+		}
+	};
+
+	const flushTaskSessionSummaries = (workspaceId: string) => {
+		const pending = pendingTaskSessionSummariesByWorkspaceId.get(workspaceId);
+		if (!pending || pending.size === 0) {
+			return;
+		}
+		pendingTaskSessionSummariesByWorkspaceId.delete(workspaceId);
+		const summaries = Array.from(pending.values());
+		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+		if (runtimeClients && runtimeClients.size > 0) {
+			const payload: RuntimeStateStreamTaskSessionsMessage = {
+				type: "task_sessions_updated",
+				workspaceId,
+				summaries,
+			};
+			for (const client of runtimeClients) {
+				sendRuntimeStateMessage(client, payload);
+			}
+		}
+		void broadcastRuntimeProjectsUpdated(workspaceId);
+	};
+
+	const queueTaskSessionSummaryBroadcast = (workspaceId: string, summary: RuntimeTaskSessionSummary) => {
+		const pending =
+			pendingTaskSessionSummariesByWorkspaceId.get(workspaceId) ?? new Map<string, RuntimeTaskSessionSummary>();
+		pending.set(summary.taskId, summary);
+		pendingTaskSessionSummariesByWorkspaceId.set(workspaceId, pending);
+		if (taskSessionBroadcastTimersByWorkspaceId.has(workspaceId)) {
+			return;
+		}
+		const timer = setTimeout(() => {
+			taskSessionBroadcastTimersByWorkspaceId.delete(workspaceId);
+			flushTaskSessionSummaries(workspaceId);
+		}, TASK_SESSION_STREAM_BATCH_MS);
+		timer.unref();
+		taskSessionBroadcastTimersByWorkspaceId.set(workspaceId, timer);
+	};
+
+	const disposeTaskSessionSummaryBroadcast = (workspaceId: string) => {
+		const timer = taskSessionBroadcastTimersByWorkspaceId.get(workspaceId);
+		if (timer) {
+			clearTimeout(timer);
+		}
+		taskSessionBroadcastTimersByWorkspaceId.delete(workspaceId);
+		pendingTaskSessionSummariesByWorkspaceId.delete(workspaceId);
+	};
+
+	const ensureTerminalSummarySubscription = (workspaceId: string, manager: TerminalSessionManager) => {
+		if (terminalSummaryUnsubscribeByWorkspaceId.has(workspaceId)) {
+			return;
+		}
+		const unsubscribe = manager.onSummary((summary) => {
+			queueTaskSessionSummaryBroadcast(workspaceId, summary);
+		});
+		terminalSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
+	};
+
+	const getTerminalManagerForWorkspace = (workspaceId: string): TerminalSessionManager | null =>
+		terminalManagersByWorkspaceId.get(workspaceId) ?? null;
+
+	const ensureTerminalManagerForWorkspace = async (
+		workspaceId: string,
+		repoPath: string,
+	): Promise<TerminalSessionManager> => {
+		workspacePathsById.set(workspaceId, repoPath);
+		const existing = terminalManagersByWorkspaceId.get(workspaceId);
+		if (existing) {
+			ensureTerminalSummarySubscription(workspaceId, existing);
+			return existing;
+		}
+		const pending = terminalManagerLoadPromises.get(workspaceId);
+		if (pending) {
+			const loaded = await pending;
+			ensureTerminalSummarySubscription(workspaceId, loaded);
+			return loaded;
+		}
+		const loading = (async () => {
+			const manager = new TerminalSessionManager();
+			try {
+				const existingWorkspace = await loadWorkspaceState(repoPath);
+				manager.hydrateFromRecord(existingWorkspace.sessions);
+			} catch {
+				// Workspace state will be created on demand.
+			}
+			terminalManagersByWorkspaceId.set(workspaceId, manager);
+			return manager;
+		})().finally(() => {
+			terminalManagerLoadPromises.delete(workspaceId);
+		});
+		terminalManagerLoadPromises.set(workspaceId, loading);
+		const loaded = await loading;
+		ensureTerminalSummarySubscription(workspaceId, loaded);
+		return loaded;
+	};
+
+	const setActiveWorkspace = async (workspaceId: string, repoPath: string): Promise<void> => {
+		activeWorkspaceId = workspaceId;
+		activeWorkspacePath = repoPath;
+		workspacePathsById.set(workspaceId, repoPath);
+		await ensureTerminalManagerForWorkspace(workspaceId, repoPath);
+		runtimeConfig = await loadRuntimeConfig(getActiveWorkspacePath());
+	};
+
+	const summarizeProjectTaskCounts = async (
+		workspaceId: string,
+		repoPath: string,
+	): Promise<RuntimeProjectTaskCounts> => {
+		try {
+			const workspaceState = await loadWorkspaceState(repoPath);
+			const persistedCounts = countTasksByColumn(workspaceState.board);
+			const terminalManager = getTerminalManagerForWorkspace(workspaceId);
+			if (!terminalManager) {
+				projectTaskCountsByWorkspaceId.set(workspaceId, persistedCounts);
+				return persistedCounts;
+			}
+			const liveSessionsByTaskId: RuntimeWorkspaceStateResponse["sessions"] = {};
+			for (const summary of terminalManager.listSummaries()) {
+				liveSessionsByTaskId[summary.taskId] = summary;
+			}
+			const nextCounts = applyLiveSessionStateToProjectTaskCounts(
+				persistedCounts,
+				workspaceState.board,
+				liveSessionsByTaskId,
+			);
+			projectTaskCountsByWorkspaceId.set(workspaceId, nextCounts);
+			return nextCounts;
+		} catch {
+			return projectTaskCountsByWorkspaceId.get(workspaceId) ?? createEmptyProjectTaskCounts();
+		}
+	};
+
+	const buildWorkspaceStateSnapshot = async (
+		workspaceId: string,
+		workspacePath: string,
+	): Promise<RuntimeWorkspaceStateResponse> => {
+		const response: RuntimeWorkspaceStateResponse = await loadWorkspaceState(workspacePath);
+		const terminalManager = await ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
+		for (const summary of terminalManager.listSummaries()) {
+			response.sessions[summary.taskId] = summary;
+		}
+		return response;
+	};
+
+	const buildProjectsPayload = async (
+		preferredCurrentProjectId: string | null,
+	): Promise<RuntimeStateStreamProjectsMessage> => {
+		const projects = await listWorkspaceIndexEntries();
+		const fallbackProjectId =
+			projects.find((project) => project.workspaceId === activeWorkspaceId)?.workspaceId ??
+			projects[0]?.workspaceId ??
+			null;
+		const resolvedCurrentProjectId =
+			(preferredCurrentProjectId &&
+				projects.some((project) => project.workspaceId === preferredCurrentProjectId) &&
+				preferredCurrentProjectId) ||
+			fallbackProjectId;
+		const projectSummaries = await Promise.all(
+			projects.map(async (project) => {
+				const taskCounts = await summarizeProjectTaskCounts(project.workspaceId, project.repoPath);
+				return toProjectSummary({
+					workspaceId: project.workspaceId,
+					repoPath: project.repoPath,
+					taskCounts,
+				});
+			}),
+		);
+		return {
+			type: "projects_updated",
+			currentProjectId: resolvedCurrentProjectId,
+			projects: projectSummaries,
+		};
+	};
+
+	const resolveWorkspaceForStream = async (
+		requestedWorkspaceId: string | null,
+	): Promise<{ workspaceId: string; workspacePath: string } | null> => {
+		if (requestedWorkspaceId) {
+			const requestedWorkspace = await loadWorkspaceContextById(requestedWorkspaceId);
+			if (requestedWorkspace) {
+				return {
+					workspaceId: requestedWorkspace.workspaceId,
+					workspacePath: requestedWorkspace.repoPath,
+				};
+			}
+		}
+		const projects = await listWorkspaceIndexEntries();
+		const fallbackWorkspace =
+			projects.find((project) => project.workspaceId === activeWorkspaceId) ?? projects[0] ?? null;
+		if (!fallbackWorkspace) {
+			return null;
+		}
+		return {
+			workspaceId: fallbackWorkspace.workspaceId,
+			workspacePath: fallbackWorkspace.repoPath,
+		};
+	};
+
+	const broadcastRuntimeWorkspaceStateUpdated = async (workspaceId: string, workspacePath: string): Promise<void> => {
+		const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+		if (!clients || clients.size === 0) {
+			return;
+		}
+		try {
+			const workspaceState = await buildWorkspaceStateSnapshot(workspaceId, workspacePath);
+			const payload: RuntimeStateStreamWorkspaceStateMessage = {
+				type: "workspace_state_updated",
+				workspaceId,
+				workspaceState,
+			};
+			for (const client of clients) {
+				sendRuntimeStateMessage(client, payload);
+			}
+		} catch {
+			// Ignore transient state read failures; next update will resync.
+		}
+	};
+
+	const broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
+		if (runtimeStateClients.size === 0) {
+			return;
+		}
+		try {
+			const payload = await buildProjectsPayload(preferredCurrentProjectId);
+			for (const client of runtimeStateClients) {
+				sendRuntimeStateMessage(client, payload);
+			}
+		} catch {
+			// Ignore transient project summary failures; next update will resync.
+		}
+	};
+
+	await ensureTerminalManagerForWorkspace(initialWorkspace.workspaceId, initialWorkspace.repoPath);
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -514,20 +1028,82 @@ async function startServer(
 		process.exit(1);
 	}
 
+	const disposeRuntimeStreamResources = () => {
+		for (const timer of taskSessionBroadcastTimersByWorkspaceId.values()) {
+			clearTimeout(timer);
+		}
+		taskSessionBroadcastTimersByWorkspaceId.clear();
+		pendingTaskSessionSummariesByWorkspaceId.clear();
+		for (const unsubscribe of terminalSummaryUnsubscribeByWorkspaceId.values()) {
+			try {
+				unsubscribe();
+			} catch {
+				// Ignore listener cleanup errors during shutdown.
+			}
+		}
+		terminalSummaryUnsubscribeByWorkspaceId.clear();
+	};
+
 	const server = createServer(async (req, res) => {
 		try {
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
+			const isApiRequest = pathname.startsWith("/api/");
+			const requestedWorkspaceId = isApiRequest ? readWorkspaceIdFromRequest(req, requestUrl) : null;
+			const requestedWorkspaceContext = requestedWorkspaceId
+				? await loadWorkspaceContextById(requestedWorkspaceId)
+				: null;
+			const getRequiredWorkspaceScope = (): { workspaceId: string; workspacePath: string } | null => {
+				if (!requestedWorkspaceId) {
+					sendJson(res, 400, {
+						error: "Missing workspace scope. Include x-kanbanana-workspace-id header or workspaceId query parameter.",
+					});
+					return null;
+				}
+				if (!requestedWorkspaceContext) {
+					sendJson(res, 404, {
+						error: `Unknown workspace ID: ${requestedWorkspaceId}`,
+					});
+					return null;
+				}
+				return {
+					workspaceId: requestedWorkspaceContext.workspaceId,
+					workspacePath: requestedWorkspaceContext.repoPath,
+				};
+			};
+
+			const getScopedTerminalManager = async (scope: {
+				workspaceId: string;
+				workspacePath: string;
+			}): Promise<TerminalSessionManager> =>
+				await ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
+
+			const loadScopedRuntimeConfig = async (scope: { workspaceId: string; workspacePath: string }) => {
+				if (scope.workspaceId === getActiveWorkspaceId()) {
+					return runtimeConfig;
+				}
+				return await loadRuntimeConfig(scope.workspacePath);
+			};
 
 			if (pathname === "/api/runtime/config" && req.method === "GET") {
-				const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(runtimeConfig);
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
+				const scopedRuntimeConfig = await loadScopedRuntimeConfig(scope);
+				const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(scopedRuntimeConfig);
 				sendJson(res, 200, payload);
 				return;
 			}
 
 			if (pathname === "/api/runtime/slash-commands" && req.method === "GET") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
-					const resolved = resolveAgentCommand(runtimeConfig);
+					const scopedRuntimeConfig = await loadScopedRuntimeConfig(scope);
+					const resolved = resolveAgentCommand(scopedRuntimeConfig);
 					if (!resolved) {
 						sendJson(res, 200, {
 							agentId: null,
@@ -537,11 +1113,11 @@ async function startServer(
 						return;
 					}
 					const taskId = requestUrl.searchParams.get("taskId")?.trim();
-					let commandCwd = process.cwd();
+					let commandCwd = scope.workspacePath;
 					if (taskId) {
-						const taskBaseRef = await resolveTaskBaseRef(process.cwd(), taskId);
+						const taskBaseRef = await resolveTaskBaseRef(scope.workspacePath, taskId);
 						commandCwd = await resolveTaskCwd({
-							cwd: process.cwd(),
+							cwd: scope.workspacePath,
 							taskId,
 							baseRef: taskBaseRef,
 							ensure: false,
@@ -561,13 +1137,21 @@ async function startServer(
 			}
 
 			if (pathname === "/api/runtime/config" && req.method === "PUT") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const body = validateRuntimeConfigSaveRequest(await readJsonBody<RuntimeConfigSaveRequest>(req));
-					runtimeConfig = await saveRuntimeConfig(process.cwd(), {
+					const currentRuntimeConfig = await loadScopedRuntimeConfig(scope);
+					const nextRuntimeConfig = await saveRuntimeConfig(scope.workspacePath, {
 						selectedAgentId: body.selectedAgentId,
-						shortcuts: body.shortcuts ?? runtimeConfig.shortcuts,
+						shortcuts: body.shortcuts ?? currentRuntimeConfig.shortcuts,
 					});
-					const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(runtimeConfig);
+					if (scope.workspaceId === getActiveWorkspaceId()) {
+						runtimeConfig = nextRuntimeConfig;
+					}
+					const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(nextRuntimeConfig);
 					sendJson(res, 200, payload);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
@@ -576,18 +1160,15 @@ async function startServer(
 				return;
 			}
 
-			if (pathname === "/api/runtime/task-sessions" && req.method === "GET") {
-				const payload: RuntimeTaskSessionListResponse = {
-					sessions: terminalManager.listSummaries(),
-				};
-				sendJson(res, 200, payload);
-				return;
-			}
-
 			if (pathname === "/api/runtime/task-session/start" && req.method === "POST") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const body = validateTaskSessionStartRequest(await readJsonBody<RuntimeTaskSessionStartRequest>(req));
-					const resolved = resolveAgentCommand(runtimeConfig);
+					const scopedRuntimeConfig = await loadScopedRuntimeConfig(scope);
+					const resolved = resolveAgentCommand(scopedRuntimeConfig);
 					if (!resolved) {
 						sendJson(res, 400, {
 							ok: false,
@@ -598,16 +1179,17 @@ async function startServer(
 					}
 					const taskBaseRef =
 						body.baseRef === undefined
-							? await resolveTaskBaseRef(process.cwd(), body.taskId)
+							? await resolveTaskBaseRef(scope.workspacePath, body.taskId)
 							: typeof body.baseRef === "string"
 								? body.baseRef.trim() || null
 								: null;
 					const taskCwd = await resolveTaskCwd({
-						cwd: process.cwd(),
+						cwd: scope.workspacePath,
 						taskId: body.taskId,
 						baseRef: taskBaseRef,
 						ensure: true,
 					});
+					const terminalManager = await getScopedTerminalManager(scope);
 					const summary = await terminalManager.startTaskSession({
 						taskId: body.taskId,
 						agentId: resolved.agentId,
@@ -635,8 +1217,13 @@ async function startServer(
 			}
 
 			if (pathname === "/api/runtime/task-session/stop" && req.method === "POST") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const body = validateTaskSessionStopRequest(await readJsonBody<RuntimeTaskSessionStopRequest>(req));
+					const terminalManager = await getScopedTerminalManager(scope);
 					const summary = terminalManager.stopTaskSession(body.taskId);
 					sendJson(res, 200, {
 						ok: Boolean(summary),
@@ -654,9 +1241,13 @@ async function startServer(
 			}
 
 			if (pathname === "/api/runtime/shortcut/run" && req.method === "POST") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const body = validateShortcutRunRequest(await readJsonBody<RuntimeShortcutRunRequest>(req));
-					const response = await runShortcutCommand(body.command, process.cwd());
+					const response = await runShortcutCommand(body.command, scope.workspacePath);
 					sendJson(res, 200, response);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
@@ -666,12 +1257,18 @@ async function startServer(
 			}
 
 			if (pathname === "/api/workspace/changes" && req.method === "GET") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const query = validateWorkspaceChangesRequest(requestUrl.searchParams);
 					const taskBaseRef =
-						query.baseRef === undefined ? await resolveTaskBaseRef(process.cwd(), query.taskId) : query.baseRef;
+						query.baseRef === undefined
+							? await resolveTaskBaseRef(scope.workspacePath, query.taskId)
+							: query.baseRef;
 					const taskCwd = await resolveTaskCwd({
-						cwd: process.cwd(),
+						cwd: scope.workspacePath,
 						taskId: query.taskId,
 						baseRef: taskBaseRef,
 						ensure: false,
@@ -686,10 +1283,14 @@ async function startServer(
 			}
 
 			if (pathname === "/api/workspace/worktree/ensure" && req.method === "POST") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const body = validateWorktreeEnsureRequest(await readJsonBody<RuntimeWorktreeEnsureRequest>(req));
 					const response = await ensureTaskWorktree({
-						cwd: process.cwd(),
+						cwd: scope.workspacePath,
 						taskId: body.taskId,
 						baseRef: body.baseRef,
 					});
@@ -702,10 +1303,14 @@ async function startServer(
 			}
 
 			if (pathname === "/api/workspace/worktree/delete" && req.method === "POST") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const body = validateWorktreeDeleteRequest(await readJsonBody<RuntimeWorktreeDeleteRequest>(req));
 					const response = await deleteTaskWorktree({
-						cwd: process.cwd(),
+						cwd: scope.workspacePath,
 						taskId: body.taskId,
 					});
 					sendJson(res, response.ok ? 200 : 500, response);
@@ -717,12 +1322,18 @@ async function startServer(
 			}
 
 			if (pathname === "/api/workspace/task-context" && req.method === "GET") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const query = validateTaskWorkspaceInfoRequest(requestUrl.searchParams);
 					const taskBaseRef =
-						query.baseRef === undefined ? await resolveTaskBaseRef(process.cwd(), query.taskId) : query.baseRef;
+						query.baseRef === undefined
+							? await resolveTaskBaseRef(scope.workspacePath, query.taskId)
+							: query.baseRef;
 					const response = await getTaskWorkspaceInfo({
-						cwd: process.cwd(),
+						cwd: scope.workspacePath,
 						taskId: query.taskId,
 						baseRef: taskBaseRef,
 					});
@@ -735,9 +1346,13 @@ async function startServer(
 			}
 
 			if (pathname === "/api/workspace/files/search" && req.method === "GET") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const query = validateWorkspaceFileSearchRequest(requestUrl.searchParams);
-					const files = await searchWorkspaceFiles(process.cwd(), query.query, query.limit);
+					const files = await searchWorkspaceFiles(scope.workspacePath, query.query, query.limit);
 					const response: RuntimeWorkspaceFileSearchResponse = {
 						query: query.query,
 						files,
@@ -751,11 +1366,12 @@ async function startServer(
 			}
 
 			if (pathname === "/api/workspace/state" && req.method === "GET") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
-					const response: RuntimeWorkspaceStateResponse = await loadWorkspaceState(process.cwd());
-					for (const summary of terminalManager.listSummaries()) {
-						response.sessions[summary.taskId] = summary;
-					}
+					const response = await buildWorkspaceStateSnapshot(scope.workspaceId, scope.workspacePath);
 					sendJson(res, 200, response);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
@@ -765,18 +1381,162 @@ async function startServer(
 			}
 
 			if (pathname === "/api/workspace/state" && req.method === "PUT") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
 				try {
 					const body = validateWorkspaceStateSaveRequest(
 						await readJsonBody<RuntimeWorkspaceStateSaveRequest>(req),
 					);
+					const terminalManager = await getScopedTerminalManager(scope);
 					for (const summary of terminalManager.listSummaries()) {
 						body.sessions[summary.taskId] = summary;
 					}
-					const response: RuntimeWorkspaceStateResponse = await saveWorkspaceState(process.cwd(), body);
+					const response: RuntimeWorkspaceStateResponse = await saveWorkspaceState(scope.workspacePath, body);
+					void broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
+					void broadcastRuntimeProjectsUpdated(scope.workspaceId);
 					sendJson(res, 200, response);
+				} catch (error) {
+					if (error instanceof WorkspaceStateConflictError) {
+						sendJson(res, 409, {
+							error: error.message,
+							currentRevision: error.currentRevision,
+						} satisfies RuntimeWorkspaceStateConflictResponse);
+						return;
+					}
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/projects" && req.method === "GET") {
+				try {
+					const payload = await buildProjectsPayload(requestedWorkspaceContext?.workspaceId ?? null);
+					sendJson(res, 200, {
+						currentProjectId: payload.currentProjectId,
+						projects: payload.projects,
+					} satisfies RuntimeProjectsResponse);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/projects/add" && req.method === "POST") {
+				try {
+					const body = validateProjectAddRequest(await readJsonBody<RuntimeProjectAddRequest>(req));
+					const resolveBasePath = requestedWorkspaceContext?.repoPath ?? getActiveWorkspacePath();
+					const projectPath = resolveProjectInputPath(body.path, resolveBasePath);
+					await assertPathIsDirectory(projectPath);
+					const context = await loadWorkspaceContext(projectPath);
+					workspacePathsById.set(context.workspaceId, context.repoPath);
+					const taskCounts = await summarizeProjectTaskCounts(context.workspaceId, context.repoPath);
+					sendJson(res, 200, {
+						ok: true,
+						project: toProjectSummary({
+							workspaceId: context.workspaceId,
+							repoPath: context.repoPath,
+							taskCounts,
+						}),
+					} satisfies RuntimeProjectAddResponse);
+					void broadcastRuntimeProjectsUpdated(context.workspaceId);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, {
+						ok: false,
+						project: null,
+						error: message,
+					} satisfies RuntimeProjectAddResponse);
+				}
+				return;
+			}
+
+			if (pathname === "/api/projects/remove" && req.method === "POST") {
+				try {
+					const body = validateProjectRemoveRequest(await readJsonBody<RuntimeProjectRemoveRequest>(req));
+					const projectsBeforeRemoval = await listWorkspaceIndexEntries();
+					if (projectsBeforeRemoval.length <= 1) {
+						sendJson(res, 400, {
+							ok: false,
+							error: "At least one project must remain.",
+						} satisfies RuntimeProjectRemoveResponse);
+						return;
+					}
+					const removed = await removeWorkspaceIndexEntry(body.projectId);
+					if (!removed) {
+						sendJson(res, 404, {
+							ok: false,
+							error: `Unknown project ID: ${body.projectId}`,
+						} satisfies RuntimeProjectRemoveResponse);
+						return;
+					}
+
+					const removedTerminalManager = getTerminalManagerForWorkspace(body.projectId);
+					if (removedTerminalManager) {
+						removedTerminalManager.markInterruptedAndStopAll();
+						terminalManagersByWorkspaceId.delete(body.projectId);
+						terminalManagerLoadPromises.delete(body.projectId);
+					}
+					const unsubscribeSummary = terminalSummaryUnsubscribeByWorkspaceId.get(body.projectId);
+					if (unsubscribeSummary) {
+						try {
+							unsubscribeSummary();
+						} catch {
+							// Ignore listener cleanup errors during project removal.
+						}
+					}
+					terminalSummaryUnsubscribeByWorkspaceId.delete(body.projectId);
+					disposeTaskSessionSummaryBroadcast(body.projectId);
+					projectTaskCountsByWorkspaceId.delete(body.projectId);
+					workspacePathsById.delete(body.projectId);
+
+					if (activeWorkspaceId === body.projectId) {
+						const remaining = await listWorkspaceIndexEntries();
+						const fallbackWorkspace = remaining[0];
+						if (!fallbackWorkspace) {
+							throw new Error("No projects remain after removal.");
+						}
+						await setActiveWorkspace(fallbackWorkspace.workspaceId, fallbackWorkspace.repoPath);
+					}
+					sendJson(res, 200, {
+						ok: true,
+					} satisfies RuntimeProjectRemoveResponse);
+					void broadcastRuntimeProjectsUpdated(activeWorkspaceId);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, {
+						ok: false,
+						error: message,
+					} satisfies RuntimeProjectRemoveResponse);
+				}
+				return;
+			}
+
+			if (pathname === "/api/projects/pick-directory" && req.method === "POST") {
+				try {
+					const selectedPath = pickDirectoryPathFromSystemDialog();
+					if (!selectedPath) {
+						sendJson(res, 200, {
+							ok: false,
+							path: null,
+							error: "No directory was selected.",
+						} satisfies RuntimeProjectDirectoryPickerResponse);
+						return;
+					}
+					sendJson(res, 200, {
+						ok: true,
+						path: selectedPath,
+					} satisfies RuntimeProjectDirectoryPickerResponse);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, {
+						ok: false,
+						path: null,
+						error: message,
+					} satisfies RuntimeProjectDirectoryPickerResponse);
 				}
 				return;
 			}
@@ -797,10 +1557,105 @@ async function startServer(
 			res.end("Not Found");
 		}
 	});
+	server.on("upgrade", (request, socket, head) => {
+		let requestUrl: URL;
+		try {
+			requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+		} catch {
+			socket.destroy();
+			return;
+		}
+		if (normalizeRequestPath(requestUrl.pathname) !== "/api/runtime/ws") {
+			return;
+		}
+		(request as IncomingMessage & { __kanbananaUpgradeHandled?: boolean }).__kanbananaUpgradeHandled = true;
+		const requestedWorkspaceId = requestUrl.searchParams.get("workspaceId")?.trim() || null;
+		runtimeStateWebSocketServer.handleUpgrade(request, socket, head, (ws) => {
+			runtimeStateWebSocketServer.emit("connection", ws, { requestedWorkspaceId });
+		});
+	});
+	runtimeStateWebSocketServer.on("connection", async (client: WebSocket, context: unknown) => {
+		const cleanupRuntimeStateClient = () => {
+			const workspaceId = runtimeStateWorkspaceIdByClient.get(client);
+			if (workspaceId) {
+				const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+				if (clients) {
+					clients.delete(client);
+					if (clients.size === 0) {
+						runtimeStateClientsByWorkspaceId.delete(workspaceId);
+					}
+				}
+			}
+			runtimeStateWorkspaceIdByClient.delete(client);
+			runtimeStateClients.delete(client);
+		};
+		client.on("close", cleanupRuntimeStateClient);
+		try {
+			const requestedWorkspaceId =
+				typeof context === "object" &&
+				context !== null &&
+				"requestedWorkspaceId" in context &&
+				typeof (context as { requestedWorkspaceId?: unknown }).requestedWorkspaceId === "string"
+					? (context as { requestedWorkspaceId: string }).requestedWorkspaceId || null
+					: null;
+			const workspace = await resolveWorkspaceForStream(requestedWorkspaceId);
+			if (!workspace) {
+				sendRuntimeStateMessage(client, {
+					type: "error",
+					message: "No projects are available.",
+				} satisfies RuntimeStateStreamErrorMessage);
+				client.close();
+				return;
+			}
+			if (client.readyState !== WebSocket.OPEN) {
+				cleanupRuntimeStateClient();
+				return;
+			}
+
+			const workspaceClients = runtimeStateClientsByWorkspaceId.get(workspace.workspaceId) ?? new Set<WebSocket>();
+			workspaceClients.add(client);
+			runtimeStateClientsByWorkspaceId.set(workspace.workspaceId, workspaceClients);
+			runtimeStateClients.add(client);
+			runtimeStateWorkspaceIdByClient.set(client, workspace.workspaceId);
+
+			try {
+				const [projectsPayload, workspaceState] = await Promise.all([
+					buildProjectsPayload(workspace.workspaceId),
+					buildWorkspaceStateSnapshot(workspace.workspaceId, workspace.workspacePath),
+				]);
+				sendRuntimeStateMessage(client, {
+					type: "snapshot",
+					currentProjectId: projectsPayload.currentProjectId,
+					projects: projectsPayload.projects,
+					workspaceState,
+				} satisfies RuntimeStateStreamSnapshotMessage);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				sendRuntimeStateMessage(client, {
+					type: "error",
+					message,
+				} satisfies RuntimeStateStreamErrorMessage);
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			sendRuntimeStateMessage(client, {
+				type: "error",
+				message,
+			} satisfies RuntimeStateStreamErrorMessage);
+			client.close();
+		}
+	});
 	const terminalWebSocketBridge = createTerminalWebSocketBridge({
 		server,
-		terminalManager,
+		resolveTerminalManager: (workspaceId) => getTerminalManagerForWorkspace(workspaceId),
 		isTerminalWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/ws",
+	});
+	server.on("upgrade", (request, socket) => {
+		const handled = (request as IncomingMessage & { __kanbananaUpgradeHandled?: boolean }).__kanbananaUpgradeHandled;
+		if (handled) {
+			return;
+		}
+		socket.destroy();
 	});
 
 	await new Promise<void>((resolveListen, rejectListen) => {
@@ -815,9 +1670,25 @@ async function startServer(
 	if (!address || typeof address === "string") {
 		throw new Error("Failed to start local server.");
 	}
-	const url = `http://127.0.0.1:${address.port}`;
+	const url = `http://127.0.0.1:${address.port}/${encodeURIComponent(activeWorkspaceId)}`;
 
 	const close = async () => {
+		disposeRuntimeStreamResources();
+		for (const client of runtimeStateClients) {
+			try {
+				client.terminate();
+			} catch {
+				// Ignore websocket termination errors during shutdown.
+			}
+		}
+		runtimeStateClients.clear();
+		runtimeStateClientsByWorkspaceId.clear();
+		runtimeStateWorkspaceIdByClient.clear();
+		await new Promise<void>((resolveCloseWebSockets) => {
+			runtimeStateWebSocketServer.close(() => {
+				resolveCloseWebSockets();
+			});
+		});
 		await terminalWebSocketBridge.close();
 		await new Promise<void>((resolveClose, rejectClose) => {
 			server.close((error) => {
@@ -831,9 +1702,15 @@ async function startServer(
 	};
 
 	const shutdown = async () => {
-		const interrupted = terminalManager.markInterruptedAndStopAll();
-		const interruptedTaskIds = interrupted.map((summary) => summary.taskId);
-		await persistInterruptedSessions(process.cwd(), interruptedTaskIds, terminalManager);
+		for (const [workspaceId, terminalManager] of terminalManagersByWorkspaceId.entries()) {
+			const interrupted = terminalManager.markInterruptedAndStopAll();
+			const interruptedTaskIds = interrupted.map((summary) => summary.taskId);
+			const workspacePath = workspacePathsById.get(workspaceId);
+			if (!workspacePath) {
+				continue;
+			}
+			await persistInterruptedSessions(workspacePath, interruptedTaskIds, terminalManager);
+		}
 		await close();
 	};
 
@@ -862,7 +1739,15 @@ async function run(): Promise<void> {
 		return;
 	}
 
-	const runtime = await startServer(options.port);
+	let runtime: Awaited<ReturnType<typeof startServer>>;
+	try {
+		runtime = await startServer(options.port);
+	} catch (error) {
+		if (isAddressInUseError(error) && (await tryOpenExistingServer(options.port, options.noOpen))) {
+			return;
+		}
+		throw error;
+	}
 	console.log(`Kanbanana running at ${runtime.url}`);
 	if (!options.noOpen) {
 		try {

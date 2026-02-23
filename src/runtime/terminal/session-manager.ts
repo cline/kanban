@@ -282,6 +282,13 @@ export class TerminalSessionManager {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
 
+	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void {
+		this.summaryListeners.add(listener);
+		return () => {
+			this.summaryListeners.delete(listener);
+		};
+	}
+
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
 		for (const [taskId, summary] of Object.entries(record)) {
 			this.entries.set(taskId, {

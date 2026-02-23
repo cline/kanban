@@ -7,6 +7,7 @@ import type {
 	RuntimeSlashCommandsResponse,
 	RuntimeWorkspaceFileSearchResponse,
 } from "@/kanban/runtime/types";
+import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
 
 const FILE_MENTION_LIMIT = 8;
 const MENTION_QUERY_DEBOUNCE_MS = 120;
@@ -36,6 +37,7 @@ interface TaskPromptComposerProps {
 	placeholder?: string;
 	disabled?: boolean;
 	enabled?: boolean;
+	workspaceId?: string | null;
 	disallowedSlashCommands?: string[];
 }
 
@@ -114,6 +116,7 @@ export function TaskPromptComposer({
 	placeholder,
 	disabled,
 	enabled = true,
+	workspaceId = null,
 	disallowedSlashCommands = [],
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -145,7 +148,9 @@ export function TaskPromptComposer({
 		setIsSlashCommandsLoading(true);
 		void (async () => {
 			try {
-				const response = await fetch("/api/runtime/slash-commands");
+				const response = await workspaceFetch("/api/runtime/slash-commands", {
+					workspaceId,
+				});
 				if (!response.ok) {
 					throw new Error(`Slash command request failed with ${response.status}`);
 				}
@@ -182,7 +187,7 @@ export function TaskPromptComposer({
 		return () => {
 			cancelled = true;
 		};
-	}, [disallowedSlashCommandSet, enabled]);
+	}, [disallowedSlashCommandSet, enabled, workspaceId]);
 
 	useEffect(() => {
 		if (!activeToken || activeToken.kind !== "mention") {
@@ -199,7 +204,9 @@ export function TaskPromptComposer({
 					q: activeToken.query,
 					limit: String(FILE_MENTION_LIMIT),
 				});
-				const response = await fetch(`/api/workspace/files/search?${params.toString()}`);
+				const response = await workspaceFetch(`/api/workspace/files/search?${params.toString()}`, {
+					workspaceId,
+				});
 				if (!response.ok) {
 					throw new Error(`Workspace file search failed with ${response.status}`);
 				}
@@ -233,7 +240,7 @@ export function TaskPromptComposer({
 			cancelled = true;
 			window.clearTimeout(timeoutId);
 		};
-	}, [activeToken]);
+	}, [activeToken, workspaceId]);
 
 	const slashSuggestions = useMemo<PromptSuggestion[]>(() => {
 		if (!activeToken || activeToken.kind !== "slash") {

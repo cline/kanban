@@ -109,11 +109,99 @@ export interface RuntimeWorkspaceStateResponse {
 	git: RuntimeGitRepositoryInfo;
 	board: RuntimeBoardData;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
+	revision: number;
 }
 
 export interface RuntimeWorkspaceStateSaveRequest {
 	board: RuntimeBoardData;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
+	expectedRevision?: number;
+}
+
+export interface RuntimeWorkspaceStateConflictResponse {
+	error: string;
+	currentRevision: number;
+}
+
+export interface RuntimeStateStreamSnapshotMessage {
+	type: "snapshot";
+	currentProjectId: string | null;
+	projects: RuntimeProjectSummary[];
+	workspaceState: RuntimeWorkspaceStateResponse | null;
+}
+
+export interface RuntimeStateStreamWorkspaceStateMessage {
+	type: "workspace_state_updated";
+	workspaceId: string;
+	workspaceState: RuntimeWorkspaceStateResponse;
+}
+
+export interface RuntimeStateStreamTaskSessionsMessage {
+	type: "task_sessions_updated";
+	workspaceId: string;
+	summaries: RuntimeTaskSessionSummary[];
+}
+
+export interface RuntimeStateStreamProjectsMessage {
+	type: "projects_updated";
+	currentProjectId: string | null;
+	projects: RuntimeProjectSummary[];
+}
+
+export interface RuntimeStateStreamErrorMessage {
+	type: "error";
+	message: string;
+}
+
+export type RuntimeStateStreamMessage =
+	| RuntimeStateStreamSnapshotMessage
+	| RuntimeStateStreamWorkspaceStateMessage
+	| RuntimeStateStreamTaskSessionsMessage
+	| RuntimeStateStreamProjectsMessage
+	| RuntimeStateStreamErrorMessage;
+
+export interface RuntimeProjectSummary {
+	id: string;
+	path: string;
+	name: string;
+	taskCounts: RuntimeProjectTaskCounts;
+}
+
+export interface RuntimeProjectTaskCounts {
+	backlog: number;
+	in_progress: number;
+	review: number;
+	trash: number;
+}
+
+export interface RuntimeProjectsResponse {
+	currentProjectId: string | null;
+	projects: RuntimeProjectSummary[];
+}
+
+export interface RuntimeProjectAddRequest {
+	path: string;
+}
+
+export interface RuntimeProjectAddResponse {
+	ok: boolean;
+	project: RuntimeProjectSummary | null;
+	error?: string;
+}
+
+export interface RuntimeProjectDirectoryPickerResponse {
+	ok: boolean;
+	path: string | null;
+	error?: string;
+}
+
+export interface RuntimeProjectRemoveRequest {
+	projectId: string;
+}
+
+export interface RuntimeProjectRemoveResponse {
+	ok: boolean;
+	error?: string;
 }
 
 export interface RuntimeWorktreeEnsureRequest {
@@ -228,10 +316,6 @@ export interface RuntimeTaskSessionStopResponse {
 	ok: boolean;
 	summary: RuntimeTaskSessionSummary | null;
 	error?: string;
-}
-
-export interface RuntimeTaskSessionListResponse {
-	sessions: RuntimeTaskSessionSummary[];
 }
 
 export interface RuntimeTerminalWsInputMessage {

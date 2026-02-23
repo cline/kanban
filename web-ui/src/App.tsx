@@ -1,11 +1,26 @@
-import { Classes, MenuItem } from "@blueprintjs/core";
-import { Omnibar, type ItemRenderer } from "@blueprintjs/select";
+import { Classes, Colors, MenuItem, Spinner } from "@blueprintjs/core";
+import { Omnibar } from "@blueprintjs/select";
 import type { DropResult } from "@hello-pangea/dnd";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
+import {
+	buildProjectPathname,
+	countTasksByColumn,
+	createIdleTaskSession,
+	filterTask,
+	loadPersistedTaskStartInPlanMode,
+	loadPersistedTaskWorkspaceMode,
+	parseProjectIdFromPathname,
+	persistTaskStartInPlanMode,
+	persistTaskWorkspaceMode,
+	renderTask,
+	type SearchableTask,
+} from "@/kanban/app/app-utils";
+import { showAppToast } from "@/kanban/components/app-toaster";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
+import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
 import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
 import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
 import { TaskInlineCreateCard, type TaskWorkspaceMode } from "@/kanban/components/task-inline-create-card";
@@ -13,18 +28,26 @@ import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-d
 import { TopBar } from "@/kanban/components/top-bar";
 import { createInitialBoardData } from "@/kanban/data/board-data";
 import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
-import { useRuntimeTaskSessions } from "@/kanban/runtime/use-runtime-task-sessions";
+import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
+import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
+import {
+	fetchWorkspaceState,
+	saveWorkspaceState,
+} from "@/kanban/runtime/workspace-state-query";
+import { useWorkspacePersistence } from "@/kanban/runtime/use-workspace-persistence";
 import {
 	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
 	splitPromptToTitleDescription,
 } from "@/kanban/utils/task-prompt";
 import type {
+	RuntimeProjectAddResponse,
+	RuntimeProjectDirectoryPickerResponse,
 	RuntimeGitRepositoryInfo,
+	RuntimeProjectRemoveResponse,
+	RuntimeWorkspaceStateResponse,
 	RuntimeShortcutRunResponse,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoResponse,
-	RuntimeWorkspaceStateResponse,
-	RuntimeWorkspaceStateSaveRequest,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "@/kanban/runtime/types";
@@ -38,10 +61,6 @@ import {
 } from "@/kanban/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/kanban/types";
 
-const WORKSPACE_STATE_PERSIST_DEBOUNCE_MS = 300;
-const TASK_WORKSPACE_MODE_STORAGE_KEY = "kanbanana.task-workspace-mode";
-const TASK_START_IN_PLAN_MODE_STORAGE_KEY = "kanbanana.task-start-in-plan-mode";
-
 interface PendingTrashWarningState {
 	taskId: string;
 	fileCount: number;
@@ -49,114 +68,24 @@ interface PendingTrashWarningState {
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
 }
 
-interface SearchableTask {
-	id: string;
-	title: string;
-	columnTitle: string;
-}
-
-function loadPersistedTaskWorkspaceMode(): TaskWorkspaceMode {
-	if (typeof window === "undefined") {
-		return "worktree";
-	}
-	try {
-		const value = window.localStorage.getItem(TASK_WORKSPACE_MODE_STORAGE_KEY);
-		if (value === "local" || value === "worktree") {
-			return value;
-		}
-	} catch {
-		// Ignore storage access failures and use defaults.
-	}
-	return "worktree";
-}
-
-function loadPersistedTaskStartInPlanMode(): boolean {
-	if (typeof window === "undefined") {
-		return false;
-	}
-	try {
-		const value = window.localStorage.getItem(TASK_START_IN_PLAN_MODE_STORAGE_KEY);
-		return value === "true";
-	} catch {
-		// Ignore storage access failures and use defaults.
-	}
-	return false;
-}
-
-function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary {
-	return {
-		taskId,
-		state: "idle",
-		agentId: null,
-		workspacePath: null,
-		pid: null,
-		startedAt: null,
-		updatedAt: Date.now(),
-		lastOutputAt: null,
-		lastActivityLine: null,
-		reviewReason: null,
-		exitCode: null,
-	};
-}
-
-function mergeTaskSessions(
-	current: Record<string, RuntimeTaskSessionSummary>,
-	nextFromRuntime: Record<string, RuntimeTaskSessionSummary>,
-): Record<string, RuntimeTaskSessionSummary> {
-	let changed = false;
-	const next = { ...current };
-	for (const [taskId, summary] of Object.entries(nextFromRuntime)) {
-		const existing = next[taskId];
-		if (!existing || existing.updatedAt <= summary.updatedAt) {
-			next[taskId] = summary;
-			if (!existing || existing.updatedAt !== summary.updatedAt || existing.state !== summary.state) {
-				changed = true;
-			}
-		}
-	}
-	return changed ? next : current;
-}
-
-const filterTask = (query: string, task: SearchableTask): boolean => {
-	const normalizedQuery = query.toLowerCase();
-	return task.title.toLowerCase().includes(normalizedQuery) ||
-		task.columnTitle.toLowerCase().includes(normalizedQuery);
-};
-
-const renderTask: ItemRenderer<SearchableTask> = (task, { handleClick, handleFocus, modifiers }) => {
-	if (!modifiers.matchesPredicate) {
-		return null;
-	}
-	return (
-		<MenuItem
-			key={task.id}
-			active={modifiers.active}
-			disabled={modifiers.disabled}
-			label={task.columnTitle}
-			text={task.title}
-			onClick={handleClick}
-			onFocus={handleFocus}
-			roleStructure="listoption"
-		/>
-	);
-};
-
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const [workspacePath, setWorkspacePath] = useState<string | null>(null);
 	const [workspaceGit, setWorkspaceGit] = useState<RuntimeGitRepositoryInfo | null>(null);
+	const [appliedWorkspaceProjectId, setAppliedWorkspaceProjectId] = useState<string | null>(null);
+	const [workspaceRevision, setWorkspaceRevision] = useState<number | null>(null);
+	const [workspaceHydrationNonce, setWorkspaceHydrationNonce] = useState(0);
+	const workspaceVersionRef = useRef<{ projectId: string | null; revision: number | null }>({
+		projectId: null,
+		revision: null,
+	});
+	const workspaceRefreshRequestIdRef = useRef(0);
+	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
 		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
-	const [isDocumentVisible, setIsDocumentVisible] = useState<boolean>(() => {
-		if (typeof document === "undefined") {
-			return true;
-		}
-		return document.visibilityState === "visible";
-	});
-	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
@@ -171,12 +100,125 @@ export default function App(): ReactElement {
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [runningShortcutId, setRunningShortcutId] = useState<string | null>(null);
+	const [runtimeProjectConfigRefreshNonce, setRuntimeProjectConfigRefreshNonce] = useState(0);
 	const [lastShortcutOutput, setLastShortcutOutput] = useState<{
 		label: string;
 		result: RuntimeShortcutRunResponse;
 	} | null>(null);
-	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } = useRuntimeProjectConfig();
-	const { sessions: runtimeTaskSessions, refresh: refreshRuntimeTaskSessions } = useRuntimeTaskSessions();
+	const [requestedProjectId, setRequestedProjectId] = useState<string | null>(() => {
+		if (typeof window === "undefined") {
+			return null;
+		}
+		return parseProjectIdFromPathname(window.location.pathname);
+	});
+	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
+	const [isDocumentVisible, setIsDocumentVisible] = useState<boolean>(() => {
+		if (typeof document === "undefined") {
+			return true;
+		}
+		return document.visibilityState === "visible";
+	});
+	const {
+		currentProjectId,
+		projects,
+		workspaceState: streamedWorkspaceState,
+		streamError,
+	} = useRuntimeStateStream(requestedProjectId);
+	const navigationCurrentProjectId = requestedProjectId ?? currentProjectId;
+	const isProjectSwitching = requestedProjectId !== currentProjectId;
+	const isInitialRuntimeLoad = currentProjectId === null && projects.length === 0 && !streamError;
+	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
+	const isWorkspaceMetadataPending =
+		currentProjectId !== null &&
+		appliedWorkspaceProjectId !== currentProjectId;
+	const navigationProjectPath = useMemo(() => {
+		if (!navigationCurrentProjectId) {
+			return null;
+		}
+		return projects.find((project) => project.id === navigationCurrentProjectId)?.path ?? null;
+	}, [navigationCurrentProjectId, projects]);
+	const shouldShowProjectLoadingState =
+		selectedTaskId === null && (isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot);
+	const shouldUseNavigationPath =
+		isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
+	const { config: runtimeProjectConfig } = useRuntimeProjectConfig(
+		currentProjectId,
+		runtimeProjectConfigRefreshNonce,
+	);
+	// Project list counts are server-driven and can lag behind local board edits by a short
+	// persistence/broadcast round-trip, so we optimistically overlay the active project's counts.
+	const displayedProjects = useMemo(() => {
+		if (!canPersistWorkspaceState || !currentProjectId) {
+			return projects;
+		}
+		const localCounts = countTasksByColumn(board);
+		return projects.map((project) =>
+			project.id === currentProjectId
+				? {
+						...project,
+						taskCounts: localCounts,
+					}
+				: project,
+		);
+	}, [board, canPersistWorkspaceState, currentProjectId, projects]);
+
+	useEffect(() => {
+		if (workspaceVersionRef.current.projectId !== currentProjectId) {
+			return;
+		}
+		workspaceVersionRef.current = {
+			projectId: currentProjectId,
+			revision: workspaceRevision,
+		};
+	}, [currentProjectId, workspaceRevision]);
+
+	const applyWorkspaceState = useCallback(
+		(nextWorkspaceState: RuntimeWorkspaceStateResponse | null) => {
+			if (!nextWorkspaceState) {
+				setCanPersistWorkspaceState(false);
+				setWorkspacePath(null);
+				setWorkspaceGit(null);
+				setAppliedWorkspaceProjectId(null);
+				setBoard(createInitialBoardData());
+				setSessions({});
+				setWorkspaceRevision(null);
+				workspaceVersionRef.current = {
+					projectId: currentProjectId,
+					revision: null,
+				};
+				return;
+			}
+			const currentVersion = workspaceVersionRef.current;
+			const isSameProject = currentVersion.projectId === currentProjectId;
+			const currentRevision = isSameProject ? currentVersion.revision : null;
+			if (
+				isSameProject &&
+				currentRevision !== null &&
+				nextWorkspaceState.revision < currentRevision
+			) {
+				return;
+			}
+			setWorkspacePath(nextWorkspaceState.repoPath);
+			setWorkspaceGit(nextWorkspaceState.git);
+			setSessions(nextWorkspaceState.sessions ?? {});
+			const shouldHydrateBoard =
+				!isSameProject ||
+				currentRevision !== nextWorkspaceState.revision;
+			if (shouldHydrateBoard) {
+				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
+				setBoard(normalized);
+				setWorkspaceHydrationNonce((current) => current + 1);
+			}
+			setWorkspaceRevision(nextWorkspaceState.revision);
+			workspaceVersionRef.current = {
+				projectId: currentProjectId,
+				revision: nextWorkspaceState.revision,
+			};
+			setAppliedWorkspaceProjectId(currentProjectId);
+			setCanPersistWorkspaceState(true);
+		},
+		[currentProjectId],
+	);
 
 	const upsertSession = useCallback((summary: RuntimeTaskSessionSummary) => {
 		setSessions((current) => ({
@@ -187,7 +229,7 @@ export default function App(): ReactElement {
 
 	const ensureTaskWorkspace = useCallback(async (task: BoardCard): Promise<{ ok: boolean; message?: string }> => {
 		try {
-			const response = await fetch("/api/workspace/worktree/ensure", {
+			const response = await workspaceFetch("/api/workspace/worktree/ensure", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -196,6 +238,7 @@ export default function App(): ReactElement {
 					taskId: task.id,
 					baseRef: task.baseRef ?? null,
 				}),
+				workspaceId: currentProjectId,
 			});
 			const payload = (await response.json().catch(() => null)) as
 				| RuntimeWorktreeEnsureResponse
@@ -214,12 +257,12 @@ export default function App(): ReactElement {
 			const message = error instanceof Error ? error.message : String(error);
 			return { ok: false, message };
 		}
-	}, []);
+	}, [currentProjectId]);
 
 	const startTaskSession = useCallback(async (task: BoardCard): Promise<{ ok: boolean; message?: string }> => {
 		try {
 			const kickoffPrompt = task.prompt.trim() || task.description.trim() || task.title;
-			const response = await fetch("/api/runtime/task-session/start", {
+			const response = await workspaceFetch("/api/runtime/task-session/start", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -230,6 +273,7 @@ export default function App(): ReactElement {
 					startInPlanMode: task.startInPlanMode,
 					baseRef: task.baseRef ?? null,
 				}),
+				workspaceId: currentProjectId,
 			});
 			const payload = (await response.json().catch(() => null)) as
 				| { ok?: boolean; error?: string; summary?: RuntimeTaskSessionSummary | null }
@@ -241,36 +285,37 @@ export default function App(): ReactElement {
 				};
 			}
 			upsertSession(payload.summary);
-			void refreshRuntimeTaskSessions();
 			return { ok: true };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return { ok: false, message };
 		}
-	}, [refreshRuntimeTaskSessions, upsertSession]);
+	}, [currentProjectId, upsertSession]);
 
 	const stopTaskSession = useCallback(async (taskId: string): Promise<void> => {
 		try {
-			await fetch("/api/runtime/task-session/stop", {
+			await workspaceFetch("/api/runtime/task-session/stop", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({ taskId }),
+				workspaceId: currentProjectId,
 			});
 		} catch {
 			// Ignore stop errors during cleanup.
 		}
-	}, []);
+	}, [currentProjectId]);
 
 	const cleanupTaskWorkspace = useCallback(async (taskId: string): Promise<RuntimeWorktreeDeleteResponse | null> => {
 		try {
-			const response = await fetch("/api/workspace/worktree/delete", {
+			const response = await workspaceFetch("/api/workspace/worktree/delete", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({ taskId }),
+				workspaceId: currentProjectId,
 			});
 			const payload = (await response.json().catch(() => null)) as
 				| RuntimeWorktreeDeleteResponse
@@ -290,7 +335,7 @@ export default function App(): ReactElement {
 			setWorktreeError(message);
 			return null;
 		}
-	}, []);
+	}, [currentProjectId]);
 
 	const fetchTaskWorkspaceInfo = useCallback(
 		async (task: BoardCard): Promise<RuntimeTaskWorkspaceInfoResponse | null> => {
@@ -299,7 +344,9 @@ export default function App(): ReactElement {
 					taskId: task.id,
 				});
 				params.set("baseRef", task.baseRef ?? "");
-				const response = await fetch(`/api/workspace/task-context?${params.toString()}`);
+				const response = await workspaceFetch(`/api/workspace/task-context?${params.toString()}`, {
+					workspaceId: currentProjectId,
+				});
 				if (!response.ok) {
 					const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 					throw new Error(payload?.error ?? `Task workspace request failed with ${response.status}`);
@@ -311,7 +358,7 @@ export default function App(): ReactElement {
 				return null;
 			}
 		},
-		[],
+		[currentProjectId],
 	);
 
 	const fetchTaskWorkingChangeCount = useCallback(async (task: BoardCard): Promise<number | null> => {
@@ -320,7 +367,9 @@ export default function App(): ReactElement {
 				taskId: task.id,
 			});
 			params.set("baseRef", task.baseRef ?? "");
-			const response = await fetch(`/api/workspace/changes?${params.toString()}`);
+			const response = await workspaceFetch(`/api/workspace/changes?${params.toString()}`, {
+				workspaceId: currentProjectId,
+			});
 			if (!response.ok) {
 				const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 				throw new Error(payload?.error ?? `Workspace request failed with ${response.status}`);
@@ -332,7 +381,7 @@ export default function App(): ReactElement {
 			setWorktreeError(message);
 			return null;
 		}
-	}, []);
+	}, [currentProjectId]);
 
 	const selectedCard = useMemo(() => {
 		if (!selectedTaskId) {
@@ -352,22 +401,32 @@ export default function App(): ReactElement {
 	}, [board.columns]);
 
 	useEffect(() => {
-		setSessions((current) => mergeTaskSessions(current, runtimeTaskSessions));
-	}, [runtimeTaskSessions]);
-
-	useEffect(() => {
 		setBoard((currentBoard) => {
 			let nextBoard = currentBoard;
-			for (const summary of Object.values(runtimeTaskSessions)) {
+			const previousSessions = previousSessionsRef.current;
+			for (const summary of Object.values(sessions)) {
+				const previous = previousSessions[summary.taskId];
+				if (!previous || previous.updatedAt > summary.updatedAt) {
+					continue;
+				}
 				const columnId = getTaskColumnId(nextBoard, summary.taskId);
-				if (summary.state === "awaiting_review" && columnId === "in_progress") {
+				if (
+					summary.state === "awaiting_review" &&
+					previous.state !== "awaiting_review" &&
+					columnId === "in_progress"
+				) {
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
 					if (moved.moved) {
 						nextBoard = moved.board;
 					}
 					continue;
 				}
-				if (summary.state === "interrupted" && columnId && columnId !== "trash") {
+				if (
+					summary.state === "interrupted" &&
+					previous.state !== "interrupted" &&
+					columnId &&
+					columnId !== "trash"
+				) {
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
 					if (moved.moved) {
 						nextBoard = moved.board;
@@ -376,7 +435,8 @@ export default function App(): ReactElement {
 			}
 			return nextBoard;
 		});
-	}, [runtimeTaskSessions]);
+		previousSessionsRef.current = sessions;
+	}, [sessions]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -433,50 +493,146 @@ export default function App(): ReactElement {
 		return workspaceGit.currentBranch ?? workspaceGit.defaultBranch ?? createTaskBranchOptions[0]?.value ?? "";
 	}, [createTaskBranchOptions, workspaceGit]);
 
-	const loadWorkspaceStateFromRuntime = useCallback(
-		async (options?: { preserveLocalStateOnFailure?: boolean }) => {
-			setIsWorkspaceStateRefreshing(true);
-			try {
-				const response = await fetch("/api/workspace/state");
-				if (!response.ok) {
-					throw new Error(`Workspace state request failed with ${response.status}`);
-				}
-				const payload = (await response.json()) as RuntimeWorkspaceStateResponse;
-				const normalized = normalizeBoardData(payload.board) ?? createInitialBoardData();
-				setWorkspacePath(payload.repoPath);
-				setWorkspaceGit(payload.git);
-				setBoard(normalized);
-				setSessions(payload.sessions ?? {});
-				setWorktreeError(null);
-				setCanPersistWorkspaceState(true);
-			} catch (error) {
-				if (!options?.preserveLocalStateOnFailure) {
-					setWorkspacePath(null);
-					setWorkspaceGit(null);
-					setBoard(createInitialBoardData());
-					setSessions({});
-				}
-				setCanPersistWorkspaceState(false);
-				const message = error instanceof Error ? error.message : String(error);
-				setWorktreeError(message);
-			} finally {
-				setIsWorkspaceStateRefreshing(false);
-			}
-		},
-		[],
-	);
-
-	useEffect(() => {
-		let cancelled = false;
-		void loadWorkspaceStateFromRuntime().then(() => {
-			if (cancelled) {
+	const refreshWorkspaceState = useCallback(async () => {
+		if (!currentProjectId) {
+			return;
+		}
+		const requestId = workspaceRefreshRequestIdRef.current + 1;
+		workspaceRefreshRequestIdRef.current = requestId;
+		const requestedProjectId = currentProjectId;
+		setIsWorkspaceStateRefreshing(true);
+		try {
+			const refreshed = await fetchWorkspaceState(requestedProjectId);
+			if (
+				workspaceRefreshRequestIdRef.current !== requestId ||
+				workspaceVersionRef.current.projectId !== requestedProjectId
+			) {
 				return;
 			}
-		});
-		return () => {
-			cancelled = true;
+			applyWorkspaceState(refreshed);
+			setWorktreeError(null);
+		} catch (error) {
+			if (
+				workspaceRefreshRequestIdRef.current !== requestId ||
+				workspaceVersionRef.current.projectId !== requestedProjectId
+			) {
+				return;
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			setWorktreeError(message);
+		} finally {
+			if (workspaceRefreshRequestIdRef.current === requestId) {
+				setIsWorkspaceStateRefreshing(false);
+			}
+		}
+	}, [applyWorkspaceState, currentProjectId]);
+
+	const persistWorkspaceStateAsync = useCallback(
+		async (input: {
+			workspaceId: string;
+			payload: Parameters<typeof saveWorkspaceState>[1];
+		}) => await saveWorkspaceState(input.workspaceId, input.payload),
+		[],
+	);
+	const handleWorkspaceStateConflict = useCallback(() => {
+		showAppToast(
+			{
+				intent: "warning",
+				icon: "warning-sign",
+				message: "Workspace changed elsewhere. Synced latest state. Retry your last edit if needed.",
+				timeout: 5000,
+			},
+			"workspace-state-conflict",
+		);
+	}, []);
+
+	useWorkspacePersistence({
+		board,
+		sessions,
+		currentProjectId,
+		workspaceRevision,
+		hydrationNonce: workspaceHydrationNonce,
+		canPersistWorkspaceState,
+		isDocumentVisible,
+		isWorkspaceStateRefreshing,
+		persistWorkspaceState: persistWorkspaceStateAsync,
+		refetchWorkspaceState: refreshWorkspaceState,
+		onWorkspaceRevisionChange: setWorkspaceRevision,
+		onWorkspaceStateConflict: handleWorkspaceStateConflict,
+	});
+
+	useEffect(() => {
+		if (!streamedWorkspaceState) {
+			return;
+		}
+		applyWorkspaceState(streamedWorkspaceState);
+	}, [applyWorkspaceState, streamedWorkspaceState]);
+
+	useEffect(() => {
+		if (!streamError) {
+			return;
+		}
+		setWorktreeError(streamError);
+	}, [streamError]);
+
+	useEffect(() => {
+		if (workspaceVersionRef.current.projectId !== currentProjectId) {
+			workspaceRefreshRequestIdRef.current += 1;
+			setCanPersistWorkspaceState(false);
+			setWorkspaceRevision(null);
+			setIsWorkspaceStateRefreshing(false);
+			setAppliedWorkspaceProjectId(null);
+			workspaceVersionRef.current = {
+				projectId: currentProjectId,
+				revision: null,
+			};
+			previousSessionsRef.current = {};
+		}
+		setWorktreeError(null);
+		setSelectedTaskId(null);
+		setSelectedTaskWorkspaceInfo(null);
+		setIsInlineTaskCreateOpen(false);
+	}, [currentProjectId]);
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+		if (!currentProjectId) {
+			return;
+		}
+		const nextUrl = new URL(window.location.href);
+		const nextPathname = buildProjectPathname(currentProjectId);
+		if (nextUrl.pathname === nextPathname) {
+			return;
+		}
+		window.history.replaceState({}, "", `${nextPathname}${nextUrl.search}${nextUrl.hash}`);
+	}, [currentProjectId]);
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+		const handlePopState = () => {
+			const nextProjectId = parseProjectIdFromPathname(window.location.pathname);
+			setRequestedProjectId(nextProjectId);
 		};
-	}, [loadWorkspaceStateFromRuntime]);
+		window.addEventListener("popstate", handlePopState);
+		return () => {
+			window.removeEventListener("popstate", handlePopState);
+		};
+	}, []);
+
+	useEffect(() => {
+		if (!requestedProjectId || !currentProjectId) {
+			return;
+		}
+		const requestedStillExists = projects.some((project) => project.id === requestedProjectId);
+		if (requestedStillExists) {
+			return;
+		}
+		setRequestedProjectId(currentProjectId);
+	}, [currentProjectId, projects, requestedProjectId]);
 
 	useEffect(() => {
 		if (typeof document === "undefined") {
@@ -486,67 +642,21 @@ export default function App(): ReactElement {
 			const visible = document.visibilityState === "visible";
 			setIsDocumentVisible(visible);
 			if (visible) {
-				void loadWorkspaceStateFromRuntime({ preserveLocalStateOnFailure: true });
+				void refreshWorkspaceState();
 			}
 		};
 		document.addEventListener("visibilitychange", handleVisibilityChange);
 		return () => {
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 		};
-	}, [loadWorkspaceStateFromRuntime]);
+	}, [refreshWorkspaceState]);
 
 	useEffect(() => {
-		if (!canPersistWorkspaceState || !isDocumentVisible || isWorkspaceStateRefreshing) {
-			return;
-		}
-		const timeoutId = window.setTimeout(() => {
-			const payload: RuntimeWorkspaceStateSaveRequest = {
-				board,
-				sessions,
-			};
-			void fetch("/api/workspace/state", {
-				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(payload),
-			})
-				.then(() => {})
-				.catch(() => {
-					// Keep the UI usable even if persistence is temporarily unavailable.
-				});
-		}, WORKSPACE_STATE_PERSIST_DEBOUNCE_MS);
-		return () => {
-			window.clearTimeout(timeoutId);
-		};
-	}, [
-		board,
-		canPersistWorkspaceState,
-		isDocumentVisible,
-		isWorkspaceStateRefreshing,
-		sessions,
-	]);
-
-	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
-		}
-		try {
-			window.localStorage.setItem(TASK_WORKSPACE_MODE_STORAGE_KEY, newTaskWorkspaceMode);
-		} catch {
-			// Ignore storage access failures.
-		}
+		persistTaskWorkspaceMode(newTaskWorkspaceMode);
 	}, [newTaskWorkspaceMode]);
 
 	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
-		}
-		try {
-			window.localStorage.setItem(TASK_START_IN_PLAN_MODE_STORAGE_KEY, String(newTaskStartInPlanMode));
-		} catch {
-			// Ignore storage access failures.
-		}
+		persistTaskStartInPlanMode(newTaskStartInPlanMode);
 	}, [newTaskStartInPlanMode]);
 
 	useEffect(() => {
@@ -631,6 +741,79 @@ export default function App(): ReactElement {
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);
 	}, []);
+
+	const handleSelectProject = useCallback((projectId: string) => {
+		if (!projectId || projectId === currentProjectId) {
+			return;
+		}
+		setCanPersistWorkspaceState(false);
+		setRequestedProjectId(projectId);
+		setSelectedTaskId(null);
+		setIsInlineTaskCreateOpen(false);
+	}, [currentProjectId]);
+
+	const handleAddProject = useCallback(async () => {
+		try {
+			const pickResponse = await workspaceFetch("/api/projects/pick-directory", {
+				method: "POST",
+				workspaceId: currentProjectId,
+			});
+			const picked = (await pickResponse.json().catch(() => null)) as RuntimeProjectDirectoryPickerResponse | null;
+			if (!pickResponse.ok || !picked?.ok || !picked.path) {
+				if (picked?.error && picked.error !== "No directory was selected.") {
+					throw new Error(picked.error);
+				}
+				return;
+			}
+
+			const addResponse = await workspaceFetch("/api/projects/add", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					path: picked.path,
+				}),
+				workspaceId: currentProjectId,
+			});
+			const added = (await addResponse.json().catch(() => null)) as RuntimeProjectAddResponse | null;
+			if (!addResponse.ok || !added?.ok || !added.project) {
+				throw new Error(added?.error ?? `Could not add project (${addResponse.status}).`);
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			setWorktreeError(message);
+		}
+	}, [currentProjectId]);
+
+	const handleRemoveProject = useCallback(
+		async (projectId: string) => {
+			try {
+				const response = await workspaceFetch("/api/projects/remove", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ projectId }),
+					workspaceId: currentProjectId,
+				});
+				const payload = (await response.json().catch(() => null)) as RuntimeProjectRemoveResponse | null;
+				if (!response.ok || !payload?.ok) {
+					throw new Error(payload?.error ?? `Could not remove project (${response.status}).`);
+				}
+				if (currentProjectId === projectId) {
+					setCanPersistWorkspaceState(false);
+					setRequestedProjectId(null);
+					setSelectedTaskId(null);
+					setIsInlineTaskCreateOpen(false);
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				setWorktreeError(message);
+			}
+		},
+		[currentProjectId],
+	);
 
 	const handleOpenCreateTask = useCallback(() => {
 		setIsInlineTaskCreateOpen(true);
@@ -741,7 +924,7 @@ export default function App(): ReactElement {
 
 			setRunningShortcutId(shortcutId);
 			try {
-				const response = await fetch("/api/runtime/shortcut/run", {
+				const response = await workspaceFetch("/api/runtime/shortcut/run", {
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json",
@@ -749,6 +932,7 @@ export default function App(): ReactElement {
 					body: JSON.stringify({
 						command: shortcut.command,
 					}),
+					workspaceId: currentProjectId,
 				});
 				if (!response.ok) {
 					const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -775,7 +959,7 @@ export default function App(): ReactElement {
 				setRunningShortcutId(null);
 			}
 		},
-		[runtimeProjectConfig?.shortcuts],
+		[currentProjectId, runtimeProjectConfig?.shortcuts],
 	);
 
 	const handleDragEnd = useCallback(
@@ -857,6 +1041,9 @@ export default function App(): ReactElement {
 
 	const detailSession = selectedCard ? sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id) : null;
 	const runtimeHint = useMemo(() => {
+		if (shouldUseNavigationPath || !runtimeProjectConfig) {
+			return undefined;
+		}
 		if (runtimeProjectConfig?.effectiveCommand) {
 			return undefined;
 		}
@@ -865,14 +1052,22 @@ export default function App(): ReactElement {
 			return `No agent configured (${detected})`;
 		}
 		return "No agent configured";
-	}, [runtimeProjectConfig?.detectedCommands, runtimeProjectConfig?.effectiveCommand]);
+	}, [runtimeProjectConfig, shouldUseNavigationPath]);
 	const repoHint = useMemo(() => {
+		if (shouldUseNavigationPath) {
+			return undefined;
+		}
 		if (!workspaceGit || workspaceGit.hasGit) {
 			return undefined;
 		}
 		return "No git detected, worktree isolation disabled";
-	}, [workspaceGit]);
-	const activeWorkspacePath = selectedTaskWorkspaceInfo?.path ?? workspacePath ?? undefined;
+	}, [shouldUseNavigationPath, workspaceGit]);
+	const activeWorkspacePath =
+		selectedCard
+			? selectedTaskWorkspaceInfo?.path ?? workspacePath ?? undefined
+			: shouldUseNavigationPath
+				? navigationProjectPath ?? undefined
+				: workspacePath ?? undefined;
 	const activeWorkspaceHint = useMemo(() => {
 		if (!selectedCard || !selectedTaskWorkspaceInfo) {
 			return undefined;
@@ -937,6 +1132,7 @@ export default function App(): ReactElement {
 			onStartInPlanModeChange={setNewTaskStartInPlanMode}
 			workspaceMode={newTaskWorkspaceMode}
 			onWorkspaceModeChange={setNewTaskWorkspaceMode}
+			workspaceId={currentProjectId}
 			workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
 			canUseWorktree={canUseWorktree}
 			branchRef={newTaskBranchRef}
@@ -947,55 +1143,94 @@ export default function App(): ReactElement {
 	) : undefined;
 
 	return (
-		<div className={Classes.DARK} style={{ display: "flex", flexDirection: "column", height: "100svh", minWidth: 0, overflow: "hidden" }}>
-			<TopBar
-				onBack={selectedCard ? handleBack : undefined}
-				workspacePath={activeWorkspacePath}
-				workspaceHint={activeWorkspaceHint}
-				repoHint={repoHint}
-				runtimeHint={runtimeHint}
-				onOpenSettings={() => setIsSettingsOpen(true)}
-				shortcuts={runtimeProjectConfig?.shortcuts ?? []}
-				runningShortcutId={runningShortcutId}
-				onRunShortcut={handleRunShortcut}
-			/>
-			<RuntimeStatusBanners
-				worktreeError={worktreeError}
-				onDismissWorktreeError={() => setWorktreeError(null)}
-				shortcutOutput={lastShortcutOutput}
-				onClearShortcutOutput={() => setLastShortcutOutput(null)}
-			/>
-			<div className={selectedCard ? "kb-hidden" : "kb-board"}>
-				<KanbanBoard
-					data={board}
-					taskSessions={sessions}
-					onCardSelect={handleCardSelect}
-					onCreateTask={handleOpenCreateTask}
-					inlineTaskCreator={inlineTaskCreator}
-					onDragEnd={handleDragEnd}
-				/>
-			</div>
-			{selectedCard && detailSession ? (
-				<CardDetailView
-					selection={selectedCard}
-					sessionSummary={detailSession}
-					taskSessions={sessions}
-					onSessionSummary={upsertSession}
-					onBack={handleBack}
-					onCardSelect={handleCardSelect}
-					onTaskDragEnd={handleDetailTaskDragEnd}
-					onCreateTask={handleOpenCreateTask}
-					inlineTaskCreator={inlineTaskCreator}
-					onMoveToTrash={handleMoveToTrash}
+		<div className={Classes.DARK} style={{ display: "flex", flexDirection: "row", height: "100svh", minWidth: 0, overflow: "hidden" }}>
+				{!selectedCard ? (
+					<ProjectNavigationPanel
+						projects={displayedProjects}
+						currentProjectId={navigationCurrentProjectId}
+						onSelectProject={(projectId) => {
+							void handleSelectProject(projectId);
+						}}
+					onRemoveProject={(projectId) => {
+						void handleRemoveProject(projectId);
+					}}
+					onAddProject={() => {
+						void handleAddProject();
+					}}
 				/>
 			) : null}
-			<RuntimeSettingsDialog
-				open={isSettingsOpen}
-				onOpenChange={setIsSettingsOpen}
-				onSaved={() => {
-					void refreshRuntimeProjectConfig();
-				}}
-			/>
+			<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
+				<TopBar
+					onBack={selectedCard ? handleBack : undefined}
+					workspacePath={activeWorkspacePath}
+					workspaceHint={activeWorkspaceHint}
+					repoHint={repoHint}
+					runtimeHint={runtimeHint}
+					onOpenSettings={() => setIsSettingsOpen(true)}
+					shortcuts={runtimeProjectConfig?.shortcuts ?? []}
+					runningShortcutId={runningShortcutId}
+					onRunShortcut={handleRunShortcut}
+				/>
+					<RuntimeStatusBanners
+						worktreeError={worktreeError}
+						onDismissWorktreeError={() => setWorktreeError(null)}
+						shortcutOutput={lastShortcutOutput}
+						onClearShortcutOutput={() => setLastShortcutOutput(null)}
+					/>
+					<div className={selectedCard ? "kb-hidden" : "kb-home-layout"}>
+						{shouldShowProjectLoadingState ? (
+							<div
+								style={{
+									display: "flex",
+									flex: "1 1 0",
+									minHeight: 0,
+									alignItems: "center",
+									justifyContent: "center",
+									background: Colors.DARK_GRAY1,
+								}}
+							>
+								<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+									<Spinner size={30} />
+									<div className={Classes.TEXT_MUTED}>
+										{isProjectSwitching ? "Loading project..." : "Connecting..."}
+									</div>
+								</div>
+							</div>
+						) : (
+							<KanbanBoard
+								data={board}
+								taskSessions={sessions}
+								onCardSelect={handleCardSelect}
+								onCreateTask={handleOpenCreateTask}
+								inlineTaskCreator={inlineTaskCreator}
+								onDragEnd={handleDragEnd}
+							/>
+						)}
+					</div>
+				{selectedCard && detailSession ? (
+					<CardDetailView
+						selection={selectedCard}
+						currentProjectId={currentProjectId}
+						sessionSummary={detailSession}
+						taskSessions={sessions}
+						onSessionSummary={upsertSession}
+						onBack={handleBack}
+						onCardSelect={handleCardSelect}
+						onTaskDragEnd={handleDetailTaskDragEnd}
+						onCreateTask={handleOpenCreateTask}
+						inlineTaskCreator={inlineTaskCreator}
+						onMoveToTrash={handleMoveToTrash}
+					/>
+				) : null}
+			</div>
+				<RuntimeSettingsDialog
+					open={isSettingsOpen}
+					workspaceId={currentProjectId}
+					onOpenChange={setIsSettingsOpen}
+					onSaved={() => {
+						setRuntimeProjectConfigRefreshNonce((current) => current + 1);
+					}}
+				/>
 			<Omnibar<SearchableTask>
 				isOpen={isCommandPaletteOpen}
 				onClose={() => setIsCommandPaletteOpen(false)}

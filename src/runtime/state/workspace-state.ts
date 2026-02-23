@@ -20,6 +20,7 @@ const WORKSPACES_DIR = "workspaces";
 const INDEX_FILENAME = "index.json";
 const BOARD_FILENAME = "board.json";
 const SESSIONS_FILENAME = "sessions.json";
+const META_FILENAME = "meta.json";
 const INDEX_VERSION = 1;
 const TASK_ID_LENGTH = 5;
 
@@ -38,10 +39,20 @@ interface WorkspaceIndexEntry {
 	repoPath: string;
 }
 
+export interface RuntimeWorkspaceIndexEntry {
+	workspaceId: string;
+	repoPath: string;
+}
+
 interface WorkspaceIndexFile {
 	version: number;
 	entries: Record<string, WorkspaceIndexEntry>;
 	repoPathToId: Record<string, string>;
+}
+
+interface WorkspaceStateMeta {
+	revision: number;
+	updatedAt: number;
 }
 
 export interface RuntimeWorkspaceContext {
@@ -113,6 +124,10 @@ function getWorkspaceBoardPath(workspaceId: string): string {
 
 function getWorkspaceSessionsPath(workspaceId: string): string {
 	return join(getWorkspaceDirectoryPath(workspaceId), SESSIONS_FILENAME);
+}
+
+function getWorkspaceMetaPath(workspaceId: string): string {
+	return join(getWorkspaceDirectoryPath(workspaceId), META_FILENAME);
 }
 
 async function readJsonFile(path: string): Promise<unknown | null> {
@@ -281,6 +296,25 @@ function normalizeSessions(rawSessions: unknown): Record<string, RuntimeTaskSess
 	}
 
 	return sessions;
+}
+
+function normalizeWorkspaceStateMeta(rawMeta: unknown): WorkspaceStateMeta {
+	if (!rawMeta || typeof rawMeta !== "object") {
+		return {
+			revision: 0,
+			updatedAt: 0,
+		};
+	}
+	const source = rawMeta as { revision?: unknown; updatedAt?: unknown };
+	const revision =
+		typeof source.revision === "number" && Number.isInteger(source.revision) && source.revision >= 0
+			? source.revision
+			: 0;
+	const updatedAt = typeof source.updatedAt === "number" ? source.updatedAt : 0;
+	return {
+		revision,
+		updatedAt,
+	};
 }
 
 function normalizeWorkspaceIndex(rawIndex: unknown): WorkspaceIndexFile {
@@ -503,6 +537,7 @@ function toWorkspaceStateResponse(
 	context: RuntimeWorkspaceContext,
 	board: RuntimeBoardData,
 	sessions: Record<string, RuntimeTaskSessionSummary>,
+	revision: number,
 ): RuntimeWorkspaceStateResponse {
 	return {
 		repoPath: context.repoPath,
@@ -510,7 +545,18 @@ function toWorkspaceStateResponse(
 		git: context.git,
 		board,
 		sessions,
+		revision,
 	};
+}
+
+export class WorkspaceStateConflictError extends Error {
+	readonly currentRevision: number;
+
+	constructor(expectedRevision: number, currentRevision: number) {
+		super(`Workspace state revision mismatch: expected ${expectedRevision}, current ${currentRevision}.`);
+		this.name = "WorkspaceStateConflictError";
+		this.currentRevision = currentRevision;
+	}
 }
 
 export async function loadWorkspaceContext(cwd: string): Promise<RuntimeWorkspaceContext> {
@@ -530,11 +576,43 @@ export async function loadWorkspaceContext(cwd: string): Promise<RuntimeWorkspac
 	};
 }
 
+export async function loadWorkspaceContextById(workspaceId: string): Promise<RuntimeWorkspaceContext | null> {
+	const index = await readWorkspaceIndex();
+	const entry = index.entries[workspaceId];
+	if (!entry) {
+		return null;
+	}
+	return await loadWorkspaceContext(entry.repoPath);
+}
+
+export async function listWorkspaceIndexEntries(): Promise<RuntimeWorkspaceIndexEntry[]> {
+	const index = await readWorkspaceIndex();
+	return Object.values(index.entries)
+		.map((entry) => ({
+			workspaceId: entry.workspaceId,
+			repoPath: entry.repoPath,
+		}))
+		.sort((left, right) => left.repoPath.localeCompare(right.repoPath));
+}
+
+export async function removeWorkspaceIndexEntry(workspaceId: string): Promise<boolean> {
+	const index = await readWorkspaceIndex();
+	const entry = index.entries[workspaceId];
+	if (!entry) {
+		return false;
+	}
+	delete index.entries[workspaceId];
+	delete index.repoPathToId[entry.repoPath];
+	await writeWorkspaceIndex(index);
+	return true;
+}
+
 export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceStateResponse> {
 	const context = await loadWorkspaceContext(cwd);
 	const board = normalizeBoard(await readJsonFile(getWorkspaceBoardPath(context.workspaceId)));
 	const sessions = normalizeSessions(await readJsonFile(getWorkspaceSessionsPath(context.workspaceId)));
-	return toWorkspaceStateResponse(context, board, sessions);
+	const meta = normalizeWorkspaceStateMeta(await readJsonFile(getWorkspaceMetaPath(context.workspaceId)));
+	return toWorkspaceStateResponse(context, board, sessions, meta.revision);
 }
 
 export async function saveWorkspaceState(
@@ -542,11 +620,28 @@ export async function saveWorkspaceState(
 	payload: RuntimeWorkspaceStateSaveRequest,
 ): Promise<RuntimeWorkspaceStateResponse> {
 	const context = await loadWorkspaceContext(cwd);
+	const metaPath = getWorkspaceMetaPath(context.workspaceId);
+	const currentMeta = normalizeWorkspaceStateMeta(await readJsonFile(metaPath));
+	const expectedRevision = payload.expectedRevision;
+	if (
+		typeof expectedRevision === "number" &&
+		Number.isInteger(expectedRevision) &&
+		expectedRevision >= 0 &&
+		expectedRevision !== currentMeta.revision
+	) {
+		throw new WorkspaceStateConflictError(expectedRevision, currentMeta.revision);
+	}
 	const board = normalizeBoard(payload.board);
 	const sessions = normalizeSessions(payload.sessions);
+	const nextRevision = currentMeta.revision + 1;
+	const nextMeta: WorkspaceStateMeta = {
+		revision: nextRevision,
+		updatedAt: Date.now(),
+	};
 
 	await writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), board);
 	await writeJsonFileAtomic(getWorkspaceSessionsPath(context.workspaceId), sessions);
+	await writeJsonFileAtomic(metaPath, nextMeta);
 
-	return toWorkspaceStateResponse(context, board, sessions);
+	return toWorkspaceStateResponse(context, board, sessions, nextRevision);
 }

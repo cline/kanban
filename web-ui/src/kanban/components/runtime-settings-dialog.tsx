@@ -78,14 +78,16 @@ function AgentRow({
 
 export function RuntimeSettingsDialog({
 	open,
+	workspaceId,
 	onOpenChange,
 	onSaved,
 }: {
 	open: boolean;
+	workspaceId: string | null;
 	onOpenChange: (open: boolean) => void;
-	onSaved: () => void;
+	onSaved?: () => void;
 }): React.ReactElement {
-	const { config, isLoading, isSaving, save } = useRuntimeConfig(open);
+	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId);
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [saveError, setSaveError] = useState<string | null>(null);
@@ -119,7 +121,7 @@ export function RuntimeSettingsDialog({
 			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
 			return;
 		}
-		onSaved();
+		onSaved?.();
 		onOpenChange(false);
 	};
 

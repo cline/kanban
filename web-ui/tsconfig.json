@@ -12,7 +12,8 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@runtime-contract": ["../src/runtime/api-contract.ts"]
     },
     "types": ["vitest/globals"]
   },

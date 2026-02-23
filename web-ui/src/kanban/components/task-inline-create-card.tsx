@@ -19,6 +19,7 @@ export function TaskInlineCreateCard({
 	onStartInPlanModeChange,
 	workspaceMode,
 	onWorkspaceModeChange,
+	workspaceId,
 	workspaceCurrentBranch,
 	canUseWorktree,
 	branchRef,
@@ -35,6 +36,7 @@ export function TaskInlineCreateCard({
 	onStartInPlanModeChange: (value: boolean) => void;
 	workspaceMode: TaskWorkspaceMode;
 	onWorkspaceModeChange: (value: TaskWorkspaceMode) => void;
+	workspaceId: string | null;
 	workspaceCurrentBranch: string | null;
 	canUseWorktree: boolean;
 	branchRef: string;
@@ -69,6 +71,7 @@ export function TaskInlineCreateCard({
 					onSubmit={onCreate}
 					placeholder="Describe the task"
 					enabled={enabled}
+					workspaceId={workspaceId}
 					disallowedSlashCommands={disallowedSlashCommands}
 				/>
 			</FormGroup>

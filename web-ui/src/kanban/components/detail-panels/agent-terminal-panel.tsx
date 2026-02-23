@@ -13,11 +13,13 @@ import type {
 	RuntimeTerminalWsClientMessage,
 	RuntimeTerminalWsServerMessage,
 } from "@/kanban/runtime/types";
+import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
 
-function getWebSocketUrl(taskId: string): string {
+function getWebSocketUrl(taskId: string, workspaceId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/ws`);
 	url.searchParams.set("taskId", taskId);
+	url.searchParams.set("workspaceId", workspaceId);
 	return url.toString();
 }
 
@@ -58,12 +60,14 @@ function getStateIntent(summary: RuntimeTaskSessionSummary | null): "none" | "su
 
 export function AgentTerminalPanel({
 	taskId,
+	workspaceId,
 	summary,
 	onSummary,
 	onMoveToTrash,
 	showMoveToTrash,
 }: {
 	taskId: string;
+	workspaceId: string | null;
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onMoveToTrash?: () => void;
@@ -146,7 +150,11 @@ export function AgentTerminalPanel({
 	}, [requestResize, sendMessage]);
 
 	useEffect(() => {
-		const ws = new WebSocket(getWebSocketUrl(taskId));
+		if (!workspaceId) {
+			setLastError("No project selected.");
+			return;
+		}
+		const ws = new WebSocket(getWebSocketUrl(taskId, workspaceId));
 		socketRef.current = ws;
 		setLastError(null);
 
@@ -190,24 +198,25 @@ export function AgentTerminalPanel({
 			}
 			ws.close();
 		};
-	}, [onSummary, requestResize, taskId]);
+	}, [onSummary, requestResize, taskId, workspaceId]);
 
 	const handleStop = useCallback(async () => {
 		setIsStopping(true);
 		sendMessage({ type: "stop" });
-		try {
-			await fetch("/api/runtime/task-session/stop", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ taskId }),
-			});
-		} catch {
-			// Keep terminal usable even if stop API fails.
-		}
-		setIsStopping(false);
-	}, [sendMessage, taskId]);
+			try {
+				await workspaceFetch("/api/runtime/task-session/stop", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ taskId }),
+					workspaceId,
+				});
+			} catch {
+				// Keep terminal usable even if stop API fails.
+			}
+			setIsStopping(false);
+		}, [sendMessage, taskId, workspaceId]);
 
 	const handleClear = useCallback(() => {
 		terminalRef.current?.clear();

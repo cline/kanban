@@ -15,6 +15,7 @@ const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 1500;
 
 export function CardDetailView({
 	selection,
+	currentProjectId,
 	sessionSummary,
 	taskSessions,
 	onSessionSummary,
@@ -26,6 +27,7 @@ export function CardDetailView({
 	onMoveToTrash,
 }: {
 	selection: CardSelection;
+	currentProjectId: string | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
@@ -39,6 +41,7 @@ export function CardDetailView({
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(
 		selection.card.id,
+		currentProjectId,
 		selection.card.baseRef ?? null,
 	);
 	const runtimeFiles = workspaceChanges?.files ?? null;
@@ -133,16 +136,17 @@ export function CardDetailView({
 				onTaskDragEnd={onTaskDragEnd}
 				onCreateTask={onCreateTask}
 				inlineTaskCreator={inlineTaskCreator}
-			/>
-			<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
-				<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
-					<AgentTerminalPanel
-						taskId={selection.card.id}
-						summary={sessionSummary}
-						onSummary={onSessionSummary}
-						showMoveToTrash={selection.column.id === "review"}
-						onMoveToTrash={onMoveToTrash}
-					/>
+				/>
+				<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+						<AgentTerminalPanel
+							taskId={selection.card.id}
+							workspaceId={currentProjectId}
+							summary={sessionSummary}
+							onSummary={onSessionSummary}
+							showMoveToTrash={selection.column.id === "review"}
+							onMoveToTrash={onMoveToTrash}
+						/>
 					<DiffViewerPanel
 						workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
 						selectedPath={selectedPath}

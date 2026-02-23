@@ -1,4 +1,4 @@
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import type { Socket } from "node:net";
 
 import type { RawData, WebSocket } from "ws";
@@ -9,11 +9,16 @@ import type { TerminalSessionManager } from "./session-manager.js";
 
 interface TerminalWebSocketConnectionContext {
 	taskId: string;
+	terminalManager: TerminalSessionManager;
+}
+
+interface UpgradeRequest extends IncomingMessage {
+	__kanbananaUpgradeHandled?: boolean;
 }
 
 export interface CreateTerminalWebSocketBridgeRequest {
 	server: Server;
-	terminalManager: TerminalSessionManager;
+	resolveTerminalManager: (workspaceId: string) => TerminalSessionManager | null;
 	isTerminalWebSocketPath: (pathname: string) => boolean;
 }
 
@@ -44,7 +49,7 @@ function parseWebSocketPayload(message: RawData): RuntimeTerminalWsClientMessage
 
 export function createTerminalWebSocketBridge({
 	server,
-	terminalManager,
+	resolveTerminalManager,
 	isTerminalWebSocketPath,
 }: CreateTerminalWebSocketBridgeRequest): TerminalWebSocketBridge {
 	const activeSockets = new Set<Socket>();
@@ -58,19 +63,26 @@ export function createTerminalWebSocketBridge({
 	const wsServer = new WebSocketServer({ noServer: true });
 	server.on("upgrade", (request, socket, head) => {
 		try {
+			const upgradeRequest = request as UpgradeRequest;
 			const url = new URL(request.url ?? "/", "http://127.0.0.1");
 			if (!isTerminalWebSocketPath(url.pathname)) {
+				return;
+			}
+			upgradeRequest.__kanbananaUpgradeHandled = true;
+			const taskId = url.searchParams.get("taskId")?.trim();
+			const workspaceId = url.searchParams.get("workspaceId")?.trim();
+			if (!taskId || !workspaceId) {
 				socket.destroy();
 				return;
 			}
-			const taskId = url.searchParams.get("taskId")?.trim();
-			if (!taskId) {
+			const terminalManager = resolveTerminalManager(workspaceId);
+			if (!terminalManager) {
 				socket.destroy();
 				return;
 			}
 
 			wsServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-				wsServer.emit("connection", ws, { taskId });
+				wsServer.emit("connection", ws, { taskId, terminalManager });
 			});
 		} catch {
 			socket.destroy();
@@ -79,6 +91,7 @@ export function createTerminalWebSocketBridge({
 
 	wsServer.on("connection", (ws: WebSocket, context: unknown) => {
 		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
+		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		let detachListener: (() => void) | null = null;
 
 		const send = (message: RuntimeTerminalWsServerMessage) => {

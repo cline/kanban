@@ -1,86 +1,75 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { fetchRuntimeConfig, saveRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/kanban/runtime/types";
-
-interface RuntimeConfigError {
-	error: string;
-}
 
 export interface UseRuntimeConfigResult {
 	config: RuntimeConfigResponse | null;
 	isLoading: boolean;
 	isSaving: boolean;
-	load: () => Promise<void>;
 	save: (nextConfig: {
 		selectedAgentId: RuntimeAgentId;
 		shortcuts?: RuntimeProjectShortcut[];
 	}) => Promise<RuntimeConfigResponse | null>;
 }
 
-export function useRuntimeConfig(open: boolean): UseRuntimeConfigResult {
+export function useRuntimeConfig(open: boolean, workspaceId: string | null): UseRuntimeConfigResult {
 	const [config, setConfig] = useState<RuntimeConfigResponse | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 
-	const load = useCallback(async () => {
-		if (!open) {
+	useEffect(() => {
+		if (!open || !workspaceId) {
+			setIsLoading(false);
 			return;
 		}
+		let cancelled = false;
 		setIsLoading(true);
-		try {
-			const response = await fetch("/api/runtime/config");
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as RuntimeConfigError | null;
-				throw new Error(payload?.error ?? `Runtime config request failed with ${response.status}`);
+		void (async () => {
+			try {
+				const fetched = await fetchRuntimeConfig(workspaceId);
+				if (!cancelled) {
+					setConfig(fetched);
+				}
+			} catch {
+				// Keep existing settings visible if runtime fetch fails.
+			} finally {
+				if (!cancelled) {
+					setIsLoading(false);
+				}
 			}
-			const payload = (await response.json()) as RuntimeConfigResponse;
-			setConfig(payload);
-		} catch {
-			setConfig(null);
-		} finally {
-			setIsLoading(false);
-		}
-	}, [open]);
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [open, workspaceId]);
 
 	const save = useCallback(
 		async (nextConfig: {
 			selectedAgentId: RuntimeAgentId;
 			shortcuts?: RuntimeProjectShortcut[];
 		}): Promise<RuntimeConfigResponse | null> => {
+			if (!workspaceId) {
+				return null;
+			}
 			setIsSaving(true);
 			try {
-				const response = await fetch("/api/runtime/config", {
-					method: "PUT",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify(nextConfig),
-				});
-				if (!response.ok) {
-					const payload = (await response.json().catch(() => null)) as RuntimeConfigError | null;
-					throw new Error(payload?.error ?? `Runtime config save failed with ${response.status}`);
-				}
-				const payload = (await response.json()) as RuntimeConfigResponse;
-				setConfig(payload);
-				return payload;
+				const saved = await saveRuntimeConfig(workspaceId, nextConfig);
+				setConfig(saved);
+				return saved;
 			} catch {
 				return null;
 			} finally {
 				setIsSaving(false);
 			}
 		},
-		[],
+		[workspaceId],
 	);
 
-	useEffect(() => {
-		void load();
-	}, [load]);
-
 	return {
-		config,
-		isLoading,
+		config: workspaceId ? config : null,
+		isLoading: open ? isLoading : false,
 		isSaving,
-		load,
 		save,
 	};
 }

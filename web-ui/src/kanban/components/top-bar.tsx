@@ -6,7 +6,6 @@ import {
 	Navbar,
 	NavbarDivider,
 	NavbarGroup,
-	NavbarHeading,
 	Tag,
 } from "@blueprintjs/core";
 
@@ -41,35 +40,33 @@ export function TopBar({
 	const isAbsolutePath = Boolean(workspacePath && (workspacePath.startsWith("/") || workspacePath.startsWith("\\")));
 
 	return (
-		<Navbar fixedToTop={false} style={{ height: 40, minHeight: 40, background: Colors.DARK_GRAY5, boxShadow: "none" }}>
+		<Navbar fixedToTop={false} style={{ height: 40, minHeight: 40, background: Colors.DARK_GRAY3, boxShadow: "none", borderBottom: "1px solid rgba(255, 255, 255, 0.2)" }}>
 			<NavbarGroup align={Alignment.LEFT} style={{ height: 40 }}>
 				{onBack ? (
-					<Button icon="arrow-left" variant="minimal" onClick={onBack} aria-label="Back to board" style={{ marginLeft: -8, marginRight: 8 }} />
-				) : null}
-				<NavbarHeading style={{ marginRight: 8 }}>
-					<span role="img" aria-label="banana">🍌</span>
-				</NavbarHeading>
-				{workspacePath ? (
 					<>
+						<Button icon="arrow-left" variant="minimal" onClick={onBack} aria-label="Back to board" style={{ marginLeft: -8, marginRight: 4 }} />
+						<span role="img" aria-label="banana" style={{ marginRight: 4 }}>🍌</span>
 						<NavbarDivider />
-						<span
-							className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
-							style={{ fontSize: 12, maxWidth: 640, color: Colors.GRAY4 }}
-							title={workspacePath}
-							data-testid="workspace-path"
-						>
-							{isAbsolutePath ? "/" : ""}
-							{workspaceSegments.map((segment, index) => {
-								const isLast = index === workspaceSegments.length - 1;
-								return (
-									<span key={`${segment}-${index}`}>
-										{index === 0 ? "" : "/"}
-										<span style={isLast ? { color: Colors.LIGHT_GRAY5 } : undefined}>{segment}</span>
-									</span>
-								);
-							})}
-						</span>
 					</>
+				) : null}
+				{workspacePath ? (
+					<span
+						className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
+						style={{ fontSize: 12, maxWidth: 640, color: Colors.GRAY4 }}
+						title={workspacePath}
+						data-testid="workspace-path"
+					>
+						{isAbsolutePath ? "/" : ""}
+						{workspaceSegments.map((segment, index) => {
+							const isLast = index === workspaceSegments.length - 1;
+							return (
+								<span key={`${segment}-${index}`}>
+									{index === 0 ? "" : "/"}
+									<span style={isLast ? { color: Colors.LIGHT_GRAY5 } : undefined}>{segment}</span>
+								</span>
+							);
+						})}
+					</span>
 				) : null}
 				{workspaceHint ? (
 					<Tag minimal className="kb-navbar-tag">{workspaceHint}</Tag>
