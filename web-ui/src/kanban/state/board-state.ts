@@ -305,6 +305,28 @@ export function moveTaskToColumn(
 	};
 }
 
+export function clearColumnTasks(
+	board: BoardData,
+	columnId: BoardColumnId,
+): { board: BoardData; clearedTaskIds: string[] } {
+	const targetColumn = board.columns.find((column) => column.id === columnId);
+	if (!targetColumn || targetColumn.cards.length === 0) {
+		return { board, clearedTaskIds: [] };
+	}
+
+	const clearedTaskIds = targetColumn.cards.map((card) => card.id);
+	const columns = board.columns.map((column) =>
+		column.id === columnId
+			? { ...column, cards: [] }
+			: column,
+	);
+
+	return {
+		board: withUpdatedColumns(board, columns),
+		clearedTaskIds,
+	};
+}
+
 export function findCardSelection(board: BoardData, taskId: string): CardSelection | null {
 	for (const column of board.columns) {
 		const card = column.cards.find((task) => task.id === taskId);

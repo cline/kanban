@@ -11,6 +11,7 @@ export function KanbanBoard({
 	taskSessions,
 	onCardSelect,
 	onCreateTask,
+	onClearTrash,
 	inlineTaskCreator,
 	onDragEnd,
 }: {
@@ -18,6 +19,7 @@ export function KanbanBoard({
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCardSelect: (taskId: string) => void;
 	onCreateTask: () => void;
+	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 	onDragEnd: (result: DropResult) => void;
 }): React.ReactElement {
@@ -46,6 +48,7 @@ export function KanbanBoard({
 						column={column}
 						taskSessions={taskSessions}
 						onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
+						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 						inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {

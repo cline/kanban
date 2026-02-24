@@ -11,18 +11,21 @@ export function BoardColumn({
 	column,
 	taskSessions,
 	onCreateTask,
+	onClearTrash,
 	inlineTaskCreator,
 	onCardClick,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
+	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
+	const canClearTrash = column.id === "trash" && onClearTrash;
 
 	return (
 		<section
@@ -37,6 +40,18 @@ export function BoardColumn({
 						<span style={{ fontWeight: 600 }}>{column.title}</span>
 						<span style={{ color: lightColor }}>{column.cards.length}</span>
 					</div>
+					{canClearTrash ? (
+						<Button
+							icon="trash"
+							variant="minimal"
+							size="small"
+							intent="danger"
+							onClick={onClearTrash}
+							disabled={column.cards.length === 0}
+							aria-label="Clear trash"
+							title={column.cards.length > 0 ? "Clear trash permanently" : "Trash is empty"}
+						/>
+					) : null}
 				</div>
 
 				<Droppable droppableId={column.id} type="CARD">

@@ -15,6 +15,7 @@ function ColumnSection({
 	onCardClick,
 	taskSessions,
 	onCreateTask,
+	onClearTrash,
 	inlineTaskCreator,
 }: {
 	column: BoardColumn;
@@ -23,23 +24,24 @@ function ColumnSection({
 	onCardClick: (card: BoardCardModel) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
+	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
+	const canClearTrash = column.id === "trash" && onClearTrash;
 
 	return (
 		<div>
-			<div style={{ background: accentColor, height: 40 }}>
+			<div style={{ display: "flex", alignItems: "center", background: accentColor, height: 40 }}>
 				<Button
 					variant="minimal"
-					fill
 					alignText="left"
 					icon={<Icon icon={open ? "chevron-down" : "chevron-right"} color={lightColor} />}
 					onClick={() => setOpen((prev) => !prev)}
-					style={{ color: lightColor, height: 40 }}
+					style={{ color: lightColor, height: 40, flex: "1 1 auto", minWidth: 0 }}
 					text={
 						<span style={{ display: "flex", alignItems: "center", gap: 8 }}>
 							<span style={{ fontWeight: 600, color: Colors.WHITE }}>{column.title}</span>
@@ -47,6 +49,19 @@ function ColumnSection({
 						</span>
 					}
 				/>
+				{canClearTrash ? (
+					<Button
+						icon="trash"
+						variant="minimal"
+						size="small"
+						intent="danger"
+						onClick={onClearTrash}
+						disabled={column.cards.length === 0}
+						aria-label="Clear trash"
+						title={column.cards.length > 0 ? "Clear trash permanently" : "Trash is empty"}
+						style={{ marginRight: 4 }}
+					/>
+				) : null}
 			</div>
 			<Collapse isOpen={open}>
 				<Droppable droppableId={column.id} type="CARD">
@@ -107,6 +122,7 @@ export function ColumnContextPanel({
 	taskSessions,
 	onTaskDragEnd,
 	onCreateTask,
+	onClearTrash,
 	inlineTaskCreator,
 }: {
 	selection: CardSelection;
@@ -114,6 +130,7 @@ export function ColumnContextPanel({
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
+	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 }): React.ReactElement {
 	return (
@@ -139,6 +156,7 @@ export function ColumnContextPanel({
 							onCardClick={(card) => onCardSelect(card.id)}
 							taskSessions={taskSessions}
 							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
+							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 							inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
 						/>
 					))}

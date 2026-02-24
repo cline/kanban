@@ -23,6 +23,7 @@ export function CardDetailView({
 	onCardSelect,
 	onTaskDragEnd,
 	onCreateTask,
+	onClearTrash,
 	inlineTaskCreator,
 	onMoveToTrash,
 }: {
@@ -35,6 +36,7 @@ export function CardDetailView({
 	onCardSelect: (taskId: string) => void;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
+	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
 	onMoveToTrash: () => void;
 }): React.ReactElement {
@@ -135,6 +137,7 @@ export function CardDetailView({
 				taskSessions={taskSessions}
 				onTaskDragEnd={onTaskDragEnd}
 				onCreateTask={onCreateTask}
+				onClearTrash={onClearTrash}
 				inlineTaskCreator={inlineTaskCreator}
 				/>
 				<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>

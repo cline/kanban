@@ -19,6 +19,7 @@ import {
 } from "@/kanban/app/app-utils";
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
+import { ClearTrashDialog } from "@/kanban/components/clear-trash-dialog";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
 import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
@@ -54,6 +55,7 @@ import type {
 import {
 	addTaskToColumn,
 	applyDragResult,
+	clearColumnTasks,
 	findCardSelection,
 	getTaskColumnId,
 	moveTaskToColumn,
@@ -99,6 +101,7 @@ export default function App(): ReactElement {
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
+	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [runningShortcutId, setRunningShortcutId] = useState<string | null>(null);
 	const [runtimeProjectConfigRefreshNonce, setRuntimeProjectConfigRefreshNonce] = useState(0);
 	const [lastShortcutOutput, setLastShortcutOutput] = useState<{
@@ -399,6 +402,11 @@ export default function App(): ReactElement {
 			})),
 		);
 	}, [board.columns]);
+	const trashTaskIds = useMemo(() => {
+		const trashColumn = board.columns.find((column) => column.id === "trash");
+		return trashColumn ? trashColumn.cards.map((card) => card.id) : [];
+	}, [board.columns]);
+	const trashTaskCount = trashTaskIds.length;
 
 	useEffect(() => {
 		setBoard((currentBoard) => {
@@ -601,6 +609,7 @@ export default function App(): ReactElement {
 		setSelectedTaskId(null);
 		setSelectedTaskWorkspaceInfo(null);
 		setIsInlineTaskCreateOpen(false);
+		setIsClearTrashDialogOpen(false);
 	}, [currentProjectId]);
 
 	useEffect(() => {
@@ -1047,6 +1056,44 @@ export default function App(): ReactElement {
 		}
 		void requestMoveTaskToTrash(selectedCard.card.id, selectedCard.column.id);
 	}, [requestMoveTaskToTrash, selectedCard]);
+	const handleOpenClearTrash = useCallback(() => {
+		if (trashTaskCount === 0) {
+			return;
+		}
+		setIsClearTrashDialogOpen(true);
+	}, [trashTaskCount]);
+	const handleConfirmClearTrash = useCallback(() => {
+		const taskIds = [...trashTaskIds];
+		setIsClearTrashDialogOpen(false);
+		if (taskIds.length === 0) {
+			return;
+		}
+
+		setBoard((currentBoard) => clearColumnTasks(currentBoard, "trash").board);
+		setSessions((currentSessions) => {
+			const nextSessions = { ...currentSessions };
+			for (const taskId of taskIds) {
+				delete nextSessions[taskId];
+			}
+			return nextSessions;
+		});
+		setPendingTrashWarning((currentWarning) =>
+			currentWarning && taskIds.includes(currentWarning.taskId) ? null : currentWarning,
+		);
+		if (selectedTaskId && taskIds.includes(selectedTaskId)) {
+			setSelectedTaskId(null);
+			setSelectedTaskWorkspaceInfo(null);
+		}
+
+		void (async () => {
+			await Promise.all(
+				taskIds.map(async (taskId) => {
+					await stopTaskSession(taskId);
+					await cleanupTaskWorkspace(taskId);
+				}),
+			);
+		})();
+	}, [cleanupTaskWorkspace, selectedTaskId, stopTaskSession, trashTaskIds]);
 
 	const detailSession = selectedCard ? sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id) : null;
 	const runtimeHint = useMemo(() => {
@@ -1211,6 +1258,7 @@ export default function App(): ReactElement {
 								taskSessions={sessions}
 								onCardSelect={handleCardSelect}
 								onCreateTask={handleOpenCreateTask}
+								onClearTrash={handleOpenClearTrash}
 								inlineTaskCreator={inlineTaskCreator}
 								onDragEnd={handleDragEnd}
 							/>
@@ -1227,6 +1275,7 @@ export default function App(): ReactElement {
 						onCardSelect={handleCardSelect}
 						onTaskDragEnd={handleDetailTaskDragEnd}
 						onCreateTask={handleOpenCreateTask}
+						onClearTrash={handleOpenClearTrash}
 						inlineTaskCreator={inlineTaskCreator}
 						onMoveToTrash={handleMoveToTrash}
 					/>
@@ -1252,6 +1301,12 @@ export default function App(): ReactElement {
 				}}
 				noResults={<MenuItem disabled text="No tasks found." roleStructure="listoption" />}
 				resetOnSelect
+			/>
+			<ClearTrashDialog
+				open={isClearTrashDialogOpen}
+				taskCount={trashTaskCount}
+				onCancel={() => setIsClearTrashDialogOpen(false)}
+				onConfirm={handleConfirmClearTrash}
 			/>
 			<TaskTrashWarningDialog
 				open={pendingTrashWarning !== null}
