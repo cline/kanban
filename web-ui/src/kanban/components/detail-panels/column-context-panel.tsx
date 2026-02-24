@@ -61,8 +61,12 @@ function ColumnSection({
 							<div
 								ref={provided.innerRef}
 								{...provided.droppableProps}
-								className="kb-column-cards"
-								style={columnStyle}
+								style={{
+									display: "flex",
+									flexDirection: "column",
+									padding: 8,
+									...columnStyle,
+								}}
 							>
 								{canCreate && !inlineTaskCreator ? (
 									<Button
@@ -113,9 +117,19 @@ export function ColumnContextPanel({
 	inlineTaskCreator?: ReactNode;
 }): React.ReactElement {
 	return (
-		<div style={{ display: "flex", flexDirection: "column", width: "20%", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}>
+		<div
+			style={{
+				display: "flex",
+				flexDirection: "column",
+				width: "20%",
+				minHeight: 0,
+				overflowY: "auto",
+				background: Colors.DARK_GRAY1,
+				borderRight: `1px solid ${panelSeparatorColor}`,
+			}}
+		>
 			<DragDropContext onDragEnd={onTaskDragEnd}>
-				<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}>
+				<div style={{ flex: "1 1 0", minHeight: 0 }}>
 					{selection.allColumns.map((column) => (
 						<ColumnSection
 							key={column.id}
