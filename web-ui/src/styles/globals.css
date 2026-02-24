@@ -36,6 +36,16 @@ body,
 	padding: 8px;
 }
 
+.kb-board-card-shell {
+	position: relative;
+	z-index: 0;
+}
+
+.kb-board-card-shell:hover,
+.kb-board-card-shell:focus-within {
+	z-index: 2;
+}
+
 .kb-empty-state-center {
 	display: flex;
 	height: 100%;

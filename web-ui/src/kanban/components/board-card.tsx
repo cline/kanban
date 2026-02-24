@@ -27,6 +27,7 @@ export function BoardCard({
 						ref={provided.innerRef}
 						{...provided.draggableProps}
 						{...provided.dragHandleProps}
+						className="kb-board-card-shell"
 						data-task-id={card.id}
 						onClick={() => {
 							if (!snapshot.isDragging && onClick) {
