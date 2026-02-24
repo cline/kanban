@@ -180,9 +180,10 @@ export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft
 		if (column.id !== columnId) {
 			return column;
 		}
+		const task = createTask(draft, existingIds);
 		return {
 			...column,
-			cards: [...column.cards, createTask(draft, existingIds)],
+			cards: [task, ...column.cards],
 		};
 	});
 
