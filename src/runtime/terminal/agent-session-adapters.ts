@@ -324,6 +324,18 @@ function hasOpenCodeModelArg(args: string[]): boolean {
 	return false;
 }
 
+function hasOpenCodeAgentArg(args: string[]): boolean {
+	for (const arg of args) {
+		if (arg === "--agent") {
+			return true;
+		}
+		if (arg.startsWith("--agent=")) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function normalizeOpenCodeModel(providerId: string, modelId: string): string {
 	if (modelId.startsWith(`${providerId}/`)) {
 		return modelId;
@@ -516,6 +528,9 @@ const opencodeAdapter: AgentSessionAdapter = {
 
 		if (input.startInPlanMode) {
 			env.OPENCODE_EXPERIMENTAL_PLAN_MODE = "true";
+			if (!hasOpenCodeAgentArg(args)) {
+				args.push("--agent", "plan");
+			}
 		}
 
 		const hooks = resolveHookContext(input);
