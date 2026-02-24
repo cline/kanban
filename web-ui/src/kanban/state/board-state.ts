@@ -202,8 +202,7 @@ export function applyDragResult(board: BoardData, result: DropResult): { board: 
 	}
 
 	if (type === "COLUMN") {
-		const columns = reorder(board.columns, source.index, destination.index);
-		return { board: withUpdatedColumns(board, columns) };
+		return { board };
 	}
 
 	const sourceColumnIndex = board.columns.findIndex((column) => column.id === source.droppableId);

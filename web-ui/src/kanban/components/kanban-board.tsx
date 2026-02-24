@@ -1,4 +1,4 @@
-import { DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
+import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import { useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 
@@ -39,32 +39,22 @@ export function KanbanBoard({
 
 	return (
 		<DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-			<Droppable droppableId="board" type="COLUMN" direction="horizontal">
-				{(provided) => (
-					<section
-						ref={provided.innerRef}
-						{...provided.droppableProps}
-						className="kb-board"
-					>
-						{data.columns.map((column, index) => (
-							<BoardColumn
-								key={column.id}
-								column={column}
-								index={index}
-								taskSessions={taskSessions}
-								onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
-								inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
-								onCardClick={(card) => {
-									if (!dragOccurredRef.current) {
-										onCardSelect(card.id);
-									}
-								}}
-							/>
-						))}
-						{provided.placeholder}
-					</section>
-				)}
-			</Droppable>
+			<section className="kb-board">
+				{data.columns.map((column) => (
+					<BoardColumn
+						key={column.id}
+						column={column}
+						taskSessions={taskSessions}
+						onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
+						inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
+						onCardClick={(card) => {
+							if (!dragOccurredRef.current) {
+								onCardSelect(card.id);
+							}
+						}}
+					/>
+				))}
+			</section>
 		</DragDropContext>
 	);
 }
