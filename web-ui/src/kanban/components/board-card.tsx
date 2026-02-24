@@ -42,7 +42,7 @@ export function BoardCard({
 						<Card
 							elevation={isDragging ? Elevation.THREE : Elevation.ZERO}
 							interactive
-							selected={selected || isDragging}
+							selected={selected}
 							compact
 						>
 							<Text ellipsize={false}>

@@ -1032,7 +1032,7 @@ export default function App(): ReactElement {
 
 	const handleDetailTaskDragEnd = useCallback(
 		(result: DropResult) => {
-			handleDragEnd(result, { selectDroppedTask: true });
+			handleDragEnd(result);
 		},
 		[handleDragEnd],
 	);
