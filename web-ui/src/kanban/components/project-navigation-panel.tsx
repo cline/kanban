@@ -1,4 +1,5 @@
-import { AnchorButton, Button, Classes, Colors, CompoundTag, Icon, Intent } from "@blueprintjs/core";
+import { Alert, AnchorButton, Button, Classes, Colors, CompoundTag, Icon, Intent } from "@blueprintjs/core";
+import { useState } from "react";
 
 import { panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeProjectSummary } from "@/kanban/runtime/types";
@@ -27,6 +28,13 @@ export function ProjectNavigationPanel({
 	onAddProject: () => void;
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
+	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
+	const pendingProjectTaskCount = pendingProjectRemoval
+		? pendingProjectRemoval.taskCounts.backlog +
+			pendingProjectRemoval.taskCounts.in_progress +
+			pendingProjectRemoval.taskCounts.review +
+			pendingProjectRemoval.taskCounts.trash
+		: 0;
 
 	return (
 		<aside
@@ -72,13 +80,45 @@ export function ProjectNavigationPanel({
 						project={project}
 						isCurrent={currentProjectId === project.id}
 						onSelect={onSelectProject}
-						onRemove={onRemoveProject}
+						onRemove={(projectId) => {
+							const found = sortedProjects.find((item) => item.id === projectId);
+							if (!found) {
+								return;
+							}
+							setPendingProjectRemoval(found);
+						}}
 					/>
 				))}
 			</div>
 			<div className={Classes.TEXT_MUTED} style={{ padding: "8px 12px", fontSize: "var(--bp-typography-size-body-x-small)", textAlign: "center" }}>
 				Made with <Icon icon="heart" size={10} /> by Cline
 			</div>
+			<Alert
+				isOpen={pendingProjectRemoval !== null}
+				icon="warning-sign"
+				intent="danger"
+				confirmButtonText="Delete Project"
+				cancelButtonText="Cancel"
+				onCancel={() => setPendingProjectRemoval(null)}
+				onConfirm={() => {
+					if (!pendingProjectRemoval) {
+						return;
+					}
+					onRemoveProject(pendingProjectRemoval.id);
+					setPendingProjectRemoval(null);
+				}}
+				canEscapeKeyCancel
+			>
+				<h4 className={Classes.HEADING}>Delete project permanently?</h4>
+				<p className={Classes.TEXT_MUTED} style={{ marginBottom: 8 }}>
+					{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}
+				</p>
+				<p>
+					This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces/worktrees,
+					and stop any running processes for this project.
+				</p>
+				<p>This action cannot be undone.</p>
+			</Alert>
 		</aside>
 	);
 }

@@ -397,6 +397,16 @@ function countTasksByColumn(board: RuntimeBoardData): RuntimeProjectTaskCounts {
 	return counts;
 }
 
+function collectTaskIdsFromBoard(board: RuntimeBoardData): Set<string> {
+	const taskIds = new Set<string>();
+	for (const column of board.columns) {
+		for (const card of column.cards) {
+			taskIds.add(card.id);
+		}
+	}
+	return taskIds;
+}
+
 function applyLiveSessionStateToProjectTaskCounts(
 	counts: RuntimeProjectTaskCounts,
 	board: RuntimeBoardData,
@@ -1560,8 +1570,8 @@ async function startServer(
 						} satisfies RuntimeProjectRemoveResponse);
 						return;
 					}
-					const removed = await removeWorkspaceIndexEntry(body.projectId);
-					if (!removed) {
+					const projectToRemove = projectsBeforeRemoval.find((project) => project.workspaceId === body.projectId);
+					if (!projectToRemove) {
 						sendJson(res, 404, {
 							ok: false,
 							error: `Unknown project ID: ${body.projectId}`,
@@ -1569,9 +1579,43 @@ async function startServer(
 						return;
 					}
 
+					const taskIdsToCleanup = new Set<string>();
+					try {
+						const workspaceState = await loadWorkspaceState(projectToRemove.repoPath);
+						for (const taskId of collectTaskIdsFromBoard(workspaceState.board)) {
+							taskIdsToCleanup.add(taskId);
+						}
+					} catch {
+						// Best effort: continue using any in-memory task summaries.
+					}
+
 					const removedTerminalManager = getTerminalManagerForWorkspace(body.projectId);
 					if (removedTerminalManager) {
-						removedTerminalManager.markInterruptedAndStopAll();
+						for (const summary of removedTerminalManager.listSummaries()) {
+							taskIdsToCleanup.add(summary.taskId);
+						}
+						const interruptedSummaries = removedTerminalManager.markInterruptedAndStopAll();
+						for (const summary of interruptedSummaries) {
+							taskIdsToCleanup.add(summary.taskId);
+						}
+					}
+
+					for (const taskId of taskIdsToCleanup) {
+						const deleted = await deleteTaskWorktree({
+							cwd: projectToRemove.repoPath,
+							taskId,
+						});
+						if (!deleted.ok) {
+							throw new Error(deleted.error ?? `Could not delete task workspace for task "${taskId}".`);
+						}
+					}
+
+					const removed = await removeWorkspaceIndexEntry(body.projectId);
+					if (!removed) {
+						throw new Error(`Could not remove project index entry for "${body.projectId}".`);
+					}
+
+					if (removedTerminalManager) {
 						terminalManagersByWorkspaceId.delete(body.projectId);
 						terminalManagerLoadPromises.delete(body.projectId);
 					}
