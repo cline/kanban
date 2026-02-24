@@ -1,9 +1,17 @@
-import { AnchorButton, Button, Classes, Colors, Icon, Tag } from "@blueprintjs/core";
+import { AnchorButton, Button, Classes, Colors, CompoundTag, Icon, Intent } from "@blueprintjs/core";
 
 import { panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeProjectSummary } from "@/kanban/runtime/types";
 
 const GITHUB_URL = "https://github.com/cline/kanbanana";
+
+interface TaskCountBadge {
+	id: string;
+	title: string;
+	shortLabel: string;
+	intent?: Intent;
+	count: number;
+}
 
 export function ProjectNavigationPanel({
 	projects,
@@ -86,6 +94,37 @@ function ProjectRow({
 	onSelect: (id: string) => void;
 	onRemove: (id: string) => void;
 }): React.ReactElement {
+	const taskCountBadges: TaskCountBadge[] = [
+		{
+			id: "backlog",
+			title: "Backlog",
+			shortLabel: "B",
+			intent: undefined,
+			count: project.taskCounts.backlog,
+		},
+		{
+			id: "in_progress",
+			title: "In Progress",
+			shortLabel: "IP",
+			intent: Intent.WARNING,
+			count: project.taskCounts.in_progress,
+		},
+		{
+			id: "review",
+			title: "Review",
+			shortLabel: "R",
+			intent: Intent.SUCCESS,
+			count: project.taskCounts.review,
+		},
+		{
+			id: "trash",
+			title: "Trash",
+			shortLabel: "T",
+			intent: Intent.DANGER,
+			count: project.taskCounts.trash,
+		},
+	].filter((item) => item.count > 0);
+
 	return (
 		<div
 			role="button"
@@ -114,20 +153,24 @@ function ProjectRow({
 				<div className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`} style={{ fontSize: "var(--bp-typography-size-body-x-small)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
 					{project.path}
 				</div>
-				<div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-					<Tag minimal interactive={false} className="kb-project-count-tag" title="Backlog">
-						B {project.taskCounts.backlog}
-					</Tag>
-					<Tag minimal interactive={false} className="kb-project-count-tag" title="In Progress">
-						IP {project.taskCounts.in_progress}
-					</Tag>
-					<Tag minimal interactive={false} className="kb-project-count-tag" title="Review">
-						R {project.taskCounts.review}
-					</Tag>
-					<Tag minimal interactive={false} className="kb-project-count-tag" title="Trash">
-						T {project.taskCounts.trash}
-					</Tag>
-				</div>
+				{taskCountBadges.length > 0 ? (
+					<div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+						{taskCountBadges.map((badge) => (
+							<CompoundTag
+								key={badge.id}
+								leftContent={badge.shortLabel}
+								intent={badge.intent}
+								minimal
+								round
+								interactive={false}
+								className="kb-project-count-tag"
+								title={badge.title}
+							>
+								{badge.count}
+							</CompoundTag>
+						))}
+					</div>
+				) : null}
 			</div>
 			<div className="kb-project-row-actions" style={{ display: "flex", alignItems: "center" }}>
 				<Button
