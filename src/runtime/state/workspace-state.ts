@@ -32,7 +32,7 @@ const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 ];
 
 const VALID_SESSION_STATES = new Set(["idle", "running", "awaiting_review", "failed", "interrupted"]);
-const VALID_REVIEW_REASONS = new Set(["attention", "exit", "error", "interrupted"]);
+const VALID_REVIEW_REASONS = new Set(["attention", "exit", "error", "interrupted", "hook"]);
 
 interface WorkspaceIndexEntry {
 	workspaceId: string;

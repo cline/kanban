@@ -87,7 +87,7 @@ export interface RuntimeGitRepositoryInfo {
 
 export type RuntimeTaskSessionState = "idle" | "running" | "awaiting_review" | "failed" | "interrupted";
 
-export type RuntimeTaskSessionReviewReason = "attention" | "exit" | "error" | "interrupted" | null;
+export type RuntimeTaskSessionReviewReason = "attention" | "exit" | "error" | "interrupted" | "hook" | null;
 
 export interface RuntimeTaskSessionSummary {
 	taskId: string;
@@ -363,3 +363,15 @@ export type RuntimeTerminalWsServerMessage =
 	| RuntimeTerminalWsStateMessage
 	| RuntimeTerminalWsErrorMessage
 	| RuntimeTerminalWsExitMessage;
+
+export type RuntimeHookEvent = "review" | "inprogress";
+
+export interface RuntimeHookIngestRequest {
+	taskId: string;
+	event: RuntimeHookEvent;
+}
+
+export interface RuntimeHookIngestResponse {
+	ok: boolean;
+	error?: string;
+}

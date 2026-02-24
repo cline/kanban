@@ -9,12 +9,16 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 
+import { isHooksSubcommand, runHooksIngest } from "./hooks-cli.js";
 import { createSampleBoard } from "./index.js";
 import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
+	RuntimeHookEvent,
+	RuntimeHookIngestRequest,
+	RuntimeHookIngestResponse,
 	RuntimeProjectAddRequest,
 	RuntimeProjectAddResponse,
 	RuntimeProjectDirectoryPickerResponse,
@@ -1200,6 +1204,8 @@ async function startServer(
 						startInPlanMode: body.startInPlanMode,
 						cols: body.cols,
 						rows: body.rows,
+						serverPort: port,
+						workspaceId: scope.workspaceId,
 					});
 					sendJson(res, 200, {
 						ok: true,
@@ -1236,6 +1242,95 @@ async function startServer(
 						summary: null,
 						error: message,
 					} satisfies RuntimeTaskSessionStopResponse);
+				}
+				return;
+			}
+
+			if (pathname === "/api/hooks/ingest" && req.method === "POST") {
+				try {
+					const body = await readJsonBody<RuntimeHookIngestRequest>(req);
+					const taskId = typeof body.taskId === "string" ? body.taskId.trim() : "";
+					const event = body.event as RuntimeHookEvent;
+					if (!taskId) {
+						sendJson(res, 400, { ok: false, error: "Missing taskId" } satisfies RuntimeHookIngestResponse);
+						return;
+					}
+					if (event !== "review" && event !== "inprogress") {
+						sendJson(res, 400, {
+							ok: false,
+							error: `Invalid event "${String(event)}". Must be "review" or "inprogress"`,
+						} satisfies RuntimeHookIngestResponse);
+						return;
+					}
+
+					let matchedWorkspaceId: string | null = null;
+					let matchedManager: TerminalSessionManager | null = null;
+					let matchedSummary: RuntimeTaskSessionSummary | null = null;
+					for (const [wsId, manager] of terminalManagersByWorkspaceId.entries()) {
+						const summary = manager.getSummary(taskId);
+						if (!summary) {
+							continue;
+						}
+						const eligibleForReview = summary.state === "running";
+						const eligibleForInProgress =
+							summary.state === "awaiting_review" &&
+							(summary.reviewReason === "attention" || summary.reviewReason === "hook");
+						const eligible = event === "review" ? eligibleForReview : eligibleForInProgress;
+						if (eligible) {
+							matchedWorkspaceId = wsId;
+							matchedManager = manager;
+							matchedSummary = summary;
+							break;
+						}
+						if (!matchedManager) {
+							matchedWorkspaceId = wsId;
+							matchedManager = manager;
+							matchedSummary = summary;
+						}
+					}
+					if (!matchedManager || !matchedWorkspaceId || !matchedSummary) {
+						sendJson(res, 404, {
+							ok: false,
+							error: `Task "${taskId}" not found in any workspace`,
+						} satisfies RuntimeHookIngestResponse);
+						return;
+					}
+					const eligibleForReview = matchedSummary.state === "running";
+					const eligibleForInProgress =
+						matchedSummary.state === "awaiting_review" &&
+						(matchedSummary.reviewReason === "attention" || matchedSummary.reviewReason === "hook");
+					const eligible = event === "review" ? eligibleForReview : eligibleForInProgress;
+					if (!eligible) {
+						sendJson(res, 409, {
+							ok: false,
+							error: `Task "${taskId}" cannot handle "${event}" from state "${matchedSummary.state}" (${matchedSummary.reviewReason ?? "no reason"})`,
+						} satisfies RuntimeHookIngestResponse);
+						return;
+					}
+
+					let transitionedSummary: RuntimeTaskSessionSummary | null = null;
+					if (event === "review") {
+						transitionedSummary = matchedManager.transitionToReview(taskId, "hook");
+					} else {
+						transitionedSummary = matchedManager.transitionToRunning(taskId);
+					}
+					if (!transitionedSummary) {
+						sendJson(res, 500, {
+							ok: false,
+							error: `Task "${taskId}" transition failed`,
+						} satisfies RuntimeHookIngestResponse);
+						return;
+					}
+
+					const matchedWorkspacePath = workspacePathsById.get(matchedWorkspaceId);
+					if (matchedWorkspacePath) {
+						void broadcastRuntimeWorkspaceStateUpdated(matchedWorkspaceId, matchedWorkspacePath);
+					}
+
+					sendJson(res, 200, { ok: true } satisfies RuntimeHookIngestResponse);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, { ok: false, error: message } satisfies RuntimeHookIngestResponse);
 				}
 				return;
 			}
@@ -1722,7 +1817,13 @@ async function startServer(
 }
 
 async function run(): Promise<void> {
-	const options = parseCliOptions(process.argv.slice(2));
+	const argv = process.argv.slice(2);
+	if (isHooksSubcommand(argv)) {
+		await runHooksIngest(argv);
+		return;
+	}
+
+	const options = parseCliOptions(argv);
 
 	if (options.help) {
 		printHelp();

@@ -403,30 +403,39 @@ export default function App(): ReactElement {
 	useEffect(() => {
 		setBoard((currentBoard) => {
 			let nextBoard = currentBoard;
-			const previousSessions = previousSessionsRef.current;
-			for (const summary of Object.values(sessions)) {
-				const previous = previousSessions[summary.taskId];
-				if (!previous || previous.updatedAt > summary.updatedAt) {
-					continue;
-				}
-				const columnId = getTaskColumnId(nextBoard, summary.taskId);
-				if (
-					summary.state === "awaiting_review" &&
-					previous.state !== "awaiting_review" &&
-					columnId === "in_progress"
-				) {
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
+				const previousSessions = previousSessionsRef.current;
+				for (const summary of Object.values(sessions)) {
+					const previous = previousSessions[summary.taskId];
+					if (previous && previous.updatedAt > summary.updatedAt) {
+						continue;
+					}
+					const columnId = getTaskColumnId(nextBoard, summary.taskId);
+					if (
+						summary.state === "awaiting_review" &&
+						columnId === "in_progress"
+					) {
+						const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
+						if (moved.moved) {
+							nextBoard = moved.board;
+						}
+						continue;
+					}
+					if (
+						summary.state === "running" &&
+						columnId === "review"
+					) {
+						const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress");
 					if (moved.moved) {
 						nextBoard = moved.board;
 					}
 					continue;
 				}
-				if (
-					summary.state === "interrupted" &&
-					previous.state !== "interrupted" &&
-					columnId &&
-					columnId !== "trash"
-				) {
+					if (
+						summary.state === "interrupted" &&
+						previous?.state !== "interrupted" &&
+						columnId &&
+						columnId !== "trash"
+					) {
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
 					if (moved.moved) {
 						nextBoard = moved.board;

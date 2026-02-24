@@ -5,12 +5,17 @@ import { dirname, join } from "node:path";
 import * as pty from "node-pty";
 
 import type {
-	RuntimeAgentId,
 	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
 } from "../api-contract.js";
-import { detectNeedsAttention, extractLastActivityLine } from "./output-monitor.js";
+import {
+	type AgentAdapterLaunchInput,
+	type AgentOutputTransitionDetector,
+	prepareAgentLaunch,
+} from "./agent-session-adapters.js";
+import { extractLastActivityLine } from "./output-utils.js";
+import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
 
 const MAX_HISTORY_BYTES = 1024 * 1024;
 const require = createRequire(import.meta.url);
@@ -24,6 +29,9 @@ interface ActiveProcessState {
 	listeners: Map<number, TerminalSessionListener>;
 	attentionBuffer: string;
 	shutdownInterrupted: boolean;
+	onSessionCleanup: (() => Promise<void>) | null;
+	detectOutputTransition: AgentOutputTransitionDetector | null;
+	awaitingCodexPromptAfterEnter: boolean;
 }
 
 interface SessionEntry {
@@ -39,7 +47,7 @@ export interface TerminalSessionListener {
 
 export interface StartTaskSessionRequest {
 	taskId: string;
-	agentId: RuntimeAgentId;
+	agentId: AgentAdapterLaunchInput["agentId"];
 	binary: string;
 	args: string[];
 	cwd: string;
@@ -48,12 +56,8 @@ export interface StartTaskSessionRequest {
 	cols?: number;
 	rows?: number;
 	env?: Record<string, string | undefined>;
-}
-
-interface LaunchCommand {
-	args: string[];
-	env: Record<string, string | undefined>;
-	writesPromptInternally: boolean;
+	serverPort?: number;
+	workspaceId?: string;
 }
 
 function terminatePtyProcess(active: ActiveProcessState): void {
@@ -107,13 +111,6 @@ function isActiveState(state: RuntimeTaskSessionState): boolean {
 	return state === "running" || state === "awaiting_review";
 }
 
-function makeReviewState(reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessionState {
-	if (reason === "interrupted") {
-		return "interrupted";
-	}
-	return "awaiting_review";
-}
-
 function formatSpawnFailure(binary: string, error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
 	const normalized = message.toLowerCase();
@@ -121,117 +118,6 @@ function formatSpawnFailure(binary: string, error: unknown): string {
 		return `Failed to launch "${binary}". Command not found. Install a supported agent CLI and select it in Settings.`;
 	}
 	return `Failed to launch "${binary}": ${message}`;
-}
-
-function buildLaunchCommand(request: StartTaskSessionRequest): LaunchCommand {
-	const args = [...request.args];
-	const env: Record<string, string | undefined> = {};
-	const prompt = request.prompt.trim();
-
-	if (request.agentId === "claude") {
-		if (request.startInPlanMode) {
-			const withoutImmediateBypass = args.filter((arg) => arg !== "--dangerously-skip-permissions");
-			args.length = 0;
-			args.push(...withoutImmediateBypass);
-			if (!args.includes("--allow-dangerously-skip-permissions")) {
-				args.push("--allow-dangerously-skip-permissions");
-			}
-			args.push("--permission-mode", "plan");
-		}
-		if (prompt) {
-			args.push(prompt);
-			return {
-				args,
-				env,
-				writesPromptInternally: true,
-			};
-		}
-		return {
-			args,
-			env,
-			writesPromptInternally: false,
-		};
-	}
-
-	if (request.agentId === "codex") {
-		if (prompt) {
-			const initialPrompt = request.startInPlanMode ? `/plan\n${prompt}` : prompt;
-			args.push(initialPrompt);
-			return {
-				args,
-				env,
-				writesPromptInternally: true,
-			};
-		}
-		return {
-			args,
-			env,
-			writesPromptInternally: false,
-		};
-	}
-
-	if (request.agentId === "opencode") {
-		if (request.startInPlanMode) {
-			env.OPENCODE_EXPERIMENTAL_PLAN_MODE = "true";
-		}
-		if (prompt) {
-			args.push("--prompt", prompt);
-			return {
-				args,
-				env,
-				writesPromptInternally: true,
-			};
-		}
-		return {
-			args,
-			env,
-			writesPromptInternally: false,
-		};
-	}
-
-	if (request.agentId === "gemini") {
-		if (request.startInPlanMode) {
-			args.push("--approval-mode=plan");
-		}
-		if (prompt) {
-			args.push("-i", prompt);
-			return {
-				args,
-				env,
-				writesPromptInternally: true,
-			};
-		}
-		return {
-			args,
-			env,
-			writesPromptInternally: false,
-		};
-	}
-
-	if (request.agentId === "cline") {
-		if (request.startInPlanMode) {
-			args.push("--plan");
-		}
-		if (prompt) {
-			args.push(prompt);
-			return {
-				args,
-				env,
-				writesPromptInternally: true,
-			};
-		}
-		return {
-			args,
-			env,
-			writesPromptInternally: false,
-		};
-	}
-
-	return {
-		args,
-		env,
-		writesPromptInternally: false,
-	};
 }
 
 async function ensureNodePtySpawnHelperExecutable(): Promise<void> {
@@ -349,7 +235,19 @@ export class TerminalSessionManager {
 
 		const cols = Number.isFinite(request.cols) && (request.cols ?? 0) > 0 ? Math.floor(request.cols ?? 0) : 120;
 		const rows = Number.isFinite(request.rows) && (request.rows ?? 0) > 0 ? Math.floor(request.rows ?? 0) : 40;
-		const launch = buildLaunchCommand(request);
+
+		const launch = await prepareAgentLaunch({
+			taskId: request.taskId,
+			agentId: request.agentId,
+			args: request.args,
+			cwd: request.cwd,
+			prompt: request.prompt,
+			startInPlanMode: request.startInPlanMode,
+			env: request.env,
+			serverPort: request.serverPort,
+			workspaceId: request.workspaceId,
+		});
+
 		const env = {
 			...process.env,
 			...request.env,
@@ -370,6 +268,11 @@ export class TerminalSessionManager {
 				rows,
 			});
 		} catch (error) {
+			if (launch.cleanup) {
+				void launch.cleanup().catch(() => {
+					// Best effort: cleanup failure is non-critical.
+				});
+			}
 			const summary = updateSummary(entry, {
 				state: "failed",
 				agentId: request.agentId,
@@ -393,6 +296,9 @@ export class TerminalSessionManager {
 			listeners: new Map(),
 			attentionBuffer: "",
 			shutdownInterrupted: false,
+			onSessionCleanup: launch.cleanup ?? null,
+			detectOutputTransition: launch.detectOutputTransition ?? null,
+			awaitingCodexPromptAfterEnter: false,
 		};
 		entry.active = active;
 
@@ -431,18 +337,25 @@ export class TerminalSessionManager {
 			}
 
 			const lastActivityLine = extractLastActivityLine(entry.active.attentionBuffer);
-			const needsAttention = detectNeedsAttention(entry.active.attentionBuffer);
-			const nextPatch: Partial<RuntimeTaskSessionSummary> = {
+			let summary = updateSummary(entry, {
 				lastOutputAt: now(),
 				lastActivityLine,
-			};
+			});
 
-			if (entry.summary.state === "running" && needsAttention) {
-				nextPatch.state = "awaiting_review";
-				nextPatch.reviewReason = "attention";
+			const adapterEvent = entry.active.detectOutputTransition?.(data, summary) ?? null;
+			if (adapterEvent) {
+				const requiresEnterForCodex =
+					adapterEvent.type === "agent.prompt-ready" &&
+					entry.summary.agentId === "codex" &&
+					!entry.active.awaitingCodexPromptAfterEnter;
+				if (!requiresEnterForCodex) {
+					summary = this.applySessionEvent(entry, adapterEvent);
+					if (adapterEvent.type === "agent.prompt-ready" && entry.summary.agentId === "codex") {
+						entry.active.awaitingCodexPromptAfterEnter = false;
+					}
+				}
 			}
 
-			const summary = updateSummary(entry, nextPatch);
 			for (const taskListener of entry.active.listeners.values()) {
 				taskListener.onOutput?.(chunk);
 				taskListener.onState?.(cloneSummary(summary));
@@ -460,16 +373,10 @@ export class TerminalSessionManager {
 				return;
 			}
 
-			let reason: RuntimeTaskSessionReviewReason = event.exitCode === 0 ? "exit" : "error";
-			if (currentActive.shutdownInterrupted) {
-				reason = "interrupted";
-			}
-			const state = makeReviewState(reason);
-			const summary = updateSummary(currentEntry, {
-				state,
-				reviewReason: reason,
+			const summary = this.applySessionEvent(currentEntry, {
+				type: "process.exit",
 				exitCode: event.exitCode,
-				pid: null,
+				interrupted: currentActive.shutdownInterrupted,
 			});
 
 			for (const taskListener of currentActive.listeners.values()) {
@@ -478,6 +385,14 @@ export class TerminalSessionManager {
 			}
 			currentEntry.active = null;
 			this.emitSummary(summary);
+
+			const cleanupFn = currentActive.onSessionCleanup;
+			currentActive.onSessionCleanup = null;
+			if (cleanupFn) {
+				cleanupFn().catch(() => {
+					// Best effort: cleanup failure is non-critical.
+				});
+			}
 		});
 
 		const trimmedPrompt = request.prompt.trim();
@@ -500,18 +415,17 @@ export class TerminalSessionManager {
 		if (!entry?.active) {
 			return null;
 		}
-		entry.active.ptyProcess.write(data.toString("utf8"));
-		const patch: Partial<RuntimeTaskSessionSummary> = {};
-		if (entry.summary.state === "awaiting_review" && entry.summary.reviewReason === "attention") {
-			patch.state = "running";
-			patch.reviewReason = null;
+		const text = data.toString("utf8");
+		if (
+			entry.summary.agentId === "codex" &&
+			entry.summary.state === "awaiting_review" &&
+			(entry.summary.reviewReason === "hook" || entry.summary.reviewReason === "attention") &&
+			(text.includes("\r") || text.includes("\n"))
+		) {
+			entry.active.awaitingCodexPromptAfterEnter = true;
 		}
-		const summary = updateSummary(entry, patch);
-		this.emitSummary(summary);
-		for (const listener of entry.active.listeners.values()) {
-			listener.onState?.(cloneSummary(summary));
-		}
-		return cloneSummary(summary);
+		entry.active.ptyProcess.write(text);
+		return cloneSummary(entry.summary);
 	}
 
 	resize(taskId: string, cols: number, rows: number): boolean {
@@ -525,12 +439,54 @@ export class TerminalSessionManager {
 		return true;
 	}
 
+	transitionToReview(taskId: string, reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+		if (reason !== "hook") {
+			return cloneSummary(entry.summary);
+		}
+		const before = entry.summary;
+		const summary = this.applySessionEvent(entry, { type: "hook.review" });
+		if (summary !== before && entry.active) {
+			for (const listener of entry.active.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+			this.emitSummary(summary);
+		}
+		return cloneSummary(summary);
+	}
+
+	transitionToRunning(taskId: string): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+		const before = entry.summary;
+		const summary = this.applySessionEvent(entry, { type: "hook.inprogress" });
+		if (summary !== before && entry.active) {
+			for (const listener of entry.active.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+			this.emitSummary(summary);
+		}
+		return cloneSummary(summary);
+	}
+
 	stopTaskSession(taskId: string): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
 			return entry ? cloneSummary(entry.summary) : null;
 		}
+		const cleanupFn = entry.active.onSessionCleanup;
+		entry.active.onSessionCleanup = null;
 		terminatePtyProcess(entry.active);
+		if (cleanupFn) {
+			cleanupFn().catch(() => {
+				// Best effort: cleanup failure is non-critical.
+			});
+		}
 		return cloneSummary(entry.summary);
 	}
 
@@ -544,6 +500,20 @@ export class TerminalSessionManager {
 			terminatePtyProcess(entry.active);
 		}
 		return activeEntries.map((entry) => cloneSummary(entry.summary));
+	}
+
+	private applySessionEvent(entry: SessionEntry, event: SessionTransitionEvent): RuntimeTaskSessionSummary {
+		const transition = reduceSessionTransition(entry.summary, event);
+		if (!transition.changed) {
+			return entry.summary;
+		}
+		if (transition.clearAttentionBuffer && entry.active) {
+			entry.active.attentionBuffer = "";
+		}
+		if (entry.active && transition.changed && transition.patch.state === "awaiting_review") {
+			entry.active.awaitingCodexPromptAfterEnter = false;
+		}
+		return updateSummary(entry, transition.patch);
 	}
 
 	private ensureEntry(taskId: string): SessionEntry {

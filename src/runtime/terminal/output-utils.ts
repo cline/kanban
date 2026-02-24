@@ -1,17 +1,3 @@
-const ATTENTION_PATTERNS: RegExp[] = [
-	/\ballow\b/i,
-	/\bdeny\b/i,
-	/\bapprove\b/i,
-	/\bpermission\b/i,
-	/\bdo you want\b/i,
-	/\bwaiting for input\b/i,
-	/\bpress enter\b/i,
-	/\benter to continue\b/i,
-	/\by\/n\b/i,
-	/\bchoose an option\b/i,
-	/\?\s*$/,
-];
-
 export function stripAnsi(input: string): string {
 	let output = "";
 	for (let index = 0; index < input.length; index += 1) {
@@ -49,17 +35,4 @@ export function extractLastActivityLine(buffer: string): string | null {
 		return line;
 	}
 	return null;
-}
-
-export function detectNeedsAttention(buffer: string): boolean {
-	const line = extractLastActivityLine(buffer);
-	if (!line) {
-		return false;
-	}
-	for (const pattern of ATTENTION_PATTERNS) {
-		if (pattern.test(line)) {
-			return true;
-		}
-	}
-	return false;
 }

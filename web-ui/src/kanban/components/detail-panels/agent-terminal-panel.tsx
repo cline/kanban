@@ -236,13 +236,13 @@ export function AgentTerminalPanel({
 					<Divider />
 				</>
 			) : null}
-			<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px" }}>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-					<Tag intent={statusIntent} minimal>{statusLabel}</Tag>
-					{summary?.lastActivityLine ? (
-						<span className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}>{summary.lastActivityLine}</span>
-					) : null}
-				</div>
+				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px" }}>
+					<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+						<Tag intent={statusIntent} minimal>{statusLabel}</Tag>
+						{summary?.lastActivityLine ? (
+							<span className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}>{summary.lastActivityLine}</span>
+						) : null}
+					</div>
 				<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
 					<Button text="Clear" variant="outlined" size="small" onClick={handleClear} />
 					<Button
@@ -251,10 +251,10 @@ export function AgentTerminalPanel({
 						size="small"
 						onClick={() => { void handleStop(); }}
 						disabled={!canStop || isStopping}
-					/>
+						/>
+					</div>
 				</div>
-			</div>
-			<Divider />
+				<Divider />
 			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: 4 }}>
 				<div ref={containerRef} style={{ height: "100%", width: "100%" }} />
 			</div>
