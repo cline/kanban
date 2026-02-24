@@ -40,7 +40,18 @@ export function TopBar({
 	const isAbsolutePath = Boolean(workspacePath && (workspacePath.startsWith("/") || workspacePath.startsWith("\\")));
 
 	return (
-		<Navbar fixedToTop={false} style={{ height: 40, minHeight: 40, background: Colors.DARK_GRAY3, boxShadow: "none", borderBottom: "1px solid rgba(255, 255, 255, 0.2)" }}>
+		<Navbar
+			fixedToTop={false}
+			style={{
+				height: 40,
+				minHeight: 40,
+				paddingLeft: 12,
+				paddingRight: 8,
+				background: Colors.DARK_GRAY3,
+				boxShadow: "none",
+				borderBottom: "1px solid rgba(255, 255, 255, 0.2)",
+			}}
+		>
 			<NavbarGroup align={Alignment.LEFT} style={{ height: 40 }}>
 				{onBack ? (
 					<>
@@ -78,7 +89,7 @@ export function TopBar({
 					<Tag minimal intent="warning" className="kb-navbar-tag">{runtimeHint}</Tag>
 				) : null}
 			</NavbarGroup>
-			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40 }}>
+			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40, paddingRight: 2 }}>
 				{shortcuts?.map((shortcut) => (
 					<Button
 						key={shortcut.id}
