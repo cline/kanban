@@ -9,7 +9,7 @@ import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-p
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
 import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspace-changes";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { CardSelection } from "@/kanban/types";
+import type { BoardCard, CardSelection } from "@/kanban/types";
 
 const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 1500;
 
@@ -23,8 +23,14 @@ export function CardDetailView({
 	onCardSelect,
 	onTaskDragEnd,
 	onCreateTask,
+	onStartTask,
 	onClearTrash,
 	inlineTaskCreator,
+	editingTaskId,
+	inlineTaskEditor,
+	onEditTask,
+	onCommitTask,
+	onOpenPrTask,
 	onMoveToTrash,
 }: {
 	selection: CardSelection;
@@ -36,8 +42,14 @@ export function CardDetailView({
 	onCardSelect: (taskId: string) => void;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
+	onStartTask?: (taskId: string) => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
+	editingTaskId?: string | null;
+	inlineTaskEditor?: ReactNode;
+	onEditTask?: (card: BoardCard) => void;
+	onCommitTask?: (taskId: string) => void;
+	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrash: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -137,8 +149,14 @@ export function CardDetailView({
 				taskSessions={taskSessions}
 				onTaskDragEnd={onTaskDragEnd}
 				onCreateTask={onCreateTask}
+				onStartTask={onStartTask}
 				onClearTrash={onClearTrash}
 				inlineTaskCreator={inlineTaskCreator}
+				editingTaskId={editingTaskId}
+				inlineTaskEditor={inlineTaskEditor}
+				onEditTask={onEditTask}
+				onCommitTask={onCommitTask}
+				onOpenPrTask={onOpenPrTask}
 				/>
 				<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>

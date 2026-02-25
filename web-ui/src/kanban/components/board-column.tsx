@@ -11,15 +11,27 @@ export function BoardColumn({
 	column,
 	taskSessions,
 	onCreateTask,
+	onStartTask,
 	onClearTrash,
 	inlineTaskCreator,
+	editingTaskId,
+	inlineTaskEditor,
+	onEditTask,
+	onCommitTask,
+	onOpenPrTask,
 	onCardClick,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
+	onStartTask?: (taskId: string) => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
+	editingTaskId?: string | null;
+	inlineTaskEditor?: ReactNode;
+	onEditTask?: (card: BoardCardModel) => void;
+	onCommitTask?: (taskId: string) => void;
+	onOpenPrTask?: (taskId: string) => void;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
@@ -77,15 +89,41 @@ export function BoardColumn({
 							) : null}
 							{inlineTaskCreator}
 
-							{column.cards.map((card, cardIndex) => (
-								<BoardCard
-									key={card.id}
-									card={card}
-									index={cardIndex}
-									sessionSummary={taskSessions[card.id]}
-									onClick={() => onCardClick?.(card)}
-								/>
-							))}
+							{(() => {
+								const items: ReactNode[] = [];
+								let draggableIndex = 0;
+								for (const card of column.cards) {
+									if (column.id === "backlog" && editingTaskId === card.id) {
+										items.push(
+											<div key={card.id} style={{ marginBottom: 8 }}>
+												{inlineTaskEditor}
+											</div>,
+										);
+										continue;
+									}
+									items.push(
+										<BoardCard
+											key={card.id}
+											card={card}
+											index={draggableIndex}
+											columnId={column.id}
+											sessionSummary={taskSessions[card.id]}
+											onStart={onStartTask}
+											onCommit={onCommitTask}
+											onOpenPr={onOpenPrTask}
+											onClick={() => {
+												if (column.id === "backlog") {
+													onEditTask?.(card);
+													return;
+												}
+												onCardClick?.(card);
+											}}
+										/>,
+									);
+									draggableIndex += 1;
+								}
+								return items;
+							})()}
 							{cardProvided.placeholder}
 						</div>
 					)}

@@ -60,6 +60,7 @@ import {
 	getTaskColumnId,
 	moveTaskToColumn,
 	normalizeBoardData,
+	updateTask,
 } from "@/kanban/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/kanban/types";
 
@@ -99,6 +100,11 @@ export default function App(): ReactElement {
 		loadPersistedTaskWorkspaceMode(),
 	);
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
+	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+	const [editTaskPrompt, setEditTaskPrompt] = useState("");
+	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
+	const [editTaskWorkspaceMode, setEditTaskWorkspaceMode] = useState<TaskWorkspaceMode>("local");
+	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
@@ -609,6 +615,7 @@ export default function App(): ReactElement {
 		setSelectedTaskId(null);
 		setSelectedTaskWorkspaceInfo(null);
 		setIsInlineTaskCreateOpen(false);
+		setEditingTaskId(null);
 		setIsClearTrashDialogOpen(false);
 	}, [currentProjectId]);
 
@@ -708,10 +715,58 @@ export default function App(): ReactElement {
 	}, [canUseWorktree, defaultTaskBranchRef, isInlineTaskCreateOpen, newTaskBranchRef]);
 
 	useEffect(() => {
+		if (!editingTaskId) {
+			return;
+		}
+		if (!canUseWorktree && editTaskWorkspaceMode === "worktree") {
+			setEditTaskWorkspaceMode("local");
+		}
+	}, [canUseWorktree, editTaskWorkspaceMode, editingTaskId]);
+
+	useEffect(() => {
+		if (!editingTaskId) {
+			return;
+		}
+		if (!canUseWorktree) {
+			setEditTaskBranchRef("");
+			return;
+		}
+		if (editTaskWorkspaceMode !== "worktree") {
+			return;
+		}
+		const isCurrentValid = createTaskBranchOptions.some((option) => option.value === editTaskBranchRef);
+		if (isCurrentValid) {
+			return;
+		}
+		setEditTaskBranchRef(defaultTaskBranchRef);
+	}, [
+		canUseWorktree,
+		createTaskBranchOptions,
+		defaultTaskBranchRef,
+		editTaskBranchRef,
+		editTaskWorkspaceMode,
+		editingTaskId,
+	]);
+
+	useEffect(() => {
 		if (selectedTaskId && !selectedCard) {
 			setSelectedTaskId(null);
 		}
 	}, [selectedTaskId, selectedCard]);
+
+	useEffect(() => {
+		if (!editingTaskId) {
+			return;
+		}
+		const selection = findCardSelection(board, editingTaskId);
+		if (!selection || selection.column.id !== "backlog") {
+			setEditingTaskId(null);
+			setEditTaskPrompt("");
+			setEditTaskStartInPlanMode(false);
+			setEditTaskWorkspaceMode("local");
+			setEditTaskBranchRef("");
+		}
+	}, [board, editingTaskId]);
 
 	const workspaceTitle = useMemo(() => {
 		if (!workspacePath) {
@@ -748,6 +803,7 @@ export default function App(): ReactElement {
 
 			if (!event.metaKey && !event.ctrlKey && key === "c") {
 				event.preventDefault();
+				setEditingTaskId(null);
 				setIsInlineTaskCreateOpen(true);
 			}
 		};
@@ -768,6 +824,7 @@ export default function App(): ReactElement {
 		setRequestedProjectId(projectId);
 		setSelectedTaskId(null);
 		setIsInlineTaskCreateOpen(false);
+		setEditingTaskId(null);
 	}, [currentProjectId]);
 
 	const handleAddProject = useCallback(async () => {
@@ -824,6 +881,7 @@ export default function App(): ReactElement {
 					setRequestedProjectId(null);
 					setSelectedTaskId(null);
 					setIsInlineTaskCreateOpen(false);
+					setEditingTaskId(null);
 				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -834,6 +892,8 @@ export default function App(): ReactElement {
 	);
 
 	const handleOpenCreateTask = useCallback(() => {
+		setEditingTaskId(null);
+		setEditTaskPrompt("");
 		setIsInlineTaskCreateOpen(true);
 	}, []);
 
@@ -844,6 +904,78 @@ export default function App(): ReactElement {
 			setNewTaskBranchRef(defaultTaskBranchRef);
 		}
 	}, [canUseWorktree, defaultTaskBranchRef]);
+
+	const handleOpenEditTask = useCallback(
+		(task: BoardCard) => {
+			setSelectedTaskId(null);
+			setSelectedTaskWorkspaceInfo(null);
+			setIsInlineTaskCreateOpen(false);
+			setNewTaskPrompt("");
+			const taskPrompt = task.prompt.trim() || [task.title, task.description].filter(Boolean).join("\n\n");
+			setEditingTaskId(task.id);
+			setEditTaskPrompt(taskPrompt);
+			setEditTaskStartInPlanMode(task.startInPlanMode);
+			const taskMode: TaskWorkspaceMode = task.baseRef && canUseWorktree ? "worktree" : "local";
+			setEditTaskWorkspaceMode(taskMode);
+			const fallbackBranch = task.baseRef ?? defaultTaskBranchRef;
+			setEditTaskBranchRef(fallbackBranch);
+		},
+		[canUseWorktree, defaultTaskBranchRef],
+	);
+
+	const handleCancelEditTask = useCallback(() => {
+		setEditingTaskId(null);
+		setEditTaskPrompt("");
+		setEditTaskStartInPlanMode(false);
+		setEditTaskWorkspaceMode("local");
+		setEditTaskBranchRef("");
+	}, []);
+
+	const handleSaveEditedTask = useCallback(() => {
+		if (!editingTaskId) {
+			return;
+		}
+		const prompt = editTaskPrompt.trim();
+		if (!prompt) {
+			return;
+		}
+		if (editTaskWorkspaceMode === "worktree" && (!canUseWorktree || !(editTaskBranchRef || defaultTaskBranchRef))) {
+			return;
+		}
+
+		const parsedPrompt = splitPromptToTitleDescription(prompt);
+		const title = parsedPrompt.title.trim();
+		if (!title) {
+			return;
+		}
+
+		const baseRef =
+			editTaskWorkspaceMode === "worktree" && canUseWorktree
+				? (editTaskBranchRef || defaultTaskBranchRef || null)
+				: null;
+
+		setBoard((currentBoard) => {
+			const updated = updateTask(currentBoard, editingTaskId, {
+				title,
+				description: parsedPrompt.description,
+				prompt,
+				startInPlanMode: editTaskStartInPlanMode,
+				baseRef,
+			});
+			return updated.updated ? updated.board : currentBoard;
+		});
+		setEditingTaskId(null);
+		setEditTaskPrompt("");
+		setWorktreeError(null);
+	}, [
+		canUseWorktree,
+		defaultTaskBranchRef,
+		editTaskBranchRef,
+		editTaskPrompt,
+		editTaskStartInPlanMode,
+		editTaskWorkspaceMode,
+		editingTaskId,
+	]);
 
 	const handleCreateTask = useCallback(() => {
 		const prompt = newTaskPrompt.trim();
@@ -980,6 +1112,39 @@ export default function App(): ReactElement {
 		[currentProjectId, runtimeProjectConfig?.shortcuts],
 	);
 
+	const kickoffTaskInProgress = useCallback(
+		async (task: BoardCard, taskId: string, fromColumnId: BoardColumnId) => {
+			const ensured = await ensureTaskWorkspace(task);
+			if (!ensured.ok) {
+				setWorktreeError(ensured.message ?? "Could not set up task workspace.");
+				setBoard((currentBoard) => {
+					const currentColumnId = getTaskColumnId(currentBoard, taskId);
+					if (currentColumnId !== "in_progress") {
+						return currentBoard;
+					}
+					const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+					return reverted.moved ? reverted.board : currentBoard;
+				});
+				return;
+			}
+			const started = await startTaskSession(task);
+			if (!started.ok) {
+				setWorktreeError(started.message ?? "Could not start task session.");
+				setBoard((currentBoard) => {
+					const currentColumnId = getTaskColumnId(currentBoard, taskId);
+					if (currentColumnId !== "in_progress") {
+						return currentBoard;
+					}
+					const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+					return reverted.moved ? reverted.board : currentBoard;
+				});
+				return;
+			}
+			setWorktreeError(null);
+		},
+		[ensureTaskWorkspace, startTaskSession],
+	);
+
 	const handleDragEnd = useCallback(
 		(result: DropResult, options?: { selectDroppedTask?: boolean }) => {
 			if (options?.selectDroppedTask && result.type === "CARD" && result.destination) {
@@ -1004,39 +1169,30 @@ export default function App(): ReactElement {
 			if (moveEvent.toColumnId === "in_progress") {
 				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
 				if (movedSelection) {
-					void (async () => {
-						const ensured = await ensureTaskWorkspace(movedSelection.card);
-						if (!ensured.ok) {
-							setWorktreeError(ensured.message ?? "Could not set up task workspace.");
-							setBoard((currentBoard) => {
-								const currentColumnId = getTaskColumnId(currentBoard, moveEvent.taskId);
-								if (currentColumnId !== "in_progress") {
-									return currentBoard;
-								}
-								const reverted = moveTaskToColumn(currentBoard, moveEvent.taskId, moveEvent.fromColumnId);
-								return reverted.moved ? reverted.board : currentBoard;
-							});
-							return;
-						}
-						const started = await startTaskSession(movedSelection.card);
-						if (!started.ok) {
-							setWorktreeError(started.message ?? "Could not start task session.");
-							setBoard((currentBoard) => {
-								const currentColumnId = getTaskColumnId(currentBoard, moveEvent.taskId);
-								if (currentColumnId !== "in_progress") {
-									return currentBoard;
-								}
-								const reverted = moveTaskToColumn(currentBoard, moveEvent.taskId, moveEvent.fromColumnId);
-								return reverted.moved ? reverted.board : currentBoard;
-							});
-							return;
-						}
-						setWorktreeError(null);
-					})();
+					void kickoffTaskInProgress(movedSelection.card, moveEvent.taskId, moveEvent.fromColumnId);
 				}
 			}
 		},
-		[board, ensureTaskWorkspace, requestMoveTaskToTrash, startTaskSession],
+		[board, kickoffTaskInProgress, requestMoveTaskToTrash],
+	);
+
+	const handleStartTask = useCallback(
+		(taskId: string) => {
+			const selection = findCardSelection(board, taskId);
+			if (!selection || selection.column.id !== "backlog") {
+				return;
+			}
+			const moved = moveTaskToColumn(board, taskId, "in_progress");
+			if (!moved.moved) {
+				return;
+			}
+			setBoard(moved.board);
+			const movedSelection = findCardSelection(moved.board, taskId);
+			if (movedSelection) {
+				void kickoffTaskInProgress(movedSelection.card, taskId, "backlog");
+			}
+		},
+		[board, kickoffTaskInProgress],
 	);
 
 	const handleDetailTaskDragEnd = useCallback(
@@ -1195,6 +1351,29 @@ export default function App(): ReactElement {
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setNewTaskBranchRef}
 			disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
+			mode="create"
+			idPrefix="inline-create-task"
+		/>
+	) : undefined;
+	const inlineTaskEditor = editingTaskId ? (
+		<TaskInlineCreateCard
+			prompt={editTaskPrompt}
+			onPromptChange={setEditTaskPrompt}
+			onCreate={handleSaveEditedTask}
+			onCancel={handleCancelEditTask}
+			startInPlanMode={editTaskStartInPlanMode}
+			onStartInPlanModeChange={setEditTaskStartInPlanMode}
+			workspaceMode={editTaskWorkspaceMode}
+			onWorkspaceModeChange={setEditTaskWorkspaceMode}
+			workspaceId={currentProjectId}
+			workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
+			canUseWorktree={canUseWorktree}
+			branchRef={editTaskBranchRef}
+			branchOptions={createTaskBranchOptions}
+			onBranchRefChange={setEditTaskBranchRef}
+			disallowedSlashCommands={[...DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS]}
+			mode="edit"
+			idPrefix={`inline-edit-task-${editingTaskId}`}
 		/>
 	) : undefined;
 
@@ -1253,13 +1432,19 @@ export default function App(): ReactElement {
 								</div>
 							</div>
 						) : (
-							<KanbanBoard
-								data={board}
-								taskSessions={sessions}
-								onCardSelect={handleCardSelect}
-								onCreateTask={handleOpenCreateTask}
-								onClearTrash={handleOpenClearTrash}
-								inlineTaskCreator={inlineTaskCreator}
+								<KanbanBoard
+									data={board}
+									taskSessions={sessions}
+									onCardSelect={handleCardSelect}
+									onCreateTask={handleOpenCreateTask}
+									onStartTask={handleStartTask}
+									onClearTrash={handleOpenClearTrash}
+									inlineTaskCreator={inlineTaskCreator}
+									editingTaskId={editingTaskId}
+									inlineTaskEditor={inlineTaskEditor}
+								onEditTask={handleOpenEditTask}
+								onCommitTask={() => {}}
+								onOpenPrTask={() => {}}
 								onDragEnd={handleDragEnd}
 							/>
 						)}
@@ -1273,10 +1458,16 @@ export default function App(): ReactElement {
 						onSessionSummary={upsertSession}
 						onBack={handleBack}
 						onCardSelect={handleCardSelect}
-						onTaskDragEnd={handleDetailTaskDragEnd}
-						onCreateTask={handleOpenCreateTask}
-						onClearTrash={handleOpenClearTrash}
-						inlineTaskCreator={inlineTaskCreator}
+							onTaskDragEnd={handleDetailTaskDragEnd}
+							onCreateTask={handleOpenCreateTask}
+							onStartTask={handleStartTask}
+							onClearTrash={handleOpenClearTrash}
+							inlineTaskCreator={inlineTaskCreator}
+						editingTaskId={editingTaskId}
+						inlineTaskEditor={inlineTaskEditor}
+						onEditTask={handleOpenEditTask}
+						onCommitTask={() => {}}
+						onOpenPrTask={() => {}}
 						onMoveToTrash={handleMoveToTrash}
 					/>
 				) : null}

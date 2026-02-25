@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { TaskPromptComposer } from "@/kanban/components/task-prompt-composer";
 
 export type TaskWorkspaceMode = "local" | "worktree";
+export type TaskInlineCardMode = "create" | "edit";
 
 export interface TaskBranchOption {
 	value: string;
@@ -27,6 +28,8 @@ export function TaskInlineCreateCard({
 	onBranchRefChange,
 	disallowedSlashCommands,
 	enabled = true,
+	mode = "create",
+	idPrefix = "inline-task",
 }: {
 	prompt: string;
 	onPromptChange: (value: string) => void;
@@ -44,7 +47,15 @@ export function TaskInlineCreateCard({
 	onBranchRefChange: (value: string) => void;
 	disallowedSlashCommands: string[];
 	enabled?: boolean;
+	mode?: TaskInlineCardMode;
+	idPrefix?: string;
 }): ReactElement {
+	const promptId = `${idPrefix}-prompt-input`;
+	const planModeId = `${idPrefix}-plan-mode-toggle`;
+	const workspaceModeId = `${idPrefix}-workspace-mode-select`;
+	const branchSelectId = `${idPrefix}-branch-select`;
+	const actionLabel = mode === "edit" ? "Save" : "Create";
+
 	const workspaceModeOptions = [
 		{
 			value: "local",
@@ -59,13 +70,13 @@ export function TaskInlineCreateCard({
 		<Card compact style={{ marginBottom: 8, flexShrink: 0 }}>
 			<FormGroup
 				label="Prompt"
-				labelFor="inline-task-prompt-input"
+				labelFor={promptId}
 				helperText={
 					<span>Use <Code>@file</Code> to reference files.</span>
 				}
 			>
 				<TaskPromptComposer
-					id="inline-task-prompt-input"
+					id={promptId}
 					value={prompt}
 					onValueChange={onPromptChange}
 					onSubmit={onCreate}
@@ -76,9 +87,9 @@ export function TaskInlineCreateCard({
 				/>
 			</FormGroup>
 
-			<FormGroup label="Start mode" labelFor="inline-task-plan-mode-toggle">
+			<FormGroup label="Start mode" labelFor={planModeId}>
 				<Checkbox
-					id="inline-task-plan-mode-toggle"
+					id={planModeId}
 					checked={startInPlanMode}
 					onChange={(event) => onStartInPlanModeChange(event.currentTarget.checked)}
 					label="Start in plan mode"
@@ -87,7 +98,7 @@ export function TaskInlineCreateCard({
 
 			<FormGroup
 				label="Execution mode"
-				labelFor="inline-task-workspace-mode-select"
+				labelFor={workspaceModeId}
 				helperText={
 					workspaceMode === "local"
 						? "Runs directly in your current workspace."
@@ -95,7 +106,7 @@ export function TaskInlineCreateCard({
 				}
 			>
 				<HTMLSelect
-					id="inline-task-workspace-mode-select"
+					id={workspaceModeId}
 					value={workspaceMode}
 					onChange={(event) => onWorkspaceModeChange(event.target.value as TaskWorkspaceMode)}
 					options={workspaceModeOptions}
@@ -106,11 +117,11 @@ export function TaskInlineCreateCard({
 			{workspaceMode === "worktree" ? (
 				<FormGroup
 					label="Worktree base branch"
-					labelFor="inline-task-branch-select"
+					labelFor={branchSelectId}
 					helperText="Branch/ref used when creating the isolated task worktree."
 				>
 					<HTMLSelect
-						id="inline-task-branch-select"
+						id={branchSelectId}
 						value={branchRef}
 						onChange={(event) => onBranchRefChange(event.target.value)}
 						disabled={!canUseWorktree}
@@ -127,7 +138,7 @@ export function TaskInlineCreateCard({
 			<div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
 				<Button text="Cancel" variant="outlined" onClick={onCancel} />
 				<Button
-					text="Create"
+					text={actionLabel}
 					intent="primary"
 					onClick={onCreate}
 					disabled={!prompt.trim() || (workspaceMode === "worktree" && (!canUseWorktree || !branchRef))}

@@ -28,6 +28,8 @@ interface ActiveProcessState {
 	listenerIdCounter: number;
 	listeners: Map<number, TerminalSessionListener>;
 	attentionBuffer: string;
+	cols: number;
+	rows: number;
 	shutdownInterrupted: boolean;
 	onSessionCleanup: (() => Promise<void>) | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
@@ -295,6 +297,8 @@ export class TerminalSessionManager {
 			listenerIdCounter: 1,
 			listeners: new Map(),
 			attentionBuffer: "",
+			cols,
+			rows,
 			shutdownInterrupted: false,
 			onSessionCleanup: launch.cleanup ?? null,
 			detectOutputTransition: launch.detectOutputTransition ?? null,
@@ -332,11 +336,16 @@ export class TerminalSessionManager {
 			}
 
 			entry.active.attentionBuffer += data;
-			if (entry.active.attentionBuffer.length > 8192) {
-				entry.active.attentionBuffer = entry.active.attentionBuffer.slice(-8192);
+			if (entry.active.attentionBuffer.length > 262144) {
+				entry.active.attentionBuffer = entry.active.attentionBuffer.slice(-262144);
 			}
 
-			const lastActivityLine = extractLastActivityLine(entry.active.attentionBuffer);
+			const lastActivityLine = extractLastActivityLine(
+				entry.active.attentionBuffer,
+				entry.summary.agentId,
+				entry.active.cols,
+				entry.active.rows,
+			);
 			let summary = updateSummary(entry, {
 				lastOutputAt: now(),
 				lastActivityLine,
@@ -436,6 +445,8 @@ export class TerminalSessionManager {
 		const safeCols = Math.max(1, Math.floor(cols));
 		const safeRows = Math.max(1, Math.floor(rows));
 		entry.active.ptyProcess.resize(safeCols, safeRows);
+		entry.active.cols = safeCols;
+		entry.active.rows = safeRows;
 		return true;
 	}
 

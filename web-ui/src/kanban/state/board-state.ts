@@ -305,6 +305,71 @@ export function moveTaskToColumn(
 	};
 }
 
+export function updateTask(
+	board: BoardData,
+	taskId: string,
+	draft: TaskDraft,
+): { board: BoardData; updated: boolean } {
+	const title = draft.title.trim();
+	if (!title) {
+		return { board, updated: false };
+	}
+	const description = draft.description?.trim() ?? "";
+	const prompt = draft.prompt?.trim() || description || title;
+	const baseRef =
+		typeof draft.baseRef === "string"
+			? (draft.baseRef.trim() || null)
+			: null;
+
+	let updated = false;
+	const columns = board.columns.map((column) => {
+		let columnUpdated = false;
+		const cards = column.cards.map((card) => {
+			if (card.id !== taskId) {
+				return card;
+			}
+			columnUpdated = true;
+			updated = true;
+			return {
+				...card,
+				title,
+				description,
+				prompt,
+				startInPlanMode: Boolean(draft.startInPlanMode),
+				baseRef,
+				updatedAt: Date.now(),
+			};
+		});
+		return columnUpdated
+			? { ...column, cards }
+			: column;
+	});
+
+	if (!updated) {
+		return { board, updated: false };
+	}
+	return { board: withUpdatedColumns(board, columns), updated: true };
+}
+
+export function removeTask(
+	board: BoardData,
+	taskId: string,
+): { board: BoardData; removed: boolean } {
+	let removed = false;
+	const columns = board.columns.map((column) => {
+		const nextCards = column.cards.filter((card) => card.id !== taskId);
+		if (nextCards.length !== column.cards.length) {
+			removed = true;
+			return { ...column, cards: nextCards };
+		}
+		return column;
+	});
+	if (!removed) {
+		return { board, removed: false };
+	}
+	return { board: withUpdatedColumns(board, columns), removed: true };
+}
+
 export function clearColumnTasks(
 	board: BoardData,
 	columnId: BoardColumnId,

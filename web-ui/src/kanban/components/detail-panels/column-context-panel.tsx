@@ -15,8 +15,14 @@ function ColumnSection({
 	onCardClick,
 	taskSessions,
 	onCreateTask,
+	onStartTask,
 	onClearTrash,
 	inlineTaskCreator,
+	editingTaskId,
+	inlineTaskEditor,
+	onEditTask,
+	onCommitTask,
+	onOpenPrTask,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -24,8 +30,14 @@ function ColumnSection({
 	onCardClick: (card: BoardCardModel) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
+	onStartTask?: (taskId: string) => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
+	editingTaskId?: string | null;
+	inlineTaskEditor?: ReactNode;
+	onEditTask?: (card: BoardCardModel) => void;
+	onCommitTask?: (taskId: string) => void;
+	onOpenPrTask?: (taskId: string) => void;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
@@ -93,16 +105,42 @@ function ColumnSection({
 									/>
 								) : null}
 								{inlineTaskCreator}
-								{column.cards.map((card, index) => (
-									<BoardCard
-										key={card.id}
-										card={card}
-										index={index}
-										sessionSummary={taskSessions[card.id]}
-										selected={card.id === selectedCardId}
-										onClick={() => onCardClick(card)}
-									/>
-								))}
+								{(() => {
+									const items: ReactNode[] = [];
+									let draggableIndex = 0;
+									for (const card of column.cards) {
+										if (column.id === "backlog" && editingTaskId === card.id) {
+											items.push(
+												<div key={card.id} style={{ marginBottom: 8 }}>
+													{inlineTaskEditor}
+												</div>,
+											);
+											continue;
+										}
+										items.push(
+											<BoardCard
+												key={card.id}
+												card={card}
+												index={draggableIndex}
+												columnId={column.id}
+												sessionSummary={taskSessions[card.id]}
+												selected={card.id === selectedCardId}
+												onStart={onStartTask}
+												onCommit={onCommitTask}
+												onOpenPr={onOpenPrTask}
+												onClick={() => {
+													if (column.id === "backlog") {
+														onEditTask?.(card);
+														return;
+													}
+													onCardClick(card);
+												}}
+											/>,
+										);
+										draggableIndex += 1;
+									}
+									return items;
+								})()}
 								{provided.placeholder}
 								{column.cards.length === 0 ? (
 									<p className={Classes.TEXT_MUTED}>No cards</p>
@@ -122,16 +160,28 @@ export function ColumnContextPanel({
 	taskSessions,
 	onTaskDragEnd,
 	onCreateTask,
+	onStartTask,
 	onClearTrash,
 	inlineTaskCreator,
+	editingTaskId,
+	inlineTaskEditor,
+	onEditTask,
+	onCommitTask,
+	onOpenPrTask,
 }: {
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onTaskDragEnd: (result: DropResult) => void;
 	onCreateTask?: () => void;
+	onStartTask?: (taskId: string) => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
+	editingTaskId?: string | null;
+	inlineTaskEditor?: ReactNode;
+	onEditTask?: (card: BoardCardModel) => void;
+	onCommitTask?: (taskId: string) => void;
+	onOpenPrTask?: (taskId: string) => void;
 }): React.ReactElement {
 	return (
 		<div
@@ -156,8 +206,14 @@ export function ColumnContextPanel({
 							onCardClick={(card) => onCardSelect(card.id)}
 							taskSessions={taskSessions}
 							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
+							onStartTask={column.id === "backlog" ? onStartTask : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 							inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
+							editingTaskId={column.id === "backlog" ? editingTaskId : null}
+							inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
+							onEditTask={column.id === "backlog" ? onEditTask : undefined}
+							onCommitTask={column.id === "review" ? onCommitTask : undefined}
+							onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 						/>
 					))}
 				</div>

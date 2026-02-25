@@ -202,6 +202,33 @@ body,
 	overflow: hidden;
 }
 
+.kb-line-clamp-1 {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.kb-line-clamp-5 {
+	display: -webkit-box;
+	-webkit-line-clamp: 5;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.kb-task-preview-pane {
+	margin-top: 8px;
+	padding: 8px;
+	border: 1px solid var(--bp-palette-dark-gray-5);
+	border-radius: var(--bp-surface-border-radius);
+	background: var(--bp-palette-dark-gray-2);
+}
+
+.kb-task-preview-text {
+	margin: 0;
+	font-size: var(--bp-typography-size-code-small);
+	line-height: 1.35;
+}
+
 .kb-hidden {
 	display: none;
 }

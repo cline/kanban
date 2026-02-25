@@ -4,23 +4,35 @@ import type { ReactNode } from "react";
 
 import { BoardColumn } from "@/kanban/components/board-column";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { BoardData } from "@/kanban/types";
+import type { BoardCard, BoardData } from "@/kanban/types";
 
 export function KanbanBoard({
 	data,
 	taskSessions,
 	onCardSelect,
 	onCreateTask,
+	onStartTask,
 	onClearTrash,
 	inlineTaskCreator,
+	editingTaskId,
+	inlineTaskEditor,
+	onEditTask,
+	onCommitTask,
+	onOpenPrTask,
 	onDragEnd,
 }: {
 	data: BoardData;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCardSelect: (taskId: string) => void;
 	onCreateTask: () => void;
+	onStartTask?: (taskId: string) => void;
 	onClearTrash?: () => void;
 	inlineTaskCreator?: ReactNode;
+	editingTaskId?: string | null;
+	inlineTaskEditor?: ReactNode;
+	onEditTask?: (card: BoardCard) => void;
+	onCommitTask?: (taskId: string) => void;
+	onOpenPrTask?: (taskId: string) => void;
 	onDragEnd: (result: DropResult) => void;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
@@ -48,8 +60,14 @@ export function KanbanBoard({
 						column={column}
 						taskSessions={taskSessions}
 						onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
+						onStartTask={column.id === "backlog" ? onStartTask : undefined}
 						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 						inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
+						editingTaskId={column.id === "backlog" ? editingTaskId : null}
+						inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
+						onEditTask={column.id === "backlog" ? onEditTask : undefined}
+						onCommitTask={column.id === "review" ? onCommitTask : undefined}
+						onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);
