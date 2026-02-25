@@ -23,6 +23,11 @@ export function BoardCard({
 	reviewWorkspaceSnapshot,
 	onCommit,
 	onOpenPr,
+	onDependencyPointerDown,
+	onDependencyPointerEnter,
+	isDependencySource = false,
+	isDependencyTarget = false,
+	isDependencyLinking = false,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -35,6 +40,11 @@ export function BoardCard({
 	reviewWorkspaceSnapshot?: ReviewTaskWorkspaceSnapshot;
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
+	onDependencyPointerDown?: (taskId: string, event: MouseEvent<HTMLElement>) => void;
+	onDependencyPointerEnter?: (taskId: string) => void;
+	isDependencySource?: boolean;
+	isDependencyTarget?: boolean;
+	isDependencyLinking?: boolean;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const showPreview = columnId === "in_progress" || columnId === "review";
@@ -84,14 +94,46 @@ export function BoardCard({
 						? Elevation.ONE
 						: Elevation.ZERO;
 				const draggableContent = (
-					<div
-						ref={provided.innerRef}
-						{...provided.draggableProps}
-						{...provided.dragHandleProps}
-						className="kb-board-card-shell"
-						data-task-id={card.id}
-						onClick={() => {
+						<div
+							ref={provided.innerRef}
+							{...provided.draggableProps}
+							{...provided.dragHandleProps}
+							className="kb-board-card-shell"
+							data-task-id={card.id}
+						onMouseDownCapture={(event) => {
 							if (!isCardInteractive) {
+								return;
+							}
+							if (isDependencyLinking) {
+								event.preventDefault();
+								event.stopPropagation();
+								return;
+							}
+							if (!event.metaKey && !event.ctrlKey) {
+								return;
+							}
+							const target = event.target as HTMLElement | null;
+							if (
+								target?.closest(
+									"button, a, input, textarea, [contenteditable='true']",
+								)
+							) {
+								return;
+							}
+								event.preventDefault();
+								event.stopPropagation();
+								onDependencyPointerDown?.(card.id, event);
+							}}
+						onClick={(event) => {
+							if (!isCardInteractive) {
+								return;
+							}
+							if (isDependencyLinking) {
+								event.preventDefault();
+								event.stopPropagation();
+								return;
+							}
+							if (event.metaKey || event.ctrlKey) {
 								return;
 							}
 							if (!snapshot.isDragging && onClick) {
@@ -103,7 +145,16 @@ export function BoardCard({
 							marginBottom: 8,
 							cursor: isTrashCard ? "default" : "grab",
 						}}
-						onMouseEnter={() => setIsHovered(true)}
+						onMouseEnter={() => {
+							setIsHovered(true);
+							onDependencyPointerEnter?.(card.id);
+						}}
+						onMouseMove={(event) => {
+							if (!isDependencyLinking) {
+								return;
+							}
+							onDependencyPointerEnter?.(card.id);
+						}}
 						onMouseLeave={() => setIsHovered(false)}
 					>
 						<Card
@@ -111,6 +162,7 @@ export function BoardCard({
 							interactive={isCardInteractive}
 							selected={selected}
 							compact
+							className={`${isDependencySource ? "kb-board-card-dependency-source" : ""} ${isDependencyTarget ? "kb-board-card-dependency-target" : ""}`.trim()}
 						>
 							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 								{statusMarker ? (

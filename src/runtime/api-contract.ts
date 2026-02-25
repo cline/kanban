@@ -74,8 +74,16 @@ export interface RuntimeBoardColumn {
 	cards: RuntimeBoardCard[];
 }
 
+export interface RuntimeBoardDependency {
+	id: string;
+	fromTaskId: string;
+	toTaskId: string;
+	createdAt: number;
+}
+
 export interface RuntimeBoardData {
 	columns: RuntimeBoardColumn[];
+	dependencies: RuntimeBoardDependency[];
 }
 
 export interface RuntimeGitRepositoryInfo {
