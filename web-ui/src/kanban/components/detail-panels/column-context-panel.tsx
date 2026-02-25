@@ -6,7 +6,12 @@ import type { ReactNode } from "react";
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { BoardCard as BoardCardModel, BoardColumn, CardSelection } from "@/kanban/types";
+import type {
+	BoardCard as BoardCardModel,
+	BoardColumn,
+	CardSelection,
+	ReviewTaskWorkspaceSnapshot,
+} from "@/kanban/types";
 
 function ColumnSection({
 	column,
@@ -23,6 +28,8 @@ function ColumnSection({
 	onEditTask,
 	onCommitTask,
 	onOpenPrTask,
+	onMoveToTrashTask,
+	reviewWorkspaceSnapshots,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -38,6 +45,8 @@ function ColumnSection({
 	onEditTask?: (card: BoardCardModel) => void;
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
+	onMoveToTrashTask?: (taskId: string) => void;
+	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
@@ -126,6 +135,8 @@ function ColumnSection({
 												sessionSummary={taskSessions[card.id]}
 												selected={card.id === selectedCardId}
 												onStart={onStartTask}
+												onMoveToTrash={onMoveToTrashTask}
+												reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
 												onCommit={onCommitTask}
 												onOpenPr={onOpenPrTask}
 												onClick={() => {
@@ -168,6 +179,8 @@ export function ColumnContextPanel({
 	onEditTask,
 	onCommitTask,
 	onOpenPrTask,
+	onMoveToTrashTask,
+	reviewWorkspaceSnapshots,
 }: {
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
@@ -182,6 +195,8 @@ export function ColumnContextPanel({
 	onEditTask?: (card: BoardCardModel) => void;
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
+	onMoveToTrashTask?: (taskId: string) => void;
+	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 }): React.ReactElement {
 	return (
 		<div
@@ -214,6 +229,8 @@ export function ColumnContextPanel({
 							onEditTask={column.id === "backlog" ? onEditTask : undefined}
 							onCommitTask={column.id === "review" ? onCommitTask : undefined}
 							onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
+							onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
+							reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
 						/>
 					))}
 				</div>

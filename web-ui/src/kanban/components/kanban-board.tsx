@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 import { BoardColumn } from "@/kanban/components/board-column";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { BoardCard, BoardData } from "@/kanban/types";
+import type { BoardCard, BoardData, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 
 export function KanbanBoard({
 	data,
@@ -19,6 +19,8 @@ export function KanbanBoard({
 	onEditTask,
 	onCommitTask,
 	onOpenPrTask,
+	onMoveToTrashTask,
+	reviewWorkspaceSnapshots,
 	onDragEnd,
 }: {
 	data: BoardData;
@@ -33,6 +35,8 @@ export function KanbanBoard({
 	onEditTask?: (card: BoardCard) => void;
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
+	onMoveToTrashTask?: (taskId: string) => void;
+	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onDragEnd: (result: DropResult) => void;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
@@ -68,6 +72,8 @@ export function KanbanBoard({
 						onEditTask={column.id === "backlog" ? onEditTask : undefined}
 						onCommitTask={column.id === "review" ? onCommitTask : undefined}
 						onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
+						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
+						reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);

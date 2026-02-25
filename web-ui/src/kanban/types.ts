@@ -21,6 +21,19 @@ export interface BoardData {
 	columns: BoardColumn[];
 }
 
+export interface ReviewTaskWorkspaceSnapshot {
+	taskId: string;
+	mode: "local" | "worktree";
+	path: string;
+	hasGit: boolean;
+	branch: string | null;
+	isDetached: boolean;
+	headCommit: string | null;
+	changedFiles: number | null;
+	additions: number | null;
+	deletions: number | null;
+}
+
 export interface CardSelection {
 	card: BoardCard;
 	column: BoardColumn;

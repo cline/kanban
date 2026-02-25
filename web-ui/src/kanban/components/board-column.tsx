@@ -5,7 +5,11 @@ import type { ReactNode } from "react";
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { BoardCard as BoardCardModel, BoardColumn as BoardColumnModel } from "@/kanban/types";
+import type {
+	BoardCard as BoardCardModel,
+	BoardColumn as BoardColumnModel,
+	ReviewTaskWorkspaceSnapshot,
+} from "@/kanban/types";
 
 export function BoardColumn({
 	column,
@@ -19,6 +23,8 @@ export function BoardColumn({
 	onEditTask,
 	onCommitTask,
 	onOpenPrTask,
+	onMoveToTrashTask,
+	reviewWorkspaceSnapshots,
 	onCardClick,
 }: {
 	column: BoardColumnModel;
@@ -32,6 +38,8 @@ export function BoardColumn({
 	onEditTask?: (card: BoardCardModel) => void;
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
+	onMoveToTrashTask?: (taskId: string) => void;
+	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
@@ -109,6 +117,8 @@ export function BoardColumn({
 											columnId={column.id}
 											sessionSummary={taskSessions[card.id]}
 											onStart={onStartTask}
+											onMoveToTrash={onMoveToTrashTask}
+											reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
 											onCommit={onCommitTask}
 											onOpenPr={onOpenPrTask}
 											onClick={() => {

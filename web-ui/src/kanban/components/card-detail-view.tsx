@@ -9,7 +9,7 @@ import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-p
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
 import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspace-changes";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { BoardCard, CardSelection } from "@/kanban/types";
+import type { BoardCard, CardSelection, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 
 const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 1500;
 
@@ -31,6 +31,8 @@ export function CardDetailView({
 	onEditTask,
 	onCommitTask,
 	onOpenPrTask,
+	onMoveReviewCardToTrash,
+	reviewWorkspaceSnapshots,
 	onMoveToTrash,
 }: {
 	selection: CardSelection;
@@ -50,6 +52,8 @@ export function CardDetailView({
 	onEditTask?: (card: BoardCard) => void;
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
+	onMoveReviewCardToTrash?: (taskId: string) => void;
+	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onMoveToTrash: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -157,6 +161,8 @@ export function CardDetailView({
 				onEditTask={onEditTask}
 				onCommitTask={onCommitTask}
 				onOpenPrTask={onOpenPrTask}
+				onMoveToTrashTask={onMoveReviewCardToTrash}
+				reviewWorkspaceSnapshots={reviewWorkspaceSnapshots}
 				/>
 				<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>

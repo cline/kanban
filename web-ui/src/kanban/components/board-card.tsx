@@ -4,7 +4,11 @@ import type { MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { BoardCard as BoardCardModel, BoardColumnId } from "@/kanban/types";
+import type {
+	BoardCard as BoardCardModel,
+	BoardColumnId,
+	ReviewTaskWorkspaceSnapshot,
+} from "@/kanban/types";
 
 export function BoardCard({
 	card,
@@ -14,6 +18,8 @@ export function BoardCard({
 	selected = false,
 	onClick,
 	onStart,
+	onMoveToTrash,
+	reviewWorkspaceSnapshot,
 	onCommit,
 	onOpenPr,
 }: {
@@ -24,6 +30,8 @@ export function BoardCard({
 	selected?: boolean;
 	onClick?: () => void;
 	onStart?: (taskId: string) => void;
+	onMoveToTrash?: (taskId: string) => void;
+	reviewWorkspaceSnapshot?: ReviewTaskWorkspaceSnapshot;
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
 }): React.ReactElement {
@@ -43,6 +51,22 @@ export function BoardCard({
 		return null;
 	};
 	const statusMarker = renderStatusMarker();
+	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review";
+	const reviewBranchLabel = !reviewWorkspaceSnapshot?.hasGit
+		? "no git"
+		: reviewWorkspaceSnapshot.isDetached
+			? `detached ${reviewWorkspaceSnapshot.headCommit?.slice(0, 8) ?? "HEAD"}`
+			: (reviewWorkspaceSnapshot.branch ?? "detached HEAD");
+	const showWorktreeLabel = reviewWorkspaceSnapshot?.mode === "worktree";
+	const reviewChangeSummary = reviewWorkspaceSnapshot
+		? reviewWorkspaceSnapshot.changedFiles == null
+			? null
+			: {
+					filesLabel: `${reviewWorkspaceSnapshot.changedFiles} ${reviewWorkspaceSnapshot.changedFiles === 1 ? "file" : "files"}`,
+					additions: reviewWorkspaceSnapshot.additions ?? 0,
+					deletions: reviewWorkspaceSnapshot.deletions ?? 0,
+				}
+		: null;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={isTrashCard}>
@@ -107,6 +131,19 @@ export function BoardCard({
 											onStart?.(card.id);
 										}}
 									/>
+								) : columnId === "review" ? (
+									<Button
+										icon="trash"
+										intent="primary"
+										variant="minimal"
+										size="small"
+										aria-label="Move task to trash"
+										onMouseDown={stopEvent}
+										onClick={(event) => {
+											stopEvent(event);
+											onMoveToTrash?.(card.id);
+										}}
+									/>
 								) : null}
 							</div>
 							{card.description ? (
@@ -129,6 +166,37 @@ export function BoardCard({
 									</p>
 								</div>
 							) : null}
+								{showWorkspaceStatus && reviewWorkspaceSnapshot ? (
+									<p
+										className={Classes.MONOSPACE_TEXT}
+										style={{
+											margin: "6px 0 0",
+											fontSize: "var(--bp-typography-size-body-small)",
+											lineHeight: 1.4,
+											whiteSpace: "normal",
+											overflowWrap: "anywhere",
+										}}
+									>
+										<>
+											{showWorktreeLabel ? (
+												<>
+													<span style={{ color: Colors.GRAY3 }}>(worktree)</span>
+													<span style={{ color: Colors.GRAY3 }}> </span>
+												</>
+											) : null}
+											<span style={{ color: Colors.LIGHT_GRAY5 }}>{reviewBranchLabel}</span>
+											{reviewChangeSummary ? (
+												<>
+													<span style={{ color: Colors.GRAY3 }}> (</span>
+													<span style={{ color: Colors.GRAY3 }}>{reviewChangeSummary.filesLabel}</span>
+													<span style={{ color: Colors.GREEN4 }}> +{reviewChangeSummary.additions}</span>
+													<span style={{ color: Colors.RED4 }}> -{reviewChangeSummary.deletions}</span>
+													<span style={{ color: Colors.GRAY3 }}>)</span>
+												</>
+											) : null}
+										</>
+									</p>
+								) : null}
 							{columnId === "review" ? (
 								<div style={{ display: "flex", gap: 6, marginTop: 8 }}>
 									<Button

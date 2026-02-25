@@ -55,6 +55,7 @@ import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
+	RuntimeWorkspaceChangesResponse,
 } from "@/kanban/runtime/types";
 import {
 	addTaskToColumn,
@@ -66,7 +67,12 @@ import {
 	normalizeBoardData,
 	updateTask,
 } from "@/kanban/state/board-state";
-import type { BoardCard, BoardColumnId, BoardData } from "@/kanban/types";
+import type {
+	BoardCard,
+	BoardColumnId,
+	BoardData,
+	ReviewTaskWorkspaceSnapshot,
+} from "@/kanban/types";
 
 interface PendingTrashWarningState {
 	taskId: string;
@@ -74,6 +80,8 @@ interface PendingTrashWarningState {
 	taskTitle: string;
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
 }
+
+const IN_PROGRESS_WORKSPACE_STATUS_POLL_INTERVAL_MS = 3000;
 
 function createNoGitSyncSummary(): RuntimeGitSyncSummary {
 	return {
@@ -105,6 +113,12 @@ export default function App(): ReactElement {
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
 		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
+	const [workspaceSnapshots, setWorkspaceSnapshots] =
+		useState<Record<string, ReviewTaskWorkspaceSnapshot>>({});
+	const reviewWorkspaceSnapshotLoadingRef = useRef<Set<string>>(new Set());
+	const inProgressWorkspaceSnapshotLoadingRef = useRef<Set<string>>(new Set());
+	const reviewWorkspaceSnapshotAttemptedRef = useRef<Set<string>>(new Set());
+	const activeReviewTaskIdsRef = useRef<Set<string>>(new Set());
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -212,6 +226,11 @@ export default function App(): ReactElement {
 				setWorkspacePath(null);
 				setWorkspaceGit(null);
 				setAppliedWorkspaceProjectId(null);
+				setWorkspaceSnapshots({});
+				reviewWorkspaceSnapshotLoadingRef.current.clear();
+				inProgressWorkspaceSnapshotLoadingRef.current.clear();
+				reviewWorkspaceSnapshotAttemptedRef.current.clear();
+				activeReviewTaskIdsRef.current = new Set();
 				setBoard(createInitialBoardData());
 				setSessions({});
 				setWorkspaceRevision(null);
@@ -240,6 +259,10 @@ export default function App(): ReactElement {
 			if (shouldHydrateBoard) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
 				setBoard(normalized);
+				setWorkspaceSnapshots({});
+				reviewWorkspaceSnapshotLoadingRef.current.clear();
+				inProgressWorkspaceSnapshotLoadingRef.current.clear();
+				reviewWorkspaceSnapshotAttemptedRef.current.clear();
 				setWorkspaceHydrationNonce((current) => current + 1);
 			}
 			setWorkspaceRevision(nextWorkspaceState.revision);
@@ -415,13 +438,83 @@ export default function App(): ReactElement {
 			return null;
 		}
 	}, [currentProjectId]);
+	const fetchReviewWorkspaceSnapshot = useCallback(
+		async (task: BoardCard): Promise<ReviewTaskWorkspaceSnapshot | null> => {
+			if (!currentProjectId) {
+				return null;
+			}
+			const params = new URLSearchParams({
+				taskId: task.id,
+			});
+			params.set("baseRef", task.baseRef ?? "");
 
+			let workspaceInfo: RuntimeTaskWorkspaceInfoResponse;
+			try {
+				const infoResponse = await workspaceFetch(`/api/workspace/task-context?${params.toString()}`, {
+					workspaceId: currentProjectId,
+				});
+				if (!infoResponse.ok) {
+					return null;
+				}
+				workspaceInfo = (await infoResponse.json()) as RuntimeTaskWorkspaceInfoResponse;
+			} catch {
+				return null;
+			}
+
+			let changedFiles: number | null = null;
+			let additions: number | null = null;
+			let deletions: number | null = null;
+			try {
+				const changesResponse = await workspaceFetch(`/api/workspace/changes?${params.toString()}`, {
+					workspaceId: currentProjectId,
+				});
+				if (changesResponse.ok) {
+					const changesPayload = (await changesResponse.json()) as RuntimeWorkspaceChangesResponse;
+					changedFiles = changesPayload.files.length;
+					additions = changesPayload.files.reduce((sum, file) => sum + file.additions, 0);
+					deletions = changesPayload.files.reduce((sum, file) => sum + file.deletions, 0);
+				}
+			} catch {
+				// Swallow errors: this snapshot is informational and should never block review cards.
+			}
+
+			return {
+				taskId: task.id,
+				mode: workspaceInfo.mode,
+				path: workspaceInfo.path,
+				hasGit: workspaceInfo.hasGit,
+				branch: workspaceInfo.branch,
+				isDetached: workspaceInfo.isDetached,
+				headCommit: workspaceInfo.headCommit,
+				changedFiles,
+				additions,
+				deletions,
+			};
+		},
+		[currentProjectId],
+	);
 	const selectedCard = useMemo(() => {
 		if (!selectedTaskId) {
 			return null;
 		}
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
+	const reviewCards = useMemo(() => {
+		return board.columns.find((column) => column.id === "review")?.cards ?? [];
+	}, [board.columns]);
+	const inProgressCards = useMemo(() => {
+		return board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
+	}, [board.columns]);
+	const activeWorkspaceSnapshotTaskIds = useMemo(() => {
+		const ids = new Set<string>();
+		for (const card of reviewCards) {
+			ids.add(card.id);
+		}
+		for (const card of inProgressCards) {
+			ids.add(card.id);
+		}
+		return ids;
+	}, [inProgressCards, reviewCards]);
 
 	const searchableTasks = useMemo((): SearchableTask[] => {
 		return board.columns.flatMap((column) =>
@@ -484,6 +577,155 @@ export default function App(): ReactElement {
 		});
 		previousSessionsRef.current = sessions;
 	}, [sessions]);
+
+	useEffect(() => {
+		setWorkspaceSnapshots((current) => {
+			let changed = false;
+			const next: Record<string, ReviewTaskWorkspaceSnapshot> = {};
+			for (const [taskId, snapshot] of Object.entries(current)) {
+				if (activeWorkspaceSnapshotTaskIds.has(taskId)) {
+					next[taskId] = snapshot;
+					continue;
+				}
+				changed = true;
+			}
+			return changed ? next : current;
+		});
+	}, [activeWorkspaceSnapshotTaskIds]);
+
+	useEffect(() => {
+		const reviewTaskIds = new Set(reviewCards.map((card) => card.id));
+		activeReviewTaskIdsRef.current = reviewTaskIds;
+		reviewWorkspaceSnapshotLoadingRef.current.forEach((taskId) => {
+			if (!reviewTaskIds.has(taskId)) {
+				reviewWorkspaceSnapshotLoadingRef.current.delete(taskId);
+			}
+		});
+		reviewWorkspaceSnapshotAttemptedRef.current.forEach((taskId) => {
+			if (!reviewTaskIds.has(taskId)) {
+				reviewWorkspaceSnapshotAttemptedRef.current.delete(taskId);
+			}
+		});
+		if (!currentProjectId) {
+			reviewWorkspaceSnapshotLoadingRef.current.clear();
+			reviewWorkspaceSnapshotAttemptedRef.current.clear();
+			return;
+		}
+		for (const reviewCard of reviewCards) {
+			if (workspaceSnapshots[reviewCard.id]) {
+				continue;
+			}
+			if (reviewWorkspaceSnapshotAttemptedRef.current.has(reviewCard.id)) {
+				continue;
+			}
+			if (reviewWorkspaceSnapshotLoadingRef.current.has(reviewCard.id)) {
+				continue;
+			}
+			reviewWorkspaceSnapshotAttemptedRef.current.add(reviewCard.id);
+			reviewWorkspaceSnapshotLoadingRef.current.add(reviewCard.id);
+			void (async () => {
+				const snapshot = await fetchReviewWorkspaceSnapshot(reviewCard);
+				reviewWorkspaceSnapshotLoadingRef.current.delete(reviewCard.id);
+				if (!snapshot || !activeReviewTaskIdsRef.current.has(reviewCard.id)) {
+					return;
+				}
+				setWorkspaceSnapshots((current) => {
+					const existing = current[reviewCard.id];
+					if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
+						return current;
+					}
+					return {
+						...current,
+						[reviewCard.id]: snapshot,
+					};
+				});
+			})();
+		}
+	}, [currentProjectId, fetchReviewWorkspaceSnapshot, reviewCards, workspaceSnapshots]);
+
+	useEffect(() => {
+		const inProgressTaskIds = new Set(inProgressCards.map((card) => card.id));
+		inProgressWorkspaceSnapshotLoadingRef.current.forEach((taskId) => {
+			if (!inProgressTaskIds.has(taskId)) {
+				inProgressWorkspaceSnapshotLoadingRef.current.delete(taskId);
+			}
+		});
+
+		if (!currentProjectId) {
+			inProgressWorkspaceSnapshotLoadingRef.current.clear();
+			return;
+		}
+		for (const card of inProgressCards) {
+			if (workspaceSnapshots[card.id]) {
+				continue;
+			}
+			if (inProgressWorkspaceSnapshotLoadingRef.current.has(card.id)) {
+				continue;
+			}
+			inProgressWorkspaceSnapshotLoadingRef.current.add(card.id);
+			void (async () => {
+				const snapshot = await fetchReviewWorkspaceSnapshot(card);
+				inProgressWorkspaceSnapshotLoadingRef.current.delete(card.id);
+				if (!snapshot) {
+					return;
+				}
+				setWorkspaceSnapshots((current) => {
+					const existing = current[card.id];
+					if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
+						return current;
+					}
+					return {
+						...current,
+						[card.id]: snapshot,
+					};
+				});
+			})();
+		}
+	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards, workspaceSnapshots]);
+
+	useEffect(() => {
+		if (!currentProjectId || inProgressCards.length === 0) {
+			return;
+		}
+		let cancelled = false;
+		const pollWorkspaceSnapshots = () => {
+			for (const card of inProgressCards) {
+				if (inProgressWorkspaceSnapshotLoadingRef.current.has(card.id)) {
+					continue;
+				}
+				inProgressWorkspaceSnapshotLoadingRef.current.add(card.id);
+				void (async () => {
+					const snapshot = await fetchReviewWorkspaceSnapshot(card);
+					inProgressWorkspaceSnapshotLoadingRef.current.delete(card.id);
+					if (cancelled || !snapshot) {
+						return;
+					}
+					setWorkspaceSnapshots((current) => {
+						const existing = current[card.id];
+						if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
+							return current;
+						}
+						return {
+							...current,
+							[card.id]: snapshot,
+						};
+					});
+				})();
+			}
+		};
+		pollWorkspaceSnapshots();
+		const intervalId = window.setInterval(() => {
+			if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+				return;
+			}
+			pollWorkspaceSnapshots();
+		}, IN_PROGRESS_WORKSPACE_STATUS_POLL_INTERVAL_MS);
+
+		return () => {
+			cancelled = true;
+			window.clearInterval(intervalId);
+		};
+	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -721,6 +963,11 @@ export default function App(): ReactElement {
 		setGitSummary(null);
 		setRunningGitAction(null);
 		setGitActionError(null);
+		setWorkspaceSnapshots({});
+		reviewWorkspaceSnapshotLoadingRef.current.clear();
+		inProgressWorkspaceSnapshotLoadingRef.current.clear();
+		reviewWorkspaceSnapshotAttemptedRef.current.clear();
+		activeReviewTaskIdsRef.current = new Set();
 	}, [currentProjectId]);
 
 	useEffect(() => {
@@ -1338,6 +1585,12 @@ export default function App(): ReactElement {
 		}
 		void requestMoveTaskToTrash(selectedCard.card.id, selectedCard.column.id);
 	}, [requestMoveTaskToTrash, selectedCard]);
+	const handleMoveReviewCardToTrash = useCallback(
+		(taskId: string) => {
+			void requestMoveTaskToTrash(taskId, "review");
+		},
+		[requestMoveTaskToTrash],
+	);
 	const handleOpenClearTrash = useCallback(() => {
 		if (trashTaskCount === 0) {
 			return;
@@ -1603,11 +1856,13 @@ export default function App(): ReactElement {
 									inlineTaskCreator={inlineTaskCreator}
 									editingTaskId={editingTaskId}
 									inlineTaskEditor={inlineTaskEditor}
-								onEditTask={handleOpenEditTask}
-								onCommitTask={() => {}}
-								onOpenPrTask={() => {}}
-								onDragEnd={handleDragEnd}
-							/>
+									onEditTask={handleOpenEditTask}
+									onCommitTask={() => {}}
+									onOpenPrTask={() => {}}
+									onMoveToTrashTask={handleMoveReviewCardToTrash}
+									reviewWorkspaceSnapshots={workspaceSnapshots}
+									onDragEnd={handleDragEnd}
+								/>
 						)}
 					</div>
 				{selectedCard && detailSession ? (
@@ -1629,6 +1884,8 @@ export default function App(): ReactElement {
 						onEditTask={handleOpenEditTask}
 						onCommitTask={() => {}}
 						onOpenPrTask={() => {}}
+						onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
+						reviewWorkspaceSnapshots={workspaceSnapshots}
 						onMoveToTrash={handleMoveToTrash}
 					/>
 				) : null}
