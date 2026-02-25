@@ -294,7 +294,11 @@ export function moveTaskToColumn(
 		return { board, moved: false };
 	}
 
-	const destinationCards = [...destinationColumn.cards, updateTaskTimestamp(task)];
+	const updatedTask = updateTaskTimestamp(task);
+	const destinationCards =
+		targetColumnId === "trash"
+			? [updatedTask, ...destinationColumn.cards]
+			: [...destinationColumn.cards, updatedTask];
 	const columns = Array.from(board.columns);
 	columns[sourceColumnIndex] = { ...sourceColumn, cards: sourceCards };
 	columns[destinationColumnIndex] = { ...destinationColumn, cards: destinationCards };

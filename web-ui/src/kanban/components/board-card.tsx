@@ -1,4 +1,4 @@
-import { Button, Card, Classes, Elevation, Spinner } from "@blueprintjs/core";
+import { Button, Card, Classes, Colors, Elevation, Spinner } from "@blueprintjs/core";
 import { Draggable } from "@hello-pangea/dnd";
 import type { MouseEvent } from "react";
 import { createPortal } from "react-dom";
@@ -28,6 +28,8 @@ export function BoardCard({
 	onOpenPr?: (taskId: string) => void;
 }): React.ReactElement {
 	const showPreview = columnId === "in_progress" || columnId === "review";
+	const isTrashCard = columnId === "trash";
+	const isCardInteractive = !isTrashCard;
 
 	const stopEvent = (event: MouseEvent<HTMLElement>) => {
 		event.preventDefault();
@@ -43,7 +45,7 @@ export function BoardCard({
 	const statusMarker = renderStatusMarker();
 
 	return (
-		<Draggable draggableId={card.id} index={index}>
+		<Draggable draggableId={card.id} index={index} isDragDisabled={isTrashCard}>
 			{(provided, snapshot) => {
 				const isDragging = snapshot.isDragging;
 				const draggableContent = (
@@ -54,6 +56,9 @@ export function BoardCard({
 						className="kb-board-card-shell"
 						data-task-id={card.id}
 						onClick={() => {
+							if (!isCardInteractive) {
+								return;
+							}
 							if (!snapshot.isDragging && onClick) {
 								onClick();
 							}
@@ -61,12 +66,12 @@ export function BoardCard({
 						style={{
 							...provided.draggableProps.style,
 							marginBottom: 8,
-							cursor: "grab",
+							cursor: isTrashCard ? "default" : "grab",
 						}}
 					>
 						<Card
 							elevation={isDragging ? Elevation.THREE : Elevation.ZERO}
-							interactive
+							interactive={isCardInteractive}
 							selected={selected}
 							compact
 						>
@@ -77,7 +82,15 @@ export function BoardCard({
 									</div>
 								) : null}
 								<div style={{ flex: "1 1 auto", minWidth: 0 }}>
-									<p className="kb-line-clamp-1" style={{ margin: 0, fontWeight: 500 }}>
+									<p
+										className="kb-line-clamp-1"
+										style={{
+											margin: 0,
+											fontWeight: 500,
+											color: isTrashCard ? Colors.GRAY3 : undefined,
+											textDecoration: isTrashCard ? "line-through" : undefined,
+										}}
+									>
 										{card.title}
 									</p>
 								</div>
@@ -98,11 +111,12 @@ export function BoardCard({
 							</div>
 							{card.description ? (
 								<p
-									className={`${Classes.TEXT_MUTED} kb-line-clamp-5`}
+									className={`${isTrashCard ? "" : Classes.TEXT_MUTED} kb-line-clamp-5`}
 									style={{
 										margin: "4px 0 0",
 										fontSize: "var(--bp-typography-size-body-small)",
 										lineHeight: 1.4,
+										color: isTrashCard ? Colors.GRAY1 : undefined,
 									}}
 								>
 									{card.description}
