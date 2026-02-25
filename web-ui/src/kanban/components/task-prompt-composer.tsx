@@ -37,6 +37,7 @@ interface TaskPromptComposerProps {
 	placeholder?: string;
 	disabled?: boolean;
 	enabled?: boolean;
+	autoFocus?: boolean;
 	workspaceId?: string | null;
 	disallowedSlashCommands?: string[];
 }
@@ -116,6 +117,7 @@ export function TaskPromptComposer({
 	placeholder,
 	disabled,
 	enabled = true,
+	autoFocus = false,
 	workspaceId = null,
 	disallowedSlashCommands = [],
 }: TaskPromptComposerProps): ReactElement {
@@ -264,6 +266,21 @@ export function TaskPromptComposer({
 		setIsSuggestionPickerOpen(true);
 	}, [activeToken?.kind, activeToken?.query, activeToken?.start]);
 
+	useEffect(() => {
+		if (!autoFocus) {
+			return;
+		}
+		window.requestAnimationFrame(() => {
+			if (!textareaRef.current) {
+				return;
+			}
+			const cursor = textareaRef.current.value.length;
+			textareaRef.current.focus();
+			textareaRef.current.setSelectionRange(cursor, cursor);
+			setCursorIndex(cursor);
+		});
+	}, [autoFocus]);
+
 	const applySuggestion = useCallback(
 		(suggestion: PromptSuggestion) => {
 			if (!activeToken) {
@@ -285,6 +302,12 @@ export function TaskPromptComposer({
 
 	const handleTextareaKeyDown = useCallback(
 		(event: KeyboardEvent<HTMLTextAreaElement>) => {
+			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+				event.preventDefault();
+				onSubmit?.();
+				return;
+			}
+
 			const canShowSuggestions = isSuggestionPickerOpen && suggestions.length > 0;
 			if (canShowSuggestions && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
 				event.preventDefault();
@@ -314,12 +337,6 @@ export function TaskPromptComposer({
 			if (event.key === "Escape" && canShowSuggestions) {
 				event.preventDefault();
 				setIsSuggestionPickerOpen(false);
-				return;
-			}
-
-			if (event.key === "Enter" && !event.shiftKey) {
-				event.preventDefault();
-				onSubmit?.();
 			}
 		},
 		[applySuggestion, isSuggestionPickerOpen, onSubmit, selectedSuggestionIndex, suggestions],
@@ -344,6 +361,7 @@ export function TaskPromptComposer({
 				onKeyUp={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
 				placeholder={placeholder}
 				disabled={disabled}
+				autoFocus={autoFocus}
 				fill
 				style={{ minHeight: 80, resize: "vertical" }}
 			/>

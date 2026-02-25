@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Code, FormGroup, HTMLSelect } from "@blueprintjs/core";
+import { Button, Card, Checkbox, Code, FormGroup, HTMLSelect, Icon } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 
 import { TaskPromptComposer } from "@/kanban/components/task-prompt-composer";
@@ -55,6 +55,7 @@ export function TaskInlineCreateCard({
 	const workspaceModeId = `${idPrefix}-workspace-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
+	const cardMarginBottom = mode === "create" ? 8 : 0;
 
 	const workspaceModeOptions = [
 		{
@@ -67,10 +68,8 @@ export function TaskInlineCreateCard({
 	];
 
 	return (
-		<Card compact style={{ marginBottom: 8, flexShrink: 0 }}>
+		<Card compact style={{ flexShrink: 0, marginBottom: cardMarginBottom }}>
 			<FormGroup
-				label="Prompt"
-				labelFor={promptId}
 				helperText={
 					<span>Use <Code>@file</Code> to reference files.</span>
 				}
@@ -82,12 +81,13 @@ export function TaskInlineCreateCard({
 					onSubmit={onCreate}
 					placeholder="Describe the task"
 					enabled={enabled}
+					autoFocus
 					workspaceId={workspaceId}
 					disallowedSlashCommands={disallowedSlashCommands}
 				/>
 			</FormGroup>
 
-			<FormGroup label="Start mode" labelFor={planModeId}>
+			<FormGroup style={{ marginTop: -12, marginBottom: 4 }}>
 				<Checkbox
 					id={planModeId}
 					checked={startInPlanMode}
@@ -97,7 +97,7 @@ export function TaskInlineCreateCard({
 			</FormGroup>
 
 			<FormGroup
-				label="Execution mode"
+				label="Exeuction workspace"
 				labelFor={workspaceModeId}
 				helperText={
 					workspaceMode === "local"
@@ -138,7 +138,23 @@ export function TaskInlineCreateCard({
 			<div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
 				<Button text="Cancel" variant="outlined" onClick={onCancel} />
 				<Button
-					text={actionLabel}
+					text={(
+						<span style={{ display: "inline-flex", alignItems: "center" }}>
+							<span>{actionLabel}</span>
+							<span
+								style={{
+									display: "inline-flex",
+									alignItems: "center",
+									gap: 2,
+									marginLeft: 6,
+								}}
+								aria-hidden
+							>
+								<Icon icon="key-command" size={12} />
+								<Icon icon="key-enter" size={12} />
+							</span>
+						</span>
+					)}
 					intent="primary"
 					onClick={onCreate}
 					disabled={!prompt.trim() || (workspaceMode === "worktree" && (!canUseWorktree || !branchRef))}
