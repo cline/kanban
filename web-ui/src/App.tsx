@@ -1520,7 +1520,7 @@ export default function App(): ReactElement {
 
 	const handleDragEnd = useCallback(
 		(result: DropResult, options?: { selectDroppedTask?: boolean }) => {
-			if (options?.selectDroppedTask && result.type === "CARD" && result.destination) {
+			if (options?.selectDroppedTask && result.type.startsWith("CARD") && result.destination) {
 				setSelectedTaskId(result.draggableId);
 			}
 

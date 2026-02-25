@@ -85,14 +85,8 @@ function ColumnSection({
 				) : null}
 			</div>
 			<Collapse isOpen={open}>
-				<Droppable droppableId={column.id} type="CARD">
-					{(provided, snapshot) => {
-						const columnStyle = snapshot.isDraggingOver
-							? {
-									backgroundColor: `${accentColor}10`,
-									boxShadow: `inset 2px 0 0 0 ${accentColor}66, inset -2px 0 0 0 ${accentColor}66`,
-								}
-							: undefined;
+				<Droppable droppableId={column.id} type={`CARD-${column.id}`}>
+					{(provided) => {
 						return (
 							<div
 								ref={provided.innerRef}
@@ -101,7 +95,6 @@ function ColumnSection({
 									display: "flex",
 									flexDirection: "column",
 									padding: 8,
-									...columnStyle,
 								}}
 							>
 								{canCreate && !inlineTaskCreator ? (

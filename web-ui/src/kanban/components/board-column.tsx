@@ -74,17 +74,12 @@ export function BoardColumn({
 					) : null}
 				</div>
 
-				<Droppable droppableId={column.id} type="CARD">
-					{(cardProvided, cardSnapshot) => (
+				<Droppable droppableId={column.id} type={`CARD-${column.id}`}>
+					{(cardProvided) => (
 						<div
 							ref={cardProvided.innerRef}
 							{...cardProvided.droppableProps}
 							className="kb-column-cards"
-							style={
-								cardSnapshot.isDraggingOver
-									? { backgroundColor: `${accentColor}10`, boxShadow: `inset 2px 0 0 0 ${accentColor}66, inset -2px 0 0 0 ${accentColor}66` }
-									: undefined
-							}
 						>
 							{canCreate && !inlineTaskCreator ? (
 								<Button
