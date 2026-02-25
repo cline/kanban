@@ -220,7 +220,7 @@ body,
 	padding: 8px;
 	border: 1px solid var(--bp-palette-dark-gray-5);
 	border-radius: var(--bp-surface-border-radius);
-	background: var(--bp-palette-dark-gray-2);
+	background: var(--bp-palette-dark-gray-1);
 }
 
 .kb-task-preview-text {

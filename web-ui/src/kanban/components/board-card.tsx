@@ -1,4 +1,4 @@
-import { Button, Card, Classes, Colors, Elevation, Spinner } from "@blueprintjs/core";
+import { Button, Card, Classes, Colors, Elevation, Icon, Spinner } from "@blueprintjs/core";
 import { Draggable } from "@hello-pangea/dnd";
 import type { MouseEvent } from "react";
 import { useState } from "react";
@@ -146,7 +146,7 @@ export function BoardCard({
 									/>
 								) : columnId === "review" ? (
 									<Button
-										icon="trash"
+										icon={<Icon icon="trash" size={13} />}
 										intent="primary"
 										variant="minimal"
 										size="small"
@@ -174,7 +174,7 @@ export function BoardCard({
 							) : null}
 							{showPreview && sessionSummary?.lastActivityLine ? (
 								<div className="kb-task-preview-pane">
-									<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-line-clamp-2 kb-task-preview-text`}>
+									<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-line-clamp-5 kb-task-preview-text`}>
 										{sessionSummary.lastActivityLine}
 									</p>
 								</div>
