@@ -1,15 +1,19 @@
 import {
 	Alignment,
 	Button,
+	ButtonGroup,
 	Classes,
 	Colors,
+	Icon,
 	Navbar,
 	NavbarDivider,
 	NavbarGroup,
 	Tag,
+	Tooltip,
 } from "@blueprintjs/core";
 
-import type { RuntimeProjectShortcut } from "@/kanban/runtime/types";
+import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/kanban/runtime/types";
+import { formatPathForDisplay } from "@/kanban/utils/path-display";
 
 function getWorkspacePathSegments(path: string): string[] {
 	return path.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
@@ -21,6 +25,11 @@ export function TopBar({
 	workspaceHint,
 	repoHint,
 	runtimeHint,
+	gitSummary,
+	runningGitAction,
+	onGitFetch,
+	onGitPull,
+	onGitPush,
 	onOpenSettings,
 	shortcuts,
 	runningShortcutId,
@@ -31,13 +40,31 @@ export function TopBar({
 	workspaceHint?: string;
 	repoHint?: string;
 	runtimeHint?: string;
+	gitSummary?: RuntimeGitSyncSummary | null;
+	runningGitAction?: RuntimeGitSyncAction | null;
+	onGitFetch?: () => void;
+	onGitPull?: () => void;
+	onGitPush?: () => void;
 	onOpenSettings?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
 	runningShortcutId?: string | null;
 	onRunShortcut?: (shortcutId: string) => void;
 }): React.ReactElement {
-	const workspaceSegments = workspacePath ? getWorkspacePathSegments(workspacePath) : [];
-	const isAbsolutePath = Boolean(workspacePath && (workspacePath.startsWith("/") || workspacePath.startsWith("\\")));
+	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
+	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
+	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
+	const hasGitSummary = Boolean(gitSummary?.hasGit);
+	const branchLabel = gitSummary?.currentBranch ?? "detached HEAD";
+	const changedFileCount = gitSummary?.changedFiles ?? 0;
+	const fileLabel = changedFileCount === 1 ? "file" : "files";
+	const pullCount = gitSummary?.behindCount ?? 0;
+	const pushCount = gitSummary?.aheadCount ?? 0;
+	const pullTooltip = pullCount > 0
+		? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
+		: "Pull from upstream. Branch is already up to date.";
+	const pushTooltip = pushCount > 0
+		? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
+		: "Push local commits to upstream. No local commits are pending.";
 
 	return (
 		<Navbar
@@ -60,14 +87,14 @@ export function TopBar({
 						<NavbarDivider />
 					</>
 				) : null}
-				{workspacePath ? (
+				{displayWorkspacePath ? (
 					<span
 						className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
 						style={{ fontSize: 12, maxWidth: 640, color: Colors.GRAY4 }}
 						title={workspacePath}
 						data-testid="workspace-path"
 					>
-						{isAbsolutePath ? "/" : ""}
+						{hasAbsoluteLeadingSlash ? "/" : ""}
 						{workspaceSegments.map((segment, index) => {
 							const isLast = index === workspaceSegments.length - 1;
 							return (
@@ -87,6 +114,57 @@ export function TopBar({
 				) : null}
 				{runtimeHint ? (
 					<Tag minimal intent="warning" className="kb-navbar-tag">{runtimeHint}</Tag>
+				) : null}
+				{hasGitSummary ? (
+					<>
+						<NavbarDivider />
+						<span
+							className={Classes.MONOSPACE_TEXT}
+							style={{ fontSize: "var(--bp-typography-size-body-small)", color: Colors.GRAY4, marginRight: 4 }}
+						>
+							<Icon icon="git-branch" size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
+							<span style={{ color: Colors.LIGHT_GRAY5 }}>{branchLabel}</span>
+							{changedFileCount > 0 ? (
+								<span style={{ marginLeft: 6 }}>
+									<span style={{ color: Colors.GRAY3 }}>({changedFileCount} {fileLabel}</span>
+									<span style={{ color: Colors.GREEN4 }}> +{gitSummary?.additions ?? 0}</span>
+									<span style={{ color: Colors.RED4 }}> -{gitSummary?.deletions ?? 0}</span>
+									<span style={{ color: Colors.GRAY3 }}>)</span>
+								</span>
+							) : null}
+						</span>
+						<ButtonGroup>
+							<Tooltip placement="bottom" content="Fetch latest refs from upstream without changing your local branch or files.">
+								<Button
+									icon={<Icon icon="circle-arrow-down" size={18} />}
+									variant="minimal"
+									onClick={onGitFetch}
+									loading={runningGitAction === "fetch"}
+									aria-label="Fetch from upstream"
+								/>
+							</Tooltip>
+							<Tooltip placement="bottom" content={pullTooltip}>
+								<Button
+									icon="download"
+									text={<span style={{ color: Colors.GRAY3 }}>{pullCount}</span>}
+									variant="minimal"
+									onClick={onGitPull}
+									loading={runningGitAction === "pull"}
+									aria-label="Pull from upstream"
+								/>
+							</Tooltip>
+							<Tooltip placement="bottom" content={pushTooltip}>
+								<Button
+									icon="upload"
+									text={<span style={{ color: Colors.GRAY3 }}>{pushCount}</span>}
+									variant="minimal"
+									onClick={onGitPush}
+									loading={runningGitAction === "push"}
+									aria-label="Push to upstream"
+								/>
+							</Tooltip>
+						</ButtonGroup>
+					</>
 				) : null}
 			</NavbarGroup>
 			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40, paddingRight: 2 }}>

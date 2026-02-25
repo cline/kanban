@@ -16,6 +16,9 @@ import type {
 	RuntimeBoardData,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
+	RuntimeGitSummaryResponse,
+	RuntimeGitSyncAction,
+	RuntimeGitSyncResponse,
 	RuntimeHookEvent,
 	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
@@ -65,6 +68,7 @@ import { TerminalSessionManager } from "./runtime/terminal/session-manager.js";
 import { discoverRuntimeSlashCommands } from "./runtime/terminal/slash-commands.js";
 import { createTerminalWebSocketBridge } from "./runtime/terminal/ws-server.js";
 import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
+import { getGitSyncSummary, runGitSyncAction } from "./runtime/workspace/git-sync.js";
 import { searchWorkspaceFiles } from "./runtime/workspace/search-workspace-files.js";
 import {
 	deleteTaskWorktree,
@@ -1357,6 +1361,80 @@ async function startServer(
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					sendJson(res, 500, { error: message });
+				}
+				return;
+			}
+
+			if (pathname === "/api/workspace/git/summary" && req.method === "GET") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
+				try {
+					const summary = await getGitSyncSummary(scope.workspacePath);
+					sendJson(res, 200, {
+						ok: true,
+						summary,
+					} satisfies RuntimeGitSummaryResponse);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, {
+						ok: false,
+						summary: {
+							hasGit: false,
+							currentBranch: null,
+							upstreamBranch: null,
+							changedFiles: 0,
+							additions: 0,
+							deletions: 0,
+							aheadCount: 0,
+							behindCount: 0,
+						},
+						error: message,
+					} satisfies RuntimeGitSummaryResponse);
+				}
+				return;
+			}
+
+			if (
+				(pathname === "/api/workspace/git/fetch" ||
+					pathname === "/api/workspace/git/pull" ||
+					pathname === "/api/workspace/git/push") &&
+				req.method === "POST"
+			) {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
+				const action: RuntimeGitSyncAction = pathname.endsWith("/fetch")
+					? "fetch"
+					: pathname.endsWith("/pull")
+						? "pull"
+						: "push";
+				try {
+					const response = await runGitSyncAction({
+						cwd: scope.workspacePath,
+						action,
+					});
+					sendJson(res, response.ok ? 200 : 400, response satisfies RuntimeGitSyncResponse);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, {
+						ok: false,
+						action,
+						summary: {
+							hasGit: false,
+							currentBranch: null,
+							upstreamBranch: null,
+							changedFiles: 0,
+							additions: 0,
+							deletions: 0,
+							aheadCount: 0,
+							behindCount: 0,
+						},
+						output: "",
+						error: message,
+					} satisfies RuntimeGitSyncResponse);
 				}
 				return;
 			}

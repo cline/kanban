@@ -85,6 +85,33 @@ export interface RuntimeGitRepositoryInfo {
 	branches: string[];
 }
 
+export type RuntimeGitSyncAction = "fetch" | "pull" | "push";
+
+export interface RuntimeGitSyncSummary {
+	hasGit: boolean;
+	currentBranch: string | null;
+	upstreamBranch: string | null;
+	changedFiles: number;
+	additions: number;
+	deletions: number;
+	aheadCount: number;
+	behindCount: number;
+}
+
+export interface RuntimeGitSummaryResponse {
+	ok: boolean;
+	summary: RuntimeGitSyncSummary;
+	error?: string;
+}
+
+export interface RuntimeGitSyncResponse {
+	ok: boolean;
+	action: RuntimeGitSyncAction;
+	summary: RuntimeGitSyncSummary;
+	output: string;
+	error?: string;
+}
+
 export type RuntimeTaskSessionState = "idle" | "running" | "awaiting_review" | "failed" | "interrupted";
 
 export type RuntimeTaskSessionReviewReason = "attention" | "exit" | "error" | "interrupted" | "hook" | null;

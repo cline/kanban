@@ -1,4 +1,4 @@
-import { Classes, Colors, MenuItem, Spinner } from "@blueprintjs/core";
+import { Alert, Classes, Colors, MenuItem, Pre, Spinner } from "@blueprintjs/core";
 import { Omnibar } from "@blueprintjs/select";
 import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -44,6 +44,10 @@ import type {
 	RuntimeProjectAddResponse,
 	RuntimeProjectDirectoryPickerResponse,
 	RuntimeGitRepositoryInfo,
+	RuntimeGitSummaryResponse,
+	RuntimeGitSyncAction,
+	RuntimeGitSyncResponse,
+	RuntimeGitSyncSummary,
 	RuntimeProjectRemoveResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeShortcutRunResponse,
@@ -69,6 +73,19 @@ interface PendingTrashWarningState {
 	fileCount: number;
 	taskTitle: string;
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
+}
+
+function createNoGitSyncSummary(): RuntimeGitSyncSummary {
+	return {
+		hasGit: false,
+		currentBranch: null,
+		upstreamBranch: null,
+		changedFiles: 0,
+		additions: 0,
+		deletions: 0,
+		aheadCount: 0,
+		behindCount: 0,
+	};
 }
 
 export default function App(): ReactElement {
@@ -106,6 +123,13 @@ export default function App(): ReactElement {
 	const [editTaskWorkspaceMode, setEditTaskWorkspaceMode] = useState<TaskWorkspaceMode>("local");
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
+	const [gitSummary, setGitSummary] = useState<RuntimeGitSyncSummary | null>(null);
+	const [runningGitAction, setRunningGitAction] = useState<RuntimeGitSyncAction | null>(null);
+	const [gitActionError, setGitActionError] = useState<{
+		action: RuntimeGitSyncAction;
+		message: string;
+		output: string;
+	} | null>(null);
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [runningShortcutId, setRunningShortcutId] = useState<string | null>(null);
@@ -550,6 +574,83 @@ export default function App(): ReactElement {
 		}
 	}, [applyWorkspaceState, currentProjectId]);
 
+	const refreshGitSummary = useCallback(async () => {
+		if (!currentProjectId) {
+			setGitSummary(null);
+			return;
+		}
+		try {
+			const response = await workspaceFetch("/api/workspace/git/summary", {
+				workspaceId: currentProjectId,
+			});
+			const payload = (await response.json().catch(() => null)) as
+				| RuntimeGitSummaryResponse
+				| { error?: string }
+				| null;
+			if (!response.ok || !payload || !("ok" in payload) || !payload.ok || !payload.summary) {
+				throw new Error(
+					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
+						`Git summary request failed with ${response.status}.`,
+				);
+			}
+			setGitSummary(payload.summary);
+		} catch {
+			setGitSummary((current) => current ?? createNoGitSyncSummary());
+		}
+	}, [currentProjectId]);
+
+	const runGitAction = useCallback(async (action: RuntimeGitSyncAction) => {
+		if (!currentProjectId || runningGitAction) {
+			return;
+		}
+		setRunningGitAction(action);
+		try {
+			const response = await workspaceFetch(`/api/workspace/git/${action}`, {
+				method: "POST",
+				workspaceId: currentProjectId,
+			});
+			const payload = (await response.json().catch(() => null)) as
+				| RuntimeGitSyncResponse
+				| { error?: string; output?: string; summary?: RuntimeGitSyncSummary }
+				| null;
+			if (!response.ok || !payload || !("ok" in payload) || !payload.ok || !payload.summary) {
+				const errorMessage =
+					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
+					`${action} failed with ${response.status}.`;
+				const output =
+					payload && "output" in payload && typeof payload.output === "string"
+						? payload.output
+						: "";
+				const fallbackSummary =
+					payload &&
+					"summary" in payload &&
+					payload.summary &&
+					typeof payload.summary === "object"
+						? payload.summary
+						: null;
+				if (fallbackSummary) {
+					setGitSummary(fallbackSummary);
+				}
+				setGitActionError({
+					action,
+					message: errorMessage,
+					output,
+				});
+				return;
+			}
+			setGitSummary(payload.summary);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			setGitActionError({
+				action,
+				message,
+				output: "",
+			});
+		} finally {
+			setRunningGitAction(null);
+		}
+	}, [currentProjectId, runningGitAction]);
+
 	const persistWorkspaceStateAsync = useCallback(
 		async (input: {
 			workspaceId: string;
@@ -617,7 +718,32 @@ export default function App(): ReactElement {
 		setIsInlineTaskCreateOpen(false);
 		setEditingTaskId(null);
 		setIsClearTrashDialogOpen(false);
+		setGitSummary(null);
+		setRunningGitAction(null);
+		setGitActionError(null);
 	}, [currentProjectId]);
+
+	useEffect(() => {
+		if (!currentProjectId) {
+			return;
+		}
+		void refreshGitSummary();
+	}, [currentProjectId, refreshGitSummary, workspaceRevision]);
+
+	useEffect(() => {
+		if (!currentProjectId) {
+			return;
+		}
+		const intervalId = window.setInterval(() => {
+			if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+				return;
+			}
+			void refreshGitSummary();
+		}, 10_000);
+		return () => {
+			window.clearInterval(intervalId);
+		};
+	}, [currentProjectId, refreshGitSummary]);
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
@@ -1334,6 +1460,18 @@ export default function App(): ReactElement {
 			"After preserving the work, you can safely move this task to Trash.",
 		];
 	}, [pendingTrashWarning]);
+	const gitActionErrorTitle = useMemo(() => {
+		if (!gitActionError) {
+			return "Git action failed";
+		}
+		if (gitActionError.action === "fetch") {
+			return "Fetch failed";
+		}
+		if (gitActionError.action === "pull") {
+			return "Pull failed";
+		}
+		return "Push failed";
+	}, [gitActionError]);
 	const inlineTaskCreator = isInlineTaskCreateOpen ? (
 		<TaskInlineCreateCard
 			prompt={newTaskPrompt}
@@ -1401,6 +1539,29 @@ export default function App(): ReactElement {
 					workspaceHint={activeWorkspaceHint}
 					repoHint={repoHint}
 					runtimeHint={runtimeHint}
+					gitSummary={selectedCard ? null : gitSummary}
+					runningGitAction={selectedCard ? null : runningGitAction}
+					onGitFetch={
+						selectedCard
+							? undefined
+							: () => {
+									void runGitAction("fetch");
+								}
+					}
+					onGitPull={
+						selectedCard
+							? undefined
+							: () => {
+									void runGitAction("pull");
+								}
+					}
+					onGitPush={
+						selectedCard
+							? undefined
+							: () => {
+									void runGitAction("push");
+								}
+					}
 					onOpenSettings={() => setIsSettingsOpen(true)}
 					shortcuts={runtimeProjectConfig?.shortcuts ?? []}
 					runningShortcutId={runningShortcutId}
@@ -1524,6 +1685,24 @@ export default function App(): ReactElement {
 					void performMoveTaskToTrash(selection.card);
 				}}
 			/>
+			<Alert
+				isOpen={gitActionError !== null}
+				canEscapeKeyCancel
+				canOutsideClickCancel
+				confirmButtonText="Close"
+				icon="warning-sign"
+				intent="danger"
+				onCancel={() => setGitActionError(null)}
+				onConfirm={() => setGitActionError(null)}
+			>
+				<p>{gitActionErrorTitle}</p>
+				<p>{gitActionError?.message}</p>
+				{gitActionError?.output ? (
+					<Pre style={{ maxHeight: 220, overflow: "auto" }}>
+						{gitActionError.output}
+					</Pre>
+				) : null}
+			</Alert>
 		</div>
 	);
 }

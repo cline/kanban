@@ -1,6 +1,8 @@
 import { Alert, Classes, Pre } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 
+import { formatPathForDisplay } from "@/kanban/utils/path-display";
+
 export interface TaskTrashWarningViewModel {
 	taskTitle: string;
 	fileCount: number;
@@ -39,7 +41,7 @@ export function TaskTrashWarningDialog({
 			</p>
 			<p>Moving to Trash will delete this task worktree. Preserve your work first, then trash the task.</p>
 			{warning?.workspacePath ? (
-				<Pre style={{ margin: "8px 0" }}>{warning.workspacePath}</Pre>
+				<Pre style={{ margin: "8px 0" }}>{formatPathForDisplay(warning.workspacePath)}</Pre>
 			) : null}
 			{guidance.map((line) => (
 				<p key={line} className={Classes.TEXT_MUTED}>{line}</p>

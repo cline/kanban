@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeProjectSummary } from "@/kanban/runtime/types";
+import { formatPathForDisplay } from "@/kanban/utils/path-display";
 
 const GITHUB_URL = "https://github.com/cline/kanbanana";
 
@@ -134,6 +135,7 @@ function ProjectRow({
 	onSelect: (id: string) => void;
 	onRemove: (id: string) => void;
 }): React.ReactElement {
+	const displayPath = formatPathForDisplay(project.path);
 	const taskCountBadges: TaskCountBadge[] = [
 		{
 			id: "backlog",
@@ -191,7 +193,7 @@ function ProjectRow({
 					{project.name}
 				</div>
 				<div className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`} style={{ fontSize: "var(--bp-typography-size-body-x-small)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-					{project.path}
+					{displayPath}
 				</div>
 				{taskCountBadges.length > 0 ? (
 					<div style={{ display: "flex", gap: 4, marginTop: 4 }}>
