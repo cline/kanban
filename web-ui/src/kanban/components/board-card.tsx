@@ -1,6 +1,7 @@
 import { Button, Card, Classes, Colors, Elevation, Spinner } from "@blueprintjs/core";
 import { Draggable } from "@hello-pangea/dnd";
 import type { MouseEvent } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
@@ -35,6 +36,7 @@ export function BoardCard({
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
 }): React.ReactElement {
+	const [isHovered, setIsHovered] = useState(false);
 	const showPreview = columnId === "in_progress" || columnId === "review";
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
@@ -76,6 +78,11 @@ export function BoardCard({
 		<Draggable draggableId={card.id} index={index} isDragDisabled={isTrashCard}>
 			{(provided, snapshot) => {
 				const isDragging = snapshot.isDragging;
+				const cardElevation = isDragging
+					? Elevation.THREE
+					: isHovered && isCardInteractive
+						? Elevation.ONE
+						: Elevation.ZERO;
 				const draggableContent = (
 					<div
 						ref={provided.innerRef}
@@ -96,9 +103,11 @@ export function BoardCard({
 							marginBottom: 8,
 							cursor: isTrashCard ? "default" : "grab",
 						}}
+						onMouseEnter={() => setIsHovered(true)}
+						onMouseLeave={() => setIsHovered(false)}
 					>
 						<Card
-							elevation={isDragging ? Elevation.THREE : Elevation.ZERO}
+							elevation={cardElevation}
 							interactive={isCardInteractive}
 							selected={selected}
 							compact
