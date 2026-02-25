@@ -55,7 +55,6 @@ function createBoard(title: string): RuntimeBoardData {
 			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 }
 

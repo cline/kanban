@@ -1,14 +1,7 @@
 import type { DropResult } from "@hello-pangea/dnd";
 
 import { createInitialBoardData } from "@/kanban/data/board-data";
-import type {
-	BoardCard,
-	BoardColumn,
-	BoardColumnId,
-	BoardData,
-	BoardDependency,
-	CardSelection,
-} from "@/kanban/types";
+import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } from "@/kanban/types";
 
 export interface TaskDraft {
 	title: string;
@@ -25,7 +18,6 @@ export interface TaskMoveEvent {
 }
 
 const TASK_ID_LENGTH = 5;
-const DEPENDENCY_ID_LENGTH = 8;
 
 function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
 	const result = Array.from(list);
@@ -38,20 +30,6 @@ function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
 
 function createShortTaskId(): string {
 	return crypto.randomUUID().replaceAll("-", "").slice(0, TASK_ID_LENGTH);
-}
-
-function createDependencyId(): string {
-	return crypto.randomUUID().replaceAll("-", "").slice(0, DEPENDENCY_ID_LENGTH);
-}
-
-function collectTaskIds(columns: BoardColumn[]): Set<string> {
-	const ids = new Set<string>();
-	for (const column of columns) {
-		for (const card of column.cards) {
-			ids.add(card.id);
-		}
-	}
-	return ids;
 }
 
 function createUniqueTaskId(existingIds: Set<string>): string {
@@ -96,13 +74,6 @@ function withUpdatedColumns(board: BoardData, columns: BoardColumn[]): BoardData
 	return {
 		...board,
 		columns,
-	};
-}
-
-function withUpdatedDependencies(board: BoardData, dependencies: BoardDependency[]): BoardData {
-	return {
-		...board,
-		dependencies,
 	};
 }
 
@@ -154,83 +125,6 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	};
 }
 
-function normalizeDependency(rawDependency: unknown, taskIds: Set<string>): BoardDependency | null {
-	if (!rawDependency || typeof rawDependency !== "object") {
-		return null;
-	}
-
-	const dependency = rawDependency as {
-		id?: unknown;
-		fromTaskId?: unknown;
-		toTaskId?: unknown;
-		createdAt?: unknown;
-	};
-	const fromTaskId = typeof dependency.fromTaskId === "string" ? dependency.fromTaskId : "";
-	const toTaskId = typeof dependency.toTaskId === "string" ? dependency.toTaskId : "";
-	if (!fromTaskId || !toTaskId || fromTaskId === toTaskId) {
-		return null;
-	}
-	if (!taskIds.has(fromTaskId) || !taskIds.has(toTaskId)) {
-		return null;
-	}
-	return {
-		id: typeof dependency.id === "string" && dependency.id ? dependency.id : createDependencyId(),
-		fromTaskId,
-		toTaskId,
-		createdAt: typeof dependency.createdAt === "number" ? dependency.createdAt : Date.now(),
-	};
-}
-
-function findPathExists(dependencies: BoardDependency[], startTaskId: string, targetTaskId: string): boolean {
-	if (startTaskId === targetTaskId) {
-		return true;
-	}
-	const adjacency = new Map<string, string[]>();
-	for (const dependency of dependencies) {
-		const taskIds = adjacency.get(dependency.fromTaskId);
-		if (taskIds) {
-			taskIds.push(dependency.toTaskId);
-		} else {
-			adjacency.set(dependency.fromTaskId, [dependency.toTaskId]);
-		}
-	}
-	const visited = new Set<string>();
-	const stack = [startTaskId];
-	while (stack.length > 0) {
-		const current = stack.pop();
-		if (!current || visited.has(current)) {
-			continue;
-		}
-		visited.add(current);
-		if (current === targetTaskId) {
-			return true;
-		}
-		const neighbors = adjacency.get(current);
-		if (!neighbors) {
-			continue;
-		}
-		for (const neighbor of neighbors) {
-			if (!visited.has(neighbor)) {
-				stack.push(neighbor);
-			}
-		}
-	}
-	return false;
-}
-
-function removeDependenciesByTaskIds(board: BoardData, taskIds: Set<string>): BoardData {
-	if (taskIds.size === 0 || board.dependencies.length === 0) {
-		return board;
-	}
-	const dependencies = board.dependencies.filter(
-		(dependency) => !taskIds.has(dependency.fromTaskId) && !taskIds.has(dependency.toTaskId),
-	);
-	if (dependencies.length === board.dependencies.length) {
-		return board;
-	}
-	return withUpdatedDependencies(board, dependencies);
-}
-
 export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 	if (!rawBoard || typeof rawBoard !== "object") {
 		return null;
@@ -240,7 +134,6 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 	if (!Array.isArray(candidateColumns)) {
 		return null;
 	}
-	const candidateDependencies = (rawBoard as { dependencies?: unknown }).dependencies;
 
 	const initial = createInitialBoardData();
 	const normalizedColumns = initial.columns.map((column) => ({ ...column, cards: [] as BoardCard[] }));
@@ -270,31 +163,7 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 		}
 	}
 
-	const taskIds = collectTaskIds(normalizedColumns);
-	const normalizedDependencies: BoardDependency[] = [];
-	const existingEdges = new Set<string>();
-	if (Array.isArray(candidateDependencies)) {
-		for (const rawDependency of candidateDependencies) {
-			const dependency = normalizeDependency(rawDependency, taskIds);
-			if (!dependency) {
-				continue;
-			}
-			const edgeKey = `${dependency.fromTaskId}->${dependency.toTaskId}`;
-			if (existingEdges.has(edgeKey)) {
-				continue;
-			}
-			if (findPathExists(normalizedDependencies, dependency.toTaskId, dependency.fromTaskId)) {
-				continue;
-			}
-			existingEdges.add(edgeKey);
-			normalizedDependencies.push(dependency);
-		}
-	}
-
-	return {
-		columns: normalizedColumns,
-		dependencies: normalizedDependencies,
-	};
+	return { columns: normalizedColumns };
 }
 
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {
@@ -319,111 +188,6 @@ export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft
 	});
 
 	return withUpdatedColumns(board, columns);
-}
-
-export interface AddTaskDependencyResult {
-	board: BoardData;
-	added: boolean;
-	reason?: "missing_task" | "same_task" | "duplicate" | "cycle" | "trash_task";
-	dependency?: BoardDependency;
-}
-
-export function addTaskDependency(
-	board: BoardData,
-	fromTaskId: string,
-	toTaskId: string,
-): AddTaskDependencyResult {
-	const normalizedFromTaskId = fromTaskId.trim();
-	const normalizedToTaskId = toTaskId.trim();
-	if (!normalizedFromTaskId || !normalizedToTaskId) {
-		return { board, added: false, reason: "missing_task" };
-	}
-	if (normalizedFromTaskId === normalizedToTaskId) {
-		return { board, added: false, reason: "same_task" };
-	}
-
-	const taskIds = collectTaskIds(board.columns);
-	if (!taskIds.has(normalizedFromTaskId) || !taskIds.has(normalizedToTaskId)) {
-		return { board, added: false, reason: "missing_task" };
-	}
-	const sourceColumnId = getTaskColumnId(board, normalizedFromTaskId);
-	const targetColumnId = getTaskColumnId(board, normalizedToTaskId);
-	if (sourceColumnId === "trash" || targetColumnId === "trash") {
-		return { board, added: false, reason: "trash_task" };
-	}
-
-	const duplicate = board.dependencies.some(
-		(dependency) =>
-			dependency.fromTaskId === normalizedFromTaskId &&
-			dependency.toTaskId === normalizedToTaskId,
-	);
-	if (duplicate) {
-		return { board, added: false, reason: "duplicate" };
-	}
-
-	if (findPathExists(board.dependencies, normalizedToTaskId, normalizedFromTaskId)) {
-		return { board, added: false, reason: "cycle" };
-	}
-
-	const dependency: BoardDependency = {
-		id: createDependencyId(),
-		fromTaskId: normalizedFromTaskId,
-		toTaskId: normalizedToTaskId,
-		createdAt: Date.now(),
-	};
-	const nextBoard = withUpdatedDependencies(board, [...board.dependencies, dependency]);
-	return {
-		board: nextBoard,
-		added: true,
-		dependency,
-	};
-}
-
-export function removeTaskDependency(
-	board: BoardData,
-	dependencyId: string,
-): { board: BoardData; removed: boolean } {
-	const dependencies = board.dependencies.filter((dependency) => dependency.id !== dependencyId);
-	if (dependencies.length === board.dependencies.length) {
-		return { board, removed: false };
-	}
-	return {
-		board: withUpdatedDependencies(board, dependencies),
-		removed: true,
-	};
-}
-
-export function getReadyDependentTaskIdsForCompletedTask(
-	board: BoardData,
-	completedTaskId: string,
-): string[] {
-	if (!completedTaskId) {
-		return [];
-	}
-	const outgoingDependencies = board.dependencies.filter(
-		(dependency) => dependency.fromTaskId === completedTaskId,
-	);
-	if (outgoingDependencies.length === 0) {
-		return [];
-	}
-
-	const uniqueTaskIds = new Set<string>();
-	for (const dependency of outgoingDependencies) {
-		const dependentColumnId = getTaskColumnId(board, dependency.toTaskId);
-		if (dependentColumnId !== "backlog") {
-			continue;
-		}
-		const incomingDependencies = board.dependencies.filter(
-			(candidate) => candidate.toTaskId === dependency.toTaskId,
-		);
-		const hasUnresolvedPrerequisite = incomingDependencies.some(
-			(candidate) => getTaskColumnId(board, candidate.fromTaskId) !== "trash",
-		);
-		if (!hasUnresolvedPrerequisite) {
-			uniqueTaskIds.add(dependency.toTaskId);
-		}
-	}
-	return [...uniqueTaskIds];
 }
 
 export function applyDragResult(board: BoardData, result: DropResult): { board: BoardData; moveEvent?: TaskMoveEvent } {
@@ -614,11 +378,7 @@ export function removeTask(
 	if (!removed) {
 		return { board, removed: false };
 	}
-	const boardWithColumns = withUpdatedColumns(board, columns);
-	return {
-		board: removeDependenciesByTaskIds(boardWithColumns, new Set([taskId])),
-		removed: true,
-	};
+	return { board: withUpdatedColumns(board, columns), removed: true };
 }
 
 export function clearColumnTasks(
@@ -637,9 +397,8 @@ export function clearColumnTasks(
 			: column,
 	);
 
-	const boardWithColumns = withUpdatedColumns(board, columns);
 	return {
-		board: removeDependenciesByTaskIds(boardWithColumns, new Set(clearedTaskIds)),
+		board: withUpdatedColumns(board, columns),
 		clearedTaskIds,
 	};
 }

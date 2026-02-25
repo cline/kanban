@@ -9,7 +9,6 @@ import type {
 	RuntimeBoardColumn,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
-	RuntimeBoardDependency,
 	RuntimeGitRepositoryInfo,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
@@ -24,7 +23,6 @@ const SESSIONS_FILENAME = "sessions.json";
 const META_FILENAME = "meta.json";
 const INDEX_VERSION = 1;
 const TASK_ID_LENGTH = 5;
-const DEPENDENCY_ID_LENGTH = 8;
 
 const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "backlog", title: "Backlog" },
@@ -71,7 +69,6 @@ function createEmptyBoard(): RuntimeBoardData {
 			title: column.title,
 			cards: [],
 		})),
-		dependencies: [],
 	};
 }
 
@@ -103,12 +100,6 @@ function createShortTaskId(): string {
 	return Math.random()
 		.toString(36)
 		.slice(2, 2 + TASK_ID_LENGTH);
-}
-
-function createShortDependencyId(): string {
-	return Math.random()
-		.toString(36)
-		.slice(2, 2 + DEPENDENCY_ID_LENGTH);
 }
 
 export function getRuntimeHomePath(): string {
@@ -199,91 +190,12 @@ function normalizeBoardCard(card: unknown): RuntimeBoardCard | null {
 	};
 }
 
-function collectTaskIds(columns: RuntimeBoardColumn[]): Set<string> {
-	const ids = new Set<string>();
-	for (const column of columns) {
-		for (const card of column.cards) {
-			ids.add(card.id);
-		}
-	}
-	return ids;
-}
-
-function normalizeBoardDependency(rawDependency: unknown, taskIds: Set<string>): RuntimeBoardDependency | null {
-	if (!rawDependency || typeof rawDependency !== "object") {
-		return null;
-	}
-
-	const source = rawDependency as {
-		id?: unknown;
-		fromTaskId?: unknown;
-		toTaskId?: unknown;
-		createdAt?: unknown;
-	};
-	const fromTaskId = typeof source.fromTaskId === "string" ? source.fromTaskId.trim() : "";
-	const toTaskId = typeof source.toTaskId === "string" ? source.toTaskId.trim() : "";
-	if (!fromTaskId || !toTaskId || fromTaskId === toTaskId) {
-		return null;
-	}
-	if (!taskIds.has(fromTaskId) || !taskIds.has(toTaskId)) {
-		return null;
-	}
-	return {
-		id: typeof source.id === "string" && source.id ? source.id : createShortDependencyId(),
-		fromTaskId,
-		toTaskId,
-		createdAt: typeof source.createdAt === "number" ? source.createdAt : Date.now(),
-	};
-}
-
-function dependencyPathExists(
-	dependencies: RuntimeBoardDependency[],
-	startTaskId: string,
-	targetTaskId: string,
-): boolean {
-	if (startTaskId === targetTaskId) {
-		return true;
-	}
-	const adjacency = new Map<string, string[]>();
-	for (const dependency of dependencies) {
-		const nextTaskIds = adjacency.get(dependency.fromTaskId);
-		if (nextTaskIds) {
-			nextTaskIds.push(dependency.toTaskId);
-		} else {
-			adjacency.set(dependency.fromTaskId, [dependency.toTaskId]);
-		}
-	}
-	const visited = new Set<string>();
-	const stack = [startTaskId];
-	while (stack.length > 0) {
-		const current = stack.pop();
-		if (!current || visited.has(current)) {
-			continue;
-		}
-		visited.add(current);
-		if (current === targetTaskId) {
-			return true;
-		}
-		const neighbors = adjacency.get(current);
-		if (!neighbors) {
-			continue;
-		}
-		for (const neighbor of neighbors) {
-			if (!visited.has(neighbor)) {
-				stack.push(neighbor);
-			}
-		}
-	}
-	return false;
-}
-
 function normalizeBoard(rawBoard: unknown): RuntimeBoardData {
 	if (!rawBoard || typeof rawBoard !== "object") {
 		return createEmptyBoard();
 	}
 
 	const rawColumns = (rawBoard as { columns?: unknown }).columns;
-	const rawDependencies = (rawBoard as { dependencies?: unknown }).dependencies;
 	if (!Array.isArray(rawColumns)) {
 		return createEmptyBoard();
 	}
@@ -316,30 +228,8 @@ function normalizeBoard(rawBoard: unknown): RuntimeBoardData {
 		}
 	}
 
-	const taskIds = collectTaskIds(normalizedColumns);
-	const normalizedDependencies: RuntimeBoardDependency[] = [];
-	const existingEdges = new Set<string>();
-	if (Array.isArray(rawDependencies)) {
-		for (const rawDependency of rawDependencies) {
-			const dependency = normalizeBoardDependency(rawDependency, taskIds);
-			if (!dependency) {
-				continue;
-			}
-			const edgeKey = `${dependency.fromTaskId}->${dependency.toTaskId}`;
-			if (existingEdges.has(edgeKey)) {
-				continue;
-			}
-			if (dependencyPathExists(normalizedDependencies, dependency.toTaskId, dependency.fromTaskId)) {
-				continue;
-			}
-			existingEdges.add(edgeKey);
-			normalizedDependencies.push(dependency);
-		}
-	}
-
 	return {
 		columns: normalizedColumns,
-		dependencies: normalizedDependencies,
 	};
 }
 

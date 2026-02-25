@@ -736,7 +736,6 @@ function moveTaskToTrash(
 		});
 	}
 	return {
-		...board,
 		columns,
 	};
 }

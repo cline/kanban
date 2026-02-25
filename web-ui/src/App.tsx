@@ -58,16 +58,13 @@ import type {
 	RuntimeWorkspaceChangesResponse,
 } from "@/kanban/runtime/types";
 import {
-	addTaskDependency,
 	addTaskToColumn,
 	applyDragResult,
 	clearColumnTasks,
 	findCardSelection,
-	getReadyDependentTaskIdsForCompletedTask,
 	getTaskColumnId,
 	moveTaskToColumn,
 	normalizeBoardData,
-	removeTaskDependency,
 	updateTask,
 } from "@/kanban/state/board-state";
 import type {
@@ -1394,91 +1391,20 @@ export default function App(): ReactElement {
 		newTaskWorkspaceMode,
 	]);
 
-	const kickoffTaskInProgress = useCallback(
-		async (task: BoardCard, taskId: string, fromColumnId: BoardColumnId) => {
-			const ensured = await ensureTaskWorkspace(task);
-			if (!ensured.ok) {
-				setWorktreeError(ensured.message ?? "Could not set up task workspace.");
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== "in_progress") {
-						return currentBoard;
-					}
-					const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-					return reverted.moved ? reverted.board : currentBoard;
-				});
-				return;
-			}
-			const started = await startTaskSession(task);
-			if (!started.ok) {
-				setWorktreeError(started.message ?? "Could not start task session.");
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== "in_progress") {
-						return currentBoard;
-					}
-					const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-					return reverted.moved ? reverted.board : currentBoard;
-				});
-				return;
-			}
-			setWorktreeError(null);
-		},
-		[ensureTaskWorkspace, startTaskSession],
-	);
-
 	const performMoveTaskToTrash = useCallback(
 		async (task: BoardCard): Promise<void> => {
 			await stopTaskSession(task.id);
-			const movedToTrash = moveTaskToColumn(board, task.id, "trash");
-			if (!movedToTrash.moved) {
-				return;
-			}
-			let nextBoard = movedToTrash.board;
-			const dependentTaskIds = getReadyDependentTaskIdsForCompletedTask(nextBoard, task.id);
-			const dependentTasksToKickoff: BoardCard[] = [];
-			for (const dependentTaskId of dependentTaskIds) {
-				const movedDependent = moveTaskToColumn(nextBoard, dependentTaskId, "in_progress");
-				if (!movedDependent.moved) {
-					continue;
-				}
-				nextBoard = movedDependent.board;
-				const movedSelection = findCardSelection(nextBoard, dependentTaskId);
-				if (movedSelection) {
-					dependentTasksToKickoff.push(movedSelection.card);
-				}
-			}
-			setBoard(nextBoard);
-			if (dependentTasksToKickoff.length > 0) {
-				void Promise.all(
-					dependentTasksToKickoff.map(async (dependentTask) =>
-						await kickoffTaskInProgress(dependentTask, dependentTask.id, "backlog"),
-					),
-				);
-				showAppToast({
-					intent: "success",
-					icon: "play",
-					message:
-						dependentTasksToKickoff.length === 1
-							? "Dependency unlocked and started automatically."
-							: `${dependentTasksToKickoff.length} dependency tasks unlocked and started automatically.`,
-					timeout: 3500,
-				});
-			}
+			setBoard((currentBoard) => {
+				const moved = moveTaskToColumn(currentBoard, task.id, "trash");
+				return moved.moved ? moved.board : currentBoard;
+			});
 			await cleanupTaskWorkspace(task.id);
 			if (selectedTaskId === task.id) {
 				const info = await fetchTaskWorkspaceInfo(task);
 				setSelectedTaskWorkspaceInfo(info);
 			}
 		},
-		[
-			board,
-			cleanupTaskWorkspace,
-			fetchTaskWorkspaceInfo,
-			kickoffTaskInProgress,
-			selectedTaskId,
-			stopTaskSession,
-		],
+		[cleanupTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, stopTaskSession],
 	);
 
 	const requestMoveTaskToTrash = useCallback(
@@ -1559,6 +1485,39 @@ export default function App(): ReactElement {
 		[currentProjectId, runtimeProjectConfig?.shortcuts],
 	);
 
+	const kickoffTaskInProgress = useCallback(
+		async (task: BoardCard, taskId: string, fromColumnId: BoardColumnId) => {
+			const ensured = await ensureTaskWorkspace(task);
+			if (!ensured.ok) {
+				setWorktreeError(ensured.message ?? "Could not set up task workspace.");
+				setBoard((currentBoard) => {
+					const currentColumnId = getTaskColumnId(currentBoard, taskId);
+					if (currentColumnId !== "in_progress") {
+						return currentBoard;
+					}
+					const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+					return reverted.moved ? reverted.board : currentBoard;
+				});
+				return;
+			}
+			const started = await startTaskSession(task);
+			if (!started.ok) {
+				setWorktreeError(started.message ?? "Could not start task session.");
+				setBoard((currentBoard) => {
+					const currentColumnId = getTaskColumnId(currentBoard, taskId);
+					if (currentColumnId !== "in_progress") {
+						return currentBoard;
+					}
+					const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+					return reverted.moved ? reverted.board : currentBoard;
+				});
+				return;
+			}
+			setWorktreeError(null);
+		},
+		[ensureTaskWorkspace, startTaskSession],
+	);
+
 	const handleDragEnd = useCallback(
 		(result: DropResult, options?: { selectDroppedTask?: boolean }) => {
 			if (options?.selectDroppedTask && result.type.startsWith("CARD") && result.destination) {
@@ -1607,56 +1566,6 @@ export default function App(): ReactElement {
 			}
 		},
 		[board, kickoffTaskInProgress],
-	);
-
-	const handleCreateDependency = useCallback(
-		(fromTaskId: string, toTaskId: string) => {
-			const result = addTaskDependency(board, fromTaskId, toTaskId);
-			if (!result.added) {
-				const message =
-					result.reason === "same_task"
-						? "A task cannot depend on itself."
-						: result.reason === "duplicate"
-							? "Dependency already exists."
-							: result.reason === "cycle"
-								? "That link would create a dependency cycle."
-								: result.reason === "trash_task"
-									? "Dependencies cannot include trashed tasks."
-									: "Could not create dependency.";
-				showAppToast({
-					intent: "warning",
-					icon: "warning-sign",
-					message,
-					timeout: 3000,
-				});
-				return;
-			}
-			setBoard(result.board);
-			showAppToast({
-				intent: "success",
-				icon: "link",
-				message: "Dependency created.",
-				timeout: 1800,
-			});
-		},
-		[board],
-	);
-
-	const handleDeleteDependency = useCallback(
-		(dependencyId: string) => {
-			const removed = removeTaskDependency(board, dependencyId);
-			if (!removed.removed) {
-				return;
-			}
-			setBoard(removed.board);
-			showAppToast({
-				intent: "primary",
-				icon: "cross",
-				message: "Dependency removed.",
-				timeout: 1500,
-			});
-		},
-		[board],
 	);
 
 	const handleDetailTaskDragEnd = useCallback(
@@ -1952,9 +1861,6 @@ export default function App(): ReactElement {
 									onOpenPrTask={() => {}}
 									onMoveToTrashTask={handleMoveReviewCardToTrash}
 									reviewWorkspaceSnapshots={workspaceSnapshots}
-									dependencies={board.dependencies}
-									onCreateDependency={handleCreateDependency}
-									onDeleteDependency={handleDeleteDependency}
 									onDragEnd={handleDragEnd}
 								/>
 						)}
@@ -1980,9 +1886,6 @@ export default function App(): ReactElement {
 						onOpenPrTask={() => {}}
 						onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 						reviewWorkspaceSnapshots={workspaceSnapshots}
-						dependencies={board.dependencies}
-						onCreateDependency={handleCreateDependency}
-						onDeleteDependency={handleDeleteDependency}
 						onMoveToTrash={handleMoveToTrash}
 					/>
 				) : null}

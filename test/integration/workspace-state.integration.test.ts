@@ -38,7 +38,6 @@ function createBoard(title: string): RuntimeBoardData {
 			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
 	};
 }
 
@@ -138,85 +137,6 @@ describe.sequential("workspace-state integration", () => {
 				const entriesAfterRemoval = await listWorkspaceIndexEntries();
 				expect(entriesAfterRemoval).toHaveLength(1);
 				expect(entriesAfterRemoval[0]?.workspaceId).toBe(contextB.workspaceId);
-			} finally {
-				cleanup();
-			}
-		});
-	});
-
-	it("persists dependencies across save and load cycles", async () => {
-		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanbanana-dependencies-");
-			try {
-				const workspacePath = join(sandboxRoot, "project-deps");
-				mkdirSync(workspacePath, { recursive: true });
-
-				const now = Date.now();
-				const boardWithDependencies: RuntimeBoardData = {
-					columns: [
-						{
-							id: "backlog",
-							title: "Backlog",
-							cards: [
-								{
-									id: "task-a",
-									title: "Task A",
-									description: "",
-									prompt: "Task A",
-									startInPlanMode: false,
-									baseRef: null,
-									createdAt: now,
-									updatedAt: now,
-								},
-							],
-						},
-						{
-							id: "in_progress",
-							title: "In Progress",
-							cards: [
-								{
-									id: "task-b",
-									title: "Task B",
-									description: "",
-									prompt: "Task B",
-									startInPlanMode: false,
-									baseRef: null,
-									createdAt: now,
-									updatedAt: now,
-								},
-							],
-						},
-						{ id: "review", title: "Review", cards: [] },
-						{ id: "trash", title: "Trash", cards: [] },
-					],
-					dependencies: [
-						{
-							id: "dep-a-b",
-							fromTaskId: "task-a",
-							toTaskId: "task-b",
-							createdAt: now,
-						},
-					],
-				};
-
-				const saved = await saveWorkspaceState(workspacePath, {
-					board: boardWithDependencies,
-					sessions: {},
-				});
-				expect(saved.board.dependencies).toHaveLength(1);
-				expect(saved.board.dependencies[0]).toMatchObject({
-					id: "dep-a-b",
-					fromTaskId: "task-a",
-					toTaskId: "task-b",
-				});
-
-				const loaded = await loadWorkspaceState(workspacePath);
-				expect(loaded.board.dependencies).toHaveLength(1);
-				expect(loaded.board.dependencies[0]).toMatchObject({
-					id: "dep-a-b",
-					fromTaskId: "task-a",
-					toTaskId: "task-b",
-				});
 			} finally {
 				cleanup();
 			}

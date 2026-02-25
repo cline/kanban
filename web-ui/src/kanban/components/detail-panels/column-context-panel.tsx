@@ -1,18 +1,14 @@
 import { Button, Classes, Collapse, Colors, Icon } from "@blueprintjs/core";
 import { DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
-import type { MouseEvent as ReactMouseEvent } from "react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
-import { DependencyOverlay } from "@/kanban/components/dependencies/dependency-overlay";
-import { useDependencyLinking } from "@/kanban/components/dependencies/use-dependency-linking";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type {
 	BoardCard as BoardCardModel,
 	BoardColumn,
-	BoardDependency,
 	CardSelection,
 	ReviewTaskWorkspaceSnapshot,
 } from "@/kanban/types";
@@ -34,11 +30,6 @@ function ColumnSection({
 	onOpenPrTask,
 	onMoveToTrashTask,
 	reviewWorkspaceSnapshots,
-	onDependencyPointerDown,
-	onDependencyPointerEnter,
-	dependencySourceTaskId,
-	dependencyTargetTaskId,
-	isDependencyLinking,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -56,11 +47,6 @@ function ColumnSection({
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
-	onDependencyPointerDown?: (taskId: string, event: ReactMouseEvent<HTMLElement>) => void;
-	onDependencyPointerEnter?: (taskId: string) => void;
-	dependencySourceTaskId?: string | null;
-	dependencyTargetTaskId?: string | null;
-	isDependencyLinking?: boolean;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
@@ -73,7 +59,7 @@ function ColumnSection({
 			: "CARD-WORKFLOW-B";
 
 	return (
-		<div data-column-id={column.id}>
+		<div>
 			<div style={{ display: "flex", alignItems: "center", background: accentColor, height: 40 }}>
 				<Button
 					variant="minimal"
@@ -157,11 +143,6 @@ function ColumnSection({
 													}
 													onCardClick(card);
 												}}
-												onDependencyPointerDown={onDependencyPointerDown}
-												onDependencyPointerEnter={onDependencyPointerEnter}
-												isDependencySource={dependencySourceTaskId === card.id}
-												isDependencyTarget={dependencyTargetTaskId === card.id}
-												isDependencyLinking={isDependencyLinking}
 											/>,
 										);
 										draggableIndex += 1;
@@ -197,9 +178,6 @@ export function ColumnContextPanel({
 	onOpenPrTask,
 	onMoveToTrashTask,
 	reviewWorkspaceSnapshots,
-	dependencies,
-	onCreateDependency,
-	onDeleteDependency,
 }: {
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
@@ -216,31 +194,21 @@ export function ColumnContextPanel({
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
-	dependencies: BoardDependency[];
-	onCreateDependency?: (fromTaskId: string, toTaskId: string) => void;
-	onDeleteDependency?: (dependencyId: string) => void;
 }): React.ReactElement {
-	const panelRef = useRef<HTMLDivElement>(null);
-	const dependencyLinking = useDependencyLinking({
-		onCreateDependency,
-	});
-
 	return (
 		<div
-			ref={panelRef}
-			className="kb-dependency-surface"
 			style={{
 				display: "flex",
 				flexDirection: "column",
 				width: "20%",
 				minHeight: 0,
-				overflow: "hidden",
+				overflowY: "auto",
 				background: Colors.DARK_GRAY1,
 				borderRight: `1px solid ${panelSeparatorColor}`,
 			}}
 		>
 			<DragDropContext onDragEnd={onTaskDragEnd}>
-				<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
+				<div style={{ flex: "1 1 0", minHeight: 0 }}>
 					{selection.allColumns.map((column) => (
 						<ColumnSection
 							key={column.id}
@@ -260,21 +228,10 @@ export function ColumnContextPanel({
 							onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 							onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 							reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
-							onDependencyPointerDown={dependencyLinking.onDependencyPointerDown}
-							onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}
-							dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}
-							dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId ?? null}
-							isDependencyLinking={dependencyLinking.draft !== null}
 						/>
 					))}
 				</div>
 			</DragDropContext>
-			<DependencyOverlay
-				containerRef={panelRef}
-				dependencies={dependencies}
-				draft={dependencyLinking.draft}
-				onDeleteDependency={onDeleteDependency}
-			/>
 		</div>
 	);
 }

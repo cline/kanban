@@ -1,6 +1,5 @@
 import { Button, Colors } from "@blueprintjs/core";
 import { Droppable } from "@hello-pangea/dnd";
-import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ReactNode } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
@@ -27,11 +26,6 @@ export function BoardColumn({
 	onMoveToTrashTask,
 	reviewWorkspaceSnapshots,
 	onCardClick,
-	onDependencyPointerDown,
-	onDependencyPointerEnter,
-	dependencySourceTaskId,
-	dependencyTargetTaskId,
-	isDependencyLinking,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -47,11 +41,6 @@ export function BoardColumn({
 	onMoveToTrashTask?: (taskId: string) => void;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onCardClick?: (card: BoardCardModel) => void;
-	onDependencyPointerDown?: (taskId: string, event: ReactMouseEvent<HTMLElement>) => void;
-	onDependencyPointerEnter?: (taskId: string) => void;
-	dependencySourceTaskId?: string | null;
-	dependencyTargetTaskId?: string | null;
-	isDependencyLinking?: boolean;
 }): React.ReactElement {
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
@@ -138,11 +127,6 @@ export function BoardColumn({
 												}
 												onCardClick?.(card);
 											}}
-											onDependencyPointerDown={onDependencyPointerDown}
-											onDependencyPointerEnter={onDependencyPointerEnter}
-											isDependencySource={dependencySourceTaskId === card.id}
-											isDependencyTarget={dependencyTargetTaskId === card.id}
-											isDependencyLinking={isDependencyLinking}
 										/>,
 									);
 									draggableIndex += 1;

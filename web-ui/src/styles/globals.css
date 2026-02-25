@@ -19,10 +19,6 @@ body,
 	overflow: hidden;
 }
 
-.kb-dependency-surface {
-	position: relative;
-}
-
 .kb-home-layout {
 	display: flex;
 	flex: 1 1 0;
@@ -42,84 +38,12 @@ body,
 
 .kb-board-card-shell {
 	position: relative;
-	z-index: 1;
+	z-index: 0;
 }
 
 .kb-board-card-shell:hover,
 .kb-board-card-shell:focus-within {
 	z-index: 2;
-}
-
-.kb-board-card-dependency-source {
-	box-shadow: inset 0 0 0 1px var(--bp-intent-primary-rest);
-}
-
-.kb-board-card-dependency-target {
-	box-shadow: inset 0 0 0 1px var(--bp-intent-success-rest);
-}
-
-.kb-dependency-overlay {
-	position: absolute;
-	inset: 0;
-	z-index: 0;
-	pointer-events: none;
-}
-
-.kb-dependency-draft-overlay {
-	position: absolute;
-	inset: 0;
-	z-index: 3;
-	pointer-events: none;
-}
-
-.kb-dependency-path {
-	fill: none;
-	stroke: var(--bp-palette-indigo-4);
-	stroke-width: 2;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
-.kb-dependency-path-hover {
-	stroke: var(--bp-intent-danger-rest);
-	stroke-width: 2;
-}
-
-.kb-dependency-hit-path {
-	fill: none;
-	stroke: transparent;
-	stroke-width: 14;
-	pointer-events: stroke;
-	cursor: pointer;
-}
-
-.kb-dependency-draft-path {
-	fill: none;
-	stroke: oklch(from var(--bp-palette-indigo-4) l c h / 0.82);
-	stroke-width: 2;
-	stroke-dasharray: 6 4;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
-.kb-dependency-delete-control {
-	position: absolute;
-	z-index: 0;
-	display: flex;
-	height: 18px;
-	width: 18px;
-	align-items: center;
-	justify-content: center;
-	transform: translate(-50%, -50%);
-	pointer-events: none;
-	border: none;
-	border-radius: 999px;
-	background: var(--bp-intent-danger-rest);
-}
-
-body.kb-dependency-link-mode {
-	cursor: crosshair;
-	user-select: none;
 }
 
 .kb-empty-state-center {

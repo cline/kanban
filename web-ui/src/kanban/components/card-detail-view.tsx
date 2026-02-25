@@ -9,7 +9,7 @@ import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-p
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
 import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspace-changes";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { BoardCard, BoardDependency, CardSelection, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
+import type { BoardCard, CardSelection, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 
 const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 1500;
 
@@ -33,9 +33,6 @@ export function CardDetailView({
 	onOpenPrTask,
 	onMoveReviewCardToTrash,
 	reviewWorkspaceSnapshots,
-	dependencies,
-	onCreateDependency,
-	onDeleteDependency,
 	onMoveToTrash,
 }: {
 	selection: CardSelection;
@@ -57,9 +54,6 @@ export function CardDetailView({
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveReviewCardToTrash?: (taskId: string) => void;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
-	dependencies: BoardDependency[];
-	onCreateDependency?: (fromTaskId: string, toTaskId: string) => void;
-	onDeleteDependency?: (dependencyId: string) => void;
 	onMoveToTrash: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -169,20 +163,17 @@ export function CardDetailView({
 				onOpenPrTask={onOpenPrTask}
 				onMoveToTrashTask={onMoveReviewCardToTrash}
 				reviewWorkspaceSnapshots={reviewWorkspaceSnapshots}
-				dependencies={dependencies}
-				onCreateDependency={onCreateDependency}
-				onDeleteDependency={onDeleteDependency}
-			/>
-			<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
-				<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
-					<AgentTerminalPanel
-						taskId={selection.card.id}
-						workspaceId={currentProjectId}
-						summary={sessionSummary}
-						onSummary={onSessionSummary}
-						showMoveToTrash={selection.column.id === "review"}
-						onMoveToTrash={onMoveToTrash}
-					/>
+				/>
+				<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+						<AgentTerminalPanel
+							taskId={selection.card.id}
+							workspaceId={currentProjectId}
+							summary={sessionSummary}
+							onSummary={onSessionSummary}
+							showMoveToTrash={selection.column.id === "review"}
+							onMoveToTrash={onMoveToTrash}
+						/>
 					<DiffViewerPanel
 						workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
 						selectedPath={selectedPath}
