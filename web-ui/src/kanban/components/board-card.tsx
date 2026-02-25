@@ -67,6 +67,10 @@ export function BoardCard({
 					deletions: reviewWorkspaceSnapshot.deletions ?? 0,
 				}
 		: null;
+	const showReviewGitActions =
+		columnId === "review" &&
+		Boolean(reviewWorkspaceSnapshot?.hasGit) &&
+		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={isTrashCard}>
@@ -197,7 +201,7 @@ export function BoardCard({
 										</>
 									</p>
 								) : null}
-							{columnId === "review" ? (
+							{showReviewGitActions ? (
 								<div style={{ display: "flex", gap: 6, marginTop: 8 }}>
 									<Button
 										text="Commit"
