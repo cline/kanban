@@ -97,7 +97,7 @@ export function TaskInlineCreateCard({
 			</FormGroup>
 
 			<FormGroup
-				label="Exeuction workspace"
+				label="Execution workspace"
 				labelFor={workspaceModeId}
 				helperText={
 					workspaceMode === "local"
