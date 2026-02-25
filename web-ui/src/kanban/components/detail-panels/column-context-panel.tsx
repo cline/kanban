@@ -53,6 +53,10 @@ function ColumnSection({
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canClearTrash = column.id === "trash" && onClearTrash;
+	const cardDropType =
+		column.id === "backlog" || column.id === "in_progress"
+			? "CARD-WORKFLOW-A"
+			: "CARD-WORKFLOW-B";
 
 	return (
 		<div>
@@ -85,7 +89,7 @@ function ColumnSection({
 				) : null}
 			</div>
 			<Collapse isOpen={open}>
-				<Droppable droppableId={column.id} type={`CARD-${column.id}`}>
+				<Droppable droppableId={column.id} type={cardDropType}>
 					{(provided) => {
 						return (
 							<div

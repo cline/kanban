@@ -46,6 +46,10 @@ export function BoardColumn({
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canClearTrash = column.id === "trash" && onClearTrash;
+	const cardDropType =
+		column.id === "backlog" || column.id === "in_progress"
+			? "CARD-WORKFLOW-A"
+			: "CARD-WORKFLOW-B";
 
 	return (
 		<section
@@ -74,7 +78,7 @@ export function BoardColumn({
 					) : null}
 				</div>
 
-				<Droppable droppableId={column.id} type={`CARD-${column.id}`}>
+				<Droppable droppableId={column.id} type={cardDropType}>
 					{(cardProvided) => (
 						<div
 							ref={cardProvided.innerRef}

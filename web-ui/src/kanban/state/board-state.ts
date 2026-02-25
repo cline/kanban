@@ -214,18 +214,50 @@ export function applyDragResult(board: BoardData, result: DropResult): { board: 
 		return { board };
 	}
 
-	// Drag and drop only supports reordering within the same column.
-	if (sourceColumn.id !== destinationColumn.id) {
+	if (sourceColumn.id === destinationColumn.id) {
+		const movedCards = reorder(sourceColumn.cards, source.index, destination.index);
+		const columns = Array.from(board.columns);
+		columns[sourceColumnIndex] = {
+			...sourceColumn,
+			cards: movedCards,
+		};
+		return { board: withUpdatedColumns(board, columns) };
+	}
+
+	const isAllowedCrossColumnMove =
+		(sourceColumn.id === "backlog" && destinationColumn.id === "in_progress") ||
+		(sourceColumn.id === "review" && destinationColumn.id === "trash");
+	if (!isAllowedCrossColumnMove) {
 		return { board };
 	}
 
-	const movedCards = reorder(sourceColumn.cards, source.index, destination.index);
+	const sourceCards = Array.from(sourceColumn.cards);
+	const [movedCard] = sourceCards.splice(source.index, 1);
+	if (!movedCard) {
+		return { board };
+	}
+
+	const destinationCards = Array.from(destinationColumn.cards);
+	destinationCards.splice(destination.index, 0, updateTaskTimestamp(movedCard));
+
 	const columns = Array.from(board.columns);
 	columns[sourceColumnIndex] = {
 		...sourceColumn,
-		cards: movedCards,
+		cards: sourceCards,
 	};
-	return { board: withUpdatedColumns(board, columns) };
+	columns[destinationColumnIndex] = {
+		...destinationColumn,
+		cards: destinationCards,
+	};
+
+	return {
+		board: withUpdatedColumns(board, columns),
+		moveEvent: {
+			taskId: movedCard.id,
+			fromColumnId: sourceColumn.id,
+			toColumnId: destinationColumn.id,
+		},
+	};
 }
 
 export function moveTaskToColumn(
