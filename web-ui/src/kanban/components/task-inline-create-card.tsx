@@ -119,6 +119,7 @@ export function TaskInlineCreateCard({
 					label="Worktree base branch"
 					labelFor={branchSelectId}
 					helperText="Branch/ref used when creating the isolated task worktree."
+					style={{ marginTop: -5, marginBottom: 0 }}
 				>
 					<HTMLSelect
 						id={branchSelectId}
