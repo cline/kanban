@@ -140,6 +140,16 @@ export function useDependencyLinking({
 				return;
 			}
 			modifierPressedRef.current = false;
+			const current = draftRef.current;
+			if (!current) {
+				return;
+			}
+			const resolvedTargetTaskId =
+				current.targetTaskId ??
+				getTaskIdFromPoint(current.pointerClientX, current.pointerClientY);
+			if (completeDependencyLink(resolvedTargetTaskId)) {
+				return;
+			}
 			draftRef.current = null;
 			setDraft(null);
 		};

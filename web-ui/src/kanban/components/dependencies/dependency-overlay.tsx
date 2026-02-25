@@ -150,6 +150,10 @@ function chooseShortestDirectionalConnection(
 		sourceColumnOrder !== null &&
 		targetColumnOrder !== null &&
 		sourceColumnOrder < targetColumnOrder;
+	const isBackwardAcrossColumns =
+		sourceColumnOrder !== null &&
+		targetColumnOrder !== null &&
+		sourceColumnOrder > targetColumnOrder;
 	const isSameColumn =
 		source.columnId !== null &&
 		target.columnId !== null &&
@@ -161,6 +165,9 @@ function chooseShortestDirectionalConnection(
 	} else if (isForwardAcrossColumns) {
 		sourceSides = ["right"];
 		targetSides = ["bottom"];
+	} else if (isBackwardAcrossColumns) {
+		sourceSides = ["bottom"];
+		targetSides = ["right"];
 	} else if (source.columnId === "backlog") {
 		sourceSides = ["right"];
 	}
