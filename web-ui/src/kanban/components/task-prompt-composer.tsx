@@ -1,6 +1,7 @@
-import { Card, Classes, Menu, MenuItem, Tag, TextArea } from "@blueprintjs/core";
+import { Classes, Menu, MenuItem, Popover, PopoverInteractionKind, TextArea } from "@blueprintjs/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
+import { Classes as SelectClasses } from "@blueprintjs/select";
 
 import type {
 	RuntimeSlashCommandDescription,
@@ -23,9 +24,9 @@ interface ActivePromptToken {
 
 interface PromptSuggestion {
 	id: string;
-	label: string;
-	detail: string;
-	badge?: string;
+	kind: "slash" | "mention";
+	text: string;
+	detail?: string;
 	insertText: string;
 }
 
@@ -103,7 +104,8 @@ function sortSlashSuggestions(
 	});
 	return filtered.map((entry) => ({
 		id: entry.name,
-		label: entry.name.startsWith("/") ? entry.name : `/${entry.name}`,
+		kind: "slash",
+		text: entry.name.startsWith("/") ? entry.name : `/${entry.name}`,
 		detail: entry.description ?? "Agent command",
 		insertText: entry.name.startsWith("/") ? entry.name : `/${entry.name}`,
 	}));
@@ -122,6 +124,9 @@ export function TaskPromptComposer({
 	disallowedSlashCommands = [],
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const popoverRef = useRef<InstanceType<typeof Popover> | null>(null);
+	const menuRef = useRef<HTMLUListElement | null>(null);
+	const suggestionItemRefs = useRef(new Map<string, HTMLLIElement>());
 	const [cursorIndex, setCursorIndex] = useState(0);
 	const [mentionSuggestions, setMentionSuggestions] = useState<PromptSuggestion[]>([]);
 	const [isMentionSearchLoading, setIsMentionSearchLoading] = useState(false);
@@ -220,9 +225,8 @@ export function TaskPromptComposer({
 					Array.isArray(payload.files)
 						? payload.files.map((file) => ({
 								id: file.path,
-								label: `@${file.name}`,
-								detail: file.path,
-								badge: file.changed ? "changed" : undefined,
+								kind: "mention",
+								text: file.path,
 								insertText: `@${file.path}`,
 							}))
 						: [],
@@ -300,6 +304,14 @@ export function TaskPromptComposer({
 		[activeToken, onValueChange, value],
 	);
 
+	const setSuggestionItemRef = useCallback((itemKey: string, node: HTMLLIElement | null) => {
+		if (node) {
+			suggestionItemRefs.current.set(itemKey, node);
+			return;
+		}
+		suggestionItemRefs.current.delete(itemKey);
+	}, []);
+
 	const handleTextareaKeyDown = useCallback(
 		(event: KeyboardEvent<HTMLTextAreaElement>) => {
 			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -344,10 +356,144 @@ export function TaskPromptComposer({
 
 	const showMentionLoading = Boolean(activeToken && activeToken.kind === "mention" && isMentionSearchLoading);
 	const showSlashLoading = Boolean(activeToken && activeToken.kind === "slash" && isSlashCommandsLoading);
-	const showSuggestions = isSuggestionPickerOpen && activeToken && (showMentionLoading || showSlashLoading || suggestions.length > 0);
+	const showSuggestions = Boolean(
+		isSuggestionPickerOpen && activeToken && (showMentionLoading || showSlashLoading || suggestions.length > 0),
+	);
+
+	useEffect(() => {
+		if (!showSuggestions) {
+			return;
+		}
+		window.requestAnimationFrame(() => {
+			void popoverRef.current?.reposition();
+		});
+	}, [activeToken?.query, showMentionLoading, showSlashLoading, showSuggestions, suggestions.length]);
+
+	useEffect(() => {
+		if (!showSuggestions) {
+			return;
+		}
+		const activeSuggestion = suggestions[selectedSuggestionIndex];
+		if (!activeSuggestion) {
+			return;
+		}
+		const activeKey = `${activeSuggestion.kind}:${activeSuggestion.id}`;
+		const activeElement = suggestionItemRefs.current.get(activeKey);
+		const menuElement = menuRef.current;
+		if (!activeElement || !menuElement) {
+			return;
+		}
+		const activeTop = activeElement.offsetTop;
+		const activeBottom = activeTop + activeElement.offsetHeight;
+		const viewportTop = menuElement.scrollTop;
+		const viewportBottom = viewportTop + menuElement.clientHeight;
+		if (activeBottom > viewportBottom) {
+			menuElement.scrollTop = activeBottom - menuElement.clientHeight;
+			return;
+		}
+		if (activeTop < viewportTop) {
+			menuElement.scrollTop = activeTop;
+		}
+	}, [selectedSuggestionIndex, showSuggestions, suggestions]);
 
 	return (
-		<div style={{ position: "relative" }}>
+		<Popover
+			autoFocus={false}
+			enforceFocus={false}
+			fill
+			interactionKind={PopoverInteractionKind.CLICK_TARGET_ONLY}
+			isOpen={showSuggestions}
+			matchTargetWidth
+			minimal
+			modifiers={{ flip: { enabled: false } }}
+			onInteraction={(nextOpenState) => {
+				if (!nextOpenState) {
+					setIsSuggestionPickerOpen(false);
+				}
+			}}
+			onOpened={() => {
+				void popoverRef.current?.reposition();
+			}}
+			placement="bottom-start"
+			popoverClassName={SelectClasses.SUGGEST_POPOVER}
+			content={
+				showMentionLoading ? (
+					<Menu>
+						<MenuItem disabled text="Loading files..." roleStructure="listoption" />
+					</Menu>
+				) : showSlashLoading ? (
+					<Menu>
+						<MenuItem disabled text="Loading commands..." roleStructure="listoption" />
+					</Menu>
+				) : (
+					<Menu ulRef={menuRef} style={{ overflowX: "hidden", overflowY: "auto" }}>
+						{suggestions.map((suggestion, index) => {
+							const suggestionKey = `${suggestion.kind}:${suggestion.id}`;
+							return (
+								<MenuItem
+									key={suggestionKey}
+									ref={(node) => setSuggestionItemRef(suggestionKey, node)}
+									active={index === selectedSuggestionIndex}
+									roleStructure="listoption"
+									style={
+										suggestion.kind === "mention"
+											? {
+													paddingLeft: 6,
+													paddingRight: 6,
+												}
+											: undefined
+									}
+									text={(
+										suggestion.kind === "mention"
+											? (
+													<span
+														style={{
+															display: "block",
+															fontSize: "var(--bp-typography-size-body-small)",
+															lineHeight: 1.15,
+															maxWidth: "100%",
+															overflowWrap: "anywhere",
+															wordBreak: "break-word",
+															whiteSpace: "normal",
+														}}
+													>
+														{suggestion.text}
+													</span>
+												)
+											: (
+													<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+														<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>{suggestion.text}</span>
+														{suggestion.detail ? (
+															<span
+																className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
+																style={{ fontSize: "var(--bp-typography-size-body-small)" }}
+															>
+																{suggestion.detail}
+															</span>
+														) : null}
+													</div>
+												)
+									)}
+									onMouseDown={(event) => {
+										event.preventDefault();
+										applySuggestion(suggestion);
+									}}
+									onMouseEnter={() => setSelectedSuggestionIndex(index)}
+								/>
+							);
+						})}
+						{activeToken?.kind === "slash" && slashCommandError ? (
+							<MenuItem
+								disabled
+								roleStructure="listoption"
+								text="Using fallback commands while discovery is unavailable."
+							/>
+						) : null}
+					</Menu>
+				)
+			}
+			ref={popoverRef}
+		>
 			<TextArea
 				id={id}
 				inputRef={textareaRef}
@@ -365,44 +511,6 @@ export function TaskPromptComposer({
 				fill
 				style={{ minHeight: 80, resize: "vertical" }}
 			/>
-			{showSuggestions ? (
-				<Card style={{ position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: 4, maxHeight: 256, overflowY: "auto", zIndex: 10 }} compact elevation={2}>
-					{showMentionLoading ? (
-						<p className={`${Classes.TEXT_MUTED} kb-suggestions-loading`}>Loading files...</p>
-					) : showSlashLoading ? (
-						<p className={`${Classes.TEXT_MUTED} kb-suggestions-loading`}>Loading commands...</p>
-					) : (
-						<Menu>
-							{suggestions.map((suggestion, index) => (
-								<MenuItem
-									key={suggestion.id}
-									active={index === selectedSuggestionIndex}
-									text={suggestion.label}
-									label={suggestion.detail}
-									className={Classes.MONOSPACE_TEXT}
-									labelElement={
-										suggestion.badge ? (
-											<Tag minimal>
-												{suggestion.badge}
-											</Tag>
-										) : undefined
-									}
-									onMouseDown={(event: React.MouseEvent) => {
-										event.preventDefault();
-										applySuggestion(suggestion);
-									}}
-									onMouseEnter={() => setSelectedSuggestionIndex(index)}
-								/>
-							))}
-						</Menu>
-					)}
-					{activeToken?.kind === "slash" && slashCommandError ? (
-						<p className={`${Classes.TEXT_MUTED} kb-suggestions-loading`}>
-							Using fallback commands while discovery is unavailable.
-						</p>
-					) : null}
-				</Card>
-			) : null}
-		</div>
+		</Popover>
 	);
 }

@@ -63,11 +63,6 @@ body,
 	margin-left: 8px;
 }
 
-.kb-suggestions-loading {
-	padding: 4px 8px;
-	font-size: var(--bp-typography-size-body-small);
-}
-
 /* -- Project navigation rows (hover-reveal actions) -- */
 
 .kb-project-row-actions {
