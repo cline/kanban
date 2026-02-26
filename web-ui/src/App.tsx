@@ -136,6 +136,7 @@ export default function App(): ReactElement {
 	const [newTaskWorkspaceMode, setNewTaskWorkspaceMode] = useState<TaskWorkspaceMode>(() =>
 		loadPersistedTaskWorkspaceMode(),
 	);
+	const preferredNewTaskWorkspaceModeRef = useRef<TaskWorkspaceMode>(newTaskWorkspaceMode);
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
@@ -788,6 +789,7 @@ export default function App(): ReactElement {
 	}, [workspaceGit]);
 
 	const canUseWorktree = createTaskBranchOptions.length > 0;
+	const isWorktreeCapabilityKnown = workspaceGit !== null;
 	const defaultTaskBranchRef = useMemo(() => {
 		if (!workspaceGit?.hasGit) {
 			return "";
@@ -1082,18 +1084,35 @@ export default function App(): ReactElement {
 	}, [refreshWorkspaceState]);
 
 	useEffect(() => {
+		// Keep the user's preferred mode sticky across launches.
+		// Do not persist temporary local fallback when worktree capability is unavailable.
+		if (!canUseWorktree && newTaskWorkspaceMode === "local") {
+			return;
+		}
+		preferredNewTaskWorkspaceModeRef.current = newTaskWorkspaceMode;
 		persistTaskWorkspaceMode(newTaskWorkspaceMode);
-	}, [newTaskWorkspaceMode]);
+	}, [canUseWorktree, newTaskWorkspaceMode]);
 
 	useEffect(() => {
 		persistTaskStartInPlanMode(newTaskStartInPlanMode);
 	}, [newTaskStartInPlanMode]);
 
 	useEffect(() => {
+		if (!isWorktreeCapabilityKnown) {
+			return;
+		}
 		if (!canUseWorktree && newTaskWorkspaceMode === "worktree") {
 			setNewTaskWorkspaceMode("local");
+			return;
 		}
-	}, [canUseWorktree, newTaskWorkspaceMode]);
+		if (
+			canUseWorktree &&
+			newTaskWorkspaceMode === "local" &&
+			preferredNewTaskWorkspaceModeRef.current === "worktree"
+		) {
+			setNewTaskWorkspaceMode("worktree");
+		}
+	}, [canUseWorktree, isWorktreeCapabilityKnown, newTaskWorkspaceMode]);
 
 	useEffect(() => {
 		if (!canUseWorktree) {
@@ -1111,22 +1130,28 @@ export default function App(): ReactElement {
 		if (!isInlineTaskCreateOpen) {
 			return;
 		}
+		if (!isWorktreeCapabilityKnown) {
+			return;
+		}
 		if (!canUseWorktree) {
 			setNewTaskWorkspaceMode("local");
 		}
 		if (canUseWorktree && !newTaskBranchRef) {
 			setNewTaskBranchRef(defaultTaskBranchRef);
 		}
-	}, [canUseWorktree, defaultTaskBranchRef, isInlineTaskCreateOpen, newTaskBranchRef]);
+	}, [canUseWorktree, defaultTaskBranchRef, isInlineTaskCreateOpen, isWorktreeCapabilityKnown, newTaskBranchRef]);
 
 	useEffect(() => {
 		if (!editingTaskId) {
 			return;
 		}
+		if (!isWorktreeCapabilityKnown) {
+			return;
+		}
 		if (!canUseWorktree && editTaskWorkspaceMode === "worktree") {
 			setEditTaskWorkspaceMode("local");
 		}
-	}, [canUseWorktree, editTaskWorkspaceMode, editingTaskId]);
+	}, [canUseWorktree, editTaskWorkspaceMode, editingTaskId, isWorktreeCapabilityKnown]);
 
 	useEffect(() => {
 		if (!editingTaskId) {
