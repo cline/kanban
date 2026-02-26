@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -582,7 +582,11 @@ export async function loadWorkspaceContextById(workspaceId: string): Promise<Run
 	if (!entry) {
 		return null;
 	}
-	return await loadWorkspaceContext(entry.repoPath);
+	try {
+		return await loadWorkspaceContext(entry.repoPath);
+	} catch {
+		return null;
+	}
 }
 
 export async function listWorkspaceIndexEntries(): Promise<RuntimeWorkspaceIndexEntry[]> {
@@ -605,6 +609,13 @@ export async function removeWorkspaceIndexEntry(workspaceId: string): Promise<bo
 	delete index.repoPathToId[entry.repoPath];
 	await writeWorkspaceIndex(index);
 	return true;
+}
+
+export async function removeWorkspaceStateFiles(workspaceId: string): Promise<void> {
+	await rm(getWorkspaceDirectoryPath(workspaceId), {
+		recursive: true,
+		force: true,
+	});
 }
 
 export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceStateResponse> {

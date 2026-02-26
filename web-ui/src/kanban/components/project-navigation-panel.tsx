@@ -18,18 +18,22 @@ interface TaskCountBadge {
 export function ProjectNavigationPanel({
 	projects,
 	currentProjectId,
+	removingProjectId,
 	onSelectProject,
 	onRemoveProject,
 	onAddProject,
 }: {
 	projects: RuntimeProjectSummary[];
 	currentProjectId: string | null;
+	removingProjectId: string | null;
 	onSelectProject: (projectId: string) => void;
-	onRemoveProject: (projectId: string) => void;
+	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onAddProject: () => void;
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
+	const isProjectRemovalPending =
+		pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
 	const pendingProjectTaskCount = pendingProjectRemoval
 		? pendingProjectRemoval.taskCounts.backlog +
 			pendingProjectRemoval.taskCounts.in_progress +
@@ -65,7 +69,14 @@ export function ProjectNavigationPanel({
 
 			<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 12px" }}>
 				<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-medium)" }}>Projects</span>
-				<Button icon="plus" size="small" variant="minimal" onClick={onAddProject} aria-label="Add project" />
+				<Button
+					icon="plus"
+					size="small"
+					variant="minimal"
+					onClick={onAddProject}
+					aria-label="Add project"
+					disabled={removingProjectId !== null}
+				/>
 			</div>
 
 			<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "4px 0" }}>
@@ -80,6 +91,7 @@ export function ProjectNavigationPanel({
 						key={project.id}
 						project={project}
 						isCurrent={currentProjectId === project.id}
+						removingProjectId={removingProjectId}
 						onSelect={onSelectProject}
 						onRemove={(projectId) => {
 							const found = sortedProjects.find((item) => item.id === projectId);
@@ -98,17 +110,26 @@ export function ProjectNavigationPanel({
 				isOpen={pendingProjectRemoval !== null}
 				icon="warning-sign"
 				intent="danger"
-				confirmButtonText="Delete Project"
+				confirmButtonText={isProjectRemovalPending ? "Deleting..." : "Delete Project"}
 				cancelButtonText="Cancel"
-				onCancel={() => setPendingProjectRemoval(null)}
-				onConfirm={() => {
+				loading={isProjectRemovalPending}
+				onCancel={() => {
+					if (isProjectRemovalPending) {
+						return;
+					}
+					setPendingProjectRemoval(null);
+				}}
+				onConfirm={async () => {
 					if (!pendingProjectRemoval) {
 						return;
 					}
-					onRemoveProject(pendingProjectRemoval.id);
-					setPendingProjectRemoval(null);
+					const removed = await onRemoveProject(pendingProjectRemoval.id);
+					if (removed) {
+						setPendingProjectRemoval(null);
+					}
 				}}
-				canEscapeKeyCancel
+				canEscapeKeyCancel={!isProjectRemovalPending}
+				canOutsideClickCancel={!isProjectRemovalPending}
 			>
 				<h4 className={Classes.HEADING}>Delete project permanently?</h4>
 				<p className={Classes.TEXT_MUTED} style={{ marginBottom: 8 }}>
@@ -127,15 +148,19 @@ export function ProjectNavigationPanel({
 function ProjectRow({
 	project,
 	isCurrent,
+	removingProjectId,
 	onSelect,
 	onRemove,
 }: {
 	project: RuntimeProjectSummary;
 	isCurrent: boolean;
+	removingProjectId: string | null;
 	onSelect: (id: string) => void;
 	onRemove: (id: string) => void;
 }): React.ReactElement {
 	const displayPath = formatPathForDisplay(project.path);
+	const isRemovingProject = removingProjectId === project.id;
+	const hasAnyProjectRemoval = removingProjectId !== null;
 	const taskCountBadges: TaskCountBadge[] = [
 		{
 			id: "backlog",
@@ -219,6 +244,8 @@ function ProjectRow({
 					icon="trash"
 					size="small"
 					variant="minimal"
+					loading={isRemovingProject}
+					disabled={hasAnyProjectRemoval && !isRemovingProject}
 					onClick={(e) => {
 						e.stopPropagation();
 						onRemove(project.id);

@@ -82,6 +82,7 @@ interface PendingTrashWarningState {
 }
 
 const IN_PROGRESS_WORKSPACE_STATUS_POLL_INTERVAL_MS = 3000;
+const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
 
 function createNoGitSyncSummary(): RuntimeGitSyncSummary {
 	return {
@@ -147,6 +148,7 @@ export default function App(): ReactElement {
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [runningShortcutId, setRunningShortcutId] = useState<string | null>(null);
+	const [removingProjectId, setRemovingProjectId] = useState<string | null>(null);
 	const [runtimeProjectConfigRefreshNonce, setRuntimeProjectConfigRefreshNonce] = useState(0);
 	const [lastShortcutOutput, setLastShortcutOutput] = useState<{
 		label: string;
@@ -185,7 +187,9 @@ export default function App(): ReactElement {
 		return projects.find((project) => project.id === navigationCurrentProjectId)?.path ?? null;
 	}, [navigationCurrentProjectId, projects]);
 	const shouldShowProjectLoadingState =
-		selectedTaskId === null && (isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot);
+		selectedTaskId === null &&
+		!streamError &&
+		(isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot);
 	const shouldUseNavigationPath =
 		isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
 	const { config: runtimeProjectConfig } = useRuntimeProjectConfig(
@@ -938,6 +942,22 @@ export default function App(): ReactElement {
 		if (!streamError) {
 			return;
 		}
+		if (streamError.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {
+			const removedPath = streamError.slice(REMOVED_PROJECT_ERROR_PREFIX.length).trim();
+			showAppToast(
+				{
+					intent: "danger",
+					icon: "warning-sign",
+					message: removedPath
+						? `Project no longer exists and was removed: ${removedPath}`
+						: "Project no longer exists and was removed.",
+					timeout: 6000,
+				},
+				`project-removed-${removedPath || "unknown"}`,
+			);
+			setWorktreeError(null);
+			return;
+		}
 		setWorktreeError(streamError);
 	}, [streamError]);
 
@@ -962,6 +982,7 @@ export default function App(): ReactElement {
 		setIsClearTrashDialogOpen(false);
 		setGitSummary(null);
 		setRunningGitAction(null);
+		setRemovingProjectId(null);
 		setGitActionError(null);
 		setWorkspaceSnapshots({});
 		reviewWorkspaceSnapshotLoadingRef.current.clear();
@@ -1235,7 +1256,11 @@ export default function App(): ReactElement {
 	}, [currentProjectId]);
 
 	const handleRemoveProject = useCallback(
-		async (projectId: string) => {
+		async (projectId: string): Promise<boolean> => {
+			if (removingProjectId) {
+				return false;
+			}
+			setRemovingProjectId(projectId);
 			try {
 				const response = await workspaceFetch("/api/projects/remove", {
 					method: "POST",
@@ -1256,12 +1281,16 @@ export default function App(): ReactElement {
 					setIsInlineTaskCreateOpen(false);
 					setEditingTaskId(null);
 				}
+				return true;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				setWorktreeError(message);
+				return false;
+			} finally {
+				setRemovingProjectId((current) => (current === projectId ? null : current));
 			}
 		},
-		[currentProjectId],
+		[currentProjectId, removingProjectId],
 	);
 
 	const handleOpenCreateTask = useCallback(() => {
@@ -1774,17 +1803,16 @@ export default function App(): ReactElement {
 					<ProjectNavigationPanel
 						projects={displayedProjects}
 						currentProjectId={navigationCurrentProjectId}
+						removingProjectId={removingProjectId}
 						onSelectProject={(projectId) => {
 							void handleSelectProject(projectId);
 						}}
-					onRemoveProject={(projectId) => {
-						void handleRemoveProject(projectId);
-					}}
-					onAddProject={() => {
-						void handleAddProject();
-					}}
-				/>
-			) : null}
+						onRemoveProject={handleRemoveProject}
+						onAddProject={() => {
+							void handleAddProject();
+						}}
+					/>
+				) : null}
 			<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
 				<TopBar
 					onBack={selectedCard ? handleBack : undefined}

@@ -59,7 +59,9 @@ import {
 	loadWorkspaceContext,
 	loadWorkspaceContextById,
 	loadWorkspaceState,
+	type RuntimeWorkspaceIndexEntry,
 	removeWorkspaceIndexEntry,
+	removeWorkspaceStateFiles,
 	saveWorkspaceState,
 	WorkspaceStateConflictError,
 } from "./runtime/state/workspace-state.js";
@@ -358,6 +360,15 @@ async function assertPathIsDirectory(path: string): Promise<void> {
 	const info = await stat(path);
 	if (!info.isDirectory()) {
 		throw new Error(`Project path is not a directory: ${path}`);
+	}
+}
+
+async function pathIsDirectory(path: string): Promise<boolean> {
+	try {
+		const info = await stat(path);
+		return info.isDirectory();
+	} catch {
+		return false;
 	}
 }
 
@@ -908,6 +919,94 @@ async function startServer(
 		runtimeConfig = await loadRuntimeConfig(getActiveWorkspacePath());
 	};
 
+	const disposeWorkspaceRuntimeResources = (
+		workspaceId: string,
+		options?: {
+			stopTerminalSessions?: boolean;
+			disconnectClients?: boolean;
+			closeClientErrorMessage?: string;
+		},
+	): void => {
+		const removedTerminalManager = getTerminalManagerForWorkspace(workspaceId);
+		if (removedTerminalManager) {
+			if (options?.stopTerminalSessions !== false) {
+				removedTerminalManager.markInterruptedAndStopAll();
+			}
+			terminalManagersByWorkspaceId.delete(workspaceId);
+			terminalManagerLoadPromises.delete(workspaceId);
+		}
+
+		const unsubscribeSummary = terminalSummaryUnsubscribeByWorkspaceId.get(workspaceId);
+		if (unsubscribeSummary) {
+			try {
+				unsubscribeSummary();
+			} catch {
+				// Ignore listener cleanup errors during project removal.
+			}
+		}
+		terminalSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
+		disposeTaskSessionSummaryBroadcast(workspaceId);
+		projectTaskCountsByWorkspaceId.delete(workspaceId);
+		workspacePathsById.delete(workspaceId);
+
+		if (!options?.disconnectClients) {
+			return;
+		}
+
+		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+		if (!runtimeClients || runtimeClients.size === 0) {
+			runtimeStateClientsByWorkspaceId.delete(workspaceId);
+			return;
+		}
+
+		for (const runtimeClient of runtimeClients) {
+			if (options?.closeClientErrorMessage) {
+				sendRuntimeStateMessage(runtimeClient, {
+					type: "error",
+					message: options.closeClientErrorMessage,
+				} satisfies RuntimeStateStreamErrorMessage);
+			}
+			runtimeStateClients.delete(runtimeClient);
+			runtimeStateWorkspaceIdByClient.delete(runtimeClient);
+			try {
+				runtimeClient.close();
+			} catch {
+				// Ignore close failures while disposing removed workspace clients.
+			}
+		}
+		runtimeStateClientsByWorkspaceId.delete(workspaceId);
+	};
+
+	const pruneMissingWorkspaceEntries = async (
+		projects: RuntimeWorkspaceIndexEntry[],
+	): Promise<{
+		projects: RuntimeWorkspaceIndexEntry[];
+		removedProjects: RuntimeWorkspaceIndexEntry[];
+	}> => {
+		const existingProjects: RuntimeWorkspaceIndexEntry[] = [];
+		const removedProjects: RuntimeWorkspaceIndexEntry[] = [];
+
+		for (const project of projects) {
+			if (await pathIsDirectory(project.repoPath)) {
+				existingProjects.push(project);
+				continue;
+			}
+
+			removedProjects.push(project);
+			await removeWorkspaceIndexEntry(project.workspaceId);
+			await removeWorkspaceStateFiles(project.workspaceId);
+			disposeWorkspaceRuntimeResources(project.workspaceId, {
+				disconnectClients: true,
+				closeClientErrorMessage: `Project no longer exists on disk and was removed: ${project.repoPath}`,
+			});
+		}
+
+		return {
+			projects: existingProjects,
+			removedProjects,
+		};
+	};
+
 	const summarizeProjectTaskCounts = async (
 		workspaceId: string,
 		repoPath: string,
@@ -980,17 +1079,34 @@ async function startServer(
 
 	const resolveWorkspaceForStream = async (
 		requestedWorkspaceId: string | null,
-	): Promise<{ workspaceId: string; workspacePath: string } | null> => {
+	): Promise<{
+		workspaceId: string;
+		workspacePath: string;
+		removedRequestedWorkspacePath: string | null;
+		didPruneProjects: boolean;
+	} | null> => {
+		const allProjects = await listWorkspaceIndexEntries();
+		const { projects, removedProjects } = await pruneMissingWorkspaceEntries(allProjects);
+		const removedRequestedWorkspacePath = requestedWorkspaceId
+			? (removedProjects.find((project) => project.workspaceId === requestedWorkspaceId)?.repoPath ?? null)
+			: null;
+
+		if (removedProjects.some((project) => project.workspaceId === activeWorkspaceId) && projects[0]) {
+			await setActiveWorkspace(projects[0].workspaceId, projects[0].repoPath);
+		}
+
 		if (requestedWorkspaceId) {
-			const requestedWorkspace = await loadWorkspaceContextById(requestedWorkspaceId);
+			const requestedWorkspace = projects.find((project) => project.workspaceId === requestedWorkspaceId);
 			if (requestedWorkspace) {
 				return {
 					workspaceId: requestedWorkspace.workspaceId,
 					workspacePath: requestedWorkspace.repoPath,
+					removedRequestedWorkspacePath,
+					didPruneProjects: removedProjects.length > 0,
 				};
 			}
 		}
-		const projects = await listWorkspaceIndexEntries();
+
 		const fallbackWorkspace =
 			projects.find((project) => project.workspaceId === activeWorkspaceId) ?? projects[0] ?? null;
 		if (!fallbackWorkspace) {
@@ -999,6 +1115,8 @@ async function startServer(
 		return {
 			workspaceId: fallbackWorkspace.workspaceId,
 			workspacePath: fallbackWorkspace.repoPath,
+			removedRequestedWorkspacePath,
+			didPruneProjects: removedProjects.length > 0,
 		};
 	};
 
@@ -1692,23 +1810,10 @@ async function startServer(
 					if (!removed) {
 						throw new Error(`Could not remove project index entry for "${body.projectId}".`);
 					}
-
-					if (removedTerminalManager) {
-						terminalManagersByWorkspaceId.delete(body.projectId);
-						terminalManagerLoadPromises.delete(body.projectId);
-					}
-					const unsubscribeSummary = terminalSummaryUnsubscribeByWorkspaceId.get(body.projectId);
-					if (unsubscribeSummary) {
-						try {
-							unsubscribeSummary();
-						} catch {
-							// Ignore listener cleanup errors during project removal.
-						}
-					}
-					terminalSummaryUnsubscribeByWorkspaceId.delete(body.projectId);
-					disposeTaskSessionSummaryBroadcast(body.projectId);
-					projectTaskCountsByWorkspaceId.delete(body.projectId);
-					workspacePathsById.delete(body.projectId);
+					await removeWorkspaceStateFiles(body.projectId);
+					disposeWorkspaceRuntimeResources(body.projectId, {
+						stopTerminalSessions: false,
+					});
 
 					if (activeWorkspaceId === body.projectId) {
 						const remaining = await listWorkspaceIndexEntries();
@@ -1846,6 +1951,15 @@ async function startServer(
 					projects: projectsPayload.projects,
 					workspaceState,
 				} satisfies RuntimeStateStreamSnapshotMessage);
+				if (workspace.removedRequestedWorkspacePath) {
+					sendRuntimeStateMessage(client, {
+						type: "error",
+						message: `Project no longer exists on disk and was removed: ${workspace.removedRequestedWorkspacePath}`,
+					} satisfies RuntimeStateStreamErrorMessage);
+				}
+				if (workspace.didPruneProjects) {
+					void broadcastRuntimeProjectsUpdated(workspace.workspaceId);
+				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				sendRuntimeStateMessage(client, {
