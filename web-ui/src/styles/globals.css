@@ -224,10 +224,6 @@ body,
 	line-height: 1.35;
 }
 
-.kb-hidden {
-	display: none;
-}
-
 /* -- Terminal viewport (hide gutter while keeping wheel scroll) -- */
 
 .kb-terminal-container .xterm-viewport {

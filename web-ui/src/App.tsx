@@ -1996,103 +1996,119 @@ export default function App(): ReactElement {
 						shortcutOutput={lastShortcutOutput}
 						onClearShortcutOutput={() => setLastShortcutOutput(null)}
 					/>
-					<div className={selectedCard ? "kb-hidden" : "kb-home-layout"}>
-						{shouldShowProjectLoadingState ? (
-							<div
-								style={{
-									display: "flex",
-									flex: "1 1 0",
-									minHeight: 0,
-									alignItems: "center",
-									justifyContent: "center",
-									background: Colors.DARK_GRAY1,
-								}}
-							>
-								<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-									<Spinner size={30} />
-									<div className={Classes.TEXT_MUTED}>
-										{isProjectSwitching ? "Loading project..." : "Connecting..."}
+					<div style={{ position: "relative", display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
+						<div
+							className="kb-home-layout"
+							aria-hidden={selectedCard ? true : undefined}
+							style={
+								selectedCard
+									? {
+											visibility: "hidden",
+									  }
+									: undefined
+							}
+						>
+							{shouldShowProjectLoadingState ? (
+								<div
+									style={{
+										display: "flex",
+										flex: "1 1 0",
+										minHeight: 0,
+										alignItems: "center",
+										justifyContent: "center",
+										background: Colors.DARK_GRAY1,
+									}}
+								>
+									<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+										<Spinner size={30} />
+										<div className={Classes.TEXT_MUTED}>
+											{isProjectSwitching ? "Loading project..." : "Connecting..."}
+										</div>
 									</div>
 								</div>
-							</div>
-						) : (
-							<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
-								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0 }}>
-									<KanbanBoard
-										data={board}
-										taskSessions={sessions}
-										onCardSelect={handleCardSelect}
-										onCreateTask={handleOpenCreateTask}
-										onStartTask={handleStartTask}
-										onClearTrash={handleOpenClearTrash}
-										inlineTaskCreator={inlineTaskCreator}
-										editingTaskId={editingTaskId}
-										inlineTaskEditor={inlineTaskEditor}
-										onEditTask={handleOpenEditTask}
-										onCommitTask={() => {}}
-										onOpenPrTask={() => {}}
-										onMoveToTrashTask={handleMoveReviewCardToTrash}
-										reviewWorkspaceSnapshots={workspaceSnapshots}
-										onDragEnd={handleDragEnd}
-									/>
-								</div>
-								{isHomeTerminalOpen && !isHomeTerminalStarting ? (
-									<div
-										style={{
-											display: "flex",
-											flex: "0 0 300px",
-											minHeight: 220,
-											minWidth: 0,
-											overflow: "hidden",
-											borderTop: "1px solid var(--bp-palette-dark-gray-5)",
-											background: Colors.DARK_GRAY2,
-										}}
-									>
-										<AgentTerminalPanel
-											taskId={HOME_TERMINAL_TASK_ID}
-											workspaceId={currentProjectId}
-											summary={homeTerminalSummary}
-											onSummary={upsertSession}
-											showSessionToolbar={false}
-											onClose={() => setIsHomeTerminalOpen(false)}
-											autoFocus
-											minimalHeaderTitle="Terminal"
-											minimalHeaderSubtitle={homeTerminalShellBinary}
-											panelBackgroundColor={Colors.DARK_GRAY2}
-											terminalBackgroundColor={Colors.DARK_GRAY2}
-											cursorColor={Colors.LIGHT_GRAY5}
-											showRightBorder={false}
+							) : (
+								<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
+									<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0 }}>
+										<KanbanBoard
+											data={board}
+											taskSessions={sessions}
+											onCardSelect={handleCardSelect}
+											onCreateTask={handleOpenCreateTask}
+											onStartTask={handleStartTask}
+											onClearTrash={handleOpenClearTrash}
+											inlineTaskCreator={inlineTaskCreator}
+											editingTaskId={editingTaskId}
+											inlineTaskEditor={inlineTaskEditor}
+											onEditTask={handleOpenEditTask}
+											onCommitTask={() => {}}
+											onOpenPrTask={() => {}}
+											onMoveToTrashTask={handleMoveReviewCardToTrash}
+											reviewWorkspaceSnapshots={workspaceSnapshots}
+											onDragEnd={handleDragEnd}
 										/>
 									</div>
-								) : null}
+									{isHomeTerminalOpen && !isHomeTerminalStarting ? (
+										<div
+											style={{
+												display: "flex",
+												flex: "0 0 300px",
+												minHeight: 220,
+												minWidth: 0,
+												overflow: "hidden",
+												borderTop: "1px solid var(--bp-palette-dark-gray-5)",
+												background: Colors.DARK_GRAY2,
+											}}
+										>
+											<AgentTerminalPanel
+												key={`${currentProjectId ?? "none"}:${HOME_TERMINAL_TASK_ID}`}
+												taskId={HOME_TERMINAL_TASK_ID}
+												workspaceId={currentProjectId}
+												summary={homeTerminalSummary}
+												onSummary={upsertSession}
+												showSessionToolbar={false}
+												onClose={() => setIsHomeTerminalOpen(false)}
+												autoFocus
+												minimalHeaderTitle="Terminal"
+												minimalHeaderSubtitle={homeTerminalShellBinary}
+												panelBackgroundColor={Colors.DARK_GRAY2}
+												terminalBackgroundColor={Colors.DARK_GRAY2}
+												cursorColor={Colors.LIGHT_GRAY5}
+												showRightBorder={false}
+												isVisible={!selectedCard}
+											/>
+										</div>
+									) : null}
+								</div>
+							)}
+						</div>
+						{selectedCard && detailSession ? (
+							<div style={{ position: "absolute", inset: 0, display: "flex", minHeight: 0, minWidth: 0 }}>
+								<CardDetailView
+									selection={selectedCard}
+									currentProjectId={currentProjectId}
+									sessionSummary={detailSession}
+									taskSessions={sessions}
+									workspaceFilesChangedAt={workspaceFilesChangedAt}
+									onSessionSummary={upsertSession}
+									onBack={handleBack}
+									onCardSelect={handleCardSelect}
+									onTaskDragEnd={handleDetailTaskDragEnd}
+									onCreateTask={handleOpenCreateTask}
+									onStartTask={handleStartTask}
+									onClearTrash={handleOpenClearTrash}
+									inlineTaskCreator={inlineTaskCreator}
+									editingTaskId={editingTaskId}
+									inlineTaskEditor={inlineTaskEditor}
+									onEditTask={handleOpenEditTask}
+									onCommitTask={() => {}}
+									onOpenPrTask={() => {}}
+									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
+									reviewWorkspaceSnapshots={workspaceSnapshots}
+									onMoveToTrash={handleMoveToTrash}
+								/>
 							</div>
-						)}
+						) : null}
 					</div>
-				{selectedCard && detailSession ? (
-					<CardDetailView
-						selection={selectedCard}
-						currentProjectId={currentProjectId}
-						sessionSummary={detailSession}
-						taskSessions={sessions}
-						workspaceFilesChangedAt={workspaceFilesChangedAt}
-						onSessionSummary={upsertSession}
-						onBack={handleBack}
-						onCardSelect={handleCardSelect}
-							onTaskDragEnd={handleDetailTaskDragEnd}
-							onCreateTask={handleOpenCreateTask}
-							onStartTask={handleStartTask}
-							onClearTrash={handleOpenClearTrash}
-							inlineTaskCreator={inlineTaskCreator}
-						editingTaskId={editingTaskId}
-						inlineTaskEditor={inlineTaskEditor}
-						onEditTask={handleOpenEditTask}
-						onCommitTask={() => {}}
-						onOpenPrTask={() => {}}
-						onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
-						reviewWorkspaceSnapshots={workspaceSnapshots}
-						onMoveToTrash={handleMoveToTrash}
-					/>
-				) : null}
 			</div>
 				<RuntimeSettingsDialog
 					open={isSettingsOpen}

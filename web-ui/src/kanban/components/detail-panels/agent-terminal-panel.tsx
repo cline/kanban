@@ -91,6 +91,7 @@ export function AgentTerminalPanel({
 	terminalBackgroundColor = Colors.DARK_GRAY1,
 	cursorColor = Colors.LIGHT_GRAY5,
 	showRightBorder = true,
+	isVisible = true,
 }: {
 	taskId: string;
 	workspaceId: string | null;
@@ -107,6 +108,7 @@ export function AgentTerminalPanel({
 	terminalBackgroundColor?: string;
 	cursorColor?: string;
 	showRightBorder?: boolean;
+	isVisible?: boolean;
 }): React.ReactElement {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<Terminal | null>(null);
@@ -191,15 +193,35 @@ export function AgentTerminalPanel({
 	}, [autoFocus, cursorColor, requestResize, sendMessage, terminalBackgroundColor]);
 
 	useEffect(() => {
+		if (!isVisible) {
+			return;
+		}
+		const frame = window.requestAnimationFrame(() => {
+			requestResize();
+			if (autoFocus) {
+				terminalRef.current?.focus();
+			}
+		});
+		return () => {
+			window.cancelAnimationFrame(frame);
+		};
+	}, [autoFocus, isVisible, requestResize]);
+
+	useEffect(() => {
 		if (!workspaceId) {
 			setLastError("No project selected.");
 			return;
 		}
+		let disposed = false;
 		const ws = new WebSocket(getWebSocketUrl(taskId, workspaceId));
 		socketRef.current = ws;
 		setLastError(null);
 
 		ws.onopen = () => {
+			if (disposed) {
+				return;
+			}
+			setLastError(null);
 			requestResize();
 		};
 
@@ -230,10 +252,24 @@ export function AgentTerminalPanel({
 		};
 
 		ws.onerror = () => {
+			if (disposed) {
+				return;
+			}
 			setLastError("Terminal connection failed.");
+		};
+		ws.onclose = () => {
+			if (disposed) {
+				return;
+			}
+			if (socketRef.current === ws) {
+				socketRef.current = null;
+			}
+			setLastError("Terminal connection closed. Close and reopen to reconnect.");
+			setIsStopping(false);
 		};
 
 		return () => {
+			disposed = true;
 			if (socketRef.current === ws) {
 				socketRef.current = null;
 			}

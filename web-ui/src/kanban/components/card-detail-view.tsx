@@ -157,6 +157,7 @@ export function CardDetailView({
 				<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 						<AgentTerminalPanel
+							key={selection.card.id}
 							taskId={selection.card.id}
 							workspaceId={currentProjectId}
 							summary={sessionSummary}
