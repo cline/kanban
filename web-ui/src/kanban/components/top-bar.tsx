@@ -71,6 +71,9 @@ export function TopBar({
 	const pushTooltip = pushCount > 0
 		? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
 		: "Push local commits to upstream. No local commits are pending.";
+	const isMacPlatform = typeof navigator !== "undefined" &&
+		/Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+	const terminalShortcutIcon = isMacPlatform ? "key-command" : "key-control";
 
 	return (
 		<Navbar
@@ -175,13 +178,24 @@ export function TopBar({
 			</NavbarGroup>
 			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40, paddingRight: 2 }}>
 				{onToggleTerminal ? (
-					<Button
-						icon="console"
-						variant="minimal"
-						onClick={onToggleTerminal}
-						loading={Boolean(isTerminalLoading)}
-						aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
-					/>
+					<Tooltip
+						placement="bottom"
+						content={(
+							<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+								<span>Toggle terminal (</span>
+								<Icon icon={terminalShortcutIcon} size={11} />
+								<span>+ J)</span>
+							</span>
+						)}
+					>
+						<Button
+							icon="console"
+							variant="minimal"
+							onClick={onToggleTerminal}
+							disabled={Boolean(isTerminalLoading)}
+							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
+						/>
+					</Tooltip>
 				) : null}
 				{shortcuts?.map((shortcut) => (
 					<Button

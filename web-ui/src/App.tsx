@@ -115,6 +115,7 @@ export default function App(): ReactElement {
 		revision: null,
 	});
 	const homeTerminalProjectIdRef = useRef<string | null>(null);
+	const homeTerminalToggleRef = useRef<(() => void) | null>(null);
 	const workspaceRefreshRequestIdRef = useRef(0);
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
@@ -1215,6 +1216,16 @@ export default function App(): ReactElement {
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
+			const key = event.key.toLowerCase();
+			if ((event.metaKey || event.ctrlKey) && key === "j") {
+				event.preventDefault();
+				if (selectedCard) {
+					return;
+				}
+				homeTerminalToggleRef.current?.();
+				return;
+			}
+
 			const target = event.target as HTMLElement | null;
 			const isTypingTarget =
 				target?.tagName === "INPUT" ||
@@ -1224,7 +1235,6 @@ export default function App(): ReactElement {
 				return;
 			}
 
-			const key = event.key.toLowerCase();
 			if ((event.metaKey || event.ctrlKey) && key === "k") {
 				event.preventDefault();
 				setIsCommandPaletteOpen((current) => !current);
@@ -1240,7 +1250,7 @@ export default function App(): ReactElement {
 
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, []);
+	}, [selectedCard]);
 
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);
@@ -1379,6 +1389,15 @@ export default function App(): ReactElement {
 			setIsHomeTerminalOpen(true);
 		})();
 	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
+
+	useEffect(() => {
+		homeTerminalToggleRef.current = handleToggleHomeTerminal;
+		return () => {
+			if (homeTerminalToggleRef.current === handleToggleHomeTerminal) {
+				homeTerminalToggleRef.current = null;
+			}
+		};
+	}, [handleToggleHomeTerminal]);
 
 	useEffect(() => {
 		if (!isHomeTerminalOpen) {
