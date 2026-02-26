@@ -32,8 +32,6 @@ interface ActiveProcessState {
 	ptyProcess: pty.IPty;
 	outputHistory: Buffer[];
 	historyBytes: number;
-	listenerIdCounter: number;
-	listeners: Map<number, TerminalSessionListener>;
 	attentionBuffer: string;
 	cols: number;
 	rows: number;
@@ -49,6 +47,8 @@ interface ActiveProcessState {
 interface SessionEntry {
 	summary: RuntimeTaskSessionSummary;
 	active: ActiveProcessState | null;
+	listenerIdCounter: number;
+	listeners: Map<number, TerminalSessionListener>;
 }
 
 export interface TerminalSessionListener {
@@ -211,6 +211,8 @@ export class TerminalSessionManager {
 			this.entries.set(taskId, {
 				summary: cloneSummary(summary),
 				active: null,
+				listenerIdCounter: 1,
+				listeners: new Map(),
 			});
 		}
 	}
@@ -225,10 +227,7 @@ export class TerminalSessionManager {
 	}
 
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null {
-		const entry = this.entries.get(taskId);
-		if (!entry) {
-			return null;
-		}
+		const entry = this.ensureEntry(taskId);
 
 		listener.onState?.(cloneSummary(entry.summary));
 		for (const chunk of entry.active?.outputHistory ?? []) {
@@ -238,18 +237,12 @@ export class TerminalSessionManager {
 			listener.onExit?.(entry.summary.exitCode);
 		}
 
-		if (!entry.active) {
-			return () => {
-				// No-op for inactive sessions.
-			};
-		}
-
-		const listenerId = entry.active.listenerIdCounter;
-		entry.active.listenerIdCounter += 1;
-		entry.active.listeners.set(listenerId, listener);
+		const listenerId = entry.listenerIdCounter;
+		entry.listenerIdCounter += 1;
+		entry.listeners.set(listenerId, listener);
 
 		return () => {
-			entry.active?.listeners.delete(listenerId);
+			entry.listeners.delete(listenerId);
 		};
 	}
 
@@ -324,8 +317,6 @@ export class TerminalSessionManager {
 			ptyProcess,
 			outputHistory: [],
 			historyBytes: 0,
-			listenerIdCounter: 1,
-			listeners: new Map(),
 			attentionBuffer: "",
 			cols,
 			rows,
@@ -424,7 +415,7 @@ export class TerminalSessionManager {
 				}
 			}
 
-			for (const taskListener of entry.active.listeners.values()) {
+			for (const taskListener of entry.listeners.values()) {
 				taskListener.onOutput?.(chunk);
 				taskListener.onState?.(cloneSummary(summary));
 			}
@@ -448,7 +439,7 @@ export class TerminalSessionManager {
 				interrupted: currentActive.shutdownInterrupted,
 			});
 
-			for (const taskListener of currentActive.listeners.values()) {
+			for (const taskListener of currentEntry.listeners.values()) {
 				taskListener.onState?.(cloneSummary(summary));
 				taskListener.onExit?.(event.exitCode);
 			}
@@ -531,8 +522,6 @@ export class TerminalSessionManager {
 			ptyProcess,
 			outputHistory: [],
 			historyBytes: 0,
-			listenerIdCounter: 1,
-			listeners: new Map(),
 			attentionBuffer: "",
 			cols,
 			rows,
@@ -590,7 +579,7 @@ export class TerminalSessionManager {
 				lastActivityLine,
 			});
 
-			for (const taskListener of entry.active.listeners.values()) {
+			for (const taskListener of entry.listeners.values()) {
 				taskListener.onOutput?.(chunk);
 				taskListener.onState?.(cloneSummary(summary));
 			}
@@ -615,7 +604,7 @@ export class TerminalSessionManager {
 				pid: null,
 			});
 
-			for (const taskListener of currentActive.listeners.values()) {
+			for (const taskListener of currentEntry.listeners.values()) {
 				taskListener.onState?.(cloneSummary(summary));
 				taskListener.onExit?.(event.exitCode);
 			}
@@ -668,7 +657,7 @@ export class TerminalSessionManager {
 		const before = entry.summary;
 		const summary = this.applySessionEvent(entry, { type: "hook.review" });
 		if (summary !== before && entry.active) {
-			for (const listener of entry.active.listeners.values()) {
+			for (const listener of entry.listeners.values()) {
 				listener.onState?.(cloneSummary(summary));
 			}
 			this.emitSummary(summary);
@@ -684,7 +673,7 @@ export class TerminalSessionManager {
 		const before = entry.summary;
 		const summary = this.applySessionEvent(entry, { type: "hook.inprogress" });
 		if (summary !== before && entry.active) {
-			for (const listener of entry.active.listeners.values()) {
+			for (const listener of entry.listeners.values()) {
 				listener.onState?.(cloneSummary(summary));
 			}
 			this.emitSummary(summary);
@@ -744,6 +733,8 @@ export class TerminalSessionManager {
 		const created: SessionEntry = {
 			summary: createDefaultSummary(taskId),
 			active: null,
+			listenerIdCounter: 1,
+			listeners: new Map(),
 		};
 		this.entries.set(taskId, created);
 		return created;
