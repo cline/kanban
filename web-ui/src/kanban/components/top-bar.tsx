@@ -181,10 +181,13 @@ export function TopBar({
 					<Tooltip
 						placement="bottom"
 						content={(
-							<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-								<span>Toggle terminal (</span>
-								<Icon icon={terminalShortcutIcon} size={11} />
-								<span>+ J)</span>
+							<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+								<span>Toggle terminal</span>
+								<span style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
+									<span>(</span>
+									<Icon icon={terminalShortcutIcon} size={11} />
+									<span>+ J)</span>
+								</span>
 							</span>
 						)}
 					>
