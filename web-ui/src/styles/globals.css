@@ -227,3 +227,16 @@ body,
 .kb-hidden {
 	display: none;
 }
+
+/* -- Terminal viewport (hide gutter while keeping wheel scroll) -- */
+
+.kb-terminal-container .xterm-viewport {
+	overflow-y: auto;
+	background-color: transparent;
+	scrollbar-width: none;
+}
+
+.kb-terminal-container .xterm-viewport::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+}

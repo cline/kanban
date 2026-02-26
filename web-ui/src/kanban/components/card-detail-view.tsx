@@ -11,7 +11,7 @@ import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspa
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard, CardSelection, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 
-const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 1500;
+const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 600;
 
 export function CardDetailView({
 	selection,
@@ -171,6 +171,8 @@ export function CardDetailView({
 							workspaceId={currentProjectId}
 							summary={sessionSummary}
 							onSummary={onSessionSummary}
+							showSessionToolbar={false}
+							autoFocus
 							showMoveToTrash={selection.column.id === "review"}
 							onMoveToTrash={onMoveToTrash}
 						/>

@@ -15,12 +15,29 @@ import type {
 } from "@/kanban/runtime/types";
 import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
 
+type TerminalWithViewportCore = Terminal & {
+	_core?: {
+		viewport?: {
+			scrollBarWidth: number;
+		};
+	};
+};
+
 function getWebSocketUrl(taskId: string, workspaceId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/ws`);
 	url.searchParams.set("taskId", taskId);
 	url.searchParams.set("workspaceId", workspaceId);
 	return url.toString();
+}
+
+function disableFitScrollbarReserve(terminal: Terminal): void {
+	const terminalWithCore = terminal as TerminalWithViewportCore;
+	const viewport = terminalWithCore._core?.viewport;
+	if (!viewport) {
+		return;
+	}
+	viewport.scrollBarWidth = 0;
 }
 
 function describeState(summary: RuntimeTaskSessionSummary | null): string {
@@ -141,6 +158,7 @@ export function AgentTerminalPanel({
 		terminal.loadAddon(fitAddon);
 		terminal.loadAddon(new WebLinksAddon());
 		terminal.open(container);
+		disableFitScrollbarReserve(terminal);
 		fitAddon.fit();
 		if (autoFocus) {
 			window.requestAnimationFrame(() => {
@@ -261,14 +279,6 @@ export function AgentTerminalPanel({
 				borderRight: showRightBorder ? `1px solid ${panelSeparatorColor}` : undefined,
 			}}
 		>
-			{showMoveToTrash && onMoveToTrash ? (
-				<>
-					<div style={{ padding: "8px 12px" }}>
-						<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
-					</div>
-					<Divider />
-					</>
-				) : null}
 			{showSessionToolbar ? (
 				<>
 					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px" }}>
@@ -316,13 +326,24 @@ export function AgentTerminalPanel({
 					/>
 				</div>
 			) : null}
-			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: 4 }}>
-				<div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: "3px 1.5px 3px 3px" }}>
+				<div
+					ref={containerRef}
+					className="kb-terminal-container"
+					style={{ height: "100%", width: "100%", background: terminalBackgroundColor }}
+				/>
 			</div>
 			{lastError ? (
 				<Callout intent="danger" compact style={{ borderRadius: 0 }}>
 					{lastError}
 				</Callout>
+			) : null}
+			{showMoveToTrash && onMoveToTrash ? (
+				<>
+					<div style={{ padding: "8px 12px" }}>
+						<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
+					</div>
+				</>
 			) : null}
 		</div>
 	);
