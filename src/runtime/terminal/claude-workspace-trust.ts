@@ -4,7 +4,7 @@ import type { RuntimeAgentId } from "../api-contract.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 
 export const CLAUDE_WORKSPACE_TRUST_POLL_MS = 150;
-export const CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS = 1000;
+export const CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS = 100;
 
 function normalizeTerminalText(input: string): string {
 	return input.toLowerCase().replace(/\s+/gu, " ");
