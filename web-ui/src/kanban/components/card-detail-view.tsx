@@ -11,13 +11,12 @@ import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspa
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard, CardSelection, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 
-const WORKSPACE_CHANGES_POLL_INTERVAL_MS = 600;
-
 export function CardDetailView({
 	selection,
 	currentProjectId,
 	sessionSummary,
 	taskSessions,
+	workspaceFilesChangedAt,
 	onSessionSummary,
 	onBack,
 	onCardSelect,
@@ -39,6 +38,7 @@ export function CardDetailView({
 	currentProjectId: string | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
+	workspaceFilesChangedAt: number;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
 	onBack: () => void;
 	onCardSelect: (taskId: string) => void;
@@ -128,22 +128,12 @@ export function CardDetailView({
 
 	useEffect(() => {
 		const state = sessionSummary?.state;
-		const shouldPoll = state === "running" || state === "awaiting_review";
-		if (!shouldPoll) {
+		const shouldRefreshFromFilesystemSignal = state === "running" || state === "awaiting_review";
+		if (!shouldRefreshFromFilesystemSignal || workspaceFilesChangedAt <= 0) {
 			return;
 		}
-
-		const intervalId = window.setInterval(() => {
-			if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-				return;
-			}
-			void refresh();
-		}, WORKSPACE_CHANGES_POLL_INTERVAL_MS);
-
-		return () => {
-			window.clearInterval(intervalId);
-		};
-	}, [refresh, sessionSummary?.state]);
+		void refresh();
+	}, [refresh, sessionSummary?.state, workspaceFilesChangedAt]);
 
 	return (
 		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: Colors.DARK_GRAY1 }}>

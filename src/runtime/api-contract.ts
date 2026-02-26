@@ -169,6 +169,12 @@ export interface RuntimeStateStreamTaskSessionsMessage {
 	summaries: RuntimeTaskSessionSummary[];
 }
 
+export interface RuntimeStateStreamWorkspaceFilesChangedMessage {
+	type: "workspace_files_changed";
+	workspaceId: string;
+	changedAt: number;
+}
+
 export interface RuntimeStateStreamProjectsMessage {
 	type: "projects_updated";
 	currentProjectId: string | null;
@@ -184,6 +190,7 @@ export type RuntimeStateStreamMessage =
 	| RuntimeStateStreamSnapshotMessage
 	| RuntimeStateStreamWorkspaceStateMessage
 	| RuntimeStateStreamTaskSessionsMessage
+	| RuntimeStateStreamWorkspaceFilesChangedMessage
 	| RuntimeStateStreamProjectsMessage
 	| RuntimeStateStreamErrorMessage;
 

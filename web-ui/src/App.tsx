@@ -83,7 +83,6 @@ interface PendingTrashWarningState {
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
 }
 
-const IN_PROGRESS_WORKSPACE_STATUS_POLL_INTERVAL_MS = 3000;
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
 const HOME_TERMINAL_TASK_ID = "__home_terminal__";
 const HOME_TERMINAL_ROWS = 16;
@@ -181,6 +180,7 @@ export default function App(): ReactElement {
 		currentProjectId,
 		projects,
 		workspaceState: streamedWorkspaceState,
+		workspaceFilesChangedAt,
 		streamError,
 	} = useRuntimeStateStream(requestedProjectId);
 	const navigationCurrentProjectId = requestedProjectId ?? currentProjectId;
@@ -699,48 +699,63 @@ export default function App(): ReactElement {
 	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards, workspaceSnapshots]);
 
 	useEffect(() => {
-		if (!currentProjectId || inProgressCards.length === 0) {
+		if (!currentProjectId || workspaceFilesChangedAt <= 0 || !isDocumentVisible) {
 			return;
 		}
-		let cancelled = false;
-		const pollWorkspaceSnapshots = () => {
-			for (const card of inProgressCards) {
-				if (inProgressWorkspaceSnapshotLoadingRef.current.has(card.id)) {
-					continue;
+		for (const card of inProgressCards) {
+			if (inProgressWorkspaceSnapshotLoadingRef.current.has(card.id)) {
+				continue;
+			}
+			inProgressWorkspaceSnapshotLoadingRef.current.add(card.id);
+			void (async () => {
+				const snapshot = await fetchReviewWorkspaceSnapshot(card);
+				inProgressWorkspaceSnapshotLoadingRef.current.delete(card.id);
+				if (!snapshot) {
+					return;
 				}
-				inProgressWorkspaceSnapshotLoadingRef.current.add(card.id);
-				void (async () => {
-					const snapshot = await fetchReviewWorkspaceSnapshot(card);
-					inProgressWorkspaceSnapshotLoadingRef.current.delete(card.id);
-					if (cancelled || !snapshot) {
-						return;
+				setWorkspaceSnapshots((current) => {
+					const existing = current[card.id];
+					if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
+						return current;
 					}
-					setWorkspaceSnapshots((current) => {
-						const existing = current[card.id];
-						if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
-							return current;
-						}
-						return {
-							...current,
-							[card.id]: snapshot,
-						};
-					});
-				})();
+					return {
+						...current,
+						[card.id]: snapshot,
+					};
+				});
+			})();
+		}
+		for (const card of reviewCards) {
+			if (reviewWorkspaceSnapshotLoadingRef.current.has(card.id)) {
+				continue;
 			}
-		};
-		pollWorkspaceSnapshots();
-		const intervalId = window.setInterval(() => {
-			if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-				return;
-			}
-			pollWorkspaceSnapshots();
-		}, IN_PROGRESS_WORKSPACE_STATUS_POLL_INTERVAL_MS);
-
-		return () => {
-			cancelled = true;
-			window.clearInterval(intervalId);
-		};
-	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards]);
+			reviewWorkspaceSnapshotLoadingRef.current.add(card.id);
+			void (async () => {
+				const snapshot = await fetchReviewWorkspaceSnapshot(card);
+				reviewWorkspaceSnapshotLoadingRef.current.delete(card.id);
+				if (!snapshot) {
+					return;
+				}
+				setWorkspaceSnapshots((current) => {
+					const existing = current[card.id];
+					if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
+						return current;
+					}
+					return {
+						...current,
+						[card.id]: snapshot,
+					};
+				});
+			})();
+		}
+	}, [
+		currentProjectId,
+		fetchReviewWorkspaceSnapshot,
+		inProgressCards,
+		isDocumentVisible,
+		reviewCards,
+		workspaceFilesChangedAt,
+	]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -2059,6 +2074,7 @@ export default function App(): ReactElement {
 						currentProjectId={currentProjectId}
 						sessionSummary={detailSession}
 						taskSessions={sessions}
+						workspaceFilesChangedAt={workspaceFilesChangedAt}
 						onSessionSummary={upsertSession}
 						onBack={handleBack}
 						onCardSelect={handleCardSelect}

@@ -5,6 +5,7 @@ import type {
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamMessage,
+	RuntimeStateStreamWorkspaceFilesChangedMessage,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "@/kanban/runtime/types";
@@ -42,6 +43,7 @@ export interface UseRuntimeStateStreamResult {
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
+	workspaceFilesChangedAt: number;
 	streamError: string | null;
 }
 
@@ -49,6 +51,7 @@ interface RuntimeStateStreamStore {
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
+	workspaceFilesChangedAt: number;
 	streamError: string | null;
 }
 
@@ -60,6 +63,7 @@ type RuntimeStateStreamAction =
 			payload: RuntimeStateStreamProjectsMessage;
 			nextProjectId: string | null;
 	  }
+	| { type: "workspace_files_changed"; payload: RuntimeStateStreamWorkspaceFilesChangedMessage }
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
 	| { type: "task_sessions_updated"; summaries: RuntimeTaskSessionSummary[] }
 	| { type: "stream_error"; message: string };
@@ -69,6 +73,7 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		currentProjectId: requestedWorkspaceId,
 		projects: [],
 		workspaceState: null,
+		workspaceFilesChangedAt: 0,
 		streamError: null,
 	};
 }
@@ -99,6 +104,7 @@ function runtimeStateStreamReducer(
 			currentProjectId: action.payload.currentProjectId,
 			projects: action.payload.projects,
 			workspaceState: action.payload.workspaceState,
+			workspaceFilesChangedAt: state.workspaceFilesChangedAt,
 			streamError: null,
 		};
 	}
@@ -109,6 +115,12 @@ function runtimeStateStreamReducer(
 			currentProjectId: action.nextProjectId,
 			projects: action.payload.projects,
 			workspaceState: didProjectChange ? null : state.workspaceState,
+		};
+	}
+	if (action.type === "workspace_files_changed") {
+		return {
+			...state,
+			workspaceFilesChangedAt: Math.max(state.workspaceFilesChangedAt, action.payload.changedAt),
 		};
 	}
 	if (action.type === "workspace_state_updated") {
@@ -240,6 +252,16 @@ export function useRuntimeStateStream(
 						});
 						return;
 					}
+					if (payload.type === "workspace_files_changed") {
+						if (payload.workspaceId !== activeWorkspaceId) {
+							return;
+						}
+						dispatch({
+							type: "workspace_files_changed",
+							payload,
+						});
+						return;
+					}
 					if (payload.type === "task_sessions_updated") {
 						if (payload.workspaceId !== activeWorkspaceId) {
 							return;
@@ -292,6 +314,7 @@ export function useRuntimeStateStream(
 		currentProjectId: state.currentProjectId,
 		projects: state.projects,
 		workspaceState: state.workspaceState,
+		workspaceFilesChangedAt: state.workspaceFilesChangedAt,
 		streamError: state.streamError,
 	};
 }

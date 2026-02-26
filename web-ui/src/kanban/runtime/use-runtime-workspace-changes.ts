@@ -44,14 +44,16 @@ export function useRuntimeWorkspaceChanges(
 	const [isLoading, setIsLoading] = useState(false);
 	const [isRuntimeAvailable, setIsRuntimeAvailable] = useState(true);
 	const refreshRequestIdRef = useRef(0);
+	const refreshContextVersionRef = useRef(0);
+	const refreshInFlightRef = useRef(false);
+	const refreshPendingRef = useRef(false);
 
-	const refresh = useCallback(async () => {
+	const fetchAndStoreChanges = useCallback(async () => {
 		if (!taskId || !workspaceId) {
 			return;
 		}
 		const requestId = refreshRequestIdRef.current + 1;
 		refreshRequestIdRef.current = requestId;
-		setIsLoading(true);
 		try {
 			const nextChanges = await fetchRuntimeWorkspaceChanges(taskId, workspaceId, baseRef);
 			if (refreshRequestIdRef.current !== requestId) {
@@ -65,15 +67,40 @@ export function useRuntimeWorkspaceChanges(
 			}
 			setChanges(null);
 			setIsRuntimeAvailable(false);
-		} finally {
-			if (refreshRequestIdRef.current === requestId) {
-				setIsLoading(false);
-			}
 		}
 	}, [baseRef, taskId, workspaceId]);
 
+	const refresh = useCallback(async () => {
+		if (!taskId || !workspaceId) {
+			return;
+		}
+		if (refreshInFlightRef.current) {
+			refreshPendingRef.current = true;
+			return;
+		}
+		const refreshContextVersion = refreshContextVersionRef.current;
+		refreshInFlightRef.current = true;
+		setIsLoading(true);
+		try {
+			await fetchAndStoreChanges();
+			while (
+				refreshPendingRef.current &&
+				refreshContextVersion === refreshContextVersionRef.current
+			) {
+				refreshPendingRef.current = false;
+				await fetchAndStoreChanges();
+			}
+		} finally {
+			refreshInFlightRef.current = false;
+			refreshPendingRef.current = false;
+			setIsLoading(false);
+		}
+	}, [fetchAndStoreChanges, taskId, workspaceId]);
+
 	useEffect(() => {
+		refreshContextVersionRef.current += 1;
 		refreshRequestIdRef.current += 1;
+		refreshPendingRef.current = false;
 		if (!taskId || !workspaceId) {
 			setChanges(null);
 			setIsLoading(false);
