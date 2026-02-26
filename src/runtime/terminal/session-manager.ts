@@ -14,6 +14,13 @@ import {
 	type AgentOutputTransitionDetector,
 	prepareAgentLaunch,
 } from "./agent-session-adapters.js";
+import {
+	CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS,
+	CLAUDE_WORKSPACE_TRUST_POLL_MS,
+	hasClaudeWorkspaceTrustPrompt,
+	shouldAutoConfirmClaudeWorkspaceTrust,
+	stopClaudeWorkspaceTrustTimers,
+} from "./claude-workspace-trust.js";
 import { extractLastActivityLine } from "./output-utils.js";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
 
@@ -34,6 +41,9 @@ interface ActiveProcessState {
 	onSessionCleanup: (() => Promise<void>) | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	awaitingCodexPromptAfterEnter: boolean;
+	autoConfirmedClaudeWorkspaceTrust: boolean;
+	claudeWorkspaceTrustPollTimer: NodeJS.Timeout | null;
+	claudeWorkspaceTrustConfirmTimer: NodeJS.Timeout | null;
 }
 
 interface SessionEntry {
@@ -250,6 +260,7 @@ export class TerminalSessionManager {
 		}
 
 		if (entry.active) {
+			stopClaudeWorkspaceTrustTimers(entry.active);
 			terminatePtyProcess(entry.active);
 			entry.active = null;
 		}
@@ -322,8 +333,37 @@ export class TerminalSessionManager {
 			onSessionCleanup: launch.cleanup ?? null,
 			detectOutputTransition: launch.detectOutputTransition ?? null,
 			awaitingCodexPromptAfterEnter: false,
+			autoConfirmedClaudeWorkspaceTrust: false,
+			claudeWorkspaceTrustPollTimer: null,
+			claudeWorkspaceTrustConfirmTimer: null,
 		};
 		entry.active = active;
+		if (shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd)) {
+			active.claudeWorkspaceTrustPollTimer = setInterval(() => {
+				const currentEntry = this.entries.get(request.taskId);
+				const currentActive = currentEntry?.active;
+				if (!currentActive) {
+					return;
+				}
+				if (currentActive.autoConfirmedClaudeWorkspaceTrust) {
+					stopClaudeWorkspaceTrustTimers(currentActive);
+					return;
+				}
+				if (!hasClaudeWorkspaceTrustPrompt(currentActive.attentionBuffer)) {
+					return;
+				}
+				currentActive.autoConfirmedClaudeWorkspaceTrust = true;
+				stopClaudeWorkspaceTrustTimers(currentActive);
+				currentActive.claudeWorkspaceTrustConfirmTimer = setTimeout(() => {
+					const activeEntry = this.entries.get(request.taskId)?.active;
+					if (!activeEntry || !activeEntry.autoConfirmedClaudeWorkspaceTrust) {
+						return;
+					}
+					activeEntry.ptyProcess.write("\r");
+					activeEntry.claudeWorkspaceTrustConfirmTimer = null;
+				}, CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS);
+			}, CLAUDE_WORKSPACE_TRUST_POLL_MS);
+		}
 
 		const startedAt = now();
 		updateSummary(entry, {
@@ -400,6 +440,7 @@ export class TerminalSessionManager {
 			if (!currentActive) {
 				return;
 			}
+			stopClaudeWorkspaceTrustTimers(currentActive);
 
 			const summary = this.applySessionEvent(currentEntry, {
 				type: "process.exit",
@@ -445,6 +486,7 @@ export class TerminalSessionManager {
 		}
 
 		if (entry.active) {
+			stopClaudeWorkspaceTrustTimers(entry.active);
 			terminatePtyProcess(entry.active);
 			entry.active = null;
 		}
@@ -498,6 +540,9 @@ export class TerminalSessionManager {
 			onSessionCleanup: null,
 			detectOutputTransition: null,
 			awaitingCodexPromptAfterEnter: false,
+			autoConfirmedClaudeWorkspaceTrust: false,
+			claudeWorkspaceTrustPollTimer: null,
+			claudeWorkspaceTrustConfirmTimer: null,
 		};
 		entry.active = active;
 
@@ -561,6 +606,7 @@ export class TerminalSessionManager {
 			if (!currentActive) {
 				return;
 			}
+			stopClaudeWorkspaceTrustTimers(currentActive);
 
 			const summary = updateSummary(currentEntry, {
 				state: currentActive.shutdownInterrupted ? "interrupted" : "idle",
@@ -653,6 +699,7 @@ export class TerminalSessionManager {
 		}
 		const cleanupFn = entry.active.onSessionCleanup;
 		entry.active.onSessionCleanup = null;
+		stopClaudeWorkspaceTrustTimers(entry.active);
 		terminatePtyProcess(entry.active);
 		if (cleanupFn) {
 			cleanupFn().catch(() => {
@@ -669,6 +716,7 @@ export class TerminalSessionManager {
 				continue;
 			}
 			entry.active.shutdownInterrupted = true;
+			stopClaudeWorkspaceTrustTimers(entry.active);
 			terminatePtyProcess(entry.active);
 		}
 		return activeEntries.map((entry) => cloneSummary(entry.summary));
