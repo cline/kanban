@@ -30,6 +30,9 @@ export function TopBar({
 	onGitFetch,
 	onGitPull,
 	onGitPush,
+	onToggleTerminal,
+	isTerminalOpen,
+	isTerminalLoading,
 	onOpenSettings,
 	shortcuts,
 	runningShortcutId,
@@ -45,6 +48,9 @@ export function TopBar({
 	onGitFetch?: () => void;
 	onGitPull?: () => void;
 	onGitPush?: () => void;
+	onToggleTerminal?: () => void;
+	isTerminalOpen?: boolean;
+	isTerminalLoading?: boolean;
 	onOpenSettings?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
 	runningShortcutId?: string | null;
@@ -168,6 +174,15 @@ export function TopBar({
 				) : null}
 			</NavbarGroup>
 			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40, paddingRight: 2 }}>
+				{onToggleTerminal ? (
+					<Button
+						icon="console"
+						variant="minimal"
+						onClick={onToggleTerminal}
+						loading={Boolean(isTerminalLoading)}
+						aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
+					/>
+				) : null}
 				{shortcuts?.map((shortcut) => (
 					<Button
 						key={shortcut.id}

@@ -345,6 +345,19 @@ export interface RuntimeTaskSessionStopResponse {
 	error?: string;
 }
 
+export interface RuntimeShellSessionStartRequest {
+	taskId: string;
+	cols?: number;
+	rows?: number;
+}
+
+export interface RuntimeShellSessionStartResponse {
+	ok: boolean;
+	summary: RuntimeTaskSessionSummary | null;
+	shellBinary?: string | null;
+	error?: string;
+}
+
 export interface RuntimeTerminalWsInputMessage {
 	type: "input";
 	data: string;

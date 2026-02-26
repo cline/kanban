@@ -65,6 +65,15 @@ export function AgentTerminalPanel({
 	onSummary,
 	onMoveToTrash,
 	showMoveToTrash,
+	showSessionToolbar = true,
+	onClose,
+	autoFocus = false,
+	minimalHeaderTitle = "Terminal",
+	minimalHeaderSubtitle = null,
+	panelBackgroundColor = Colors.DARK_GRAY1,
+	terminalBackgroundColor = Colors.DARK_GRAY1,
+	cursorColor = Colors.LIGHT_GRAY5,
+	showRightBorder = true,
 }: {
 	taskId: string;
 	workspaceId: string | null;
@@ -72,6 +81,15 @@ export function AgentTerminalPanel({
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onMoveToTrash?: () => void;
 	showMoveToTrash?: boolean;
+	showSessionToolbar?: boolean;
+	onClose?: () => void;
+	autoFocus?: boolean;
+	minimalHeaderTitle?: string;
+	minimalHeaderSubtitle?: string | null;
+	panelBackgroundColor?: string;
+	terminalBackgroundColor?: string;
+	cursorColor?: string;
+	showRightBorder?: boolean;
 }): React.ReactElement {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<Terminal | null>(null);
@@ -113,9 +131,9 @@ export function AgentTerminalPanel({
 			fontSize: 12,
 			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
 			theme: {
-				background: Colors.DARK_GRAY1,
+				background: terminalBackgroundColor,
 				foreground: Colors.LIGHT_GRAY5,
-				cursor: Colors.BLUE3,
+				cursor: cursorColor,
 				selectionBackground: `${Colors.BLUE3}4D`,
 			},
 		});
@@ -124,6 +142,11 @@ export function AgentTerminalPanel({
 		terminal.loadAddon(new WebLinksAddon());
 		terminal.open(container);
 		fitAddon.fit();
+		if (autoFocus) {
+			window.requestAnimationFrame(() => {
+				terminal.focus();
+			});
+		}
 
 		terminalRef.current = terminal;
 		fitAddonRef.current = fitAddon;
@@ -147,7 +170,7 @@ export function AgentTerminalPanel({
 			terminalRef.current = null;
 			terminal.dispose();
 		};
-	}, [requestResize, sendMessage]);
+	}, [autoFocus, cursorColor, requestResize, sendMessage, terminalBackgroundColor]);
 
 	useEffect(() => {
 		if (!workspaceId) {
@@ -227,34 +250,72 @@ export function AgentTerminalPanel({
 	const statusIntent = useMemo(() => getStateIntent(summary), [summary]);
 
 	return (
-		<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}>
+		<div
+			style={{
+				display: "flex",
+				flex: "1 1 0",
+				flexDirection: "column",
+				minWidth: 0,
+				minHeight: 0,
+				background: panelBackgroundColor,
+				borderRight: showRightBorder ? `1px solid ${panelSeparatorColor}` : undefined,
+			}}
+		>
 			{showMoveToTrash && onMoveToTrash ? (
 				<>
 					<div style={{ padding: "8px 12px" }}>
 						<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
 					</div>
 					<Divider />
+					</>
+				) : null}
+			{showSessionToolbar ? (
+				<>
+					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px" }}>
+						<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+							<Tag intent={statusIntent} minimal>{statusLabel}</Tag>
+							{summary?.lastActivityLine ? (
+								<span className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}>{summary.lastActivityLine}</span>
+							) : null}
+						</div>
+						<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+							<Button text="Clear" variant="outlined" size="small" onClick={handleClear} />
+							<Button
+								text="Stop"
+								variant="outlined"
+								size="small"
+								onClick={() => { void handleStop(); }}
+								disabled={!canStop || isStopping}
+							/>
+						</div>
+					</div>
+					<Divider />
 				</>
-			) : null}
-				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px" }}>
-					<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-						<Tag intent={statusIntent} minimal>{statusLabel}</Tag>
-						{summary?.lastActivityLine ? (
-							<span className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}>{summary.lastActivityLine}</span>
+			) : onClose ? (
+				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 8px 0" }}>
+					<div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+						<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
+							{minimalHeaderTitle}
+						</span>
+						{minimalHeaderSubtitle ? (
+							<span
+								className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
+								style={{ fontSize: "var(--bp-typography-size-body-x-small)" }}
+								title={minimalHeaderSubtitle}
+							>
+								{minimalHeaderSubtitle}
+							</span>
 						) : null}
 					</div>
-				<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-					<Button text="Clear" variant="outlined" size="small" onClick={handleClear} />
 					<Button
-						text="Stop"
-						variant="outlined"
+						icon="cross"
+						variant="minimal"
 						size="small"
-						onClick={() => { void handleStop(); }}
-						disabled={!canStop || isStopping}
-						/>
-					</div>
+						onClick={onClose}
+						aria-label="Close terminal"
+					/>
 				</div>
-				<Divider />
+			) : null}
 			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: 4 }}>
 				<div ref={containerRef} style={{ height: "100%", width: "100%" }} />
 			</div>

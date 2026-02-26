@@ -20,6 +20,7 @@ import {
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { ClearTrashDialog } from "@/kanban/components/clear-trash-dialog";
+import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
 import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
@@ -49,6 +50,7 @@ import type {
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
 	RuntimeProjectRemoveResponse,
+	RuntimeShellSessionStartResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeShortcutRunResponse,
 	RuntimeTaskSessionSummary,
@@ -83,6 +85,8 @@ interface PendingTrashWarningState {
 
 const IN_PROGRESS_WORKSPACE_STATUS_POLL_INTERVAL_MS = 3000;
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
+const HOME_TERMINAL_TASK_ID = "__home_terminal__";
+const HOME_TERMINAL_ROWS = 16;
 
 function createNoGitSyncSummary(): RuntimeGitSyncSummary {
 	return {
@@ -110,6 +114,7 @@ export default function App(): ReactElement {
 		projectId: null,
 		revision: null,
 	});
+	const homeTerminalProjectIdRef = useRef<string | null>(null);
 	const workspaceRefreshRequestIdRef = useRef(0);
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
@@ -149,6 +154,9 @@ export default function App(): ReactElement {
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [runningShortcutId, setRunningShortcutId] = useState<string | null>(null);
 	const [removingProjectId, setRemovingProjectId] = useState<string | null>(null);
+	const [isHomeTerminalOpen, setIsHomeTerminalOpen] = useState(false);
+	const [isHomeTerminalStarting, setIsHomeTerminalStarting] = useState(false);
+	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
 	const [runtimeProjectConfigRefreshNonce, setRuntimeProjectConfigRefreshNonce] = useState(0);
 	const [lastShortcutOutput, setLastShortcutOutput] = useState<{
 		label: string;
@@ -212,6 +220,7 @@ export default function App(): ReactElement {
 				: project,
 		);
 	}, [board, canPersistWorkspaceState, currentProjectId, projects]);
+	const homeTerminalSummary = sessions[HOME_TERMINAL_TASK_ID] ?? null;
 
 	useEffect(() => {
 		if (workspaceVersionRef.current.projectId !== currentProjectId) {
@@ -983,6 +992,8 @@ export default function App(): ReactElement {
 		setGitSummary(null);
 		setRunningGitAction(null);
 		setRemovingProjectId(null);
+		setIsHomeTerminalStarting(false);
+		setHomeTerminalShellBinary(null);
 		setGitActionError(null);
 		setWorkspaceSnapshots({});
 		reviewWorkspaceSnapshotLoadingRef.current.clear();
@@ -1292,6 +1303,75 @@ export default function App(): ReactElement {
 		},
 		[currentProjectId, removingProjectId],
 	);
+
+	const startHomeTerminalSession = useCallback(async (): Promise<boolean> => {
+		if (!currentProjectId) {
+			return false;
+		}
+		setIsHomeTerminalStarting(true);
+		try {
+			const response = await workspaceFetch("/api/runtime/shell-session/start", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					taskId: HOME_TERMINAL_TASK_ID,
+					rows: HOME_TERMINAL_ROWS,
+				}),
+				workspaceId: currentProjectId,
+			});
+			const payload = (await response.json().catch(() => null)) as RuntimeShellSessionStartResponse | null;
+			if (!response.ok || !payload?.ok || !payload.summary) {
+				throw new Error(payload?.error ?? `Could not start terminal session (${response.status}).`);
+			}
+			upsertSession(payload.summary);
+			setHomeTerminalShellBinary(
+				typeof payload.shellBinary === "string" && payload.shellBinary.trim() ? payload.shellBinary : null,
+			);
+			return true;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			setWorktreeError(message);
+			return false;
+		} finally {
+			setIsHomeTerminalStarting(false);
+		}
+	}, [currentProjectId, upsertSession]);
+
+	const handleToggleHomeTerminal = useCallback(() => {
+		if (isHomeTerminalOpen) {
+			setIsHomeTerminalOpen(false);
+			homeTerminalProjectIdRef.current = null;
+			return;
+		}
+		void (async () => {
+			const started = await startHomeTerminalSession();
+			if (!started) {
+				return;
+			}
+			homeTerminalProjectIdRef.current = currentProjectId;
+			setIsHomeTerminalOpen(true);
+		})();
+	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
+
+	useEffect(() => {
+		if (!isHomeTerminalOpen) {
+			homeTerminalProjectIdRef.current = null;
+			return;
+		}
+		if (!currentProjectId || homeTerminalProjectIdRef.current === currentProjectId) {
+			return;
+		}
+		homeTerminalProjectIdRef.current = currentProjectId;
+		void (async () => {
+			const started = await startHomeTerminalSession();
+			if (!started) {
+				homeTerminalProjectIdRef.current = null;
+				setIsHomeTerminalOpen(false);
+			}
+		})();
+	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
 
 	const handleOpenCreateTask = useCallback(() => {
 		setEditingTaskId(null);
@@ -1843,6 +1923,9 @@ export default function App(): ReactElement {
 									void runGitAction("push");
 								}
 					}
+					onToggleTerminal={selectedCard ? undefined : handleToggleHomeTerminal}
+					isTerminalOpen={selectedCard ? false : isHomeTerminalOpen}
+					isTerminalLoading={selectedCard ? false : isHomeTerminalStarting}
 					onOpenSettings={() => setIsSettingsOpen(true)}
 					shortcuts={runtimeProjectConfig?.shortcuts ?? []}
 					runningShortcutId={runningShortcutId}
@@ -1874,23 +1957,56 @@ export default function App(): ReactElement {
 								</div>
 							</div>
 						) : (
-								<KanbanBoard
-									data={board}
-									taskSessions={sessions}
-									onCardSelect={handleCardSelect}
-									onCreateTask={handleOpenCreateTask}
-									onStartTask={handleStartTask}
-									onClearTrash={handleOpenClearTrash}
-									inlineTaskCreator={inlineTaskCreator}
-									editingTaskId={editingTaskId}
-									inlineTaskEditor={inlineTaskEditor}
-									onEditTask={handleOpenEditTask}
-									onCommitTask={() => {}}
-									onOpenPrTask={() => {}}
-									onMoveToTrashTask={handleMoveReviewCardToTrash}
-									reviewWorkspaceSnapshots={workspaceSnapshots}
-									onDragEnd={handleDragEnd}
-								/>
+							<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
+								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0 }}>
+									<KanbanBoard
+										data={board}
+										taskSessions={sessions}
+										onCardSelect={handleCardSelect}
+										onCreateTask={handleOpenCreateTask}
+										onStartTask={handleStartTask}
+										onClearTrash={handleOpenClearTrash}
+										inlineTaskCreator={inlineTaskCreator}
+										editingTaskId={editingTaskId}
+										inlineTaskEditor={inlineTaskEditor}
+										onEditTask={handleOpenEditTask}
+										onCommitTask={() => {}}
+										onOpenPrTask={() => {}}
+										onMoveToTrashTask={handleMoveReviewCardToTrash}
+										reviewWorkspaceSnapshots={workspaceSnapshots}
+										onDragEnd={handleDragEnd}
+									/>
+								</div>
+								{isHomeTerminalOpen && !isHomeTerminalStarting ? (
+									<div
+										style={{
+											display: "flex",
+											flex: "0 0 300px",
+											minHeight: 220,
+											minWidth: 0,
+											overflow: "hidden",
+											borderTop: "1px solid var(--bp-palette-dark-gray-5)",
+											background: Colors.DARK_GRAY2,
+										}}
+									>
+										<AgentTerminalPanel
+											taskId={HOME_TERMINAL_TASK_ID}
+											workspaceId={currentProjectId}
+											summary={homeTerminalSummary}
+											onSummary={upsertSession}
+											showSessionToolbar={false}
+											onClose={() => setIsHomeTerminalOpen(false)}
+											autoFocus
+											minimalHeaderTitle="Terminal"
+											minimalHeaderSubtitle={homeTerminalShellBinary}
+											panelBackgroundColor={Colors.DARK_GRAY2}
+											terminalBackgroundColor={Colors.DARK_GRAY2}
+											cursorColor={Colors.LIGHT_GRAY5}
+											showRightBorder={false}
+										/>
+									</div>
+								) : null}
+							</div>
 						)}
 					</div>
 				{selectedCard && detailSession ? (

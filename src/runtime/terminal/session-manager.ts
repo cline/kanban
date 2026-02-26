@@ -62,6 +62,16 @@ export interface StartTaskSessionRequest {
 	workspaceId?: string;
 }
 
+export interface StartShellSessionRequest {
+	taskId: string;
+	cwd: string;
+	cols?: number;
+	rows?: number;
+	binary: string;
+	args?: string[];
+	env?: Record<string, string | undefined>;
+}
+
 function terminatePtyProcess(active: ActiveProcessState): void {
 	const pid = active.ptyProcess.pid;
 	active.ptyProcess.kill();
@@ -118,6 +128,15 @@ function formatSpawnFailure(binary: string, error: unknown): string {
 	const normalized = message.toLowerCase();
 	if (normalized.includes("posix_spawnp failed") || normalized.includes("enoent")) {
 		return `Failed to launch "${binary}". Command not found. Install a supported agent CLI and select it in Settings.`;
+	}
+	return `Failed to launch "${binary}": ${message}`;
+}
+
+function formatShellSpawnFailure(binary: string, error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	const normalized = message.toLowerCase();
+	if (normalized.includes("posix_spawnp failed") || normalized.includes("enoent")) {
+		return `Failed to launch "${binary}". Command not found on this system.`;
 	}
 	return `Failed to launch "${binary}": ${message}`;
 }
@@ -415,6 +434,148 @@ export class TerminalSessionManager {
 				runningEntry.active.ptyProcess.write("\r");
 			}, 650);
 		}
+
+		return cloneSummary(entry.summary);
+	}
+
+	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
+		const entry = this.ensureEntry(request.taskId);
+		if (entry.active && entry.summary.state === "running") {
+			return cloneSummary(entry.summary);
+		}
+
+		if (entry.active) {
+			terminatePtyProcess(entry.active);
+			entry.active = null;
+		}
+
+		const cols = Number.isFinite(request.cols) && (request.cols ?? 0) > 0 ? Math.floor(request.cols ?? 0) : 120;
+		const rows = Number.isFinite(request.rows) && (request.rows ?? 0) > 0 ? Math.floor(request.rows ?? 0) : 40;
+		const env = {
+			...process.env,
+			...request.env,
+			TERM: "xterm-256color",
+			COLORTERM: "truecolor",
+		};
+
+		await ensureNodePtySpawnHelperExecutable();
+
+		let ptyProcess: pty.IPty;
+		try {
+			ptyProcess = pty.spawn(request.binary, request.args ?? [], {
+				name: "xterm-256color",
+				cwd: request.cwd,
+				env,
+				cols,
+				rows,
+			});
+		} catch (error) {
+			const summary = updateSummary(entry, {
+				state: "failed",
+				agentId: null,
+				workspacePath: request.cwd,
+				pid: null,
+				startedAt: null,
+				lastOutputAt: null,
+				lastActivityLine: null,
+				reviewReason: "error",
+				exitCode: null,
+			});
+			this.emitSummary(summary);
+			throw new Error(formatShellSpawnFailure(request.binary, error));
+		}
+
+		const active: ActiveProcessState = {
+			ptyProcess,
+			outputHistory: [],
+			historyBytes: 0,
+			listenerIdCounter: 1,
+			listeners: new Map(),
+			attentionBuffer: "",
+			cols,
+			rows,
+			shutdownInterrupted: false,
+			onSessionCleanup: null,
+			detectOutputTransition: null,
+			awaitingCodexPromptAfterEnter: false,
+		};
+		entry.active = active;
+
+		updateSummary(entry, {
+			state: "running",
+			agentId: null,
+			workspacePath: request.cwd,
+			pid: ptyProcess.pid,
+			startedAt: now(),
+			lastOutputAt: null,
+			lastActivityLine: null,
+			reviewReason: null,
+			exitCode: null,
+		});
+		this.emitSummary(entry.summary);
+
+		ptyProcess.onData((data) => {
+			if (!entry.active) {
+				return;
+			}
+			const chunk = Buffer.from(data, "utf8");
+			entry.active.outputHistory.push(chunk);
+			entry.active.historyBytes += chunk.byteLength;
+			while (entry.active.historyBytes > MAX_HISTORY_BYTES && entry.active.outputHistory.length > 0) {
+				const shifted = entry.active.outputHistory.shift();
+				if (!shifted) {
+					break;
+				}
+				entry.active.historyBytes -= shifted.byteLength;
+			}
+
+			entry.active.attentionBuffer += data;
+			if (entry.active.attentionBuffer.length > 262144) {
+				entry.active.attentionBuffer = entry.active.attentionBuffer.slice(-262144);
+			}
+
+			const lastActivityLine = extractLastActivityLine(
+				entry.active.attentionBuffer,
+				entry.summary.agentId,
+				entry.active.cols,
+				entry.active.rows,
+			);
+			const summary = updateSummary(entry, {
+				lastOutputAt: now(),
+				lastActivityLine,
+			});
+
+			for (const taskListener of entry.active.listeners.values()) {
+				taskListener.onOutput?.(chunk);
+				taskListener.onState?.(cloneSummary(summary));
+			}
+			this.emitSummary(summary);
+		});
+
+		ptyProcess.onExit((event) => {
+			const currentEntry = this.entries.get(request.taskId);
+			if (!currentEntry) {
+				return;
+			}
+			const currentActive = currentEntry.active;
+			if (!currentActive) {
+				return;
+			}
+
+			const summary = updateSummary(currentEntry, {
+				state: currentActive.shutdownInterrupted ? "interrupted" : "idle",
+				reviewReason: currentActive.shutdownInterrupted ? "interrupted" : null,
+				exitCode: event.exitCode,
+				pid: null,
+			});
+
+			for (const taskListener of currentActive.listeners.values()) {
+				taskListener.onState?.(cloneSummary(summary));
+				taskListener.onExit?.(event.exitCode);
+			}
+			currentEntry.active = null;
+			this.emitSummary(summary);
+		});
 
 		return cloneSummary(entry.summary);
 	}

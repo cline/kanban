@@ -30,6 +30,8 @@ import type {
 	RuntimeProjectSummary,
 	RuntimeProjectsResponse,
 	RuntimeProjectTaskCounts,
+	RuntimeShellSessionStartRequest,
+	RuntimeShellSessionStartResponse,
 	RuntimeShortcutRunRequest,
 	RuntimeShortcutRunResponse,
 	RuntimeSlashCommandsResponse,
@@ -555,6 +557,55 @@ function validateTaskSessionStopRequest(body: RuntimeTaskSessionStopRequest): Ru
 		throw new Error("Invalid task session stop payload.");
 	}
 	return body;
+}
+
+function validateShellSessionStartRequest(body: RuntimeShellSessionStartRequest): RuntimeShellSessionStartRequest {
+	if (!body || typeof body !== "object" || typeof body.taskId !== "string") {
+		throw new Error("Invalid shell session start payload.");
+	}
+	const taskId = body.taskId.trim();
+	if (!taskId) {
+		throw new Error("Shell session taskId cannot be empty.");
+	}
+	if (
+		(body.cols !== undefined && (!Number.isFinite(body.cols) || body.cols <= 0)) ||
+		(body.rows !== undefined && (!Number.isFinite(body.rows) || body.rows <= 0))
+	) {
+		throw new Error("Invalid shell session dimensions.");
+	}
+	return {
+		taskId,
+		cols: body.cols,
+		rows: body.rows,
+	};
+}
+
+function resolveInteractiveShellCommand(): { binary: string; args: string[] } {
+	if (process.platform === "win32") {
+		const command = process.env.COMSPEC?.trim();
+		if (command) {
+			return {
+				binary: command,
+				args: [],
+			};
+		}
+		return {
+			binary: "powershell.exe",
+			args: ["-NoLogo"],
+		};
+	}
+
+	const command = process.env.SHELL?.trim();
+	if (command) {
+		return {
+			binary: command,
+			args: ["-i"],
+		};
+	}
+	return {
+		binary: "bash",
+		args: ["-i"],
+	};
 }
 
 async function resolveTaskBaseRef(cwd: string, taskId: string): Promise<string | null> {
@@ -1374,6 +1425,40 @@ async function startServer(
 						summary: null,
 						error: message,
 					} satisfies RuntimeTaskSessionStopResponse);
+				}
+				return;
+			}
+
+			if (pathname === "/api/runtime/shell-session/start" && req.method === "POST") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
+				try {
+					const body = validateShellSessionStartRequest(await readJsonBody<RuntimeShellSessionStartRequest>(req));
+					const terminalManager = await getScopedTerminalManager(scope);
+					const shell = resolveInteractiveShellCommand();
+					const summary = await terminalManager.startShellSession({
+						taskId: body.taskId,
+						cwd: scope.workspacePath,
+						cols: body.cols,
+						rows: body.rows,
+						binary: shell.binary,
+						args: shell.args,
+					});
+					sendJson(res, 200, {
+						ok: true,
+						summary,
+						shellBinary: shell.binary,
+					} satisfies RuntimeShellSessionStartResponse);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, {
+						ok: false,
+						summary: null,
+						shellBinary: null,
+						error: message,
+					} satisfies RuntimeShellSessionStartResponse);
 				}
 				return;
 			}
