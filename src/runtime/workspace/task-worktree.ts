@@ -125,7 +125,7 @@ async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 		"ls-files",
 		"--others",
 		"--ignored",
-		"--exclude-standard",
+		"--exclude-per-directory=.gitignore",
 		"--directory",
 	]);
 	return output
