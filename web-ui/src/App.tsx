@@ -1412,10 +1412,14 @@ export default function App(): ReactElement {
 			homeTerminalProjectIdRef.current = null;
 			return;
 		}
-		homeTerminalProjectIdRef.current = currentProjectId;
-		setIsHomeTerminalOpen(true);
 		void (async () => {
-			await startHomeTerminalSession();
+			const started = await startHomeTerminalSession();
+			if (!started) {
+				homeTerminalProjectIdRef.current = null;
+				return;
+			}
+			homeTerminalProjectIdRef.current = currentProjectId;
+			setIsHomeTerminalOpen(true);
 		})();
 	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
 
