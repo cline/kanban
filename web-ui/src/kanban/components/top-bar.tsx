@@ -12,7 +12,9 @@ import {
 	Tooltip,
 } from "@blueprintjs/core";
 
+import { OpenWorkspaceButton } from "@/kanban/components/open-workspace-button";
 import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/kanban/runtime/types";
+import type { OpenTargetId, OpenTargetOption } from "@/kanban/utils/open-targets";
 import { formatPathForDisplay } from "@/kanban/utils/path-display";
 
 function getWorkspacePathSegments(path: string): string[] {
@@ -37,6 +39,12 @@ export function TopBar({
 	shortcuts,
 	runningShortcutId,
 	onRunShortcut,
+	openTargetOptions,
+	selectedOpenTargetId,
+	onSelectOpenTarget,
+	onOpenWorkspace,
+	canOpenWorkspace,
+	isOpeningWorkspace,
 }: {
 	onBack?: () => void;
 	workspacePath?: string;
@@ -55,6 +63,12 @@ export function TopBar({
 	shortcuts?: RuntimeProjectShortcut[];
 	runningShortcutId?: string | null;
 	onRunShortcut?: (shortcutId: string) => void;
+	openTargetOptions: readonly OpenTargetOption[];
+	selectedOpenTargetId: OpenTargetId;
+	onSelectOpenTarget: (targetId: OpenTargetId) => void;
+	onOpenWorkspace: () => void;
+	canOpenWorkspace: boolean;
+	isOpeningWorkspace: boolean;
 }): React.ReactElement {
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
@@ -114,6 +128,18 @@ export function TopBar({
 							);
 						})}
 					</span>
+				) : null}
+				{displayWorkspacePath ? (
+					<div style={{ marginLeft: 8 }}>
+						<OpenWorkspaceButton
+							options={openTargetOptions}
+							selectedOptionId={selectedOpenTargetId}
+							disabled={!canOpenWorkspace || isOpeningWorkspace}
+							loading={isOpeningWorkspace}
+							onOpen={onOpenWorkspace}
+							onSelectOption={onSelectOpenTarget}
+						/>
+					</div>
 				) : null}
 				{workspaceHint ? (
 					<Tag minimal className="kb-navbar-tag">{workspaceHint}</Tag>

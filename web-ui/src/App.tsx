@@ -17,6 +17,7 @@ import {
 	renderTask,
 	type SearchableTask,
 } from "@/kanban/app/app-utils";
+import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { ClearTrashDialog } from "@/kanban/components/clear-trash-dialog";
@@ -1952,6 +1953,17 @@ export default function App(): ReactElement {
 			: shouldUseNavigationPath
 				? navigationProjectPath ?? undefined
 				: workspacePath ?? undefined;
+	const {
+		openTargetOptions,
+		selectedOpenTargetId,
+		onSelectOpenTarget,
+		onOpenWorkspace,
+		canOpenWorkspace,
+		isOpeningWorkspace,
+	} = useOpenWorkspace({
+		currentProjectId,
+		workspacePath: activeWorkspacePath,
+	});
 	const activeWorkspaceHint = useMemo(() => {
 		if (!selectedCard || !selectedTaskWorkspaceInfo) {
 			return undefined;
@@ -2114,6 +2126,12 @@ export default function App(): ReactElement {
 					shortcuts={runtimeProjectConfig?.shortcuts ?? []}
 					runningShortcutId={runningShortcutId}
 					onRunShortcut={handleRunShortcut}
+					openTargetOptions={openTargetOptions}
+					selectedOpenTargetId={selectedOpenTargetId}
+					onSelectOpenTarget={onSelectOpenTarget}
+					onOpenWorkspace={onOpenWorkspace}
+					canOpenWorkspace={canOpenWorkspace}
+					isOpeningWorkspace={isOpeningWorkspace}
 				/>
 					<RuntimeStatusBanners
 						worktreeError={worktreeError}
