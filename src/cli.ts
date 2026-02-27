@@ -2329,32 +2329,10 @@ async function startServer(
 
 	const close = async () => {
 		disposeRuntimeStreamResources();
-		const workspaceWatcherClosePromises = Array.from(workspaceFileWatchersByWorkspaceId.values()).map(
-			async ({ watcher }) => {
-				try {
-					await watcher.close();
-				} catch {
-					// Ignore watcher close failures during shutdown.
-				}
-			},
-		);
 		workspaceFileWatchersByWorkspaceId.clear();
 		workspaceFolderLabelByWorkspaceId.clear();
 		workspaceIdsByWorktreeLabel.clear();
-		if (globalWorktreesWatcher) {
-			const watcher = globalWorktreesWatcher;
-			workspaceWatcherClosePromises.push(
-				(async () => {
-					try {
-						await watcher.close();
-					} catch {
-						// Ignore global watcher close failures during shutdown.
-					}
-				})(),
-			);
-			globalWorktreesWatcher = null;
-		}
-		await Promise.all(workspaceWatcherClosePromises);
+		globalWorktreesWatcher = null;
 		for (const client of runtimeStateClients) {
 			try {
 				client.terminate();
