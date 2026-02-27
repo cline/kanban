@@ -1,4 +1,4 @@
-import { Alert, Classes, Colors, MenuItem, Pre, Spinner } from "@blueprintjs/core";
+import { Alert, Classes, Colors, MenuItem, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
 import { Omnibar } from "@blueprintjs/select";
 import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -110,6 +110,16 @@ function createNoGitSyncSummary(): RuntimeGitSyncSummary {
 	};
 }
 
+function isRuntimeConnectionFailure(message: string | null): boolean {
+	if (!message) {
+		return false;
+	}
+	const normalized = message.toLowerCase();
+	return normalized.includes("runtime stream connection failed")
+		|| normalized.includes("failed to construct")
+		|| normalized.includes("websocket");
+}
+
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
@@ -129,6 +139,7 @@ export default function App(): ReactElement {
 	const detailTerminalSelectionKeyRef = useRef<string | null>(null);
 	const workspaceRefreshRequestIdRef = useRef(0);
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
+	const lastStreamErrorRef = useRef<string | null>(null);
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
 		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
 	const [workspaceSnapshots, setWorkspaceSnapshots] =
@@ -214,6 +225,7 @@ export default function App(): ReactElement {
 		selectedTaskId === null &&
 		!streamError &&
 		(isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot);
+	const isRuntimeDisconnected = isRuntimeConnectionFailure(streamError);
 	const shouldUseNavigationPath =
 		isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
 	const { config: runtimeProjectConfig } = useRuntimeProjectConfig(
@@ -981,6 +993,11 @@ export default function App(): ReactElement {
 
 	useEffect(() => {
 		if (!streamError) {
+			const previousStreamError = lastStreamErrorRef.current;
+			if (previousStreamError) {
+				setWorktreeError((current) => (current === previousStreamError ? null : current));
+				lastStreamErrorRef.current = null;
+			}
 			return;
 		}
 		if (streamError.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {
@@ -996,9 +1013,16 @@ export default function App(): ReactElement {
 				},
 				`project-removed-${removedPath || "unknown"}`,
 			);
+			lastStreamErrorRef.current = null;
 			setWorktreeError(null);
 			return;
 		}
+		if (isRuntimeConnectionFailure(streamError)) {
+			lastStreamErrorRef.current = streamError;
+			setWorktreeError(null);
+			return;
+		}
+		lastStreamErrorRef.current = streamError;
 		setWorktreeError(streamError);
 	}, [streamError]);
 
@@ -2072,6 +2096,28 @@ export default function App(): ReactElement {
 			idPrefix={`inline-edit-task-${editingTaskId}`}
 		/>
 	) : undefined;
+
+	if (isRuntimeDisconnected) {
+		return (
+			<div
+				className={Classes.DARK}
+				style={{
+					display: "flex",
+					height: "100svh",
+					alignItems: "center",
+					justifyContent: "center",
+					background: Colors.DARK_GRAY1,
+					padding: "24px",
+				}}
+			>
+					<NonIdealState
+						icon={<span style={{ fontSize: "72px", lineHeight: 1 }}>🍌</span>}
+						title="Disconnected from kanbanana"
+						description="Run kanbanana again in your terminal, then reload this tab."
+					/>
+				</div>
+			);
+		}
 
 	return (
 		<div className={Classes.DARK} style={{ display: "flex", flexDirection: "row", height: "100svh", minWidth: 0, overflow: "hidden" }}>
