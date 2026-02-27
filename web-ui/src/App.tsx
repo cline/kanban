@@ -23,6 +23,7 @@ import { ClearTrashDialog } from "@/kanban/components/clear-trash-dialog";
 import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
+import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
 import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
 import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
 import { TaskInlineCreateCard, type TaskWorkspaceMode } from "@/kanban/components/task-inline-create-card";
@@ -86,6 +87,14 @@ interface PendingTrashWarningState {
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
 const HOME_TERMINAL_TASK_ID = "__home_terminal__";
 const HOME_TERMINAL_ROWS = 16;
+const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
+
+function getDetailTerminalTaskId(card: BoardCard): string {
+	if (!card.baseRef) {
+		return HOME_TERMINAL_TASK_ID;
+	}
+	return `${DETAIL_TERMINAL_TASK_PREFIX}${card.id}`;
+}
 
 function createNoGitSyncSummary(): RuntimeGitSyncSummary {
 	return {
@@ -115,6 +124,8 @@ export default function App(): ReactElement {
 	});
 	const homeTerminalProjectIdRef = useRef<string | null>(null);
 	const homeTerminalToggleRef = useRef<(() => void) | null>(null);
+	const detailTerminalToggleRef = useRef<(() => void) | null>(null);
+	const detailTerminalSelectionKeyRef = useRef<string | null>(null);
 	const workspaceRefreshRequestIdRef = useRef(0);
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
@@ -158,6 +169,8 @@ export default function App(): ReactElement {
 	const [isHomeTerminalOpen, setIsHomeTerminalOpen] = useState(false);
 	const [isHomeTerminalStarting, setIsHomeTerminalStarting] = useState(false);
 	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
+	const [isDetailTerminalOpen, setIsDetailTerminalOpen] = useState(false);
+	const [isDetailTerminalStarting, setIsDetailTerminalStarting] = useState(false);
 	const [runtimeProjectConfigRefreshNonce, setRuntimeProjectConfigRefreshNonce] = useState(0);
 	const [lastShortcutOutput, setLastShortcutOutput] = useState<{
 		label: string;
@@ -1012,6 +1025,9 @@ export default function App(): ReactElement {
 		setRemovingProjectId(null);
 		setIsHomeTerminalStarting(false);
 		setHomeTerminalShellBinary(null);
+		setIsDetailTerminalOpen(false);
+		setIsDetailTerminalStarting(false);
+		detailTerminalSelectionKeyRef.current = null;
 		setGitActionError(null);
 		setWorkspaceSnapshots({});
 		reviewWorkspaceSnapshotLoadingRef.current.clear();
@@ -1235,6 +1251,7 @@ export default function App(): ReactElement {
 			if ((event.metaKey || event.ctrlKey) && key === "j") {
 				event.preventDefault();
 				if (selectedCard) {
+					detailTerminalToggleRef.current?.();
 					return;
 				}
 				homeTerminalToggleRef.current?.();
@@ -1395,15 +1412,99 @@ export default function App(): ReactElement {
 			homeTerminalProjectIdRef.current = null;
 			return;
 		}
+		homeTerminalProjectIdRef.current = currentProjectId;
+		setIsHomeTerminalOpen(true);
 		void (async () => {
-			const started = await startHomeTerminalSession();
-			if (!started) {
-				return;
-			}
-			homeTerminalProjectIdRef.current = currentProjectId;
-			setIsHomeTerminalOpen(true);
+			await startHomeTerminalSession();
 		})();
 	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
+
+	const startDetailTerminalForCard = useCallback(
+		async (card: BoardCard, options?: { showLoading?: boolean }): Promise<boolean> => {
+			if (!currentProjectId) {
+				return false;
+			}
+			const showLoading = options?.showLoading ?? false;
+			if (showLoading) {
+				setIsDetailTerminalStarting(true);
+			}
+			try {
+				const targetTaskId = getDetailTerminalTaskId(card);
+				if (targetTaskId === HOME_TERMINAL_TASK_ID) {
+					return await startHomeTerminalSession();
+				}
+				const response = await workspaceFetch("/api/runtime/shell-session/start", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						taskId: targetTaskId,
+						rows: HOME_TERMINAL_ROWS,
+						workspaceTaskId: card.id,
+						baseRef: card.baseRef ?? null,
+					}),
+					workspaceId: currentProjectId,
+				});
+				const payload = (await response.json().catch(() => null)) as RuntimeShellSessionStartResponse | null;
+				if (!response.ok || !payload?.ok || !payload.summary) {
+					throw new Error(payload?.error ?? `Could not start detail terminal session (${response.status}).`);
+				}
+				upsertSession(payload.summary);
+				return true;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				setWorktreeError(message);
+				return false;
+			} finally {
+				if (showLoading) {
+					setIsDetailTerminalStarting(false);
+				}
+			}
+		},
+		[currentProjectId, startHomeTerminalSession, upsertSession],
+	);
+
+	const handleToggleDetailTerminal = useCallback(() => {
+		if (!selectedCard) {
+			return;
+		}
+		if (isDetailTerminalOpen) {
+			setIsDetailTerminalOpen(false);
+			detailTerminalSelectionKeyRef.current = null;
+			return;
+		}
+		setIsDetailTerminalOpen(true);
+		void (async () => {
+			const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef ?? ""}`;
+			detailTerminalSelectionKeyRef.current = selectionKey;
+			const started = await startDetailTerminalForCard(selectedCard.card, { showLoading: true });
+			if (!started) {
+				if (detailTerminalSelectionKeyRef.current === selectionKey) {
+					detailTerminalSelectionKeyRef.current = null;
+				}
+				return;
+			}
+		})();
+	}, [isDetailTerminalOpen, selectedCard, startDetailTerminalForCard]);
+
+	useEffect(() => {
+		if (!isDetailTerminalOpen || !selectedCard) {
+			detailTerminalSelectionKeyRef.current = null;
+			return;
+		}
+		const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef ?? ""}`;
+		if (detailTerminalSelectionKeyRef.current === selectionKey) {
+			return;
+		}
+		detailTerminalSelectionKeyRef.current = selectionKey;
+		void startDetailTerminalForCard(selectedCard.card);
+	}, [
+		isDetailTerminalOpen,
+		selectedCard?.card.baseRef,
+		selectedCard?.card.id,
+		startDetailTerminalForCard,
+	]);
 
 	useEffect(() => {
 		homeTerminalToggleRef.current = handleToggleHomeTerminal;
@@ -1413,6 +1514,15 @@ export default function App(): ReactElement {
 			}
 		};
 	}, [handleToggleHomeTerminal]);
+
+	useEffect(() => {
+		detailTerminalToggleRef.current = handleToggleDetailTerminal;
+		return () => {
+			if (detailTerminalToggleRef.current === handleToggleDetailTerminal) {
+				detailTerminalToggleRef.current = null;
+			}
+		};
+	}, [handleToggleDetailTerminal]);
 
 	useEffect(() => {
 		if (!isHomeTerminalOpen) {
@@ -1799,6 +1909,17 @@ export default function App(): ReactElement {
 	}, [cleanupTaskWorkspace, selectedTaskId, stopTaskSession, trashTaskIds]);
 
 	const detailSession = selectedCard ? sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id) : null;
+	const detailShellTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card) : null;
+	const detailShellSummary = detailShellTaskId ? sessions[detailShellTaskId] ?? null : null;
+	const detailShellSubtitle = useMemo(() => {
+		if (!selectedCard) {
+			return null;
+		}
+		if (!selectedCard.card.baseRef) {
+			return homeTerminalShellBinary;
+		}
+		return selectedTaskWorkspaceInfo?.path ?? null;
+	}, [homeTerminalShellBinary, selectedCard, selectedTaskWorkspaceInfo?.path]);
 	const runtimeHint = useMemo(() => {
 		if (shouldUseNavigationPath || !runtimeProjectConfig) {
 			return undefined;
@@ -1982,9 +2103,9 @@ export default function App(): ReactElement {
 									void runGitAction("push");
 								}
 					}
-					onToggleTerminal={selectedCard ? undefined : handleToggleHomeTerminal}
-					isTerminalOpen={selectedCard ? false : isHomeTerminalOpen}
-					isTerminalLoading={selectedCard ? false : isHomeTerminalStarting}
+					onToggleTerminal={selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal}
+					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
+					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
 					onOpenSettings={() => setIsSettingsOpen(true)}
 					shortcuts={runtimeProjectConfig?.shortcuts ?? []}
 					runningShortcutId={runningShortcutId}
@@ -2047,36 +2168,36 @@ export default function App(): ReactElement {
 											onDragEnd={handleDragEnd}
 										/>
 									</div>
-									{isHomeTerminalOpen && !isHomeTerminalStarting ? (
-										<div
-											style={{
-												display: "flex",
-												flex: "0 0 300px",
-												minHeight: 220,
-												minWidth: 0,
-												overflow: "hidden",
-												borderTop: "1px solid var(--bp-palette-dark-gray-5)",
-												background: Colors.DARK_GRAY2,
-											}}
-										>
-											<AgentTerminalPanel
-												key={`${currentProjectId ?? "none"}:${HOME_TERMINAL_TASK_ID}`}
-												taskId={HOME_TERMINAL_TASK_ID}
-												workspaceId={currentProjectId}
-												summary={homeTerminalSummary}
-												onSummary={upsertSession}
-												showSessionToolbar={false}
-												onClose={() => setIsHomeTerminalOpen(false)}
-												autoFocus
-												minimalHeaderTitle="Terminal"
-												minimalHeaderSubtitle={homeTerminalShellBinary}
-												panelBackgroundColor={Colors.DARK_GRAY2}
-												terminalBackgroundColor={Colors.DARK_GRAY2}
-												cursorColor={Colors.LIGHT_GRAY5}
-												showRightBorder={false}
-												isVisible={!selectedCard}
-											/>
-										</div>
+									{isHomeTerminalOpen ? (
+										<ResizableBottomPane>
+											<div
+												style={{
+													display: "flex",
+													flex: "1 1 0",
+													minWidth: 0,
+													paddingLeft: "calc(var(--bp-surface-spacing) * 3)",
+													paddingRight: "calc(var(--bp-surface-spacing) * 3)",
+												}}
+											>
+												<AgentTerminalPanel
+													key={`${currentProjectId ?? "none"}:${HOME_TERMINAL_TASK_ID}`}
+													taskId={HOME_TERMINAL_TASK_ID}
+													workspaceId={currentProjectId}
+													summary={homeTerminalSummary}
+													onSummary={upsertSession}
+													showSessionToolbar={false}
+													onClose={() => setIsHomeTerminalOpen(false)}
+													autoFocus
+													minimalHeaderTitle="Terminal"
+													minimalHeaderSubtitle={homeTerminalShellBinary}
+													panelBackgroundColor={Colors.DARK_GRAY2}
+													terminalBackgroundColor={Colors.DARK_GRAY2}
+													cursorColor={Colors.LIGHT_GRAY5}
+													showRightBorder={false}
+													isVisible={!selectedCard}
+												/>
+											</div>
+										</ResizableBottomPane>
 									) : null}
 								</div>
 							)}
@@ -2105,6 +2226,11 @@ export default function App(): ReactElement {
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									reviewWorkspaceSnapshots={workspaceSnapshots}
 									onMoveToTrash={handleMoveToTrash}
+									bottomTerminalOpen={isDetailTerminalOpen}
+									bottomTerminalTaskId={detailShellTaskId}
+									bottomTerminalSummary={detailShellSummary}
+									bottomTerminalSubtitle={detailShellSubtitle}
+									onBottomTerminalClose={() => setIsDetailTerminalOpen(false)}
 								/>
 							</div>
 						) : null}

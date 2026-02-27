@@ -356,6 +356,8 @@ export interface RuntimeShellSessionStartRequest {
 	taskId: string;
 	cols?: number;
 	rows?: number;
+	workspaceTaskId?: string;
+	baseRef?: string | null;
 }
 
 export interface RuntimeShellSessionStartResponse {

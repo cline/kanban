@@ -7,6 +7,7 @@ import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-term
 import { ColumnContextPanel } from "@/kanban/components/detail-panels/column-context-panel";
 import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
+import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
 import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspace-changes";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard, CardSelection, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
@@ -33,6 +34,11 @@ export function CardDetailView({
 	onMoveReviewCardToTrash,
 	reviewWorkspaceSnapshots,
 	onMoveToTrash,
+	bottomTerminalOpen,
+	bottomTerminalTaskId,
+	bottomTerminalSummary,
+	bottomTerminalSubtitle,
+	onBottomTerminalClose,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -55,6 +61,11 @@ export function CardDetailView({
 	onMoveReviewCardToTrash?: (taskId: string) => void;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onMoveToTrash: () => void;
+	bottomTerminalOpen: boolean;
+	bottomTerminalTaskId: string | null;
+	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
+	bottomTerminalSubtitle?: string | null;
+	onBottomTerminalClose: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(
@@ -178,6 +189,36 @@ export function CardDetailView({
 						onSelectPath={setSelectedPath}
 					/>
 				</div>
+				{bottomTerminalOpen && bottomTerminalTaskId ? (
+					<ResizableBottomPane minHeight={200}>
+						<div
+							style={{
+								display: "flex",
+								flex: "1 1 0",
+								minWidth: 0,
+								paddingLeft: "calc(var(--bp-surface-spacing) * 3)",
+								paddingRight: "calc(var(--bp-surface-spacing) * 3)",
+							}}
+						>
+							<AgentTerminalPanel
+								key={`detail-shell-${bottomTerminalTaskId}`}
+								taskId={bottomTerminalTaskId}
+								workspaceId={currentProjectId}
+								summary={bottomTerminalSummary}
+								onSummary={onSessionSummary}
+								showSessionToolbar={false}
+								autoFocus
+								onClose={onBottomTerminalClose}
+								minimalHeaderTitle="Terminal"
+								minimalHeaderSubtitle={bottomTerminalSubtitle}
+								panelBackgroundColor={Colors.DARK_GRAY2}
+								terminalBackgroundColor={Colors.DARK_GRAY2}
+								cursorColor={Colors.LIGHT_GRAY5}
+								showRightBorder={false}
+							/>
+						</div>
+					</ResizableBottomPane>
+				) : null}
 			</div>
 		</div>
 	);

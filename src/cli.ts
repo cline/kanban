@@ -597,10 +597,24 @@ function validateShellSessionStartRequest(body: RuntimeShellSessionStartRequest)
 	) {
 		throw new Error("Invalid shell session dimensions.");
 	}
+	if (
+		body.workspaceTaskId !== undefined &&
+		(typeof body.workspaceTaskId !== "string" || !body.workspaceTaskId.trim())
+	) {
+		throw new Error("Invalid shell session workspaceTaskId.");
+	}
+	if (typeof body.baseRef !== "string" && body.baseRef !== null && body.baseRef !== undefined) {
+		throw new Error("Invalid shell session baseRef.");
+	}
+	const workspaceTaskId = body.workspaceTaskId?.trim() || undefined;
+	const baseRef =
+		typeof body.baseRef === "string" ? body.baseRef.trim() || null : body.baseRef === null ? null : undefined;
 	return {
 		taskId,
 		cols: body.cols,
 		rows: body.rows,
+		workspaceTaskId,
+		baseRef,
 	};
 }
 
@@ -1655,9 +1669,17 @@ async function startServer(
 					const body = validateShellSessionStartRequest(await readJsonBody<RuntimeShellSessionStartRequest>(req));
 					const terminalManager = await getScopedTerminalManager(scope);
 					const shell = resolveInteractiveShellCommand();
+					const shellCwd = body.workspaceTaskId
+						? await resolveTaskCwd({
+								cwd: scope.workspacePath,
+								taskId: body.workspaceTaskId,
+								baseRef: body.baseRef,
+								ensure: true,
+							})
+						: scope.workspacePath;
 					const summary = await terminalManager.startShellSession({
 						taskId: body.taskId,
-						cwd: scope.workspacePath,
+						cwd: shellCwd,
 						cols: body.cols,
 						rows: body.rows,
 						binary: shell.binary,
