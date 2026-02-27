@@ -337,11 +337,11 @@ export function AgentTerminalPanel({
 					</div>
 					<Divider />
 				</>
-			) : onClose ? (
-				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 8px 0 3px" }}>
-					<div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-						<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
-							{minimalHeaderTitle}
+				) : onClose ? (
+					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 2px 0 3px" }}>
+						<div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+							<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
+								{minimalHeaderTitle}
 						</span>
 						{minimalHeaderSubtitle ? (
 							<span
