@@ -158,6 +158,41 @@ body,
 	word-break: break-word;
 }
 
+.kb-diff-text .token.comment,
+.kb-diff-text .token.prolog,
+.kb-diff-text .token.doctype,
+.kb-diff-text .token.cdata {
+	color: var(--bp-palette-gray-3);
+}
+
+.kb-diff-text .token.keyword,
+.kb-diff-text .token.atrule,
+.kb-diff-text .token.selector {
+	color: var(--bp-palette-blue-4);
+}
+
+.kb-diff-text .token.string,
+.kb-diff-text .token.char,
+.kb-diff-text .token.inserted {
+	color: var(--bp-palette-green-4);
+}
+
+.kb-diff-text .token.number,
+.kb-diff-text .token.boolean,
+.kb-diff-text .token.constant {
+	color: var(--bp-palette-orange-4);
+}
+
+.kb-diff-text .token.function,
+.kb-diff-text .token.class-name {
+	color: var(--bp-palette-cobalt-4);
+}
+
+.kb-diff-text .token.operator,
+.kb-diff-text .token.punctuation {
+	color: var(--bp-palette-light-gray-4);
+}
+
 /* -- Diff entry (sibling selector) -- */
 
 .kb-diff-entry {

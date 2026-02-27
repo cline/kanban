@@ -1,4 +1,28 @@
 import { diffLines, diffWordsWithSpace } from "diff";
+import Prism from "prismjs";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-c";
+import "prismjs/components/prism-clike";
+import "prismjs/components/prism-cpp";
+import "prismjs/components/prism-csharp";
+import "prismjs/components/prism-css";
+import "prismjs/components/prism-go";
+import "prismjs/components/prism-java";
+import "prismjs/components/prism-javascript";
+import "prismjs/components/prism-json";
+import "prismjs/components/prism-jsx";
+import "prismjs/components/prism-markdown";
+import "prismjs/components/prism-markup";
+import "prismjs/components/prism-markup-templating";
+import "prismjs/components/prism-php";
+import "prismjs/components/prism-python";
+import "prismjs/components/prism-ruby";
+import "prismjs/components/prism-rust";
+import "prismjs/components/prism-sql";
+import "prismjs/components/prism-swift";
+import "prismjs/components/prism-tsx";
+import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-yaml";
 import { Button, Card, Classes, Colors, Icon, NonIdealState } from "@blueprintjs/core";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,6 +76,45 @@ interface FileDiffGroup {
 	removed: number;
 }
 
+const PRISM_LANGUAGE_BY_EXTENSION: Record<string, string> = {
+	bash: "bash",
+	c: "c",
+	cc: "cpp",
+	cjs: "javascript",
+	cpp: "cpp",
+	cs: "csharp",
+	css: "css",
+	cxx: "cpp",
+	go: "go",
+	h: "c",
+	hh: "cpp",
+	hpp: "cpp",
+	htm: "markup",
+	html: "markup",
+	java: "java",
+	js: "javascript",
+	json: "json",
+	jsx: "jsx",
+	md: "markdown",
+	mdx: "markdown",
+	mjs: "javascript",
+	php: "php",
+	py: "python",
+	rb: "ruby",
+	rs: "rust",
+	scss: "css",
+	sh: "bash",
+	sql: "sql",
+	svg: "markup",
+	swift: "swift",
+	ts: "typescript",
+	tsx: "tsx",
+	xml: "markup",
+	yaml: "yaml",
+	yml: "yaml",
+	zsh: "bash",
+};
+
 function flattenFilePathsForDisplay(paths: string[]): string[] {
 	const tree = buildFileTree(paths);
 	const ordered: string[] = [];
@@ -81,9 +144,66 @@ function truncatePathMiddle(path: string, maxLength = 64): string {
 	return `${path.slice(0, head)}${separator}${path.slice(path.length - tail)}`;
 }
 
+function getPathBasename(path: string): string {
+	const separatorIndex = path.lastIndexOf("/");
+	return separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
+}
+
+function resolvePrismLanguage(path: string): string | null {
+	const basename = getPathBasename(path).toLowerCase();
+	if (basename === "dockerfile") {
+		return "bash";
+	}
+	const dotIndex = basename.lastIndexOf(".");
+	if (dotIndex < 0 || dotIndex === basename.length - 1) {
+		return null;
+	}
+	const extension = basename.slice(dotIndex + 1);
+	const language = PRISM_LANGUAGE_BY_EXTENSION[extension];
+	if (!language) {
+		return null;
+	}
+	return Prism.languages[language] ? language : null;
+}
+
+function resolvePrismGrammar(language: string | null): Prism.Grammar | null {
+	if (!language) {
+		return null;
+	}
+	return Prism.languages[language] ?? null;
+}
+
 function toLines(text: string): string[] {
 	const rawLines = text.split("\n");
 	return text.endsWith("\n") ? rawLines.slice(0, -1) : rawLines;
+}
+
+function getHighlightedLineHtml(
+	line: string,
+	grammar: Prism.Grammar | null,
+	language: string | null,
+): string | null {
+	if (!grammar || !language) {
+		return null;
+	}
+	return Prism.highlight(line.length > 0 ? line : " ", grammar, language);
+}
+
+function buildHighlightedLineMap(
+	text: string | null | undefined,
+	grammar: Prism.Grammar | null,
+	language: string | null,
+): Map<number, string> {
+	const lines = toLines(text ?? "");
+	const highlightedByLine = new Map<number, string>();
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		const highlighted = getHighlightedLineHtml(line, grammar, language);
+		if (highlighted != null) {
+			highlightedByLine.set(index + 1, highlighted);
+		}
+	}
+	return highlightedByLine;
 }
 
 function countAddedRemoved(oldText: string | null | undefined, newText: string): { added: number; removed: number } {
@@ -337,39 +457,80 @@ function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Record<string
 	return items;
 }
 
-function DiffRowText({ row }: { row: UnifiedDiffRow }): React.ReactElement {
+function DiffRowText({
+	row,
+	highlightedLineHtml,
+	grammar,
+	language,
+}: {
+	row: UnifiedDiffRow;
+	highlightedLineHtml: string | null;
+	grammar: Prism.Grammar | null;
+	language: string | null;
+}): React.ReactElement {
 	if (!row.segments) {
-		return <span className="kb-diff-text">{row.text || " "}</span>;
+		if (highlightedLineHtml) {
+			return (
+				<span
+					className={`${Classes.MONOSPACE_TEXT} kb-diff-text`}
+					dangerouslySetInnerHTML={{ __html: highlightedLineHtml }}
+				/>
+			);
+		}
+		return <span className={`${Classes.MONOSPACE_TEXT} kb-diff-text`}>{row.text || " "}</span>;
 	}
 
 	return (
-		<span className="kb-diff-text">
-			{row.segments.map((segment) => (
-				<span
-					key={segment.key}
-					className={
-						segment.tone === "added"
-							? "kb-diff-segment-added"
-							: segment.tone === "removed"
-								? "kb-diff-segment-removed"
-								: undefined
-					}
-				>
-					{segment.text}
-				</span>
-			))}
+		<span className={`${Classes.MONOSPACE_TEXT} kb-diff-text`}>
+			{row.segments.map((segment) => {
+				const className =
+					segment.tone === "added"
+						? "kb-diff-segment-added"
+						: segment.tone === "removed"
+							? "kb-diff-segment-removed"
+							: undefined;
+				const highlightedSegmentHtml = getHighlightedLineHtml(segment.text, grammar, language);
+				if (highlightedSegmentHtml) {
+					return (
+						<span
+							key={segment.key}
+							className={className}
+							dangerouslySetInnerHTML={{
+								__html: highlightedSegmentHtml,
+							}}
+						/>
+					);
+				}
+				return (
+					<span key={segment.key} className={className}>
+						{segment.text || " "}
+					</span>
+				);
+			})}
 		</span>
 	);
 }
 
 function UnifiedDiff({
+	path,
 	oldText,
 	newText,
 }: {
+	path: string;
 	oldText: string | null | undefined;
 	newText: string;
 }): React.ReactElement {
 	const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
+	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
+	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
+	const highlightedOldByLine = useMemo(
+		() => buildHighlightedLineMap(oldText, prismGrammar, prismLanguage),
+		[oldText, prismGrammar, prismLanguage],
+	);
+	const highlightedNewByLine = useMemo(
+		() => buildHighlightedLineMap(newText, prismGrammar, prismLanguage),
+		[newText, prismGrammar, prismLanguage],
+	);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
 	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
 
@@ -381,20 +542,31 @@ function UnifiedDiff({
 	}, []);
 
 	const renderRow = useCallback((row: UnifiedDiffRow): React.ReactElement => {
-		const rowClass =
-			row.variant === "added"
+			const rowClass =
+				row.variant === "added"
 				? "kb-diff-row kb-diff-row-added"
 				: row.variant === "removed"
 					? "kb-diff-row kb-diff-row-removed"
-					: "kb-diff-row kb-diff-row-context";
+						: "kb-diff-row kb-diff-row-context";
+			const highlightedLineHtml =
+				row.lineNumber == null
+					? null
+					: row.variant === "removed"
+						? highlightedOldByLine.get(row.lineNumber) ?? null
+						: highlightedNewByLine.get(row.lineNumber) ?? null;
 
-		return (
-			<div key={row.key} className={rowClass}>
-				<span style={{ color: Colors.GRAY2, textAlign: "right", userSelect: "none" }}>{row.lineNumber ?? ""}</span>
-				<DiffRowText row={row} />
-			</div>
-		);
-	}, []);
+			return (
+				<div key={row.key} className={rowClass}>
+					<span style={{ color: Colors.GRAY2, textAlign: "right", userSelect: "none" }}>{row.lineNumber ?? ""}</span>
+					<DiffRowText
+						row={row}
+						highlightedLineHtml={highlightedLineHtml}
+						grammar={prismGrammar}
+						language={prismLanguage}
+					/>
+				</div>
+			);
+		}, [highlightedNewByLine, highlightedOldByLine, prismGrammar, prismLanguage]);
 
 	return (
 		<>
@@ -629,30 +801,34 @@ export function DiffViewerPanel({
 												container.scrollTop += nextTop - previousTop;
 											});
 										}}
-										text={
-											<span className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`} title={group.path}>
-												{truncatePathMiddle(group.path)}
-											</span>
-										}
-										endIcon={
-											<span className={Classes.MONOSPACE_TEXT}>
-												<span style={{ color: Colors.GREEN5 }}>+{group.added}</span>
-												{" "}
-												<span style={{ color: Colors.RED5 }}>-{group.removed}</span>
-											</span>
-										}
+											text={
+												<span className={Classes.TEXT_OVERFLOW_ELLIPSIS} title={group.path}>
+													{truncatePathMiddle(group.path)}
+												</span>
+											}
+											endIcon={
+												<span>
+													<span style={{ color: Colors.GREEN5 }}>+{group.added}</span>
+													{" "}
+													<span style={{ color: Colors.RED5 }}>-{group.removed}</span>
+												</span>
+											}
 									/>
-									{isExpanded ? (
-										<div>
-											{group.entries.map((entry) => (
+										{isExpanded ? (
+											<div>
+												{group.entries.map((entry) => (
 												<div
 													key={entry.id}
-													className="kb-diff-entry"
-												>
-													<UnifiedDiff oldText={entry.oldText} newText={entry.newText} />
-												</div>
-											))}
-										</div>
+														className="kb-diff-entry"
+													>
+														<UnifiedDiff
+															path={group.path}
+															oldText={entry.oldText}
+															newText={entry.newText}
+														/>
+													</div>
+												))}
+											</div>
 									) : null}
 								</Card>
 							</section>
