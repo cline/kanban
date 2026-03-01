@@ -23,6 +23,8 @@ type TerminalWithViewportCore = Terminal & {
 	};
 };
 
+const SHIFT_ENTER_SEQUENCE = "\u001b\r";
+
 function getWebSocketUrl(taskId: string, workspaceId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/ws`);
@@ -180,6 +182,16 @@ export function AgentTerminalPanel({
 
 		terminalRef.current = terminal;
 		fitAddonRef.current = fitAddon;
+		terminal.attachCustomKeyEventHandler((event) => {
+			if (event.type === "keydown" && event.key === "Enter" && event.shiftKey) {
+				sendMessage({
+					type: "input",
+					data: encodeTextToBase64(SHIFT_ENTER_SEQUENCE),
+				});
+				return false;
+			}
+			return true;
+		});
 
 		const removeDataListener = terminal.onData((value) => {
 			sendMessage({
