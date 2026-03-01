@@ -59,7 +59,6 @@ import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
-	RuntimeWorkspaceChangesResponse,
 } from "@/kanban/runtime/types";
 import {
 	addTaskToColumn,
@@ -465,20 +464,26 @@ export default function App(): ReactElement {
 	);
 
 	const fetchTaskWorkingChangeCount = useCallback(async (task: BoardCard): Promise<number | null> => {
+		if (!currentProjectId) {
+			return null;
+		}
 		try {
 			const params = new URLSearchParams({
 				taskId: task.id,
 			});
 			params.set("baseRef", task.baseRef ?? "");
-			const response = await workspaceFetch(`/api/workspace/changes?${params.toString()}`, {
+			const response = await workspaceFetch(`/api/workspace/git/summary?${params.toString()}`, {
 				workspaceId: currentProjectId,
 			});
 			if (!response.ok) {
 				const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 				throw new Error(payload?.error ?? `Workspace request failed with ${response.status}`);
 			}
-			const payload = (await response.json()) as { files?: unknown[] };
-			return Array.isArray(payload.files) ? payload.files.length : 0;
+			const payload = (await response.json()) as RuntimeGitSummaryResponse;
+			if (!payload.ok) {
+				throw new Error(payload.error ?? "Workspace summary request failed.");
+			}
+			return payload.summary.changedFiles;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			setWorktreeError(message);
@@ -512,14 +517,16 @@ export default function App(): ReactElement {
 			let additions: number | null = null;
 			let deletions: number | null = null;
 			try {
-				const changesResponse = await workspaceFetch(`/api/workspace/changes?${params.toString()}`, {
+				const summaryResponse = await workspaceFetch(`/api/workspace/git/summary?${params.toString()}`, {
 					workspaceId: currentProjectId,
 				});
-				if (changesResponse.ok) {
-					const changesPayload = (await changesResponse.json()) as RuntimeWorkspaceChangesResponse;
-					changedFiles = changesPayload.files.length;
-					additions = changesPayload.files.reduce((sum, file) => sum + file.additions, 0);
-					deletions = changesPayload.files.reduce((sum, file) => sum + file.deletions, 0);
+				if (summaryResponse.ok) {
+					const summaryPayload = (await summaryResponse.json()) as RuntimeGitSummaryResponse;
+					if (summaryPayload.ok) {
+						changedFiles = summaryPayload.summary.changedFiles;
+						additions = summaryPayload.summary.additions;
+						deletions = summaryPayload.summary.deletions;
+					}
 				}
 			} catch {
 				// Swallow errors: this snapshot is informational and should never block review cards.
@@ -1085,19 +1092,11 @@ export default function App(): ReactElement {
 	}, [currentProjectId, refreshGitSummary, workspaceRevision]);
 
 	useEffect(() => {
-		if (!currentProjectId) {
+		if (!currentProjectId || selectedCard || workspaceStatusRetrievedAt <= 0 || !isDocumentVisible) {
 			return;
 		}
-		const intervalId = window.setInterval(() => {
-			if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-				return;
-			}
-			void refreshGitSummary();
-		}, 10_000);
-		return () => {
-			window.clearInterval(intervalId);
-		};
-	}, [currentProjectId, refreshGitSummary]);
+		void refreshGitSummary();
+	}, [currentProjectId, isDocumentVisible, refreshGitSummary, selectedCard, workspaceStatusRetrievedAt]);
 
 	useEffect(() => {
 		if (typeof window === "undefined") {

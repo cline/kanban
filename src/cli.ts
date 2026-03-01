@@ -262,6 +262,16 @@ function validateTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWo
 	};
 }
 
+function validateOptionalTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWorkspaceInfoRequest | null {
+	if (!query.has("taskId")) {
+		if (query.has("baseRef")) {
+			throw new Error("baseRef query parameter requires taskId.");
+		}
+		return null;
+	}
+	return validateTaskWorkspaceInfoRequest(query);
+}
+
 function validateWorkspaceFileSearchRequest(query: URLSearchParams): { query: string; limit?: number } {
 	const rawQuery = query.get("q") ?? query.get("query") ?? "";
 	const normalizedQuery = rawQuery.trim();
@@ -1675,7 +1685,21 @@ async function startServer(
 					return;
 				}
 				try {
-					const summary = await getGitSyncSummary(scope.workspacePath);
+					const taskScope = validateOptionalTaskWorkspaceInfoRequest(requestUrl.searchParams);
+					let summaryCwd = scope.workspacePath;
+					if (taskScope) {
+						const taskBaseRef =
+							taskScope.baseRef === undefined
+								? await resolveTaskBaseRef(scope.workspacePath, taskScope.taskId)
+								: taskScope.baseRef;
+						summaryCwd = await resolveTaskCwd({
+							cwd: scope.workspacePath,
+							taskId: taskScope.taskId,
+							baseRef: taskBaseRef,
+							ensure: false,
+						});
+					}
+					const summary = await getGitSyncSummary(summaryCwd);
 					sendJson(res, 200, {
 						ok: true,
 						summary,
