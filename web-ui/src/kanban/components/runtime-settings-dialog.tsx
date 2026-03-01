@@ -31,6 +31,27 @@ function normalizeTemplateForComparison(value: string): string {
 	return value.replaceAll("\r\n", "\n").trim();
 }
 
+function areShortcutsEqual(left: RuntimeProjectShortcut[], right: RuntimeProjectShortcut[]): boolean {
+	if (left.length !== right.length) {
+		return false;
+	}
+	for (let index = 0; index < left.length; index += 1) {
+		const leftItem = left[index];
+		const rightItem = right[index];
+		if (!leftItem || !rightItem) {
+			return false;
+		}
+		if (
+			leftItem.id !== rightItem.id ||
+			leftItem.label !== rightItem.label ||
+			leftItem.command !== rightItem.command
+		) {
+			return false;
+		}
+	}
+	return true;
+}
+
 type GitPromptVariant = "commit-local" | "commit-worktree" | "pr-local" | "pr-worktree";
 
 const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: GitPromptVariant; label: string }> = [
@@ -165,14 +186,67 @@ export function RuntimeSettingsDialog({
 	const selectedPromptMode = selectedPromptVariant.endsWith("worktree") ? "worktree" : "local";
 
 	const supportedAgents = useMemo(() => config?.agents ?? [], [config?.agents]);
+	const configuredAgentId = config?.selectedAgentId ?? null;
+	const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
+	const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
+	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
+	const initialShortcuts = config?.shortcuts ?? [];
+	const initialCommitLocalPromptTemplate = config?.commitLocalPromptTemplate ?? "";
+	const initialCommitWorktreePromptTemplate = config?.commitWorktreePromptTemplate ?? "";
+	const initialOpenPrLocalPromptTemplate = config?.openPrLocalPromptTemplate ?? "";
+	const initialOpenPrWorktreePromptTemplate = config?.openPrWorktreePromptTemplate ?? "";
+	const hasUnsavedChanges = useMemo(() => {
+		if (!config) {
+			return false;
+		}
+		if (selectedAgentId !== initialSelectedAgentId) {
+			return true;
+		}
+		if (!areShortcutsEqual(shortcuts, initialShortcuts)) {
+			return true;
+		}
+		if (
+			normalizeTemplateForComparison(commitLocalPromptTemplate) !==
+			normalizeTemplateForComparison(initialCommitLocalPromptTemplate)
+		) {
+			return true;
+		}
+		if (
+			normalizeTemplateForComparison(commitWorktreePromptTemplate) !==
+			normalizeTemplateForComparison(initialCommitWorktreePromptTemplate)
+		) {
+			return true;
+		}
+		if (
+			normalizeTemplateForComparison(openPrLocalPromptTemplate) !==
+			normalizeTemplateForComparison(initialOpenPrLocalPromptTemplate)
+		) {
+			return true;
+		}
+		return (
+			normalizeTemplateForComparison(openPrWorktreePromptTemplate) !==
+			normalizeTemplateForComparison(initialOpenPrWorktreePromptTemplate)
+		);
+	}, [
+		commitLocalPromptTemplate,
+		commitWorktreePromptTemplate,
+		config,
+		initialCommitLocalPromptTemplate,
+		initialCommitWorktreePromptTemplate,
+		initialOpenPrLocalPromptTemplate,
+		initialOpenPrWorktreePromptTemplate,
+		initialSelectedAgentId,
+		initialShortcuts,
+		openPrLocalPromptTemplate,
+		openPrWorktreePromptTemplate,
+		selectedAgentId,
+		shortcuts,
+	]);
 
 	useEffect(() => {
 		if (!open) {
 			return;
 		}
-		const configuredAgentId = config?.selectedAgentId ?? null;
-		const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
-		const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
 		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitLocalPromptTemplate(config?.commitLocalPromptTemplate ?? "");
@@ -437,10 +511,15 @@ export function RuntimeSettingsDialog({
 				) : null}
 			</DialogBody>
 			<DialogFooter
-				actions={
+			actions={
 					<>
 						<Button text="Cancel" variant="outlined" onClick={() => onOpenChange(false)} disabled={isSaving} />
-						<Button text="Save" intent="primary" onClick={() => void handleSave()} disabled={isLoading || isSaving} />
+						<Button
+							text="Save"
+							intent="primary"
+							onClick={() => void handleSave()}
+							disabled={isLoading || isSaving || !hasUnsavedChanges}
+						/>
 					</>
 				}
 			/>
