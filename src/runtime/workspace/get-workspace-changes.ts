@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -11,6 +11,15 @@ import type {
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 128;
+
+interface WorkspaceChangesCacheEntry {
+	stateKey: string;
+	response: RuntimeWorkspaceChangesResponse;
+	lastAccessedAt: number;
+}
+
+const workspaceChangesCacheByRepoRoot = new Map<string, WorkspaceChangesCacheEntry>();
 
 interface NameStatusEntry {
 	path: string;
@@ -21,6 +30,13 @@ interface NameStatusEntry {
 interface DiffStat {
 	additions: number;
 	deletions: number;
+}
+
+interface FileFingerprint {
+	path: string;
+	size: number | null;
+	mtimeMs: number | null;
+	ctimeMs: number | null;
 }
 
 function mapNameStatus(code: string): RuntimeWorkspaceFileStatus {
@@ -94,6 +110,71 @@ async function runGit(args: string[], cwd: string): Promise<string> {
 			throw new Error(message);
 		}
 		throw error;
+	}
+}
+
+async function buildFileFingerprints(repoRoot: string, paths: string[]): Promise<FileFingerprint[]> {
+	if (paths.length === 0) {
+		return [];
+	}
+	const uniqueSortedPaths = Array.from(new Set(paths)).sort((left, right) => left.localeCompare(right));
+	const entries = await Promise.all(
+		uniqueSortedPaths.map(async (path) => {
+			const absolutePath = join(repoRoot, path);
+			try {
+				const fileStat = await stat(absolutePath);
+				return {
+					path,
+					size: fileStat.size,
+					mtimeMs: fileStat.mtimeMs,
+					ctimeMs: fileStat.ctimeMs,
+				} satisfies FileFingerprint;
+			} catch {
+				return {
+					path,
+					size: null,
+					mtimeMs: null,
+					ctimeMs: null,
+				} satisfies FileFingerprint;
+			}
+		}),
+	);
+	return entries;
+}
+
+function buildWorkspaceChangesStateKey(input: {
+	repoRoot: string;
+	headCommit: string | null;
+	trackedChangesOutput: string;
+	untrackedOutput: string;
+	fingerprints: FileFingerprint[];
+}): string {
+	const fingerprintsToken = input.fingerprints
+		.map((entry) => `${entry.path}\t${entry.size ?? "null"}\t${entry.mtimeMs ?? "null"}\t${entry.ctimeMs ?? "null"}`)
+		.join("\n");
+	return [
+		input.repoRoot,
+		input.headCommit ?? "no-head",
+		input.trackedChangesOutput,
+		input.untrackedOutput,
+		fingerprintsToken,
+	].join("\n--\n");
+}
+
+function pruneWorkspaceChangesCache(): void {
+	if (workspaceChangesCacheByRepoRoot.size <= WORKSPACE_CHANGES_CACHE_MAX_ENTRIES) {
+		return;
+	}
+	const entries = Array.from(workspaceChangesCacheByRepoRoot.entries()).sort(
+		(left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt,
+	);
+	const removeCount = entries.length - WORKSPACE_CHANGES_CACHE_MAX_ENTRIES;
+	for (let index = 0; index < removeCount; index += 1) {
+		const candidate = entries[index];
+		if (!candidate) {
+			break;
+		}
+		workspaceChangesCacheByRepoRoot.delete(candidate[0]);
 	}
 }
 
@@ -181,8 +262,13 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 		throw new Error("Could not resolve git repository root.");
 	}
 
-	const trackedChanges = parseTrackedChanges(await runGit(["diff", "--name-status", "HEAD", "--"], repoRoot));
-	const untrackedPaths = (await runGit(["ls-files", "--others", "--exclude-standard"], repoRoot))
+	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([
+		runGit(["diff", "--name-status", "HEAD", "--"], repoRoot),
+		runGit(["ls-files", "--others", "--exclude-standard"], repoRoot),
+		runGit(["rev-parse", "--verify", "HEAD"], repoRoot).catch(() => ""),
+	]);
+	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
+	const untrackedPaths = untrackedOutput
 		.split("\n")
 		.map((line) => line.trim())
 		.filter(Boolean);
@@ -197,13 +283,33 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 				status: "untracked" as const,
 			})),
 	];
+	const fingerprintPaths = allChanges.flatMap((entry) => [entry.path, entry.previousPath].filter(Boolean) as string[]);
+	const fingerprints = await buildFileFingerprints(repoRoot, fingerprintPaths);
+	const stateKey = buildWorkspaceChangesStateKey({
+		repoRoot,
+		headCommit: headCommitOutput.trim() || null,
+		trackedChangesOutput,
+		untrackedOutput,
+		fingerprints,
+	});
+	const existing = workspaceChangesCacheByRepoRoot.get(repoRoot);
+	if (existing && existing.stateKey === stateKey) {
+		existing.lastAccessedAt = Date.now();
+		return existing.response;
+	}
 
 	const files = await Promise.all(allChanges.map((entry) => buildFileChange(repoRoot, entry)));
 	files.sort((left, right) => left.path.localeCompare(right.path));
-
-	return {
+	const response: RuntimeWorkspaceChangesResponse = {
 		repoRoot,
 		generatedAt: Date.now(),
 		files,
 	};
+	workspaceChangesCacheByRepoRoot.set(repoRoot, {
+		stateKey,
+		response,
+		lastAccessedAt: Date.now(),
+	});
+	pruneWorkspaceChangesCache();
+	return response;
 }
