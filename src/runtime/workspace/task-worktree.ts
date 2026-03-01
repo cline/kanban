@@ -285,13 +285,14 @@ export async function ensureTaskWorktree(options: {
 }
 
 export async function deleteTaskWorktree(options: {
-	cwd: string;
+	repoPath: string;
 	taskId: string;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
-		const context = await loadWorkspaceContext(options.cwd);
 		const taskId = normalizeTaskId(options.taskId);
-		if (!context.git.hasGit) {
+		const isGitRepository =
+			(await tryRunGit(["-C", options.repoPath, "rev-parse", "--is-inside-work-tree"])) === "true";
+		if (!isGitRepository) {
 			return {
 				ok: true,
 				enabled: false,
@@ -300,8 +301,8 @@ export async function deleteTaskWorktree(options: {
 		}
 
 		const rootPath = getWorktreesBaseRootPath();
-		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
-		const removed = await removeTaskWorktreeInternal(context.repoPath, worktreePath);
+		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
+		const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 		await pruneEmptyParents(rootPath, dirname(worktreePath));
 
 		return {

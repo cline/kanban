@@ -5,9 +5,8 @@ import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join, normalize, resolve, sep } from "node:path";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import chokidar, { type FSWatcher } from "chokidar";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { isHooksSubcommand, runHooksIngest } from "./hooks-cli.js";
@@ -41,7 +40,7 @@ import type {
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskSessionsMessage,
-	RuntimeStateStreamWorkspaceFilesChangedMessage,
+	RuntimeStateStreamWorkspaceRetrieveStatusMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionStartRequest,
 	RuntimeTaskSessionStartResponse,
@@ -59,7 +58,6 @@ import type {
 } from "./runtime/api-contract.js";
 import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
 import {
-	getRuntimeHomePath,
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
 	loadWorkspaceContextById,
@@ -110,10 +108,7 @@ const MIME_TYPES: Record<string, string> = {
 const DEFAULT_PORT = 8484;
 const TASK_SESSION_STREAM_BATCH_MS = 150;
 const WORKSPACE_FILE_CHANGE_STREAM_BATCH_MS = 25;
-const WORKTREES_DIR = "worktrees";
-const WORKSPACE_FILE_WATCH_IGNORE_PATTERNS = ["**/.git/**", "**/node_modules/**"];
-const WORKSPACE_FILE_WATCH_STABILITY_THRESHOLD_MS = 10;
-const WORKSPACE_FILE_WATCH_POLL_INTERVAL_MS = 10;
+const WORKSPACE_FILE_WATCH_INTERVAL_MS = 2_000;
 
 function parseCliOptions(argv: string[]): CliOptions {
 	let help = false;
@@ -391,22 +386,6 @@ function getProjectName(path: string): string {
 	return segments[segments.length - 1] ?? normalized;
 }
 
-function getWorkspaceFolderLabel(repoPath: string): string {
-	const trimmed = repoPath.trim().replace(/[\\/]+$/g, "");
-	const folder = basename(trimmed);
-	if (!folder) {
-		return "workspace";
-	}
-	const cleaned = [...folder]
-		.filter((char) => {
-			const code = char.charCodeAt(0);
-			return code >= 32 && code !== 127;
-		})
-		.join("")
-		.trim();
-	return cleaned || "workspace";
-}
-
 function createEmptyProjectTaskCounts(): RuntimeProjectTaskCounts {
 	return {
 		backlog: 0,
@@ -438,9 +417,12 @@ function countTasksByColumn(board: RuntimeBoardData): RuntimeProjectTaskCounts {
 	return counts;
 }
 
-function collectTaskIdsFromBoard(board: RuntimeBoardData): Set<string> {
+function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData): Set<string> {
 	const taskIds = new Set<string>();
 	for (const column of board.columns) {
+		if (column.id === "backlog" || column.id === "trash") {
+			continue;
+		}
 		for (const card of column.cards) {
 			taskIds.add(card.id);
 		}
@@ -894,12 +876,8 @@ async function startServer(
 	const runtimeStateClients = new Set<WebSocket>();
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
 	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
-	const workspaceFileWatchersByWorkspaceId = new Map<string, { watcher: FSWatcher; rootPath: string }>();
-	const workspaceFolderLabelByWorkspaceId = new Map<string, string>();
-	const workspaceIdsByWorktreeLabel = new Map<string, Set<string>>();
 	const workspaceFileChangeBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
-	const workspaceWorktreesRootPath = join(getRuntimeHomePath(), WORKTREES_DIR);
-	let globalWorktreesWatcher: FSWatcher | null = null;
+	const workspaceFileRefreshIntervalsByWorkspaceId = new Map<string, NodeJS.Timeout>();
 
 	const sendRuntimeStateMessage = (client: WebSocket, payload: RuntimeStateStreamMessage) => {
 		if (client.readyState !== WebSocket.OPEN) {
@@ -912,51 +890,15 @@ async function startServer(
 		}
 	};
 
-	const removeWorkspaceFromWorktreeLabelIndex = (workspaceId: string) => {
-		const label = workspaceFolderLabelByWorkspaceId.get(workspaceId);
-		if (!label) {
-			return;
-		}
-		workspaceFolderLabelByWorkspaceId.delete(workspaceId);
-		const workspaceIds = workspaceIdsByWorktreeLabel.get(label);
-		if (!workspaceIds) {
-			return;
-		}
-		workspaceIds.delete(workspaceId);
-		if (workspaceIds.size === 0) {
-			workspaceIdsByWorktreeLabel.delete(label);
-		}
-	};
-
-	const addWorkspaceToWorktreeLabelIndex = (workspaceId: string, label: string) => {
-		const previousLabel = workspaceFolderLabelByWorkspaceId.get(workspaceId);
-		if (previousLabel === label) {
-			return;
-		}
-		if (previousLabel) {
-			const previousWorkspaceIds = workspaceIdsByWorktreeLabel.get(previousLabel);
-			if (previousWorkspaceIds) {
-				previousWorkspaceIds.delete(workspaceId);
-				if (previousWorkspaceIds.size === 0) {
-					workspaceIdsByWorktreeLabel.delete(previousLabel);
-				}
-			}
-		}
-		workspaceFolderLabelByWorkspaceId.set(workspaceId, label);
-		const workspaceIds = workspaceIdsByWorktreeLabel.get(label) ?? new Set<string>();
-		workspaceIds.add(workspaceId);
-		workspaceIdsByWorktreeLabel.set(label, workspaceIds);
-	};
-
 	const flushWorkspaceFileChangeBroadcast = (workspaceId: string) => {
 		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
 		if (!runtimeClients || runtimeClients.size === 0) {
 			return;
 		}
-		const payload: RuntimeStateStreamWorkspaceFilesChangedMessage = {
-			type: "workspace_files_changed",
+		const payload: RuntimeStateStreamWorkspaceRetrieveStatusMessage = {
+			type: "workspace_retrieve_status",
 			workspaceId,
-			changedAt: Date.now(),
+			retrievedAt: Date.now(),
 		};
 		for (const client of runtimeClients) {
 			sendRuntimeStateMessage(client, payload);
@@ -983,114 +925,25 @@ async function startServer(
 		workspaceFileChangeBroadcastTimersByWorkspaceId.delete(workspaceId);
 	};
 
-	const collectWorkspaceIdsForWorktreePath = (changedPath: string): Set<string> => {
-		const normalizedRoot = workspaceWorktreesRootPath.replaceAll("\\", "/");
-		const normalizedPath = changedPath.replaceAll("\\", "/");
-		if (!normalizedPath.startsWith(normalizedRoot)) {
-			return new Set<string>();
-		}
-		const relativePath = normalizedPath.slice(normalizedRoot.length).replace(/^\/+/, "");
-		if (!relativePath) {
-			return new Set<string>();
-		}
-		const segments = relativePath.split("/").filter((segment) => segment.length > 0);
-		if (segments.length < 2) {
-			return new Set<string>();
-		}
-		const workspaceLabel = segments[1];
-		const workspaceIds = workspaceIdsByWorktreeLabel.get(workspaceLabel);
-		return workspaceIds ? new Set(workspaceIds) : new Set<string>();
-	};
-
-	const queueWorkspaceFileChangeBroadcastForAll = () => {
-		for (const workspaceId of runtimeStateClientsByWorkspaceId.keys()) {
-			queueWorkspaceFileChangeBroadcast(workspaceId);
-		}
-	};
-
-	const ensureGlobalWorktreesWatcher = () => {
-		if (globalWorktreesWatcher) {
+	const ensureWorkspaceFileRefresh = (workspaceId: string) => {
+		if (workspaceFileRefreshIntervalsByWorkspaceId.has(workspaceId)) {
 			return;
 		}
-		globalWorktreesWatcher = chokidar.watch(workspaceWorktreesRootPath, {
-			ignored: WORKSPACE_FILE_WATCH_IGNORE_PATTERNS,
-			ignoreInitial: true,
-			persistent: true,
-			awaitWriteFinish: {
-				stabilityThreshold: WORKSPACE_FILE_WATCH_STABILITY_THRESHOLD_MS,
-				pollInterval: WORKSPACE_FILE_WATCH_POLL_INTERVAL_MS,
-			},
-		});
-		globalWorktreesWatcher.on("all", (_eventName, changedPath) => {
-			if (!changedPath) {
-				queueWorkspaceFileChangeBroadcastForAll();
-				return;
-			}
-			const workspaceIds = collectWorkspaceIdsForWorktreePath(changedPath);
-			if (workspaceIds.size === 0) {
-				queueWorkspaceFileChangeBroadcastForAll();
-				return;
-			}
-			for (const workspaceId of workspaceIds) {
-				queueWorkspaceFileChangeBroadcast(workspaceId);
-			}
-		});
-		globalWorktreesWatcher.on("error", () => {
-			// Ignore file watcher errors; next change event will resync if possible.
-		});
-	};
-
-	const ensureWorkspaceFileWatcher = (workspaceId: string, workspacePath: string) => {
-		addWorkspaceToWorktreeLabelIndex(workspaceId, getWorkspaceFolderLabel(workspacePath));
-		ensureGlobalWorktreesWatcher();
-		const existing = workspaceFileWatchersByWorkspaceId.get(workspaceId);
-		if (existing && existing.rootPath === workspacePath) {
-			return;
-		}
-		if (existing) {
-			workspaceFileWatchersByWorkspaceId.delete(workspaceId);
-			void existing.watcher.close().catch(() => {
-				// Ignore watcher close failures while reconfiguring runtime file watch paths.
-			});
-		}
-		const watcher = chokidar.watch(workspacePath, {
-			ignored: WORKSPACE_FILE_WATCH_IGNORE_PATTERNS,
-			ignoreInitial: true,
-			persistent: true,
-			awaitWriteFinish: {
-				stabilityThreshold: WORKSPACE_FILE_WATCH_STABILITY_THRESHOLD_MS,
-				pollInterval: WORKSPACE_FILE_WATCH_POLL_INTERVAL_MS,
-			},
-		});
-		watcher.on("all", () => {
+		queueWorkspaceFileChangeBroadcast(workspaceId);
+		const timer = setInterval(() => {
 			queueWorkspaceFileChangeBroadcast(workspaceId);
-		});
-		watcher.on("error", () => {
-			// Ignore file watcher errors; next change event will resync if possible.
-		});
-		workspaceFileWatchersByWorkspaceId.set(workspaceId, {
-			watcher,
-			rootPath: workspacePath,
-		});
+		}, WORKSPACE_FILE_WATCH_INTERVAL_MS);
+		timer.unref();
+		workspaceFileRefreshIntervalsByWorkspaceId.set(workspaceId, timer);
 	};
 
-	const disposeWorkspaceFileWatcher = (workspaceId: string) => {
+	const disposeWorkspaceFileRefresh = (workspaceId: string) => {
+		const timer = workspaceFileRefreshIntervalsByWorkspaceId.get(workspaceId);
+		if (timer) {
+			clearInterval(timer);
+		}
+		workspaceFileRefreshIntervalsByWorkspaceId.delete(workspaceId);
 		disposeWorkspaceFileChangeBroadcast(workspaceId);
-		const existing = workspaceFileWatchersByWorkspaceId.get(workspaceId);
-		if (existing) {
-			workspaceFileWatchersByWorkspaceId.delete(workspaceId);
-			void existing.watcher.close().catch(() => {
-				// Ignore watcher close failures during workspace disposal.
-			});
-		}
-		removeWorkspaceFromWorktreeLabelIndex(workspaceId);
-		if (workspaceFileWatchersByWorkspaceId.size === 0 && globalWorktreesWatcher) {
-			const watcher = globalWorktreesWatcher;
-			globalWorktreesWatcher = null;
-			void watcher.close().catch(() => {
-				// Ignore global watcher close failures during workspace disposal.
-			});
-		}
 	};
 
 	const flushTaskSessionSummaries = (workspaceId: string) => {
@@ -1157,7 +1010,6 @@ async function startServer(
 		repoPath: string,
 	): Promise<TerminalSessionManager> => {
 		workspacePathsById.set(workspaceId, repoPath);
-		ensureWorkspaceFileWatcher(workspaceId, repoPath);
 		const existing = terminalManagersByWorkspaceId.get(workspaceId);
 		if (existing) {
 			ensureTerminalSummarySubscription(workspaceId, existing);
@@ -1223,7 +1075,7 @@ async function startServer(
 		}
 		terminalSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
 		disposeTaskSessionSummaryBroadcast(workspaceId);
-		disposeWorkspaceFileWatcher(workspaceId);
+		disposeWorkspaceFileRefresh(workspaceId);
 		projectTaskCountsByWorkspaceId.delete(workspaceId);
 		workspacePathsById.delete(workspaceId);
 
@@ -1358,18 +1210,19 @@ async function startServer(
 	const resolveWorkspaceForStream = async (
 		requestedWorkspaceId: string | null,
 	): Promise<{
-		workspaceId: string;
-		workspacePath: string;
+		workspaceId: string | null;
+		workspacePath: string | null;
 		removedRequestedWorkspacePath: string | null;
 		didPruneProjects: boolean;
-	} | null> => {
+	}> => {
 		const allProjects = await listWorkspaceIndexEntries();
 		const { projects, removedProjects } = await pruneMissingWorkspaceEntries(allProjects);
 		const removedRequestedWorkspacePath = requestedWorkspaceId
 			? (removedProjects.find((project) => project.workspaceId === requestedWorkspaceId)?.repoPath ?? null)
 			: null;
 
-		if (removedProjects.some((project) => project.workspaceId === activeWorkspaceId) && projects[0]) {
+		const activeWorkspaceMissing = !projects.some((project) => project.workspaceId === activeWorkspaceId);
+		if (activeWorkspaceMissing && projects[0]) {
 			await setActiveWorkspace(projects[0].workspaceId, projects[0].repoPath);
 		}
 
@@ -1388,7 +1241,12 @@ async function startServer(
 		const fallbackWorkspace =
 			projects.find((project) => project.workspaceId === activeWorkspaceId) ?? projects[0] ?? null;
 		if (!fallbackWorkspace) {
-			return null;
+			return {
+				workspaceId: null,
+				workspacePath: null,
+				removedRequestedWorkspacePath,
+				didPruneProjects: removedProjects.length > 0,
+			};
 		}
 		return {
 			workspaceId: fallbackWorkspace.workspaceId,
@@ -1448,6 +1306,10 @@ async function startServer(
 		}
 		taskSessionBroadcastTimersByWorkspaceId.clear();
 		pendingTaskSessionSummariesByWorkspaceId.clear();
+		for (const timer of workspaceFileRefreshIntervalsByWorkspaceId.values()) {
+			clearInterval(timer);
+		}
+		workspaceFileRefreshIntervalsByWorkspaceId.clear();
 		for (const timer of workspaceFileChangeBroadcastTimersByWorkspaceId.values()) {
 			clearTimeout(timer);
 		}
@@ -1935,7 +1797,7 @@ async function startServer(
 				try {
 					const body = validateWorktreeDeleteRequest(await readJsonBody<RuntimeWorktreeDeleteRequest>(req));
 					const response = await deleteTaskWorktree({
-						cwd: scope.workspacePath,
+						repoPath: scope.workspacePath,
 						taskId: body.taskId,
 					});
 					sendJson(res, response.ok ? 200 : 500, response);
@@ -2058,6 +1920,11 @@ async function startServer(
 					await assertPathIsDirectory(projectPath);
 					const context = await loadWorkspaceContext(projectPath);
 					workspacePathsById.set(context.workspaceId, context.repoPath);
+					const projectsAfterAdd = await listWorkspaceIndexEntries();
+					const hasActiveWorkspace = projectsAfterAdd.some((project) => project.workspaceId === activeWorkspaceId);
+					if (!hasActiveWorkspace) {
+						await setActiveWorkspace(context.workspaceId, context.repoPath);
+					}
 					const taskCounts = await summarizeProjectTaskCounts(context.workspaceId, context.repoPath);
 					sendJson(res, 200, {
 						ok: true,
@@ -2083,13 +1950,6 @@ async function startServer(
 				try {
 					const body = validateProjectRemoveRequest(await readJsonBody<RuntimeProjectRemoveRequest>(req));
 					const projectsBeforeRemoval = await listWorkspaceIndexEntries();
-					if (projectsBeforeRemoval.length <= 1) {
-						sendJson(res, 400, {
-							ok: false,
-							error: "At least one project must remain.",
-						} satisfies RuntimeProjectRemoveResponse);
-						return;
-					}
 					const projectToRemove = projectsBeforeRemoval.find((project) => project.workspaceId === body.projectId);
 					if (!projectToRemove) {
 						sendJson(res, 404, {
@@ -2102,32 +1962,16 @@ async function startServer(
 					const taskIdsToCleanup = new Set<string>();
 					try {
 						const workspaceState = await loadWorkspaceState(projectToRemove.repoPath);
-						for (const taskId of collectTaskIdsFromBoard(workspaceState.board)) {
+						for (const taskId of collectProjectWorktreeTaskIdsForRemoval(workspaceState.board)) {
 							taskIdsToCleanup.add(taskId);
 						}
 					} catch {
-						// Best effort: continue using any in-memory task summaries.
+						// Best effort: if board state cannot be read, skip worktree cleanup IDs.
 					}
 
 					const removedTerminalManager = getTerminalManagerForWorkspace(body.projectId);
 					if (removedTerminalManager) {
-						for (const summary of removedTerminalManager.listSummaries()) {
-							taskIdsToCleanup.add(summary.taskId);
-						}
-						const interruptedSummaries = removedTerminalManager.markInterruptedAndStopAll();
-						for (const summary of interruptedSummaries) {
-							taskIdsToCleanup.add(summary.taskId);
-						}
-					}
-
-					for (const taskId of taskIdsToCleanup) {
-						const deleted = await deleteTaskWorktree({
-							cwd: projectToRemove.repoPath,
-							taskId,
-						});
-						if (!deleted.ok) {
-							throw new Error(deleted.error ?? `Could not delete task workspace for task "${taskId}".`);
-						}
+						removedTerminalManager.markInterruptedAndStopAll();
 					}
 
 					const removed = await removeWorkspaceIndexEntry(body.projectId);
@@ -2142,15 +1986,29 @@ async function startServer(
 					if (activeWorkspaceId === body.projectId) {
 						const remaining = await listWorkspaceIndexEntries();
 						const fallbackWorkspace = remaining[0];
-						if (!fallbackWorkspace) {
-							throw new Error("No projects remain after removal.");
+						if (fallbackWorkspace) {
+							await setActiveWorkspace(fallbackWorkspace.workspaceId, fallbackWorkspace.repoPath);
 						}
-						await setActiveWorkspace(fallbackWorkspace.workspaceId, fallbackWorkspace.repoPath);
 					}
 					sendJson(res, 200, {
 						ok: true,
 					} satisfies RuntimeProjectRemoveResponse);
 					void broadcastRuntimeProjectsUpdated(activeWorkspaceId);
+					if (taskIdsToCleanup.size > 0) {
+						const cleanupTaskIds = Array.from(taskIdsToCleanup);
+						void (async () => {
+							for (const taskId of cleanupTaskIds) {
+								const deleted = await deleteTaskWorktree({
+									repoPath: projectToRemove.repoPath,
+									taskId,
+								});
+								if (!deleted.ok) {
+									const message = deleted.error ?? `Could not delete task workspace for task "${taskId}".`;
+									console.warn(`[kanbanana] ${message}`);
+								}
+							}
+						})();
+					}
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					sendJson(res, 500, {
@@ -2229,6 +2087,7 @@ async function startServer(
 					clients.delete(client);
 					if (clients.size === 0) {
 						runtimeStateClientsByWorkspaceId.delete(workspaceId);
+						disposeWorkspaceFileRefresh(workspaceId);
 					}
 				}
 			}
@@ -2245,30 +2104,32 @@ async function startServer(
 					? (context as { requestedWorkspaceId: string }).requestedWorkspaceId || null
 					: null;
 			const workspace = await resolveWorkspaceForStream(requestedWorkspaceId);
-			if (!workspace) {
-				sendRuntimeStateMessage(client, {
-					type: "error",
-					message: "No projects are available.",
-				} satisfies RuntimeStateStreamErrorMessage);
-				client.close();
-				return;
-			}
 			if (client.readyState !== WebSocket.OPEN) {
 				cleanupRuntimeStateClient();
 				return;
 			}
 
-			const workspaceClients = runtimeStateClientsByWorkspaceId.get(workspace.workspaceId) ?? new Set<WebSocket>();
-			workspaceClients.add(client);
-			runtimeStateClientsByWorkspaceId.set(workspace.workspaceId, workspaceClients);
 			runtimeStateClients.add(client);
-			runtimeStateWorkspaceIdByClient.set(client, workspace.workspaceId);
+			if (workspace.workspaceId) {
+				const workspaceClients =
+					runtimeStateClientsByWorkspaceId.get(workspace.workspaceId) ?? new Set<WebSocket>();
+				workspaceClients.add(client);
+				runtimeStateClientsByWorkspaceId.set(workspace.workspaceId, workspaceClients);
+				runtimeStateWorkspaceIdByClient.set(client, workspace.workspaceId);
+			}
 
 			try {
-				const [projectsPayload, workspaceState] = await Promise.all([
-					buildProjectsPayload(workspace.workspaceId),
-					buildWorkspaceStateSnapshot(workspace.workspaceId, workspace.workspacePath),
-				]);
+				let projectsPayload: RuntimeStateStreamProjectsMessage;
+				let workspaceState: RuntimeWorkspaceStateResponse | null;
+				if (workspace.workspaceId && workspace.workspacePath) {
+					[projectsPayload, workspaceState] = await Promise.all([
+						buildProjectsPayload(workspace.workspaceId),
+						buildWorkspaceStateSnapshot(workspace.workspaceId, workspace.workspacePath),
+					]);
+				} else {
+					projectsPayload = await buildProjectsPayload(null);
+					workspaceState = null;
+				}
 				sendRuntimeStateMessage(client, {
 					type: "snapshot",
 					currentProjectId: projectsPayload.currentProjectId,
@@ -2283,6 +2144,9 @@ async function startServer(
 				}
 				if (workspace.didPruneProjects) {
 					void broadcastRuntimeProjectsUpdated(workspace.workspaceId);
+				}
+				if (workspace.workspaceId) {
+					ensureWorkspaceFileRefresh(workspace.workspaceId);
 				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -2329,10 +2193,6 @@ async function startServer(
 
 	const close = async () => {
 		disposeRuntimeStreamResources();
-		workspaceFileWatchersByWorkspaceId.clear();
-		workspaceFolderLabelByWorkspaceId.clear();
-		workspaceIdsByWorktreeLabel.clear();
-		globalWorktreesWatcher = null;
 		for (const client of runtimeStateClients) {
 			try {
 				client.terminate();

@@ -17,6 +17,7 @@ interface TaskCountBadge {
 
 export function ProjectNavigationPanel({
 	projects,
+	isLoadingProjects = false,
 	currentProjectId,
 	removingProjectId,
 	onSelectProject,
@@ -24,6 +25,7 @@ export function ProjectNavigationPanel({
 	onAddProject,
 }: {
 	projects: RuntimeProjectSummary[];
+	isLoadingProjects?: boolean;
 	currentProjectId: string | null;
 	removingProjectId: string | null;
 	onSelectProject: (projectId: string) => void;
@@ -81,9 +83,17 @@ export function ProjectNavigationPanel({
 
 			<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "4px 0" }}>
 				{sortedProjects.length === 0 ? (
-					<div style={{ padding: "24px 12px", textAlign: "center" }}>
-						<span className={Classes.TEXT_MUTED}>No projects yet</span>
-					</div>
+					isLoadingProjects ? (
+						<div style={{ padding: "4px 0" }}>
+							{Array.from({ length: 3 }).map((_, index) => (
+								<ProjectRowSkeleton key={`project-skeleton-${index}`} />
+							))}
+						</div>
+					) : (
+						<div style={{ padding: "24px 12px", textAlign: "center" }}>
+							<span className={Classes.TEXT_MUTED}>No projects yet</span>
+						</div>
+					)
 				) : null}
 
 				{sortedProjects.map((project) => (
@@ -142,6 +152,50 @@ export function ProjectNavigationPanel({
 				<p>This action cannot be undone.</p>
 			</Alert>
 		</aside>
+	);
+}
+
+function ProjectRowSkeleton(): React.ReactElement {
+	return (
+		<div
+			style={{
+				display: "flex",
+				alignItems: "center",
+				gap: 6,
+				padding: "6px 8px 6px 12px",
+				borderLeft: "2px solid transparent",
+			}}
+		>
+			<div style={{ flex: "1 1 0", minWidth: 0 }}>
+				<div
+					className={Classes.SKELETON}
+					style={{
+						height: "var(--bp-typography-size-body-medium)",
+						width: "58%",
+						borderRadius: 3,
+						marginBottom: 6,
+					}}
+				>
+					.
+				</div>
+				<div
+					className={`${Classes.SKELETON} ${Classes.MONOSPACE_TEXT}`}
+					style={{
+						height: "var(--bp-typography-size-body-x-small)",
+						width: "86%",
+						borderRadius: 3,
+						marginBottom: 6,
+					}}
+				>
+					.
+				</div>
+				<div style={{ display: "flex", gap: 4 }}>
+					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>.</div>
+					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>.</div>
+					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>.</div>
+				</div>
+			</div>
+		</div>
 	);
 }
 

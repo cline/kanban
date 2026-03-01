@@ -24,6 +24,7 @@ function getWorkspacePathSegments(path: string): string[] {
 export function TopBar({
 	onBack,
 	workspacePath,
+	isWorkspacePathLoading = false,
 	workspaceHint,
 	repoHint,
 	runtimeHint,
@@ -48,6 +49,7 @@ export function TopBar({
 }: {
 	onBack?: () => void;
 	workspacePath?: string;
+	isWorkspacePathLoading?: boolean;
 	workspaceHint?: string;
 	repoHint?: string;
 	runtimeHint?: string;
@@ -110,7 +112,15 @@ export function TopBar({
 						<NavbarDivider />
 					</>
 				) : null}
-				{displayWorkspacePath ? (
+				{isWorkspacePathLoading ? (
+					<span
+						className={Classes.SKELETON}
+						style={{ display: "inline-block", height: 14, width: 320, borderRadius: 3 }}
+						aria-hidden
+					>
+						.
+					</span>
+				) : displayWorkspacePath ? (
 					<span
 						className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
 						style={{ fontSize: 12, maxWidth: 640, color: Colors.GRAY4 }}
@@ -129,7 +139,7 @@ export function TopBar({
 						})}
 					</span>
 				) : null}
-				{displayWorkspacePath ? (
+				{displayWorkspacePath && !isWorkspacePathLoading ? (
 					<div style={{ marginLeft: 8 }}>
 						<OpenWorkspaceButton
 							options={openTargetOptions}

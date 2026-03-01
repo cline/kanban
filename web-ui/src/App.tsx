@@ -1,4 +1,4 @@
-import { Alert, Classes, Colors, MenuItem, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
+import { Alert, Button, Classes, Colors, MenuItem, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
 import { Omnibar } from "@blueprintjs/select";
 import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -205,12 +205,17 @@ export default function App(): ReactElement {
 		currentProjectId,
 		projects,
 		workspaceState: streamedWorkspaceState,
-		workspaceFilesChangedAt,
+		workspaceStatusRetrievedAt,
 		streamError,
+		hasReceivedSnapshot,
 	} = useRuntimeStateStream(requestedProjectId);
 	const navigationCurrentProjectId = requestedProjectId ?? currentProjectId;
-	const isProjectSwitching = requestedProjectId !== currentProjectId;
-	const isInitialRuntimeLoad = currentProjectId === null && projects.length === 0 && !streamError;
+	const hasNoProjects = hasReceivedSnapshot && projects.length === 0 && currentProjectId === null;
+	const isProjectSwitching =
+		requestedProjectId !== null &&
+		requestedProjectId !== currentProjectId &&
+		!hasNoProjects;
+	const isInitialRuntimeLoad = !hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
 	const isWorkspaceMetadataPending =
 		currentProjectId !== null &&
@@ -225,6 +230,7 @@ export default function App(): ReactElement {
 		selectedTaskId === null &&
 		!streamError &&
 		(isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot);
+	const isProjectListLoading = !hasReceivedSnapshot && !streamError;
 	const isRuntimeDisconnected = isRuntimeConnectionFailure(streamError);
 	const shouldUseNavigationPath =
 		isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
@@ -725,7 +731,7 @@ export default function App(): ReactElement {
 	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards, workspaceSnapshots]);
 
 	useEffect(() => {
-		if (!currentProjectId || workspaceFilesChangedAt <= 0 || !isDocumentVisible) {
+		if (!currentProjectId || workspaceStatusRetrievedAt <= 0 || !isDocumentVisible) {
 			return;
 		}
 		for (const card of inProgressCards) {
@@ -780,7 +786,7 @@ export default function App(): ReactElement {
 		inProgressCards,
 		isDocumentVisible,
 		reviewCards,
-		workspaceFilesChangedAt,
+		workspaceStatusRetrievedAt,
 	]);
 
 	useEffect(() => {
@@ -985,11 +991,15 @@ export default function App(): ReactElement {
 	});
 
 	useEffect(() => {
+		if (hasNoProjects) {
+			applyWorkspaceState(null);
+			return;
+		}
 		if (!streamedWorkspaceState) {
 			return;
 		}
 		applyWorkspaceState(streamedWorkspaceState);
-	}, [applyWorkspaceState, streamedWorkspaceState]);
+	}, [applyWorkspaceState, hasNoProjects, streamedWorkspaceState]);
 
 	useEffect(() => {
 		if (!streamError) {
@@ -1097,6 +1107,20 @@ export default function App(): ReactElement {
 		}
 		window.history.replaceState({}, "", `${nextPathname}${nextUrl.search}${nextUrl.hash}`);
 	}, [currentProjectId]);
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+		if (!hasNoProjects || !requestedProjectId) {
+			return;
+		}
+		const nextUrl = new URL(window.location.href);
+		if (nextUrl.pathname !== "/") {
+			window.history.replaceState({}, "", `/${nextUrl.search}${nextUrl.hash}`);
+		}
+		setRequestedProjectId(null);
+	}, [hasNoProjects, requestedProjectId]);
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
@@ -1351,6 +1375,13 @@ export default function App(): ReactElement {
 			const added = (await addResponse.json().catch(() => null)) as RuntimeProjectAddResponse | null;
 			if (!addResponse.ok || !added?.ok || !added.project) {
 				throw new Error(added?.error ?? `Could not add project (${addResponse.status}).`);
+			}
+			if (!currentProjectId) {
+				setCanPersistWorkspaceState(false);
+				setRequestedProjectId(added.project.id);
+				setSelectedTaskId(null);
+				setIsInlineTaskCreateOpen(false);
+				setEditingTaskId(null);
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -2012,6 +2043,11 @@ export default function App(): ReactElement {
 		}
 		return `Worktree base: ${selectedTaskWorkspaceInfo.baseRef ?? "unknown"}`;
 	}, [selectedCard, selectedTaskWorkspaceInfo]);
+	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
+	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
+	const navbarRepoHint = hasNoProjects ? undefined : repoHint;
+	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
+	const navbarGitSummary = hasNoProjects || selectedCard ? null : gitSummary;
 	const trashWarningGuidance = useMemo(() => {
 		if (!pendingTrashWarning) {
 			return [] as string[];
@@ -2121,6 +2157,7 @@ export default function App(): ReactElement {
 				{!selectedCard ? (
 					<ProjectNavigationPanel
 						projects={displayedProjects}
+						isLoadingProjects={isProjectListLoading}
 						currentProjectId={navigationCurrentProjectId}
 						removingProjectId={removingProjectId}
 						onSelectProject={(projectId) => {
@@ -2135,12 +2172,13 @@ export default function App(): ReactElement {
 			<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
 				<TopBar
 					onBack={selectedCard ? handleBack : undefined}
-					workspacePath={activeWorkspacePath}
-					workspaceHint={activeWorkspaceHint}
-					repoHint={repoHint}
-					runtimeHint={runtimeHint}
-					gitSummary={selectedCard ? null : gitSummary}
-					runningGitAction={selectedCard ? null : runningGitAction}
+					workspacePath={navbarWorkspacePath}
+					isWorkspacePathLoading={shouldShowProjectLoadingState}
+					workspaceHint={navbarWorkspaceHint}
+					repoHint={navbarRepoHint}
+					runtimeHint={navbarRuntimeHint}
+					gitSummary={navbarGitSummary}
+					runningGitAction={selectedCard || hasNoProjects ? null : runningGitAction}
 					onGitFetch={
 						selectedCard
 							? undefined
@@ -2205,14 +2243,37 @@ export default function App(): ReactElement {
 										background: Colors.DARK_GRAY1,
 									}}
 								>
-									<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-										<Spinner size={30} />
-										<div className={Classes.TEXT_MUTED}>
-											{isProjectSwitching ? "Loading project..." : "Connecting..."}
-										</div>
-									</div>
+									<Spinner size={30} />
 								</div>
 							) : (
+								hasNoProjects ? (
+									<div
+										style={{
+											display: "flex",
+											flex: "1 1 0",
+											minHeight: 0,
+											alignItems: "center",
+											justifyContent: "center",
+											background: Colors.DARK_GRAY1,
+											padding: "calc(var(--bp-surface-spacing) * 6)",
+										}}
+									>
+										<NonIdealState
+											icon="folder-open"
+											title="No projects yet"
+											description="Add a repository to start using Kanbanana."
+											action={
+												<Button
+													intent="primary"
+													text="Add project"
+													onClick={() => {
+														void handleAddProject();
+													}}
+												/>
+											}
+										/>
+									</div>
+								) : (
 								<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
 									<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0 }}>
 										<KanbanBoard
@@ -2265,6 +2326,7 @@ export default function App(): ReactElement {
 										</ResizableBottomPane>
 									) : null}
 								</div>
+								)
 							)}
 						</div>
 						{selectedCard && detailSession ? (
@@ -2274,7 +2336,7 @@ export default function App(): ReactElement {
 									currentProjectId={currentProjectId}
 									sessionSummary={detailSession}
 									taskSessions={sessions}
-									workspaceFilesChangedAt={workspaceFilesChangedAt}
+									workspaceStatusRetrievedAt={workspaceStatusRetrievedAt}
 									onSessionSummary={upsertSession}
 									onBack={handleBack}
 									onCardSelect={handleCardSelect}

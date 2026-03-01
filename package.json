@@ -71,7 +71,6 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "chokidar": "^4.0.3",
     "node-pty": "^1.1.0-beta34",
     "ws": "^8.18.0"
   }
