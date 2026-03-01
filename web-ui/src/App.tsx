@@ -1437,15 +1437,12 @@ export default function App(): ReactElement {
 			homeTerminalProjectIdRef.current = null;
 			return;
 		}
-		void (async () => {
-			const started = await startHomeTerminalSession();
-			if (!started) {
-				homeTerminalProjectIdRef.current = null;
-				return;
-			}
-			homeTerminalProjectIdRef.current = currentProjectId;
-			setIsHomeTerminalOpen(true);
-		})();
+		if (!currentProjectId) {
+			return;
+		}
+		homeTerminalProjectIdRef.current = currentProjectId;
+		setIsHomeTerminalOpen(true);
+		void startHomeTerminalSession();
 	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
 
 	const startDetailTerminalForCard = useCallback(

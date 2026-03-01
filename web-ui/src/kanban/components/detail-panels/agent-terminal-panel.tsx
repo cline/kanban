@@ -338,7 +338,7 @@ export function AgentTerminalPanel({
 					<Divider />
 				</>
 				) : onClose ? (
-					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 2px 0 3px" }}>
+					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 0 0 3px" }}>
 						<div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
 							<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
 								{minimalHeaderTitle}
@@ -353,13 +353,14 @@ export function AgentTerminalPanel({
 							</span>
 						) : null}
 					</div>
-					<Button
-						icon="cross"
-						variant="minimal"
-						size="small"
-						onClick={onClose}
-						aria-label="Close terminal"
-					/>
+						<Button
+							icon="cross"
+							variant="minimal"
+							size="small"
+							style={{ marginRight: "-6px" }}
+							onClick={onClose}
+							aria-label="Close terminal"
+						/>
 				</div>
 			) : null}
 			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: "3px 1.5px 3px 3px" }}>
