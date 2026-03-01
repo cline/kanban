@@ -109,6 +109,16 @@ function createNoGitSyncSummary(): RuntimeGitSyncSummary {
 	};
 }
 
+function matchesWorkspaceInfoSelection(
+	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null,
+	card: BoardCard | null,
+): workspaceInfo is RuntimeTaskWorkspaceInfoResponse {
+	if (!workspaceInfo || !card) {
+		return false;
+	}
+	return workspaceInfo.taskId === card.id && (workspaceInfo.baseRef ?? null) === (card.baseRef ?? null);
+}
+
 function isRuntimeConnectionFailure(message: string | null): boolean {
 	if (!message) {
 		return false;
@@ -557,6 +567,14 @@ export default function App(): ReactElement {
 		}
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
+	const activeSelectedTaskWorkspaceInfo = useMemo(() => {
+		if (!selectedCard) {
+			return null;
+		}
+		return matchesWorkspaceInfoSelection(selectedTaskWorkspaceInfo, selectedCard.card)
+			? selectedTaskWorkspaceInfo
+			: null;
+	}, [selectedCard, selectedTaskWorkspaceInfo]);
 	const reviewCards = useMemo(() => {
 		return board.columns.find((column) => column.id === "review")?.cards ?? [];
 	}, [board.columns]);
@@ -807,6 +825,12 @@ export default function App(): ReactElement {
 				setSelectedTaskWorkspaceInfo(null);
 				return;
 			}
+			setSelectedTaskWorkspaceInfo((current) => {
+				if (matchesWorkspaceInfoSelection(current, selectedCard.card)) {
+					return current;
+				}
+				return null;
+			});
 			const info = await fetchTaskWorkspaceInfo(selectedCard.card);
 			if (!cancelled) {
 				setSelectedTaskWorkspaceInfo(info);
@@ -1997,6 +2021,12 @@ export default function App(): ReactElement {
 	const detailSession = selectedCard ? sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id) : null;
 	const detailShellTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card) : null;
 	const detailShellSummary = detailShellTaskId ? sessions[detailShellTaskId] ?? null : null;
+	const selectedCardWorkspaceSnapshot = useMemo(() => {
+		if (!selectedCard) {
+			return null;
+		}
+		return workspaceSnapshots[selectedCard.card.id] ?? null;
+	}, [selectedCard, workspaceSnapshots]);
 	const detailShellSubtitle = useMemo(() => {
 		if (!selectedCard) {
 			return null;
@@ -2004,8 +2034,8 @@ export default function App(): ReactElement {
 		if (!selectedCard.card.baseRef) {
 			return homeTerminalShellBinary;
 		}
-		return selectedTaskWorkspaceInfo?.path ?? null;
-	}, [homeTerminalShellBinary, selectedCard, selectedTaskWorkspaceInfo?.path]);
+		return activeSelectedTaskWorkspaceInfo?.path ?? selectedCardWorkspaceSnapshot?.path ?? null;
+	}, [activeSelectedTaskWorkspaceInfo?.path, homeTerminalShellBinary, selectedCard, selectedCardWorkspaceSnapshot?.path]);
 	const runtimeHint = useMemo(() => {
 		if (shouldUseNavigationPath || !runtimeProjectConfig) {
 			return undefined;
@@ -2030,7 +2060,7 @@ export default function App(): ReactElement {
 	}, [shouldUseNavigationPath, workspaceGit]);
 	const activeWorkspacePath =
 		selectedCard
-			? selectedTaskWorkspaceInfo?.path ?? workspacePath ?? undefined
+			? activeSelectedTaskWorkspaceInfo?.path ?? selectedCardWorkspaceSnapshot?.path ?? workspacePath ?? undefined
 			: shouldUseNavigationPath
 				? navigationProjectPath ?? undefined
 				: workspacePath ?? undefined;
@@ -2046,23 +2076,23 @@ export default function App(): ReactElement {
 		workspacePath: activeWorkspacePath,
 	});
 	const activeWorkspaceHint = useMemo(() => {
-		if (!selectedCard || !selectedTaskWorkspaceInfo) {
+		if (!selectedCard || !activeSelectedTaskWorkspaceInfo) {
 			return undefined;
 		}
-		if (selectedTaskWorkspaceInfo.mode === "local") {
-			if (!selectedTaskWorkspaceInfo.hasGit) {
+		if (activeSelectedTaskWorkspaceInfo.mode === "local") {
+			if (!activeSelectedTaskWorkspaceInfo.hasGit) {
 				return "Local workspace (no git)";
 			}
 			return undefined;
 		}
-		if (selectedTaskWorkspaceInfo.deleted) {
+		if (activeSelectedTaskWorkspaceInfo.deleted) {
 			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
 		}
-		if (!selectedTaskWorkspaceInfo.hasGit) {
+		if (!activeSelectedTaskWorkspaceInfo.hasGit) {
 			return "Worktree (no git)";
 		}
 		return undefined;
-	}, [selectedCard, selectedTaskWorkspaceInfo]);
+	}, [activeSelectedTaskWorkspaceInfo, selectedCard]);
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
 	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
 	const navbarRepoHint = hasNoProjects ? undefined : repoHint;
@@ -2072,22 +2102,21 @@ export default function App(): ReactElement {
 		if (hasNoProjects || !selectedCard) {
 			return null;
 		}
-		const snapshot = workspaceSnapshots[selectedCard.card.id];
-		const hasTaskGit = Boolean(selectedTaskWorkspaceInfo?.hasGit || snapshot?.hasGit);
+		const hasTaskGit = Boolean(activeSelectedTaskWorkspaceInfo?.hasGit || selectedCardWorkspaceSnapshot?.hasGit);
 		if (!hasTaskGit) {
 			return null;
 		}
-		const mode = selectedTaskWorkspaceInfo?.mode ?? snapshot?.mode;
+		const mode = activeSelectedTaskWorkspaceInfo?.mode ?? selectedCardWorkspaceSnapshot?.mode;
 		return {
 			hasGit: true,
-			branch: selectedTaskWorkspaceInfo?.branch ?? snapshot?.branch ?? null,
-			headCommit: selectedTaskWorkspaceInfo?.headCommit ?? snapshot?.headCommit ?? null,
-			changedFiles: snapshot?.changedFiles ?? 0,
-			additions: snapshot?.additions ?? 0,
-			deletions: snapshot?.deletions ?? 0,
+			branch: activeSelectedTaskWorkspaceInfo?.branch ?? selectedCardWorkspaceSnapshot?.branch ?? null,
+			headCommit: activeSelectedTaskWorkspaceInfo?.headCommit ?? selectedCardWorkspaceSnapshot?.headCommit ?? null,
+			changedFiles: selectedCardWorkspaceSnapshot?.changedFiles ?? 0,
+			additions: selectedCardWorkspaceSnapshot?.additions ?? 0,
+			deletions: selectedCardWorkspaceSnapshot?.deletions ?? 0,
 			scopeLabel: mode === "local" ? "Local" : mode === "worktree" ? "Worktree" : null,
 		};
-	}, [hasNoProjects, selectedCard, selectedTaskWorkspaceInfo, workspaceSnapshots]);
+	}, [activeSelectedTaskWorkspaceInfo, hasNoProjects, selectedCard, selectedCardWorkspaceSnapshot]);
 	const trashWarningGuidance = useMemo(() => {
 		if (!pendingTrashWarning) {
 			return [] as string[];

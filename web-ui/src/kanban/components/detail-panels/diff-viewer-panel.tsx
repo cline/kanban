@@ -752,11 +752,7 @@ export function DiffViewerPanel({
 		<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}>
 			{groupedByPath.length === 0 ? (
 				<div className="kb-empty-state-center" style={{ flex: 1 }}>
-					<NonIdealState
-						icon="document"
-						title="No diff yet"
-						description="Diffs will appear here when the task produces changes."
-					/>
+					<NonIdealState icon="comparison" />
 				</div>
 			) : (
 				<div

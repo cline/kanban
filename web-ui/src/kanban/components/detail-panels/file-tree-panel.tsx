@@ -98,10 +98,7 @@ export function FileTreePanel({
 			<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 8 }}>
 				{tree.length === 0 ? (
 					<div className="kb-empty-state-center">
-						<NonIdealState
-							icon="folder-open"
-							description="Changed files will appear here."
-						/>
+						<NonIdealState icon="folder-open" />
 					</div>
 				) : (
 					<div>

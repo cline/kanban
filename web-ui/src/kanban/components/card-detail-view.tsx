@@ -178,16 +178,16 @@ export function CardDetailView({
 							showMoveToTrash={selection.column.id === "review"}
 							onMoveToTrash={onMoveToTrash}
 						/>
-					<DiffViewerPanel
-						workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-						selectedPath={selectedPath}
-						onSelectedPathChange={setSelectedPath}
-					/>
-					<FileTreePanel
-						workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-						selectedPath={selectedPath}
-						onSelectPath={setSelectedPath}
-					/>
+						<DiffViewerPanel
+							workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+							selectedPath={selectedPath}
+							onSelectedPathChange={setSelectedPath}
+						/>
+						<FileTreePanel
+							workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+							selectedPath={selectedPath}
+							onSelectPath={setSelectedPath}
+						/>
 				</div>
 				{bottomTerminalOpen && bottomTerminalTaskId ? (
 					<ResizableBottomPane minHeight={200}>

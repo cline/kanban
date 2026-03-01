@@ -7,11 +7,26 @@ interface RuntimeWorkspaceError {
 	error: string;
 }
 
+interface WorkspaceChangesCacheEntry {
+	changes: RuntimeWorkspaceChangesResponse;
+	updatedAt: number;
+}
+
 export interface UseRuntimeWorkspaceChangesResult {
 	changes: RuntimeWorkspaceChangesResponse | null;
 	isLoading: boolean;
 	isRuntimeAvailable: boolean;
 	refresh: () => Promise<void>;
+}
+
+const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 32;
+
+function buildWorkspaceChangesCacheKey(input: {
+	taskId: string;
+	workspaceId: string;
+	baseRef?: string | null;
+}): string {
+	return `${input.workspaceId}\t${input.taskId}\t${input.baseRef ?? ""}`;
 }
 
 async function fetchRuntimeWorkspaceChanges(
@@ -47,11 +62,34 @@ export function useRuntimeWorkspaceChanges(
 	const refreshContextVersionRef = useRef(0);
 	const refreshInFlightRef = useRef(false);
 	const refreshPendingRef = useRef(false);
+	const changesCacheRef = useRef<Map<string, WorkspaceChangesCacheEntry>>(new Map());
+	const activeCacheKeyRef = useRef<string | null>(null);
+
+	const rememberChangesForCache = useCallback(
+		(cacheKey: string, nextChanges: RuntimeWorkspaceChangesResponse) => {
+			const cache = changesCacheRef.current;
+			cache.delete(cacheKey);
+			cache.set(cacheKey, {
+				changes: nextChanges,
+				updatedAt: Date.now(),
+			});
+			if (cache.size <= WORKSPACE_CHANGES_CACHE_MAX_ENTRIES) {
+				return;
+			}
+			const oldest = cache.keys().next().value;
+			if (!oldest) {
+				return;
+			}
+			cache.delete(oldest);
+		},
+		[],
+	);
 
 	const fetchAndStoreChanges = useCallback(async () => {
 		if (!taskId || !workspaceId) {
 			return;
 		}
+		const cacheKey = buildWorkspaceChangesCacheKey({ taskId, workspaceId, baseRef });
 		const requestId = refreshRequestIdRef.current + 1;
 		refreshRequestIdRef.current = requestId;
 		try {
@@ -59,6 +97,7 @@ export function useRuntimeWorkspaceChanges(
 			if (refreshRequestIdRef.current !== requestId) {
 				return;
 			}
+			rememberChangesForCache(cacheKey, nextChanges);
 			setChanges(nextChanges);
 			setIsRuntimeAvailable(true);
 		} catch {
@@ -68,7 +107,7 @@ export function useRuntimeWorkspaceChanges(
 			setChanges(null);
 			setIsRuntimeAvailable(false);
 		}
-	}, [baseRef, taskId, workspaceId]);
+	}, [baseRef, rememberChangesForCache, taskId, workspaceId]);
 
 	const refresh = useCallback(async () => {
 		if (!taskId || !workspaceId) {
@@ -91,6 +130,9 @@ export function useRuntimeWorkspaceChanges(
 				await fetchAndStoreChanges();
 			}
 		} finally {
+			if (refreshContextVersion !== refreshContextVersionRef.current) {
+				return;
+			}
 			refreshInFlightRef.current = false;
 			refreshPendingRef.current = false;
 			setIsLoading(false);
@@ -100,13 +142,30 @@ export function useRuntimeWorkspaceChanges(
 	useEffect(() => {
 		refreshContextVersionRef.current += 1;
 		refreshRequestIdRef.current += 1;
+		refreshInFlightRef.current = false;
 		refreshPendingRef.current = false;
-		if (!taskId || !workspaceId) {
+		activeCacheKeyRef.current =
+			taskId && workspaceId
+				? buildWorkspaceChangesCacheKey({ taskId, workspaceId, baseRef })
+				: null;
+		const activeCacheKey = activeCacheKeyRef.current;
+		const cached = activeCacheKey ? changesCacheRef.current.get(activeCacheKey) : null;
+		if (cached && activeCacheKey) {
+			changesCacheRef.current.delete(activeCacheKey);
+			changesCacheRef.current.set(activeCacheKey, {
+				changes: cached.changes,
+				updatedAt: cached.updatedAt,
+			});
+			setChanges(cached.changes);
+		} else {
 			setChanges(null);
-			setIsLoading(false);
+		}
+		setIsLoading(false);
+		if (!taskId || !workspaceId) {
 			setIsRuntimeAvailable(workspaceId !== null);
 			return;
 		}
+		setIsRuntimeAvailable(true);
 		void refresh();
 	}, [refresh, taskId, workspaceId]);
 
