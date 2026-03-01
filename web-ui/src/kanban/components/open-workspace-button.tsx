@@ -60,6 +60,7 @@ export function OpenWorkspaceButton({
 				loading={loading}
 				onClick={onOpen}
 				aria-label={`Open in ${selectedOption.label}`}
+				style={{ fontSize: "var(--bp-typography-size-body-small)" }}
 			/>
 			<Popover
 				interactionKind={PopoverInteractionKind.CLICK}
@@ -82,7 +83,7 @@ export function OpenWorkspaceButton({
 				<Button
 					size="small"
 					variant="outlined"
-					icon="chevron-down"
+					icon="caret-down"
 					disabled={disabled}
 					aria-label="Select open target"
 				/>

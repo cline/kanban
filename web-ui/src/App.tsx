@@ -45,6 +45,7 @@ import {
 } from "@/kanban/utils/task-prompt";
 import type {
 	RuntimeProjectAddResponse,
+	RuntimeGitCheckoutResponse,
 	RuntimeProjectDirectoryPickerResponse,
 	RuntimeGitRepositoryInfo,
 	RuntimeGitSummaryResponse,
@@ -178,6 +179,7 @@ export default function App(): ReactElement {
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [gitSummary, setGitSummary] = useState<RuntimeGitSyncSummary | null>(null);
 	const [runningGitAction, setRunningGitAction] = useState<RuntimeGitSyncAction | null>(null);
+	const [isSwitchingHomeBranch, setIsSwitchingHomeBranch] = useState(false);
 	const [gitActionError, setGitActionError] = useState<{
 		action: RuntimeGitSyncAction;
 		message: string;
@@ -946,7 +948,7 @@ export default function App(): ReactElement {
 	}, [currentProjectId]);
 
 	const runGitAction = useCallback(async (action: RuntimeGitSyncAction) => {
-		if (!currentProjectId || runningGitAction) {
+		if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
 			return;
 		}
 		setRunningGitAction(action);
@@ -995,7 +997,81 @@ export default function App(): ReactElement {
 		} finally {
 			setRunningGitAction(null);
 		}
-	}, [currentProjectId, runningGitAction]);
+	}, [currentProjectId, isSwitchingHomeBranch, runningGitAction]);
+
+	const switchHomeBranch = useCallback(async (branch: string) => {
+		const normalizedBranch = branch.trim();
+		const currentBranch = gitSummary?.currentBranch ?? null;
+		if (
+			!currentProjectId ||
+			isSwitchingHomeBranch ||
+			!normalizedBranch ||
+			normalizedBranch === currentBranch
+		) {
+			return;
+		}
+		setIsSwitchingHomeBranch(true);
+		try {
+			const response = await workspaceFetch("/api/workspace/git/checkout", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ branch: normalizedBranch }),
+				workspaceId: currentProjectId,
+			});
+			const payload = (await response.json().catch(() => null)) as
+				| RuntimeGitCheckoutResponse
+				| { error?: string; output?: string; summary?: RuntimeGitSyncSummary }
+				| null;
+			if (!response.ok || !payload || !("ok" in payload) || !payload.ok || !payload.summary) {
+				const errorMessage =
+					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
+					`Switch branch failed with ${response.status}.`;
+				const output =
+					payload && "output" in payload && typeof payload.output === "string"
+						? payload.output
+						: "";
+				const fallbackSummary =
+					payload &&
+					"summary" in payload &&
+					payload.summary &&
+					typeof payload.summary === "object"
+						? payload.summary
+						: null;
+				if (fallbackSummary) {
+					setGitSummary(fallbackSummary);
+				}
+				showAppToast({
+					intent: "danger",
+					icon: "warning-sign",
+					message: `Could not switch to ${normalizedBranch}. ${errorMessage}`,
+					timeout: 7000,
+				});
+				if (output.trim()) {
+					showAppToast({
+						intent: "none",
+						icon: "console",
+						message: output,
+						timeout: 9000,
+					});
+				}
+				return;
+			}
+			setGitSummary(payload.summary);
+			await refreshWorkspaceState();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			showAppToast({
+				intent: "danger",
+				icon: "warning-sign",
+				message: `Could not switch to ${normalizedBranch}. ${message}`,
+				timeout: 7000,
+			});
+		} finally {
+			setIsSwitchingHomeBranch(false);
+		}
+	}, [currentProjectId, gitSummary?.currentBranch, isSwitchingHomeBranch, refreshWorkspaceState]);
 
 	const persistWorkspaceStateAsync = useCallback(
 		async (input: {
@@ -2270,6 +2346,16 @@ export default function App(): ReactElement {
 									void runGitAction("push");
 								}
 					}
+					homeBranchOptions={selectedCard || hasNoProjects ? undefined : createTaskBranchOptions}
+					selectedHomeBranch={selectedCard || hasNoProjects ? null : gitSummary?.currentBranch ?? null}
+					onSelectHomeBranch={
+						selectedCard || hasNoProjects
+							? undefined
+							: (branch) => {
+									void switchHomeBranch(branch);
+								}
+					}
+					isSwitchingHomeBranch={selectedCard || hasNoProjects ? false : isSwitchingHomeBranch}
 					onToggleTerminal={selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal}
 					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}

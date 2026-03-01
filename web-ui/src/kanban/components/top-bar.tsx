@@ -5,18 +5,28 @@ import {
 	Classes,
 	Colors,
 	Icon,
+	Menu,
+	MenuItem,
 	Navbar,
 	NavbarDivider,
 	NavbarGroup,
+	Popover,
+	PopoverInteractionKind,
 	Tag,
 	Tooltip,
 } from "@blueprintjs/core";
+import { useState } from "react";
 
 import { GitStatusLabel } from "@/kanban/components/git-status-label";
 import { OpenWorkspaceButton } from "@/kanban/components/open-workspace-button";
 import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 import type { OpenTargetId, OpenTargetOption } from "@/kanban/utils/open-targets";
 import { formatPathForDisplay } from "@/kanban/utils/path-display";
+
+interface BranchSelectOption {
+	value: string;
+	label: string;
+}
 
 export interface TopBarTaskGitSummary {
 	hasGit: boolean;
@@ -45,6 +55,10 @@ export function TopBar({
 	onGitFetch,
 	onGitPull,
 	onGitPush,
+	homeBranchOptions,
+	selectedHomeBranch,
+	onSelectHomeBranch,
+	isSwitchingHomeBranch,
 	onToggleTerminal,
 	isTerminalOpen,
 	isTerminalLoading,
@@ -71,6 +85,10 @@ export function TopBar({
 	onGitFetch?: () => void;
 	onGitPull?: () => void;
 	onGitPush?: () => void;
+	homeBranchOptions?: readonly BranchSelectOption[];
+	selectedHomeBranch?: string | null;
+	onSelectHomeBranch?: (branch: string) => void;
+	isSwitchingHomeBranch?: boolean;
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
@@ -85,11 +103,14 @@ export function TopBar({
 	canOpenWorkspace: boolean;
 	isOpeningWorkspace: boolean;
 }): React.ReactElement {
+	const [isBranchPickerOpen, setIsBranchPickerOpen] = useState(false);
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
 	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
 	const hasHomeGitSummary = Boolean(gitSummary?.hasGit);
 	const branchLabel = gitSummary?.currentBranch ?? "detached HEAD";
+	const selectedBranchOption = selectedHomeBranch ?? null;
+	const hasHomeBranchPicker = hasHomeGitSummary && Boolean(onSelectHomeBranch) && Boolean(homeBranchOptions?.length);
 	const pullCount = gitSummary?.behindCount ?? 0;
 	const pushCount = gitSummary?.aheadCount ?? 0;
 	const hasTaskGitSummary = Boolean(taskGitSummary?.hasGit);
@@ -180,13 +201,66 @@ export function TopBar({
 				{hasHomeGitSummary ? (
 					<>
 						<NavbarDivider />
-						<GitStatusLabel
-							branchLabel={branchLabel}
-							changedFiles={gitSummary?.changedFiles ?? 0}
-							additions={gitSummary?.additions ?? 0}
-							deletions={gitSummary?.deletions ?? 0}
-						/>
-						<ButtonGroup>
+						{hasHomeBranchPicker ? (
+							<>
+								<Tooltip placement="bottom" content="Switch the branch for the local workspace." disabled={isBranchPickerOpen}>
+									<Popover
+										interactionKind={PopoverInteractionKind.CLICK}
+										placement="bottom-start"
+										onOpening={() => setIsBranchPickerOpen(true)}
+										onClosing={() => setIsBranchPickerOpen(false)}
+										content={(
+											<Menu style={{ maxHeight: 300, overflowY: "auto" }}>
+												{(homeBranchOptions ?? []).map((option) => (
+													<MenuItem
+														key={option.value}
+														text={option.label}
+														active={option.value === selectedBranchOption}
+														onClick={() => onSelectHomeBranch?.(option.value)}
+														labelElement={option.value === selectedBranchOption ? <Icon icon="small-tick" /> : undefined}
+													/>
+												))}
+											</Menu>
+										)}
+									>
+										<Button
+											size="small"
+											variant="outlined"
+											icon={<Icon icon="git-branch" size={12} />}
+											endIcon="caret-down"
+											text={selectedBranchOption ?? branchLabel}
+											disabled={Boolean(runningGitAction) || Boolean(isSwitchingHomeBranch)}
+											className={Classes.MONOSPACE_TEXT}
+											style={{
+												fontSize: "var(--bp-typography-size-body-small)",
+												maxWidth: 200,
+											}}
+										/>
+									</Popover>
+								</Tooltip>
+								<span
+									className={Classes.MONOSPACE_TEXT}
+									style={{
+										fontSize: "var(--bp-typography-size-body-small)",
+										color: Colors.GRAY3,
+										marginLeft: 6,
+									}}
+								>
+									({gitSummary?.changedFiles ?? 0} {(gitSummary?.changedFiles ?? 0) === 1 ? "file" : "files"}
+									<span style={{ color: Colors.GREEN4 }}> +{gitSummary?.additions ?? 0}</span>
+									<span style={{ color: Colors.RED4 }}> -{gitSummary?.deletions ?? 0}</span>
+									)
+								</span>
+							</>
+						) : (
+							<GitStatusLabel
+								branchLabel={branchLabel}
+								changedFiles={gitSummary?.changedFiles ?? 0}
+								additions={gitSummary?.additions ?? 0}
+								deletions={gitSummary?.deletions ?? 0}
+							/>
+						)}
+						<ButtonGroup style={{ marginLeft: 6 }}>
 							<Tooltip placement="bottom" content="Fetch latest refs from upstream without changing your local branch or files.">
 								<Button
 									icon={<Icon icon="circle-arrow-down" size={18} />}

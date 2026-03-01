@@ -16,6 +16,8 @@ import type {
 	RuntimeBoardData,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
+	RuntimeGitCheckoutRequest,
+	RuntimeGitCheckoutResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
@@ -73,7 +75,7 @@ import { TerminalSessionManager } from "./runtime/terminal/session-manager.js";
 import { discoverRuntimeSlashCommands } from "./runtime/terminal/slash-commands.js";
 import { createTerminalWebSocketBridge } from "./runtime/terminal/ws-server.js";
 import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
-import { getGitSyncSummary, runGitSyncAction } from "./runtime/workspace/git-sync.js";
+import { getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "./runtime/workspace/git-sync.js";
 import { searchWorkspaceFiles } from "./runtime/workspace/search-workspace-files.js";
 import {
 	deleteTaskWorktree,
@@ -290,6 +292,19 @@ function validateWorkspaceFileSearchRequest(query: URLSearchParams): { query: st
 	return {
 		query: normalizedQuery,
 		limit: parsedLimit,
+	};
+}
+
+function validateGitCheckoutRequest(body: RuntimeGitCheckoutRequest): RuntimeGitCheckoutRequest {
+	if (!body || typeof body !== "object" || typeof body.branch !== "string") {
+		throw new Error("Invalid git checkout payload.");
+	}
+	const branch = body.branch.trim();
+	if (!branch) {
+		throw new Error("Branch cannot be empty.");
+	}
+	return {
+		branch,
 	};
 }
 
@@ -1763,6 +1778,43 @@ async function startServer(
 						output: "",
 						error: message,
 					} satisfies RuntimeGitSyncResponse);
+				}
+				return;
+			}
+
+			if (pathname === "/api/workspace/git/checkout" && req.method === "POST") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
+				try {
+					const body = validateGitCheckoutRequest(await readJsonBody<RuntimeGitCheckoutRequest>(req));
+					const response = await runGitCheckoutAction({
+						cwd: scope.workspacePath,
+						branch: body.branch,
+					});
+					if (response.ok) {
+						void broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
+					}
+					sendJson(res, response.ok ? 200 : 400, response satisfies RuntimeGitCheckoutResponse);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, {
+						ok: false,
+						branch: "",
+						summary: {
+							hasGit: false,
+							currentBranch: null,
+							upstreamBranch: null,
+							changedFiles: 0,
+							additions: 0,
+							deletions: 0,
+							aheadCount: 0,
+							behindCount: 0,
+						},
+						output: "",
+						error: message,
+					} satisfies RuntimeGitCheckoutResponse);
 				}
 				return;
 			}

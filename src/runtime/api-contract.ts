@@ -112,6 +112,18 @@ export interface RuntimeGitSyncResponse {
 	error?: string;
 }
 
+export interface RuntimeGitCheckoutRequest {
+	branch: string;
+}
+
+export interface RuntimeGitCheckoutResponse {
+	ok: boolean;
+	branch: string;
+	summary: RuntimeGitSyncSummary;
+	output: string;
+	error?: string;
+}
+
 export type RuntimeTaskSessionState = "idle" | "running" | "awaiting_review" | "failed" | "interrupted";
 
 export type RuntimeTaskSessionReviewReason = "attention" | "exit" | "error" | "interrupted" | "hook" | null;

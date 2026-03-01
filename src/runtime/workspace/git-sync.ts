@@ -3,7 +3,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import type { RuntimeGitSyncAction, RuntimeGitSyncResponse, RuntimeGitSyncSummary } from "../api-contract.js";
+import type {
+	RuntimeGitCheckoutResponse,
+	RuntimeGitSyncAction,
+	RuntimeGitSyncResponse,
+	RuntimeGitSyncSummary,
+} from "../api-contract.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
@@ -108,6 +113,11 @@ async function countUntrackedAdditions(repoRoot: string, untrackedPaths: string[
 		}),
 	);
 	return counts.reduce((total, value) => total + value, 0);
+}
+
+async function hasGitRef(repoRoot: string, ref: string): Promise<boolean> {
+	const result = await runGitCommand(repoRoot, ["show-ref", "--verify", "--quiet", ref]);
+	return result.ok;
 }
 
 function createNoGitSummary(): RuntimeGitSyncSummary {
@@ -228,6 +238,78 @@ export async function runGitSyncAction(options: {
 	return {
 		ok: true,
 		action: options.action,
+		summary: nextSummary,
+		output: commandResult.output,
+	};
+}
+
+export async function runGitCheckoutAction(options: {
+	cwd: string;
+	branch: string;
+}): Promise<RuntimeGitCheckoutResponse> {
+	const requestedBranch = options.branch.trim();
+	const initialSummary = await getGitSyncSummary(options.cwd);
+	if (!initialSummary.hasGit) {
+		return {
+			ok: false,
+			branch: requestedBranch,
+			summary: initialSummary,
+			output: "",
+			error: "No git repository detected for this workspace.",
+		};
+	}
+
+	if (!requestedBranch) {
+		return {
+			ok: false,
+			branch: requestedBranch,
+			summary: initialSummary,
+			output: "",
+			error: "Branch name cannot be empty.",
+		};
+	}
+
+	if (initialSummary.currentBranch === requestedBranch) {
+		return {
+			ok: true,
+			branch: requestedBranch,
+			summary: initialSummary,
+			output: `Already on '${requestedBranch}'.`,
+		};
+	}
+
+	const repoRoot = await tryResolveRepoRoot(options.cwd);
+	if (!repoRoot) {
+		return {
+			ok: false,
+			branch: requestedBranch,
+			summary: initialSummary,
+			output: "",
+			error: "No git repository detected for this workspace.",
+		};
+	}
+
+	const hasLocalBranch = await hasGitRef(repoRoot, `refs/heads/${requestedBranch}`);
+	const commandResult = hasLocalBranch
+		? await runGitCommand(repoRoot, ["switch", requestedBranch])
+		: (await hasGitRef(repoRoot, `refs/remotes/origin/${requestedBranch}`))
+			? await runGitCommand(repoRoot, ["switch", "--track", `origin/${requestedBranch}`])
+			: await runGitCommand(repoRoot, ["switch", requestedBranch]);
+	const nextSummary = await getGitSyncSummary(repoRoot);
+
+	if (!commandResult.ok) {
+		return {
+			ok: false,
+			branch: requestedBranch,
+			summary: nextSummary,
+			output: commandResult.output,
+			error: commandResult.error ?? "Git branch switch failed.",
+		};
+	}
+
+	return {
+		ok: true,
+		branch: requestedBranch,
 		summary: nextSummary,
 		output: commandResult.output,
 	};
