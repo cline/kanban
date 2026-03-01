@@ -329,7 +329,11 @@ export default function App(): ReactElement {
 		}));
 	}, []);
 
-	const ensureTaskWorkspace = useCallback(async (task: BoardCard): Promise<{ ok: boolean; message?: string }> => {
+	const ensureTaskWorkspace = useCallback(async (task: BoardCard): Promise<{
+		ok: boolean;
+		message?: string;
+		response?: RuntimeWorktreeEnsureResponse;
+	}> => {
 		try {
 			const response = await workspaceFetch("/api/workspace/worktree/ensure", {
 				method: "POST",
@@ -354,7 +358,7 @@ export default function App(): ReactElement {
 						`Worktree setup failed with ${response.status}.`,
 				};
 			}
-			return { ok: true };
+			return { ok: true, response: payload };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return { ok: false, message };
@@ -1840,6 +1844,26 @@ export default function App(): ReactElement {
 				});
 				return;
 			}
+			if (selectedTaskId === taskId) {
+				if (ensured.response?.enabled) {
+					setSelectedTaskWorkspaceInfo({
+						taskId,
+						mode: "worktree",
+						path: ensured.response.path,
+						exists: true,
+						deleted: false,
+						baseRef: ensured.response.baseRef,
+						hasGit: true,
+						branch: null,
+						isDetached: true,
+						headCommit: ensured.response.baseCommit,
+					});
+				}
+				const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
+				if (infoAfterEnsure) {
+					setSelectedTaskWorkspaceInfo(infoAfterEnsure);
+				}
+			}
 			const started = await startTaskSession(task);
 			if (!started.ok) {
 				setWorktreeError(started.message ?? "Could not start task session.");
@@ -1855,7 +1879,7 @@ export default function App(): ReactElement {
 			}
 			setWorktreeError(null);
 		},
-		[ensureTaskWorkspace, startTaskSession],
+		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, startTaskSession],
 	);
 
 	const handleDragEnd = useCallback(

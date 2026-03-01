@@ -93,7 +93,10 @@ export function TopBar({
 	const pullCount = gitSummary?.behindCount ?? 0;
 	const pushCount = gitSummary?.aheadCount ?? 0;
 	const hasTaskGitSummary = Boolean(taskGitSummary?.hasGit);
-	const taskBranchLabel = taskGitSummary?.branch ?? taskGitSummary?.headCommit?.slice(0, 8) ?? "detached HEAD";
+	const taskBranchLabel =
+		taskGitSummary?.branch ??
+		taskGitSummary?.headCommit?.slice(0, 8) ??
+		"initializing";
 	const taskScopeLabel = taskGitSummary?.scopeLabel?.trim();
 	const pullTooltip = pullCount > 0
 		? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
