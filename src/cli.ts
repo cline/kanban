@@ -15,26 +15,18 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeConfigResponse,
-	RuntimeConfigSaveRequest,
-	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
-	RuntimeHookEvent,
-	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
-	RuntimeProjectAddRequest,
 	RuntimeProjectAddResponse,
 	RuntimeProjectDirectoryPickerResponse,
-	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectSummary,
 	RuntimeProjectsResponse,
 	RuntimeProjectTaskCounts,
-	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
-	RuntimeShortcutRunRequest,
 	RuntimeShortcutRunResponse,
 	RuntimeSlashCommandsResponse,
 	RuntimeStateStreamErrorMessage,
@@ -44,22 +36,33 @@ import type {
 	RuntimeStateStreamTaskSessionsMessage,
 	RuntimeStateStreamWorkspaceRetrieveStatusMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
-	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
-	RuntimeTaskSessionStartRequest,
 	RuntimeTaskSessionStartResponse,
-	RuntimeTaskSessionStopRequest,
 	RuntimeTaskSessionStopResponse,
 	RuntimeTaskSessionSummary,
-	RuntimeTaskWorkspaceInfoRequest,
-	RuntimeWorkspaceChangesRequest,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateConflictResponse,
 	RuntimeWorkspaceStateResponse,
-	RuntimeWorkspaceStateSaveRequest,
-	RuntimeWorktreeDeleteRequest,
-	RuntimeWorktreeEnsureRequest,
 } from "./runtime/api-contract.js";
+import {
+	parseGitCheckoutRequest,
+	parseHookIngestRequest,
+	parseOptionalTaskWorkspaceInfoRequest,
+	parseProjectAddRequest,
+	parseProjectRemoveRequest,
+	parseRuntimeConfigSaveRequest,
+	parseShellSessionStartRequest,
+	parseShortcutRunRequest,
+	parseTaskSessionInputRequest,
+	parseTaskSessionStartRequest,
+	parseTaskSessionStopRequest,
+	parseTaskWorkspaceInfoRequest,
+	parseWorkspaceChangesRequest,
+	parseWorkspaceFileSearchRequest,
+	parseWorkspaceStateSaveRequest,
+	parseWorktreeDeleteRequest,
+	parseWorktreeEnsureRequest,
+} from "./runtime/api-validation.js";
 import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
 import {
 	listWorkspaceIndexEntries,
@@ -222,7 +225,7 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
 	response.end(JSON.stringify(payload));
 }
 
-async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
+async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 	const chunks: Uint8Array[] = [];
 	let totalBytes = 0;
 	const maxBytes = 1024 * 1024;
@@ -241,141 +244,7 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
 		throw new Error("Request body is empty.");
 	}
 
-	return JSON.parse(body) as T;
-}
-
-function validateWorkspaceChangesRequest(query: URLSearchParams): RuntimeWorkspaceChangesRequest {
-	const taskId = query.get("taskId");
-	if (!taskId) {
-		throw new Error("Missing taskId query parameter.");
-	}
-	return {
-		taskId,
-		baseRef: query.has("baseRef") ? (query.get("baseRef") ?? "").trim() || null : undefined,
-	};
-}
-
-function validateTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWorkspaceInfoRequest {
-	const taskId = query.get("taskId");
-	if (!taskId) {
-		throw new Error("Missing taskId query parameter.");
-	}
-	return {
-		taskId,
-		baseRef: query.has("baseRef") ? (query.get("baseRef") ?? "").trim() || null : undefined,
-	};
-}
-
-function validateOptionalTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTaskWorkspaceInfoRequest | null {
-	if (!query.has("taskId")) {
-		if (query.has("baseRef")) {
-			throw new Error("baseRef query parameter requires taskId.");
-		}
-		return null;
-	}
-	return validateTaskWorkspaceInfoRequest(query);
-}
-
-function validateWorkspaceFileSearchRequest(query: URLSearchParams): { query: string; limit?: number } {
-	const rawQuery = query.get("q") ?? query.get("query") ?? "";
-	const normalizedQuery = rawQuery.trim();
-	if (!normalizedQuery) {
-		return { query: "" };
-	}
-
-	const rawLimit = query.get("limit");
-	if (rawLimit == null || rawLimit.trim() === "") {
-		return { query: normalizedQuery };
-	}
-	const parsedLimit = Number.parseInt(rawLimit, 10);
-	if (!Number.isFinite(parsedLimit)) {
-		throw new Error("Invalid file search limit parameter.");
-	}
-	return {
-		query: normalizedQuery,
-		limit: parsedLimit,
-	};
-}
-
-function validateGitCheckoutRequest(body: RuntimeGitCheckoutRequest): RuntimeGitCheckoutRequest {
-	if (!body || typeof body !== "object" || typeof body.branch !== "string") {
-		throw new Error("Invalid git checkout payload.");
-	}
-	const branch = body.branch.trim();
-	if (!branch) {
-		throw new Error("Branch cannot be empty.");
-	}
-	return {
-		branch,
-	};
-}
-
-function validateWorktreeEnsureRequest(body: RuntimeWorktreeEnsureRequest): RuntimeWorktreeEnsureRequest {
-	if (typeof body.taskId !== "string") {
-		throw new Error("Invalid worktree ensure payload.");
-	}
-	if (typeof body.baseRef !== "string" && body.baseRef !== null && body.baseRef !== undefined) {
-		throw new Error("Invalid worktree ensure payload.");
-	}
-	return {
-		taskId: body.taskId,
-		baseRef:
-			body.baseRef === undefined ? undefined : typeof body.baseRef === "string" ? body.baseRef.trim() || null : null,
-	};
-}
-
-function validateWorktreeDeleteRequest(body: RuntimeWorktreeDeleteRequest): RuntimeWorktreeDeleteRequest {
-	if (typeof body.taskId !== "string") {
-		throw new Error("Invalid worktree delete payload.");
-	}
-	return body;
-}
-
-function validateWorkspaceStateSaveRequest(body: RuntimeWorkspaceStateSaveRequest): RuntimeWorkspaceStateSaveRequest {
-	if (!body || typeof body !== "object") {
-		throw new Error("Invalid workspace state payload.");
-	}
-	if (!body.board || typeof body.board !== "object") {
-		throw new Error("Workspace state payload is missing board data.");
-	}
-	if (!body.sessions || typeof body.sessions !== "object" || Array.isArray(body.sessions)) {
-		throw new Error("Workspace state payload is missing sessions data.");
-	}
-	if (
-		body.expectedRevision !== undefined &&
-		(typeof body.expectedRevision !== "number" ||
-			!Number.isInteger(body.expectedRevision) ||
-			body.expectedRevision < 0)
-	) {
-		throw new Error("Workspace state payload includes an invalid expectedRevision.");
-	}
-	return body;
-}
-
-function validateProjectAddRequest(body: RuntimeProjectAddRequest): RuntimeProjectAddRequest {
-	if (!body || typeof body !== "object" || typeof body.path !== "string") {
-		throw new Error("Invalid project add payload.");
-	}
-	const path = body.path.trim();
-	if (!path) {
-		throw new Error("Project path cannot be empty.");
-	}
-	return {
-		path,
-	};
-}
-
-function validateProjectRemoveRequest(body: RuntimeProjectRemoveRequest): RuntimeProjectRemoveRequest {
-	if (!body || typeof body !== "object" || typeof body.projectId !== "string") {
-		throw new Error("Invalid project remove payload.");
-	}
-	const projectId = body.projectId.trim();
-	if (!projectId) {
-		throw new Error("Project ID cannot be empty.");
-	}
-	return {
-		projectId,
-	};
+	return JSON.parse(body) as unknown;
 }
 
 function resolveProjectInputPath(inputPath: string, cwd: string): string {
@@ -532,129 +401,6 @@ function pickDirectoryPathFromSystemDialog(): string | null {
 	}
 
 	return null;
-}
-
-function validateRuntimeConfigSaveRequest(body: RuntimeConfigSaveRequest): RuntimeConfigSaveRequest {
-	if (
-		body.selectedAgentId !== "claude" &&
-		body.selectedAgentId !== "codex" &&
-		body.selectedAgentId !== "gemini" &&
-		body.selectedAgentId !== "opencode" &&
-		body.selectedAgentId !== "cline"
-	) {
-		throw new Error("Invalid runtime config payload.");
-	}
-	if (body.shortcuts && !Array.isArray(body.shortcuts)) {
-		throw new Error("Invalid runtime shortcuts payload.");
-	}
-	if (body.commitLocalPromptTemplate !== undefined && typeof body.commitLocalPromptTemplate !== "string") {
-		throw new Error("Invalid runtime local commit prompt template payload.");
-	}
-	if (body.commitWorktreePromptTemplate !== undefined && typeof body.commitWorktreePromptTemplate !== "string") {
-		throw new Error("Invalid runtime worktree commit prompt template payload.");
-	}
-	if (body.openPrLocalPromptTemplate !== undefined && typeof body.openPrLocalPromptTemplate !== "string") {
-		throw new Error("Invalid runtime local PR prompt template payload.");
-	}
-	if (body.openPrWorktreePromptTemplate !== undefined && typeof body.openPrWorktreePromptTemplate !== "string") {
-		throw new Error("Invalid runtime worktree PR prompt template payload.");
-	}
-	for (const shortcut of body.shortcuts ?? []) {
-		if (
-			typeof shortcut.id !== "string" ||
-			typeof shortcut.label !== "string" ||
-			typeof shortcut.command !== "string"
-		) {
-			throw new Error("Invalid runtime shortcut entry.");
-		}
-	}
-	return body;
-}
-
-function validateShortcutRunRequest(body: RuntimeShortcutRunRequest): RuntimeShortcutRunRequest {
-	if (typeof body.command !== "string") {
-		throw new Error("Invalid shortcut run payload.");
-	}
-	const command = body.command.trim();
-	if (!command) {
-		throw new Error("Shortcut command cannot be empty.");
-	}
-	return {
-		command,
-	};
-}
-
-function validateTaskSessionStartRequest(body: RuntimeTaskSessionStartRequest): RuntimeTaskSessionStartRequest {
-	if (typeof body.taskId !== "string" || typeof body.prompt !== "string") {
-		throw new Error("Invalid task session start payload.");
-	}
-	if (typeof body.baseRef !== "string" && body.baseRef !== null && body.baseRef !== undefined) {
-		throw new Error("Invalid task session start payload.");
-	}
-	if (typeof body.startInPlanMode !== "boolean" && body.startInPlanMode !== undefined) {
-		throw new Error("Invalid task session start payload.");
-	}
-	return body;
-}
-
-function validateTaskSessionStopRequest(body: RuntimeTaskSessionStopRequest): RuntimeTaskSessionStopRequest {
-	if (typeof body.taskId !== "string") {
-		throw new Error("Invalid task session stop payload.");
-	}
-	return body;
-}
-
-function validateTaskSessionInputRequest(body: RuntimeTaskSessionInputRequest): RuntimeTaskSessionInputRequest {
-	if (!body || typeof body !== "object" || typeof body.taskId !== "string" || typeof body.text !== "string") {
-		throw new Error("Invalid task session input payload.");
-	}
-	const taskId = body.taskId.trim();
-	if (!taskId) {
-		throw new Error("Task session taskId cannot be empty.");
-	}
-	if (typeof body.appendNewline !== "boolean" && body.appendNewline !== undefined) {
-		throw new Error("Invalid task session input payload.");
-	}
-	return {
-		taskId,
-		text: body.text,
-		appendNewline: body.appendNewline,
-	};
-}
-
-function validateShellSessionStartRequest(body: RuntimeShellSessionStartRequest): RuntimeShellSessionStartRequest {
-	if (!body || typeof body !== "object" || typeof body.taskId !== "string") {
-		throw new Error("Invalid shell session start payload.");
-	}
-	const taskId = body.taskId.trim();
-	if (!taskId) {
-		throw new Error("Shell session taskId cannot be empty.");
-	}
-	if (
-		(body.cols !== undefined && (!Number.isFinite(body.cols) || body.cols <= 0)) ||
-		(body.rows !== undefined && (!Number.isFinite(body.rows) || body.rows <= 0))
-	) {
-		throw new Error("Invalid shell session dimensions.");
-	}
-	if (
-		body.workspaceTaskId !== undefined &&
-		(typeof body.workspaceTaskId !== "string" || !body.workspaceTaskId.trim())
-	) {
-		throw new Error("Invalid shell session workspaceTaskId.");
-	}
-	if (typeof body.baseRef !== "string" && body.baseRef !== null && body.baseRef !== undefined) {
-		throw new Error("Invalid shell session baseRef.");
-	}
-	const workspaceTaskId = body.workspaceTaskId?.trim() || undefined;
-	const baseRef =
-		typeof body.baseRef === "string" ? body.baseRef.trim() || null : body.baseRef === null ? null : undefined;
-	return {
-		taskId,
-		cols: body.cols,
-		rows: body.rows,
-		workspaceTaskId,
-		baseRef,
-	};
 }
 
 function resolveInteractiveShellCommand(): { binary: string; args: string[] } {
@@ -1479,7 +1225,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateRuntimeConfigSaveRequest(await readJsonBody<RuntimeConfigSaveRequest>(req));
+					const body = parseRuntimeConfigSaveRequest(await readJsonBody(req));
 					const currentRuntimeConfig = await loadScopedRuntimeConfig(scope);
 					const nextRuntimeConfig = await saveRuntimeConfig(scope.workspacePath, {
 						selectedAgentId: body.selectedAgentId,
@@ -1511,7 +1257,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateTaskSessionStartRequest(await readJsonBody<RuntimeTaskSessionStartRequest>(req));
+					const body = parseTaskSessionStartRequest(await readJsonBody(req));
 					const scopedRuntimeConfig = await loadScopedRuntimeConfig(scope);
 					const resolved = resolveAgentCommand(scopedRuntimeConfig);
 					if (!resolved) {
@@ -1569,7 +1315,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateTaskSessionStopRequest(await readJsonBody<RuntimeTaskSessionStopRequest>(req));
+					const body = parseTaskSessionStopRequest(await readJsonBody(req));
 					const terminalManager = await getScopedTerminalManager(scope);
 					const summary = terminalManager.stopTaskSession(body.taskId);
 					sendJson(res, 200, {
@@ -1593,7 +1339,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateTaskSessionInputRequest(await readJsonBody<RuntimeTaskSessionInputRequest>(req));
+					const body = parseTaskSessionInputRequest(await readJsonBody(req));
 					const terminalManager = await getScopedTerminalManager(scope);
 					const payloadText = body.appendNewline ? `${body.text}\n` : body.text;
 					const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
@@ -1626,7 +1372,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateShellSessionStartRequest(await readJsonBody<RuntimeShellSessionStartRequest>(req));
+					const body = parseShellSessionStartRequest(await readJsonBody(req));
 					const terminalManager = await getScopedTerminalManager(scope);
 					const shell = resolveInteractiveShellCommand();
 					const shellCwd = body.workspaceTaskId
@@ -1664,20 +1410,9 @@ async function startServer(
 
 			if (pathname === "/api/hooks/ingest" && req.method === "POST") {
 				try {
-					const body = await readJsonBody<RuntimeHookIngestRequest>(req);
-					const taskId = typeof body.taskId === "string" ? body.taskId.trim() : "";
-					const event = body.event as RuntimeHookEvent;
-					if (!taskId) {
-						sendJson(res, 400, { ok: false, error: "Missing taskId" } satisfies RuntimeHookIngestResponse);
-						return;
-					}
-					if (event !== "review" && event !== "inprogress") {
-						sendJson(res, 400, {
-							ok: false,
-							error: `Invalid event "${String(event)}". Must be "review" or "inprogress"`,
-						} satisfies RuntimeHookIngestResponse);
-						return;
-					}
+					const body = parseHookIngestRequest(await readJsonBody(req));
+					const taskId = body.taskId;
+					const event = body.event;
 
 					let matchedWorkspaceId: string | null = null;
 					let matchedManager: TerminalSessionManager | null = null;
@@ -1757,7 +1492,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateShortcutRunRequest(await readJsonBody<RuntimeShortcutRunRequest>(req));
+					const body = parseShortcutRunRequest(await readJsonBody(req));
 					const response = await runShortcutCommand(body.command, scope.workspacePath);
 					sendJson(res, 200, response);
 				} catch (error) {
@@ -1773,7 +1508,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const taskScope = validateOptionalTaskWorkspaceInfoRequest(requestUrl.searchParams);
+					const taskScope = parseOptionalTaskWorkspaceInfoRequest(requestUrl.searchParams);
 					let summaryCwd = scope.workspacePath;
 					if (taskScope) {
 						const taskBaseRef =
@@ -1861,7 +1596,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateGitCheckoutRequest(await readJsonBody<RuntimeGitCheckoutRequest>(req));
+					const body = parseGitCheckoutRequest(await readJsonBody(req));
 					const response = await runGitCheckoutAction({
 						cwd: scope.workspacePath,
 						branch: body.branch,
@@ -1898,7 +1633,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const query = validateWorkspaceChangesRequest(requestUrl.searchParams);
+					const query = parseWorkspaceChangesRequest(requestUrl.searchParams);
 					const taskBaseRef =
 						query.baseRef === undefined
 							? await resolveTaskBaseRef(scope.workspacePath, query.taskId)
@@ -1924,7 +1659,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateWorktreeEnsureRequest(await readJsonBody<RuntimeWorktreeEnsureRequest>(req));
+					const body = parseWorktreeEnsureRequest(await readJsonBody(req));
 					const response = await ensureTaskWorktree({
 						cwd: scope.workspacePath,
 						taskId: body.taskId,
@@ -1944,7 +1679,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateWorktreeDeleteRequest(await readJsonBody<RuntimeWorktreeDeleteRequest>(req));
+					const body = parseWorktreeDeleteRequest(await readJsonBody(req));
 					const response = await deleteTaskWorktree({
 						repoPath: scope.workspacePath,
 						taskId: body.taskId,
@@ -1963,7 +1698,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const query = validateTaskWorkspaceInfoRequest(requestUrl.searchParams);
+					const query = parseTaskWorkspaceInfoRequest(requestUrl.searchParams);
 					const taskBaseRef =
 						query.baseRef === undefined
 							? await resolveTaskBaseRef(scope.workspacePath, query.taskId)
@@ -1987,7 +1722,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const query = validateWorkspaceFileSearchRequest(requestUrl.searchParams);
+					const query = parseWorkspaceFileSearchRequest(requestUrl.searchParams);
 					const files = await searchWorkspaceFiles(scope.workspacePath, query.query, query.limit);
 					const response: RuntimeWorkspaceFileSearchResponse = {
 						query: query.query,
@@ -2022,9 +1757,7 @@ async function startServer(
 					return;
 				}
 				try {
-					const body = validateWorkspaceStateSaveRequest(
-						await readJsonBody<RuntimeWorkspaceStateSaveRequest>(req),
-					);
+					const body = parseWorkspaceStateSaveRequest(await readJsonBody(req));
 					const terminalManager = await getScopedTerminalManager(scope);
 					for (const summary of terminalManager.listSummaries()) {
 						body.sessions[summary.taskId] = summary;
@@ -2063,7 +1796,7 @@ async function startServer(
 
 			if (pathname === "/api/projects/add" && req.method === "POST") {
 				try {
-					const body = validateProjectAddRequest(await readJsonBody<RuntimeProjectAddRequest>(req));
+					const body = parseProjectAddRequest(await readJsonBody(req));
 					const resolveBasePath = requestedWorkspaceContext?.repoPath ?? getActiveWorkspacePath();
 					const projectPath = resolveProjectInputPath(body.path, resolveBasePath);
 					await assertPathIsDirectory(projectPath);
@@ -2097,7 +1830,7 @@ async function startServer(
 
 			if (pathname === "/api/projects/remove" && req.method === "POST") {
 				try {
-					const body = validateProjectRemoveRequest(await readJsonBody<RuntimeProjectRemoveRequest>(req));
+					const body = parseProjectRemoveRequest(await readJsonBody(req));
 					const projectsBeforeRemoval = await listWorkspaceIndexEntries();
 					const projectToRemove = projectsBeforeRemoval.find((project) => project.workspaceId === body.projectId);
 					if (!projectToRemove) {

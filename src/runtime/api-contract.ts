@@ -1,462 +1,546 @@
-export type RuntimeWorkspaceFileStatus =
-	| "modified"
-	| "added"
-	| "deleted"
-	| "renamed"
-	| "copied"
-	| "untracked"
-	| "unknown";
-
-export interface RuntimeWorkspaceFileChange {
-	path: string;
-	previousPath?: string;
-	status: RuntimeWorkspaceFileStatus;
-	additions: number;
-	deletions: number;
-	oldText: string | null;
-	newText: string | null;
-}
-
-export interface RuntimeWorkspaceChangesRequest {
-	taskId: string;
-	baseRef?: string | null;
-}
-
-export interface RuntimeWorkspaceChangesResponse {
-	repoRoot: string;
-	generatedAt: number;
-	files: RuntimeWorkspaceFileChange[];
-}
-
-export interface RuntimeWorkspaceFileSearchRequest {
-	query: string;
-	limit?: number;
-}
-
-export interface RuntimeWorkspaceFileSearchMatch {
-	path: string;
-	name: string;
-	changed: boolean;
-}
-
-export interface RuntimeWorkspaceFileSearchResponse {
-	query: string;
-	files: RuntimeWorkspaceFileSearchMatch[];
-}
-
-export interface RuntimeSlashCommandDescription {
-	name: string;
-	description: string | null;
-}
-
-export interface RuntimeSlashCommandsResponse {
-	agentId: RuntimeAgentId | null;
-	commands: RuntimeSlashCommandDescription[];
-	error: string | null;
-}
-
-export type RuntimeBoardColumnId = "backlog" | "in_progress" | "review" | "trash";
-
-export interface RuntimeBoardCard {
-	id: string;
-	title: string;
-	description: string;
-	prompt: string;
-	startInPlanMode: boolean;
-	baseRef?: string | null;
-	createdAt: number;
-	updatedAt: number;
-}
-
-export interface RuntimeBoardColumn {
-	id: RuntimeBoardColumnId;
-	title: string;
-	cards: RuntimeBoardCard[];
-}
-
-export interface RuntimeBoardData {
-	columns: RuntimeBoardColumn[];
-}
-
-export interface RuntimeGitRepositoryInfo {
-	hasGit: boolean;
-	currentBranch: string | null;
-	defaultBranch: string | null;
-	branches: string[];
-}
-
-export type RuntimeGitSyncAction = "fetch" | "pull" | "push";
-
-export interface RuntimeGitSyncSummary {
-	hasGit: boolean;
-	currentBranch: string | null;
-	upstreamBranch: string | null;
-	changedFiles: number;
-	additions: number;
-	deletions: number;
-	aheadCount: number;
-	behindCount: number;
-}
-
-export interface RuntimeGitSummaryResponse {
-	ok: boolean;
-	summary: RuntimeGitSyncSummary;
-	error?: string;
-}
-
-export interface RuntimeGitSyncResponse {
-	ok: boolean;
-	action: RuntimeGitSyncAction;
-	summary: RuntimeGitSyncSummary;
-	output: string;
-	error?: string;
-}
-
-export interface RuntimeGitCheckoutRequest {
-	branch: string;
-}
-
-export interface RuntimeGitCheckoutResponse {
-	ok: boolean;
-	branch: string;
-	summary: RuntimeGitSyncSummary;
-	output: string;
-	error?: string;
-}
-
-export type RuntimeTaskSessionState = "idle" | "running" | "awaiting_review" | "failed" | "interrupted";
-
-export type RuntimeTaskSessionReviewReason = "attention" | "exit" | "error" | "interrupted" | "hook" | null;
-
-export interface RuntimeTaskSessionSummary {
-	taskId: string;
-	state: RuntimeTaskSessionState;
-	agentId: RuntimeAgentId | null;
-	workspacePath: string | null;
-	pid: number | null;
-	startedAt: number | null;
-	updatedAt: number;
-	lastOutputAt: number | null;
-	lastActivityLine: string | null;
-	reviewReason: RuntimeTaskSessionReviewReason;
-	exitCode: number | null;
-}
-
-export interface RuntimeWorkspaceStateResponse {
-	repoPath: string;
-	statePath: string;
-	git: RuntimeGitRepositoryInfo;
-	board: RuntimeBoardData;
-	sessions: Record<string, RuntimeTaskSessionSummary>;
-	revision: number;
-}
-
-export interface RuntimeWorkspaceStateSaveRequest {
-	board: RuntimeBoardData;
-	sessions: Record<string, RuntimeTaskSessionSummary>;
-	expectedRevision?: number;
-}
-
-export interface RuntimeWorkspaceStateConflictResponse {
-	error: string;
-	currentRevision: number;
-}
-
-export interface RuntimeStateStreamSnapshotMessage {
-	type: "snapshot";
-	currentProjectId: string | null;
-	projects: RuntimeProjectSummary[];
-	workspaceState: RuntimeWorkspaceStateResponse | null;
-}
-
-export interface RuntimeStateStreamWorkspaceStateMessage {
-	type: "workspace_state_updated";
-	workspaceId: string;
-	workspaceState: RuntimeWorkspaceStateResponse;
-}
-
-export interface RuntimeStateStreamTaskSessionsMessage {
-	type: "task_sessions_updated";
-	workspaceId: string;
-	summaries: RuntimeTaskSessionSummary[];
-}
-
-export interface RuntimeStateStreamWorkspaceRetrieveStatusMessage {
-	type: "workspace_retrieve_status";
-	workspaceId: string;
-	retrievedAt: number;
-}
-
-export interface RuntimeStateStreamProjectsMessage {
-	type: "projects_updated";
-	currentProjectId: string | null;
-	projects: RuntimeProjectSummary[];
-}
-
-export interface RuntimeStateStreamErrorMessage {
-	type: "error";
-	message: string;
-}
-
-export type RuntimeStateStreamMessage =
-	| RuntimeStateStreamSnapshotMessage
-	| RuntimeStateStreamWorkspaceStateMessage
-	| RuntimeStateStreamTaskSessionsMessage
-	| RuntimeStateStreamWorkspaceRetrieveStatusMessage
-	| RuntimeStateStreamProjectsMessage
-	| RuntimeStateStreamErrorMessage;
-
-export interface RuntimeProjectSummary {
-	id: string;
-	path: string;
-	name: string;
-	taskCounts: RuntimeProjectTaskCounts;
-}
-
-export interface RuntimeProjectTaskCounts {
-	backlog: number;
-	in_progress: number;
-	review: number;
-	trash: number;
-}
-
-export interface RuntimeProjectsResponse {
-	currentProjectId: string | null;
-	projects: RuntimeProjectSummary[];
-}
-
-export interface RuntimeProjectAddRequest {
-	path: string;
-}
-
-export interface RuntimeProjectAddResponse {
-	ok: boolean;
-	project: RuntimeProjectSummary | null;
-	error?: string;
-}
-
-export interface RuntimeProjectDirectoryPickerResponse {
-	ok: boolean;
-	path: string | null;
-	error?: string;
-}
-
-export interface RuntimeProjectRemoveRequest {
-	projectId: string;
-}
-
-export interface RuntimeProjectRemoveResponse {
-	ok: boolean;
-	error?: string;
-}
-
-export interface RuntimeWorktreeEnsureRequest {
-	taskId: string;
-	baseRef?: string | null;
-}
-
-export interface RuntimeWorktreeEnsureResponse {
-	ok: boolean;
-	enabled: boolean;
-	path: string;
-	baseRef: string | null;
-	baseCommit: string | null;
-	error?: string;
-}
-
-export interface RuntimeWorktreeDeleteRequest {
-	taskId: string;
-}
-
-export interface RuntimeWorktreeDeleteResponse {
-	ok: boolean;
-	enabled: boolean;
-	removed: boolean;
-	error?: string;
-}
-
-export interface RuntimeTaskWorkspaceInfoRequest {
-	taskId: string;
-	baseRef?: string | null;
-}
-
-export interface RuntimeTaskWorkspaceInfoResponse {
-	taskId: string;
-	mode: "local" | "worktree";
-	path: string;
-	exists: boolean;
-	deleted: boolean;
-	baseRef: string | null;
-	hasGit: boolean;
-	branch: string | null;
-	isDetached: boolean;
-	headCommit: string | null;
-}
-
-export interface RuntimeProjectShortcut {
-	id: string;
-	label: string;
-	command: string;
-	icon?: string;
-}
-
-export interface RuntimeShortcutRunRequest {
-	command: string;
-}
-
-export interface RuntimeShortcutRunResponse {
-	exitCode: number;
-	stdout: string;
-	stderr: string;
-	combinedOutput: string;
-	durationMs: number;
-}
-
-export type RuntimeAgentId = "claude" | "codex" | "gemini" | "opencode" | "cline";
-
-export interface RuntimeAgentDefinition {
-	id: RuntimeAgentId;
-	label: string;
-	binary: string;
-	command: string;
-	defaultArgs: string[];
-	installed: boolean;
-	configured: boolean;
-}
-
-export interface RuntimeConfigResponse {
-	selectedAgentId: RuntimeAgentId;
-	effectiveCommand: string | null;
-	globalConfigPath: string;
-	projectConfigPath: string;
-	detectedCommands: string[];
-	agents: RuntimeAgentDefinition[];
-	shortcuts: RuntimeProjectShortcut[];
-	commitLocalPromptTemplate: string;
-	commitWorktreePromptTemplate: string;
-	openPrLocalPromptTemplate: string;
-	openPrWorktreePromptTemplate: string;
-	commitLocalPromptTemplateDefault: string;
-	commitWorktreePromptTemplateDefault: string;
-	openPrLocalPromptTemplateDefault: string;
-	openPrWorktreePromptTemplateDefault: string;
-}
-
-export interface RuntimeConfigSaveRequest {
-	selectedAgentId: RuntimeAgentId;
-	shortcuts?: RuntimeProjectShortcut[];
-	commitLocalPromptTemplate?: string;
-	commitWorktreePromptTemplate?: string;
-	openPrLocalPromptTemplate?: string;
-	openPrWorktreePromptTemplate?: string;
-}
-
-export interface RuntimeTaskSessionStartRequest {
-	taskId: string;
-	prompt: string;
-	startInPlanMode?: boolean;
-	baseRef?: string | null;
-	cols?: number;
-	rows?: number;
-}
-
-export interface RuntimeTaskSessionStartResponse {
-	ok: boolean;
-	summary: RuntimeTaskSessionSummary | null;
-	error?: string;
-}
-
-export interface RuntimeTaskSessionStopRequest {
-	taskId: string;
-}
-
-export interface RuntimeTaskSessionStopResponse {
-	ok: boolean;
-	summary: RuntimeTaskSessionSummary | null;
-	error?: string;
-}
-
-export interface RuntimeTaskSessionInputRequest {
-	taskId: string;
-	text: string;
-	appendNewline?: boolean;
-}
-
-export interface RuntimeTaskSessionInputResponse {
-	ok: boolean;
-	summary: RuntimeTaskSessionSummary | null;
-	error?: string;
-}
-
-export interface RuntimeShellSessionStartRequest {
-	taskId: string;
-	cols?: number;
-	rows?: number;
-	workspaceTaskId?: string;
-	baseRef?: string | null;
-}
-
-export interface RuntimeShellSessionStartResponse {
-	ok: boolean;
-	summary: RuntimeTaskSessionSummary | null;
-	shellBinary?: string | null;
-	error?: string;
-}
-
-export interface RuntimeTerminalWsInputMessage {
-	type: "input";
-	data: string;
-}
-
-export interface RuntimeTerminalWsResizeMessage {
-	type: "resize";
-	cols: number;
-	rows: number;
-}
-
-export interface RuntimeTerminalWsStopMessage {
-	type: "stop";
-}
-
-export type RuntimeTerminalWsClientMessage =
-	| RuntimeTerminalWsInputMessage
-	| RuntimeTerminalWsResizeMessage
-	| RuntimeTerminalWsStopMessage;
-
-export interface RuntimeTerminalWsOutputMessage {
-	type: "output";
-	data: string;
-}
-
-export interface RuntimeTerminalWsStateMessage {
-	type: "state";
-	summary: RuntimeTaskSessionSummary;
-}
-
-export interface RuntimeTerminalWsErrorMessage {
-	type: "error";
-	message: string;
-}
-
-export interface RuntimeTerminalWsExitMessage {
-	type: "exit";
-	code: number | null;
-}
-
-export type RuntimeTerminalWsServerMessage =
-	| RuntimeTerminalWsOutputMessage
-	| RuntimeTerminalWsStateMessage
-	| RuntimeTerminalWsErrorMessage
-	| RuntimeTerminalWsExitMessage;
-
-export type RuntimeHookEvent = "review" | "inprogress";
-
-export interface RuntimeHookIngestRequest {
-	taskId: string;
-	event: RuntimeHookEvent;
-}
-
-export interface RuntimeHookIngestResponse {
-	ok: boolean;
-	error?: string;
-}
+import { z } from "zod";
+
+export const runtimeWorkspaceFileStatusSchema = z.enum([
+	"modified",
+	"added",
+	"deleted",
+	"renamed",
+	"copied",
+	"untracked",
+	"unknown",
+]);
+export type RuntimeWorkspaceFileStatus = z.infer<typeof runtimeWorkspaceFileStatusSchema>;
+
+export const runtimeWorkspaceFileChangeSchema = z.object({
+	path: z.string(),
+	previousPath: z.string().optional(),
+	status: runtimeWorkspaceFileStatusSchema,
+	additions: z.number(),
+	deletions: z.number(),
+	oldText: z.string().nullable(),
+	newText: z.string().nullable(),
+});
+export type RuntimeWorkspaceFileChange = z.infer<typeof runtimeWorkspaceFileChangeSchema>;
+
+export const runtimeWorkspaceChangesRequestSchema = z.object({
+	taskId: z.string(),
+	baseRef: z.string().nullable().optional(),
+});
+export type RuntimeWorkspaceChangesRequest = z.infer<typeof runtimeWorkspaceChangesRequestSchema>;
+
+export const runtimeWorkspaceChangesResponseSchema = z.object({
+	repoRoot: z.string(),
+	generatedAt: z.number(),
+	files: z.array(runtimeWorkspaceFileChangeSchema),
+});
+export type RuntimeWorkspaceChangesResponse = z.infer<typeof runtimeWorkspaceChangesResponseSchema>;
+
+export const runtimeWorkspaceFileSearchRequestSchema = z.object({
+	query: z.string(),
+	limit: z.number().int().positive().optional(),
+});
+export type RuntimeWorkspaceFileSearchRequest = z.infer<typeof runtimeWorkspaceFileSearchRequestSchema>;
+
+export const runtimeWorkspaceFileSearchMatchSchema = z.object({
+	path: z.string(),
+	name: z.string(),
+	changed: z.boolean(),
+});
+export type RuntimeWorkspaceFileSearchMatch = z.infer<typeof runtimeWorkspaceFileSearchMatchSchema>;
+
+export const runtimeWorkspaceFileSearchResponseSchema = z.object({
+	query: z.string(),
+	files: z.array(runtimeWorkspaceFileSearchMatchSchema),
+});
+export type RuntimeWorkspaceFileSearchResponse = z.infer<typeof runtimeWorkspaceFileSearchResponseSchema>;
+
+export const runtimeSlashCommandDescriptionSchema = z.object({
+	name: z.string(),
+	description: z.string().nullable(),
+});
+export type RuntimeSlashCommandDescription = z.infer<typeof runtimeSlashCommandDescriptionSchema>;
+
+export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "cline"]);
+export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
+
+export const runtimeSlashCommandsResponseSchema = z.object({
+	agentId: runtimeAgentIdSchema.nullable(),
+	commands: z.array(runtimeSlashCommandDescriptionSchema),
+	error: z.string().nullable(),
+});
+export type RuntimeSlashCommandsResponse = z.infer<typeof runtimeSlashCommandsResponseSchema>;
+
+export const runtimeBoardColumnIdSchema = z.enum(["backlog", "in_progress", "review", "trash"]);
+export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;
+
+export const runtimeBoardCardSchema = z.object({
+	id: z.string(),
+	title: z.string(),
+	description: z.string(),
+	prompt: z.string(),
+	startInPlanMode: z.boolean(),
+	baseRef: z.string().nullable().optional(),
+	createdAt: z.number(),
+	updatedAt: z.number(),
+});
+export type RuntimeBoardCard = z.infer<typeof runtimeBoardCardSchema>;
+
+export const runtimeBoardColumnSchema = z.object({
+	id: runtimeBoardColumnIdSchema,
+	title: z.string(),
+	cards: z.array(runtimeBoardCardSchema),
+});
+export type RuntimeBoardColumn = z.infer<typeof runtimeBoardColumnSchema>;
+
+export const runtimeBoardDataSchema = z.object({
+	columns: z.array(runtimeBoardColumnSchema),
+});
+export type RuntimeBoardData = z.infer<typeof runtimeBoardDataSchema>;
+
+export const runtimeGitRepositoryInfoSchema = z.object({
+	hasGit: z.boolean(),
+	currentBranch: z.string().nullable(),
+	defaultBranch: z.string().nullable(),
+	branches: z.array(z.string()),
+});
+export type RuntimeGitRepositoryInfo = z.infer<typeof runtimeGitRepositoryInfoSchema>;
+
+export const runtimeGitSyncActionSchema = z.enum(["fetch", "pull", "push"]);
+export type RuntimeGitSyncAction = z.infer<typeof runtimeGitSyncActionSchema>;
+
+export const runtimeGitSyncSummarySchema = z.object({
+	hasGit: z.boolean(),
+	currentBranch: z.string().nullable(),
+	upstreamBranch: z.string().nullable(),
+	changedFiles: z.number(),
+	additions: z.number(),
+	deletions: z.number(),
+	aheadCount: z.number(),
+	behindCount: z.number(),
+});
+export type RuntimeGitSyncSummary = z.infer<typeof runtimeGitSyncSummarySchema>;
+
+export const runtimeGitSummaryResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeGitSyncSummarySchema,
+	error: z.string().optional(),
+});
+export type RuntimeGitSummaryResponse = z.infer<typeof runtimeGitSummaryResponseSchema>;
+
+export const runtimeGitSyncResponseSchema = z.object({
+	ok: z.boolean(),
+	action: runtimeGitSyncActionSchema,
+	summary: runtimeGitSyncSummarySchema,
+	output: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeGitSyncResponse = z.infer<typeof runtimeGitSyncResponseSchema>;
+
+export const runtimeGitCheckoutRequestSchema = z.object({
+	branch: z.string(),
+});
+export type RuntimeGitCheckoutRequest = z.infer<typeof runtimeGitCheckoutRequestSchema>;
+
+export const runtimeGitCheckoutResponseSchema = z.object({
+	ok: z.boolean(),
+	branch: z.string(),
+	summary: runtimeGitSyncSummarySchema,
+	output: z.string(),
+	error: z.string().optional(),
+});
+export type RuntimeGitCheckoutResponse = z.infer<typeof runtimeGitCheckoutResponseSchema>;
+
+export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review", "failed", "interrupted"]);
+export type RuntimeTaskSessionState = z.infer<typeof runtimeTaskSessionStateSchema>;
+
+export const runtimeTaskSessionReviewReasonSchema = z
+	.enum(["attention", "exit", "error", "interrupted", "hook"])
+	.nullable();
+export type RuntimeTaskSessionReviewReason = z.infer<typeof runtimeTaskSessionReviewReasonSchema>;
+
+export const runtimeTaskSessionSummarySchema = z.object({
+	taskId: z.string(),
+	state: runtimeTaskSessionStateSchema,
+	agentId: runtimeAgentIdSchema.nullable(),
+	workspacePath: z.string().nullable(),
+	pid: z.number().nullable(),
+	startedAt: z.number().nullable(),
+	updatedAt: z.number(),
+	lastOutputAt: z.number().nullable(),
+	lastActivityLine: z.string().nullable(),
+	reviewReason: runtimeTaskSessionReviewReasonSchema,
+	exitCode: z.number().nullable(),
+});
+export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
+
+export const runtimeWorkspaceStateResponseSchema = z.object({
+	repoPath: z.string(),
+	statePath: z.string(),
+	git: runtimeGitRepositoryInfoSchema,
+	board: runtimeBoardDataSchema,
+	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
+	revision: z.number(),
+});
+export type RuntimeWorkspaceStateResponse = z.infer<typeof runtimeWorkspaceStateResponseSchema>;
+
+export const runtimeWorkspaceStateSaveRequestSchema = z.object({
+	board: runtimeBoardDataSchema,
+	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
+	expectedRevision: z.number().int().nonnegative().optional(),
+});
+export type RuntimeWorkspaceStateSaveRequest = z.infer<typeof runtimeWorkspaceStateSaveRequestSchema>;
+
+export const runtimeWorkspaceStateConflictResponseSchema = z.object({
+	error: z.string(),
+	currentRevision: z.number(),
+});
+export type RuntimeWorkspaceStateConflictResponse = z.infer<typeof runtimeWorkspaceStateConflictResponseSchema>;
+
+export const runtimeProjectTaskCountsSchema = z.object({
+	backlog: z.number(),
+	in_progress: z.number(),
+	review: z.number(),
+	trash: z.number(),
+});
+export type RuntimeProjectTaskCounts = z.infer<typeof runtimeProjectTaskCountsSchema>;
+
+export const runtimeProjectSummarySchema = z.object({
+	id: z.string(),
+	path: z.string(),
+	name: z.string(),
+	taskCounts: runtimeProjectTaskCountsSchema,
+});
+export type RuntimeProjectSummary = z.infer<typeof runtimeProjectSummarySchema>;
+
+export const runtimeStateStreamSnapshotMessageSchema = z.object({
+	type: z.literal("snapshot"),
+	currentProjectId: z.string().nullable(),
+	projects: z.array(runtimeProjectSummarySchema),
+	workspaceState: runtimeWorkspaceStateResponseSchema.nullable(),
+});
+export type RuntimeStateStreamSnapshotMessage = z.infer<typeof runtimeStateStreamSnapshotMessageSchema>;
+
+export const runtimeStateStreamWorkspaceStateMessageSchema = z.object({
+	type: z.literal("workspace_state_updated"),
+	workspaceId: z.string(),
+	workspaceState: runtimeWorkspaceStateResponseSchema,
+});
+export type RuntimeStateStreamWorkspaceStateMessage = z.infer<typeof runtimeStateStreamWorkspaceStateMessageSchema>;
+
+export const runtimeStateStreamTaskSessionsMessageSchema = z.object({
+	type: z.literal("task_sessions_updated"),
+	workspaceId: z.string(),
+	summaries: z.array(runtimeTaskSessionSummarySchema),
+});
+export type RuntimeStateStreamTaskSessionsMessage = z.infer<typeof runtimeStateStreamTaskSessionsMessageSchema>;
+
+export const runtimeStateStreamWorkspaceRetrieveStatusMessageSchema = z.object({
+	type: z.literal("workspace_retrieve_status"),
+	workspaceId: z.string(),
+	retrievedAt: z.number(),
+});
+export type RuntimeStateStreamWorkspaceRetrieveStatusMessage = z.infer<
+	typeof runtimeStateStreamWorkspaceRetrieveStatusMessageSchema
+>;
+
+export const runtimeStateStreamProjectsMessageSchema = z.object({
+	type: z.literal("projects_updated"),
+	currentProjectId: z.string().nullable(),
+	projects: z.array(runtimeProjectSummarySchema),
+});
+export type RuntimeStateStreamProjectsMessage = z.infer<typeof runtimeStateStreamProjectsMessageSchema>;
+
+export const runtimeStateStreamErrorMessageSchema = z.object({
+	type: z.literal("error"),
+	message: z.string(),
+});
+export type RuntimeStateStreamErrorMessage = z.infer<typeof runtimeStateStreamErrorMessageSchema>;
+
+export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
+	runtimeStateStreamSnapshotMessageSchema,
+	runtimeStateStreamWorkspaceStateMessageSchema,
+	runtimeStateStreamTaskSessionsMessageSchema,
+	runtimeStateStreamWorkspaceRetrieveStatusMessageSchema,
+	runtimeStateStreamProjectsMessageSchema,
+	runtimeStateStreamErrorMessageSchema,
+]);
+export type RuntimeStateStreamMessage = z.infer<typeof runtimeStateStreamMessageSchema>;
+
+export const runtimeProjectsResponseSchema = z.object({
+	currentProjectId: z.string().nullable(),
+	projects: z.array(runtimeProjectSummarySchema),
+});
+export type RuntimeProjectsResponse = z.infer<typeof runtimeProjectsResponseSchema>;
+
+export const runtimeProjectAddRequestSchema = z.object({
+	path: z.string(),
+});
+export type RuntimeProjectAddRequest = z.infer<typeof runtimeProjectAddRequestSchema>;
+
+export const runtimeProjectAddResponseSchema = z.object({
+	ok: z.boolean(),
+	project: runtimeProjectSummarySchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeProjectAddResponse = z.infer<typeof runtimeProjectAddResponseSchema>;
+
+export const runtimeProjectDirectoryPickerResponseSchema = z.object({
+	ok: z.boolean(),
+	path: z.string().nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeProjectDirectoryPickerResponse = z.infer<typeof runtimeProjectDirectoryPickerResponseSchema>;
+
+export const runtimeProjectRemoveRequestSchema = z.object({
+	projectId: z.string(),
+});
+export type RuntimeProjectRemoveRequest = z.infer<typeof runtimeProjectRemoveRequestSchema>;
+
+export const runtimeProjectRemoveResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeProjectRemoveResponse = z.infer<typeof runtimeProjectRemoveResponseSchema>;
+
+export const runtimeWorktreeEnsureRequestSchema = z.object({
+	taskId: z.string(),
+	baseRef: z.string().nullable().optional(),
+});
+export type RuntimeWorktreeEnsureRequest = z.infer<typeof runtimeWorktreeEnsureRequestSchema>;
+
+export const runtimeWorktreeEnsureResponseSchema = z.object({
+	ok: z.boolean(),
+	enabled: z.boolean(),
+	path: z.string(),
+	baseRef: z.string().nullable(),
+	baseCommit: z.string().nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeWorktreeEnsureResponse = z.infer<typeof runtimeWorktreeEnsureResponseSchema>;
+
+export const runtimeWorktreeDeleteRequestSchema = z.object({
+	taskId: z.string(),
+});
+export type RuntimeWorktreeDeleteRequest = z.infer<typeof runtimeWorktreeDeleteRequestSchema>;
+
+export const runtimeWorktreeDeleteResponseSchema = z.object({
+	ok: z.boolean(),
+	enabled: z.boolean(),
+	removed: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeWorktreeDeleteResponse = z.infer<typeof runtimeWorktreeDeleteResponseSchema>;
+
+export const runtimeTaskWorkspaceInfoRequestSchema = z.object({
+	taskId: z.string(),
+	baseRef: z.string().nullable().optional(),
+});
+export type RuntimeTaskWorkspaceInfoRequest = z.infer<typeof runtimeTaskWorkspaceInfoRequestSchema>;
+
+export const runtimeTaskWorkspaceInfoResponseSchema = z.object({
+	taskId: z.string(),
+	mode: z.enum(["local", "worktree"]),
+	path: z.string(),
+	exists: z.boolean(),
+	deleted: z.boolean(),
+	baseRef: z.string().nullable(),
+	hasGit: z.boolean(),
+	branch: z.string().nullable(),
+	isDetached: z.boolean(),
+	headCommit: z.string().nullable(),
+});
+export type RuntimeTaskWorkspaceInfoResponse = z.infer<typeof runtimeTaskWorkspaceInfoResponseSchema>;
+
+export const runtimeProjectShortcutSchema = z.object({
+	id: z.string(),
+	label: z.string(),
+	command: z.string(),
+	icon: z.string().optional(),
+});
+export type RuntimeProjectShortcut = z.infer<typeof runtimeProjectShortcutSchema>;
+
+export const runtimeShortcutRunRequestSchema = z.object({
+	command: z.string(),
+});
+export type RuntimeShortcutRunRequest = z.infer<typeof runtimeShortcutRunRequestSchema>;
+
+export const runtimeShortcutRunResponseSchema = z.object({
+	exitCode: z.number(),
+	stdout: z.string(),
+	stderr: z.string(),
+	combinedOutput: z.string(),
+	durationMs: z.number(),
+});
+export type RuntimeShortcutRunResponse = z.infer<typeof runtimeShortcutRunResponseSchema>;
+
+export const runtimeAgentDefinitionSchema = z.object({
+	id: runtimeAgentIdSchema,
+	label: z.string(),
+	binary: z.string(),
+	command: z.string(),
+	defaultArgs: z.array(z.string()),
+	installed: z.boolean(),
+	configured: z.boolean(),
+});
+export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema>;
+
+export const runtimeConfigResponseSchema = z.object({
+	selectedAgentId: runtimeAgentIdSchema,
+	effectiveCommand: z.string().nullable(),
+	globalConfigPath: z.string(),
+	projectConfigPath: z.string(),
+	detectedCommands: z.array(z.string()),
+	agents: z.array(runtimeAgentDefinitionSchema),
+	shortcuts: z.array(runtimeProjectShortcutSchema),
+	commitLocalPromptTemplate: z.string(),
+	commitWorktreePromptTemplate: z.string(),
+	openPrLocalPromptTemplate: z.string(),
+	openPrWorktreePromptTemplate: z.string(),
+	commitLocalPromptTemplateDefault: z.string(),
+	commitWorktreePromptTemplateDefault: z.string(),
+	openPrLocalPromptTemplateDefault: z.string(),
+	openPrWorktreePromptTemplateDefault: z.string(),
+});
+export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
+
+export const runtimeConfigSaveRequestSchema = z.object({
+	selectedAgentId: runtimeAgentIdSchema,
+	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
+	commitLocalPromptTemplate: z.string().optional(),
+	commitWorktreePromptTemplate: z.string().optional(),
+	openPrLocalPromptTemplate: z.string().optional(),
+	openPrWorktreePromptTemplate: z.string().optional(),
+});
+export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
+
+export const runtimeTaskSessionStartRequestSchema = z.object({
+	taskId: z.string(),
+	prompt: z.string(),
+	startInPlanMode: z.boolean().optional(),
+	baseRef: z.string().nullable().optional(),
+	cols: z.number().int().positive().optional(),
+	rows: z.number().int().positive().optional(),
+});
+export type RuntimeTaskSessionStartRequest = z.infer<typeof runtimeTaskSessionStartRequestSchema>;
+
+export const runtimeTaskSessionStartResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeTaskSessionSummarySchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeTaskSessionStartResponse = z.infer<typeof runtimeTaskSessionStartResponseSchema>;
+
+export const runtimeTaskSessionStopRequestSchema = z.object({
+	taskId: z.string(),
+});
+export type RuntimeTaskSessionStopRequest = z.infer<typeof runtimeTaskSessionStopRequestSchema>;
+
+export const runtimeTaskSessionStopResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeTaskSessionSummarySchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeTaskSessionStopResponse = z.infer<typeof runtimeTaskSessionStopResponseSchema>;
+
+export const runtimeTaskSessionInputRequestSchema = z.object({
+	taskId: z.string(),
+	text: z.string(),
+	appendNewline: z.boolean().optional(),
+});
+export type RuntimeTaskSessionInputRequest = z.infer<typeof runtimeTaskSessionInputRequestSchema>;
+
+export const runtimeTaskSessionInputResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeTaskSessionSummarySchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeTaskSessionInputResponse = z.infer<typeof runtimeTaskSessionInputResponseSchema>;
+
+export const runtimeShellSessionStartRequestSchema = z.object({
+	taskId: z.string(),
+	cols: z.number().int().positive().optional(),
+	rows: z.number().int().positive().optional(),
+	workspaceTaskId: z.string().optional(),
+	baseRef: z.string().nullable().optional(),
+});
+export type RuntimeShellSessionStartRequest = z.infer<typeof runtimeShellSessionStartRequestSchema>;
+
+export const runtimeShellSessionStartResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeTaskSessionSummarySchema.nullable(),
+	shellBinary: z.string().nullable().optional(),
+	error: z.string().optional(),
+});
+export type RuntimeShellSessionStartResponse = z.infer<typeof runtimeShellSessionStartResponseSchema>;
+
+export const runtimeTerminalWsInputMessageSchema = z.object({
+	type: z.literal("input"),
+	data: z.string(),
+});
+export type RuntimeTerminalWsInputMessage = z.infer<typeof runtimeTerminalWsInputMessageSchema>;
+
+export const runtimeTerminalWsResizeMessageSchema = z.object({
+	type: z.literal("resize"),
+	cols: z.number().int().positive(),
+	rows: z.number().int().positive(),
+});
+export type RuntimeTerminalWsResizeMessage = z.infer<typeof runtimeTerminalWsResizeMessageSchema>;
+
+export const runtimeTerminalWsStopMessageSchema = z.object({
+	type: z.literal("stop"),
+});
+export type RuntimeTerminalWsStopMessage = z.infer<typeof runtimeTerminalWsStopMessageSchema>;
+
+export const runtimeTerminalWsClientMessageSchema = z.discriminatedUnion("type", [
+	runtimeTerminalWsInputMessageSchema,
+	runtimeTerminalWsResizeMessageSchema,
+	runtimeTerminalWsStopMessageSchema,
+]);
+export type RuntimeTerminalWsClientMessage = z.infer<typeof runtimeTerminalWsClientMessageSchema>;
+
+export const runtimeTerminalWsOutputMessageSchema = z.object({
+	type: z.literal("output"),
+	data: z.string(),
+});
+export type RuntimeTerminalWsOutputMessage = z.infer<typeof runtimeTerminalWsOutputMessageSchema>;
+
+export const runtimeTerminalWsStateMessageSchema = z.object({
+	type: z.literal("state"),
+	summary: runtimeTaskSessionSummarySchema,
+});
+export type RuntimeTerminalWsStateMessage = z.infer<typeof runtimeTerminalWsStateMessageSchema>;
+
+export const runtimeTerminalWsErrorMessageSchema = z.object({
+	type: z.literal("error"),
+	message: z.string(),
+});
+export type RuntimeTerminalWsErrorMessage = z.infer<typeof runtimeTerminalWsErrorMessageSchema>;
+
+export const runtimeTerminalWsExitMessageSchema = z.object({
+	type: z.literal("exit"),
+	code: z.number().nullable(),
+});
+export type RuntimeTerminalWsExitMessage = z.infer<typeof runtimeTerminalWsExitMessageSchema>;
+
+export const runtimeTerminalWsServerMessageSchema = z.discriminatedUnion("type", [
+	runtimeTerminalWsOutputMessageSchema,
+	runtimeTerminalWsStateMessageSchema,
+	runtimeTerminalWsErrorMessageSchema,
+	runtimeTerminalWsExitMessageSchema,
+]);
+export type RuntimeTerminalWsServerMessage = z.infer<typeof runtimeTerminalWsServerMessageSchema>;
+
+export const runtimeHookEventSchema = z.enum(["review", "inprogress"]);
+export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;
+
+export const runtimeHookIngestRequestSchema = z.object({
+	taskId: z.string(),
+	event: runtimeHookEventSchema,
+});
+export type RuntimeHookIngestRequest = z.infer<typeof runtimeHookIngestRequestSchema>;
+
+export const runtimeHookIngestResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeHookIngestResponse = z.infer<typeof runtimeHookIngestResponseSchema>;

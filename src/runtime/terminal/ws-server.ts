@@ -4,7 +4,8 @@ import type { Socket } from "node:net";
 import type { RawData, WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 
-import type { RuntimeTerminalWsClientMessage, RuntimeTerminalWsServerMessage } from "../api-contract.js";
+import type { RuntimeTerminalWsServerMessage } from "../api-contract.js";
+import { parseTerminalWsClientMessage } from "../api-validation.js";
 import type { TerminalSessionManager } from "./session-manager.js";
 
 interface TerminalWebSocketConnectionContext {
@@ -34,14 +35,11 @@ function base64ToBuffer(value: string): Buffer {
 	return Buffer.from(value, "base64");
 }
 
-function parseWebSocketPayload(message: RawData): RuntimeTerminalWsClientMessage | null {
+function parseWebSocketPayload(message: RawData) {
 	try {
 		const text = typeof message === "string" ? message : message.toString("utf8");
-		const parsed = JSON.parse(text) as RuntimeTerminalWsClientMessage;
-		if (!parsed || typeof parsed !== "object" || typeof (parsed as { type?: unknown }).type !== "string") {
-			return null;
-		}
-		return parsed;
+		const parsed = JSON.parse(text) as unknown;
+		return parseTerminalWsClientMessage(parsed);
 	} catch {
 		return null;
 	}
