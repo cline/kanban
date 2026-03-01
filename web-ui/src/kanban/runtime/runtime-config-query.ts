@@ -19,7 +19,7 @@ export async function fetchRuntimeConfig(workspaceId: string): Promise<RuntimeCo
 export async function saveRuntimeConfig(
 	workspaceId: string,
 	nextConfig: {
-		selectedAgentId: RuntimeAgentId;
+		selectedAgentId?: RuntimeAgentId;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
 		commitLocalPromptTemplate?: string;

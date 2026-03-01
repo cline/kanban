@@ -416,7 +416,7 @@ export const runtimeConfigResponseSchema = z.object({
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 
 export const runtimeConfigSaveRequestSchema = z.object({
-	selectedAgentId: runtimeAgentIdSchema,
+	selectedAgentId: runtimeAgentIdSchema.optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
 	commitLocalPromptTemplate: z.string().optional(),

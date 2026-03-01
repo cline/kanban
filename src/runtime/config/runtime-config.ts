@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import type { RuntimeAgentId, RuntimeProjectShortcut } from "../api-contract.js";
+import { detectInstalledCommands } from "../terminal/agent-registry.js";
 
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
@@ -38,6 +39,7 @@ const CONFIG_FILENAME = "config.json";
 const PROJECT_CONFIG_DIR = ".kanbanana";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
+const AUTO_SELECT_AGENT_PRIORITY: RuntimeAgentId[] = ["claude", "codex", "opencode", "gemini", "cline"];
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE = `Commit the changes made in this task.
 
@@ -69,6 +71,16 @@ const DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE = `You are in a worktree (possibl
 4. Create the PR targeting {{base_ref}} (use gh CLI if available).
 5. If PR creation is blocked, explain why and provide instructions to finish it manually.`;
 
+export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
+	const detected = new Set(detectedCommands);
+	for (const agentId of AUTO_SELECT_AGENT_PRIORITY) {
+		if (detected.has(agentId)) {
+			return agentId;
+		}
+	}
+	return null;
+}
+
 function getRuntimeHomePath(): string {
 	return join(homedir(), RUNTIME_HOME_DIR);
 }
@@ -84,6 +96,10 @@ function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): 
 		return agentId;
 	}
 	return DEFAULT_AGENT_ID;
+}
+
+function pickBestInstalledAgentId(): RuntimeAgentId | null {
+	return pickBestInstalledAgentIdFromDetected(detectInstalledCommands());
 }
 
 function normalizeShortcut(shortcut: RuntimeProjectShortcut): RuntimeProjectShortcut | null {
@@ -135,6 +151,13 @@ function normalizeBoolean(value: unknown, fallback: boolean): boolean {
 		return value;
 	}
 	return fallback;
+}
+
+function hasOwnKey<T extends object>(value: T | null, key: keyof T): boolean {
+	if (!value) {
+		return false;
+	}
+	return Object.hasOwn(value, key);
 }
 
 export function getRuntimeGlobalConfigPath(): string {
@@ -200,71 +223,114 @@ async function readRuntimeConfigFile<T>(configPath: string): Promise<T | null> {
 async function writeRuntimeGlobalConfigFile(
 	configPath: string,
 	config: {
-		selectedAgentId: RuntimeAgentId;
-		readyForReviewNotificationsEnabled: boolean;
-		commitLocalPromptTemplate: string;
-		commitWorktreePromptTemplate: string;
-		openPrLocalPromptTemplate: string;
-		openPrWorktreePromptTemplate: string;
+		selectedAgentId?: RuntimeAgentId;
+		readyForReviewNotificationsEnabled?: boolean;
+		commitLocalPromptTemplate?: string;
+		commitWorktreePromptTemplate?: string;
+		openPrLocalPromptTemplate?: string;
+		openPrWorktreePromptTemplate?: string;
 	},
 ): Promise<void> {
+	const existing = await readRuntimeConfigFile<RuntimeGlobalConfigFileShape>(configPath);
+	const selectedAgentId = config.selectedAgentId === undefined ? undefined : normalizeAgentId(config.selectedAgentId);
+	const existingSelectedAgentId = hasOwnKey(existing, "selectedAgentId")
+		? normalizeAgentId(existing?.selectedAgentId)
+		: undefined;
+	const readyForReviewNotificationsEnabled =
+		config.readyForReviewNotificationsEnabled === undefined
+			? DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
+			: normalizeBoolean(config.readyForReviewNotificationsEnabled, DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED);
+	const commitLocalPromptTemplate =
+		config.commitLocalPromptTemplate === undefined
+			? DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.commitLocalPromptTemplate, DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE);
+	const commitWorktreePromptTemplate =
+		config.commitWorktreePromptTemplate === undefined
+			? DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.commitWorktreePromptTemplate, DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE);
+	const openPrLocalPromptTemplate =
+		config.openPrLocalPromptTemplate === undefined
+			? DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.openPrLocalPromptTemplate, DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE);
+	const openPrWorktreePromptTemplate =
+		config.openPrWorktreePromptTemplate === undefined
+			? DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.openPrWorktreePromptTemplate, DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE);
+
+	const payload: RuntimeGlobalConfigFileShape = {};
+	if (selectedAgentId !== undefined) {
+		if (hasOwnKey(existing, "selectedAgentId") || selectedAgentId !== DEFAULT_AGENT_ID) {
+			payload.selectedAgentId = selectedAgentId;
+		}
+	} else if (existingSelectedAgentId !== undefined) {
+		payload.selectedAgentId = existingSelectedAgentId;
+	}
+	if (
+		hasOwnKey(existing, "readyForReviewNotificationsEnabled") ||
+		readyForReviewNotificationsEnabled !== DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
+	) {
+		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
+	}
+	if (
+		hasOwnKey(existing, "commitLocalPromptTemplate") ||
+		commitLocalPromptTemplate !== DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE
+	) {
+		payload.commitLocalPromptTemplate = commitLocalPromptTemplate;
+	}
+	if (
+		hasOwnKey(existing, "commitWorktreePromptTemplate") ||
+		commitWorktreePromptTemplate !== DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE
+	) {
+		payload.commitWorktreePromptTemplate = commitWorktreePromptTemplate;
+	}
+	if (
+		hasOwnKey(existing, "openPrLocalPromptTemplate") ||
+		openPrLocalPromptTemplate !== DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE
+	) {
+		payload.openPrLocalPromptTemplate = openPrLocalPromptTemplate;
+	}
+	if (
+		hasOwnKey(existing, "openPrWorktreePromptTemplate") ||
+		openPrWorktreePromptTemplate !== DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE
+	) {
+		payload.openPrWorktreePromptTemplate = openPrWorktreePromptTemplate;
+	}
+
 	await mkdir(dirname(configPath), { recursive: true });
-	await writeFile(
-		configPath,
-		JSON.stringify(
-			{
-				selectedAgentId: normalizeAgentId(config.selectedAgentId),
-				readyForReviewNotificationsEnabled: normalizeBoolean(
-					config.readyForReviewNotificationsEnabled,
-					DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
-				),
-				commitLocalPromptTemplate: normalizePromptTemplate(
-					config.commitLocalPromptTemplate,
-					DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE,
-				),
-				commitWorktreePromptTemplate: normalizePromptTemplate(
-					config.commitWorktreePromptTemplate,
-					DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE,
-				),
-				openPrLocalPromptTemplate: normalizePromptTemplate(
-					config.openPrLocalPromptTemplate,
-					DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE,
-				),
-				openPrWorktreePromptTemplate: normalizePromptTemplate(
-					config.openPrWorktreePromptTemplate,
-					DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE,
-				),
-			},
-			null,
-			2,
-		),
-		"utf8",
-	);
+	await writeFile(configPath, JSON.stringify(payload, null, 2), "utf8");
 }
 
 async function writeRuntimeProjectConfigFile(
 	configPath: string,
 	config: { shortcuts: RuntimeProjectShortcut[] },
 ): Promise<void> {
+	const existing = await readRuntimeConfigFile<RuntimeProjectConfigFileShape>(configPath);
+	const normalizedShortcuts = normalizeShortcuts(config.shortcuts);
+	const payload: RuntimeProjectConfigFileShape = {};
+	if (hasOwnKey(existing, "shortcuts") || normalizedShortcuts.length > 0) {
+		payload.shortcuts = normalizedShortcuts;
+	}
 	await mkdir(dirname(configPath), { recursive: true });
-	await writeFile(
-		configPath,
-		JSON.stringify(
-			{
-				shortcuts: normalizeShortcuts(config.shortcuts),
-			},
-			null,
-			2,
-		),
-		"utf8",
-	);
+	await writeFile(configPath, JSON.stringify(payload, null, 2), "utf8");
 }
 
 export async function loadRuntimeConfig(cwd: string): Promise<RuntimeConfigState> {
 	const globalConfigPath = getRuntimeGlobalConfigPath();
 	const projectConfigPath = getRuntimeProjectConfigPath(cwd);
-	const globalConfig = await readRuntimeConfigFile<RuntimeGlobalConfigFileShape>(globalConfigPath);
+	let globalConfig = await readRuntimeConfigFile<RuntimeGlobalConfigFileShape>(globalConfigPath);
 	const projectConfig = await readRuntimeConfigFile<RuntimeProjectConfigFileShape>(projectConfigPath);
+	if (globalConfig === null) {
+		const autoSelectedAgentId = pickBestInstalledAgentId();
+		if (autoSelectedAgentId) {
+			await writeRuntimeGlobalConfigFile(globalConfigPath, {
+				selectedAgentId: autoSelectedAgentId,
+			});
+			globalConfig = {
+				...(globalConfig ?? {}),
+				selectedAgentId: autoSelectedAgentId,
+			};
+		}
+	}
 	return toRuntimeConfigState({
 		globalConfigPath,
 		projectConfigPath,

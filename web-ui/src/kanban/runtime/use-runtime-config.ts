@@ -8,7 +8,7 @@ export interface UseRuntimeConfigResult {
 	isLoading: boolean;
 	isSaving: boolean;
 	save: (nextConfig: {
-		selectedAgentId: RuntimeAgentId;
+		selectedAgentId?: RuntimeAgentId;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
 		commitLocalPromptTemplate?: string;
@@ -51,7 +51,7 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 
 	const save = useCallback(
 		async (nextConfig: {
-			selectedAgentId: RuntimeAgentId;
+			selectedAgentId?: RuntimeAgentId;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
 			commitLocalPromptTemplate?: string;
