@@ -12,7 +12,6 @@ import {
 	Switch,
 	Tag,
 	TextArea,
-	Tooltip,
 } from "@blueprintjs/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -93,7 +92,7 @@ function AgentRow({
 			tabIndex={0}
 			onClick={() => { if (agent.installed && !disabled) { onSelect(); } }}
 			onKeyDown={(event) => { if (event.key === "Enter" && agent.installed && !disabled) { onSelect(); } }}
-			style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0", cursor: agent.installed ? "pointer" : "default" }}
+			style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "5px 0", cursor: agent.installed ? "pointer" : "default" }}
 		>
 			<div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0 }}>
 				<Icon icon={isSelected ? "selection" : "circle"} intent={isSelected ? "primary" : undefined} className={!agent.installed ? Classes.TEXT_DISABLED : undefined} style={{ marginTop: 2 }} />
@@ -103,7 +102,10 @@ function AgentRow({
 						{agent.installed ? <Tag minimal intent="success">Installed</Tag> : null}
 					</div>
 					{agent.command ? (
-						<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`} style={{ margin: "2px 0 0" }}>
+						<p
+							className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
+							style={{ margin: "1px 0 0", fontSize: "var(--bp-typography-size-body-x-small)" }}
+						>
 							{agent.command}
 						</p>
 					) : null}
@@ -123,6 +125,41 @@ function AgentRow({
 				<Button text="Install" variant="outlined" size="small" disabled />
 			) : null}
 		</div>
+	);
+}
+
+function InlineUtilityButton({
+	text,
+	onClick,
+	disabled,
+	monospace,
+	widthCh,
+}: {
+	text: string;
+	onClick: () => void;
+	disabled?: boolean;
+	monospace?: boolean;
+	widthCh?: number;
+}): React.ReactElement {
+	return (
+		<Button
+			text={text}
+			size="small"
+			variant="outlined"
+			disabled={disabled}
+			onClick={onClick}
+			className={monospace ? Classes.MONOSPACE_TEXT : undefined}
+			style={{
+				fontSize: "var(--bp-typography-size-body-x-small)",
+				verticalAlign: "middle",
+				...(typeof widthCh === "number"
+					? {
+						width: `${widthCh}ch`,
+						justifyContent: "center",
+					}
+					: {}),
+			}}
+		/>
 	);
 }
 
@@ -201,6 +238,7 @@ export function RuntimeSettingsDialog({
 					? "PR prompt template for local repositories"
 					: "PR prompt template for worktrees";
 	const selectedPromptMode = selectedPromptVariant.endsWith("worktree") ? "worktree" : "local";
+	const baseRefVariable = TASK_GIT_PROMPT_VARIABLES[0];
 
 	const supportedAgents = useMemo(() => config?.agents ?? [], [config?.agents]);
 	const configuredAgentId = config?.selectedAgentId ?? null;
@@ -457,39 +495,23 @@ export function RuntimeSettingsDialog({
 					className={Classes.MONOSPACE_TEXT}
 					style={{ fontFamily: "var(--bp-font-family-monospace)" }}
 				/>
-				<div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, margin: "8px 0 10px" }}>
-					<span className={Classes.TEXT_MUTED}>Template variables:</span>
-					{TASK_GIT_PROMPT_VARIABLES.map((variable) => {
-						const isCopied = copiedVariableToken === variable.token;
-						const tooltipContent =
-							selectedPromptMode === "worktree"
-								? variable.descriptions.worktree
-								: variable.descriptions.local;
-						return (
-							<Tooltip key={variable.token} placement="bottom" content={tooltipContent}>
-								<Tag
-									className={Classes.MONOSPACE_TEXT}
-									interactive
-									onClick={() => {
-										handleCopyVariableToken(variable.token);
-									}}
-									style={{
-										cursor: "pointer",
-										display: "inline-flex",
-										justifyContent: "center",
-										alignItems: "center",
-										width: `${Math.max(variable.token.length, "Copied!".length) + 2}ch`,
-										fontSize: "var(--bp-typography-size-body-x-small)",
-										whiteSpace: "nowrap",
-									}}
-								>
-									{isCopied ? "Copied!" : variable.token}
-								</Tag>
-							</Tooltip>
-						);
-					})}
-				</div>
-				<h6 className={Classes.HEADING} style={{ margin: "12px 0 8px" }}>Notifications</h6>
+				<p className={Classes.TEXT_MUTED} style={{ margin: "8px 0 10px" }}>
+					Use{" "}
+					<InlineUtilityButton
+						text={copiedVariableToken === baseRefVariable.token ? "Copied!" : baseRefVariable.token}
+						monospace
+						widthCh={Math.max(baseRefVariable.token.length, "Copied!".length) + 2}
+						onClick={() => {
+							handleCopyVariableToken(baseRefVariable.token);
+						}}
+						disabled={isLoading || isSaving}
+					/>{" "}
+					to reference{" "}
+					{selectedPromptMode === "worktree"
+						? "the branch the worktree is created from."
+						: "the branch your local workspace is on."}
+				</p>
+				<h6 className={Classes.HEADING} style={{ margin: "18px 0 8px" }}>Notifications</h6>
 				<Switch
 					checked={readyForReviewNotificationsEnabled}
 					disabled={isLoading || isSaving}
@@ -502,17 +524,16 @@ export function RuntimeSettingsDialog({
 					<p className={Classes.TEXT_MUTED} style={{ margin: 0 }}>
 						Browser permission: {formatNotificationPermissionStatus(notificationPermission)}
 					</p>
-						{notificationPermission !== "granted" && notificationPermission !== "unsupported" ? (
-							<Button
-								text="Request permission"
-								size="small"
-								onClick={handleRequestPermission}
-								disabled={isLoading || isSaving}
-							/>
-						) : null}
+					{notificationPermission !== "granted" && notificationPermission !== "unsupported" ? (
+						<InlineUtilityButton
+							text="Request permission"
+							onClick={handleRequestPermission}
+							disabled={isLoading || isSaving}
+						/>
+					) : null}
 				</div>
 
-				<h5 className={Classes.HEADING} style={{ margin: "12px 0 0" }}>Project</h5>
+				<h5 className={Classes.HEADING} style={{ margin: "18px 0 0" }}>Project</h5>
 				<p
 					className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
 					style={{ margin: 0, wordBreak: "break-all", cursor: config?.projectConfigPath ? "pointer" : undefined }}
