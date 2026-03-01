@@ -20,6 +20,8 @@ export function KanbanBoard({
 	onCommitTask,
 	onOpenPrTask,
 	onMoveToTrashTask,
+	commitTaskLoadingById,
+	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
 	onDragEnd,
 }: {
@@ -36,6 +38,8 @@ export function KanbanBoard({
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
+	commitTaskLoadingById?: Record<string, boolean>;
+	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onDragEnd: (result: DropResult) => void;
 }): React.ReactElement {
@@ -73,6 +77,8 @@ export function KanbanBoard({
 						onCommitTask={column.id === "review" ? onCommitTask : undefined}
 						onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
+						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
+						openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 						reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {

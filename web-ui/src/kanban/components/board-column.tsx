@@ -24,6 +24,8 @@ export function BoardColumn({
 	onCommitTask,
 	onOpenPrTask,
 	onMoveToTrashTask,
+	commitTaskLoadingById,
+	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
 	onCardClick,
 }: {
@@ -39,6 +41,8 @@ export function BoardColumn({
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
+	commitTaskLoadingById?: Record<string, boolean>;
+	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onCardClick?: (card: BoardCardModel) => void;
 }): React.ReactElement {
@@ -120,6 +124,8 @@ export function BoardColumn({
 											reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
 											onCommit={onCommitTask}
 											onOpenPr={onOpenPrTask}
+											isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
+											isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
 											onClick={() => {
 												if (column.id === "backlog") {
 													onEditTask?.(card);

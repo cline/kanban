@@ -31,6 +31,10 @@ import { TaskInlineCreateCard, type TaskWorkspaceMode } from "@/kanban/component
 import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
 import { TopBar, type TopBarTaskGitSummary } from "@/kanban/components/top-bar";
 import { createInitialBoardData } from "@/kanban/data/board-data";
+import {
+	buildTaskGitActionPrompt,
+	type TaskGitAction,
+} from "@/kanban/git-actions/build-task-git-action-prompt";
 import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
 import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
 import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
@@ -57,6 +61,7 @@ import type {
 	RuntimeWorkspaceStateResponse,
 	RuntimeShortcutRunResponse,
 	RuntimeTaskSessionSummary,
+	RuntimeTaskSessionInputResponse,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
@@ -83,6 +88,13 @@ interface PendingTrashWarningState {
 	fileCount: number;
 	taskTitle: string;
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
+}
+
+type TaskGitActionSource = "card" | "agent";
+
+interface TaskGitActionLoadingState {
+	commitSource: TaskGitActionSource | null;
+	prSource: TaskGitActionSource | null;
 }
 
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
@@ -179,6 +191,8 @@ export default function App(): ReactElement {
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [gitSummary, setGitSummary] = useState<RuntimeGitSyncSummary | null>(null);
 	const [runningGitAction, setRunningGitAction] = useState<RuntimeGitSyncAction | null>(null);
+	const [taskGitActionLoadingByTaskId, setTaskGitActionLoadingByTaskId] =
+		useState<Record<string, TaskGitActionLoadingState>>({});
 	const [isSwitchingHomeBranch, setIsSwitchingHomeBranch] = useState(false);
 	const [gitActionError, setGitActionError] = useState<{
 		action: RuntimeGitSyncAction;
@@ -425,6 +439,49 @@ export default function App(): ReactElement {
 		}
 	}, [currentProjectId]);
 
+	const sendTaskSessionInput = useCallback(async (
+		taskId: string,
+		text: string,
+		options?: {
+			appendNewline?: boolean;
+		},
+	): Promise<{ ok: boolean; message?: string }> => {
+		if (!currentProjectId) {
+			return { ok: false, message: "No project selected." };
+		}
+		try {
+			const response = await workspaceFetch("/api/runtime/task-session/input", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					taskId,
+					text,
+					appendNewline: options?.appendNewline ?? true,
+				}),
+				workspaceId: currentProjectId,
+			});
+			const payload = (await response.json().catch(() => null)) as
+				| RuntimeTaskSessionInputResponse
+				| { error?: string; summary?: RuntimeTaskSessionSummary | null }
+				| null;
+			if (!response.ok || !payload || !("ok" in payload) || !payload.ok) {
+				const errorMessage =
+					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
+					`Task session input failed with ${response.status}.`;
+				return { ok: false, message: errorMessage };
+			}
+			if (payload.summary) {
+				upsertSession(payload.summary);
+			}
+			return { ok: true };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return { ok: false, message };
+		}
+	}, [currentProjectId, upsertSession]);
+
 	const cleanupTaskWorkspace = useCallback(async (taskId: string): Promise<RuntimeWorktreeDeleteResponse | null> => {
 		try {
 			const response = await workspaceFetch("/api/workspace/worktree/delete", {
@@ -577,6 +634,200 @@ export default function App(): ReactElement {
 			? selectedTaskWorkspaceInfo
 			: null;
 	}, [selectedCard, selectedTaskWorkspaceInfo]);
+	const setTaskGitActionLoading = useCallback((
+		taskId: string,
+		action: TaskGitAction,
+		source: TaskGitActionSource | null,
+	) => {
+		setTaskGitActionLoadingByTaskId((current) => {
+			const existing = current[taskId] ?? { commitSource: null, prSource: null };
+			const key = action === "commit" ? "commitSource" : "prSource";
+			if (existing[key] === source) {
+				return current;
+			}
+			const nextEntry: TaskGitActionLoadingState = {
+				...existing,
+				[key]: source,
+			};
+			if (nextEntry.commitSource === null && nextEntry.prSource === null) {
+				const { [taskId]: _removed, ...rest } = current;
+				return rest;
+			}
+			return {
+				...current,
+				[taskId]: nextEntry,
+			};
+		});
+	}, []);
+	const commitTaskLoadingById = useMemo(() => {
+		const next: Record<string, boolean> = {};
+		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
+			if (loading.commitSource === "card") {
+				next[taskId] = true;
+			}
+		}
+		return next;
+	}, [taskGitActionLoadingByTaskId]);
+	const openPrTaskLoadingById = useMemo(() => {
+		const next: Record<string, boolean> = {};
+		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
+			if (loading.prSource === "card") {
+				next[taskId] = true;
+			}
+		}
+		return next;
+	}, [taskGitActionLoadingByTaskId]);
+	const agentCommitTaskLoadingById = useMemo(() => {
+		const next: Record<string, boolean> = {};
+		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
+			if (loading.commitSource === "agent") {
+				next[taskId] = true;
+			}
+		}
+		return next;
+	}, [taskGitActionLoadingByTaskId]);
+	const agentOpenPrTaskLoadingById = useMemo(() => {
+		const next: Record<string, boolean> = {};
+		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
+			if (loading.prSource === "agent") {
+				next[taskId] = true;
+			}
+		}
+		return next;
+	}, [taskGitActionLoadingByTaskId]);
+	const runTaskGitAction = useCallback(
+		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {
+			const taskLoadingState = taskGitActionLoadingByTaskId[taskId];
+			const actionInFlightSource = action === "commit"
+				? taskLoadingState?.commitSource
+				: taskLoadingState?.prSource;
+			if (actionInFlightSource !== null && actionInFlightSource !== undefined) {
+				return;
+			}
+			setTaskGitActionLoading(taskId, action, source);
+			try {
+				const selection = findCardSelection(board, taskId);
+				if (!selection) {
+					showAppToast({
+						intent: "danger",
+						icon: "warning-sign",
+						message: "Could not find the selected task card.",
+						timeout: 5000,
+					});
+					return;
+				}
+				if (selection.column.id !== "review") {
+					showAppToast({
+						intent: "warning",
+						icon: "warning-sign",
+						message: "Commit and PR actions are only available for tasks in Review.",
+						timeout: 5000,
+					});
+					return;
+				}
+
+				const snapshotWorkspaceInfo = workspaceSnapshots[taskId]
+					? {
+							taskId,
+							mode: workspaceSnapshots[taskId].mode,
+							path: workspaceSnapshots[taskId].path,
+							exists: true,
+							deleted: false,
+							baseRef: selection.card.baseRef ?? null,
+							hasGit: workspaceSnapshots[taskId].hasGit,
+							branch: workspaceSnapshots[taskId].branch,
+							isDetached: workspaceSnapshots[taskId].isDetached,
+							headCommit: workspaceSnapshots[taskId].headCommit,
+						}
+					: null;
+				const workspaceInfo = matchesWorkspaceInfoSelection(selectedTaskWorkspaceInfo, selection.card)
+					? selectedTaskWorkspaceInfo
+					: snapshotWorkspaceInfo ?? await fetchTaskWorkspaceInfo(selection.card);
+				if (!workspaceInfo) {
+					showAppToast({
+						intent: "danger",
+						icon: "warning-sign",
+						message: "Could not resolve task workspace details.",
+						timeout: 6000,
+					});
+					return;
+				}
+				if (!workspaceInfo.hasGit) {
+					showAppToast({
+						intent: "danger",
+						icon: "warning-sign",
+						message: "Git is not available in this task workspace.",
+						timeout: 6000,
+					});
+					return;
+				}
+
+				const prompt = buildTaskGitActionPrompt({
+					action,
+					workspaceInfo,
+					templates: runtimeProjectConfig
+						? {
+								commitLocalPromptTemplate: runtimeProjectConfig.commitLocalPromptTemplate,
+								commitWorktreePromptTemplate: runtimeProjectConfig.commitWorktreePromptTemplate,
+								openPrLocalPromptTemplate: runtimeProjectConfig.openPrLocalPromptTemplate,
+								openPrWorktreePromptTemplate: runtimeProjectConfig.openPrWorktreePromptTemplate,
+								commitLocalPromptTemplateDefault: runtimeProjectConfig.commitLocalPromptTemplateDefault,
+								commitWorktreePromptTemplateDefault: runtimeProjectConfig.commitWorktreePromptTemplateDefault,
+								openPrLocalPromptTemplateDefault: runtimeProjectConfig.openPrLocalPromptTemplateDefault,
+								openPrWorktreePromptTemplateDefault: runtimeProjectConfig.openPrWorktreePromptTemplateDefault,
+							}
+						: null,
+				});
+				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false });
+				if (!typed.ok) {
+					showAppToast({
+						intent: "danger",
+						icon: "warning-sign",
+						message: typed.message ?? "Could not send instructions to the task session.",
+						timeout: 7000,
+					});
+					return;
+				}
+				await new Promise<void>((resolve) => {
+					window.setTimeout(resolve, 200);
+				});
+				const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+				if (!submitted.ok) {
+					showAppToast({
+						intent: "danger",
+						icon: "warning-sign",
+						message: submitted.message ?? "Could not submit instructions to the task session.",
+						timeout: 7000,
+					});
+					return;
+				}
+			} finally {
+				setTaskGitActionLoading(taskId, action, null);
+			}
+		},
+		[
+			board,
+			fetchTaskWorkspaceInfo,
+			runtimeProjectConfig,
+			setTaskGitActionLoading,
+			selectedTaskWorkspaceInfo,
+			sendTaskSessionInput,
+			taskGitActionLoadingByTaskId,
+			workspaceSnapshots,
+		],
+	);
+	const handleCommitTask = useCallback((taskId: string) => {
+		void runTaskGitAction(taskId, "commit", "card");
+	}, [runTaskGitAction]);
+	const handleOpenPrTask = useCallback((taskId: string) => {
+		void runTaskGitAction(taskId, "pr", "card");
+	}, [runTaskGitAction]);
+	const handleAgentCommitTask = useCallback((taskId: string) => {
+		void runTaskGitAction(taskId, "commit", "agent");
+	}, [runTaskGitAction]);
+	const handleAgentOpenPrTask = useCallback((taskId: string) => {
+		void runTaskGitAction(taskId, "pr", "agent");
+	}, [runTaskGitAction]);
 	const reviewCards = useMemo(() => {
 		return board.columns.find((column) => column.id === "review")?.cards ?? [];
 	}, [board.columns]);
@@ -2443,8 +2694,10 @@ export default function App(): ReactElement {
 											editingTaskId={editingTaskId}
 											inlineTaskEditor={inlineTaskEditor}
 											onEditTask={handleOpenEditTask}
-											onCommitTask={() => {}}
-											onOpenPrTask={() => {}}
+											onCommitTask={handleCommitTask}
+											onOpenPrTask={handleOpenPrTask}
+											commitTaskLoadingById={commitTaskLoadingById}
+											openPrTaskLoadingById={openPrTaskLoadingById}
 											onMoveToTrashTask={handleMoveReviewCardToTrash}
 											reviewWorkspaceSnapshots={workspaceSnapshots}
 											onDragEnd={handleDragEnd}
@@ -2504,8 +2757,14 @@ export default function App(): ReactElement {
 									editingTaskId={editingTaskId}
 									inlineTaskEditor={inlineTaskEditor}
 									onEditTask={handleOpenEditTask}
-									onCommitTask={() => {}}
-									onOpenPrTask={() => {}}
+									onCommitTask={handleCommitTask}
+									onOpenPrTask={handleOpenPrTask}
+									onAgentCommitTask={handleAgentCommitTask}
+									onAgentOpenPrTask={handleAgentOpenPrTask}
+									commitTaskLoadingById={commitTaskLoadingById}
+									openPrTaskLoadingById={openPrTaskLoadingById}
+									agentCommitTaskLoadingById={agentCommitTaskLoadingById}
+									agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									reviewWorkspaceSnapshots={workspaceSnapshots}
 									onMoveToTrash={handleMoveToTrash}

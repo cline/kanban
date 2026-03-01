@@ -44,6 +44,8 @@ import type {
 	RuntimeStateStreamTaskSessionsMessage,
 	RuntimeStateStreamWorkspaceRetrieveStatusMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
+	RuntimeTaskSessionInputRequest,
+	RuntimeTaskSessionInputResponse,
 	RuntimeTaskSessionStartRequest,
 	RuntimeTaskSessionStartResponse,
 	RuntimeTaskSessionStopRequest,
@@ -545,6 +547,18 @@ function validateRuntimeConfigSaveRequest(body: RuntimeConfigSaveRequest): Runti
 	if (body.shortcuts && !Array.isArray(body.shortcuts)) {
 		throw new Error("Invalid runtime shortcuts payload.");
 	}
+	if (body.commitLocalPromptTemplate !== undefined && typeof body.commitLocalPromptTemplate !== "string") {
+		throw new Error("Invalid runtime local commit prompt template payload.");
+	}
+	if (body.commitWorktreePromptTemplate !== undefined && typeof body.commitWorktreePromptTemplate !== "string") {
+		throw new Error("Invalid runtime worktree commit prompt template payload.");
+	}
+	if (body.openPrLocalPromptTemplate !== undefined && typeof body.openPrLocalPromptTemplate !== "string") {
+		throw new Error("Invalid runtime local PR prompt template payload.");
+	}
+	if (body.openPrWorktreePromptTemplate !== undefined && typeof body.openPrWorktreePromptTemplate !== "string") {
+		throw new Error("Invalid runtime worktree PR prompt template payload.");
+	}
 	for (const shortcut of body.shortcuts ?? []) {
 		if (
 			typeof shortcut.id !== "string" ||
@@ -588,6 +602,24 @@ function validateTaskSessionStopRequest(body: RuntimeTaskSessionStopRequest): Ru
 		throw new Error("Invalid task session stop payload.");
 	}
 	return body;
+}
+
+function validateTaskSessionInputRequest(body: RuntimeTaskSessionInputRequest): RuntimeTaskSessionInputRequest {
+	if (!body || typeof body !== "object" || typeof body.taskId !== "string" || typeof body.text !== "string") {
+		throw new Error("Invalid task session input payload.");
+	}
+	const taskId = body.taskId.trim();
+	if (!taskId) {
+		throw new Error("Task session taskId cannot be empty.");
+	}
+	if (typeof body.appendNewline !== "boolean" && body.appendNewline !== undefined) {
+		throw new Error("Invalid task session input payload.");
+	}
+	return {
+		taskId,
+		text: body.text,
+		appendNewline: body.appendNewline,
+	};
 }
 
 function validateShellSessionStartRequest(body: RuntimeShellSessionStartRequest): RuntimeShellSessionStartRequest {
@@ -1452,6 +1484,14 @@ async function startServer(
 					const nextRuntimeConfig = await saveRuntimeConfig(scope.workspacePath, {
 						selectedAgentId: body.selectedAgentId,
 						shortcuts: body.shortcuts ?? currentRuntimeConfig.shortcuts,
+						commitLocalPromptTemplate:
+							body.commitLocalPromptTemplate ?? currentRuntimeConfig.commitLocalPromptTemplate,
+						commitWorktreePromptTemplate:
+							body.commitWorktreePromptTemplate ?? currentRuntimeConfig.commitWorktreePromptTemplate,
+						openPrLocalPromptTemplate:
+							body.openPrLocalPromptTemplate ?? currentRuntimeConfig.openPrLocalPromptTemplate,
+						openPrWorktreePromptTemplate:
+							body.openPrWorktreePromptTemplate ?? currentRuntimeConfig.openPrWorktreePromptTemplate,
 					});
 					if (scope.workspaceId === getActiveWorkspaceId()) {
 						runtimeConfig = nextRuntimeConfig;
@@ -1543,6 +1583,39 @@ async function startServer(
 						summary: null,
 						error: message,
 					} satisfies RuntimeTaskSessionStopResponse);
+				}
+				return;
+			}
+
+			if (pathname === "/api/runtime/task-session/input" && req.method === "POST") {
+				const scope = getRequiredWorkspaceScope();
+				if (!scope) {
+					return;
+				}
+				try {
+					const body = validateTaskSessionInputRequest(await readJsonBody<RuntimeTaskSessionInputRequest>(req));
+					const terminalManager = await getScopedTerminalManager(scope);
+					const payloadText = body.appendNewline ? `${body.text}\n` : body.text;
+					const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
+					if (!summary) {
+						sendJson(res, 409, {
+							ok: false,
+							summary: null,
+							error: "Task session is not running.",
+						} satisfies RuntimeTaskSessionInputResponse);
+						return;
+					}
+					sendJson(res, 200, {
+						ok: true,
+						summary,
+					} satisfies RuntimeTaskSessionInputResponse);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					sendJson(res, 500, {
+						ok: false,
+						summary: null,
+						error: message,
+					} satisfies RuntimeTaskSessionInputResponse);
 				}
 				return;
 			}

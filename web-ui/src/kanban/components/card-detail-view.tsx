@@ -31,7 +31,13 @@ export function CardDetailView({
 	onEditTask,
 	onCommitTask,
 	onOpenPrTask,
+	onAgentCommitTask,
+	onAgentOpenPrTask,
 	onMoveReviewCardToTrash,
+	commitTaskLoadingById,
+	openPrTaskLoadingById,
+	agentCommitTaskLoadingById,
+	agentOpenPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
 	onMoveToTrash,
 	bottomTerminalOpen,
@@ -58,7 +64,13 @@ export function CardDetailView({
 	onEditTask?: (card: BoardCard) => void;
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
+	onAgentCommitTask?: (taskId: string) => void;
+	onAgentOpenPrTask?: (taskId: string) => void;
 	onMoveReviewCardToTrash?: (taskId: string) => void;
+	commitTaskLoadingById?: Record<string, boolean>;
+	openPrTaskLoadingById?: Record<string, boolean>;
+	agentCommitTaskLoadingById?: Record<string, boolean>;
+	agentOpenPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onMoveToTrash: () => void;
 	bottomTerminalOpen: boolean;
@@ -168,6 +180,8 @@ export function CardDetailView({
 				onCommitTask={onCommitTask}
 				onOpenPrTask={onOpenPrTask}
 				onMoveToTrashTask={onMoveReviewCardToTrash}
+				commitTaskLoadingById={commitTaskLoadingById}
+				openPrTaskLoadingById={openPrTaskLoadingById}
 				reviewWorkspaceSnapshots={reviewWorkspaceSnapshots}
 				/>
 				<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
@@ -178,8 +192,10 @@ export function CardDetailView({
 							workspaceId={currentProjectId}
 							summary={sessionSummary}
 							onSummary={onSessionSummary}
-							onCommit={onCommitTask ? () => onCommitTask(selection.card.id) : undefined}
-							onOpenPr={onOpenPrTask ? () => onOpenPrTask(selection.card.id) : undefined}
+							onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
+							onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
+							isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
+							isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
 							showSessionToolbar={false}
 							autoFocus
 							showReviewGitActions={showReviewGitActions}

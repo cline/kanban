@@ -82,6 +82,8 @@ export function AgentTerminalPanel({
 	onSummary,
 	onCommit,
 	onOpenPr,
+	isCommitLoading = false,
+	isOpenPrLoading = false,
 	onMoveToTrash,
 	showReviewGitActions,
 	showMoveToTrash,
@@ -102,6 +104,8 @@ export function AgentTerminalPanel({
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onCommit?: () => void;
 	onOpenPr?: () => void;
+	isCommitLoading?: boolean;
+	isOpenPrLoading?: boolean;
 	onMoveToTrash?: () => void;
 	showReviewGitActions?: boolean;
 	showMoveToTrash?: boolean;
@@ -392,6 +396,8 @@ export function AgentTerminalPanel({
 									variant="solid"
 									intent="primary"
 									style={{ flex: "1 1 0" }}
+									loading={isCommitLoading}
+									disabled={isCommitLoading || isOpenPrLoading}
 									onClick={onCommit}
 								/>
 								<Button
@@ -400,6 +406,8 @@ export function AgentTerminalPanel({
 									variant="solid"
 									intent="primary"
 									style={{ flex: "1 1 0" }}
+									loading={isOpenPrLoading}
+									disabled={isCommitLoading || isOpenPrLoading}
 									onClick={onOpenPr}
 								/>
 							</div>

@@ -29,6 +29,8 @@ function ColumnSection({
 	onCommitTask,
 	onOpenPrTask,
 	onMoveToTrashTask,
+	commitTaskLoadingById,
+	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
 }: {
 	column: BoardColumn;
@@ -46,6 +48,8 @@ function ColumnSection({
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
+	commitTaskLoadingById?: Record<string, boolean>;
+	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
@@ -133,10 +137,12 @@ function ColumnSection({
 												selected={card.id === selectedCardId}
 												onStart={onStartTask}
 												onMoveToTrash={onMoveToTrashTask}
-												reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
-												onCommit={onCommitTask}
-												onOpenPr={onOpenPrTask}
-												onClick={() => {
+											reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
+											onCommit={onCommitTask}
+											onOpenPr={onOpenPrTask}
+											isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
+											isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
+											onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);
 														return;
@@ -177,6 +183,8 @@ export function ColumnContextPanel({
 	onCommitTask,
 	onOpenPrTask,
 	onMoveToTrashTask,
+	commitTaskLoadingById,
+	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
 }: {
 	selection: CardSelection;
@@ -193,6 +201,8 @@ export function ColumnContextPanel({
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
+	commitTaskLoadingById?: Record<string, boolean>;
+	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 }): React.ReactElement {
 	return (
@@ -227,6 +237,8 @@ export function ColumnContextPanel({
 							onCommitTask={column.id === "review" ? onCommitTask : undefined}
 							onOpenPrTask={column.id === "review" ? onOpenPrTask : undefined}
 							onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
+							commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
+							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 							reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
 						/>
 					))}

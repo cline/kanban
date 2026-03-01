@@ -332,11 +332,23 @@ export interface RuntimeConfigResponse {
 	detectedCommands: string[];
 	agents: RuntimeAgentDefinition[];
 	shortcuts: RuntimeProjectShortcut[];
+	commitLocalPromptTemplate: string;
+	commitWorktreePromptTemplate: string;
+	openPrLocalPromptTemplate: string;
+	openPrWorktreePromptTemplate: string;
+	commitLocalPromptTemplateDefault: string;
+	commitWorktreePromptTemplateDefault: string;
+	openPrLocalPromptTemplateDefault: string;
+	openPrWorktreePromptTemplateDefault: string;
 }
 
 export interface RuntimeConfigSaveRequest {
 	selectedAgentId: RuntimeAgentId;
 	shortcuts?: RuntimeProjectShortcut[];
+	commitLocalPromptTemplate?: string;
+	commitWorktreePromptTemplate?: string;
+	openPrLocalPromptTemplate?: string;
+	openPrWorktreePromptTemplate?: string;
 }
 
 export interface RuntimeTaskSessionStartRequest {
@@ -359,6 +371,18 @@ export interface RuntimeTaskSessionStopRequest {
 }
 
 export interface RuntimeTaskSessionStopResponse {
+	ok: boolean;
+	summary: RuntimeTaskSessionSummary | null;
+	error?: string;
+}
+
+export interface RuntimeTaskSessionInputRequest {
+	taskId: string;
+	text: string;
+	appendNewline?: boolean;
+}
+
+export interface RuntimeTaskSessionInputResponse {
 	ok: boolean;
 	summary: RuntimeTaskSessionSummary | null;
 	error?: string;

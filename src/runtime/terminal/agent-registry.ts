@@ -209,5 +209,13 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		detectedCommands,
 		agents,
 		shortcuts: runtimeConfig.shortcuts,
+		commitLocalPromptTemplate: runtimeConfig.commitLocalPromptTemplate,
+		commitWorktreePromptTemplate: runtimeConfig.commitWorktreePromptTemplate,
+		openPrLocalPromptTemplate: runtimeConfig.openPrLocalPromptTemplate,
+		openPrWorktreePromptTemplate: runtimeConfig.openPrWorktreePromptTemplate,
+		commitLocalPromptTemplateDefault: runtimeConfig.commitLocalPromptTemplateDefault,
+		commitWorktreePromptTemplateDefault: runtimeConfig.commitWorktreePromptTemplateDefault,
+		openPrLocalPromptTemplateDefault: runtimeConfig.openPrLocalPromptTemplateDefault,
+		openPrWorktreePromptTemplateDefault: runtimeConfig.openPrWorktreePromptTemplateDefault,
 	};
 }

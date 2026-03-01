@@ -21,6 +21,10 @@ export async function saveRuntimeConfig(
 	nextConfig: {
 		selectedAgentId: RuntimeAgentId;
 		shortcuts?: RuntimeProjectShortcut[];
+		commitLocalPromptTemplate?: string;
+		commitWorktreePromptTemplate?: string;
+		openPrLocalPromptTemplate?: string;
+		openPrWorktreePromptTemplate?: string;
 	},
 ): Promise<RuntimeConfigResponse> {
 	const response = await workspaceFetch("/api/runtime/config", {

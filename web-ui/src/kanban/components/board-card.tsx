@@ -24,6 +24,8 @@ export function BoardCard({
 	reviewWorkspaceSnapshot,
 	onCommit,
 	onOpenPr,
+	isCommitLoading = false,
+	isOpenPrLoading = false,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -36,6 +38,8 @@ export function BoardCard({
 	reviewWorkspaceSnapshot?: ReviewTaskWorkspaceSnapshot;
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
+	isCommitLoading?: boolean;
+	isOpenPrLoading?: boolean;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const showPreview = columnId === "in_progress" || columnId === "review";
@@ -72,6 +76,7 @@ export function BoardCard({
 		columnId === "review" &&
 		Boolean(reviewWorkspaceSnapshot?.hasGit) &&
 		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
+	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={isTrashCard}>
@@ -213,6 +218,8 @@ export function BoardCard({
 										variant="solid"
 										intent="primary"
 										style={{ flex: "1 1 0" }}
+										loading={isCommitLoading}
+										disabled={isAnyGitActionLoading}
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
@@ -225,6 +232,8 @@ export function BoardCard({
 										variant="solid"
 										intent="primary"
 										style={{ flex: "1 1 0" }}
+										loading={isOpenPrLoading}
+										disabled={isAnyGitActionLoading}
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
