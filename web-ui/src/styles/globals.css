@@ -46,6 +46,14 @@ body,
 	z-index: 2;
 }
 
+.kb-board-card-shell .bp6-card.bp6-interactive.bp6-selected:active {
+	box-shadow: 0 0 0 3px rgba(76, 144, 240, 0.2), 0 0 0 1px #4c90f0;
+}
+
+.bp6-dark .kb-board-card-shell .bp6-card.bp6-interactive.bp6-selected:active {
+	box-shadow: 0 0 0 3px rgba(138, 187, 255, 0.4), 0 0 0 1px #8abbff;
+}
+
 .kb-empty-state-center {
 	display: flex;
 	height: 100%;
