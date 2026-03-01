@@ -659,6 +659,30 @@ async function persistInterruptedSessions(
 	});
 }
 
+function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
+	if (summary.state === "running") {
+		return true;
+	}
+	if (summary.state !== "awaiting_review") {
+		return false;
+	}
+	return summary.reviewReason === "hook" || summary.reviewReason === "attention";
+}
+
+function collectShutdownInterruptedTaskIds(
+	interruptedSummaries: RuntimeTaskSessionSummary[],
+	terminalManager: TerminalSessionManager,
+): string[] {
+	const taskIds = new Set(interruptedSummaries.map((summary) => summary.taskId));
+	for (const summary of terminalManager.listSummaries()) {
+		if (!shouldInterruptSessionOnShutdown(summary)) {
+			continue;
+		}
+		taskIds.add(summary.taskId);
+	}
+	return Array.from(taskIds);
+}
+
 async function startServer(
 	port: number,
 ): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
@@ -2122,7 +2146,7 @@ async function startServer(
 	const shutdown = async () => {
 		for (const [workspaceId, terminalManager] of terminalManagersByWorkspaceId.entries()) {
 			const interrupted = terminalManager.markInterruptedAndStopAll();
-			const interruptedTaskIds = interrupted.map((summary) => summary.taskId);
+			const interruptedTaskIds = collectShutdownInterruptedTaskIds(interrupted, terminalManager);
 			const workspacePath = workspacePathsById.get(workspaceId);
 			if (!workspacePath) {
 				continue;

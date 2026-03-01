@@ -61,6 +61,33 @@ function createBoard(title: string): RuntimeBoardData {
 	};
 }
 
+function createReviewBoard(taskId: string, title: string): RuntimeBoardData {
+	const now = Date.now();
+	return {
+		columns: [
+			{ id: "backlog", title: "Backlog", cards: [] },
+			{ id: "in_progress", title: "In Progress", cards: [] },
+			{
+				id: "review",
+				title: "Review",
+				cards: [
+					{
+						id: taskId,
+						title,
+						description: "",
+						prompt: title,
+						startInPlanMode: false,
+						baseRef: null,
+						createdAt: now,
+						updatedAt: now,
+					},
+				],
+			},
+			{ id: "trash", title: "Trash", cards: [] },
+		],
+	};
+}
+
 async function getAvailablePort(): Promise<number> {
 	const server = createServer();
 	await new Promise<void>((resolveListen, rejectListen) => {
@@ -485,6 +512,120 @@ describe.sequential("runtime state stream integration", () => {
 			cleanupHome();
 		}
 	}, 30_000);
+
+	it("moves stale hook-review cards to trash on shutdown after hydration", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-stale-review-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanbanana-project-stale-review-");
+
+		mkdirSync(projectPath, { recursive: true });
+
+		const taskId = "stale-review-task";
+		const taskTitle = "Stale Review Task";
+		const now = Date.now();
+
+		const firstPort = await getAvailablePort();
+		const firstServer = await startKanbananaServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: firstPort,
+		});
+
+		try {
+			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const currentState = await requestJson<RuntimeWorkspaceStateResponse>({
+				url: `http://127.0.0.1:${firstPort}/api/workspace/state`,
+				method: "GET",
+				workspaceId,
+			});
+			expect(currentState.status).toBe(200);
+
+			const seedResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+				url: `http://127.0.0.1:${firstPort}/api/workspace/state`,
+				method: "PUT",
+				workspaceId,
+				body: {
+					board: createReviewBoard(taskId, taskTitle),
+					sessions: {
+						[taskId]: {
+							taskId,
+							state: "awaiting_review",
+							agentId: "codex",
+							workspacePath: projectPath,
+							pid: null,
+							startedAt: now - 2_000,
+							updatedAt: now,
+							lastOutputAt: now,
+							lastActivityLine: "Ready for review",
+							reviewReason: "hook",
+							exitCode: null,
+						},
+					},
+					expectedRevision: currentState.payload.revision,
+				},
+			});
+			expect(seedResponse.status).toBe(200);
+		} finally {
+			await firstServer.stop();
+		}
+
+		const secondPort = await getAvailablePort();
+		const secondServer = await startKanbananaServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: secondPort,
+		});
+
+		try {
+			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const hydratedState = await requestJson<RuntimeWorkspaceStateResponse>({
+				url: `http://127.0.0.1:${secondPort}/api/workspace/state`,
+				method: "GET",
+				workspaceId,
+			});
+			expect(hydratedState.status).toBe(200);
+			expect(hydratedState.payload.sessions[taskId]?.state).toBe("awaiting_review");
+			expect(hydratedState.payload.sessions[taskId]?.reviewReason).toBe("hook");
+		} finally {
+			await secondServer.stop();
+		}
+
+		const thirdPort = await getAvailablePort();
+		const thirdServer = await startKanbananaServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: thirdPort,
+		});
+
+		try {
+			const thirdRuntimeUrl = new URL(thirdServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(thirdRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
+				url: `http://127.0.0.1:${thirdPort}/api/workspace/state`,
+				method: "GET",
+				workspaceId,
+			});
+			expect(finalState.status).toBe(200);
+
+			const reviewCards = finalState.payload.board.columns.find((column) => column.id === "review")?.cards ?? [];
+			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
+			expect(reviewCards.some((card) => card.id === taskId)).toBe(false);
+			expect(trashCards.some((card) => card.id === taskId)).toBe(true);
+			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
+			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
+		} finally {
+			await thirdServer.stop();
+			cleanupProject();
+			cleanupHome();
+		}
+	}, 45_000);
 
 	it("falls back to remaining project when removing the active project", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-remove-");
