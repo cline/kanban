@@ -265,6 +265,7 @@ body,
 	margin: 0;
 	font-size: var(--bp-typography-size-code-small);
 	line-height: 1.35;
+	white-space: pre-line;
 }
 
 /* -- Terminal viewport (hide gutter while keeping wheel scroll) -- */

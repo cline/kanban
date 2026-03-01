@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { extractLastActivityLine } from "../../../src/runtime/terminal/output-utils.js";
+import { createActivityPreviewTracker } from "../../../src/runtime/terminal/activity-preview.js";
 
-describe("extractLastActivityLine", () => {
+function extractPreviewFromBuffer(
+	buffer: string,
+	agentId: "codex" | "claude" | "gemini" | "opencode" | "cline" | null,
+): string | null {
+	const tracker = createActivityPreviewTracker(120, 40);
+	tracker.append(buffer);
+	return tracker.extract(agentId);
+}
+
+describe("activity preview tracker", () => {
 	it("ignores codex input composer rows", () => {
 		const buffer = [
 			"https://",
@@ -12,7 +21,7 @@ describe("extractLastActivityLine", () => {
 			"› nope i think i have a great idae",
 			"  so all these CLIs have",
 		].join("\n");
-		const preview = extractLastActivityLine(buffer, "codex", 120, 40);
+		const preview = extractPreviewFromBuffer(buffer, "codex");
 		expect(preview).toContain("codex/cli");
 		expect(preview).not.toContain("nope i think");
 	});
@@ -25,7 +34,7 @@ describe("extractLastActivityLine", () => {
 			"❯",
 			"────────────────────────────────",
 		].join("\n");
-		const preview = extractLastActivityLine(buffer, "claude", 120, 40);
+		const preview = extractPreviewFromBuffer(buffer, "claude");
 		expect(preview).toContain("hi! what can I help you with?");
 		expect(preview).not.toContain("❯");
 	});
@@ -40,7 +49,7 @@ describe("extractLastActivityLine", () => {
 			"────────────────────────────────",
 			" >   Type your message or",
 		].join("\n");
-		const preview = extractLastActivityLine(buffer, "gemini", 120, 40);
+		const preview = extractPreviewFromBuffer(buffer, "gemini");
 		expect(preview).toContain("Directive or Inquiry");
 		expect(preview).not.toContain("Type your message");
 	});
@@ -52,7 +61,7 @@ describe("extractLastActivityLine", () => {
 			'┃  Ask anything... "Fix broken tests"',
 			"ctrl+t variants  tab agents  ctrl+p commands",
 		].join("\n");
-		const preview = extractLastActivityLine(buffer, "opencode", 120, 40);
+		const preview = extractPreviewFromBuffer(buffer, "opencode");
 		expect(preview).toContain("Ran tests and fixed");
 		expect(preview).not.toContain("Ask anything");
 	});
@@ -64,8 +73,36 @@ describe("extractLastActivityLine", () => {
 			"What can I do for you?",
 			"/ for commands · @ for files",
 		].join("\n");
-		const preview = extractLastActivityLine(buffer, "cline", 120, 40);
+		const preview = extractPreviewFromBuffer(buffer, "cline");
 		expect(preview).toContain("runtime hook ingest endpoint");
 		expect(preview).not.toContain("What can I do for you");
+	});
+
+	it("strips empty lines and preserves multiple activity lines", () => {
+		const buffer = [
+			"first meaningful line",
+			"",
+			"  ",
+			"second meaningful line",
+			"",
+			"\t",
+			"third meaningful line",
+		].join("\n");
+		const preview = extractPreviewFromBuffer(buffer, null);
+		expect(preview).toBe("first meaningful line\nsecond meaningful line\nthird meaningful line");
+	});
+
+	it("limits preview to the most recent five non-empty lines", () => {
+		const buffer = ["line 1", "line 2", "line 3", "line 4", "line 5", "line 6"].join("\n");
+		const preview = extractPreviewFromBuffer(buffer, null);
+		expect(preview).toBe("line 2\nline 3\nline 4\nline 5\nline 6");
+	});
+
+	it("uses the latest appended screen state", () => {
+		const tracker = createActivityPreviewTracker(120, 40);
+		tracker.append("first line\nsecond line");
+		expect(tracker.extract(null)).toBe("first line\nsecond line");
+		tracker.append("\u001b[2J\u001b[Hfresh line");
+		expect(tracker.extract(null)).toBe("fresh line");
 	});
 });
