@@ -242,9 +242,6 @@ export class TerminalSessionManager {
 		for (const chunk of entry.active?.outputHistory ?? []) {
 			listener.onOutput?.(chunk);
 		}
-		if (!entry.active && entry.summary.exitCode !== null) {
-			listener.onExit?.(entry.summary.exitCode);
-		}
 
 		const listenerId = entry.listenerIdCounter;
 		entry.listenerIdCounter += 1;
