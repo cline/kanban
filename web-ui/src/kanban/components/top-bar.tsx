@@ -12,10 +12,21 @@ import {
 	Tooltip,
 } from "@blueprintjs/core";
 
+import { GitStatusLabel } from "@/kanban/components/git-status-label";
 import { OpenWorkspaceButton } from "@/kanban/components/open-workspace-button";
 import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 import type { OpenTargetId, OpenTargetOption } from "@/kanban/utils/open-targets";
 import { formatPathForDisplay } from "@/kanban/utils/path-display";
+
+export interface TopBarTaskGitSummary {
+	hasGit: boolean;
+	branch: string | null;
+	headCommit: string | null;
+	changedFiles: number | null;
+	additions: number | null;
+	deletions: number | null;
+	scopeLabel?: string | null;
+}
 
 function getWorkspacePathSegments(path: string): string[] {
 	return path.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
@@ -29,6 +40,7 @@ export function TopBar({
 	repoHint,
 	runtimeHint,
 	gitSummary,
+	taskGitSummary,
 	runningGitAction,
 	onGitFetch,
 	onGitPull,
@@ -54,6 +66,7 @@ export function TopBar({
 	repoHint?: string;
 	runtimeHint?: string;
 	gitSummary?: RuntimeGitSyncSummary | null;
+	taskGitSummary?: TopBarTaskGitSummary | null;
 	runningGitAction?: RuntimeGitSyncAction | null;
 	onGitFetch?: () => void;
 	onGitPull?: () => void;
@@ -75,12 +88,13 @@ export function TopBar({
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
 	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
-	const hasGitSummary = Boolean(gitSummary?.hasGit);
+	const hasHomeGitSummary = Boolean(gitSummary?.hasGit);
 	const branchLabel = gitSummary?.currentBranch ?? "detached HEAD";
-	const changedFileCount = gitSummary?.changedFiles ?? 0;
-	const fileLabel = changedFileCount === 1 ? "file" : "files";
 	const pullCount = gitSummary?.behindCount ?? 0;
 	const pushCount = gitSummary?.aheadCount ?? 0;
+	const hasTaskGitSummary = Boolean(taskGitSummary?.hasGit);
+	const taskBranchLabel = taskGitSummary?.branch ?? taskGitSummary?.headCommit?.slice(0, 8) ?? "detached HEAD";
+	const taskScopeLabel = taskGitSummary?.scopeLabel?.trim();
 	const pullTooltip = pullCount > 0
 		? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
 		: "Pull from upstream. Branch is already up to date.";
@@ -160,24 +174,15 @@ export function TopBar({
 				{runtimeHint ? (
 					<Tag minimal intent="warning" className="kb-navbar-tag">{runtimeHint}</Tag>
 				) : null}
-				{hasGitSummary ? (
+				{hasHomeGitSummary ? (
 					<>
 						<NavbarDivider />
-						<span
-							className={Classes.MONOSPACE_TEXT}
-							style={{ fontSize: "var(--bp-typography-size-body-small)", color: Colors.GRAY4, marginRight: 4 }}
-						>
-							<Icon icon="git-branch" size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
-							<span style={{ color: Colors.LIGHT_GRAY5 }}>{branchLabel}</span>
-							{changedFileCount > 0 ? (
-								<span style={{ marginLeft: 6 }}>
-									<span style={{ color: Colors.GRAY3 }}>({changedFileCount} {fileLabel}</span>
-									<span style={{ color: Colors.GREEN4 }}> +{gitSummary?.additions ?? 0}</span>
-									<span style={{ color: Colors.RED4 }}> -{gitSummary?.deletions ?? 0}</span>
-									<span style={{ color: Colors.GRAY3 }}>)</span>
-								</span>
-							) : null}
-						</span>
+						<GitStatusLabel
+							branchLabel={branchLabel}
+							changedFiles={gitSummary?.changedFiles ?? 0}
+							additions={gitSummary?.additions ?? 0}
+							deletions={gitSummary?.deletions ?? 0}
+						/>
 						<ButtonGroup>
 							<Tooltip placement="bottom" content="Fetch latest refs from upstream without changing your local branch or files.">
 								<Button
@@ -209,6 +214,28 @@ export function TopBar({
 								/>
 							</Tooltip>
 						</ButtonGroup>
+					</>
+				) : hasTaskGitSummary ? (
+					<>
+						<NavbarDivider />
+						{taskScopeLabel ? (
+							<span
+								style={{
+									fontSize: "var(--bp-typography-size-body-small)",
+									fontWeight: 600,
+									color: Colors.LIGHT_GRAY5,
+									marginRight: 6,
+								}}
+							>
+								{taskScopeLabel}:
+							</span>
+						) : null}
+						<GitStatusLabel
+							branchLabel={taskBranchLabel}
+							changedFiles={taskGitSummary?.changedFiles ?? null}
+							additions={taskGitSummary?.additions ?? null}
+							deletions={taskGitSummary?.deletions ?? null}
+						/>
 					</>
 				) : null}
 			</NavbarGroup>

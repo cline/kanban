@@ -29,7 +29,7 @@ import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners
 import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
 import { TaskInlineCreateCard, type TaskWorkspaceMode } from "@/kanban/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
-import { TopBar } from "@/kanban/components/top-bar";
+import { TopBar, type TopBarTaskGitSummary } from "@/kanban/components/top-bar";
 import { createInitialBoardData } from "@/kanban/data/board-data";
 import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
 import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
@@ -805,7 +805,13 @@ export default function App(): ReactElement {
 		return () => {
 			cancelled = true;
 		};
-	}, [fetchTaskWorkspaceInfo, selectedCard?.card.baseRef, selectedCard?.card.id]);
+	}, [
+		fetchTaskWorkspaceInfo,
+		selectedCard?.card.baseRef,
+		selectedCard?.card.id,
+		selectedCard ? sessions[selectedCard.card.id]?.updatedAt ?? 0 : 0,
+		workspaceStatusRetrievedAt,
+	]);
 
 	const createTaskBranchOptions = useMemo(() => {
 		if (!workspaceGit?.hasGit) {
@@ -2024,30 +2030,41 @@ export default function App(): ReactElement {
 			if (!selectedTaskWorkspaceInfo.hasGit) {
 				return "Local workspace (no git)";
 			}
-			if (selectedTaskWorkspaceInfo.isDetached) {
-				return `Local detached HEAD (${selectedTaskWorkspaceInfo.headCommit?.slice(0, 8) ?? "unknown"})`;
-			}
-			if (selectedTaskWorkspaceInfo.branch) {
-				return `Local branch: ${selectedTaskWorkspaceInfo.branch}`;
-			}
-			return "Local workspace";
+			return undefined;
 		}
 		if (selectedTaskWorkspaceInfo.deleted) {
 			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
 		}
-		if (selectedTaskWorkspaceInfo.isDetached) {
-			return `Worktree detached HEAD (${selectedTaskWorkspaceInfo.headCommit?.slice(0, 8) ?? "unknown"})`;
+		if (!selectedTaskWorkspaceInfo.hasGit) {
+			return "Worktree (no git)";
 		}
-		if (selectedTaskWorkspaceInfo.branch) {
-			return `Worktree branch: ${selectedTaskWorkspaceInfo.branch}`;
-		}
-		return `Worktree base: ${selectedTaskWorkspaceInfo.baseRef ?? "unknown"}`;
+		return undefined;
 	}, [selectedCard, selectedTaskWorkspaceInfo]);
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
 	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
 	const navbarRepoHint = hasNoProjects ? undefined : repoHint;
 	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
 	const navbarGitSummary = hasNoProjects || selectedCard ? null : gitSummary;
+	const navbarTaskGitSummary = useMemo((): TopBarTaskGitSummary | null => {
+		if (hasNoProjects || !selectedCard) {
+			return null;
+		}
+		const snapshot = workspaceSnapshots[selectedCard.card.id];
+		const hasTaskGit = Boolean(selectedTaskWorkspaceInfo?.hasGit || snapshot?.hasGit);
+		if (!hasTaskGit) {
+			return null;
+		}
+		const mode = selectedTaskWorkspaceInfo?.mode ?? snapshot?.mode;
+		return {
+			hasGit: true,
+			branch: selectedTaskWorkspaceInfo?.branch ?? snapshot?.branch ?? null,
+			headCommit: selectedTaskWorkspaceInfo?.headCommit ?? snapshot?.headCommit ?? null,
+			changedFiles: snapshot?.changedFiles ?? 0,
+			additions: snapshot?.additions ?? 0,
+			deletions: snapshot?.deletions ?? 0,
+			scopeLabel: mode === "local" ? "Local" : mode === "worktree" ? "Worktree" : null,
+		};
+	}, [hasNoProjects, selectedCard, selectedTaskWorkspaceInfo, workspaceSnapshots]);
 	const trashWarningGuidance = useMemo(() => {
 		if (!pendingTrashWarning) {
 			return [] as string[];
@@ -2178,6 +2195,7 @@ export default function App(): ReactElement {
 					repoHint={navbarRepoHint}
 					runtimeHint={navbarRuntimeHint}
 					gitSummary={navbarGitSummary}
+					taskGitSummary={navbarTaskGitSummary}
 					runningGitAction={selectedCard || hasNoProjects ? null : runningGitAction}
 					onGitFetch={
 						selectedCard
