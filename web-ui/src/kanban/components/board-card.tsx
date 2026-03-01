@@ -10,6 +10,7 @@ import type {
 	BoardColumnId,
 	ReviewTaskWorkspaceSnapshot,
 } from "@/kanban/types";
+import { formatPathForDisplay } from "@/kanban/utils/path-display";
 
 export function BoardCard({
 	card,
@@ -54,12 +55,10 @@ export function BoardCard({
 	};
 	const statusMarker = renderStatusMarker();
 	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review";
-	const reviewBranchLabel = !reviewWorkspaceSnapshot?.hasGit
+	const reviewWorkspacePath = reviewWorkspaceSnapshot ? formatPathForDisplay(reviewWorkspaceSnapshot.path) : null;
+	const reviewRefLabel = !reviewWorkspaceSnapshot?.hasGit
 		? "no git"
-		: reviewWorkspaceSnapshot.isDetached
-			? `detached ${reviewWorkspaceSnapshot.headCommit?.slice(0, 8) ?? "HEAD"}`
-			: (reviewWorkspaceSnapshot.branch ?? "detached HEAD");
-	const showWorktreeLabel = reviewWorkspaceSnapshot?.mode === "worktree";
+		: reviewWorkspaceSnapshot.branch ?? reviewWorkspaceSnapshot.headCommit?.slice(0, 8) ?? "HEAD";
 	const reviewChangeSummary = reviewWorkspaceSnapshot
 		? reviewWorkspaceSnapshot.changedFiles == null
 			? null
@@ -189,16 +188,12 @@ export function BoardCard({
 											whiteSpace: "normal",
 											overflowWrap: "anywhere",
 										}}
-									>
-										<>
-											{showWorktreeLabel ? (
-												<>
-													<span style={{ color: Colors.GRAY3 }}>(worktree)</span>
-													<span style={{ color: Colors.GRAY3 }}> </span>
-												</>
-											) : null}
-											<span style={{ color: Colors.LIGHT_GRAY5 }}>{reviewBranchLabel}</span>
-											{reviewChangeSummary ? (
+										>
+											<>
+												<span style={{ color: Colors.GRAY4 }}>{reviewWorkspacePath}</span>
+												<Icon icon="git-branch" size={10} color={Colors.GRAY4} style={{ margin: "0px 4px 2px" }} />
+												<span style={{ color: Colors.GRAY4 }}>{reviewRefLabel}</span>
+												{reviewChangeSummary ? (
 												<>
 													<span style={{ color: Colors.GRAY3 }}> (</span>
 													<span style={{ color: Colors.GRAY3 }}>{reviewChangeSummary.filesLabel}</span>
