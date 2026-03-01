@@ -74,6 +74,11 @@ export function CardDetailView({
 		selection.card.baseRef ?? null,
 	);
 	const runtimeFiles = workspaceChanges?.files ?? null;
+	const selectedReviewWorkspaceSnapshot = reviewWorkspaceSnapshots?.[selection.card.id];
+	const showReviewGitActions =
+		selection.column.id === "review" &&
+		Boolean(selectedReviewWorkspaceSnapshot?.hasGit) &&
+		(selectedReviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];
@@ -173,8 +178,11 @@ export function CardDetailView({
 							workspaceId={currentProjectId}
 							summary={sessionSummary}
 							onSummary={onSessionSummary}
+							onCommit={onCommitTask ? () => onCommitTask(selection.card.id) : undefined}
+							onOpenPr={onOpenPrTask ? () => onOpenPrTask(selection.card.id) : undefined}
 							showSessionToolbar={false}
 							autoFocus
+							showReviewGitActions={showReviewGitActions}
 							showMoveToTrash={selection.column.id === "review"}
 							onMoveToTrash={onMoveToTrash}
 						/>

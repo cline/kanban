@@ -80,7 +80,10 @@ export function AgentTerminalPanel({
 	workspaceId,
 	summary,
 	onSummary,
+	onCommit,
+	onOpenPr,
 	onMoveToTrash,
+	showReviewGitActions,
 	showMoveToTrash,
 	showSessionToolbar = true,
 	onClose,
@@ -97,7 +100,10 @@ export function AgentTerminalPanel({
 	workspaceId: string | null;
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+	onCommit?: () => void;
+	onOpenPr?: () => void;
 	onMoveToTrash?: () => void;
+	showReviewGitActions?: boolean;
 	showMoveToTrash?: boolean;
 	showSessionToolbar?: boolean;
 	onClose?: () => void;
@@ -377,7 +383,27 @@ export function AgentTerminalPanel({
 			) : null}
 			{showMoveToTrash && onMoveToTrash ? (
 				<>
-					<div style={{ padding: "8px 12px" }}>
+					<div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 12px" }}>
+						{showReviewGitActions ? (
+							<div style={{ display: "flex", gap: 6 }}>
+								<Button
+									text="Commit"
+									size="small"
+									variant="solid"
+									intent="primary"
+									style={{ flex: "1 1 0" }}
+									onClick={onCommit}
+								/>
+								<Button
+									text="Open PR"
+									size="small"
+									variant="solid"
+									intent="primary"
+									style={{ flex: "1 1 0" }}
+									onClick={onOpenPr}
+								/>
+							</div>
+						) : null}
 						<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
 					</div>
 				</>
