@@ -33,6 +33,7 @@ import type {
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
 	RuntimeStateStreamWorkspaceRetrieveStatusMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
@@ -1230,6 +1231,8 @@ async function startServer(
 					const nextRuntimeConfig = await saveRuntimeConfig(scope.workspacePath, {
 						selectedAgentId: body.selectedAgentId,
 						shortcuts: body.shortcuts ?? currentRuntimeConfig.shortcuts,
+						readyForReviewNotificationsEnabled:
+							body.readyForReviewNotificationsEnabled ?? currentRuntimeConfig.readyForReviewNotificationsEnabled,
 						commitLocalPromptTemplate:
 							body.commitLocalPromptTemplate ?? currentRuntimeConfig.commitLocalPromptTemplate,
 						commitWorktreePromptTemplate:
@@ -1476,6 +1479,20 @@ async function startServer(
 					const matchedWorkspacePath = workspacePathsById.get(matchedWorkspaceId);
 					if (matchedWorkspacePath) {
 						void broadcastRuntimeWorkspaceStateUpdated(matchedWorkspaceId, matchedWorkspacePath);
+					}
+					if (event === "review") {
+						const runtimeClients = runtimeStateClientsByWorkspaceId.get(matchedWorkspaceId);
+						if (runtimeClients && runtimeClients.size > 0) {
+							const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
+								type: "task_ready_for_review",
+								workspaceId: matchedWorkspaceId,
+								taskId,
+								triggeredAt: Date.now(),
+							};
+							for (const client of runtimeClients) {
+								sendRuntimeStateMessage(client, payload);
+							}
+						}
 					}
 
 					sendJson(res, 200, { ok: true } satisfies RuntimeHookIngestResponse);

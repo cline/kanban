@@ -10,12 +10,15 @@ import { WebSocket } from "ws";
 
 import type {
 	RuntimeBoardData,
+	RuntimeHookIngestResponse,
 	RuntimeProjectAddResponse,
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectsResponse,
+	RuntimeShellSessionStartResponse,
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeWorkspaceStateResponse,
 } from "../../src/runtime/api-contract.js";
@@ -404,6 +407,81 @@ describe.sequential("runtime state stream integration", () => {
 			}
 			await server.stop();
 			cleanupRoot();
+			cleanupHome();
+		}
+	}, 30_000);
+
+	it("emits task_ready_for_review when hook review event is ingested", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-hook-stream-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanbanana-project-hook-stream-");
+
+		mkdirSync(projectPath, { recursive: true });
+
+		const port = await getAvailablePort();
+		const server = await startKanbananaServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port,
+		});
+
+		let stream: RuntimeStreamClient | null = null;
+
+		try {
+			const runtimeUrl = new URL(server.runtimeUrl);
+			const workspaceId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			stream = await connectRuntimeStream(
+				`ws://127.0.0.1:${port}/api/runtime/ws?workspaceId=${encodeURIComponent(workspaceId)}`,
+			);
+			await stream.waitForMessage(
+				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
+			);
+
+			const taskId = "hook-review-task";
+			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
+				url: `http://127.0.0.1:${port}/api/runtime/shell-session/start`,
+				method: "POST",
+				workspaceId,
+				body: {
+					taskId,
+				},
+			});
+			expect(startShellResponse.status).toBe(200);
+			expect(startShellResponse.payload.ok).toBe(true);
+
+			const hookResponse = await requestJson<RuntimeHookIngestResponse>({
+				url: `http://127.0.0.1:${port}/api/hooks/ingest`,
+				method: "POST",
+				body: {
+					taskId,
+					event: "review",
+				},
+			});
+			expect(hookResponse.status).toBe(200);
+			expect(hookResponse.payload.ok).toBe(true);
+
+			const readyMessage = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamTaskReadyForReviewMessage =>
+					message.type === "task_ready_for_review" &&
+					message.workspaceId === workspaceId &&
+					message.taskId === taskId,
+			)) as RuntimeStateStreamTaskReadyForReviewMessage;
+			expect(readyMessage.type).toBe("task_ready_for_review");
+			expect(readyMessage.triggeredAt).toBeGreaterThan(0);
+
+			await requestJson({
+				url: `http://127.0.0.1:${port}/api/runtime/task-session/stop`,
+				method: "POST",
+				workspaceId,
+				body: { taskId },
+			});
+		} finally {
+			if (stream) {
+				await stream.close();
+			}
+			await server.stop();
+			cleanupProject();
 			cleanupHome();
 		}
 	}, 30_000);

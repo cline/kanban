@@ -21,6 +21,7 @@ export async function saveRuntimeConfig(
 	nextConfig: {
 		selectedAgentId: RuntimeAgentId;
 		shortcuts?: RuntimeProjectShortcut[];
+		readyForReviewNotificationsEnabled?: boolean;
 		commitLocalPromptTemplate?: string;
 		commitWorktreePromptTemplate?: string;
 		openPrLocalPromptTemplate?: string;

@@ -10,6 +10,7 @@ export interface UseRuntimeConfigResult {
 	save: (nextConfig: {
 		selectedAgentId: RuntimeAgentId;
 		shortcuts?: RuntimeProjectShortcut[];
+		readyForReviewNotificationsEnabled?: boolean;
 		commitLocalPromptTemplate?: string;
 		commitWorktreePromptTemplate?: string;
 		openPrLocalPromptTemplate?: string;
@@ -52,6 +53,7 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 		async (nextConfig: {
 			selectedAgentId: RuntimeAgentId;
 			shortcuts?: RuntimeProjectShortcut[];
+			readyForReviewNotificationsEnabled?: boolean;
 			commitLocalPromptTemplate?: string;
 			commitWorktreePromptTemplate?: string;
 			openPrLocalPromptTemplate?: string;

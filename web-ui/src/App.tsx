@@ -47,6 +47,11 @@ import {
 	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
 	splitPromptToTitleDescription,
 } from "@/kanban/utils/task-prompt";
+import {
+	getBrowserNotificationPermission,
+	hasPromptedForBrowserNotificationPermission,
+	requestBrowserNotificationPermission,
+} from "@/kanban/utils/notification-permission";
 import type {
 	RuntimeProjectAddResponse,
 	RuntimeGitCheckoutResponse,
@@ -101,6 +106,30 @@ const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was r
 const HOME_TERMINAL_TASK_ID = "__home_terminal__";
 const HOME_TERMINAL_ROWS = 16;
 const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
+
+function canShowBrowserNotifications(): boolean {
+	return getBrowserNotificationPermission() === "granted";
+}
+
+function showReadyForReviewNotification(taskId: string, taskTitle: string): void {
+	if (!canShowBrowserNotifications()) {
+		return;
+	}
+	try {
+		const notification = new Notification("🍌 Task ready for review", {
+			body: taskTitle,
+			tag: `task-ready-for-review-${taskId}`,
+		});
+		notification.onclick = () => {
+			if (typeof window !== "undefined") {
+				window.focus();
+			}
+			notification.close();
+		};
+	} catch {
+		// Ignore browser notification failures.
+	}
+}
 
 function getDetailTerminalTaskId(card: BoardCard): string {
 	if (!card.baseRef) {
@@ -161,6 +190,8 @@ export default function App(): ReactElement {
 	const detailTerminalSelectionKeyRef = useRef<string | null>(null);
 	const workspaceRefreshRequestIdRef = useRef(0);
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
+	const notificationPermissionPromptInFlightRef = useRef(false);
+	const handledReadyForReviewEventKeysRef = useRef<Set<string>>(new Set());
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
 		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
@@ -220,6 +251,7 @@ export default function App(): ReactElement {
 		return parseProjectIdFromPathname(window.location.pathname);
 	});
 	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
+	const [pendingReviewReadyNotificationCount, setPendingReviewReadyNotificationCount] = useState(0);
 	const [isDocumentVisible, setIsDocumentVisible] = useState<boolean>(() => {
 		if (typeof document === "undefined") {
 			return true;
@@ -231,6 +263,7 @@ export default function App(): ReactElement {
 		projects,
 		workspaceState: streamedWorkspaceState,
 		workspaceStatusRetrievedAt,
+		latestTaskReadyForReview,
 		streamError,
 		hasReceivedSnapshot,
 	} = useRuntimeStateStream(requestedProjectId);
@@ -263,6 +296,8 @@ export default function App(): ReactElement {
 		currentProjectId,
 		runtimeProjectConfigRefreshNonce,
 	);
+	const readyForReviewNotificationsEnabled =
+		runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
 	// Project list counts are server-driven and can lag behind local board edits by a short
 	// persistence/broadcast round-trip, so we optimistically overlay the active project's counts.
 	const displayedProjects = useMemo(() => {
@@ -863,39 +898,39 @@ export default function App(): ReactElement {
 	useEffect(() => {
 		setBoard((currentBoard) => {
 			let nextBoard = currentBoard;
-				const previousSessions = previousSessionsRef.current;
-				for (const summary of Object.values(sessions)) {
-					const previous = previousSessions[summary.taskId];
-					if (previous && previous.updatedAt > summary.updatedAt) {
-						continue;
-					}
-					const columnId = getTaskColumnId(nextBoard, summary.taskId);
-					if (
-						summary.state === "awaiting_review" &&
-						columnId === "in_progress"
-					) {
-						const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
-						if (moved.moved) {
-							nextBoard = moved.board;
-						}
-						continue;
-					}
-					if (
-						summary.state === "running" &&
-						columnId === "review"
-					) {
-						const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress");
+			const previousSessions = previousSessionsRef.current;
+			for (const summary of Object.values(sessions)) {
+				const previous = previousSessions[summary.taskId];
+				if (previous && previous.updatedAt > summary.updatedAt) {
+					continue;
+				}
+				const columnId = getTaskColumnId(nextBoard, summary.taskId);
+				if (
+					summary.state === "awaiting_review" &&
+					columnId === "in_progress"
+				) {
+					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
 					if (moved.moved) {
 						nextBoard = moved.board;
 					}
 					continue;
 				}
-					if (
-						summary.state === "interrupted" &&
-						previous?.state !== "interrupted" &&
-						columnId &&
-						columnId !== "trash"
-					) {
+				if (
+					summary.state === "running" &&
+					columnId === "review"
+				) {
+					const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress");
+					if (moved.moved) {
+						nextBoard = moved.board;
+					}
+					continue;
+				}
+				if (
+					summary.state === "interrupted" &&
+					previous?.state !== "interrupted" &&
+					columnId &&
+					columnId !== "trash"
+				) {
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
 					if (moved.moved) {
 						nextBoard = moved.board;
@@ -906,6 +941,24 @@ export default function App(): ReactElement {
 		});
 		previousSessionsRef.current = sessions;
 	}, [sessions]);
+
+	useEffect(() => {
+		if (!latestTaskReadyForReview) {
+			return;
+		}
+		const eventKey = `${latestTaskReadyForReview.workspaceId}:${latestTaskReadyForReview.taskId}:${latestTaskReadyForReview.triggeredAt}`;
+		if (handledReadyForReviewEventKeysRef.current.has(eventKey)) {
+			return;
+		}
+		handledReadyForReviewEventKeysRef.current.add(eventKey);
+		if (!readyForReviewNotificationsEnabled || isDocumentVisible) {
+			return;
+		}
+		const selection = findCardSelection(board, latestTaskReadyForReview.taskId);
+		const taskTitle = selection?.card.title?.trim() || `Task ${latestTaskReadyForReview.taskId}`;
+		setPendingReviewReadyNotificationCount((current) => current + 1);
+		showReadyForReviewNotification(latestTaskReadyForReview.taskId, taskTitle);
+	}, [board, isDocumentVisible, latestTaskReadyForReview, readyForReviewNotificationsEnabled]);
 
 	useEffect(() => {
 		setWorkspaceSnapshots((current) => {
@@ -1415,7 +1468,9 @@ export default function App(): ReactElement {
 				projectId: currentProjectId,
 				revision: null,
 			};
-			previousSessionsRef.current = {};
+				previousSessionsRef.current = {};
+				handledReadyForReviewEventKeysRef.current = new Set();
+				setPendingReviewReadyNotificationCount(0);
 		}
 		setWorktreeError(null);
 		setSelectedTaskId(null);
@@ -1515,6 +1570,7 @@ export default function App(): ReactElement {
 			const visible = document.visibilityState === "visible";
 			setIsDocumentVisible(visible);
 			if (visible) {
+				setPendingReviewReadyNotificationCount(0);
 				void refreshWorkspaceState();
 			}
 		};
@@ -1523,6 +1579,12 @@ export default function App(): ReactElement {
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 		};
 	}, [refreshWorkspaceState]);
+
+	useEffect(() => {
+		if (!readyForReviewNotificationsEnabled) {
+			setPendingReviewReadyNotificationCount(0);
+		}
+	}, [readyForReviewNotificationsEnabled]);
 
 	useEffect(() => {
 		// Keep the user's preferred mode sticky across launches.
@@ -1651,8 +1713,11 @@ export default function App(): ReactElement {
 	}, [workspacePath]);
 
 	useEffect(() => {
-		document.title = workspaceTitle ? `${workspaceTitle} | Kanbanana` : "Kanbanana";
-	}, [workspaceTitle]);
+		const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanbanana` : "Kanbanana";
+		document.title = pendingReviewReadyNotificationCount > 0
+			? `(${pendingReviewReadyNotificationCount}) ${baseTitle}`
+			: baseTitle;
+	}, [pendingReviewReadyNotificationCount, workspaceTitle]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -2233,6 +2298,21 @@ export default function App(): ReactElement {
 		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, startTaskSession],
 	);
 
+	const maybeRequestNotificationPermissionForTaskStart = useCallback(() => {
+		const shouldPromptForNotificationPermission =
+			readyForReviewNotificationsEnabled &&
+			getBrowserNotificationPermission() === "default" &&
+			!hasPromptedForBrowserNotificationPermission() &&
+			!notificationPermissionPromptInFlightRef.current;
+		if (!shouldPromptForNotificationPermission) {
+			return;
+		}
+		notificationPermissionPromptInFlightRef.current = true;
+		void requestBrowserNotificationPermission().finally(() => {
+			notificationPermissionPromptInFlightRef.current = false;
+		});
+	}, [readyForReviewNotificationsEnabled]);
+
 	const handleDragEnd = useCallback(
 		(result: DropResult, options?: { selectDroppedTask?: boolean }) => {
 			if (options?.selectDroppedTask && result.type.startsWith("CARD") && result.destination) {
@@ -2255,13 +2335,14 @@ export default function App(): ReactElement {
 			setBoard(applied.board);
 
 			if (moveEvent.toColumnId === "in_progress") {
+				maybeRequestNotificationPermissionForTaskStart();
 				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
 				if (movedSelection) {
 					void kickoffTaskInProgress(movedSelection.card, moveEvent.taskId, moveEvent.fromColumnId);
 				}
 			}
 		},
-		[board, kickoffTaskInProgress, requestMoveTaskToTrash],
+		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart, requestMoveTaskToTrash],
 	);
 
 	const handleStartTask = useCallback(
@@ -2276,11 +2357,12 @@ export default function App(): ReactElement {
 			}
 			setBoard(moved.board);
 			const movedSelection = findCardSelection(moved.board, taskId);
+			maybeRequestNotificationPermissionForTaskStart();
 			if (movedSelection) {
 				void kickoffTaskInProgress(movedSelection.card, taskId, "backlog");
 			}
 		},
-		[board, kickoffTaskInProgress],
+		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart],
 	);
 
 	const handleDetailTaskDragEnd = useCallback(

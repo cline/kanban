@@ -4,6 +4,7 @@ import type {
 	RuntimeProjectSummary,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamWorkspaceRetrieveStatusMessage,
 	RuntimeTaskSessionSummary,
@@ -44,6 +45,7 @@ export interface UseRuntimeStateStreamResult {
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
 	workspaceStatusRetrievedAt: number;
+	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	streamError: string | null;
 	hasReceivedSnapshot: boolean;
 }
@@ -53,6 +55,7 @@ interface RuntimeStateStreamStore {
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
 	workspaceStatusRetrievedAt: number;
+	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	streamError: string | null;
 	hasReceivedSnapshot: boolean;
 }
@@ -65,6 +68,7 @@ type RuntimeStateStreamAction =
 			payload: RuntimeStateStreamProjectsMessage;
 			nextProjectId: string | null;
 	  }
+	| { type: "task_ready_for_review"; payload: RuntimeStateStreamTaskReadyForReviewMessage }
 	| { type: "workspace_retrieve_status"; payload: RuntimeStateStreamWorkspaceRetrieveStatusMessage }
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
 	| { type: "task_sessions_updated"; summaries: RuntimeTaskSessionSummary[] }
@@ -76,6 +80,7 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		projects: [],
 		workspaceState: null,
 		workspaceStatusRetrievedAt: 0,
+		latestTaskReadyForReview: null,
 		streamError: null,
 		hasReceivedSnapshot: false,
 	};
@@ -109,6 +114,7 @@ function runtimeStateStreamReducer(
 			projects: action.payload.projects,
 			workspaceState: action.payload.workspaceState,
 			workspaceStatusRetrievedAt: state.workspaceStatusRetrievedAt,
+			latestTaskReadyForReview: state.latestTaskReadyForReview,
 			streamError: null,
 			hasReceivedSnapshot: true,
 		};
@@ -120,7 +126,14 @@ function runtimeStateStreamReducer(
 			currentProjectId: action.nextProjectId,
 			projects: action.payload.projects,
 			workspaceState: didProjectChange ? null : state.workspaceState,
+			latestTaskReadyForReview: didProjectChange ? null : state.latestTaskReadyForReview,
 			hasReceivedSnapshot: true,
+		};
+	}
+	if (action.type === "task_ready_for_review") {
+		return {
+			...state,
+			latestTaskReadyForReview: action.payload,
 		};
 	}
 	if (action.type === "workspace_retrieve_status") {
@@ -281,6 +294,16 @@ export function useRuntimeStateStream(
 						});
 						return;
 					}
+					if (payload.type === "task_ready_for_review") {
+						if (payload.workspaceId !== activeWorkspaceId) {
+							return;
+						}
+						dispatch({
+							type: "task_ready_for_review",
+							payload,
+						});
+						return;
+					}
 					if (payload.type === "error") {
 						dispatch({
 							type: "stream_error",
@@ -324,6 +347,7 @@ export function useRuntimeStateStream(
 		projects: state.projects,
 		workspaceState: state.workspaceState,
 		workspaceStatusRetrievedAt: state.workspaceStatusRetrievedAt,
+		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		streamError: state.streamError,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,
 	};

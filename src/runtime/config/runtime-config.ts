@@ -6,6 +6,7 @@ import type { RuntimeAgentId, RuntimeProjectShortcut } from "../api-contract.js"
 
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
+	readyForReviewNotificationsEnabled?: boolean;
 	commitLocalPromptTemplate?: string;
 	commitWorktreePromptTemplate?: string;
 	openPrLocalPromptTemplate?: string;
@@ -20,6 +21,7 @@ export interface RuntimeConfigState {
 	globalConfigPath: string;
 	projectConfigPath: string;
 	selectedAgentId: RuntimeAgentId;
+	readyForReviewNotificationsEnabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
 	commitLocalPromptTemplate: string;
 	commitWorktreePromptTemplate: string;
@@ -36,6 +38,7 @@ const CONFIG_FILENAME = "config.json";
 const PROJECT_CONFIG_DIR = ".kanbanana";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
+const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE = `Commit the changes made in this task.
 
 1. Check git status and review what changed.
@@ -127,6 +130,13 @@ function normalizePromptTemplate(value: unknown, fallback: string): string {
 	return normalized.length > 0 ? value : fallback;
 }
 
+function normalizeBoolean(value: unknown, fallback: boolean): boolean {
+	if (typeof value === "boolean") {
+		return value;
+	}
+	return fallback;
+}
+
 export function getRuntimeGlobalConfigPath(): string {
 	return join(getRuntimeHomePath(), CONFIG_FILENAME);
 }
@@ -150,6 +160,10 @@ function toRuntimeConfigState({
 		globalConfigPath,
 		projectConfigPath,
 		selectedAgentId: normalizeAgentId(globalConfig?.selectedAgentId),
+		readyForReviewNotificationsEnabled: normalizeBoolean(
+			globalConfig?.readyForReviewNotificationsEnabled,
+			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
+		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
 		commitLocalPromptTemplate: normalizePromptTemplate(
 			globalConfig?.commitLocalPromptTemplate,
@@ -187,6 +201,7 @@ async function writeRuntimeGlobalConfigFile(
 	configPath: string,
 	config: {
 		selectedAgentId: RuntimeAgentId;
+		readyForReviewNotificationsEnabled: boolean;
 		commitLocalPromptTemplate: string;
 		commitWorktreePromptTemplate: string;
 		openPrLocalPromptTemplate: string;
@@ -199,6 +214,10 @@ async function writeRuntimeGlobalConfigFile(
 		JSON.stringify(
 			{
 				selectedAgentId: normalizeAgentId(config.selectedAgentId),
+				readyForReviewNotificationsEnabled: normalizeBoolean(
+					config.readyForReviewNotificationsEnabled,
+					DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
+				),
 				commitLocalPromptTemplate: normalizePromptTemplate(
 					config.commitLocalPromptTemplate,
 					DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE,
@@ -258,6 +277,7 @@ export async function saveRuntimeConfig(
 	cwd: string,
 	config: {
 		selectedAgentId: RuntimeAgentId;
+		readyForReviewNotificationsEnabled: boolean;
 		shortcuts: RuntimeProjectShortcut[];
 		commitLocalPromptTemplate: string;
 		commitWorktreePromptTemplate: string;
@@ -269,6 +289,7 @@ export async function saveRuntimeConfig(
 	const projectConfigPath = getRuntimeProjectConfigPath(cwd);
 	await writeRuntimeGlobalConfigFile(globalConfigPath, {
 		selectedAgentId: config.selectedAgentId,
+		readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
 		commitLocalPromptTemplate: config.commitLocalPromptTemplate,
 		commitWorktreePromptTemplate: config.commitWorktreePromptTemplate,
 		openPrLocalPromptTemplate: config.openPrLocalPromptTemplate,
@@ -279,6 +300,10 @@ export async function saveRuntimeConfig(
 		globalConfigPath,
 		projectConfigPath,
 		selectedAgentId: normalizeAgentId(config.selectedAgentId),
+		readyForReviewNotificationsEnabled: normalizeBoolean(
+			config.readyForReviewNotificationsEnabled,
+			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
+		),
 		shortcuts: normalizeShortcuts(config.shortcuts),
 		commitLocalPromptTemplate: normalizePromptTemplate(
 			config.commitLocalPromptTemplate,

@@ -9,6 +9,7 @@ import {
 	HTMLSelect,
 	Icon,
 	InputGroup,
+	Switch,
 	Tag,
 	TextArea,
 	Tooltip,
@@ -18,6 +19,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TASK_GIT_PROMPT_VARIABLES } from "@/kanban/git-actions/build-task-git-action-prompt";
 import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeProjectShortcut } from "@/kanban/runtime/types";
+import {
+	getBrowserNotificationPermission,
+	requestBrowserNotificationPermission,
+	type BrowserNotificationPermission,
+} from "@/kanban/utils/notification-permission";
 
 const AGENT_INSTALL_URLS: Partial<Record<RuntimeAgentId, string>> = {
 	claude: "https://docs.anthropic.com/en/docs/claude-code/quickstart",
@@ -60,6 +66,13 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: GitPromptVariant; label: string
 	{ value: "commit-local", label: "Commit (Local)" },
 	{ value: "pr-local", label: "Make PR (Local)" },
 ];
+
+function formatNotificationPermissionStatus(permission: BrowserNotificationPermission): string {
+	if (permission === "default") {
+		return "not requested yet";
+	}
+	return permission;
+}
 
 function AgentRow({
 	agent,
@@ -126,6 +139,10 @@ export function RuntimeSettingsDialog({
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId);
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
+	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
+	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>(
+		"unsupported",
+	);
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitLocalPromptTemplate, setCommitLocalPromptTemplate] = useState("");
 	const [commitWorktreePromptTemplate, setCommitWorktreePromptTemplate] = useState("");
@@ -190,6 +207,8 @@ export function RuntimeSettingsDialog({
 	const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
 	const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
 	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
+	const initialReadyForReviewNotificationsEnabled =
+		config?.readyForReviewNotificationsEnabled ?? true;
 	const initialShortcuts = config?.shortcuts ?? [];
 	const initialCommitLocalPromptTemplate = config?.commitLocalPromptTemplate ?? "";
 	const initialCommitWorktreePromptTemplate = config?.commitWorktreePromptTemplate ?? "";
@@ -200,6 +219,9 @@ export function RuntimeSettingsDialog({
 			return false;
 		}
 		if (selectedAgentId !== initialSelectedAgentId) {
+			return true;
+		}
+		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
 			return true;
 		}
 		if (!areShortcutsEqual(shortcuts, initialShortcuts)) {
@@ -235,10 +257,12 @@ export function RuntimeSettingsDialog({
 		initialCommitWorktreePromptTemplate,
 		initialOpenPrLocalPromptTemplate,
 		initialOpenPrWorktreePromptTemplate,
+		initialReadyForReviewNotificationsEnabled,
 		initialSelectedAgentId,
 		initialShortcuts,
 		openPrLocalPromptTemplate,
 		openPrWorktreePromptTemplate,
+		readyForReviewNotificationsEnabled,
 		selectedAgentId,
 		shortcuts,
 	]);
@@ -248,6 +272,9 @@ export function RuntimeSettingsDialog({
 			return;
 		}
 		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
+		setReadyForReviewNotificationsEnabled(
+			config?.readyForReviewNotificationsEnabled ?? true,
+		);
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitLocalPromptTemplate(config?.commitLocalPromptTemplate ?? "");
 		setCommitWorktreePromptTemplate(config?.commitWorktreePromptTemplate ?? "");
@@ -259,11 +286,26 @@ export function RuntimeSettingsDialog({
 		config?.commitWorktreePromptTemplate,
 		config?.openPrLocalPromptTemplate,
 		config?.openPrWorktreePromptTemplate,
+		config?.readyForReviewNotificationsEnabled,
 		config?.selectedAgentId,
 		config?.shortcuts,
 		open,
 		supportedAgents,
 	]);
+
+	useEffect(() => {
+		if (!open) {
+			return;
+		}
+		const refreshPermission = () => {
+			setNotificationPermission(getBrowserNotificationPermission());
+		};
+		refreshPermission();
+		window.addEventListener("focus", refreshPermission);
+		return () => {
+			window.removeEventListener("focus", refreshPermission);
+		};
+	}, [open]);
 
 	useEffect(() => {
 		return () => {
@@ -319,8 +361,17 @@ export function RuntimeSettingsDialog({
 			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
 			return;
 		}
+		const shouldRequestNotificationPermission =
+			!initialReadyForReviewNotificationsEnabled &&
+			readyForReviewNotificationsEnabled &&
+			notificationPermission === "default";
+		if (shouldRequestNotificationPermission) {
+			const nextPermission = await requestBrowserNotificationPermission();
+			setNotificationPermission(nextPermission);
+		}
 		const saved = await save({
 			selectedAgentId,
+			readyForReviewNotificationsEnabled,
 			shortcuts,
 			commitLocalPromptTemplate,
 			commitWorktreePromptTemplate,
@@ -333,6 +384,13 @@ export function RuntimeSettingsDialog({
 		}
 		onSaved?.();
 		onOpenChange(false);
+	};
+
+	const handleRequestPermission = () => {
+		void (async () => {
+			const nextPermission = await requestBrowserNotificationPermission();
+			setNotificationPermission(nextPermission);
+		})();
 	};
 
 	return (
@@ -430,6 +488,28 @@ export function RuntimeSettingsDialog({
 							</Tooltip>
 						);
 					})}
+				</div>
+				<h6 className={Classes.HEADING} style={{ margin: "12px 0 8px" }}>Notifications</h6>
+				<Switch
+					checked={readyForReviewNotificationsEnabled}
+					disabled={isLoading || isSaving}
+					label="Notify when a task is ready for review"
+					onChange={(event) => {
+						setReadyForReviewNotificationsEnabled(event.currentTarget.checked);
+					}}
+				/>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 8px" }}>
+					<p className={Classes.TEXT_MUTED} style={{ margin: 0 }}>
+						Browser permission: {formatNotificationPermissionStatus(notificationPermission)}
+					</p>
+						{notificationPermission !== "granted" && notificationPermission !== "unsupported" ? (
+							<Button
+								text="Request permission"
+								size="small"
+								onClick={handleRequestPermission}
+								disabled={isLoading || isSaving}
+							/>
+						) : null}
 				</div>
 
 				<h5 className={Classes.HEADING} style={{ margin: "12px 0 0" }}>Project</h5>

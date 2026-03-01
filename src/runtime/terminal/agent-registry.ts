@@ -206,6 +206,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		effectiveCommand,
 		globalConfigPath: runtimeConfig.globalConfigPath,
 		projectConfigPath: runtimeConfig.projectConfigPath,
+		readyForReviewNotificationsEnabled: runtimeConfig.readyForReviewNotificationsEnabled,
 		detectedCommands,
 		agents,
 		shortcuts: runtimeConfig.shortcuts,

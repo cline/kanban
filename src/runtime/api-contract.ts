@@ -250,6 +250,16 @@ export const runtimeStateStreamProjectsMessageSchema = z.object({
 });
 export type RuntimeStateStreamProjectsMessage = z.infer<typeof runtimeStateStreamProjectsMessageSchema>;
 
+export const runtimeStateStreamTaskReadyForReviewMessageSchema = z.object({
+	type: z.literal("task_ready_for_review"),
+	workspaceId: z.string(),
+	taskId: z.string(),
+	triggeredAt: z.number(),
+});
+export type RuntimeStateStreamTaskReadyForReviewMessage = z.infer<
+	typeof runtimeStateStreamTaskReadyForReviewMessageSchema
+>;
+
 export const runtimeStateStreamErrorMessageSchema = z.object({
 	type: z.literal("error"),
 	message: z.string(),
@@ -262,6 +272,7 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamTaskSessionsMessageSchema,
 	runtimeStateStreamWorkspaceRetrieveStatusMessageSchema,
 	runtimeStateStreamProjectsMessageSchema,
+	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
 ]);
 export type RuntimeStateStreamMessage = z.infer<typeof runtimeStateStreamMessageSchema>;
@@ -389,6 +400,7 @@ export const runtimeConfigResponseSchema = z.object({
 	effectiveCommand: z.string().nullable(),
 	globalConfigPath: z.string(),
 	projectConfigPath: z.string(),
+	readyForReviewNotificationsEnabled: z.boolean(),
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
 	shortcuts: z.array(runtimeProjectShortcutSchema),
@@ -406,6 +418,7 @@ export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 export const runtimeConfigSaveRequestSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
+	readyForReviewNotificationsEnabled: z.boolean().optional(),
 	commitLocalPromptTemplate: z.string().optional(),
 	commitWorktreePromptTemplate: z.string().optional(),
 	openPrLocalPromptTemplate: z.string().optional(),
