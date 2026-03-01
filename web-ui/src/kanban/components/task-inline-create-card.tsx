@@ -58,13 +58,13 @@ export function TaskInlineCreateCard({
 	const cardMarginBottom = mode === "create" ? 8 : 0;
 
 	const workspaceModeOptions = [
+		{ value: "worktree", label: "Isolated worktree", disabled: !canUseWorktree },
 		{
 			value: "local",
 			label: workspaceCurrentBranch
 				? `Local workspace (current branch: ${workspaceCurrentBranch})`
 				: "Local workspace",
 		},
-		{ value: "worktree", label: "Isolated worktree", disabled: !canUseWorktree },
 	];
 
 	return (
