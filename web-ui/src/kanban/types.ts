@@ -23,7 +23,6 @@ export interface BoardData {
 
 export interface ReviewTaskWorkspaceSnapshot {
 	taskId: string;
-	mode: "local" | "worktree";
 	path: string;
 	hasGit: boolean;
 	branch: string | null;

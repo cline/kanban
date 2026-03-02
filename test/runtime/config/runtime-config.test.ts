@@ -96,17 +96,13 @@ describe.sequential("runtime-config auto agent selection", () => {
 					const persisted = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
 						selectedAgentId?: string;
 						readyForReviewNotificationsEnabled?: boolean;
-						commitLocalPromptTemplate?: string;
-						commitWorktreePromptTemplate?: string;
-						openPrLocalPromptTemplate?: string;
-						openPrWorktreePromptTemplate?: string;
+						commitPromptTemplate?: string;
+						openPrPromptTemplate?: string;
 					};
 					expect(persisted.selectedAgentId).toBe("codex");
 					expect(persisted.readyForReviewNotificationsEnabled).toBeUndefined();
-					expect(persisted.commitLocalPromptTemplate).toBeUndefined();
-					expect(persisted.commitWorktreePromptTemplate).toBeUndefined();
-					expect(persisted.openPrLocalPromptTemplate).toBeUndefined();
-					expect(persisted.openPrWorktreePromptTemplate).toBeUndefined();
+					expect(persisted.commitPromptTemplate).toBeUndefined();
+					expect(persisted.openPrPromptTemplate).toBeUndefined();
 
 					const reloadedState = await loadRuntimeConfig(tempProject);
 					expect(reloadedState.selectedAgentId).toBe("codex");
@@ -243,26 +239,20 @@ describe.sequential("runtime-config auto agent selection", () => {
 					selectedShortcutId: null,
 					readyForReviewNotificationsEnabled: true,
 					shortcuts: [],
-					commitLocalPromptTemplate: current.commitLocalPromptTemplateDefault,
-					commitWorktreePromptTemplate: current.commitWorktreePromptTemplateDefault,
-					openPrLocalPromptTemplate: current.openPrLocalPromptTemplateDefault,
-					openPrWorktreePromptTemplate: current.openPrWorktreePromptTemplateDefault,
+					commitPromptTemplate: current.commitPromptTemplateDefault,
+					openPrPromptTemplate: current.openPrPromptTemplateDefault,
 				});
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
 					readyForReviewNotificationsEnabled?: boolean;
-					commitLocalPromptTemplate?: string;
-					commitWorktreePromptTemplate?: string;
-					openPrLocalPromptTemplate?: string;
-					openPrWorktreePromptTemplate?: string;
+					commitPromptTemplate?: string;
+					openPrPromptTemplate?: string;
 				};
 				expect(globalPayload.selectedAgentId).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
-				expect(globalPayload.commitLocalPromptTemplate).toBeUndefined();
-				expect(globalPayload.commitWorktreePromptTemplate).toBeUndefined();
-				expect(globalPayload.openPrLocalPromptTemplate).toBeUndefined();
-				expect(globalPayload.openPrWorktreePromptTemplate).toBeUndefined();
+				expect(globalPayload.commitPromptTemplate).toBeUndefined();
+				expect(globalPayload.openPrPromptTemplate).toBeUndefined();
 
 				const projectPayload = JSON.parse(readFileSync(join(tempProject, ".kanbanana", "config.json"), "utf8")) as {
 					shortcuts?: unknown[];

@@ -204,25 +204,24 @@ export async function ensureTaskWorktree(options: {
 		const taskId = normalizeTaskId(options.taskId);
 		if (!context.git.hasGit) {
 			return {
-				ok: true,
-				enabled: false,
+				ok: false,
+				enabled: true,
 				path: context.repoPath,
 				baseRef: null,
 				baseCommit: null,
+				error: "Git repository required for task worktrees.",
 			};
 		}
 
-		const requestedBaseRef = resolveBaseRef(
-			options.baseRef,
-			context.git.currentBranch ?? context.git.defaultBranch ?? "HEAD",
-		);
+		const requestedBaseRef = resolveBaseRef(options.baseRef, null);
 		if (!requestedBaseRef) {
 			return {
-				ok: true,
-				enabled: false,
+				ok: false,
+				enabled: true,
 				path: context.repoPath,
 				baseRef: null,
 				baseCommit: null,
+				error: "Task base branch is required for worktree creation.",
 			};
 		}
 
@@ -329,12 +328,12 @@ export async function resolveTaskCwd(options: {
 }): Promise<string> {
 	const context = await loadWorkspaceContext(options.cwd);
 	if (!context.git.hasGit) {
-		return context.repoPath;
+		throw new Error("Git repository required for task worktrees.");
 	}
 
 	const normalizedBaseRef = resolveBaseRef(options.baseRef, null);
 	if (!normalizedBaseRef) {
-		return context.repoPath;
+		throw new Error("Task base branch is required for task workspace resolution.");
 	}
 
 	if (options.ensure) {
@@ -362,22 +361,12 @@ export async function getTaskWorkspaceInfo(options: {
 	const taskId = normalizeTaskId(options.taskId);
 	const normalizedBaseRef = resolveBaseRef(options.baseRef, null);
 
-	if (!context.git.hasGit || !normalizedBaseRef) {
-		const headInfo = context.git.hasGit
-			? await readGitHeadInfo(context.repoPath)
-			: { branch: null, headCommit: null, isDetached: false };
-		return {
-			taskId,
-			mode: "local",
-			path: context.repoPath,
-			exists: true,
-			deleted: false,
-			baseRef: null,
-			hasGit: context.git.hasGit,
-			branch: headInfo.branch,
-			isDetached: headInfo.isDetached,
-			headCommit: headInfo.headCommit,
-		};
+	if (!context.git.hasGit) {
+		throw new Error("Git repository required for task worktrees.");
+	}
+
+	if (!normalizedBaseRef) {
+		throw new Error("Task base branch is required for task workspace info.");
 	}
 
 	const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
@@ -385,7 +374,6 @@ export async function getTaskWorkspaceInfo(options: {
 	if (!exists) {
 		return {
 			taskId,
-			mode: "worktree",
 			path: worktreePath,
 			exists: false,
 			deleted: true,
@@ -400,7 +388,6 @@ export async function getTaskWorkspaceInfo(options: {
 	const headInfo = await readGitHeadInfo(worktreePath);
 	return {
 		taskId,
-		mode: "worktree",
 		path: worktreePath,
 		exists: true,
 		deleted: false,

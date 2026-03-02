@@ -23,10 +23,8 @@ export async function saveRuntimeConfig(
 		selectedShortcutId?: string | null;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
-		commitLocalPromptTemplate?: string;
-		commitWorktreePromptTemplate?: string;
-		openPrLocalPromptTemplate?: string;
-		openPrWorktreePromptTemplate?: string;
+		commitPromptTemplate?: string;
+		openPrPromptTemplate?: string;
 	},
 ): Promise<RuntimeConfigResponse> {
 	const response = await workspaceFetch("/api/runtime/config", {

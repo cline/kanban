@@ -63,13 +63,11 @@ function areShortcutsEqual(left: RuntimeProjectShortcut[], right: RuntimeProject
 	return true;
 }
 
-type GitPromptVariant = "commit-local" | "commit-worktree" | "pr-local" | "pr-worktree";
+type GitPromptVariant = "commit" | "pr";
 
 const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: GitPromptVariant; label: string }> = [
-	{ value: "commit-worktree", label: "Commit (Worktree)" },
-	{ value: "pr-worktree", label: "Make PR (Worktree)" },
-	{ value: "commit-local", label: "Commit (Local)" },
-	{ value: "pr-local", label: "Make PR (Local)" },
+	{ value: "commit", label: "Commit" },
+	{ value: "pr", label: "Make PR" },
 ];
 
 const SHORTCUT_ICON_OPTIONS: Array<{ value: IconName; label: string }> = [
@@ -234,66 +232,39 @@ export function RuntimeSettingsDialog({
 		"unsupported",
 	);
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
-	const [commitLocalPromptTemplate, setCommitLocalPromptTemplate] = useState("");
-	const [commitWorktreePromptTemplate, setCommitWorktreePromptTemplate] = useState("");
-	const [openPrLocalPromptTemplate, setOpenPrLocalPromptTemplate] = useState("");
-	const [openPrWorktreePromptTemplate, setOpenPrWorktreePromptTemplate] = useState("");
-	const [selectedPromptVariant, setSelectedPromptVariant] = useState<GitPromptVariant>("commit-worktree");
+	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
+	const [openPrPromptTemplate, setOpenPrPromptTemplate] = useState("");
+	const [selectedPromptVariant, setSelectedPromptVariant] = useState<GitPromptVariant>("commit");
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollId, setPendingShortcutScrollId] = useState<string | null>(null);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const shortcutRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
-	const commitLocalPromptTemplateDefault = config?.commitLocalPromptTemplateDefault ?? "";
-	const commitWorktreePromptTemplateDefault = config?.commitWorktreePromptTemplateDefault ?? "";
-	const openPrLocalPromptTemplateDefault = config?.openPrLocalPromptTemplateDefault ?? "";
-	const openPrWorktreePromptTemplateDefault = config?.openPrWorktreePromptTemplateDefault ?? "";
-	const isCommitLocalPromptAtDefault =
-		normalizeTemplateForComparison(commitLocalPromptTemplate) ===
-		normalizeTemplateForComparison(commitLocalPromptTemplateDefault);
-	const isCommitWorktreePromptAtDefault =
-		normalizeTemplateForComparison(commitWorktreePromptTemplate) ===
-		normalizeTemplateForComparison(commitWorktreePromptTemplateDefault);
-	const isOpenPrLocalPromptAtDefault =
-		normalizeTemplateForComparison(openPrLocalPromptTemplate) ===
-		normalizeTemplateForComparison(openPrLocalPromptTemplateDefault);
-	const isOpenPrWorktreePromptAtDefault =
-		normalizeTemplateForComparison(openPrWorktreePromptTemplate) ===
-		normalizeTemplateForComparison(openPrWorktreePromptTemplateDefault);
+	const commitPromptTemplateDefault = config?.commitPromptTemplateDefault ?? "";
+	const openPrPromptTemplateDefault = config?.openPrPromptTemplateDefault ?? "";
+	const isCommitPromptAtDefault =
+		normalizeTemplateForComparison(commitPromptTemplate) ===
+		normalizeTemplateForComparison(commitPromptTemplateDefault);
+	const isOpenPrPromptAtDefault =
+		normalizeTemplateForComparison(openPrPromptTemplate) ===
+		normalizeTemplateForComparison(openPrPromptTemplateDefault);
 	const selectedPromptValue =
-		selectedPromptVariant === "commit-local"
-			? commitLocalPromptTemplate
-			: selectedPromptVariant === "commit-worktree"
-				? commitWorktreePromptTemplate
-				: selectedPromptVariant === "pr-local"
-					? openPrLocalPromptTemplate
-					: openPrWorktreePromptTemplate;
+		selectedPromptVariant === "commit"
+				? commitPromptTemplate
+				: openPrPromptTemplate;
 	const selectedPromptDefaultValue =
-		selectedPromptVariant === "commit-local"
-			? commitLocalPromptTemplateDefault
-			: selectedPromptVariant === "commit-worktree"
-				? commitWorktreePromptTemplateDefault
-				: selectedPromptVariant === "pr-local"
-					? openPrLocalPromptTemplateDefault
-					: openPrWorktreePromptTemplateDefault;
+		selectedPromptVariant === "commit"
+				? commitPromptTemplateDefault
+				: openPrPromptTemplateDefault;
 	const isSelectedPromptAtDefault =
-		selectedPromptVariant === "commit-local"
-			? isCommitLocalPromptAtDefault
-			: selectedPromptVariant === "commit-worktree"
-				? isCommitWorktreePromptAtDefault
-				: selectedPromptVariant === "pr-local"
-					? isOpenPrLocalPromptAtDefault
-					: isOpenPrWorktreePromptAtDefault;
+		selectedPromptVariant === "commit"
+				? isCommitPromptAtDefault
+				: isOpenPrPromptAtDefault;
 	const selectedPromptPlaceholder =
-		selectedPromptVariant === "commit-local"
-			? "Commit prompt template for local repositories"
-			: selectedPromptVariant === "commit-worktree"
-				? "Commit prompt template for worktrees"
-				: selectedPromptVariant === "pr-local"
-					? "PR prompt template for local repositories"
-					: "PR prompt template for worktrees";
-	const selectedPromptMode = selectedPromptVariant.endsWith("worktree") ? "worktree" : "local";
+		selectedPromptVariant === "commit"
+				? "Commit prompt template"
+				: "PR prompt template";
 	const baseRefVariable = TASK_GIT_PROMPT_VARIABLES[0];
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
@@ -307,10 +278,8 @@ export function RuntimeSettingsDialog({
 	const initialReadyForReviewNotificationsEnabled =
 		config?.readyForReviewNotificationsEnabled ?? true;
 	const initialShortcuts = config?.shortcuts ?? [];
-	const initialCommitLocalPromptTemplate = config?.commitLocalPromptTemplate ?? "";
-	const initialCommitWorktreePromptTemplate = config?.commitWorktreePromptTemplate ?? "";
-	const initialOpenPrLocalPromptTemplate = config?.openPrLocalPromptTemplate ?? "";
-	const initialOpenPrWorktreePromptTemplate = config?.openPrWorktreePromptTemplate ?? "";
+	const initialCommitPromptTemplate = config?.commitPromptTemplate ?? "";
+	const initialOpenPrPromptTemplate = config?.openPrPromptTemplate ?? "";
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
 			return false;
@@ -325,40 +294,24 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (
-			normalizeTemplateForComparison(commitLocalPromptTemplate) !==
-			normalizeTemplateForComparison(initialCommitLocalPromptTemplate)
-		) {
-			return true;
-		}
-		if (
-			normalizeTemplateForComparison(commitWorktreePromptTemplate) !==
-			normalizeTemplateForComparison(initialCommitWorktreePromptTemplate)
-		) {
-			return true;
-		}
-		if (
-			normalizeTemplateForComparison(openPrLocalPromptTemplate) !==
-			normalizeTemplateForComparison(initialOpenPrLocalPromptTemplate)
+			normalizeTemplateForComparison(commitPromptTemplate) !==
+			normalizeTemplateForComparison(initialCommitPromptTemplate)
 		) {
 			return true;
 		}
 		return (
-			normalizeTemplateForComparison(openPrWorktreePromptTemplate) !==
-			normalizeTemplateForComparison(initialOpenPrWorktreePromptTemplate)
+			normalizeTemplateForComparison(openPrPromptTemplate) !==
+			normalizeTemplateForComparison(initialOpenPrPromptTemplate)
 		);
 	}, [
-		commitLocalPromptTemplate,
-		commitWorktreePromptTemplate,
+		commitPromptTemplate,
 		config,
-		initialCommitLocalPromptTemplate,
-		initialCommitWorktreePromptTemplate,
-		initialOpenPrLocalPromptTemplate,
-		initialOpenPrWorktreePromptTemplate,
+		initialCommitPromptTemplate,
+		initialOpenPrPromptTemplate,
 		initialReadyForReviewNotificationsEnabled,
 		initialSelectedAgentId,
 		initialShortcuts,
-		openPrLocalPromptTemplate,
-		openPrWorktreePromptTemplate,
+		openPrPromptTemplate,
 		readyForReviewNotificationsEnabled,
 		selectedAgentId,
 		shortcuts,
@@ -373,16 +326,12 @@ export function RuntimeSettingsDialog({
 			config?.readyForReviewNotificationsEnabled ?? true,
 		);
 		setShortcuts(config?.shortcuts ?? []);
-		setCommitLocalPromptTemplate(config?.commitLocalPromptTemplate ?? "");
-		setCommitWorktreePromptTemplate(config?.commitWorktreePromptTemplate ?? "");
-		setOpenPrLocalPromptTemplate(config?.openPrLocalPromptTemplate ?? "");
-		setOpenPrWorktreePromptTemplate(config?.openPrWorktreePromptTemplate ?? "");
+		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
+		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
 		setSaveError(null);
 	}, [
-		config?.commitLocalPromptTemplate,
-		config?.commitWorktreePromptTemplate,
-		config?.openPrLocalPromptTemplate,
-		config?.openPrWorktreePromptTemplate,
+		config?.commitPromptTemplate,
+		config?.openPrPromptTemplate,
 		config?.readyForReviewNotificationsEnabled,
 		config?.selectedAgentId,
 		config?.shortcuts,
@@ -454,19 +403,11 @@ export function RuntimeSettingsDialog({
 	};
 
 	const handleSelectedPromptChange = (value: string) => {
-		if (selectedPromptVariant === "commit-local") {
-			setCommitLocalPromptTemplate(value);
+		if (selectedPromptVariant === "commit") {
+			setCommitPromptTemplate(value);
 			return;
 		}
-		if (selectedPromptVariant === "commit-worktree") {
-			setCommitWorktreePromptTemplate(value);
-			return;
-		}
-		if (selectedPromptVariant === "pr-local") {
-			setOpenPrLocalPromptTemplate(value);
-			return;
-		}
-		setOpenPrWorktreePromptTemplate(value);
+		setOpenPrPromptTemplate(value);
 	};
 
 	const handleResetSelectedPrompt = () => {
@@ -492,10 +433,8 @@ export function RuntimeSettingsDialog({
 			selectedAgentId,
 			readyForReviewNotificationsEnabled,
 			shortcuts,
-			commitLocalPromptTemplate,
-			commitWorktreePromptTemplate,
-			openPrLocalPromptTemplate,
-			openPrWorktreePromptTemplate,
+			commitPromptTemplate,
+			openPrPromptTemplate,
 		});
 		if (!saved) {
 			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
@@ -587,10 +526,7 @@ export function RuntimeSettingsDialog({
 						}}
 						disabled={isLoading || isSaving}
 					/>{" "}
-					to reference{" "}
-					{selectedPromptMode === "worktree"
-						? "the branch the worktree is created from."
-						: "the branch your local workspace is on."}
+					to reference {baseRefVariable.description}
 				</p>
 				<h6 className={Classes.HEADING} style={{ margin: "18px 0 8px" }}>Notifications</h6>
 				<Switch

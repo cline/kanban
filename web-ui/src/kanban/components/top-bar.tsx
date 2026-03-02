@@ -39,7 +39,6 @@ export interface TopBarTaskGitSummary {
 	changedFiles: number | null;
 	additions: number | null;
 	deletions: number | null;
-	scopeLabel?: string | null;
 }
 
 type SettingsSection = "shortcuts";
@@ -139,7 +138,6 @@ export function TopBar({
 		taskGitSummary?.branch ??
 		taskGitSummary?.headCommit?.slice(0, 8) ??
 		"initializing";
-	const taskScopeLabel = taskGitSummary?.scopeLabel?.trim();
 	const pullTooltip = pullCount > 0
 		? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
 		: "Pull from upstream. Branch is already up to date.";
@@ -231,7 +229,7 @@ export function TopBar({
 						<NavbarDivider />
 						{hasHomeBranchPicker ? (
 							<>
-								<Tooltip placement="bottom" content="Switch the branch for the local workspace." disabled={isBranchPickerOpen}>
+								<Tooltip placement="bottom" content="Switch the branch for this project." disabled={isBranchPickerOpen}>
 									<Popover
 										interactionKind={PopoverInteractionKind.CLICK}
 										placement="bottom-start"
@@ -326,18 +324,6 @@ export function TopBar({
 				) : hasTaskGitSummary ? (
 					<>
 						<NavbarDivider />
-						{taskScopeLabel ? (
-							<span
-								style={{
-									fontSize: "var(--bp-typography-size-body-small)",
-									fontWeight: 600,
-									color: Colors.LIGHT_GRAY5,
-									marginRight: 6,
-								}}
-							>
-								{taskScopeLabel}:
-							</span>
-						) : null}
 						<GitStatusLabel
 							branchLabel={taskBranchLabel}
 							changedFiles={taskGitSummary?.changedFiles ?? null}

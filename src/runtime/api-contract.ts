@@ -350,7 +350,6 @@ export type RuntimeTaskWorkspaceInfoRequest = z.infer<typeof runtimeTaskWorkspac
 
 export const runtimeTaskWorkspaceInfoResponseSchema = z.object({
 	taskId: z.string(),
-	mode: z.enum(["local", "worktree"]),
 	path: z.string(),
 	exists: z.boolean(),
 	deleted: z.boolean(),
@@ -405,14 +404,10 @@ export const runtimeConfigResponseSchema = z.object({
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
 	shortcuts: z.array(runtimeProjectShortcutSchema),
-	commitLocalPromptTemplate: z.string(),
-	commitWorktreePromptTemplate: z.string(),
-	openPrLocalPromptTemplate: z.string(),
-	openPrWorktreePromptTemplate: z.string(),
-	commitLocalPromptTemplateDefault: z.string(),
-	commitWorktreePromptTemplateDefault: z.string(),
-	openPrLocalPromptTemplateDefault: z.string(),
-	openPrWorktreePromptTemplateDefault: z.string(),
+	commitPromptTemplate: z.string(),
+	openPrPromptTemplate: z.string(),
+	commitPromptTemplateDefault: z.string(),
+	openPrPromptTemplateDefault: z.string(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 
@@ -421,10 +416,8 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	selectedShortcutId: z.string().nullable().optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
-	commitLocalPromptTemplate: z.string().optional(),
-	commitWorktreePromptTemplate: z.string().optional(),
-	openPrLocalPromptTemplate: z.string().optional(),
-	openPrWorktreePromptTemplate: z.string().optional(),
+	commitPromptTemplate: z.string().optional(),
+	openPrPromptTemplate: z.string().optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
 

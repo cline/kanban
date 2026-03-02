@@ -5,22 +5,15 @@ export type TaskGitAction = "commit" | "pr";
 export const TASK_GIT_PROMPT_VARIABLES = [
 	{
 		token: "{{base_ref}}",
-		descriptions: {
-			local: "The branch this local workspace is on.",
-			worktree: "The branch this worktree was created from.",
-		},
+		description: "The branch this task worktree was created from.",
 	},
 ] as const;
 
 export interface TaskGitPromptTemplates {
-	commitLocalPromptTemplate?: string | null;
-	commitWorktreePromptTemplate?: string | null;
-	openPrLocalPromptTemplate?: string | null;
-	openPrWorktreePromptTemplate?: string | null;
-	commitLocalPromptTemplateDefault?: string | null;
-	commitWorktreePromptTemplateDefault?: string | null;
-	openPrLocalPromptTemplateDefault?: string | null;
-	openPrWorktreePromptTemplateDefault?: string | null;
+	commitPromptTemplate?: string | null;
+	openPrPromptTemplate?: string | null;
+	commitPromptTemplateDefault?: string | null;
+	openPrPromptTemplateDefault?: string | null;
 }
 
 interface BuildTaskGitActionPromptInput {
@@ -31,41 +24,24 @@ interface BuildTaskGitActionPromptInput {
 
 function resolveTemplate(
 	action: TaskGitAction,
-	mode: RuntimeTaskWorkspaceInfoResponse["mode"],
 	templates?: TaskGitPromptTemplates | null,
 ): string {
 	if (action === "commit") {
-		const template = (
-			mode === "worktree"
-				? templates?.commitWorktreePromptTemplate
-				: templates?.commitLocalPromptTemplate
-		)?.trim();
+		const template = templates?.commitPromptTemplate?.trim();
 		if (template) {
 			return template;
 		}
-		const defaultTemplate = (
-			mode === "worktree"
-				? templates?.commitWorktreePromptTemplateDefault
-				: templates?.commitLocalPromptTemplateDefault
-		)?.trim();
+		const defaultTemplate = templates?.commitPromptTemplateDefault?.trim();
 		if (defaultTemplate) {
 			return defaultTemplate;
 		}
 		return "Handle this commit action using the provided git context.";
 	}
-	const template = (
-		mode === "worktree"
-			? templates?.openPrWorktreePromptTemplate
-			: templates?.openPrLocalPromptTemplate
-	)?.trim();
+	const template = templates?.openPrPromptTemplate?.trim();
 	if (template) {
 		return template;
 	}
-	const defaultTemplate = (
-		mode === "worktree"
-			? templates?.openPrWorktreePromptTemplateDefault
-			: templates?.openPrLocalPromptTemplateDefault
-	)?.trim();
+	const defaultTemplate = templates?.openPrPromptTemplateDefault?.trim();
 	if (defaultTemplate) {
 		return defaultTemplate;
 	}
@@ -86,6 +62,6 @@ export function buildTaskGitActionPrompt(input: BuildTaskGitActionPromptInput): 
 			input.workspaceInfo.baseRef ??
 			"unknown (determine the correct base branch before proceeding)",
 	};
-	const template = resolveTemplate(input.action, input.workspaceInfo.mode, input.templates);
+	const template = resolveTemplate(input.action, input.templates);
 	return interpolateTemplate(template, variables);
 }

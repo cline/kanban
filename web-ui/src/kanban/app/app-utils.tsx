@@ -1,11 +1,9 @@
 import { MenuItem } from "@blueprintjs/core";
 import type { ItemRenderer } from "@blueprintjs/select";
 
-import type { TaskWorkspaceMode } from "@/kanban/components/task-inline-create-card";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardData } from "@/kanban/types";
 
-export const TASK_WORKSPACE_MODE_STORAGE_KEY = "kanbanana.task-workspace-mode";
 export const TASK_START_IN_PLAN_MODE_STORAGE_KEY = "kanbanana.task-start-in-plan-mode";
 
 export interface SearchableTask {
@@ -66,28 +64,6 @@ export function buildProjectPathname(projectId: string): string {
 	return `/${encodeURIComponent(projectId)}`;
 }
 
-export function loadPersistedTaskWorkspaceMode(): TaskWorkspaceMode {
-	if (typeof window === "undefined") {
-		return "worktree";
-	}
-	try {
-		const value = window.localStorage.getItem(TASK_WORKSPACE_MODE_STORAGE_KEY);
-		if (value === "local" || value === "worktree") {
-			return value;
-		}
-	} catch {
-		// Ignore storage access failures and use defaults.
-	}
-	return "worktree";
-}
-
-export function normalizeTaskWorkspaceMode(value: string | null | undefined): TaskWorkspaceMode | null {
-	if (value === "local" || value === "worktree") {
-		return value;
-	}
-	return null;
-}
-
 export function loadPersistedTaskStartInPlanMode(): boolean {
 	if (typeof window === "undefined") {
 		return false;
@@ -99,17 +75,6 @@ export function loadPersistedTaskStartInPlanMode(): boolean {
 		// Ignore storage access failures and use defaults.
 	}
 	return false;
-}
-
-export function persistTaskWorkspaceMode(mode: TaskWorkspaceMode): void {
-	if (typeof window === "undefined") {
-		return;
-	}
-	try {
-		window.localStorage.setItem(TASK_WORKSPACE_MODE_STORAGE_KEY, mode);
-	} catch {
-		// Ignore storage access failures.
-	}
 }
 
 export function persistTaskStartInPlanMode(value: boolean): void {

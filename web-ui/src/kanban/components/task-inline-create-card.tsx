@@ -3,7 +3,6 @@ import type { ReactElement } from "react";
 
 import { TaskPromptComposer } from "@/kanban/components/task-prompt-composer";
 
-export type TaskWorkspaceMode = "local" | "worktree";
 export type TaskInlineCardMode = "create" | "edit";
 
 export interface TaskBranchOption {
@@ -18,10 +17,7 @@ export function TaskInlineCreateCard({
 	onCancel,
 	startInPlanMode,
 	onStartInPlanModeChange,
-	workspaceMode,
-	onWorkspaceModeChange,
 	workspaceId,
-	workspaceCurrentBranch,
 	canUseWorktree,
 	branchRef,
 	branchOptions,
@@ -37,10 +33,7 @@ export function TaskInlineCreateCard({
 	onCancel: () => void;
 	startInPlanMode: boolean;
 	onStartInPlanModeChange: (value: boolean) => void;
-	workspaceMode: TaskWorkspaceMode;
-	onWorkspaceModeChange: (value: TaskWorkspaceMode) => void;
 	workspaceId: string | null;
-	workspaceCurrentBranch: string | null;
 	canUseWorktree: boolean;
 	branchRef: string;
 	branchOptions: TaskBranchOption[];
@@ -52,20 +45,9 @@ export function TaskInlineCreateCard({
 }): ReactElement {
 	const promptId = `${idPrefix}-prompt-input`;
 	const planModeId = `${idPrefix}-plan-mode-toggle`;
-	const workspaceModeId = `${idPrefix}-workspace-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
 	const cardMarginBottom = mode === "create" ? 8 : 0;
-
-	const workspaceModeOptions = [
-		{ value: "worktree", label: "Isolated worktree", disabled: !canUseWorktree },
-		{
-			value: "local",
-			label: workspaceCurrentBranch
-				? `Local workspace (current branch: ${workspaceCurrentBranch})`
-				: "Local workspace",
-		},
-	];
 
 	return (
 		<Card compact style={{ flexShrink: 0, marginBottom: cardMarginBottom }}>
@@ -97,44 +79,24 @@ export function TaskInlineCreateCard({
 			</FormGroup>
 
 			<FormGroup
-				label="Execution workspace"
-				labelFor={workspaceModeId}
-				helperText={
-					workspaceMode === "local"
-						? "Runs directly in your current workspace."
-						: "Creates an isolated worktree when the task starts."
-				}
+				label="Worktree base branch"
+				labelFor={branchSelectId}
+				helperText="Tasks always run in an isolated worktree created from this branch/ref."
+				style={{ marginTop: -5, marginBottom: 0 }}
 			>
 				<HTMLSelect
-					id={workspaceModeId}
-					value={workspaceMode}
-					onChange={(event) => onWorkspaceModeChange(event.target.value as TaskWorkspaceMode)}
-					options={workspaceModeOptions}
+					id={branchSelectId}
+					value={branchRef}
+					onChange={(event) => onBranchRefChange(event.target.value)}
+					disabled={!canUseWorktree}
+					options={
+						branchOptions.length > 0
+							? branchOptions
+							: [{ value: "", label: "No branches detected" }]
+					}
 					fill
 				/>
 			</FormGroup>
-
-			{workspaceMode === "worktree" ? (
-				<FormGroup
-					label="Worktree base branch"
-					labelFor={branchSelectId}
-					helperText="Branch/ref used when creating the isolated task worktree."
-					style={{ marginTop: -5, marginBottom: 0 }}
-				>
-					<HTMLSelect
-						id={branchSelectId}
-						value={branchRef}
-						onChange={(event) => onBranchRefChange(event.target.value)}
-						disabled={!canUseWorktree}
-						options={
-							branchOptions.length > 0
-								? branchOptions
-								: [{ value: "", label: "No branches detected" }]
-						}
-						fill
-					/>
-				</FormGroup>
-			) : null}
 
 			<div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
 				<Button text="Cancel" variant="outlined" onClick={onCancel} />
@@ -158,7 +120,7 @@ export function TaskInlineCreateCard({
 					)}
 					intent="primary"
 					onClick={onCreate}
-					disabled={!prompt.trim() || (workspaceMode === "worktree" && (!canUseWorktree || !branchRef))}
+					disabled={!prompt.trim() || !canUseWorktree || !branchRef}
 				/>
 			</div>
 		</Card>

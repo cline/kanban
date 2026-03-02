@@ -9,10 +9,8 @@ interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
 	selectedShortcutId?: string;
 	readyForReviewNotificationsEnabled?: boolean;
-	commitLocalPromptTemplate?: string;
-	commitWorktreePromptTemplate?: string;
-	openPrLocalPromptTemplate?: string;
-	openPrWorktreePromptTemplate?: string;
+	commitPromptTemplate?: string;
+	openPrPromptTemplate?: string;
 }
 
 interface RuntimeProjectConfigFileShape {
@@ -26,14 +24,10 @@ export interface RuntimeConfigState {
 	selectedShortcutId: string | null;
 	readyForReviewNotificationsEnabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
-	commitLocalPromptTemplate: string;
-	commitWorktreePromptTemplate: string;
-	openPrLocalPromptTemplate: string;
-	openPrWorktreePromptTemplate: string;
-	commitLocalPromptTemplateDefault: string;
-	commitWorktreePromptTemplateDefault: string;
-	openPrLocalPromptTemplateDefault: string;
-	openPrWorktreePromptTemplateDefault: string;
+	commitPromptTemplate: string;
+	openPrPromptTemplate: string;
+	commitPromptTemplateDefault: string;
+	openPrPromptTemplateDefault: string;
 }
 
 export interface RuntimeConfigUpdateInput {
@@ -41,10 +35,8 @@ export interface RuntimeConfigUpdateInput {
 	selectedShortcutId?: string | null;
 	readyForReviewNotificationsEnabled?: boolean;
 	shortcuts?: RuntimeProjectShortcut[];
-	commitLocalPromptTemplate?: string;
-	commitWorktreePromptTemplate?: string;
-	openPrLocalPromptTemplate?: string;
-	openPrWorktreePromptTemplate?: string;
+	commitPromptTemplate?: string;
+	openPrPromptTemplate?: string;
 }
 
 const RUNTIME_HOME_DIR = ".kanbanana";
@@ -54,14 +46,7 @@ const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: RuntimeAgentId[] = ["claude", "codex", "opencode", "gemini", "cline"];
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
-const DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE = `Commit the changes made in this task.
-
-1. Check git status and review what changed.
-2. Stage the relevant files.
-3. Write a clear commit message based on the actual diff.
-4. Create the commit. Do not switch away from the current branch.
-5. If there is nothing to commit, say so and stop.`;
-const DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE = `You are in a worktree (possibly on detached HEAD). Commit these changes and get the commit onto {{base_ref}}.
+const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree (possibly on detached HEAD). Commit these changes and get the commit onto {{base_ref}}.
 
 1. Stage and commit the changes here (this works even on detached HEAD). Capture the commit hash.
 2. Run git worktree list to find where {{base_ref}} is checked out.
@@ -69,14 +54,7 @@ const DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE = `You are in a worktree (possibly
 4. If {{base_ref}} is not checked out anywhere, check it out in this worktree and cherry-pick the commit onto it.
 5. Resolve conflicts if they arise.
 6. Report the final commit hash on {{base_ref}}.`;
-const DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE = `Create a pull request against {{base_ref}}.
-
-1. If currently on {{base_ref}}, create a new branch and switch to it (uncommitted changes will carry over).
-2. Commit the changes on the new branch.
-3. Push the branch to origin.
-4. Create the PR targeting {{base_ref}} (use gh CLI if available).
-5. If PR creation is blocked, explain why and provide instructions to finish it manually.`;
-const DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE = `You are in a worktree (possibly on detached HEAD). Create a pull request against {{base_ref}}.
+const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `You are in a worktree (possibly on detached HEAD). Create a pull request against {{base_ref}}.
 
 1. If on detached HEAD, create a new branch at the current commit.
 2. Commit any uncommitted changes on that branch.
@@ -232,26 +210,13 @@ function toRuntimeConfigState({
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
-		commitLocalPromptTemplate: normalizePromptTemplate(
-			globalConfig?.commitLocalPromptTemplate,
-			DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE,
+		commitPromptTemplate: normalizePromptTemplate(globalConfig?.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
+		openPrPromptTemplate: normalizePromptTemplate(
+			globalConfig?.openPrPromptTemplate,
+			DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 		),
-		commitWorktreePromptTemplate: normalizePromptTemplate(
-			globalConfig?.commitWorktreePromptTemplate,
-			DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE,
-		),
-		openPrLocalPromptTemplate: normalizePromptTemplate(
-			globalConfig?.openPrLocalPromptTemplate,
-			DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE,
-		),
-		openPrWorktreePromptTemplate: normalizePromptTemplate(
-			globalConfig?.openPrWorktreePromptTemplate,
-			DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE,
-		),
-		commitLocalPromptTemplateDefault: DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE,
-		commitWorktreePromptTemplateDefault: DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE,
-		openPrLocalPromptTemplateDefault: DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE,
-		openPrWorktreePromptTemplateDefault: DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE,
+		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	};
 }
 
@@ -270,10 +235,8 @@ async function writeRuntimeGlobalConfigFile(
 		selectedAgentId?: RuntimeAgentId;
 		selectedShortcutId?: string | null;
 		readyForReviewNotificationsEnabled?: boolean;
-		commitLocalPromptTemplate?: string;
-		commitWorktreePromptTemplate?: string;
-		openPrLocalPromptTemplate?: string;
-		openPrWorktreePromptTemplate?: string;
+		commitPromptTemplate?: string;
+		openPrPromptTemplate?: string;
 	},
 ): Promise<void> {
 	const existing = await readRuntimeConfigFile<RuntimeGlobalConfigFileShape>(configPath);
@@ -290,22 +253,14 @@ async function writeRuntimeGlobalConfigFile(
 		config.readyForReviewNotificationsEnabled === undefined
 			? DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
 			: normalizeBoolean(config.readyForReviewNotificationsEnabled, DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED);
-	const commitLocalPromptTemplate =
-		config.commitLocalPromptTemplate === undefined
-			? DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE
-			: normalizePromptTemplate(config.commitLocalPromptTemplate, DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE);
-	const commitWorktreePromptTemplate =
-		config.commitWorktreePromptTemplate === undefined
-			? DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE
-			: normalizePromptTemplate(config.commitWorktreePromptTemplate, DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE);
-	const openPrLocalPromptTemplate =
-		config.openPrLocalPromptTemplate === undefined
-			? DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE
-			: normalizePromptTemplate(config.openPrLocalPromptTemplate, DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE);
-	const openPrWorktreePromptTemplate =
-		config.openPrWorktreePromptTemplate === undefined
-			? DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE
-			: normalizePromptTemplate(config.openPrWorktreePromptTemplate, DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE);
+	const commitPromptTemplate =
+		config.commitPromptTemplate === undefined
+			? DEFAULT_COMMIT_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE);
+	const openPrPromptTemplate =
+		config.openPrPromptTemplate === undefined
+			? DEFAULT_OPEN_PR_PROMPT_TEMPLATE
+			: normalizePromptTemplate(config.openPrPromptTemplate, DEFAULT_OPEN_PR_PROMPT_TEMPLATE);
 
 	const payload: RuntimeGlobalConfigFileShape = {};
 	if (selectedAgentId !== undefined) {
@@ -328,29 +283,11 @@ async function writeRuntimeGlobalConfigFile(
 	) {
 		payload.readyForReviewNotificationsEnabled = readyForReviewNotificationsEnabled;
 	}
-	if (
-		hasOwnKey(existing, "commitLocalPromptTemplate") ||
-		commitLocalPromptTemplate !== DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE
-	) {
-		payload.commitLocalPromptTemplate = commitLocalPromptTemplate;
+	if (hasOwnKey(existing, "commitPromptTemplate") || commitPromptTemplate !== DEFAULT_COMMIT_PROMPT_TEMPLATE) {
+		payload.commitPromptTemplate = commitPromptTemplate;
 	}
-	if (
-		hasOwnKey(existing, "commitWorktreePromptTemplate") ||
-		commitWorktreePromptTemplate !== DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE
-	) {
-		payload.commitWorktreePromptTemplate = commitWorktreePromptTemplate;
-	}
-	if (
-		hasOwnKey(existing, "openPrLocalPromptTemplate") ||
-		openPrLocalPromptTemplate !== DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE
-	) {
-		payload.openPrLocalPromptTemplate = openPrLocalPromptTemplate;
-	}
-	if (
-		hasOwnKey(existing, "openPrWorktreePromptTemplate") ||
-		openPrWorktreePromptTemplate !== DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE
-	) {
-		payload.openPrWorktreePromptTemplate = openPrWorktreePromptTemplate;
+	if (hasOwnKey(existing, "openPrPromptTemplate") || openPrPromptTemplate !== DEFAULT_OPEN_PR_PROMPT_TEMPLATE) {
+		payload.openPrPromptTemplate = openPrPromptTemplate;
 	}
 
 	await mkdir(dirname(configPath), { recursive: true });
@@ -403,10 +340,8 @@ export async function saveRuntimeConfig(
 		selectedShortcutId: string | null;
 		readyForReviewNotificationsEnabled: boolean;
 		shortcuts: RuntimeProjectShortcut[];
-		commitLocalPromptTemplate: string;
-		commitWorktreePromptTemplate: string;
-		openPrLocalPromptTemplate: string;
-		openPrWorktreePromptTemplate: string;
+		commitPromptTemplate: string;
+		openPrPromptTemplate: string;
 	},
 ): Promise<RuntimeConfigState> {
 	const globalConfigPath = getRuntimeGlobalConfigPath();
@@ -415,10 +350,8 @@ export async function saveRuntimeConfig(
 		selectedAgentId: config.selectedAgentId,
 		selectedShortcutId: config.selectedShortcutId,
 		readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
-		commitLocalPromptTemplate: config.commitLocalPromptTemplate,
-		commitWorktreePromptTemplate: config.commitWorktreePromptTemplate,
-		openPrLocalPromptTemplate: config.openPrLocalPromptTemplate,
-		openPrWorktreePromptTemplate: config.openPrWorktreePromptTemplate,
+		commitPromptTemplate: config.commitPromptTemplate,
+		openPrPromptTemplate: config.openPrPromptTemplate,
 	});
 	await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts: config.shortcuts });
 	return {
@@ -431,26 +364,10 @@ export async function saveRuntimeConfig(
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
 		),
 		shortcuts: normalizeShortcuts(config.shortcuts),
-		commitLocalPromptTemplate: normalizePromptTemplate(
-			config.commitLocalPromptTemplate,
-			DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE,
-		),
-		commitWorktreePromptTemplate: normalizePromptTemplate(
-			config.commitWorktreePromptTemplate,
-			DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE,
-		),
-		openPrLocalPromptTemplate: normalizePromptTemplate(
-			config.openPrLocalPromptTemplate,
-			DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE,
-		),
-		openPrWorktreePromptTemplate: normalizePromptTemplate(
-			config.openPrWorktreePromptTemplate,
-			DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE,
-		),
-		commitLocalPromptTemplateDefault: DEFAULT_COMMIT_LOCAL_PROMPT_TEMPLATE,
-		commitWorktreePromptTemplateDefault: DEFAULT_COMMIT_WORKTREE_PROMPT_TEMPLATE,
-		openPrLocalPromptTemplateDefault: DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE,
-		openPrWorktreePromptTemplateDefault: DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE,
+		commitPromptTemplate: normalizePromptTemplate(config.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
+		openPrPromptTemplate: normalizePromptTemplate(config.openPrPromptTemplate, DEFAULT_OPEN_PR_PROMPT_TEMPLATE),
+		commitPromptTemplateDefault: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+		openPrPromptTemplateDefault: DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	};
 }
 
@@ -463,20 +380,16 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		readyForReviewNotificationsEnabled:
 			updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
 		shortcuts: updates.shortcuts ?? current.shortcuts,
-		commitLocalPromptTemplate: updates.commitLocalPromptTemplate ?? current.commitLocalPromptTemplate,
-		commitWorktreePromptTemplate: updates.commitWorktreePromptTemplate ?? current.commitWorktreePromptTemplate,
-		openPrLocalPromptTemplate: updates.openPrLocalPromptTemplate ?? current.openPrLocalPromptTemplate,
-		openPrWorktreePromptTemplate: updates.openPrWorktreePromptTemplate ?? current.openPrWorktreePromptTemplate,
+		commitPromptTemplate: updates.commitPromptTemplate ?? current.commitPromptTemplate,
+		openPrPromptTemplate: updates.openPrPromptTemplate ?? current.openPrPromptTemplate,
 	};
 
 	const hasChanges =
 		nextConfig.selectedAgentId !== current.selectedAgentId ||
 		nextConfig.selectedShortcutId !== current.selectedShortcutId ||
 		nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
-		nextConfig.commitLocalPromptTemplate !== current.commitLocalPromptTemplate ||
-		nextConfig.commitWorktreePromptTemplate !== current.commitWorktreePromptTemplate ||
-		nextConfig.openPrLocalPromptTemplate !== current.openPrLocalPromptTemplate ||
-		nextConfig.openPrWorktreePromptTemplate !== current.openPrWorktreePromptTemplate ||
+		nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
+		nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
 		!areShortcutsEqual(nextConfig.shortcuts, current.shortcuts);
 
 	if (!hasChanges) {

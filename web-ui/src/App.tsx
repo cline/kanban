@@ -9,11 +9,9 @@ import {
 	countTasksByColumn,
 	createIdleTaskSession,
 	filterTask,
-	normalizeTaskWorkspaceMode,
 	parseProjectIdFromPathname,
 	renderTask,
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
-	TASK_WORKSPACE_MODE_STORAGE_KEY,
 	type SearchableTask,
 } from "@/kanban/app/app-utils";
 import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
@@ -31,7 +29,7 @@ import {
 	RuntimeSettingsDialog,
 	type RuntimeSettingsSection,
 } from "@/kanban/components/runtime-settings-dialog";
-import { TaskInlineCreateCard, type TaskWorkspaceMode } from "@/kanban/components/task-inline-create-card";
+import { TaskInlineCreateCard } from "@/kanban/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
 import { TopBar, type TopBarTaskGitSummary } from "@/kanban/components/top-bar";
 import { createInitialBoardData } from "@/kanban/data/board-data";
@@ -54,7 +52,6 @@ import {
 } from "@/kanban/utils/task-prompt";
 import {
 	useBooleanLocalStorageValue,
-	useRawLocalStorageValue,
 	useWindowEvent,
 } from "@/kanban/hooks/react-use";
 import {
@@ -117,9 +114,6 @@ const HOME_TERMINAL_ROWS = 16;
 const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
 
 function getDetailTerminalTaskId(card: BoardCard): string {
-	if (!card.baseRef) {
-		return HOME_TERMINAL_TASK_ID;
-	}
 	return `${DETAIL_TERMINAL_TASK_PREFIX}${card.id}`;
 }
 
@@ -195,20 +189,10 @@ export default function App(): ReactElement {
 		TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 		false,
 	);
-	const [persistedNewTaskWorkspaceMode, setPersistedNewTaskWorkspaceMode] = useRawLocalStorageValue<TaskWorkspaceMode>(
-		TASK_WORKSPACE_MODE_STORAGE_KEY,
-		"worktree",
-		(value) => normalizeTaskWorkspaceMode(value),
-	);
-	const [newTaskWorkspaceMode, setNewTaskWorkspaceMode] = useState<TaskWorkspaceMode>(
-		persistedNewTaskWorkspaceMode,
-	);
-	const preferredNewTaskWorkspaceModeRef = useRef<TaskWorkspaceMode>(persistedNewTaskWorkspaceMode);
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
-	const [editTaskWorkspaceMode, setEditTaskWorkspaceMode] = useState<TaskWorkspaceMode>("local");
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [gitSummary, setGitSummary] = useState<RuntimeGitSyncSummary | null>(null);
@@ -260,6 +244,10 @@ export default function App(): ReactElement {
 		requestedProjectId !== null &&
 		requestedProjectId !== currentProjectId &&
 		!hasNoProjects;
+	const hasSelectedProjectWithoutGit =
+		currentProjectId !== null &&
+		workspaceGit !== null &&
+		!workspaceGit.hasGit;
 	const isInitialRuntimeLoad = !hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
 	const isWorkspaceMetadataPending =
@@ -648,7 +636,6 @@ export default function App(): ReactElement {
 
 			return {
 				taskId: task.id,
-				mode: workspaceInfo.mode,
 				path: workspaceInfo.path,
 				hasGit: workspaceInfo.hasGit,
 				branch: workspaceInfo.branch,
@@ -770,7 +757,6 @@ export default function App(): ReactElement {
 				const snapshotWorkspaceInfo = workspaceSnapshots[taskId]
 					? {
 							taskId,
-							mode: workspaceSnapshots[taskId].mode,
 							path: workspaceSnapshots[taskId].path,
 							exists: true,
 							deleted: false,
@@ -808,14 +794,10 @@ export default function App(): ReactElement {
 					workspaceInfo,
 					templates: runtimeProjectConfig
 						? {
-								commitLocalPromptTemplate: runtimeProjectConfig.commitLocalPromptTemplate,
-								commitWorktreePromptTemplate: runtimeProjectConfig.commitWorktreePromptTemplate,
-								openPrLocalPromptTemplate: runtimeProjectConfig.openPrLocalPromptTemplate,
-								openPrWorktreePromptTemplate: runtimeProjectConfig.openPrWorktreePromptTemplate,
-								commitLocalPromptTemplateDefault: runtimeProjectConfig.commitLocalPromptTemplateDefault,
-								commitWorktreePromptTemplateDefault: runtimeProjectConfig.commitWorktreePromptTemplateDefault,
-								openPrLocalPromptTemplateDefault: runtimeProjectConfig.openPrLocalPromptTemplateDefault,
-								openPrWorktreePromptTemplateDefault: runtimeProjectConfig.openPrWorktreePromptTemplateDefault,
+								commitPromptTemplate: runtimeProjectConfig.commitPromptTemplate,
+								openPrPromptTemplate: runtimeProjectConfig.openPrPromptTemplate,
+								commitPromptTemplateDefault: runtimeProjectConfig.commitPromptTemplateDefault,
+								openPrPromptTemplateDefault: runtimeProjectConfig.openPrPromptTemplateDefault,
 							}
 						: null,
 				});
@@ -1172,7 +1154,6 @@ export default function App(): ReactElement {
 	}, [workspaceGit]);
 
 	const canUseWorktree = createTaskBranchOptions.length > 0;
-	const isWorktreeCapabilityKnown = workspaceGit !== null;
 	const defaultTaskBranchRef = useMemo(() => {
 		if (!workspaceGit?.hasGit) {
 			return "";
@@ -1550,33 +1531,6 @@ export default function App(): ReactElement {
 	}, [isDocumentVisible, refreshWorkspaceState]);
 
 	useEffect(() => {
-		// Keep the user's preferred mode sticky across launches.
-		// Do not persist temporary local fallback when worktree capability is unavailable.
-		if (!canUseWorktree && newTaskWorkspaceMode === "local") {
-			return;
-		}
-		preferredNewTaskWorkspaceModeRef.current = newTaskWorkspaceMode;
-		setPersistedNewTaskWorkspaceMode(newTaskWorkspaceMode);
-	}, [canUseWorktree, newTaskWorkspaceMode, setPersistedNewTaskWorkspaceMode]);
-
-	useEffect(() => {
-		if (!isWorktreeCapabilityKnown) {
-			return;
-		}
-		if (!canUseWorktree && newTaskWorkspaceMode === "worktree") {
-			setNewTaskWorkspaceMode("local");
-			return;
-		}
-		if (
-			canUseWorktree &&
-			newTaskWorkspaceMode === "local" &&
-			preferredNewTaskWorkspaceModeRef.current === "worktree"
-		) {
-			setNewTaskWorkspaceMode("worktree");
-		}
-	}, [canUseWorktree, isWorktreeCapabilityKnown, newTaskWorkspaceMode]);
-
-	useEffect(() => {
 		if (!canUseWorktree) {
 			setNewTaskBranchRef("");
 			return;
@@ -1592,28 +1546,10 @@ export default function App(): ReactElement {
 		if (!isInlineTaskCreateOpen) {
 			return;
 		}
-		if (!isWorktreeCapabilityKnown) {
-			return;
-		}
-		if (!canUseWorktree) {
-			setNewTaskWorkspaceMode("local");
-		}
 		if (canUseWorktree && !newTaskBranchRef) {
 			setNewTaskBranchRef(defaultTaskBranchRef);
 		}
-	}, [canUseWorktree, defaultTaskBranchRef, isInlineTaskCreateOpen, isWorktreeCapabilityKnown, newTaskBranchRef]);
-
-	useEffect(() => {
-		if (!editingTaskId) {
-			return;
-		}
-		if (!isWorktreeCapabilityKnown) {
-			return;
-		}
-		if (!canUseWorktree && editTaskWorkspaceMode === "worktree") {
-			setEditTaskWorkspaceMode("local");
-		}
-	}, [canUseWorktree, editTaskWorkspaceMode, editingTaskId, isWorktreeCapabilityKnown]);
+	}, [canUseWorktree, defaultTaskBranchRef, isInlineTaskCreateOpen, newTaskBranchRef]);
 
 	useEffect(() => {
 		if (!editingTaskId) {
@@ -1621,9 +1557,6 @@ export default function App(): ReactElement {
 		}
 		if (!canUseWorktree) {
 			setEditTaskBranchRef("");
-			return;
-		}
-		if (editTaskWorkspaceMode !== "worktree") {
 			return;
 		}
 		const isCurrentValid = createTaskBranchOptions.some((option) => option.value === editTaskBranchRef);
@@ -1636,7 +1569,6 @@ export default function App(): ReactElement {
 		createTaskBranchOptions,
 		defaultTaskBranchRef,
 		editTaskBranchRef,
-		editTaskWorkspaceMode,
 		editingTaskId,
 	]);
 
@@ -1655,7 +1587,6 @@ export default function App(): ReactElement {
 			setEditingTaskId(null);
 			setEditTaskPrompt("");
 			setEditTaskStartInPlanMode(false);
-			setEditTaskWorkspaceMode("local");
 			setEditTaskBranchRef("");
 		}
 	}, [board, editingTaskId]);
@@ -1688,11 +1619,20 @@ export default function App(): ReactElement {
 		}
 
 		if (!event.metaKey && !event.ctrlKey && key === "c") {
+			if (!workspaceGit?.hasGit) {
+				showAppToast({
+					intent: "danger",
+					icon: "warning-sign",
+					message: "No git detected. Initialize git before creating tasks.",
+					timeout: 5000,
+				});
+				return;
+			}
 			event.preventDefault();
 			setEditingTaskId(null);
 			setIsInlineTaskCreateOpen(true);
 		}
-	}, [selectedCard]);
+	}, [selectedCard, workspaceGit?.hasGit]);
 	useWindowEvent("keydown", handleGlobalKeyDown);
 
 	const handleBack = useCallback(() => {
@@ -1747,6 +1687,12 @@ export default function App(): ReactElement {
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			showAppToast({
+				intent: "danger",
+				icon: "warning-sign",
+				message,
+				timeout: 7000,
+			});
 			setWorktreeError(message);
 		}
 	}, [currentProjectId]);
@@ -1849,9 +1795,6 @@ export default function App(): ReactElement {
 			}
 			try {
 				const targetTaskId = getDetailTerminalTaskId(card);
-				if (targetTaskId === HOME_TERMINAL_TASK_ID) {
-					return await startHomeTerminalSession();
-				}
 				const response = await workspaceFetch("/api/runtime/shell-session/start", {
 					method: "POST",
 					headers: {
@@ -1962,10 +1905,19 @@ export default function App(): ReactElement {
 	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
 
 	const handleOpenCreateTask = useCallback(() => {
+		if (!workspaceGit?.hasGit) {
+			showAppToast({
+				intent: "danger",
+				icon: "warning-sign",
+				message: "No git detected. Initialize git before creating tasks.",
+				timeout: 5000,
+			});
+			return;
+		}
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setIsInlineTaskCreateOpen(true);
-	}, []);
+	}, [workspaceGit?.hasGit]);
 
 	const handleCancelCreateTask = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
@@ -1985,19 +1937,16 @@ export default function App(): ReactElement {
 			setEditingTaskId(task.id);
 			setEditTaskPrompt(taskPrompt);
 			setEditTaskStartInPlanMode(task.startInPlanMode);
-			const taskMode: TaskWorkspaceMode = task.baseRef && canUseWorktree ? "worktree" : "local";
-			setEditTaskWorkspaceMode(taskMode);
 			const fallbackBranch = task.baseRef ?? defaultTaskBranchRef;
 			setEditTaskBranchRef(fallbackBranch);
 		},
-		[canUseWorktree, defaultTaskBranchRef],
+		[defaultTaskBranchRef],
 	);
 
 	const handleCancelEditTask = useCallback(() => {
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskStartInPlanMode(false);
-		setEditTaskWorkspaceMode("local");
 		setEditTaskBranchRef("");
 	}, []);
 
@@ -2009,7 +1958,7 @@ export default function App(): ReactElement {
 		if (!prompt) {
 			return;
 		}
-		if (editTaskWorkspaceMode === "worktree" && (!canUseWorktree || !(editTaskBranchRef || defaultTaskBranchRef))) {
+		if (!canUseWorktree || !(editTaskBranchRef || defaultTaskBranchRef)) {
 			return;
 		}
 
@@ -2019,10 +1968,7 @@ export default function App(): ReactElement {
 			return;
 		}
 
-		const baseRef =
-			editTaskWorkspaceMode === "worktree" && canUseWorktree
-				? (editTaskBranchRef || defaultTaskBranchRef || null)
-				: null;
+		const baseRef = editTaskBranchRef || defaultTaskBranchRef || null;
 
 		setBoard((currentBoard) => {
 			const updated = updateTask(currentBoard, editingTaskId, {
@@ -2043,7 +1989,6 @@ export default function App(): ReactElement {
 		editTaskBranchRef,
 		editTaskPrompt,
 		editTaskStartInPlanMode,
-		editTaskWorkspaceMode,
 		editingTaskId,
 	]);
 
@@ -2052,7 +1997,7 @@ export default function App(): ReactElement {
 		if (!prompt) {
 			return;
 		}
-		if (newTaskWorkspaceMode === "worktree" && (!canUseWorktree || !(newTaskBranchRef || defaultTaskBranchRef))) {
+		if (!canUseWorktree || !(newTaskBranchRef || defaultTaskBranchRef)) {
 			return;
 		}
 		const parsedPrompt = splitPromptToTitleDescription(prompt);
@@ -2060,10 +2005,7 @@ export default function App(): ReactElement {
 		if (!title) {
 			return;
 		}
-		const baseRef =
-			newTaskWorkspaceMode === "worktree" && canUseWorktree
-				? (newTaskBranchRef || defaultTaskBranchRef || null)
-				: null;
+		const baseRef = newTaskBranchRef || defaultTaskBranchRef || null;
 		setBoard((currentBoard) =>
 			addTaskToColumn(currentBoard, "backlog", {
 				title,
@@ -2085,7 +2027,6 @@ export default function App(): ReactElement {
 		newTaskBranchRef,
 		newTaskPrompt,
 		newTaskStartInPlanMode,
-		newTaskWorkspaceMode,
 	]);
 
 	const performMoveTaskToTrash = useCallback(
@@ -2292,7 +2233,6 @@ export default function App(): ReactElement {
 				if (ensured.response?.enabled) {
 					setSelectedTaskWorkspaceInfo({
 						taskId,
-						mode: "worktree",
 						path: ensured.response.path,
 						exists: true,
 						deleted: false,
@@ -2468,11 +2408,8 @@ export default function App(): ReactElement {
 		if (!selectedCard) {
 			return null;
 		}
-		if (!selectedCard.card.baseRef) {
-			return homeTerminalShellBinary;
-		}
 		return activeSelectedTaskWorkspaceInfo?.path ?? selectedCardWorkspaceSnapshot?.path ?? null;
-	}, [activeSelectedTaskWorkspaceInfo?.path, homeTerminalShellBinary, selectedCard, selectedCardWorkspaceSnapshot?.path]);
+	}, [activeSelectedTaskWorkspaceInfo?.path, selectedCard, selectedCardWorkspaceSnapshot?.path]);
 	const runtimeHint = useMemo(() => {
 		if (shouldUseNavigationPath || !runtimeProjectConfig) {
 			return undefined;
@@ -2493,7 +2430,7 @@ export default function App(): ReactElement {
 		if (!workspaceGit || workspaceGit.hasGit) {
 			return undefined;
 		}
-		return "No git detected, worktree isolation disabled";
+		return "No git detected, task worktrees unavailable";
 	}, [shouldUseNavigationPath, workspaceGit]);
 	const activeWorkspacePath =
 		selectedCard
@@ -2514,12 +2451,6 @@ export default function App(): ReactElement {
 	});
 	const activeWorkspaceHint = useMemo(() => {
 		if (!selectedCard || !activeSelectedTaskWorkspaceInfo) {
-			return undefined;
-		}
-		if (activeSelectedTaskWorkspaceInfo.mode === "local") {
-			if (!activeSelectedTaskWorkspaceInfo.hasGit) {
-				return "Local workspace (no git)";
-			}
 			return undefined;
 		}
 		if (activeSelectedTaskWorkspaceInfo.deleted) {
@@ -2546,7 +2477,6 @@ export default function App(): ReactElement {
 		if (!hasTaskGit) {
 			return null;
 		}
-		const mode = activeSelectedTaskWorkspaceInfo?.mode ?? selectedCardWorkspaceSnapshot?.mode;
 		return {
 			hasGit: true,
 			branch: activeSelectedTaskWorkspaceInfo?.branch ?? selectedCardWorkspaceSnapshot?.branch ?? null,
@@ -2554,7 +2484,6 @@ export default function App(): ReactElement {
 			changedFiles: selectedCardWorkspaceSnapshot?.changedFiles ?? 0,
 			additions: selectedCardWorkspaceSnapshot?.additions ?? 0,
 			deletions: selectedCardWorkspaceSnapshot?.deletions ?? 0,
-			scopeLabel: mode === "local" ? "Local" : mode === "worktree" ? "Worktree" : null,
 		};
 	}, [activeSelectedTaskWorkspaceInfo, hasNoProjects, selectedCard, selectedCardWorkspaceSnapshot]);
 	const trashWarningGuidance = useMemo(() => {
@@ -2564,13 +2493,6 @@ export default function App(): ReactElement {
 		const info = pendingTrashWarning.workspaceInfo;
 		if (!info) {
 			return ["Save your changes before trashing this task."];
-		}
-		if (info.mode === "local") {
-			const branch = info.branch ?? "your current branch";
-			return [
-				`Commit your changes on ${branch}, then open a PR or keep the branch for later.`,
-				"Or cherry-pick the commit into your target branch.",
-			];
 		}
 		if (info.isDetached) {
 			return [
@@ -2604,10 +2526,7 @@ export default function App(): ReactElement {
 			onCancel={handleCancelCreateTask}
 			startInPlanMode={newTaskStartInPlanMode}
 			onStartInPlanModeChange={setNewTaskStartInPlanMode}
-			workspaceMode={newTaskWorkspaceMode}
-			onWorkspaceModeChange={setNewTaskWorkspaceMode}
 			workspaceId={currentProjectId}
-			workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
 			canUseWorktree={canUseWorktree}
 			branchRef={newTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
@@ -2625,10 +2544,7 @@ export default function App(): ReactElement {
 			onCancel={handleCancelEditTask}
 			startInPlanMode={editTaskStartInPlanMode}
 			onStartInPlanModeChange={setEditTaskStartInPlanMode}
-			workspaceMode={editTaskWorkspaceMode}
-			onWorkspaceModeChange={setEditTaskWorkspaceMode}
 			workspaceId={currentProjectId}
-			workspaceCurrentBranch={workspaceGit?.currentBranch ?? null}
 			canUseWorktree={canUseWorktree}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
@@ -2782,7 +2698,7 @@ export default function App(): ReactElement {
 										<NonIdealState
 											icon="folder-open"
 											title="No projects yet"
-											description="Add a repository to start using Kanbanana."
+											description="Add a git repository to start using Kanbanana."
 											action={
 												<Button
 													intent="primary"
@@ -2792,6 +2708,24 @@ export default function App(): ReactElement {
 													}}
 												/>
 											}
+										/>
+									</div>
+								) : hasSelectedProjectWithoutGit ? (
+									<div
+										style={{
+											display: "flex",
+											flex: "1 1 0",
+											minHeight: 0,
+											alignItems: "center",
+											justifyContent: "center",
+											background: Colors.DARK_GRAY1,
+											padding: "calc(var(--bp-surface-spacing) * 6)",
+										}}
+									>
+										<NonIdealState
+											icon="git-repo"
+											title="No git detected"
+											description="This project does not have git initialized. Open a project with git initialized."
 										/>
 									</div>
 								) : (

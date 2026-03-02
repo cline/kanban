@@ -12,10 +12,8 @@ export interface UseRuntimeConfigResult {
 		selectedShortcutId?: string | null;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
-		commitLocalPromptTemplate?: string;
-		commitWorktreePromptTemplate?: string;
-		openPrLocalPromptTemplate?: string;
-		openPrWorktreePromptTemplate?: string;
+		commitPromptTemplate?: string;
+		openPrPromptTemplate?: string;
 	}) => Promise<RuntimeConfigResponse | null>;
 }
 
@@ -68,10 +66,8 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 			selectedShortcutId?: string | null;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
-			commitLocalPromptTemplate?: string;
-			commitWorktreePromptTemplate?: string;
-			openPrLocalPromptTemplate?: string;
-			openPrWorktreePromptTemplate?: string;
+			commitPromptTemplate?: string;
+			openPrPromptTemplate?: string;
 		}): Promise<RuntimeConfigResponse | null> => {
 			if (!workspaceId) {
 				return null;
