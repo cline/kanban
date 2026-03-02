@@ -2,7 +2,7 @@ import { Button, Icon, MenuItem } from "@blueprintjs/core";
 import type { ButtonProps } from "@blueprintjs/core";
 import { Select } from "@blueprintjs/select";
 import type { ItemPredicate, ItemRenderer } from "@blueprintjs/select";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 
 export interface BranchSelectOption {
@@ -59,6 +59,7 @@ export function BranchSelectDropdown({
 	menuStyle?: CSSProperties;
 	onPopoverOpenChange?: (isOpen: boolean) => void;
 }): ReactElement {
+	const [isOpen, setIsOpen] = useState(false);
 	const orderedOptions = useMemo(() => {
 		const items = options.slice();
 		if (!selectedValue) {
@@ -85,14 +86,14 @@ export function BranchSelectDropdown({
 			if (!modifiers.matchesPredicate) {
 				return null;
 			}
-				return (
-					<MenuItem
-						key={option.value}
-						active={modifiers.active}
-						disabled={modifiers.disabled}
-						text={option.label}
-						onClick={handleClick}
-						onFocus={handleFocus}
+			return (
+				<MenuItem
+					key={option.value}
+					active={modifiers.active}
+					disabled={modifiers.disabled}
+					text={option.label}
+					onClick={handleClick}
+					onFocus={handleFocus}
 					roleStructure="listoption"
 					style={{ paddingLeft: 8, paddingRight: 8 }}
 					labelElement={
@@ -114,8 +115,14 @@ export function BranchSelectDropdown({
 			popoverProps={{
 				matchTargetWidth,
 				minimal: true,
-				onOpening: () => onPopoverOpenChange?.(true),
-				onClosing: () => onPopoverOpenChange?.(false),
+				onOpening: () => {
+					setIsOpen(true);
+					onPopoverOpenChange?.(true);
+				},
+				onClosing: () => {
+					setIsOpen(false);
+					onPopoverOpenChange?.(false);
+				},
 			}}
 			popoverContentProps={dropdownStyle ? { style: dropdownStyle } : undefined}
 			menuProps={menuStyle ? { style: menuStyle } : undefined}
@@ -132,6 +139,7 @@ export function BranchSelectDropdown({
 				icon={typeof iconSize === "number" ? <Icon icon="git-branch" size={iconSize} /> : "git-branch"}
 				endIcon="caret-down"
 				text={resolvedButtonText}
+				active={isOpen}
 				disabled={disabled}
 				className={buttonClassName}
 				style={buttonStyle}
