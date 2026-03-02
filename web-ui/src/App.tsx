@@ -1646,7 +1646,6 @@ export default function App(): ReactElement {
 				message,
 				timeout: 7000,
 			});
-			setWorktreeError(message);
 		}
 	}, [currentProjectId]);
 
