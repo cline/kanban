@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { RuntimeAgentId, RuntimeTaskSessionSummary } from "../api-contract.js";
+import { buildKanbananaCommandParts } from "../kanbanana-command.js";
 import { stripAnsi } from "./output-utils.js";
 import type { SessionTransitionEvent } from "./session-state-machine.js";
 
@@ -69,8 +70,7 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 }
 
 function buildHookCommand(context: HookContext, event: "review" | "inprogress"): string {
-	const parts = [
-		"kanbanana",
+	const parts = buildKanbananaCommandParts([
 		"hooks",
 		"ingest",
 		"--task-id",
@@ -79,7 +79,7 @@ function buildHookCommand(context: HookContext, event: "review" | "inprogress"):
 		event,
 		"--port",
 		String(context.serverPort),
-	];
+	]);
 	return parts.map(shellQuote).join(" ");
 }
 
@@ -191,17 +191,18 @@ const codexAdapter: AgentSessionAdapter = {
 		const hooks = resolveHookContext(input);
 		if (hooks) {
 			if (process.platform === "win32") {
-				const notifyArray = JSON.stringify([
-					"kanbanana",
-					"hooks",
-					"ingest",
-					"--task-id",
-					hooks.taskId,
-					"--event",
-					"review",
-					"--port",
-					String(hooks.serverPort),
-				]);
+				const notifyArray = JSON.stringify(
+					buildKanbananaCommandParts([
+						"hooks",
+						"ingest",
+						"--task-id",
+						hooks.taskId,
+						"--event",
+						"review",
+						"--port",
+						String(hooks.serverPort),
+					]),
+				);
 				args.push("-c", `notify=${notifyArray}`);
 			} else {
 				const temp = await createSessionTempDir(input, "codex");
