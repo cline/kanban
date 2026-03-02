@@ -75,9 +75,11 @@ export function TaskInlineCreateCard({
 			</FormGroup>
 
 			<FormGroup
+				label="Worktree base ref"
+				labelFor={branchSelectId}
+				helperText="Creates the worktree at the selected ref's current HEAD in detached state."
 				style={{ marginTop: -5, marginBottom: 0 }}
 			>
-				<span style={{ display: "block", marginBottom: 4 }}>Worktree branch</span>
 				<BranchSelectDropdown
 					id={branchSelectId}
 					options={branchOptions}
