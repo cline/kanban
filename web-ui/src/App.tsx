@@ -2614,6 +2614,9 @@ export default function App(): ReactElement {
 	const navbarRepoHint = hasNoProjects ? undefined : repoHint;
 	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
 	const navbarGitSummary = hasNoProjects || selectedCard ? null : gitSummary;
+	const shouldHideProjectDependentTopBarActions =
+		!selectedCard &&
+		(isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
 	const navbarTaskGitSummary = useMemo((): TopBarTaskGitSummary | null => {
 		if (hasNoProjects || !selectedCard) {
 			return null;
@@ -2811,6 +2814,7 @@ export default function App(): ReactElement {
 					onOpenWorkspace={onOpenWorkspace}
 					canOpenWorkspace={canOpenWorkspace}
 					isOpeningWorkspace={isOpeningWorkspace}
+					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
 					<RuntimeStatusBanners
 						worktreeError={worktreeError}

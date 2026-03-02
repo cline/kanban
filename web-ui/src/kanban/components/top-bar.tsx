@@ -89,6 +89,7 @@ export function TopBar({
 	onOpenWorkspace,
 	canOpenWorkspace,
 	isOpeningWorkspace,
+	hideProjectDependentActions = false,
 }: {
 	onBack?: () => void;
 	workspacePath?: string;
@@ -121,6 +122,7 @@ export function TopBar({
 	onOpenWorkspace: () => void;
 	canOpenWorkspace: boolean;
 	isOpeningWorkspace: boolean;
+	hideProjectDependentActions?: boolean;
 }): React.ReactElement {
 	const [isBranchPickerOpen, setIsBranchPickerOpen] = useState(false);
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
@@ -215,16 +217,16 @@ export function TopBar({
 						/>
 					</div>
 				) : null}
-				{workspaceHint ? (
+				{!hideProjectDependentActions && workspaceHint ? (
 					<Tag minimal className="kb-navbar-tag">{workspaceHint}</Tag>
 				) : null}
-				{repoHint ? (
+				{!hideProjectDependentActions && repoHint ? (
 					<Tag minimal intent="warning" className="kb-navbar-tag">{repoHint}</Tag>
 				) : null}
-				{runtimeHint ? (
+				{!hideProjectDependentActions && runtimeHint ? (
 					<Tag minimal intent="warning" className="kb-navbar-tag">{runtimeHint}</Tag>
 				) : null}
-				{hasHomeGitSummary ? (
+				{!hideProjectDependentActions && hasHomeGitSummary ? (
 					<>
 						<NavbarDivider />
 						{hasHomeBranchPicker ? (
@@ -346,7 +348,7 @@ export function TopBar({
 				) : null}
 			</NavbarGroup>
 			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40, paddingRight: 2 }}>
-				{selectedShortcut && onRunShortcut ? (
+				{!hideProjectDependentActions && selectedShortcut && onRunShortcut ? (
 					<ButtonGroup>
 						<Button
 							variant="outlined"
