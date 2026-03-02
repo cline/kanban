@@ -337,7 +337,9 @@ export default function App(): ReactElement {
 			if (shouldHydrateBoard) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
 				setBoard(normalized);
-				resetWorkspaceSnapshots();
+				if (!isSameProject) {
+					resetWorkspaceSnapshots();
+				}
 				setWorkspaceHydrationNonce((current) => current + 1);
 			}
 			setWorkspaceRevision(nextWorkspaceState.revision);
