@@ -207,7 +207,7 @@ export async function ensureTaskWorktree(options: {
 		if (!requestedBaseRef) {
 			return {
 				ok: false,
-				path: context.repoPath,
+				path: null,
 				baseRef: null,
 				baseCommit: null,
 				error: "Task base branch is required for worktree creation.",
@@ -224,7 +224,7 @@ export async function ensureTaskWorktree(options: {
 		if (!baseCommit) {
 			return {
 				ok: false,
-				path: context.repoPath,
+				path: null,
 				baseRef: requestedBaseRef,
 				baseCommit: null,
 				error: `Branch or ref '${requestedBaseRef}' does not exist in this repository.`,
@@ -260,7 +260,7 @@ export async function ensureTaskWorktree(options: {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
 			ok: false,
-			path: options.cwd,
+			path: null,
 			baseRef: typeof options.baseRef === "string" ? options.baseRef.trim() || null : null,
 			baseCommit: null,
 			error: message,
@@ -319,7 +319,10 @@ export async function resolveTaskCwd(options: {
 	}
 
 	const worktreePath = getTaskWorktreePath(context.repoPath, options.taskId);
-	return (await pathExists(worktreePath)) ? worktreePath : context.repoPath;
+	if (await pathExists(worktreePath)) {
+		return worktreePath;
+	}
+	throw new Error(`Task worktree not found for task "${options.taskId}".`);
 }
 
 export async function getTaskWorkspaceInfo(options: {
@@ -342,7 +345,6 @@ export async function getTaskWorkspaceInfo(options: {
 			taskId,
 			path: worktreePath,
 			exists: false,
-			deleted: true,
 			baseRef: normalizedBaseRef,
 			branch: null,
 			isDetached: false,
@@ -355,7 +357,6 @@ export async function getTaskWorkspaceInfo(options: {
 		taskId,
 		path: worktreePath,
 		exists: true,
-		deleted: false,
 		baseRef: normalizedBaseRef,
 		branch: headInfo.branch,
 		isDetached: headInfo.isDetached,

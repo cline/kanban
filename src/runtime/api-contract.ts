@@ -317,13 +317,22 @@ export const runtimeWorktreeEnsureRequestSchema = z.object({
 });
 export type RuntimeWorktreeEnsureRequest = z.infer<typeof runtimeWorktreeEnsureRequestSchema>;
 
-export const runtimeWorktreeEnsureResponseSchema = z.object({
-	ok: z.boolean(),
-	path: z.string(),
-	baseRef: z.string().nullable(),
-	baseCommit: z.string().nullable(),
-	error: z.string().optional(),
-});
+export const runtimeWorktreeEnsureResponseSchema = z.union([
+	z.object({
+		ok: z.literal(true),
+		path: z.string(),
+		baseRef: z.string().nullable(),
+		baseCommit: z.string(),
+		error: z.string().optional(),
+	}),
+	z.object({
+		ok: z.literal(false),
+		path: z.null(),
+		baseRef: z.string().nullable(),
+		baseCommit: z.null(),
+		error: z.string().optional(),
+	}),
+]);
 export type RuntimeWorktreeEnsureResponse = z.infer<typeof runtimeWorktreeEnsureResponseSchema>;
 
 export const runtimeWorktreeDeleteRequestSchema = z.object({
@@ -348,7 +357,6 @@ export const runtimeTaskWorkspaceInfoResponseSchema = z.object({
 	taskId: z.string(),
 	path: z.string(),
 	exists: z.boolean(),
-	deleted: z.boolean(),
 	baseRef: z.string().nullable(),
 	branch: z.string().nullable(),
 	isDetached: z.boolean(),

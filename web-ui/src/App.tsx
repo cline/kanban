@@ -370,7 +370,7 @@ export default function App(): ReactElement {
 	const ensureTaskWorkspace = useCallback(async (task: BoardCard): Promise<{
 		ok: boolean;
 		message?: string;
-		response?: RuntimeWorktreeEnsureResponse;
+		response?: Extract<RuntimeWorktreeEnsureResponse, { ok: true }>;
 	}> => {
 		try {
 			const response = await workspaceFetch("/api/workspace/worktree/ensure", {
@@ -741,7 +741,6 @@ export default function App(): ReactElement {
 							taskId,
 							path: workspaceSnapshots[taskId].path,
 							exists: true,
-							deleted: false,
 							baseRef: selection.card.baseRef ?? null,
 							branch: workspaceSnapshots[taskId].branch,
 							isDetached: workspaceSnapshots[taskId].isDetached,
@@ -2172,7 +2171,6 @@ export default function App(): ReactElement {
 						taskId,
 						path: ensured.response.path,
 						exists: true,
-						deleted: false,
 						baseRef: ensured.response.baseRef,
 						branch: null,
 						isDetached: true,
@@ -2380,7 +2378,7 @@ export default function App(): ReactElement {
 		if (!selectedCard || !activeSelectedTaskWorkspaceInfo) {
 			return undefined;
 		}
-		if (activeSelectedTaskWorkspaceInfo.deleted) {
+		if (!activeSelectedTaskWorkspaceInfo.exists) {
 			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
 		}
 		return undefined;
