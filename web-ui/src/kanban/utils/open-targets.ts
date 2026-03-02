@@ -9,8 +9,13 @@ import warpIcon from "@/kanban/assets/open-targets/warp.svg";
 import windsurfIcon from "@/kanban/assets/open-targets/windsurf.svg";
 import xcodeIcon from "@/kanban/assets/open-targets/xcode.svg";
 import zedIcon from "@/kanban/assets/open-targets/zed.svg";
+import {
+	LocalStorageKey,
+	readLocalStorageItem,
+	writeLocalStorageItem,
+} from "@/kanban/storage/local-storage-store";
 
-export const PREFERRED_OPEN_TARGET_STORAGE_KEY = "kanbanana.preferred-open-target";
+export const PREFERRED_OPEN_TARGET_STORAGE_KEY = LocalStorageKey.PreferredOpenTarget;
 
 export type OpenTargetId =
 	| "vscode"
@@ -149,27 +154,16 @@ export function loadPersistedOpenTarget(): OpenTargetId {
 	if (typeof window === "undefined") {
 		return DEFAULT_OPEN_TARGET.id;
 	}
-	try {
-		const value = window.localStorage.getItem(PREFERRED_OPEN_TARGET_STORAGE_KEY);
-		const normalized = normalizeOpenTargetId(value);
-		if (normalized) {
-			return normalized;
-		}
-	} catch {
-		// Ignore storage failures and use default.
+	const value = readLocalStorageItem(PREFERRED_OPEN_TARGET_STORAGE_KEY);
+	const normalized = normalizeOpenTargetId(value);
+	if (normalized) {
+		return normalized;
 	}
 	return DEFAULT_OPEN_TARGET.id;
 }
 
 export function persistOpenTarget(targetId: OpenTargetId): void {
-	if (typeof window === "undefined") {
-		return;
-	}
-	try {
-		window.localStorage.setItem(PREFERRED_OPEN_TARGET_STORAGE_KEY, targetId);
-	} catch {
-		// Ignore storage failures.
-	}
+	writeLocalStorageItem(PREFERRED_OPEN_TARGET_STORAGE_KEY, targetId);
 }
 
 export function buildOpenCommand(targetId: OpenTargetId, path: string): string {

@@ -2,9 +2,10 @@ import { MenuItem } from "@blueprintjs/core";
 import type { ItemRenderer } from "@blueprintjs/select";
 
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
+import { LocalStorageKey } from "@/kanban/storage/local-storage-store";
 import type { BoardData } from "@/kanban/types";
 
-export const TASK_START_IN_PLAN_MODE_STORAGE_KEY = "kanbanana.task-start-in-plan-mode";
+export const TASK_START_IN_PLAN_MODE_STORAGE_KEY = LocalStorageKey.TaskStartInPlanMode;
 
 export interface SearchableTask {
 	id: string;

@@ -1,4 +1,8 @@
-const NOTIFICATION_PERMISSION_PROMPTED_STORAGE_KEY = "kanbanana.notifications.permission-prompted";
+import {
+	LocalStorageKey,
+	readLocalStorageItem,
+	writeLocalStorageItem,
+} from "@/kanban/storage/local-storage-store";
 
 export type BrowserNotificationPermission = NotificationPermission | "unsupported";
 
@@ -10,25 +14,11 @@ export function getBrowserNotificationPermission(): BrowserNotificationPermissio
 }
 
 function readPromptedFlag(): boolean {
-	if (typeof window === "undefined") {
-		return false;
-	}
-	try {
-		return window.localStorage.getItem(NOTIFICATION_PERMISSION_PROMPTED_STORAGE_KEY) === "true";
-	} catch {
-		return false;
-	}
+	return readLocalStorageItem(LocalStorageKey.NotificationPermissionPrompted) === "true";
 }
 
 function writePromptedFlag(value: boolean): void {
-	if (typeof window === "undefined") {
-		return;
-	}
-	try {
-		window.localStorage.setItem(NOTIFICATION_PERMISSION_PROMPTED_STORAGE_KEY, String(value));
-	} catch {
-		// Ignore storage write failures.
-	}
+	writeLocalStorageItem(LocalStorageKey.NotificationPermissionPrompted, String(value));
 }
 
 export function hasPromptedForBrowserNotificationPermission(): boolean {

@@ -1,4 +1,6 @@
-const NOTIFICATION_BADGE_CLEAR_EVENT_KEY = "kanbanana.notification-badge-clear.v1";
+import { LocalStorageKey, writeLocalStorageItem } from "@/kanban/storage/local-storage-store";
+
+const NOTIFICATION_BADGE_CLEAR_EVENT_KEY = LocalStorageKey.NotificationBadgeClearEvent;
 
 interface NotificationBadgeClearEvent {
 	sourceId: string;
@@ -54,11 +56,7 @@ export function broadcastNotificationBadgeClear(
 		workspaceId: normalizedWorkspaceId,
 		triggeredAt: Date.now(),
 	};
-	try {
-		window.localStorage.setItem(NOTIFICATION_BADGE_CLEAR_EVENT_KEY, JSON.stringify(payload));
-	} catch {
-		// Ignore storage failures.
-	}
+	writeLocalStorageItem(NOTIFICATION_BADGE_CLEAR_EVENT_KEY, JSON.stringify(payload));
 }
 
 export function subscribeToNotificationBadgeClear(

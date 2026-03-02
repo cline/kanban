@@ -1,4 +1,10 @@
-const TAB_VISIBILITY_PRESENCE_STORAGE_KEY = "kanbanana.tab-visibility-presence.v1";
+import {
+	LocalStorageKey,
+	readLocalStorageItem,
+	writeLocalStorageItem,
+} from "@/kanban/storage/local-storage-store";
+
+const TAB_VISIBILITY_PRESENCE_STORAGE_KEY = LocalStorageKey.TabVisibilityPresence;
 const TAB_VISIBILITY_STALE_MS = 15000;
 
 interface TabVisibilityPresenceEntry {
@@ -7,14 +13,11 @@ interface TabVisibilityPresenceEntry {
 }
 
 function readPresence(): Record<string, TabVisibilityPresenceEntry> {
-	if (typeof window === "undefined") {
+	const raw = readLocalStorageItem(TAB_VISIBILITY_PRESENCE_STORAGE_KEY);
+	if (!raw) {
 		return {};
 	}
 	try {
-		const raw = window.localStorage.getItem(TAB_VISIBILITY_PRESENCE_STORAGE_KEY);
-		if (!raw) {
-			return {};
-		}
 		const parsed = JSON.parse(raw) as unknown;
 		if (!parsed || typeof parsed !== "object") {
 			return {};
@@ -49,14 +52,7 @@ function readPresence(): Record<string, TabVisibilityPresenceEntry> {
 }
 
 function writePresence(presence: Record<string, TabVisibilityPresenceEntry>): void {
-	if (typeof window === "undefined") {
-		return;
-	}
-	try {
-		window.localStorage.setItem(TAB_VISIBILITY_PRESENCE_STORAGE_KEY, JSON.stringify(presence));
-	} catch {
-		// Ignore storage failures.
-	}
+	writeLocalStorageItem(TAB_VISIBILITY_PRESENCE_STORAGE_KEY, JSON.stringify(presence));
 }
 
 function pruneStaleEntries(
