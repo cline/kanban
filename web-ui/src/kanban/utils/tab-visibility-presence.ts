@@ -100,15 +100,27 @@ export function markTabHidden(tabId: string): void {
 	writePresence(next);
 }
 
-export function hasVisibleKanbananaTabForWorkspace(workspaceId: string | null | undefined): boolean {
+export function hasVisibleKanbananaTabForWorkspace(
+	workspaceId: string | null | undefined,
+	excludeTabId?: string,
+): boolean {
 	const normalizedWorkspaceId = workspaceId?.trim();
 	if (!normalizedWorkspaceId || typeof window === "undefined") {
 		return false;
 	}
+	const normalizedExcludeTabId = excludeTabId?.trim() ?? "";
 	const now = Date.now();
-	const next = pruneStaleEntries(readPresence(), now);
+	const current = readPresence();
+	const next = pruneStaleEntries(current, now);
+	if (Object.keys(next).length !== Object.keys(current).length) {
+		writePresence(next);
+	}
 	if (Object.keys(next).length === 0) {
 		return false;
 	}
-	return Object.values(next).some((entry) => entry.workspaceId === normalizedWorkspaceId);
+	return Object.entries(next).some(
+		([tabId, entry]) =>
+			tabId !== normalizedExcludeTabId &&
+			entry.workspaceId === normalizedWorkspaceId,
+	);
 }

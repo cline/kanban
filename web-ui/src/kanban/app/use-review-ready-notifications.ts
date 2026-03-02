@@ -40,6 +40,13 @@ function canShowBrowserNotifications(): boolean {
 	return getBrowserNotificationPermission() === "granted";
 }
 
+function isDocumentCurrentlyVisible(fallbackValue: boolean): boolean {
+	if (typeof document === "undefined") {
+		return fallbackValue;
+	}
+	return document.visibilityState === "visible";
+}
+
 function showReadyForReviewNotification(taskId: string, notificationTitle: string, taskTitle: string): void {
 	if (!canShowBrowserNotifications()) {
 		return;
@@ -103,10 +110,15 @@ export function useReviewReadyNotifications({
 				handledReadyForReviewEventKeysRef.current.delete(oldestKey);
 			}
 		}
+		const isVisibleNow = isDocumentCurrentlyVisible(isDocumentVisible);
+		const hasVisiblePeerTabForWorkspace = hasVisibleKanbananaTabForWorkspace(
+			latestTaskReadyForReview.workspaceId,
+			notificationPresenceTabIdRef.current,
+		);
 		if (
 			!readyForReviewNotificationsEnabled ||
-			isDocumentVisible ||
-			hasVisibleKanbananaTabForWorkspace(latestTaskReadyForReview.workspaceId)
+			isVisibleNow ||
+			hasVisiblePeerTabForWorkspace
 		) {
 			return;
 		}
