@@ -3,15 +3,10 @@ Note: This is a historical ideation transcript. References to repo-local `.kanba
 
 # User
 
-Cline was the first ever autonomous coding agent extension for VS Code, and shortly after I made it, a lot of people copied it. Cursor and Windsurf and Claude Code and everyone else made their own agent. Eventually Claude Code made a terminal-based agent, a CLI, and then all of a sudden everybody got hopped on to that trend where Gemini had a CLI and OpenAI made a CLI with Codex. All these model labs stopped just doing model development; they also started competing with Cursor and Cline, where they made their own agents because it was so easy for the terminal.
-
-The thing is, based on what the best model is, people will jump between these tools and jump between subscriptions. The situation is that Anthropic and OpenAI are giving away subscriptions where, let's say, $200 for the max plan. If you were to use the same usage, direct API cost would be like $3,000 plus dollars. People are just incentivized to use the Anthropic subscription and the Anthropic product to use their model, and it sort of prices out competition like Cline and Cursor.
-
-And so I came up with this idea where I personally have all these agents installed on my computer: all these CLI agents.
+I personally have all these agents installed on my computer: all these CLI agents.
 - Gemini CLI for run Gemini is the best model
 - Codec CLI for when GPT is the best model
 - Claude Code CLI for when Claude is the best model
-
 
 I switch between these right now, switch between subscriptions depending on what the best model is. It's always between Gemini and GPT and Claude, and the reality is they're always going to compete, always going to one up each other, right?
 
