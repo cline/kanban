@@ -232,6 +232,7 @@ export function TopBar({
 											fontSize: "var(--bp-typography-size-body-small)",
 											maxWidth: 200,
 										}}
+										iconSize={12}
 										matchTargetWidth={false}
 										dropdownStyle={{ minWidth: 180 }}
 										menuStyle={{ maxHeight: 300, overflowY: "auto" }}

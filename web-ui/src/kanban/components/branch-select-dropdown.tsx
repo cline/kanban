@@ -31,6 +31,7 @@ export function BranchSelectDropdown({
 	buttonText,
 	buttonClassName,
 	buttonStyle,
+	iconSize,
 	emptyText = "No branches detected",
 	noResultsText = "No matching branches",
 	showSelectedIndicator = false,
@@ -49,6 +50,7 @@ export function BranchSelectDropdown({
 	buttonText?: string;
 	buttonClassName?: string;
 	buttonStyle?: CSSProperties;
+	iconSize?: number;
 	emptyText?: string;
 	noResultsText?: string;
 	showSelectedIndicator?: boolean;
@@ -127,7 +129,7 @@ export function BranchSelectDropdown({
 				variant="outlined"
 				alignText="left"
 				fill={fill}
-				icon="git-branch"
+				icon={typeof iconSize === "number" ? <Icon icon="git-branch" size={iconSize} /> : "git-branch"}
 				endIcon="caret-down"
 				text={resolvedButtonText}
 				disabled={disabled}
