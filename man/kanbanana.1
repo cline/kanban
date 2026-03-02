@@ -1,36 +1,45 @@
-.TH KANBANANA 1 "February 2026" "kanbanana 0.1.0" "User Commands"
+.TH KANBANANA 1 "March 2026" "kanbanana 0.1.0" "User Commands"
 .SH NAME
-kanbanana \- a kanban CLI foundation for coding agents
+kanbanana \- local orchestration board for coding agents
 .SH SYNOPSIS
 .B kanbanana
-.RI [ --json ]
+.RI [ --port " " number ]
+.RI [ --agent " " id ]
+.RI [ --no-open ]
 .RI [ --help ]
 .RI [ --version ]
 .SH DESCRIPTION
 .B kanbanana
-prints a minimal starter board for agent-focused kanban workflows.
+starts the local Kanbanana runtime server and serves the web UI.
 
-By default, output is plain text.
-Use
-.B --json
-for machine-readable output.
+When launched inside a git repository, it opens that repository's indexed workspace.
+When launched outside git, it starts with no active workspace or falls back to the first indexed project.
 .SH OPTIONS
+.TP
+.B --port <number>
+Bind to a specific local port (default: 8484).
+.TP
+.B --agent <id>
+Set the default agent command to one of: claude, codex, gemini, opencode, cline.
+.TP
+.B --no-open
+Do not open the browser automatically.
 .TP
 .B --help, -h
 Show help text and exit.
 .TP
 .B --version, -v
 Show version and exit.
-.TP
-.B --json
-Print the starter board as JSON.
 .SH EXAMPLES
 .TP
-Show help:
-.B kanbanana --help
+Start server on the default port:
+.B kanbanana
 .TP
-Print JSON output:
-.B kanbanana --json
+Start server without auto-opening a browser:
+.B kanbanana --no-open
+.TP
+Start server on a custom port:
+.B kanbanana --port 9000
 .SH EXIT STATUS
 .TP
 .B 0

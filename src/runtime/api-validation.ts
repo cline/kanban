@@ -85,7 +85,7 @@ export function parseOptionalTaskWorkspaceInfoRequest(query: URLSearchParams): R
 }
 
 export function parseWorkspaceFileSearchRequest(query: URLSearchParams): RuntimeWorkspaceFileSearchRequest {
-	const normalizedQuery = parseWithSchema(trimmedStringSchema, query.get("q") ?? query.get("query") ?? "");
+	const normalizedQuery = parseWithSchema(trimmedStringSchema, query.get("q") ?? "");
 	if (!normalizedQuery) {
 		return { query: "" };
 	}

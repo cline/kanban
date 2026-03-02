@@ -3,16 +3,18 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { z } from "zod";
 
-import type {
-	RuntimeBoardCard,
-	RuntimeBoardColumn,
-	RuntimeBoardColumnId,
-	RuntimeBoardData,
-	RuntimeGitRepositoryInfo,
-	RuntimeTaskSessionSummary,
-	RuntimeWorkspaceStateResponse,
-	RuntimeWorkspaceStateSaveRequest,
+import {
+	type RuntimeBoardColumnId,
+	type RuntimeBoardData,
+	type RuntimeGitRepositoryInfo,
+	type RuntimeTaskSessionSummary,
+	type RuntimeWorkspaceStateResponse,
+	type RuntimeWorkspaceStateSaveRequest,
+	runtimeBoardDataSchema,
+	runtimeTaskSessionSummarySchema,
+	runtimeWorkspaceStateSaveRequestSchema,
 } from "../api-contract.js";
 
 const RUNTIME_HOME_DIR = ".kanbanana";
@@ -22,7 +24,6 @@ const BOARD_FILENAME = "board.json";
 const SESSIONS_FILENAME = "sessions.json";
 const META_FILENAME = "meta.json";
 const INDEX_VERSION = 1;
-const TASK_ID_LENGTH = 5;
 
 const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "backlog", title: "Backlog" },
@@ -30,9 +31,6 @@ const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "review", title: "Review" },
 	{ id: "trash", title: "Trash" },
 ];
-
-const VALID_SESSION_STATES = new Set(["idle", "running", "awaiting_review", "failed", "interrupted"]);
-const VALID_REVIEW_REASONS = new Set(["attention", "exit", "error", "interrupted", "hook"]);
 
 interface WorkspaceIndexEntry {
 	workspaceId: string;
@@ -54,6 +52,75 @@ interface WorkspaceStateMeta {
 	revision: number;
 	updatedAt: number;
 }
+
+const workspaceStateMetaSchema = z.object({
+	revision: z.number().int().nonnegative(),
+	updatedAt: z.number(),
+});
+
+const workspaceIndexEntrySchema = z.object({
+	workspaceId: z.string().min(1, "Workspace ID cannot be empty."),
+	repoPath: z.string().min(1, "Workspace repository path cannot be empty."),
+});
+
+const workspaceIndexFileSchema = z
+	.object({
+		version: z.literal(INDEX_VERSION),
+		entries: z.record(z.string(), workspaceIndexEntrySchema),
+		repoPathToId: z.record(z.string(), z.string().min(1, "Workspace ID cannot be empty.")),
+	})
+	.superRefine((index, context) => {
+		for (const [workspaceId, entry] of Object.entries(index.entries)) {
+			if (entry.workspaceId !== workspaceId) {
+				context.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["entries", workspaceId, "workspaceId"],
+					message: `Workspace ID must match entry key "${workspaceId}".`,
+				});
+			}
+			const mappedWorkspaceId = index.repoPathToId[entry.repoPath];
+			if (mappedWorkspaceId !== workspaceId) {
+				context.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["entries", workspaceId, "repoPath"],
+					message: `Missing repoPathToId mapping for "${entry.repoPath}" to "${workspaceId}".`,
+				});
+			}
+		}
+
+		for (const [repoPath, workspaceId] of Object.entries(index.repoPathToId)) {
+			const entry = index.entries[workspaceId];
+			if (!entry) {
+				context.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["repoPathToId", repoPath],
+					message: `Mapped workspace "${workspaceId}" does not exist in entries.`,
+				});
+				continue;
+			}
+			if (entry.repoPath !== repoPath) {
+				context.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["repoPathToId", repoPath],
+					message: `Mapped repoPath does not match workspace entry path "${entry.repoPath}".`,
+				});
+			}
+		}
+	});
+
+const workspaceSessionsSchema = z
+	.record(z.string(), runtimeTaskSessionSummarySchema)
+	.superRefine((sessions, context) => {
+		for (const [taskId, session] of Object.entries(sessions)) {
+			if (session.taskId !== taskId) {
+				context.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: [taskId, "taskId"],
+					message: `Session taskId must match record key "${taskId}".`,
+				});
+			}
+		}
+	});
 
 export interface RuntimeWorkspaceContext {
 	repoPath: string;
@@ -78,28 +145,6 @@ function createEmptyWorkspaceIndex(): WorkspaceIndexFile {
 		entries: {},
 		repoPathToId: {},
 	};
-}
-
-function createDefaultSessionSummary(taskId: string): RuntimeTaskSessionSummary {
-	return {
-		taskId,
-		state: "idle",
-		agentId: null,
-		workspacePath: null,
-		pid: null,
-		startedAt: null,
-		updatedAt: Date.now(),
-		lastOutputAt: null,
-		lastActivityLine: null,
-		reviewReason: null,
-		exitCode: null,
-	};
-}
-
-function createShortTaskId(): string {
-	return Math.random()
-		.toString(36)
-		.slice(2, 2 + TASK_ID_LENGTH);
 }
 
 export function getRuntimeHomePath(): string {
@@ -130,12 +175,25 @@ function getWorkspaceMetaPath(workspaceId: string): string {
 	return join(getWorkspaceDirectoryPath(workspaceId), META_FILENAME);
 }
 
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+	return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
+}
+
 async function readJsonFile(path: string): Promise<unknown | null> {
 	try {
 		const raw = await readFile(path, "utf8");
-		return JSON.parse(raw) as unknown;
-	} catch {
-		return null;
+		try {
+			return JSON.parse(raw) as unknown;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`Malformed JSON in ${path}. ${message}`);
+		}
+	} catch (error) {
+		if (isNodeErrorWithCode(error, "ENOENT")) {
+			return null;
+		}
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`Could not read JSON file at ${path}. ${message}`);
 	}
 }
 
@@ -146,234 +204,87 @@ async function writeJsonFileAtomic(path: string, payload: unknown): Promise<void
 	await rename(tempPath, path);
 }
 
-function normalizeColumnId(input: unknown): RuntimeBoardColumnId | null {
-	if (input === "backlog" || input === "in_progress" || input === "review" || input === "trash") {
-		return input;
+function formatSchemaIssuePath(pathSegments: PropertyKey[]): string {
+	if (pathSegments.length === 0) {
+		return "root";
 	}
-	return null;
-}
-
-function resolveTaskBaseRefFallback(git: RuntimeGitRepositoryInfo): string {
-	return git.currentBranch ?? git.defaultBranch ?? git.branches[0] ?? "HEAD";
-}
-
-function normalizeBoardCard(card: unknown, fallbackBaseRef: string): RuntimeBoardCard | null {
-	if (!card || typeof card !== "object") {
-		return null;
-	}
-
-	const source = card as {
-		id?: unknown;
-		title?: unknown;
-		description?: unknown;
-		prompt?: unknown;
-		startInPlanMode?: unknown;
-		baseRef?: unknown;
-		createdAt?: unknown;
-		updatedAt?: unknown;
-	};
-
-	const title = typeof source.title === "string" ? source.title.trim() : "";
-	if (!title) {
-		return null;
-	}
-
-	const now = Date.now();
-	const description = typeof source.description === "string" ? source.description : "";
-	const prompt = typeof source.prompt === "string" ? source.prompt : description.trim() || title;
-	const normalizedBaseRef = typeof source.baseRef === "string" ? source.baseRef.trim() : "";
-
-	return {
-		id: typeof source.id === "string" && source.id ? source.id : createShortTaskId(),
-		title,
-		description,
-		prompt,
-		startInPlanMode: typeof source.startInPlanMode === "boolean" ? source.startInPlanMode : false,
-		baseRef: normalizedBaseRef || fallbackBaseRef,
-		createdAt: typeof source.createdAt === "number" ? source.createdAt : now,
-		updatedAt: typeof source.updatedAt === "number" ? source.updatedAt : now,
-	};
-}
-
-function normalizeBoard(rawBoard: unknown, fallbackBaseRef: string): RuntimeBoardData {
-	if (!rawBoard || typeof rawBoard !== "object") {
-		return createEmptyBoard();
-	}
-
-	const rawColumns = (rawBoard as { columns?: unknown }).columns;
-	if (!Array.isArray(rawColumns)) {
-		return createEmptyBoard();
-	}
-
-	const normalizedColumns: RuntimeBoardColumn[] = BOARD_COLUMNS.map((column) => ({
-		id: column.id,
-		title: column.title,
-		cards: [],
-	}));
-	const columnById = new Map(normalizedColumns.map((column) => [column.id, column]));
-
-	for (const rawColumn of rawColumns) {
-		if (!rawColumn || typeof rawColumn !== "object") {
-			continue;
-		}
-		const candidate = rawColumn as { id?: unknown; cards?: unknown };
-		const normalizedId = normalizeColumnId(candidate.id);
-		if (!normalizedId || !Array.isArray(candidate.cards)) {
-			continue;
-		}
-		const targetColumn = columnById.get(normalizedId);
-		if (!targetColumn) {
-			continue;
-		}
-		for (const rawCard of candidate.cards) {
-			const card = normalizeBoardCard(rawCard, fallbackBaseRef);
-			if (card) {
-				targetColumn.cards.push(card);
+	return pathSegments
+		.map((segment) => {
+			if (typeof segment === "number") {
+				return `[${segment}]`;
 			}
-		}
-	}
-
-	return {
-		columns: normalizedColumns,
-	};
+			return String(segment);
+		})
+		.join(".");
 }
 
-function normalizeSessionState(value: unknown): RuntimeTaskSessionSummary["state"] {
-	if (typeof value === "string" && VALID_SESSION_STATES.has(value)) {
-		return value as RuntimeTaskSessionSummary["state"];
-	}
-	return "idle";
+function formatSchemaIssues(error: z.ZodError): string {
+	return error.issues.map((issue) => `${formatSchemaIssuePath(issue.path)}: ${issue.message}`).join("; ");
 }
 
-function normalizeReviewReason(value: unknown): RuntimeTaskSessionSummary["reviewReason"] {
-	if (typeof value === "string" && VALID_REVIEW_REASONS.has(value)) {
-		return value as RuntimeTaskSessionSummary["reviewReason"];
+function parsePersistedStateFile<T>(
+	filePath: string,
+	fileLabel: string,
+	raw: unknown | null,
+	schema: z.ZodType<T>,
+	defaultValue: T,
+): T {
+	if (raw === null) {
+		return defaultValue;
 	}
-	return null;
+	const parsed = schema.safeParse(raw);
+	if (!parsed.success) {
+		throw new Error(
+			`Invalid ${fileLabel} file at ${filePath}. ` +
+				`Fix or remove the file. Validation errors: ${formatSchemaIssues(parsed.error)}`,
+		);
+	}
+	return parsed.data;
 }
 
-function normalizeSessions(rawSessions: unknown): Record<string, RuntimeTaskSessionSummary> {
-	if (!rawSessions || typeof rawSessions !== "object" || Array.isArray(rawSessions)) {
-		return {};
-	}
-
-	const sessions: Record<string, RuntimeTaskSessionSummary> = {};
-	for (const [taskId, value] of Object.entries(rawSessions as Record<string, unknown>)) {
-		if (!value || typeof value !== "object") {
-			continue;
-		}
-		const source = value as {
-			taskId?: unknown;
-			state?: unknown;
-			agentId?: unknown;
-			workspacePath?: unknown;
-			pid?: unknown;
-			startedAt?: unknown;
-			updatedAt?: unknown;
-			lastOutputAt?: unknown;
-			lastActivityLine?: unknown;
-			reviewReason?: unknown;
-			exitCode?: unknown;
-		};
-
-		const base = createDefaultSessionSummary(taskId);
-		sessions[taskId] = {
-			...base,
-			taskId: typeof source.taskId === "string" && source.taskId ? source.taskId : taskId,
-			state: normalizeSessionState(source.state),
-			agentId:
-				source.agentId === "claude" ||
-				source.agentId === "codex" ||
-				source.agentId === "gemini" ||
-				source.agentId === "opencode" ||
-				source.agentId === "cline"
-					? source.agentId
-					: null,
-			workspacePath: typeof source.workspacePath === "string" ? source.workspacePath : null,
-			pid: typeof source.pid === "number" ? source.pid : null,
-			startedAt: typeof source.startedAt === "number" ? source.startedAt : null,
-			updatedAt: typeof source.updatedAt === "number" ? source.updatedAt : base.updatedAt,
-			lastOutputAt: typeof source.lastOutputAt === "number" ? source.lastOutputAt : null,
-			lastActivityLine: typeof source.lastActivityLine === "string" ? source.lastActivityLine : null,
-			reviewReason: normalizeReviewReason(source.reviewReason),
-			exitCode: typeof source.exitCode === "number" ? source.exitCode : null,
-		};
-	}
-
-	return sessions;
+function parseWorkspaceIndex(rawIndex: unknown | null): WorkspaceIndexFile {
+	const indexPath = getWorkspaceIndexPath();
+	return parsePersistedStateFile(
+		indexPath,
+		INDEX_FILENAME,
+		rawIndex,
+		workspaceIndexFileSchema,
+		createEmptyWorkspaceIndex(),
+	);
 }
 
-function normalizeWorkspaceStateMeta(rawMeta: unknown): WorkspaceStateMeta {
-	if (!rawMeta || typeof rawMeta !== "object") {
-		return {
-			revision: 0,
-			updatedAt: 0,
-		};
+function parseWorkspaceStateSavePayload(payload: RuntimeWorkspaceStateSaveRequest): RuntimeWorkspaceStateSaveRequest {
+	const parsed = runtimeWorkspaceStateSaveRequestSchema.safeParse(payload);
+	if (!parsed.success) {
+		throw new Error(`Invalid workspace state save payload. ${formatSchemaIssues(parsed.error)}`);
 	}
-	const source = rawMeta as { revision?: unknown; updatedAt?: unknown };
-	const revision =
-		typeof source.revision === "number" && Number.isInteger(source.revision) && source.revision >= 0
-			? source.revision
-			: 0;
-	const updatedAt = typeof source.updatedAt === "number" ? source.updatedAt : 0;
-	return {
-		revision,
-		updatedAt,
-	};
+	return parsed.data;
 }
 
-function normalizeWorkspaceIndex(rawIndex: unknown): WorkspaceIndexFile {
-	if (!rawIndex || typeof rawIndex !== "object") {
-		return createEmptyWorkspaceIndex();
-	}
+async function readWorkspaceBoard(workspaceId: string): Promise<RuntimeBoardData> {
+	const boardPath = getWorkspaceBoardPath(workspaceId);
+	const rawBoard = await readJsonFile(boardPath);
+	return parsePersistedStateFile(boardPath, BOARD_FILENAME, rawBoard, runtimeBoardDataSchema, createEmptyBoard());
+}
 
-	const source = rawIndex as { entries?: unknown; repoPathToId?: unknown };
-	const entries: Record<string, WorkspaceIndexEntry> = {};
-	const repoPathToId: Record<string, string> = {};
+async function readWorkspaceSessions(workspaceId: string): Promise<Record<string, RuntimeTaskSessionSummary>> {
+	const sessionsPath = getWorkspaceSessionsPath(workspaceId);
+	const rawSessions = await readJsonFile(sessionsPath);
+	return parsePersistedStateFile(sessionsPath, SESSIONS_FILENAME, rawSessions, workspaceSessionsSchema, {});
+}
 
-	if (source.entries && typeof source.entries === "object" && !Array.isArray(source.entries)) {
-		for (const [workspaceId, value] of Object.entries(source.entries as Record<string, unknown>)) {
-			if (!value || typeof value !== "object") {
-				continue;
-			}
-			const candidate = value as { workspaceId?: unknown; repoPath?: unknown };
-			const entryRepoPath = typeof candidate.repoPath === "string" ? candidate.repoPath.trim() : "";
-			if (!entryRepoPath) {
-				continue;
-			}
-			const entryId =
-				typeof candidate.workspaceId === "string" && candidate.workspaceId ? candidate.workspaceId : workspaceId;
-			entries[entryId] = {
-				workspaceId: entryId,
-				repoPath: entryRepoPath,
-			};
-			repoPathToId[entryRepoPath] = entryId;
-		}
-	}
-
-	if (source.repoPathToId && typeof source.repoPathToId === "object" && !Array.isArray(source.repoPathToId)) {
-		for (const [repoPath, workspaceId] of Object.entries(source.repoPathToId as Record<string, unknown>)) {
-			if (typeof workspaceId !== "string") {
-				continue;
-			}
-			const entry = entries[workspaceId];
-			if (!entry) {
-				continue;
-			}
-			repoPathToId[repoPath] = workspaceId;
-		}
-	}
-
-	return {
-		version: INDEX_VERSION,
-		entries,
-		repoPathToId,
-	};
+async function readWorkspaceMeta(workspaceId: string): Promise<WorkspaceStateMeta> {
+	const metaPath = getWorkspaceMetaPath(workspaceId);
+	const rawMeta = await readJsonFile(metaPath);
+	return parsePersistedStateFile(metaPath, META_FILENAME, rawMeta, workspaceStateMetaSchema, {
+		revision: 0,
+		updatedAt: 0,
+	});
 }
 
 async function readWorkspaceIndex(): Promise<WorkspaceIndexFile> {
 	const raw = await readJsonFile(getWorkspaceIndexPath());
-	return normalizeWorkspaceIndex(raw);
+	return parseWorkspaceIndex(raw);
 }
 
 async function writeWorkspaceIndex(index: WorkspaceIndexFile): Promise<void> {
@@ -620,10 +531,9 @@ export async function removeWorkspaceStateFiles(workspaceId: string): Promise<vo
 
 export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceStateResponse> {
 	const context = await loadWorkspaceContext(cwd);
-	const baseRefFallback = resolveTaskBaseRefFallback(context.git);
-	const board = normalizeBoard(await readJsonFile(getWorkspaceBoardPath(context.workspaceId)), baseRefFallback);
-	const sessions = normalizeSessions(await readJsonFile(getWorkspaceSessionsPath(context.workspaceId)));
-	const meta = normalizeWorkspaceStateMeta(await readJsonFile(getWorkspaceMetaPath(context.workspaceId)));
+	const board = await readWorkspaceBoard(context.workspaceId);
+	const sessions = await readWorkspaceSessions(context.workspaceId);
+	const meta = await readWorkspaceMeta(context.workspaceId);
 	return toWorkspaceStateResponse(context, board, sessions, meta.revision);
 }
 
@@ -631,10 +541,11 @@ export async function saveWorkspaceState(
 	cwd: string,
 	payload: RuntimeWorkspaceStateSaveRequest,
 ): Promise<RuntimeWorkspaceStateResponse> {
+	const parsedPayload = parseWorkspaceStateSavePayload(payload);
 	const context = await loadWorkspaceContext(cwd);
 	const metaPath = getWorkspaceMetaPath(context.workspaceId);
-	const currentMeta = normalizeWorkspaceStateMeta(await readJsonFile(metaPath));
-	const expectedRevision = payload.expectedRevision;
+	const currentMeta = await readWorkspaceMeta(context.workspaceId);
+	const expectedRevision = parsedPayload.expectedRevision;
 	if (
 		typeof expectedRevision === "number" &&
 		Number.isInteger(expectedRevision) &&
@@ -643,9 +554,8 @@ export async function saveWorkspaceState(
 	) {
 		throw new WorkspaceStateConflictError(expectedRevision, currentMeta.revision);
 	}
-	const baseRefFallback = resolveTaskBaseRefFallback(context.git);
-	const board = normalizeBoard(payload.board, baseRefFallback);
-	const sessions = normalizeSessions(payload.sessions);
+	const board = parsedPayload.board;
+	const sessions = parsedPayload.sessions;
 	const nextRevision = currentMeta.revision + 1;
 	const nextMeta: WorkspaceStateMeta = {
 		revision: nextRevision,

@@ -1,15 +1,6 @@
 # kanbanana
 
-Kanbanana is a TypeScript npm package and CLI scaffold for building a kanban system for coding agents.
-
-## What is here now
-
-- TypeScript source and build config
-- Minimal CLI entrypoint
-- Vitest test setup with one starter test
-- Biome linting and formatting
-- Husky pre-commit hook
-- GitHub Actions for CI and publish
+Kanbanana is a local orchestration board for coding agents. It runs an HTTP/WebSocket runtime and serves the bundled web UI for managing tasks, sessions, worktrees, and project state.
 
 ## Requirements
 
@@ -19,18 +10,28 @@ Kanbanana is a TypeScript npm package and CLI scaffold for building a kanban sys
 ## Quick start
 
 ```bash
-npm install
+npm run install:all
 npm run build
-npm run check
 node dist/cli.js --help
+```
+
+For local development:
+
+```bash
+npm run dev
 ```
 
 ## CLI
 
 ```bash
-kanbanana --help
-kanbanana --json
+kanbanana [--port <number>] [--agent <id>] [--no-open] [--help] [--version]
 ```
+
+- `--port <number>`: bind the local runtime server to a specific port (default: `8484`)
+- `--agent <id>`: set the default agent (`claude`, `codex`, `gemini`, `opencode`, `cline`)
+- `--no-open`: do not auto-open the browser
+- `--help`: print usage
+- `--version`: print version
 
 After global install, you can also view the manual page:
 
@@ -40,33 +41,18 @@ man kanbanana
 
 ## Scripts
 
-- `npm run build`: compile TypeScript into `dist`
+- `npm run build`: build runtime and bundled web UI into `dist`
 - `npm run dev`: run CLI in watch mode
-- `npm run lint`: run Biome checks
-- `npm run format`: format with Biome
-- `npm run typecheck`: run TypeScript in no-emit mode
-- `npm run test`: run Vitest once
-- `npm run check`: lint, typecheck, and test
-
-## Guardrails
-
-- Biome lint rules are configured in `biome.json`
-- Biome GritQL plugin rules live in `grit/`
-- Current GritQL rules:
-  - `grit/no-process-env-destructure.grit`
-  - `grit/no-console.grit`
-  - `grit/no-process-exit.grit`
+- `npm run web:dev`: run web UI dev server
+- `npm run web:build`: build web UI
+- `npm run typecheck`: typecheck runtime
+- `npm run web:typecheck`: typecheck web UI
+- `npm run test`: run runtime tests
+- `npm run web:test`: run web UI tests
+- `npm run check`: lint, typecheck, and test runtime package
 
 ## Tests
 
-- `test/core`: unit tests for core logic
-- `test/cli`: unit tests for CLI behavior
-- `test/integration`: higher-level integration tests
-- `test/fixtures`: test data fixtures
+- `test/integration`: integration tests for runtime behavior and startup flows
+- `test/runtime`: runtime unit tests
 - `test/utilities`: shared test helpers
-
-## Publish checklist
-
-- Verify package name availability on npm
-- Add `NPM_TOKEN` secret in GitHub repo settings
-- Create a GitHub Release to trigger publish workflow

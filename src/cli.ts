@@ -10,7 +10,6 @@ import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { isHooksSubcommand, runHooksIngest } from "./hooks-cli.js";
-import { createSampleBoard } from "./index.js";
 import type {
 	RuntimeAgentId,
 	RuntimeBoardColumnId,
@@ -94,7 +93,6 @@ import {
 interface CliOptions {
 	help: boolean;
 	version: boolean;
-	json: boolean;
 	noOpen: boolean;
 	port: number;
 	agent: RuntimeAgentId | null;
@@ -138,7 +136,6 @@ function parseCliAgentId(value: string): RuntimeAgentId {
 function parseCliOptions(argv: string[]): CliOptions {
 	let help = false;
 	let version = false;
-	let json = false;
 	let noOpen = false;
 	let port = DEFAULT_PORT;
 	let agent: RuntimeAgentId | null = null;
@@ -151,10 +148,6 @@ function parseCliOptions(argv: string[]): CliOptions {
 		}
 		if (arg === "--version" || arg === "-v") {
 			version = true;
-			continue;
-		}
-		if (arg === "--json") {
-			json = true;
 			continue;
 		}
 		if (arg === "--no-open") {
@@ -192,7 +185,7 @@ function parseCliOptions(argv: string[]): CliOptions {
 		}
 	}
 
-	return { help, version, json, noOpen, port, agent };
+	return { help, version, noOpen, port, agent };
 }
 
 function getWebUiDir(): string {
@@ -210,7 +203,7 @@ function printHelp(): void {
 	console.log("Local orchestration board for coding agents.");
 	console.log("");
 	console.log("Usage:");
-	console.log("  kanbanana [--port <number>] [--agent <id>] [--no-open] [--json] [--help] [--version]");
+	console.log("  kanbanana [--port <number>] [--agent <id>] [--no-open] [--help] [--version]");
 	console.log("");
 	console.log(`Default port: ${DEFAULT_PORT}`);
 	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);
@@ -2246,11 +2239,6 @@ async function run(): Promise<void> {
 		return;
 	}
 
-	const board = createSampleBoard();
-	if (options.json) {
-		console.log(JSON.stringify(board, null, 2));
-		return;
-	}
 	if (options.agent) {
 		const didChange = await persistCliAgentSelection(process.cwd(), options.agent);
 		if (didChange) {

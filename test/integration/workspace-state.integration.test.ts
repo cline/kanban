@@ -1,12 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeBoardData } from "../../src/runtime/api-contract.js";
+import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/runtime/api-contract.js";
 import type { WorkspaceStateConflictError } from "../../src/runtime/state/workspace-state.js";
 import {
+	getWorkspacesRootPath,
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
 	loadWorkspaceContextById,
@@ -39,6 +40,22 @@ function createBoard(title: string): RuntimeBoardData {
 			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
+	};
+}
+
+function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
+	return {
+		taskId,
+		state: "idle",
+		agentId: null,
+		workspacePath: null,
+		pid: null,
+		startedAt: null,
+		updatedAt: Date.now(),
+		lastOutputAt: null,
+		lastActivityLine: null,
+		reviewReason: null,
+		exitCode: null,
 	};
 }
 
@@ -154,6 +171,118 @@ describe.sequential("workspace-state integration", () => {
 			} finally {
 				cleanup();
 			}
+		});
+	});
+
+	it("fails loudly when persisted board data is malformed", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanbanana-malformed-board-");
+			try {
+				const workspacePath = join(sandboxRoot, "project-bad-board");
+				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
+
+				const context = await loadWorkspaceContext(workspacePath);
+				mkdirSync(context.statePath, { recursive: true });
+				writeFileSync(
+					join(context.statePath, "board.json"),
+					JSON.stringify(
+						{
+							columns: [
+								{
+									id: "backlog",
+									title: "Backlog",
+									cards: [
+										{
+											title: "Missing ID and baseRef",
+											description: "",
+											prompt: "Missing ID and baseRef",
+											startInPlanMode: false,
+											createdAt: Date.now(),
+											updatedAt: Date.now(),
+										},
+									],
+								},
+								{ id: "in_progress", title: "In Progress", cards: [] },
+								{ id: "review", title: "Review", cards: [] },
+								{ id: "trash", title: "Trash", cards: [] },
+							],
+						},
+						null,
+						2,
+					),
+					"utf8",
+				);
+
+				await expect(loadWorkspaceState(workspacePath)).rejects.toThrow("board.json");
+				await expect(loadWorkspaceState(workspacePath)).rejects.toThrow(/id|baseRef/);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("fails loudly when persisted sessions include unknown states", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanbanana-malformed-sessions-");
+			try {
+				const workspacePath = join(sandboxRoot, "project-bad-sessions");
+				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
+
+				const context = await loadWorkspaceContext(workspacePath);
+				mkdirSync(context.statePath, { recursive: true });
+				writeFileSync(
+					join(context.statePath, "board.json"),
+					JSON.stringify(createBoard("Valid board"), null, 2),
+					"utf8",
+				);
+				writeFileSync(
+					join(context.statePath, "sessions.json"),
+					JSON.stringify(
+						{
+							"task-1": {
+								...createSessionSummary("task-1"),
+								state: "not-a-valid-state",
+							},
+						},
+						null,
+						2,
+					),
+					"utf8",
+				);
+
+				await expect(loadWorkspaceState(workspacePath)).rejects.toThrow("sessions.json");
+				await expect(loadWorkspaceState(workspacePath)).rejects.toThrow("state");
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("fails loudly when persisted workspace index data is malformed", async () => {
+		await withTemporaryHome(async () => {
+			mkdirSync(getWorkspacesRootPath(), { recursive: true });
+			writeFileSync(
+				join(getWorkspacesRootPath(), "index.json"),
+				JSON.stringify(
+					{
+						version: 1,
+						entries: {
+							"workspace-a": {
+								workspaceId: "workspace-a",
+							},
+						},
+						repoPathToId: {},
+					},
+					null,
+					2,
+				),
+				"utf8",
+			);
+
+			await expect(listWorkspaceIndexEntries()).rejects.toThrow("index.json");
+			await expect(listWorkspaceIndexEntries()).rejects.toThrow("repoPath");
 		});
 	});
 });

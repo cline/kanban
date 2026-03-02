@@ -1,0 +1,33 @@
+import { describe, expect, it } from "vitest";
+
+import { parseWorkspaceFileSearchRequest } from "../../src/runtime/api-validation.js";
+
+describe("parseWorkspaceFileSearchRequest", () => {
+	it("parses q and limit", () => {
+		const parsed = parseWorkspaceFileSearchRequest(new URLSearchParams({ q: "  src/runtime ", limit: "25" }));
+		expect(parsed).toEqual({
+			query: "src/runtime",
+			limit: 25,
+		});
+	});
+
+	it("treats missing q as empty query", () => {
+		const parsed = parseWorkspaceFileSearchRequest(new URLSearchParams({ limit: "10" }));
+		expect(parsed).toEqual({
+			query: "",
+		});
+	});
+
+	it("does not accept legacy query alias", () => {
+		const parsed = parseWorkspaceFileSearchRequest(new URLSearchParams({ query: "legacy" }));
+		expect(parsed).toEqual({
+			query: "",
+		});
+	});
+
+	it("throws when limit is invalid", () => {
+		expect(() => {
+			parseWorkspaceFileSearchRequest(new URLSearchParams({ q: "board", limit: "0" }));
+		}).toThrow("Invalid file search limit parameter.");
+	});
+});
