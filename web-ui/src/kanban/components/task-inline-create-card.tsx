@@ -1,4 +1,6 @@
-import { Button, Card, Checkbox, Code, FormGroup, HTMLSelect, Icon } from "@blueprintjs/core";
+import { Button, Card, Checkbox, Code, FormGroup, Icon, MenuItem } from "@blueprintjs/core";
+import { Select } from "@blueprintjs/select";
+import type { ItemPredicate, ItemRenderer } from "@blueprintjs/select";
 import type { ReactElement } from "react";
 
 import { TaskPromptComposer } from "@/kanban/components/task-prompt-composer";
@@ -9,6 +11,33 @@ export interface TaskBranchOption {
 	value: string;
 	label: string;
 }
+
+const BranchSelect = Select.ofType<TaskBranchOption>();
+
+const filterBranch: ItemPredicate<TaskBranchOption> = (query, option) => {
+	return option.label.toLowerCase().includes(query.toLowerCase());
+};
+
+const renderBranchOption: ItemRenderer<TaskBranchOption> = (
+	option,
+	{ handleClick, handleFocus, modifiers },
+) => {
+	if (!modifiers.matchesPredicate) {
+		return null;
+	}
+	return (
+		<MenuItem
+			key={option.value}
+			active={modifiers.active}
+			disabled={modifiers.disabled}
+			text={option.label}
+			onClick={handleClick}
+			onFocus={handleFocus}
+			roleStructure="listoption"
+			style={{ paddingLeft: 8, paddingRight: 8 }}
+		/>
+	);
+};
 
 export function TaskInlineCreateCard({
 	prompt,
@@ -77,22 +106,29 @@ export function TaskInlineCreateCard({
 			</FormGroup>
 
 			<FormGroup
-				label="Worktree base branch"
-				labelFor={branchSelectId}
-				helperText="Tasks always run in an isolated worktree created from this branch/ref."
 				style={{ marginTop: -5, marginBottom: 0 }}
 			>
-				<HTMLSelect
-					id={branchSelectId}
-					value={branchRef}
-					onChange={(event) => onBranchRefChange(event.target.value)}
-					options={
-						branchOptions.length > 0
-							? branchOptions
-							: [{ value: "", label: "No branches detected" }]
-					}
-					fill
-				/>
+				<span style={{ display: "block", marginBottom: 4 }}>Worktree branch</span>
+				<BranchSelect
+					items={branchOptions}
+					itemRenderer={renderBranchOption}
+					itemPredicate={filterBranch}
+					onItemSelect={(option) => onBranchRefChange(option.value)}
+					popoverProps={{ matchTargetWidth: true, minimal: true }}
+					inputProps={{ size: "small" }}
+					resetOnClose
+					noResults={<MenuItem disabled text="No matching branches" roleStructure="listoption" />}
+				>
+					<Button
+						id={branchSelectId}
+						variant="outlined"
+						alignText="left"
+						fill
+						icon="git-branch"
+						endIcon="caret-down"
+						text={branchOptions.find((o) => o.value === branchRef)?.label ?? "No branches detected"}
+					/>
+				</BranchSelect>
 			</FormGroup>
 
 			<div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
