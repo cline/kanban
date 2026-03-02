@@ -12,6 +12,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { isHooksSubcommand, runHooksIngest } from "./hooks-cli.js";
 import { createSampleBoard } from "./index.js";
 import type {
+	RuntimeAgentId,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeConfigResponse,
@@ -64,7 +65,7 @@ import {
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "./runtime/api-validation.js";
-import { loadRuntimeConfig, saveRuntimeConfig } from "./runtime/config/runtime-config.js";
+import { loadRuntimeConfig, updateRuntimeConfig } from "./runtime/config/runtime-config.js";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
@@ -96,6 +97,7 @@ interface CliOptions {
 	json: boolean;
 	noOpen: boolean;
 	port: number;
+	agent: RuntimeAgentId | null;
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -117,6 +119,21 @@ const DEFAULT_PORT = 8484;
 const TASK_SESSION_STREAM_BATCH_MS = 150;
 const WORKSPACE_FILE_CHANGE_STREAM_BATCH_MS = 25;
 const WORKSPACE_FILE_WATCH_INTERVAL_MS = 2_000;
+const CLI_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode", "cline"];
+
+function parseCliAgentId(value: string): RuntimeAgentId {
+	const normalized = value.trim().toLowerCase();
+	if (
+		normalized === "claude" ||
+		normalized === "codex" ||
+		normalized === "gemini" ||
+		normalized === "opencode" ||
+		normalized === "cline"
+	) {
+		return normalized;
+	}
+	throw new Error(`Invalid agent: ${value}. Expected one of: ${CLI_AGENT_IDS.join(", ")}`);
+}
 
 function parseCliOptions(argv: string[]): CliOptions {
 	let help = false;
@@ -124,6 +141,7 @@ function parseCliOptions(argv: string[]): CliOptions {
 	let json = false;
 	let noOpen = false;
 	let port = DEFAULT_PORT;
+	let agent: RuntimeAgentId | null = null;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -154,10 +172,27 @@ function parseCliOptions(argv: string[]): CliOptions {
 			}
 			port = parsed;
 			index += 1;
+			continue;
+		}
+		if (arg === "--agent") {
+			const value = argv[index + 1];
+			if (!value) {
+				throw new Error("Missing value for --agent.");
+			}
+			agent = parseCliAgentId(value);
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--agent=")) {
+			const value = arg.slice("--agent=".length);
+			if (!value) {
+				throw new Error("Missing value for --agent.");
+			}
+			agent = parseCliAgentId(value);
 		}
 	}
 
-	return { help, version, json, noOpen, port };
+	return { help, version, json, noOpen, port, agent };
 }
 
 function getWebUiDir(): string {
@@ -175,9 +210,19 @@ function printHelp(): void {
 	console.log("Local orchestration board for coding agents.");
 	console.log("");
 	console.log("Usage:");
-	console.log("  kanbanana [--port <number>] [--no-open] [--json] [--help] [--version]");
+	console.log("  kanbanana [--port <number>] [--agent <id>] [--no-open] [--json] [--help] [--version]");
 	console.log("");
 	console.log(`Default port: ${DEFAULT_PORT}`);
+	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);
+}
+
+async function persistCliAgentSelection(cwd: string, selectedAgentId: RuntimeAgentId): Promise<boolean> {
+	const currentRuntimeConfig = await loadRuntimeConfig(cwd);
+	if (currentRuntimeConfig.selectedAgentId === selectedAgentId) {
+		return false;
+	}
+	await updateRuntimeConfig(cwd, { selectedAgentId });
+	return true;
 }
 
 function shouldFallbackToIndexHtml(pathname: string): boolean {
@@ -1251,22 +1296,7 @@ async function startServer(
 				}
 				try {
 					const body = parseRuntimeConfigSaveRequest(await readJsonBody(req));
-					const currentRuntimeConfig = await loadScopedRuntimeConfig(scope);
-					const nextRuntimeConfig = await saveRuntimeConfig(scope.workspacePath, {
-						selectedAgentId: body.selectedAgentId ?? currentRuntimeConfig.selectedAgentId,
-						selectedShortcutId: body.selectedShortcutId ?? currentRuntimeConfig.selectedShortcutId,
-						shortcuts: body.shortcuts ?? currentRuntimeConfig.shortcuts,
-						readyForReviewNotificationsEnabled:
-							body.readyForReviewNotificationsEnabled ?? currentRuntimeConfig.readyForReviewNotificationsEnabled,
-						commitLocalPromptTemplate:
-							body.commitLocalPromptTemplate ?? currentRuntimeConfig.commitLocalPromptTemplate,
-						commitWorktreePromptTemplate:
-							body.commitWorktreePromptTemplate ?? currentRuntimeConfig.commitWorktreePromptTemplate,
-						openPrLocalPromptTemplate:
-							body.openPrLocalPromptTemplate ?? currentRuntimeConfig.openPrLocalPromptTemplate,
-						openPrWorktreePromptTemplate:
-							body.openPrWorktreePromptTemplate ?? currentRuntimeConfig.openPrWorktreePromptTemplate,
-					});
+					const nextRuntimeConfig = await updateRuntimeConfig(scope.workspacePath, body);
 					if (scope.workspaceId === getActiveWorkspaceId()) {
 						runtimeConfig = nextRuntimeConfig;
 					}
@@ -2186,6 +2216,12 @@ async function run(): Promise<void> {
 	if (options.json) {
 		console.log(JSON.stringify(board, null, 2));
 		return;
+	}
+	if (options.agent) {
+		const didChange = await persistCliAgentSelection(process.cwd(), options.agent);
+		if (didChange) {
+			console.log(`Default agent set to ${options.agent}.`);
+		}
 	}
 
 	let runtime: Awaited<ReturnType<typeof startServer>>;

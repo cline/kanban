@@ -36,6 +36,17 @@ export interface RuntimeConfigState {
 	openPrWorktreePromptTemplateDefault: string;
 }
 
+export interface RuntimeConfigUpdateInput {
+	selectedAgentId?: RuntimeAgentId;
+	selectedShortcutId?: string | null;
+	readyForReviewNotificationsEnabled?: boolean;
+	shortcuts?: RuntimeProjectShortcut[];
+	commitLocalPromptTemplate?: string;
+	commitWorktreePromptTemplate?: string;
+	openPrLocalPromptTemplate?: string;
+	openPrWorktreePromptTemplate?: string;
+}
+
 const RUNTIME_HOME_DIR = ".kanbanana";
 const CONFIG_FILENAME = "config.json";
 const PROJECT_CONFIG_DIR = ".kanbanana";
@@ -138,6 +149,28 @@ function normalizeShortcuts(shortcuts: RuntimeProjectShortcut[] | null | undefin
 		}
 	}
 	return normalized;
+}
+
+function areShortcutsEqual(left: RuntimeProjectShortcut[], right: RuntimeProjectShortcut[]): boolean {
+	if (left.length !== right.length) {
+		return false;
+	}
+	for (let index = 0; index < left.length; index += 1) {
+		const leftItem = left[index];
+		const rightItem = right[index];
+		if (!leftItem || !rightItem) {
+			return false;
+		}
+		if (
+			leftItem.id !== rightItem.id ||
+			leftItem.label !== rightItem.label ||
+			leftItem.command !== rightItem.command ||
+			(leftItem.icon ?? "") !== (rightItem.icon ?? "")
+		) {
+			return false;
+		}
+	}
+	return true;
 }
 
 function normalizePromptTemplate(value: unknown, fallback: string): string {
@@ -419,4 +452,36 @@ export async function saveRuntimeConfig(
 		openPrLocalPromptTemplateDefault: DEFAULT_OPEN_PR_LOCAL_PROMPT_TEMPLATE,
 		openPrWorktreePromptTemplateDefault: DEFAULT_OPEN_PR_WORKTREE_PROMPT_TEMPLATE,
 	};
+}
+
+export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpdateInput): Promise<RuntimeConfigState> {
+	const current = await loadRuntimeConfig(cwd);
+	const nextConfig = {
+		selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
+		selectedShortcutId:
+			updates.selectedShortcutId === undefined ? current.selectedShortcutId : updates.selectedShortcutId,
+		readyForReviewNotificationsEnabled:
+			updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
+		shortcuts: updates.shortcuts ?? current.shortcuts,
+		commitLocalPromptTemplate: updates.commitLocalPromptTemplate ?? current.commitLocalPromptTemplate,
+		commitWorktreePromptTemplate: updates.commitWorktreePromptTemplate ?? current.commitWorktreePromptTemplate,
+		openPrLocalPromptTemplate: updates.openPrLocalPromptTemplate ?? current.openPrLocalPromptTemplate,
+		openPrWorktreePromptTemplate: updates.openPrWorktreePromptTemplate ?? current.openPrWorktreePromptTemplate,
+	};
+
+	const hasChanges =
+		nextConfig.selectedAgentId !== current.selectedAgentId ||
+		nextConfig.selectedShortcutId !== current.selectedShortcutId ||
+		nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
+		nextConfig.commitLocalPromptTemplate !== current.commitLocalPromptTemplate ||
+		nextConfig.commitWorktreePromptTemplate !== current.commitWorktreePromptTemplate ||
+		nextConfig.openPrLocalPromptTemplate !== current.openPrLocalPromptTemplate ||
+		nextConfig.openPrWorktreePromptTemplate !== current.openPrWorktreePromptTemplate ||
+		!areShortcutsEqual(nextConfig.shortcuts, current.shortcuts);
+
+	if (!hasChanges) {
+		return current;
+	}
+
+	return await saveRuntimeConfig(cwd, nextConfig);
 }

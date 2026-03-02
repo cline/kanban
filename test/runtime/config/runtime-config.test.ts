@@ -7,6 +7,7 @@ import {
 	loadRuntimeConfig,
 	pickBestInstalledAgentIdFromDetected,
 	saveRuntimeConfig,
+	updateRuntimeConfig,
 } from "../../../src/runtime/config/runtime-config.js";
 import { createTempDir } from "../../utilities/temp-dir.js";
 
@@ -267,6 +268,35 @@ describe.sequential("runtime-config auto agent selection", () => {
 					shortcuts?: unknown[];
 				};
 				expect(projectPayload.shortcuts).toBeUndefined();
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("updateRuntimeConfig supports partial updates", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-runtime-config-partial-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanbanana-project-runtime-config-partial-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const before = await loadRuntimeConfig(tempProject);
+				expect(before.selectedAgentId).toBe("claude");
+
+				const updated = await updateRuntimeConfig(tempProject, {
+					selectedAgentId: "cline",
+				});
+				expect(updated.selectedAgentId).toBe("cline");
+
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
+					selectedAgentId?: string;
+					selectedShortcutId?: string;
+					readyForReviewNotificationsEnabled?: boolean;
+				};
+				expect(globalPayload.selectedAgentId).toBe("cline");
+				expect(globalPayload.selectedShortcutId).toBeUndefined();
+				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
 			});
 		} finally {
 			cleanupProject();
