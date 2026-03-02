@@ -544,12 +544,14 @@ function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	);
 }
 
-async function canReachKanbananaServer(port: number, workspaceId: string): Promise<boolean> {
+async function canReachKanbananaServer(port: number, workspaceId: string | null): Promise<boolean> {
 	try {
+		const headers: Record<string, string> = {};
+		if (workspaceId) {
+			headers["x-kanbanana-workspace-id"] = workspaceId;
+		}
 		const response = await fetch(`http://127.0.0.1:${port}/api/projects`, {
-			headers: {
-				"x-kanbanana-workspace-id": workspaceId,
-			},
+			headers,
 			signal: AbortSignal.timeout(1_500),
 		});
 		if (!response.ok) {
@@ -563,12 +565,18 @@ async function canReachKanbananaServer(port: number, workspaceId: string): Promi
 }
 
 async function tryOpenExistingServer(port: number, noOpen: boolean): Promise<boolean> {
-	const context = await loadWorkspaceContext(process.cwd());
-	const running = await canReachKanbananaServer(port, context.workspaceId);
+	let workspaceId: string | null = null;
+	if (hasGitRepository(process.cwd())) {
+		const context = await loadWorkspaceContext(process.cwd());
+		workspaceId = context.workspaceId;
+	}
+	const running = await canReachKanbananaServer(port, workspaceId);
 	if (!running) {
 		return false;
 	}
-	const projectUrl = `http://127.0.0.1:${port}/${encodeURIComponent(context.workspaceId)}`;
+	const projectUrl = workspaceId
+		? `http://127.0.0.1:${port}/${encodeURIComponent(workspaceId)}`
+		: `http://127.0.0.1:${port}`;
 	console.log(`Kanbanana already running at http://127.0.0.1:${port}`);
 	if (!noOpen) {
 		try {
@@ -741,13 +749,21 @@ async function startServer(
 	port: number,
 ): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
 	const webUiDir = getWebUiDir();
-	const initialWorkspace = await loadWorkspaceContext(process.cwd());
-	let activeWorkspaceId = initialWorkspace.workspaceId;
-	let activeWorkspacePath = initialWorkspace.repoPath;
+	const launchedFromGitRepo = hasGitRepository(process.cwd());
+	const initialWorkspace = launchedFromGitRepo ? await loadWorkspaceContext(process.cwd()) : null;
+	let indexedWorkspace: RuntimeWorkspaceIndexEntry | null = null;
+	if (!initialWorkspace) {
+		const indexedWorkspaces = await listWorkspaceIndexEntries();
+		indexedWorkspace = indexedWorkspaces[0] ?? null;
+	}
+	let activeWorkspaceId: string | null = initialWorkspace?.workspaceId ?? indexedWorkspace?.workspaceId ?? null;
+	let activeWorkspacePath: string | null = initialWorkspace?.repoPath ?? indexedWorkspace?.repoPath ?? null;
 	const getActiveWorkspacePath = () => activeWorkspacePath;
 	const getActiveWorkspaceId = () => activeWorkspaceId;
-	let runtimeConfig = await loadRuntimeConfig(getActiveWorkspacePath());
-	const workspacePathsById = new Map<string, string>([[initialWorkspace.workspaceId, initialWorkspace.repoPath]]);
+	let runtimeConfig = await loadRuntimeConfig(activeWorkspacePath ?? process.cwd());
+	const workspacePathsById = new Map<string, string>(
+		activeWorkspaceId && activeWorkspacePath ? [[activeWorkspaceId, activeWorkspacePath]] : [],
+	);
 	const projectTaskCountsByWorkspaceId = new Map<string, RuntimeProjectTaskCounts>();
 	const terminalManagersByWorkspaceId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
@@ -927,7 +943,12 @@ async function startServer(
 		activeWorkspacePath = repoPath;
 		workspacePathsById.set(workspaceId, repoPath);
 		await ensureTerminalManagerForWorkspace(workspaceId, repoPath);
-		runtimeConfig = await loadRuntimeConfig(getActiveWorkspacePath());
+		runtimeConfig = await loadRuntimeConfig(repoPath);
+	};
+
+	const clearActiveWorkspace = (): void => {
+		activeWorkspaceId = null;
+		activeWorkspacePath = null;
 	};
 
 	const disposeWorkspaceRuntimeResources = (
@@ -1115,13 +1136,23 @@ async function startServer(
 			: null;
 
 		const activeWorkspaceMissing = !projects.some((project) => project.workspaceId === activeWorkspaceId);
-		if (activeWorkspaceMissing && projects[0]) {
-			await setActiveWorkspace(projects[0].workspaceId, projects[0].repoPath);
+		if (activeWorkspaceMissing) {
+			if (projects[0]) {
+				await setActiveWorkspace(projects[0].workspaceId, projects[0].repoPath);
+			} else {
+				clearActiveWorkspace();
+			}
 		}
 
 		if (requestedWorkspaceId) {
 			const requestedWorkspace = projects.find((project) => project.workspaceId === requestedWorkspaceId);
 			if (requestedWorkspace) {
+				if (
+					activeWorkspaceId !== requestedWorkspace.workspaceId ||
+					activeWorkspacePath !== requestedWorkspace.repoPath
+				) {
+					await setActiveWorkspace(requestedWorkspace.workspaceId, requestedWorkspace.repoPath);
+				}
 				return {
 					workspaceId: requestedWorkspace.workspaceId,
 					workspacePath: requestedWorkspace.repoPath,
@@ -1183,7 +1214,9 @@ async function startServer(
 		}
 	};
 
-	await ensureTerminalManagerForWorkspace(initialWorkspace.workspaceId, initialWorkspace.repoPath);
+	if (initialWorkspace) {
+		await ensureTerminalManagerForWorkspace(initialWorkspace.workspaceId, initialWorkspace.repoPath);
+	}
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -1886,7 +1919,7 @@ async function startServer(
 			if (pathname === "/api/projects/add" && req.method === "POST") {
 				try {
 					const body = parseProjectAddRequest(await readJsonBody(req));
-					const resolveBasePath = requestedWorkspaceContext?.repoPath ?? getActiveWorkspacePath();
+					const resolveBasePath = requestedWorkspaceContext?.repoPath ?? getActiveWorkspacePath() ?? process.cwd();
 					const projectPath = resolveProjectInputPath(body.path, resolveBasePath);
 					await assertPathIsDirectory(projectPath);
 					if (!hasGitRepository(projectPath)) {
@@ -1900,7 +1933,9 @@ async function startServer(
 					const context = await loadWorkspaceContext(projectPath);
 					workspacePathsById.set(context.workspaceId, context.repoPath);
 					const projectsAfterAdd = await listWorkspaceIndexEntries();
-					const hasActiveWorkspace = projectsAfterAdd.some((project) => project.workspaceId === activeWorkspaceId);
+					const hasActiveWorkspace = activeWorkspaceId
+						? projectsAfterAdd.some((project) => project.workspaceId === activeWorkspaceId)
+						: false;
 					if (!hasActiveWorkspace) {
 						await setActiveWorkspace(context.workspaceId, context.repoPath);
 					}
@@ -1967,6 +2002,8 @@ async function startServer(
 						const fallbackWorkspace = remaining[0];
 						if (fallbackWorkspace) {
 							await setActiveWorkspace(fallbackWorkspace.workspaceId, fallbackWorkspace.repoPath);
+						} else {
+							clearActiveWorkspace();
 						}
 					}
 					sendJson(res, 200, {
@@ -2168,7 +2205,9 @@ async function startServer(
 	if (!address || typeof address === "string") {
 		throw new Error("Failed to start local server.");
 	}
-	const url = `http://127.0.0.1:${address.port}/${encodeURIComponent(activeWorkspaceId)}`;
+	const url = activeWorkspaceId
+		? `http://127.0.0.1:${address.port}/${encodeURIComponent(activeWorkspaceId)}`
+		: `http://127.0.0.1:${address.port}`;
 
 	const close = async () => {
 		disposeRuntimeStreamResources();

@@ -144,7 +144,7 @@ async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): P
 			} else {
 				stderr += text;
 			}
-			const match = stdout.match(/Kanbanana running at (http:\/\/127\.0\.0\.1:\d+\/[^\s]+)/);
+			const match = stdout.match(/Kanbanana running at (http:\/\/127\.0\.0\.1:\d+(?:\/[^\s]*)?)/);
 			if (!match || settled) {
 				return;
 			}
@@ -333,6 +333,129 @@ async function requestJson<T>(input: {
 }
 
 describe.sequential("runtime state stream integration", () => {
+	it("starts outside a git repository with no active workspace", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-no-git-");
+		const { path: nonGitPath, cleanup: cleanupNonGitPath } = createTempDir("kanbanana-no-git-");
+
+		const port = await getAvailablePort();
+		const server = await startKanbananaServer({
+			cwd: nonGitPath,
+			homeDir: tempHome,
+			port,
+		});
+
+		let stream: RuntimeStreamClient | null = null;
+
+		try {
+			const runtimeUrl = new URL(server.runtimeUrl);
+			expect(runtimeUrl.pathname).toBe("/");
+
+			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
+				url: `http://127.0.0.1:${port}/api/projects`,
+				method: "GET",
+			});
+			expect(projectsResponse.status).toBe(200);
+			expect(projectsResponse.payload.currentProjectId).toBeNull();
+			expect(projectsResponse.payload.projects).toEqual([]);
+
+			stream = await connectRuntimeStream(`ws://127.0.0.1:${port}/api/runtime/ws`);
+			const snapshot = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
+			)) as RuntimeStateStreamSnapshotMessage;
+			expect(snapshot.currentProjectId).toBeNull();
+			expect(snapshot.workspaceState).toBeNull();
+			expect(snapshot.projects).toEqual([]);
+		} finally {
+			if (stream) {
+				await stream.close();
+			}
+			await server.stop();
+			cleanupNonGitPath();
+			cleanupHome();
+		}
+	}, 30_000);
+
+	it("launches outside git using the first indexed project", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-first-project-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanbanana-first-project-");
+
+		const projectAPath = join(tempRoot, "project-a");
+		const projectBPath = join(tempRoot, "project-b");
+		const nonGitPath = join(tempRoot, "non-git");
+		mkdirSync(projectAPath, { recursive: true });
+		mkdirSync(projectBPath, { recursive: true });
+		mkdirSync(nonGitPath, { recursive: true });
+		initGitRepository(projectAPath);
+		initGitRepository(projectBPath);
+
+		const firstPort = await getAvailablePort();
+		const firstServer = await startKanbananaServer({
+			cwd: projectAPath,
+			homeDir: tempHome,
+			port: firstPort,
+		});
+
+		let workspaceAId: string | null = null;
+		try {
+			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
+			workspaceAId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+			expect(workspaceAId).not.toBe("");
+
+			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
+				url: `http://127.0.0.1:${firstPort}/api/projects/add`,
+				method: "POST",
+				workspaceId: workspaceAId,
+				body: {
+					path: projectBPath,
+				},
+			});
+			expect(addProjectResponse.status).toBe(200);
+			expect(addProjectResponse.payload.ok).toBe(true);
+		} finally {
+			await firstServer.stop();
+		}
+
+		const secondPort = await getAvailablePort();
+		const secondServer = await startKanbananaServer({
+			cwd: nonGitPath,
+			homeDir: tempHome,
+			port: secondPort,
+		});
+
+		let secondStream: RuntimeStreamClient | null = null;
+		try {
+			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
+			expect(workspaceAId).not.toBeNull();
+			if (!workspaceAId) {
+				throw new Error("Missing workspace id for project A.");
+			}
+			const secondWorkspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
+			expect(secondWorkspaceId).toBe(workspaceAId);
+			const expectedProjectAPath = await realpath(projectAPath).catch(() => resolve(projectAPath));
+
+			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
+				url: `http://127.0.0.1:${secondPort}/api/projects`,
+				method: "GET",
+			});
+			expect(projectsResponse.status).toBe(200);
+			expect(projectsResponse.payload.currentProjectId).toBe(workspaceAId);
+
+			secondStream = await connectRuntimeStream(`ws://127.0.0.1:${secondPort}/api/runtime/ws`);
+			const snapshot = (await secondStream.waitForMessage(
+				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
+			)) as RuntimeStateStreamSnapshotMessage;
+			expect(snapshot.currentProjectId).toBe(workspaceAId);
+			expect(snapshot.workspaceState?.repoPath).toBe(expectedProjectAPath);
+		} finally {
+			if (secondStream) {
+				await secondStream.close();
+			}
+			await secondServer.stop();
+			cleanupRoot();
+			cleanupHome();
+		}
+	}, 45_000);
+
 	it("streams per-project snapshots and isolates workspace updates", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-stream-");
 		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanbanana-projects-stream-");
