@@ -1,4 +1,4 @@
-import { Colors } from "@blueprintjs/core";
+import { Classes, Colors, NonIdealState } from "@blueprintjs/core";
 import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -8,10 +8,80 @@ import { ColumnContextPanel } from "@/kanban/components/detail-panels/column-con
 import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
 import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
+import { panelSeparatorColor } from "@/kanban/data/column-colors";
 import { useWindowEvent } from "@/kanban/hooks/react-use";
 import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspace-changes";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard, CardSelection, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
+
+function WorkspaceChangesLoadingPanel(): React.ReactElement {
+	return (
+		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
+			<div
+				style={{
+					display: "flex",
+					flex: "1 1 0",
+					flexDirection: "column",
+					borderRight: `1px solid ${panelSeparatorColor}`,
+				}}
+			>
+				<div
+					style={{
+						padding: "10px 10px 6px",
+					}}
+				>
+					<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+						<div className={Classes.SKELETON} style={{ height: 14, width: "62%", borderRadius: 3 }} />
+						<div className={Classes.SKELETON} style={{ height: 16, width: 42, borderRadius: 999 }} />
+					</div>
+					<div className={Classes.SKELETON} style={{ height: 13, width: "92%", borderRadius: 3, marginBottom: 7 }} />
+					<div className={Classes.SKELETON} style={{ height: 13, width: "84%", borderRadius: 3, marginBottom: 7 }} />
+					<div className={Classes.SKELETON} style={{ height: 13, width: "95%", borderRadius: 3, marginBottom: 7 }} />
+					<div className={Classes.SKELETON} style={{ height: 13, width: "79%", borderRadius: 3, marginBottom: 7 }} />
+					<div className={Classes.SKELETON} style={{ height: 13, width: "88%", borderRadius: 3, marginBottom: 7 }} />
+					<div className={Classes.SKELETON} style={{ height: 13, width: "76%", borderRadius: 3 }} />
+				</div>
+				<div style={{ flex: "1 1 0" }} />
+			</div>
+			<div
+				style={{
+					display: "flex",
+					flex: "0.6 1 0",
+					flexDirection: "column",
+					padding: "10px 8px",
+				}}
+			>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
+					<div className={Classes.SKELETON} style={{ height: 12, width: 12, borderRadius: 2 }} />
+					<div className={Classes.SKELETON} style={{ height: 13, width: "61%", borderRadius: 3 }} />
+				</div>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
+					<div className={Classes.SKELETON} style={{ height: 12, width: 12, borderRadius: 2 }} />
+					<div className={Classes.SKELETON} style={{ height: 13, width: "70%", borderRadius: 3 }} />
+				</div>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
+					<div className={Classes.SKELETON} style={{ height: 12, width: 12, borderRadius: 2 }} />
+					<div className={Classes.SKELETON} style={{ height: 13, width: "53%", borderRadius: 3 }} />
+				</div>
+				<div style={{ flex: "1 1 0" }} />
+			</div>
+		</div>
+	);
+}
+
+function WorkspaceChangesEmptyPanel(): React.ReactElement {
+	return (
+		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
+			<div className="kb-empty-state-center" style={{ flex: 1 }}>
+				<NonIdealState
+					icon="comparison"
+					title="No changes found"
+					description="This workspace has no changes to review yet."
+				/>
+			</div>
+		</div>
+	);
+}
 
 export function CardDetailView({
 	selection,
@@ -93,6 +163,12 @@ export function CardDetailView({
 		selection.card.baseRef ?? null,
 	);
 	const runtimeFiles = workspaceChanges?.files ?? null;
+	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;
+	const hasNoWorkspaceFileChanges =
+		isRuntimeAvailable &&
+		workspaceChanges !== null &&
+		runtimeFiles !== null &&
+		runtimeFiles.length === 0;
 	const selectedReviewWorkspaceSnapshot = reviewWorkspaceSnapshots?.[selection.card.id];
 	const showReviewGitActions =
 		selection.column.id === "review" &&
@@ -206,16 +282,24 @@ export function CardDetailView({
 							showMoveToTrash={selection.column.id === "review"}
 							onMoveToTrash={onMoveToTrash}
 						/>
-						<DiffViewerPanel
-							workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-							selectedPath={selectedPath}
-							onSelectedPathChange={setSelectedPath}
-						/>
-						<FileTreePanel
-							workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-							selectedPath={selectedPath}
-							onSelectPath={setSelectedPath}
-						/>
+						{isWorkspaceChangesPending ? (
+							<WorkspaceChangesLoadingPanel />
+						) : hasNoWorkspaceFileChanges ? (
+							<WorkspaceChangesEmptyPanel />
+						) : (
+							<>
+								<DiffViewerPanel
+									workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+									selectedPath={selectedPath}
+									onSelectedPathChange={setSelectedPath}
+								/>
+								<FileTreePanel
+									workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+									selectedPath={selectedPath}
+									onSelectPath={setSelectedPath}
+								/>
+							</>
+						)}
 				</div>
 				{bottomTerminalOpen && bottomTerminalTaskId ? (
 					<ResizableBottomPane
