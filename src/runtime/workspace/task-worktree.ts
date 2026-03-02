@@ -74,6 +74,16 @@ async function runGit(args: string[]): Promise<string> {
 	return String(stdout).trim();
 }
 
+function getGitCommandErrorMessage(error: unknown): string {
+	if (error && typeof error === "object" && "stderr" in error) {
+		const stderr = (error as { stderr?: unknown }).stderr;
+		if (typeof stderr === "string" && stderr.trim()) {
+			return stderr.trim();
+		}
+	}
+	return error instanceof Error ? error.message : String(error);
+}
+
 async function tryRunGit(args: string[]): Promise<string | null> {
 	try {
 		return await runGit(args);
@@ -200,20 +210,16 @@ export async function ensureTaskWorktree(options: {
 			};
 		}
 
-		const baseCommit = await tryRunGit([
-			"-C",
-			context.repoPath,
-			"rev-parse",
-			"--verify",
-			`${requestedBaseRef}^{commit}`,
-		]);
-		if (!baseCommit) {
+		let baseCommit: string;
+		try {
+			baseCommit = await runGit(["-C", context.repoPath, "rev-parse", "--verify", `${requestedBaseRef}^{commit}`]);
+		} catch (error) {
 			return {
 				ok: false,
 				path: null,
 				baseRef: requestedBaseRef,
 				baseCommit: null,
-				error: `Branch or ref '${requestedBaseRef}' does not exist in this repository.`,
+				error: getGitCommandErrorMessage(error),
 			};
 		}
 
