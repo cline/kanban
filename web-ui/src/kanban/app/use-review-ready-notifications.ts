@@ -92,6 +92,39 @@ export function useReviewReadyNotifications({
 	}, [workspacePath]);
 
 	useEffect(() => {
+		const tabId = notificationPresenceTabIdRef.current;
+		const syncSourceId = notificationBadgeSyncSourceIdRef.current;
+		const presenceWorkspaceId = activeWorkspaceId;
+		if (isDocumentVisible) {
+			if (presenceWorkspaceId) {
+				markTabVisible(tabId, presenceWorkspaceId);
+			} else {
+				markTabHidden(tabId);
+			}
+			setPendingReviewReadyNotificationCount(0);
+			broadcastNotificationBadgeClear(syncSourceId, presenceWorkspaceId);
+		} else {
+			markTabHidden(tabId);
+		}
+	}, [activeWorkspaceId, isDocumentVisible]);
+
+	useEffect(() => {
+		if (activeWorkspaceId && isDocumentVisible) {
+			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
+		}
+	}, [activeWorkspaceId, isDocumentVisible]);
+
+	useInterval(
+		() => {
+			if (!activeWorkspaceId || !isDocumentVisible) {
+				return;
+			}
+			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
+		},
+		activeWorkspaceId && isDocumentVisible ? TAB_VISIBILITY_HEARTBEAT_INTERVAL_MS : null,
+	);
+
+	useEffect(() => {
 		if (!latestTaskReadyForReview) {
 			return;
 		}
@@ -137,39 +170,6 @@ export function useReviewReadyNotifications({
 		readyForReviewNotificationsEnabled,
 		workspaceTitle,
 	]);
-
-	useEffect(() => {
-		const tabId = notificationPresenceTabIdRef.current;
-		const syncSourceId = notificationBadgeSyncSourceIdRef.current;
-		const presenceWorkspaceId = activeWorkspaceId;
-		if (isDocumentVisible) {
-			if (presenceWorkspaceId) {
-				markTabVisible(tabId, presenceWorkspaceId);
-			} else {
-				markTabHidden(tabId);
-			}
-			setPendingReviewReadyNotificationCount(0);
-			broadcastNotificationBadgeClear(syncSourceId, presenceWorkspaceId);
-		} else {
-			markTabHidden(tabId);
-		}
-	}, [activeWorkspaceId, isDocumentVisible]);
-
-	useEffect(() => {
-		if (activeWorkspaceId && isDocumentVisible) {
-			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
-		}
-	}, [activeWorkspaceId, isDocumentVisible]);
-
-	useInterval(
-		() => {
-			if (!activeWorkspaceId || !isDocumentVisible) {
-				return;
-			}
-			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
-		},
-		activeWorkspaceId && isDocumentVisible ? TAB_VISIBILITY_HEARTBEAT_INTERVAL_MS : null,
-	);
 
 	const handlePageHide = useCallback(() => {
 		markTabHidden(notificationPresenceTabIdRef.current);
