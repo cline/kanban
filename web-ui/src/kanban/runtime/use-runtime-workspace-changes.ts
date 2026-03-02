@@ -24,22 +24,20 @@ const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 32;
 function buildWorkspaceChangesCacheKey(input: {
 	taskId: string;
 	workspaceId: string;
-	baseRef?: string | null;
+	baseRef: string;
 }): string {
-	return `${input.workspaceId}\t${input.taskId}\t${input.baseRef ?? ""}`;
+	return `${input.workspaceId}\t${input.taskId}\t${input.baseRef}`;
 }
 
 async function fetchRuntimeWorkspaceChanges(
 	taskId: string,
 	workspaceId: string,
-	baseRef?: string | null,
+	baseRef: string,
 ): Promise<RuntimeWorkspaceChangesResponse> {
 	const params = new URLSearchParams({
 		taskId,
+		baseRef,
 	});
-	if (baseRef !== undefined) {
-		params.set("baseRef", baseRef ?? "");
-	}
 	const response = await workspaceFetch(`/api/workspace/changes?${params.toString()}`, {
 		workspaceId,
 	});
@@ -53,7 +51,7 @@ async function fetchRuntimeWorkspaceChanges(
 export function useRuntimeWorkspaceChanges(
 	taskId: string | null,
 	workspaceId: string | null,
-	baseRef?: string | null,
+	baseRef: string | null,
 ): UseRuntimeWorkspaceChangesResult {
 	const [changes, setChanges] = useState<RuntimeWorkspaceChangesResponse | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
@@ -86,7 +84,7 @@ export function useRuntimeWorkspaceChanges(
 	);
 
 	const fetchAndStoreChanges = useCallback(async () => {
-		if (!taskId || !workspaceId) {
+		if (!taskId || !workspaceId || !baseRef) {
 			return;
 		}
 		const cacheKey = buildWorkspaceChangesCacheKey({ taskId, workspaceId, baseRef });
@@ -110,7 +108,7 @@ export function useRuntimeWorkspaceChanges(
 	}, [baseRef, rememberChangesForCache, taskId, workspaceId]);
 
 	const refresh = useCallback(async () => {
-		if (!taskId || !workspaceId) {
+		if (!taskId || !workspaceId || !baseRef) {
 			return;
 		}
 		if (refreshInFlightRef.current) {
@@ -137,7 +135,7 @@ export function useRuntimeWorkspaceChanges(
 			refreshPendingRef.current = false;
 			setIsLoading(false);
 		}
-	}, [fetchAndStoreChanges, taskId, workspaceId]);
+	}, [baseRef, fetchAndStoreChanges, taskId, workspaceId]);
 
 	useEffect(() => {
 		refreshContextVersionRef.current += 1;
@@ -145,7 +143,7 @@ export function useRuntimeWorkspaceChanges(
 		refreshInFlightRef.current = false;
 		refreshPendingRef.current = false;
 		activeCacheKeyRef.current =
-			taskId && workspaceId
+			taskId && workspaceId && baseRef
 				? buildWorkspaceChangesCacheKey({ taskId, workspaceId, baseRef })
 				: null;
 		const activeCacheKey = activeCacheKeyRef.current;
@@ -161,7 +159,7 @@ export function useRuntimeWorkspaceChanges(
 			setChanges(null);
 		}
 		setIsLoading(false);
-		if (!taskId || !workspaceId) {
+		if (!taskId || !workspaceId || !baseRef) {
 			setIsRuntimeAvailable(workspaceId !== null);
 			return;
 		}

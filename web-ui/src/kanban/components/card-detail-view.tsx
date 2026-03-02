@@ -160,7 +160,7 @@ export function CardDetailView({
 	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(
 		selection.card.id,
 		currentProjectId,
-		selection.card.baseRef ?? null,
+		selection.card.baseRef,
 	);
 	const runtimeFiles = workspaceChanges?.files ?? null;
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;

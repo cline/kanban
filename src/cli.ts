@@ -486,15 +486,19 @@ function resolveInteractiveShellCommand(): { binary: string; args: string[] } {
 	};
 }
 
-async function resolveTaskBaseRef(cwd: string, taskId: string): Promise<string | null> {
+async function resolveTaskBaseRef(cwd: string, taskId: string): Promise<string> {
 	const workspace = await loadWorkspaceState(cwd);
 	for (const column of workspace.board.columns) {
 		const card = column.cards.find((candidate) => candidate.id === taskId);
 		if (card) {
-			return typeof card.baseRef === "string" ? card.baseRef.trim() || null : null;
+			const baseRef = card.baseRef.trim();
+			if (baseRef) {
+				return baseRef;
+			}
+			throw new Error(`Task "${taskId}" is missing a base branch reference.`);
 		}
 	}
-	return null;
+	throw new Error(`Task "${taskId}" does not exist in this workspace.`);
 }
 
 async function readAsset(rootDir: string, requestPathname: string): Promise<{ content: Buffer; contentType: string }> {
@@ -1379,16 +1383,10 @@ async function startServer(
 						} satisfies RuntimeTaskSessionStartResponse);
 						return;
 					}
-					const taskBaseRef =
-						body.baseRef === undefined
-							? await resolveTaskBaseRef(scope.workspacePath, body.taskId)
-							: typeof body.baseRef === "string"
-								? body.baseRef.trim() || null
-								: null;
 					const taskCwd = await resolveTaskCwd({
 						cwd: scope.workspacePath,
 						taskId: body.taskId,
-						baseRef: taskBaseRef,
+						baseRef: body.baseRef,
 						ensure: true,
 					});
 					const terminalManager = await getScopedTerminalManager(scope);
@@ -1636,14 +1634,10 @@ async function startServer(
 					const taskScope = parseOptionalTaskWorkspaceInfoRequest(requestUrl.searchParams);
 					let summaryCwd = scope.workspacePath;
 					if (taskScope) {
-						const taskBaseRef =
-							taskScope.baseRef === undefined
-								? await resolveTaskBaseRef(scope.workspacePath, taskScope.taskId)
-								: taskScope.baseRef;
 						summaryCwd = await resolveTaskCwd({
 							cwd: scope.workspacePath,
 							taskId: taskScope.taskId,
-							baseRef: taskBaseRef,
+							baseRef: taskScope.baseRef,
 							ensure: false,
 						});
 					}
@@ -1756,14 +1750,10 @@ async function startServer(
 				}
 				try {
 					const query = parseWorkspaceChangesRequest(requestUrl.searchParams);
-					const taskBaseRef =
-						query.baseRef === undefined
-							? await resolveTaskBaseRef(scope.workspacePath, query.taskId)
-							: query.baseRef;
 					const taskCwd = await resolveTaskCwd({
 						cwd: scope.workspacePath,
 						taskId: query.taskId,
-						baseRef: taskBaseRef,
+						baseRef: query.baseRef,
 						ensure: false,
 					});
 					const response = await getWorkspaceChanges(taskCwd);
@@ -1821,14 +1811,10 @@ async function startServer(
 				}
 				try {
 					const query = parseTaskWorkspaceInfoRequest(requestUrl.searchParams);
-					const taskBaseRef =
-						query.baseRef === undefined
-							? await resolveTaskBaseRef(scope.workspacePath, query.taskId)
-							: query.baseRef;
 					const response = await getTaskWorkspaceInfo({
 						cwd: scope.workspacePath,
 						taskId: query.taskId,
-						baseRef: taskBaseRef,
+						baseRef: query.baseRef,
 					});
 					sendJson(res, 200, response);
 				} catch (error) {

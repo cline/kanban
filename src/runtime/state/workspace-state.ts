@@ -153,7 +153,11 @@ function normalizeColumnId(input: unknown): RuntimeBoardColumnId | null {
 	return null;
 }
 
-function normalizeBoardCard(card: unknown): RuntimeBoardCard | null {
+function resolveTaskBaseRefFallback(git: RuntimeGitRepositoryInfo): string {
+	return git.currentBranch ?? git.defaultBranch ?? git.branches[0] ?? "HEAD";
+}
+
+function normalizeBoardCard(card: unknown, fallbackBaseRef: string): RuntimeBoardCard | null {
 	if (!card || typeof card !== "object") {
 		return null;
 	}
@@ -177,6 +181,7 @@ function normalizeBoardCard(card: unknown): RuntimeBoardCard | null {
 	const now = Date.now();
 	const description = typeof source.description === "string" ? source.description : "";
 	const prompt = typeof source.prompt === "string" ? source.prompt : description.trim() || title;
+	const normalizedBaseRef = typeof source.baseRef === "string" ? source.baseRef.trim() : "";
 
 	return {
 		id: typeof source.id === "string" && source.id ? source.id : createShortTaskId(),
@@ -184,13 +189,13 @@ function normalizeBoardCard(card: unknown): RuntimeBoardCard | null {
 		description,
 		prompt,
 		startInPlanMode: typeof source.startInPlanMode === "boolean" ? source.startInPlanMode : false,
-		baseRef: typeof source.baseRef === "string" ? source.baseRef.trim() || null : null,
+		baseRef: normalizedBaseRef || fallbackBaseRef,
 		createdAt: typeof source.createdAt === "number" ? source.createdAt : now,
 		updatedAt: typeof source.updatedAt === "number" ? source.updatedAt : now,
 	};
 }
 
-function normalizeBoard(rawBoard: unknown): RuntimeBoardData {
+function normalizeBoard(rawBoard: unknown, fallbackBaseRef: string): RuntimeBoardData {
 	if (!rawBoard || typeof rawBoard !== "object") {
 		return createEmptyBoard();
 	}
@@ -221,7 +226,7 @@ function normalizeBoard(rawBoard: unknown): RuntimeBoardData {
 			continue;
 		}
 		for (const rawCard of candidate.cards) {
-			const card = normalizeBoardCard(rawCard);
+			const card = normalizeBoardCard(rawCard, fallbackBaseRef);
 			if (card) {
 				targetColumn.cards.push(card);
 			}
@@ -615,7 +620,8 @@ export async function removeWorkspaceStateFiles(workspaceId: string): Promise<vo
 
 export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceStateResponse> {
 	const context = await loadWorkspaceContext(cwd);
-	const board = normalizeBoard(await readJsonFile(getWorkspaceBoardPath(context.workspaceId)));
+	const baseRefFallback = resolveTaskBaseRefFallback(context.git);
+	const board = normalizeBoard(await readJsonFile(getWorkspaceBoardPath(context.workspaceId)), baseRefFallback);
 	const sessions = normalizeSessions(await readJsonFile(getWorkspaceSessionsPath(context.workspaceId)));
 	const meta = normalizeWorkspaceStateMeta(await readJsonFile(getWorkspaceMetaPath(context.workspaceId)));
 	return toWorkspaceStateResponse(context, board, sessions, meta.revision);
@@ -637,7 +643,8 @@ export async function saveWorkspaceState(
 	) {
 		throw new WorkspaceStateConflictError(expectedRevision, currentMeta.revision);
 	}
-	const board = normalizeBoard(payload.board);
+	const baseRefFallback = resolveTaskBaseRefFallback(context.git);
+	const board = normalizeBoard(payload.board, baseRefFallback);
 	const sessions = normalizeSessions(payload.sessions);
 	const nextRevision = currentMeta.revision + 1;
 	const nextMeta: WorkspaceStateMeta = {

@@ -8,7 +8,7 @@ export interface TaskDraft {
 	description?: string;
 	prompt?: string;
 	startInPlanMode?: boolean;
-	baseRef?: string | null;
+	baseRef: string;
 }
 
 export interface TaskMoveEvent {
@@ -47,10 +47,10 @@ function createTask(draft: TaskDraft, existingIds: Set<string>): BoardCard {
 	const title = draft.title.trim();
 	const description = draft.description?.trim() ?? "";
 	const prompt = draft.prompt?.trim() || description || title;
-	const baseRef =
-		typeof draft.baseRef === "string"
-			? (draft.baseRef.trim() || null)
-			: null;
+	const baseRef = draft.baseRef.trim();
+	if (!baseRef) {
+		throw new Error("Task base branch is required.");
+	}
 	return {
 		id: createUniqueTaskId(existingIds),
 		title,
@@ -110,6 +110,10 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		typeof card.prompt === "string"
 			? card.prompt
 			: description.trim() || title;
+	const baseRef = typeof card.baseRef === "string" ? card.baseRef.trim() : "";
+	if (!baseRef) {
+		return null;
+	}
 
 	const now = Date.now();
 
@@ -119,7 +123,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		description,
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
-		baseRef: typeof card.baseRef === "string" ? (card.baseRef.trim() || null) : null,
+		baseRef,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
 	};
@@ -327,10 +331,10 @@ export function updateTask(
 	}
 	const description = draft.description?.trim() ?? "";
 	const prompt = draft.prompt?.trim() || description || title;
-	const baseRef =
-		typeof draft.baseRef === "string"
-			? (draft.baseRef.trim() || null)
-			: null;
+	const baseRef = draft.baseRef.trim();
+	if (!baseRef) {
+		return { board, updated: false };
+	}
 
 	let updated = false;
 	const columns = board.columns.map((column) => {

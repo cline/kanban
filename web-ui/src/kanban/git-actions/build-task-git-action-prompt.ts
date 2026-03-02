@@ -58,9 +58,7 @@ function interpolateTemplate(template: string, variables: Record<string, string>
 
 export function buildTaskGitActionPrompt(input: BuildTaskGitActionPromptInput): string {
 	const variables: Record<string, string> = {
-		base_ref:
-			input.workspaceInfo.baseRef ??
-			"unknown (determine the correct base branch before proceeding)",
+		base_ref: input.workspaceInfo.baseRef,
 	};
 	const template = resolveTemplate(input.action, input.templates);
 	return interpolateTemplate(template, variables);

@@ -125,7 +125,7 @@ function matchesWorkspaceInfoSelection(
 	if (!workspaceInfo || !card) {
 		return false;
 	}
-	return workspaceInfo.taskId === card.id && (workspaceInfo.baseRef ?? null) === (card.baseRef ?? null);
+	return workspaceInfo.taskId === card.id && workspaceInfo.baseRef === card.baseRef;
 }
 
 function isRuntimeConnectionFailure(message: string | null): boolean {
@@ -368,7 +368,7 @@ export default function App(): ReactElement {
 				},
 				body: JSON.stringify({
 					taskId: task.id,
-					baseRef: task.baseRef ?? null,
+					baseRef: task.baseRef,
 				}),
 				workspaceId: currentProjectId,
 			});
@@ -403,7 +403,7 @@ export default function App(): ReactElement {
 					taskId: task.id,
 					prompt: kickoffPrompt,
 					startInPlanMode: task.startInPlanMode,
-					baseRef: task.baseRef ?? null,
+					baseRef: task.baseRef,
 				}),
 				workspaceId: currentProjectId,
 			});
@@ -518,7 +518,7 @@ export default function App(): ReactElement {
 				const params = new URLSearchParams({
 					taskId: task.id,
 				});
-				params.set("baseRef", task.baseRef ?? "");
+				params.set("baseRef", task.baseRef);
 				const response = await workspaceFetch(`/api/workspace/task-context?${params.toString()}`, {
 					workspaceId: currentProjectId,
 				});
@@ -544,7 +544,7 @@ export default function App(): ReactElement {
 			const params = new URLSearchParams({
 				taskId: task.id,
 			});
-			params.set("baseRef", task.baseRef ?? "");
+			params.set("baseRef", task.baseRef);
 			const response = await workspaceFetch(`/api/workspace/git/summary?${params.toString()}`, {
 				workspaceId: currentProjectId,
 			});
@@ -571,7 +571,7 @@ export default function App(): ReactElement {
 			const params = new URLSearchParams({
 				taskId: task.id,
 			});
-			params.set("baseRef", task.baseRef ?? "");
+			params.set("baseRef", task.baseRef);
 
 			let workspaceInfo: RuntimeTaskWorkspaceInfoResponse;
 			try {
@@ -743,7 +743,7 @@ export default function App(): ReactElement {
 							taskId,
 							path: workspaceSnapshots[taskId].path,
 							exists: true,
-							baseRef: selection.card.baseRef ?? null,
+							baseRef: selection.card.baseRef,
 							branch: workspaceSnapshots[taskId].branch,
 							isDetached: workspaceSnapshots[taskId].isDetached,
 							headCommit: workspaceSnapshots[taskId].headCommit,
@@ -1518,6 +1518,7 @@ export default function App(): ReactElement {
 				body: JSON.stringify({
 					taskId: HOME_TERMINAL_TASK_ID,
 					rows: HOME_TERMINAL_ROWS,
+					baseRef: workspaceGit?.currentBranch ?? workspaceGit?.defaultBranch ?? "HEAD",
 				}),
 				workspaceId: currentProjectId,
 			});
@@ -1537,7 +1538,7 @@ export default function App(): ReactElement {
 		} finally {
 			setIsHomeTerminalStarting(false);
 		}
-	}, [currentProjectId, upsertSession]);
+	}, [currentProjectId, upsertSession, workspaceGit?.currentBranch, workspaceGit?.defaultBranch]);
 
 	const handleToggleHomeTerminal = useCallback(() => {
 		if (isHomeTerminalOpen) {
@@ -1569,12 +1570,12 @@ export default function App(): ReactElement {
 					headers: {
 						"Content-Type": "application/json",
 					},
-					body: JSON.stringify({
-						taskId: targetTaskId,
-						rows: HOME_TERMINAL_ROWS,
-						workspaceTaskId: card.id,
-						baseRef: card.baseRef ?? null,
-					}),
+						body: JSON.stringify({
+							taskId: targetTaskId,
+							rows: HOME_TERMINAL_ROWS,
+							workspaceTaskId: card.id,
+							baseRef: card.baseRef,
+						}),
 					workspaceId: currentProjectId,
 				});
 				const payload = (await response.json().catch(() => null)) as RuntimeShellSessionStartResponse | null;
@@ -1607,7 +1608,7 @@ export default function App(): ReactElement {
 		}
 		setIsDetailTerminalOpen(true);
 		void (async () => {
-			const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef ?? ""}`;
+			const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef}`;
 			detailTerminalSelectionKeyRef.current = selectionKey;
 			const started = await startDetailTerminalForCard(selectedCard.card, { showLoading: true });
 			if (!started) {
@@ -1624,7 +1625,7 @@ export default function App(): ReactElement {
 			detailTerminalSelectionKeyRef.current = null;
 			return;
 		}
-		const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef ?? ""}`;
+		const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef}`;
 		if (detailTerminalSelectionKeyRef.current === selectionKey) {
 			return;
 		}
@@ -1695,7 +1696,7 @@ export default function App(): ReactElement {
 			setEditingTaskId(task.id);
 			setEditTaskPrompt(taskPrompt);
 			setEditTaskStartInPlanMode(task.startInPlanMode);
-			const fallbackBranch = task.baseRef ?? defaultTaskBranchRef;
+			const fallbackBranch = task.baseRef || defaultTaskBranchRef;
 			setEditTaskBranchRef(fallbackBranch);
 		},
 		[defaultTaskBranchRef],
@@ -1726,7 +1727,7 @@ export default function App(): ReactElement {
 			return;
 		}
 
-		const baseRef = editTaskBranchRef || defaultTaskBranchRef || null;
+		const baseRef = editTaskBranchRef || defaultTaskBranchRef;
 
 		setBoard((currentBoard) => {
 			const updated = updateTask(currentBoard, editingTaskId, {
@@ -1762,7 +1763,7 @@ export default function App(): ReactElement {
 		if (!title) {
 			return;
 		}
-		const baseRef = newTaskBranchRef || defaultTaskBranchRef || null;
+		const baseRef = newTaskBranchRef || defaultTaskBranchRef;
 		setBoard((currentBoard) =>
 			addTaskToColumn(currentBoard, "backlog", {
 				title,
@@ -1899,7 +1900,7 @@ export default function App(): ReactElement {
 				const activeSelection = selectedCard;
 				if (activeSelection) {
 					targetTaskId = getDetailTerminalTaskId(activeSelection.card);
-					const selectionKey = `${activeSelection.card.id}:${activeSelection.card.baseRef ?? ""}`;
+					const selectionKey = `${activeSelection.card.id}:${activeSelection.card.baseRef}`;
 					const detailWasAlreadyOpenForSelection =
 						isDetailTerminalOpen && detailTerminalSelectionKeyRef.current === selectionKey;
 					shouldWaitForConnection = !detailWasAlreadyOpenForSelection;
@@ -2237,7 +2238,7 @@ export default function App(): ReactElement {
 				"Or commit and cherry-pick the commit onto your target branch (for example main).",
 			];
 		}
-		const branch = info.branch ?? info.baseRef ?? "a branch";
+		const branch = info.branch ?? info.baseRef;
 		return [
 			`Commit your changes in the worktree branch (${branch}), then open a PR or cherry-pick as needed.`,
 			"After preserving the work, you can safely move this task to Trash.",

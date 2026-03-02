@@ -42,17 +42,6 @@ const positiveIntegerFromQuerySchema = z.coerce.number().int().positive();
 
 const requiredTrimmedStringSchema = (message: string) => trimmedStringSchema.pipe(z.string().min(1, message));
 
-const optionalNullableTrimmedStringSchema = z
-	.union([z.string(), z.null()])
-	.optional()
-	.transform((value) => {
-		if (value === undefined || value === null) {
-			return value;
-		}
-		const normalized = value.trim();
-		return normalized.length > 0 ? normalized : null;
-	});
-
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown): T {
 	const parsed = schema.safeParse(value);
 	if (!parsed.success) {
@@ -66,9 +55,10 @@ export function parseWorkspaceChangesRequest(query: URLSearchParams): RuntimeWor
 		requiredTrimmedStringSchema("Missing taskId query parameter."),
 		query.get("taskId") ?? "",
 	);
-	const baseRef = query.has("baseRef")
-		? parseWithSchema(optionalNullableTrimmedStringSchema, query.get("baseRef") ?? "")
-		: undefined;
+	const baseRef = parseWithSchema(
+		requiredTrimmedStringSchema("Missing baseRef query parameter."),
+		query.get("baseRef") ?? "",
+	);
 	return parseWithSchema(runtimeWorkspaceChangesRequestSchema, { taskId, baseRef });
 }
 
@@ -77,9 +67,10 @@ export function parseTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTa
 		requiredTrimmedStringSchema("Missing taskId query parameter."),
 		query.get("taskId") ?? "",
 	);
-	const baseRef = query.has("baseRef")
-		? parseWithSchema(optionalNullableTrimmedStringSchema, query.get("baseRef") ?? "")
-		: undefined;
+	const baseRef = parseWithSchema(
+		requiredTrimmedStringSchema("Missing baseRef query parameter."),
+		query.get("baseRef") ?? "",
+	);
 	return parseWithSchema(runtimeTaskWorkspaceInfoRequestSchema, { taskId, baseRef });
 }
 
@@ -132,8 +123,10 @@ export function parseWorktreeEnsureRequest(value: unknown): RuntimeWorktreeEnsur
 	if (!taskId) {
 		throw new Error("Invalid worktree ensure payload.");
 	}
-	const baseRef =
-		parsed.baseRef === undefined ? undefined : parsed.baseRef === null ? null : parsed.baseRef.trim() || null;
+	const baseRef = parsed.baseRef.trim();
+	if (!baseRef) {
+		throw new Error("Invalid worktree ensure payload.");
+	}
 	return {
 		taskId,
 		baseRef,
@@ -198,8 +191,10 @@ export function parseTaskSessionStartRequest(value: unknown): RuntimeTaskSession
 	if (!taskId) {
 		throw new Error("Task session taskId cannot be empty.");
 	}
-	const baseRef =
-		parsed.baseRef === undefined ? undefined : parsed.baseRef === null ? null : parsed.baseRef.trim() || null;
+	const baseRef = parsed.baseRef.trim();
+	if (!baseRef) {
+		throw new Error("Task session baseRef cannot be empty.");
+	}
 	return {
 		...parsed,
 		taskId,
@@ -240,8 +235,10 @@ export function parseShellSessionStartRequest(value: unknown): RuntimeShellSessi
 		throw new Error("Invalid shell session workspaceTaskId.");
 	}
 	const workspaceTaskId = parsed.workspaceTaskId?.trim() || undefined;
-	const baseRef =
-		parsed.baseRef === undefined ? undefined : parsed.baseRef === null ? null : parsed.baseRef.trim() || null;
+	const baseRef = parsed.baseRef.trim();
+	if (!baseRef) {
+		throw new Error("Shell session baseRef cannot be empty.");
+	}
 	return {
 		...parsed,
 		taskId,

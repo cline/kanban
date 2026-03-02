@@ -157,20 +157,6 @@ async function symlinkIgnoredPaths(repoPath: string, worktreePath: string): Prom
 	}
 }
 
-function resolveBaseRef(baseRef: string | null | undefined, fallback: string | null): string | null {
-	if (baseRef === null) {
-		return null;
-	}
-	if (typeof baseRef === "string") {
-		const normalized = baseRef.trim();
-		return normalized || null;
-	}
-	if (fallback?.trim()) {
-		return fallback.trim();
-	}
-	return null;
-}
-
 async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
 	await tryRunGit(["-C", repoPath, "worktree", "remove", "--force", worktreePath]);
@@ -197,18 +183,18 @@ async function pruneEmptyParents(rootPath: string, fromPath: string): Promise<vo
 export async function ensureTaskWorktree(options: {
 	cwd: string;
 	taskId: string;
-	baseRef?: string | null;
+	baseRef: string;
 }): Promise<RuntimeWorktreeEnsureResponse> {
 	try {
 		const context = await loadWorkspaceContext(options.cwd);
 		const taskId = normalizeTaskId(options.taskId);
 
-		const requestedBaseRef = resolveBaseRef(options.baseRef, null);
+		const requestedBaseRef = options.baseRef.trim();
 		if (!requestedBaseRef) {
 			return {
 				ok: false,
 				path: null,
-				baseRef: null,
+				baseRef: requestedBaseRef,
 				baseCommit: null,
 				error: "Task base branch is required for worktree creation.",
 			};
@@ -261,7 +247,7 @@ export async function ensureTaskWorktree(options: {
 		return {
 			ok: false,
 			path: null,
-			baseRef: typeof options.baseRef === "string" ? options.baseRef.trim() || null : null,
+			baseRef: options.baseRef.trim(),
 			baseCommit: null,
 			error: message,
 		};
@@ -296,12 +282,12 @@ export async function deleteTaskWorktree(options: {
 export async function resolveTaskCwd(options: {
 	cwd: string;
 	taskId: string;
-	baseRef?: string | null;
+	baseRef: string;
 	ensure?: boolean;
 }): Promise<string> {
 	const context = await loadWorkspaceContext(options.cwd);
 
-	const normalizedBaseRef = resolveBaseRef(options.baseRef, null);
+	const normalizedBaseRef = options.baseRef.trim();
 	if (!normalizedBaseRef) {
 		throw new Error("Task base branch is required for task workspace resolution.");
 	}
@@ -328,11 +314,11 @@ export async function resolveTaskCwd(options: {
 export async function getTaskWorkspaceInfo(options: {
 	cwd: string;
 	taskId: string;
-	baseRef?: string | null;
+	baseRef: string;
 }): Promise<RuntimeTaskWorkspaceInfoResponse> {
 	const context = await loadWorkspaceContext(options.cwd);
 	const taskId = normalizeTaskId(options.taskId);
-	const normalizedBaseRef = resolveBaseRef(options.baseRef, null);
+	const normalizedBaseRef = options.baseRef.trim();
 
 	if (!normalizedBaseRef) {
 		throw new Error("Task base branch is required for task workspace info.");

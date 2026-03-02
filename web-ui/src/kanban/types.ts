@@ -6,7 +6,7 @@ export interface BoardCard {
 	description: string;
 	prompt: string;
 	startInPlanMode: boolean;
-	baseRef?: string | null;
+	baseRef: string;
 	createdAt: number;
 	updatedAt: number;
 }

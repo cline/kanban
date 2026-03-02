@@ -48,7 +48,7 @@ function createBoard(title: string): RuntimeBoardData {
 						description: "",
 						prompt: title,
 						startInPlanMode: false,
-						baseRef: null,
+						baseRef: "main",
 						createdAt: now,
 						updatedAt: now,
 					},
@@ -77,7 +77,7 @@ function createReviewBoard(taskId: string, title: string): RuntimeBoardData {
 						description: "",
 						prompt: title,
 						startInPlanMode: false,
-						baseRef: null,
+						baseRef: "main",
 						createdAt: now,
 						updatedAt: now,
 					},
@@ -608,6 +608,7 @@ describe.sequential("runtime state stream integration", () => {
 				workspaceId,
 				body: {
 					taskId,
+					baseRef: "HEAD",
 				},
 			});
 			expect(startShellResponse.status).toBe(200);

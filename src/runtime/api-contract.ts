@@ -24,7 +24,7 @@ export type RuntimeWorkspaceFileChange = z.infer<typeof runtimeWorkspaceFileChan
 
 export const runtimeWorkspaceChangesRequestSchema = z.object({
 	taskId: z.string(),
-	baseRef: z.string().nullable().optional(),
+	baseRef: z.string(),
 });
 export type RuntimeWorkspaceChangesRequest = z.infer<typeof runtimeWorkspaceChangesRequestSchema>;
 
@@ -79,7 +79,7 @@ export const runtimeBoardCardSchema = z.object({
 	description: z.string(),
 	prompt: z.string(),
 	startInPlanMode: z.boolean(),
-	baseRef: z.string().nullable().optional(),
+	baseRef: z.string(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
 });
@@ -313,7 +313,7 @@ export type RuntimeProjectRemoveResponse = z.infer<typeof runtimeProjectRemoveRe
 
 export const runtimeWorktreeEnsureRequestSchema = z.object({
 	taskId: z.string(),
-	baseRef: z.string().nullable().optional(),
+	baseRef: z.string(),
 });
 export type RuntimeWorktreeEnsureRequest = z.infer<typeof runtimeWorktreeEnsureRequestSchema>;
 
@@ -321,14 +321,14 @@ export const runtimeWorktreeEnsureResponseSchema = z.union([
 	z.object({
 		ok: z.literal(true),
 		path: z.string(),
-		baseRef: z.string().nullable(),
+		baseRef: z.string(),
 		baseCommit: z.string(),
 		error: z.string().optional(),
 	}),
 	z.object({
 		ok: z.literal(false),
 		path: z.null(),
-		baseRef: z.string().nullable(),
+		baseRef: z.string(),
 		baseCommit: z.null(),
 		error: z.string().optional(),
 	}),
@@ -349,7 +349,7 @@ export type RuntimeWorktreeDeleteResponse = z.infer<typeof runtimeWorktreeDelete
 
 export const runtimeTaskWorkspaceInfoRequestSchema = z.object({
 	taskId: z.string(),
-	baseRef: z.string().nullable().optional(),
+	baseRef: z.string(),
 });
 export type RuntimeTaskWorkspaceInfoRequest = z.infer<typeof runtimeTaskWorkspaceInfoRequestSchema>;
 
@@ -357,7 +357,7 @@ export const runtimeTaskWorkspaceInfoResponseSchema = z.object({
 	taskId: z.string(),
 	path: z.string(),
 	exists: z.boolean(),
-	baseRef: z.string().nullable(),
+	baseRef: z.string(),
 	branch: z.string().nullable(),
 	isDetached: z.boolean(),
 	headCommit: z.string().nullable(),
@@ -428,7 +428,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	taskId: z.string(),
 	prompt: z.string(),
 	startInPlanMode: z.boolean().optional(),
-	baseRef: z.string().nullable().optional(),
+	baseRef: z.string(),
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),
 });
@@ -472,7 +472,7 @@ export const runtimeShellSessionStartRequestSchema = z.object({
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),
 	workspaceTaskId: z.string().optional(),
-	baseRef: z.string().nullable().optional(),
+	baseRef: z.string(),
 });
 export type RuntimeShellSessionStartRequest = z.infer<typeof runtimeShellSessionStartRequestSchema>;
 

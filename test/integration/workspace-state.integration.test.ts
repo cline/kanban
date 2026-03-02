@@ -29,7 +29,7 @@ function createBoard(title: string): RuntimeBoardData {
 						description: "",
 						prompt: title,
 						startInPlanMode: false,
-						baseRef: null,
+						baseRef: "main",
 						createdAt: Date.now(),
 						updatedAt: Date.now(),
 					},
