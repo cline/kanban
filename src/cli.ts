@@ -486,21 +486,6 @@ function resolveInteractiveShellCommand(): { binary: string; args: string[] } {
 	};
 }
 
-async function resolveTaskBaseRef(cwd: string, taskId: string): Promise<string> {
-	const workspace = await loadWorkspaceState(cwd);
-	for (const column of workspace.board.columns) {
-		const card = column.cards.find((candidate) => candidate.id === taskId);
-		if (card) {
-			const baseRef = card.baseRef.trim();
-			if (baseRef) {
-				return baseRef;
-			}
-			throw new Error(`Task "${taskId}" is missing a base branch reference.`);
-		}
-	}
-	throw new Error(`Task "${taskId}" does not exist in this workspace.`);
-}
-
 async function readAsset(rootDir: string, requestPathname: string): Promise<{ content: Buffer; contentType: string }> {
 	let resolvedPath = resolveAssetPath(rootDir, requestPathname);
 
@@ -1322,14 +1307,13 @@ async function startServer(
 						} satisfies RuntimeSlashCommandsResponse);
 						return;
 					}
-					const taskId = requestUrl.searchParams.get("taskId")?.trim();
+					const taskScope = parseOptionalTaskWorkspaceInfoRequest(requestUrl.searchParams);
 					let commandCwd = scope.workspacePath;
-					if (taskId) {
-						const taskBaseRef = await resolveTaskBaseRef(scope.workspacePath, taskId);
+					if (taskScope) {
 						commandCwd = await resolveTaskCwd({
 							cwd: scope.workspacePath,
-							taskId,
-							baseRef: taskBaseRef,
+							taskId: taskScope.taskId,
+							baseRef: taskScope.baseRef,
 							ensure: false,
 						});
 					}
