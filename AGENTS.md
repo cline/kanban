@@ -23,6 +23,7 @@ Code quality
 - Extract shared logic into hooks and utilities. 
 - Prioritize maintainability and clean architecture over speed. 
 - Follow DRY principles and maintain clean architecture with clear separation of concerns.
+- In `web-ui`, prefer `react-use` hooks (via `@/kanban/hooks/react-use`) whenever possible
 
 Git guardrails
 - NEVER commit unless user asks.
@@ -78,4 +79,3 @@ Use Blueprint primitives, don't reinvent
 - For button styles, use Blueprint's variant system (`variant="solid"`, `"outlined"`, `"minimal"`).
 - For external links styled as buttons, use `AnchorButton` instead of wrapping `<a>` around `<Button>`.
 - For empty/error/loading states, use `NonIdealState`. For inline alerts/banners, use `Callout`. For confirmation prompts, use `Alert`. For modals, use `Dialog` with `DialogBody`/`DialogFooter`. For selections from a list, use `Select`/`Omnibar` from `@blueprintjs/select`.
-
