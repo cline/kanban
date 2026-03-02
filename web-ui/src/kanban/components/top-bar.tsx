@@ -33,7 +33,6 @@ interface BranchSelectOption {
 const BLUEPRINT_ICON_NAMES = new Set<IconName>(Object.values(IconNames));
 
 export interface TopBarTaskGitSummary {
-	hasGit: boolean;
 	branch: string | null;
 	headCommit: string | null;
 	changedFiles: number | null;
@@ -61,7 +60,6 @@ export function TopBar({
 	workspacePath,
 	isWorkspacePathLoading = false,
 	workspaceHint,
-	repoHint,
 	runtimeHint,
 	gitSummary,
 	taskGitSummary,
@@ -94,7 +92,6 @@ export function TopBar({
 	workspacePath?: string;
 	isWorkspacePathLoading?: boolean;
 	workspaceHint?: string;
-	repoHint?: string;
 	runtimeHint?: string;
 	gitSummary?: RuntimeGitSyncSummary | null;
 	taskGitSummary?: TopBarTaskGitSummary | null;
@@ -127,13 +124,13 @@ export function TopBar({
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
 	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
-	const hasHomeGitSummary = Boolean(gitSummary?.hasGit);
+	const hasHomeGitSummary = Boolean(gitSummary);
 	const branchLabel = gitSummary?.currentBranch ?? "detached HEAD";
 	const selectedBranchOption = selectedHomeBranch ?? null;
 	const hasHomeBranchPicker = hasHomeGitSummary && Boolean(onSelectHomeBranch) && Boolean(homeBranchOptions?.length);
 	const pullCount = gitSummary?.behindCount ?? 0;
 	const pushCount = gitSummary?.aheadCount ?? 0;
-	const hasTaskGitSummary = Boolean(taskGitSummary?.hasGit);
+	const hasTaskGitSummary = Boolean(taskGitSummary);
 	const taskBranchLabel =
 		taskGitSummary?.branch ??
 		taskGitSummary?.headCommit?.slice(0, 8) ??
@@ -217,9 +214,6 @@ export function TopBar({
 				) : null}
 				{!hideProjectDependentActions && workspaceHint ? (
 					<Tag minimal className="kb-navbar-tag">{workspaceHint}</Tag>
-				) : null}
-				{!hideProjectDependentActions && repoHint ? (
-					<Tag minimal intent="warning" className="kb-navbar-tag">{repoHint}</Tag>
 				) : null}
 				{!hideProjectDependentActions && runtimeHint ? (
 					<Tag minimal intent="warning" className="kb-navbar-tag">{runtimeHint}</Tag>

@@ -489,13 +489,9 @@ function detectGitDefaultBranch(repoPath: string, branches: string[]): string | 
 }
 
 function detectGitRepositoryInfo(repoPath: string): RuntimeGitRepositoryInfo {
-	if (!detectGitRoot(repoPath)) {
-		return {
-			hasGit: false,
-			currentBranch: null,
-			defaultBranch: null,
-			branches: [],
-		};
+	const gitRoot = detectGitRoot(repoPath);
+	if (!gitRoot) {
+		throw new Error(`No git repository detected at ${repoPath}`);
 	}
 
 	const currentBranch = detectGitCurrentBranch(repoPath);
@@ -504,7 +500,6 @@ function detectGitRepositoryInfo(repoPath: string): RuntimeGitRepositoryInfo {
 	const defaultBranch = detectGitDefaultBranch(repoPath, orderedBranches);
 
 	return {
-		hasGit: true,
 		currentBranch,
 		defaultBranch,
 		branches: orderedBranches,
@@ -522,7 +517,7 @@ async function resolveWorkspacePath(cwd: string): Promise<string> {
 
 	const gitRoot = detectGitRoot(canonicalCwd);
 	if (!gitRoot) {
-		return canonicalCwd;
+		throw new Error(`No git repository detected at ${canonicalCwd}`);
 	}
 
 	const resolvedGitRoot = resolve(gitRoot);

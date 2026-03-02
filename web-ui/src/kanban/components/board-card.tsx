@@ -60,9 +60,7 @@ export function BoardCard({
 	const statusMarker = renderStatusMarker();
 	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review";
 	const reviewWorkspacePath = reviewWorkspaceSnapshot ? formatPathForDisplay(reviewWorkspaceSnapshot.path) : null;
-	const reviewRefLabel = !reviewWorkspaceSnapshot?.hasGit
-		? "no git"
-		: reviewWorkspaceSnapshot.branch ?? reviewWorkspaceSnapshot.headCommit?.slice(0, 8) ?? "HEAD";
+	const reviewRefLabel = reviewWorkspaceSnapshot?.branch ?? reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "HEAD";
 	const reviewChangeSummary = reviewWorkspaceSnapshot
 		? reviewWorkspaceSnapshot.changedFiles == null
 			? null
@@ -74,7 +72,6 @@ export function BoardCard({
 		: null;
 	const showReviewGitActions =
 		columnId === "review" &&
-		Boolean(reviewWorkspaceSnapshot?.hasGit) &&
 		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 

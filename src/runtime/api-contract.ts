@@ -98,7 +98,6 @@ export const runtimeBoardDataSchema = z.object({
 export type RuntimeBoardData = z.infer<typeof runtimeBoardDataSchema>;
 
 export const runtimeGitRepositoryInfoSchema = z.object({
-	hasGit: z.boolean(),
 	currentBranch: z.string().nullable(),
 	defaultBranch: z.string().nullable(),
 	branches: z.array(z.string()),
@@ -109,7 +108,6 @@ export const runtimeGitSyncActionSchema = z.enum(["fetch", "pull", "push"]);
 export type RuntimeGitSyncAction = z.infer<typeof runtimeGitSyncActionSchema>;
 
 export const runtimeGitSyncSummarySchema = z.object({
-	hasGit: z.boolean(),
 	currentBranch: z.string().nullable(),
 	upstreamBranch: z.string().nullable(),
 	changedFiles: z.number(),
@@ -321,7 +319,6 @@ export type RuntimeWorktreeEnsureRequest = z.infer<typeof runtimeWorktreeEnsureR
 
 export const runtimeWorktreeEnsureResponseSchema = z.object({
 	ok: z.boolean(),
-	enabled: z.boolean(),
 	path: z.string(),
 	baseRef: z.string().nullable(),
 	baseCommit: z.string().nullable(),
@@ -336,7 +333,6 @@ export type RuntimeWorktreeDeleteRequest = z.infer<typeof runtimeWorktreeDeleteR
 
 export const runtimeWorktreeDeleteResponseSchema = z.object({
 	ok: z.boolean(),
-	enabled: z.boolean(),
 	removed: z.boolean(),
 	error: z.string().optional(),
 });
@@ -354,7 +350,6 @@ export const runtimeTaskWorkspaceInfoResponseSchema = z.object({
 	exists: z.boolean(),
 	deleted: z.boolean(),
 	baseRef: z.string().nullable(),
-	hasGit: z.boolean(),
 	branch: z.string().nullable(),
 	isDetached: z.boolean(),
 	headCommit: z.string().nullable(),

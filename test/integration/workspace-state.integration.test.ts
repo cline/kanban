@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -64,6 +65,16 @@ async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 	}
 }
 
+function initGitRepository(path: string): void {
+	const init = spawnSync("git", ["init"], {
+		cwd: path,
+		stdio: "ignore",
+	});
+	if (init.status !== 0) {
+		throw new Error(`Failed to initialize git repository at ${path}`);
+	}
+}
+
 describe.sequential("workspace-state integration", () => {
 	it("persists revision numbers and rejects stale writes", async () => {
 		await withTemporaryHome(async () => {
@@ -71,6 +82,7 @@ describe.sequential("workspace-state integration", () => {
 			try {
 				const workspacePath = join(sandboxRoot, "project-a");
 				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
 
 				const initial = await loadWorkspaceState(workspacePath);
 				expect(initial.revision).toBe(0);
@@ -119,6 +131,8 @@ describe.sequential("workspace-state integration", () => {
 				const workspaceBPath = join(sandboxRoot, "beta");
 				mkdirSync(workspaceAPath, { recursive: true });
 				mkdirSync(workspaceBPath, { recursive: true });
+				initGitRepository(workspaceAPath);
+				initGitRepository(workspaceBPath);
 
 				const contextA = await loadWorkspaceContext(workspaceAPath);
 				const contextB = await loadWorkspaceContext(workspaceBPath);

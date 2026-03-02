@@ -544,15 +544,12 @@ function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	);
 }
 
-async function canReachKanbananaServer(port: number, workspaceId: string | null): Promise<boolean> {
+async function canReachKanbananaServer(port: number, workspaceId: string): Promise<boolean> {
 	try {
-		const headers = workspaceId
-			? {
-					"x-kanbanana-workspace-id": workspaceId,
-				}
-			: undefined;
 		const response = await fetch(`http://127.0.0.1:${port}/api/projects`, {
-			headers,
+			headers: {
+				"x-kanbanana-workspace-id": workspaceId,
+			},
 			signal: AbortSignal.timeout(1_500),
 		});
 		if (!response.ok) {
@@ -567,18 +564,11 @@ async function canReachKanbananaServer(port: number, workspaceId: string | null)
 
 async function tryOpenExistingServer(port: number, noOpen: boolean): Promise<boolean> {
 	const context = await loadWorkspaceContext(process.cwd());
-	const hasGit = context.git.hasGit;
-	if (!hasGit) {
-		await removeWorkspaceIndexEntry(context.workspaceId);
-		await removeWorkspaceStateFiles(context.workspaceId);
-	}
-	const running = await canReachKanbananaServer(port, hasGit ? context.workspaceId : null);
+	const running = await canReachKanbananaServer(port, context.workspaceId);
 	if (!running) {
 		return false;
 	}
-	const projectUrl = hasGit
-		? `http://127.0.0.1:${port}/${encodeURIComponent(context.workspaceId)}`
-		: `http://127.0.0.1:${port}/`;
+	const projectUrl = `http://127.0.0.1:${port}/${encodeURIComponent(context.workspaceId)}`;
 	console.log(`Kanbanana already running at http://127.0.0.1:${port}`);
 	if (!noOpen) {
 		try {
@@ -588,7 +578,7 @@ async function tryOpenExistingServer(port: number, noOpen: boolean): Promise<boo
 			console.warn(`Could not open browser automatically: ${message}`);
 		}
 	}
-	console.log(hasGit ? `Project URL: ${projectUrl}` : `URL: ${projectUrl}`);
+	console.log(`Project URL: ${projectUrl}`);
 	return true;
 }
 
@@ -752,18 +742,12 @@ async function startServer(
 ): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
 	const webUiDir = getWebUiDir();
 	const initialWorkspace = await loadWorkspaceContext(process.cwd());
-	if (!initialWorkspace.git.hasGit) {
-		await removeWorkspaceIndexEntry(initialWorkspace.workspaceId);
-		await removeWorkspaceStateFiles(initialWorkspace.workspaceId);
-	}
 	let activeWorkspaceId = initialWorkspace.workspaceId;
 	let activeWorkspacePath = initialWorkspace.repoPath;
 	const getActiveWorkspacePath = () => activeWorkspacePath;
 	const getActiveWorkspaceId = () => activeWorkspaceId;
 	let runtimeConfig = await loadRuntimeConfig(getActiveWorkspacePath());
-	const workspacePathsById = new Map<string, string>(
-		initialWorkspace.git.hasGit ? [[initialWorkspace.workspaceId, initialWorkspace.repoPath]] : [],
-	);
+	const workspacePathsById = new Map<string, string>([[initialWorkspace.workspaceId, initialWorkspace.repoPath]]);
 	const projectTaskCountsByWorkspaceId = new Map<string, RuntimeProjectTaskCounts>();
 	const terminalManagersByWorkspaceId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
@@ -1199,9 +1183,7 @@ async function startServer(
 		}
 	};
 
-	if (initialWorkspace.git.hasGit) {
-		await ensureTerminalManagerForWorkspace(initialWorkspace.workspaceId, initialWorkspace.repoPath);
-	}
+	await ensureTerminalManagerForWorkspace(initialWorkspace.workspaceId, initialWorkspace.repoPath);
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -1642,7 +1624,6 @@ async function startServer(
 					sendJson(res, 500, {
 						ok: false,
 						summary: {
-							hasGit: false,
 							currentBranch: null,
 							upstreamBranch: null,
 							changedFiles: 0,
@@ -1684,7 +1665,6 @@ async function startServer(
 						ok: false,
 						action,
 						summary: {
-							hasGit: false,
 							currentBranch: null,
 							upstreamBranch: null,
 							changedFiles: 0,
@@ -1721,7 +1701,6 @@ async function startServer(
 						ok: false,
 						branch: "",
 						summary: {
-							hasGit: false,
 							currentBranch: null,
 							upstreamBranch: null,
 							changedFiles: 0,
@@ -2189,8 +2168,7 @@ async function startServer(
 	if (!address || typeof address === "string") {
 		throw new Error("Failed to start local server.");
 	}
-	const initialPath = initialWorkspace.git.hasGit ? `/${encodeURIComponent(activeWorkspaceId)}` : "/";
-	const url = `http://127.0.0.1:${address.port}${initialPath}`;
+	const url = `http://127.0.0.1:${address.port}/${encodeURIComponent(activeWorkspaceId)}`;
 
 	const close = async () => {
 		disposeRuntimeStreamResources();

@@ -202,22 +202,11 @@ export async function ensureTaskWorktree(options: {
 	try {
 		const context = await loadWorkspaceContext(options.cwd);
 		const taskId = normalizeTaskId(options.taskId);
-		if (!context.git.hasGit) {
-			return {
-				ok: false,
-				enabled: true,
-				path: context.repoPath,
-				baseRef: null,
-				baseCommit: null,
-				error: "Git repository required for task worktrees.",
-			};
-		}
 
 		const requestedBaseRef = resolveBaseRef(options.baseRef, null);
 		if (!requestedBaseRef) {
 			return {
 				ok: false,
-				enabled: true,
 				path: context.repoPath,
 				baseRef: null,
 				baseCommit: null,
@@ -235,7 +224,6 @@ export async function ensureTaskWorktree(options: {
 		if (!baseCommit) {
 			return {
 				ok: false,
-				enabled: true,
 				path: context.repoPath,
 				baseRef: requestedBaseRef,
 				baseCommit: null,
@@ -248,7 +236,6 @@ export async function ensureTaskWorktree(options: {
 		if (existingCommit === baseCommit) {
 			return {
 				ok: true,
-				enabled: true,
 				path: worktreePath,
 				baseRef: requestedBaseRef,
 				baseCommit,
@@ -265,7 +252,6 @@ export async function ensureTaskWorktree(options: {
 
 		return {
 			ok: true,
-			enabled: true,
 			path: worktreePath,
 			baseRef: requestedBaseRef,
 			baseCommit,
@@ -274,7 +260,6 @@ export async function ensureTaskWorktree(options: {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
 			ok: false,
-			enabled: true,
 			path: options.cwd,
 			baseRef: typeof options.baseRef === "string" ? options.baseRef.trim() || null : null,
 			baseCommit: null,
@@ -289,16 +274,6 @@ export async function deleteTaskWorktree(options: {
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
 		const taskId = normalizeTaskId(options.taskId);
-		const isGitRepository =
-			(await tryRunGit(["-C", options.repoPath, "rev-parse", "--is-inside-work-tree"])) === "true";
-		if (!isGitRepository) {
-			return {
-				ok: true,
-				enabled: false,
-				removed: false,
-			};
-		}
-
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
 		const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
@@ -306,14 +281,12 @@ export async function deleteTaskWorktree(options: {
 
 		return {
 			ok: true,
-			enabled: true,
 			removed,
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
 			ok: false,
-			enabled: true,
 			removed: false,
 			error: message,
 		};
@@ -327,9 +300,6 @@ export async function resolveTaskCwd(options: {
 	ensure?: boolean;
 }): Promise<string> {
 	const context = await loadWorkspaceContext(options.cwd);
-	if (!context.git.hasGit) {
-		throw new Error("Git repository required for task worktrees.");
-	}
 
 	const normalizedBaseRef = resolveBaseRef(options.baseRef, null);
 	if (!normalizedBaseRef) {
@@ -361,10 +331,6 @@ export async function getTaskWorkspaceInfo(options: {
 	const taskId = normalizeTaskId(options.taskId);
 	const normalizedBaseRef = resolveBaseRef(options.baseRef, null);
 
-	if (!context.git.hasGit) {
-		throw new Error("Git repository required for task worktrees.");
-	}
-
 	if (!normalizedBaseRef) {
 		throw new Error("Task base branch is required for task workspace info.");
 	}
@@ -378,7 +344,6 @@ export async function getTaskWorkspaceInfo(options: {
 			exists: false,
 			deleted: true,
 			baseRef: normalizedBaseRef,
-			hasGit: true,
 			branch: null,
 			isDetached: false,
 			headCommit: null,
@@ -392,7 +357,6 @@ export async function getTaskWorkspaceInfo(options: {
 		exists: true,
 		deleted: false,
 		baseRef: normalizedBaseRef,
-		hasGit: true,
 		branch: headInfo.branch,
 		isDetached: headInfo.isDetached,
 		headCommit: headInfo.headCommit,

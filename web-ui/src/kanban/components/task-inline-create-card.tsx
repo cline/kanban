@@ -18,7 +18,6 @@ export function TaskInlineCreateCard({
 	startInPlanMode,
 	onStartInPlanModeChange,
 	workspaceId,
-	canUseWorktree,
 	branchRef,
 	branchOptions,
 	onBranchRefChange,
@@ -34,7 +33,6 @@ export function TaskInlineCreateCard({
 	startInPlanMode: boolean;
 	onStartInPlanModeChange: (value: boolean) => void;
 	workspaceId: string | null;
-	canUseWorktree: boolean;
 	branchRef: string;
 	branchOptions: TaskBranchOption[];
 	onBranchRefChange: (value: string) => void;
@@ -88,7 +86,6 @@ export function TaskInlineCreateCard({
 					id={branchSelectId}
 					value={branchRef}
 					onChange={(event) => onBranchRefChange(event.target.value)}
-					disabled={!canUseWorktree}
 					options={
 						branchOptions.length > 0
 							? branchOptions
@@ -120,7 +117,7 @@ export function TaskInlineCreateCard({
 					)}
 					intent="primary"
 					onClick={onCreate}
-					disabled={!prompt.trim() || !canUseWorktree || !branchRef}
+					disabled={!prompt.trim() || !branchRef}
 				/>
 			</div>
 		</Card>

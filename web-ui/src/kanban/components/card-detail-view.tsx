@@ -172,7 +172,6 @@ export function CardDetailView({
 	const selectedReviewWorkspaceSnapshot = reviewWorkspaceSnapshots?.[selection.card.id];
 	const showReviewGitActions =
 		selection.column.id === "review" &&
-		Boolean(selectedReviewWorkspaceSnapshot?.hasGit) &&
 		(selectedReviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {

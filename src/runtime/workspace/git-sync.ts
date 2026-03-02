@@ -93,10 +93,10 @@ async function runGitCommand(cwd: string, args: string[]): Promise<GitCommandRes
 	}
 }
 
-async function tryResolveRepoRoot(cwd: string): Promise<string | null> {
+async function resolveRepoRoot(cwd: string): Promise<string> {
 	const result = await runGitCommand(cwd, ["rev-parse", "--show-toplevel"]);
 	if (!result.ok || !result.stdout) {
-		return null;
+		throw new Error("No git repository detected for this workspace.");
 	}
 	return result.stdout;
 }
@@ -120,24 +120,8 @@ async function hasGitRef(repoRoot: string, ref: string): Promise<boolean> {
 	return result.ok;
 }
 
-function createNoGitSummary(): RuntimeGitSyncSummary {
-	return {
-		hasGit: false,
-		currentBranch: null,
-		upstreamBranch: null,
-		changedFiles: 0,
-		additions: 0,
-		deletions: 0,
-		aheadCount: 0,
-		behindCount: 0,
-	};
-}
-
 export async function getGitSyncSummary(cwd: string): Promise<RuntimeGitSyncSummary> {
-	const repoRoot = await tryResolveRepoRoot(cwd);
-	if (!repoRoot) {
-		return createNoGitSummary();
-	}
+	const repoRoot = await resolveRepoRoot(cwd);
 
 	const [currentBranchResult, statusResult, diffResult, upstreamResult] = await Promise.all([
 		runGitCommand(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
@@ -181,7 +165,6 @@ export async function getGitSyncSummary(cwd: string): Promise<RuntimeGitSyncSumm
 	const untrackedAdditions = await countUntrackedAdditions(repoRoot, untrackedPaths);
 
 	return {
-		hasGit: true,
 		currentBranch,
 		upstreamBranch,
 		changedFiles,
@@ -197,15 +180,6 @@ export async function runGitSyncAction(options: {
 	action: RuntimeGitSyncAction;
 }): Promise<RuntimeGitSyncResponse> {
 	const initialSummary = await getGitSyncSummary(options.cwd);
-	if (!initialSummary.hasGit) {
-		return {
-			ok: false,
-			action: options.action,
-			summary: initialSummary,
-			output: "",
-			error: "No git repository detected for this workspace.",
-		};
-	}
 
 	if (options.action === "pull" && initialSummary.changedFiles > 0) {
 		return {
@@ -249,15 +223,6 @@ export async function runGitCheckoutAction(options: {
 }): Promise<RuntimeGitCheckoutResponse> {
 	const requestedBranch = options.branch.trim();
 	const initialSummary = await getGitSyncSummary(options.cwd);
-	if (!initialSummary.hasGit) {
-		return {
-			ok: false,
-			branch: requestedBranch,
-			summary: initialSummary,
-			output: "",
-			error: "No git repository detected for this workspace.",
-		};
-	}
 
 	if (!requestedBranch) {
 		return {
@@ -278,16 +243,7 @@ export async function runGitCheckoutAction(options: {
 		};
 	}
 
-	const repoRoot = await tryResolveRepoRoot(options.cwd);
-	if (!repoRoot) {
-		return {
-			ok: false,
-			branch: requestedBranch,
-			summary: initialSummary,
-			output: "",
-			error: "No git repository detected for this workspace.",
-		};
-	}
+	const repoRoot = await resolveRepoRoot(options.cwd);
 
 	const hasLocalBranch = await hasGitRef(repoRoot, `refs/heads/${requestedBranch}`);
 	const commandResult = hasLocalBranch

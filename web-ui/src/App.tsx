@@ -117,19 +117,6 @@ function getDetailTerminalTaskId(card: BoardCard): string {
 	return `${DETAIL_TERMINAL_TASK_PREFIX}${card.id}`;
 }
 
-function createNoGitSyncSummary(): RuntimeGitSyncSummary {
-	return {
-		hasGit: false,
-		currentBranch: null,
-		upstreamBranch: null,
-		changedFiles: 0,
-		additions: 0,
-		deletions: 0,
-		aheadCount: 0,
-		behindCount: 0,
-	};
-}
-
 function matchesWorkspaceInfoSelection(
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null,
 	card: BoardCard | null,
@@ -244,10 +231,6 @@ export default function App(): ReactElement {
 		requestedProjectId !== null &&
 		requestedProjectId !== currentProjectId &&
 		!hasNoProjects;
-	const hasSelectedProjectWithoutGit =
-		currentProjectId !== null &&
-		workspaceGit !== null &&
-		!workspaceGit.hasGit;
 	const isInitialRuntimeLoad = !hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
 	const isWorkspaceMetadataPending =
@@ -637,7 +620,6 @@ export default function App(): ReactElement {
 			return {
 				taskId: task.id,
 				path: workspaceInfo.path,
-				hasGit: workspaceInfo.hasGit,
 				branch: workspaceInfo.branch,
 				isDetached: workspaceInfo.isDetached,
 				headCommit: workspaceInfo.headCommit,
@@ -761,7 +743,6 @@ export default function App(): ReactElement {
 							exists: true,
 							deleted: false,
 							baseRef: selection.card.baseRef ?? null,
-							hasGit: workspaceSnapshots[taskId].hasGit,
 							branch: workspaceSnapshots[taskId].branch,
 							isDetached: workspaceSnapshots[taskId].isDetached,
 							headCommit: workspaceSnapshots[taskId].headCommit,
@@ -775,15 +756,6 @@ export default function App(): ReactElement {
 						intent: "danger",
 						icon: "warning-sign",
 						message: "Could not resolve task workspace details.",
-						timeout: 6000,
-					});
-					return;
-				}
-				if (!workspaceInfo.hasGit) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: "Git is not available in this task workspace.",
 						timeout: 6000,
 					});
 					return;
@@ -1125,7 +1097,7 @@ export default function App(): ReactElement {
 	]);
 
 	const createTaskBranchOptions = useMemo(() => {
-		if (!workspaceGit?.hasGit) {
+		if (!workspaceGit) {
 			return [] as Array<{ value: string; label: string }>;
 		}
 
@@ -1153,9 +1125,8 @@ export default function App(): ReactElement {
 		return options;
 	}, [workspaceGit]);
 
-	const canUseWorktree = createTaskBranchOptions.length > 0;
 	const defaultTaskBranchRef = useMemo(() => {
-		if (!workspaceGit?.hasGit) {
+		if (!workspaceGit) {
 			return "";
 		}
 		return workspaceGit.currentBranch ?? workspaceGit.defaultBranch ?? createTaskBranchOptions[0]?.value ?? "";
@@ -1216,7 +1187,7 @@ export default function App(): ReactElement {
 			}
 			setGitSummary(payload.summary);
 		} catch {
-			setGitSummary((current) => current ?? createNoGitSyncSummary());
+			// Keep the last known summary; transient failures should not synthesize fake git state.
 		}
 	}, [currentProjectId]);
 
@@ -1531,32 +1502,24 @@ export default function App(): ReactElement {
 	}, [isDocumentVisible, refreshWorkspaceState]);
 
 	useEffect(() => {
-		if (!canUseWorktree) {
-			setNewTaskBranchRef("");
-			return;
-		}
 		const isCurrentValid = createTaskBranchOptions.some((option) => option.value === newTaskBranchRef);
 		if (isCurrentValid) {
 			return;
 		}
 		setNewTaskBranchRef(defaultTaskBranchRef);
-	}, [canUseWorktree, createTaskBranchOptions, defaultTaskBranchRef, newTaskBranchRef]);
+	}, [createTaskBranchOptions, defaultTaskBranchRef, newTaskBranchRef]);
 
 	useEffect(() => {
 		if (!isInlineTaskCreateOpen) {
 			return;
 		}
-		if (canUseWorktree && !newTaskBranchRef) {
+		if (!newTaskBranchRef) {
 			setNewTaskBranchRef(defaultTaskBranchRef);
 		}
-	}, [canUseWorktree, defaultTaskBranchRef, isInlineTaskCreateOpen, newTaskBranchRef]);
+	}, [defaultTaskBranchRef, isInlineTaskCreateOpen, newTaskBranchRef]);
 
 	useEffect(() => {
 		if (!editingTaskId) {
-			return;
-		}
-		if (!canUseWorktree) {
-			setEditTaskBranchRef("");
 			return;
 		}
 		const isCurrentValid = createTaskBranchOptions.some((option) => option.value === editTaskBranchRef);
@@ -1565,7 +1528,6 @@ export default function App(): ReactElement {
 		}
 		setEditTaskBranchRef(defaultTaskBranchRef);
 	}, [
-		canUseWorktree,
 		createTaskBranchOptions,
 		defaultTaskBranchRef,
 		editTaskBranchRef,
@@ -1619,20 +1581,11 @@ export default function App(): ReactElement {
 		}
 
 		if (!event.metaKey && !event.ctrlKey && key === "c") {
-			if (!workspaceGit?.hasGit) {
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: "No git detected. Initialize git before creating tasks.",
-					timeout: 5000,
-				});
-				return;
-			}
 			event.preventDefault();
 			setEditingTaskId(null);
 			setIsInlineTaskCreateOpen(true);
 		}
-	}, [selectedCard, workspaceGit?.hasGit]);
+	}, [selectedCard]);
 	useWindowEvent("keydown", handleGlobalKeyDown);
 
 	const handleBack = useCallback(() => {
@@ -1905,27 +1858,16 @@ export default function App(): ReactElement {
 	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
 
 	const handleOpenCreateTask = useCallback(() => {
-		if (!workspaceGit?.hasGit) {
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message: "No git detected. Initialize git before creating tasks.",
-				timeout: 5000,
-			});
-			return;
-		}
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setIsInlineTaskCreateOpen(true);
-	}, [workspaceGit?.hasGit]);
+	}, []);
 
 	const handleCancelCreateTask = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
 		setNewTaskPrompt("");
-		if (canUseWorktree) {
-			setNewTaskBranchRef(defaultTaskBranchRef);
-		}
-	}, [canUseWorktree, defaultTaskBranchRef]);
+		setNewTaskBranchRef(defaultTaskBranchRef);
+	}, [defaultTaskBranchRef]);
 
 	const handleOpenEditTask = useCallback(
 		(task: BoardCard) => {
@@ -1958,7 +1900,7 @@ export default function App(): ReactElement {
 		if (!prompt) {
 			return;
 		}
-		if (!canUseWorktree || !(editTaskBranchRef || defaultTaskBranchRef)) {
+		if (!(editTaskBranchRef || defaultTaskBranchRef)) {
 			return;
 		}
 
@@ -1984,7 +1926,6 @@ export default function App(): ReactElement {
 		setEditTaskPrompt("");
 		setWorktreeError(null);
 	}, [
-		canUseWorktree,
 		defaultTaskBranchRef,
 		editTaskBranchRef,
 		editTaskPrompt,
@@ -1997,7 +1938,7 @@ export default function App(): ReactElement {
 		if (!prompt) {
 			return;
 		}
-		if (!canUseWorktree || !(newTaskBranchRef || defaultTaskBranchRef)) {
+		if (!(newTaskBranchRef || defaultTaskBranchRef)) {
 			return;
 		}
 		const parsedPrompt = splitPromptToTitleDescription(prompt);
@@ -2016,13 +1957,10 @@ export default function App(): ReactElement {
 			}),
 		);
 		setNewTaskPrompt("");
-		if (canUseWorktree) {
-			setNewTaskBranchRef(defaultTaskBranchRef);
-		}
+		setNewTaskBranchRef(defaultTaskBranchRef);
 		setIsInlineTaskCreateOpen(false);
 		setWorktreeError(null);
 	}, [
-		canUseWorktree,
 		defaultTaskBranchRef,
 		newTaskBranchRef,
 		newTaskPrompt,
@@ -2230,14 +2168,13 @@ export default function App(): ReactElement {
 				return;
 			}
 			if (selectedTaskId === taskId) {
-				if (ensured.response?.enabled) {
+				if (ensured.response) {
 					setSelectedTaskWorkspaceInfo({
 						taskId,
 						path: ensured.response.path,
 						exists: true,
 						deleted: false,
 						baseRef: ensured.response.baseRef,
-						hasGit: true,
 						branch: null,
 						isDetached: true,
 						headCommit: ensured.response.baseCommit,
@@ -2423,15 +2360,6 @@ export default function App(): ReactElement {
 		}
 		return "No agent configured";
 	}, [runtimeProjectConfig, shouldUseNavigationPath]);
-	const repoHint = useMemo(() => {
-		if (shouldUseNavigationPath) {
-			return undefined;
-		}
-		if (!workspaceGit || workspaceGit.hasGit) {
-			return undefined;
-		}
-		return "No git detected, task worktrees unavailable";
-	}, [shouldUseNavigationPath, workspaceGit]);
 	const activeWorkspacePath =
 		selectedCard
 			? activeSelectedTaskWorkspaceInfo?.path ?? selectedCardWorkspaceSnapshot?.path ?? workspacePath ?? undefined
@@ -2456,14 +2384,10 @@ export default function App(): ReactElement {
 		if (activeSelectedTaskWorkspaceInfo.deleted) {
 			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
 		}
-		if (!activeSelectedTaskWorkspaceInfo.hasGit) {
-			return "Worktree (no git)";
-		}
 		return undefined;
 	}, [activeSelectedTaskWorkspaceInfo, selectedCard]);
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
 	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
-	const navbarRepoHint = hasNoProjects ? undefined : repoHint;
 	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
 	const navbarGitSummary = hasNoProjects || selectedCard ? null : gitSummary;
 	const shouldHideProjectDependentTopBarActions =
@@ -2473,12 +2397,10 @@ export default function App(): ReactElement {
 		if (hasNoProjects || !selectedCard) {
 			return null;
 		}
-		const hasTaskGit = Boolean(activeSelectedTaskWorkspaceInfo?.hasGit || selectedCardWorkspaceSnapshot?.hasGit);
-		if (!hasTaskGit) {
+		if (!activeSelectedTaskWorkspaceInfo && !selectedCardWorkspaceSnapshot) {
 			return null;
 		}
 		return {
-			hasGit: true,
 			branch: activeSelectedTaskWorkspaceInfo?.branch ?? selectedCardWorkspaceSnapshot?.branch ?? null,
 			headCommit: activeSelectedTaskWorkspaceInfo?.headCommit ?? selectedCardWorkspaceSnapshot?.headCommit ?? null,
 			changedFiles: selectedCardWorkspaceSnapshot?.changedFiles ?? 0,
@@ -2527,7 +2449,6 @@ export default function App(): ReactElement {
 			startInPlanMode={newTaskStartInPlanMode}
 			onStartInPlanModeChange={setNewTaskStartInPlanMode}
 			workspaceId={currentProjectId}
-			canUseWorktree={canUseWorktree}
 			branchRef={newTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setNewTaskBranchRef}
@@ -2545,7 +2466,6 @@ export default function App(): ReactElement {
 			startInPlanMode={editTaskStartInPlanMode}
 			onStartInPlanModeChange={setEditTaskStartInPlanMode}
 			workspaceId={currentProjectId}
-			canUseWorktree={canUseWorktree}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
 			onBranchRefChange={setEditTaskBranchRef}
@@ -2600,7 +2520,6 @@ export default function App(): ReactElement {
 					workspacePath={navbarWorkspacePath}
 					isWorkspacePathLoading={shouldShowProjectLoadingState}
 					workspaceHint={navbarWorkspaceHint}
-					repoHint={navbarRepoHint}
 					runtimeHint={navbarRuntimeHint}
 					gitSummary={navbarGitSummary}
 					taskGitSummary={navbarTaskGitSummary}
@@ -2708,24 +2627,6 @@ export default function App(): ReactElement {
 													}}
 												/>
 											}
-										/>
-									</div>
-								) : hasSelectedProjectWithoutGit ? (
-									<div
-										style={{
-											display: "flex",
-											flex: "1 1 0",
-											minHeight: 0,
-											alignItems: "center",
-											justifyContent: "center",
-											background: Colors.DARK_GRAY1,
-											padding: "calc(var(--bp-surface-spacing) * 6)",
-										}}
-									>
-										<NonIdealState
-											icon="git-repo"
-											title="No git detected"
-											description="This project does not have git initialized. Open a project with git initialized."
 										/>
 									</div>
 								) : (
