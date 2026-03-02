@@ -17,6 +17,8 @@ import {
 	renderTask,
 	type SearchableTask,
 } from "@/kanban/app/app-utils";
+import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
+import { useReviewReadyNotifications } from "@/kanban/app/use-review-ready-notifications";
 import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
@@ -110,30 +112,6 @@ const HOME_TERMINAL_TASK_ID = "__home_terminal__";
 const HOME_TERMINAL_ROWS = 16;
 const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
 
-function canShowBrowserNotifications(): boolean {
-	return getBrowserNotificationPermission() === "granted";
-}
-
-function showReadyForReviewNotification(taskId: string, taskTitle: string): void {
-	if (!canShowBrowserNotifications()) {
-		return;
-	}
-	try {
-		const notification = new Notification("🍌 Task ready for review", {
-			body: taskTitle,
-			tag: `task-ready-for-review-${taskId}`,
-		});
-		notification.onclick = () => {
-			if (typeof window !== "undefined") {
-				window.focus();
-			}
-			notification.close();
-		};
-	} catch {
-		// Ignore browser notification failures.
-	}
-}
-
 function getDetailTerminalTaskId(card: BoardCard): string {
 	if (!card.baseRef) {
 		return HOME_TERMINAL_TASK_ID;
@@ -194,7 +172,6 @@ export default function App(): ReactElement {
 	const workspaceRefreshRequestIdRef = useRef(0);
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const notificationPermissionPromptInFlightRef = useRef(false);
-	const handledReadyForReviewEventKeysRef = useRef<Set<string>>(new Set());
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
 		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
@@ -256,13 +233,6 @@ export default function App(): ReactElement {
 		return parseProjectIdFromPathname(window.location.pathname);
 	});
 	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
-	const [pendingReviewReadyNotificationCount, setPendingReviewReadyNotificationCount] = useState(0);
-	const [isDocumentVisible, setIsDocumentVisible] = useState<boolean>(() => {
-		if (typeof document === "undefined") {
-			return true;
-		}
-		return document.visibilityState === "visible";
-	});
 	const {
 		currentProjectId,
 		projects,
@@ -273,6 +243,8 @@ export default function App(): ReactElement {
 		hasReceivedSnapshot,
 	} = useRuntimeStateStream(requestedProjectId);
 	const navigationCurrentProjectId = requestedProjectId ?? currentProjectId;
+	const activeNotificationWorkspaceId = navigationCurrentProjectId;
+	const isDocumentVisible = useDocumentVisibility();
 	const hasNoProjects = hasReceivedSnapshot && projects.length === 0 && currentProjectId === null;
 	const isProjectSwitching =
 		requestedProjectId !== null &&
@@ -303,6 +275,14 @@ export default function App(): ReactElement {
 		useTerminalConnectionReady();
 	const readyForReviewNotificationsEnabled =
 		runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
+	useReviewReadyNotifications({
+		activeWorkspaceId: activeNotificationWorkspaceId,
+		board,
+		isDocumentVisible,
+		latestTaskReadyForReview,
+		readyForReviewNotificationsEnabled,
+		workspacePath,
+	});
 	const shortcuts = runtimeProjectConfig?.shortcuts ?? [];
 	const selectedShortcutId = useMemo(() => {
 		if (shortcuts.length === 0) {
@@ -959,24 +939,6 @@ export default function App(): ReactElement {
 	}, [sessions]);
 
 	useEffect(() => {
-		if (!latestTaskReadyForReview) {
-			return;
-		}
-		const eventKey = `${latestTaskReadyForReview.workspaceId}:${latestTaskReadyForReview.taskId}:${latestTaskReadyForReview.triggeredAt}`;
-		if (handledReadyForReviewEventKeysRef.current.has(eventKey)) {
-			return;
-		}
-		handledReadyForReviewEventKeysRef.current.add(eventKey);
-		if (!readyForReviewNotificationsEnabled || isDocumentVisible) {
-			return;
-		}
-		const selection = findCardSelection(board, latestTaskReadyForReview.taskId);
-		const taskTitle = selection?.card.title?.trim() || `Task ${latestTaskReadyForReview.taskId}`;
-		setPendingReviewReadyNotificationCount((current) => current + 1);
-		showReadyForReviewNotification(latestTaskReadyForReview.taskId, taskTitle);
-	}, [board, isDocumentVisible, latestTaskReadyForReview, readyForReviewNotificationsEnabled]);
-
-	useEffect(() => {
 		setWorkspaceSnapshots((current) => {
 			let changed = false;
 			const next: Record<string, ReviewTaskWorkspaceSnapshot> = {};
@@ -1484,9 +1446,7 @@ export default function App(): ReactElement {
 				projectId: currentProjectId,
 				revision: null,
 			};
-				previousSessionsRef.current = {};
-				handledReadyForReviewEventKeysRef.current = new Set();
-				setPendingReviewReadyNotificationCount(0);
+			previousSessionsRef.current = {};
 		}
 		setWorktreeError(null);
 		setSelectedTaskId(null);
@@ -1579,28 +1539,10 @@ export default function App(): ReactElement {
 	}, [currentProjectId, projects, requestedProjectId]);
 
 	useEffect(() => {
-		if (typeof document === "undefined") {
-			return;
+		if (isDocumentVisible) {
+			void refreshWorkspaceState();
 		}
-		const handleVisibilityChange = () => {
-			const visible = document.visibilityState === "visible";
-			setIsDocumentVisible(visible);
-			if (visible) {
-				setPendingReviewReadyNotificationCount(0);
-				void refreshWorkspaceState();
-			}
-		};
-		document.addEventListener("visibilitychange", handleVisibilityChange);
-		return () => {
-			document.removeEventListener("visibilitychange", handleVisibilityChange);
-		};
-	}, [refreshWorkspaceState]);
-
-	useEffect(() => {
-		if (!readyForReviewNotificationsEnabled) {
-			setPendingReviewReadyNotificationCount(0);
-		}
-	}, [readyForReviewNotificationsEnabled]);
+	}, [isDocumentVisible, refreshWorkspaceState]);
 
 	useEffect(() => {
 		// Keep the user's preferred mode sticky across launches.
@@ -1716,24 +1658,6 @@ export default function App(): ReactElement {
 			setEditTaskBranchRef("");
 		}
 	}, [board, editingTaskId]);
-
-	const workspaceTitle = useMemo(() => {
-		if (!workspacePath) {
-			return null;
-		}
-		const segments = workspacePath.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
-		if (segments.length === 0) {
-			return workspacePath;
-		}
-		return segments[segments.length - 1] ?? workspacePath;
-	}, [workspacePath]);
-
-	useEffect(() => {
-		const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanbanana` : "Kanbanana";
-		document.title = pendingReviewReadyNotificationCount > 0
-			? `(${pendingReviewReadyNotificationCount}) ${baseTitle}`
-			: baseTitle;
-	}, [pendingReviewReadyNotificationCount, workspaceTitle]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
