@@ -2554,7 +2554,7 @@ export default function App(): ReactElement {
 								}
 					}
 					isSwitchingHomeBranch={selectedCard || hasNoProjects ? false : isSwitchingHomeBranch}
-					onToggleTerminal={selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal}
+						onToggleTerminal={hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal}
 					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
 					onOpenSettings={handleOpenSettings}
