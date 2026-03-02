@@ -20,6 +20,7 @@ import type {
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
+	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceStateResponse,
 } from "../../src/runtime/api-contract.js";
 import { createTempDir } from "../utilities/temp-dir.js";
@@ -758,6 +759,135 @@ describe.sequential("runtime state stream integration", () => {
 			expect(trashCards.some((card) => card.id === taskId)).toBe(true);
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
+		} finally {
+			await thirdServer.stop();
+			cleanupProject();
+			cleanupHome();
+		}
+	}, 45_000);
+
+	it("moves stale completed review cards to trash on shutdown after hydration", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-stale-exit-review-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanbanana-project-stale-exit-review-");
+
+		mkdirSync(projectPath, { recursive: true });
+		initGitRepository(projectPath);
+
+		const taskId = "stale-exit-review-task";
+		const taskTitle = "Stale Exit Review Task";
+		const now = Date.now();
+
+		const firstPort = await getAvailablePort();
+		const firstServer = await startKanbananaServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: firstPort,
+		});
+
+		try {
+			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const currentState = await requestJson<RuntimeWorkspaceStateResponse>({
+				url: `http://127.0.0.1:${firstPort}/api/workspace/state`,
+				method: "GET",
+				workspaceId,
+			});
+			expect(currentState.status).toBe(200);
+
+			const seedResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+				url: `http://127.0.0.1:${firstPort}/api/workspace/state`,
+				method: "PUT",
+				workspaceId,
+				body: {
+					board: createReviewBoard(taskId, taskTitle),
+					sessions: {
+						[taskId]: {
+							taskId,
+							state: "awaiting_review",
+							agentId: "codex",
+							workspacePath: projectPath,
+							pid: null,
+							startedAt: now - 2_000,
+							updatedAt: now,
+							lastOutputAt: now,
+							lastActivityLine: "Completed successfully",
+							reviewReason: "exit",
+							exitCode: 0,
+						},
+					},
+					expectedRevision: currentState.payload.revision,
+				},
+			});
+			expect(seedResponse.status).toBe(200);
+			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+				url: `http://127.0.0.1:${firstPort}/api/workspace/task-context?taskId=${encodeURIComponent(taskId)}&baseRef=${encodeURIComponent("HEAD")}`,
+				method: "GET",
+				workspaceId,
+			});
+			expect(taskWorkspaceInfo.status).toBe(200);
+			mkdirSync(taskWorkspaceInfo.payload.path, { recursive: true });
+		} finally {
+			await firstServer.stop();
+		}
+
+		const secondPort = await getAvailablePort();
+		const secondServer = await startKanbananaServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: secondPort,
+		});
+
+		try {
+			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const hydratedState = await requestJson<RuntimeWorkspaceStateResponse>({
+				url: `http://127.0.0.1:${secondPort}/api/workspace/state`,
+				method: "GET",
+				workspaceId,
+			});
+			expect(hydratedState.status).toBe(200);
+			expect(hydratedState.payload.sessions[taskId]?.state).toBe("awaiting_review");
+			expect(hydratedState.payload.sessions[taskId]?.reviewReason).toBe("exit");
+		} finally {
+			await secondServer.stop();
+		}
+
+		const thirdPort = await getAvailablePort();
+		const thirdServer = await startKanbananaServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: thirdPort,
+		});
+
+		try {
+			const thirdRuntimeUrl = new URL(thirdServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(thirdRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
+				url: `http://127.0.0.1:${thirdPort}/api/workspace/state`,
+				method: "GET",
+				workspaceId,
+			});
+			expect(finalState.status).toBe(200);
+
+			const reviewCards = finalState.payload.board.columns.find((column) => column.id === "review")?.cards ?? [];
+			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
+			expect(reviewCards.some((card) => card.id === taskId)).toBe(false);
+			expect(trashCards.some((card) => card.id === taskId)).toBe(true);
+			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
+			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
+			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+				url: `http://127.0.0.1:${thirdPort}/api/workspace/task-context?taskId=${encodeURIComponent(taskId)}&baseRef=${encodeURIComponent("HEAD")}`,
+				method: "GET",
+				workspaceId,
+			});
+			expect(workspaceInfo.status).toBe(200);
+			expect(workspaceInfo.payload.exists).toBe(false);
 		} finally {
 			await thirdServer.stop();
 			cleanupProject();

@@ -674,11 +674,13 @@ async function persistInterruptedSessions(
 	cwd: string,
 	interruptedTaskIds: string[],
 	terminalManager: TerminalSessionManager,
-): Promise<void> {
+): Promise<string[]> {
 	if (interruptedTaskIds.length === 0) {
-		return;
+		return [];
 	}
 	const workspaceState = await loadWorkspaceState(cwd);
+	const worktreeTaskIds = collectProjectWorktreeTaskIdsForRemoval(workspaceState.board);
+	const worktreeTaskIdsToCleanup = interruptedTaskIds.filter((taskId) => worktreeTaskIds.has(taskId));
 	let nextBoard = workspaceState.board;
 	for (const taskId of interruptedTaskIds) {
 		nextBoard = moveTaskToTrash(nextBoard, taskId);
@@ -701,16 +703,36 @@ async function persistInterruptedSessions(
 		board: nextBoard,
 		sessions: nextSessions,
 	});
+	return worktreeTaskIdsToCleanup;
+}
+
+async function cleanupInterruptedTaskWorktrees(repoPath: string, taskIds: string[]): Promise<void> {
+	if (taskIds.length === 0) {
+		return;
+	}
+	const deletions = await Promise.all(
+		taskIds.map(async (taskId) => ({
+			taskId,
+			deleted: await deleteTaskWorktree({
+				repoPath,
+				taskId,
+			}),
+		})),
+	);
+	for (const { taskId, deleted } of deletions) {
+		if (deleted.ok) {
+			continue;
+		}
+		const message = deleted.error ?? `Could not delete task workspace for task "${taskId}" during shutdown.`;
+		console.warn(`[kanbanana] ${message}`);
+	}
 }
 
 function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
 	if (summary.state === "running") {
 		return true;
 	}
-	if (summary.state !== "awaiting_review") {
-		return false;
-	}
-	return summary.reviewReason === "hook" || summary.reviewReason === "attention";
+	return summary.state === "awaiting_review";
 }
 
 function collectShutdownInterruptedTaskIds(
@@ -1976,15 +1998,21 @@ async function startServer(
 					if (taskIdsToCleanup.size > 0) {
 						const cleanupTaskIds = Array.from(taskIdsToCleanup);
 						void (async () => {
-							for (const taskId of cleanupTaskIds) {
-								const deleted = await deleteTaskWorktree({
-									repoPath: projectToRemove.repoPath,
+							const deletions = await Promise.all(
+								cleanupTaskIds.map(async (taskId) => ({
 									taskId,
-								});
-								if (!deleted.ok) {
-									const message = deleted.error ?? `Could not delete task workspace for task "${taskId}".`;
-									console.warn(`[kanbanana] ${message}`);
+									deleted: await deleteTaskWorktree({
+										repoPath: projectToRemove.repoPath,
+										taskId,
+									}),
+								})),
+							);
+							for (const { taskId, deleted } of deletions) {
+								if (deleted.ok) {
+									continue;
 								}
+								const message = deleted.error ?? `Could not delete task workspace for task "${taskId}".`;
+								console.warn(`[kanbanana] ${message}`);
 							}
 						})();
 					}
@@ -2202,6 +2230,11 @@ async function startServer(
 	};
 
 	const shutdown = async () => {
+		const interruptedByWorkspace: Array<{
+			workspacePath: string;
+			terminalManager: TerminalSessionManager;
+			interruptedTaskIds: string[];
+		}> = [];
 		for (const [workspaceId, terminalManager] of terminalManagersByWorkspaceId.entries()) {
 			const interrupted = terminalManager.markInterruptedAndStopAll();
 			const interruptedTaskIds = collectShutdownInterruptedTaskIds(interrupted, terminalManager);
@@ -2209,8 +2242,22 @@ async function startServer(
 			if (!workspacePath) {
 				continue;
 			}
-			await persistInterruptedSessions(workspacePath, interruptedTaskIds, terminalManager);
+			interruptedByWorkspace.push({
+				workspacePath,
+				terminalManager,
+				interruptedTaskIds,
+			});
 		}
+		await Promise.all(
+			interruptedByWorkspace.map(async (workspace) => {
+				const worktreeTaskIds = await persistInterruptedSessions(
+					workspace.workspacePath,
+					workspace.interruptedTaskIds,
+					workspace.terminalManager,
+				);
+				await cleanupInterruptedTaskWorktrees(workspace.workspacePath, worktreeTaskIds);
+			}),
+		);
 		await close();
 	};
 
