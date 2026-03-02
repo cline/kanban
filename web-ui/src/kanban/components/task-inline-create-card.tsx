@@ -1,43 +1,12 @@
-import { Button, Card, Checkbox, Code, FormGroup, Icon, MenuItem } from "@blueprintjs/core";
-import { Select } from "@blueprintjs/select";
-import type { ItemPredicate, ItemRenderer } from "@blueprintjs/select";
+import { Button, Card, Checkbox, Code, FormGroup, Icon } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 
+import { BranchSelectDropdown, type BranchSelectOption } from "@/kanban/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/kanban/components/task-prompt-composer";
 
 export type TaskInlineCardMode = "create" | "edit";
 
-export interface TaskBranchOption {
-	value: string;
-	label: string;
-}
-
-const BranchSelect = Select.ofType<TaskBranchOption>();
-
-const filterBranch: ItemPredicate<TaskBranchOption> = (query, option) => {
-	return option.label.toLowerCase().includes(query.toLowerCase());
-};
-
-const renderBranchOption: ItemRenderer<TaskBranchOption> = (
-	option,
-	{ handleClick, handleFocus, modifiers },
-) => {
-	if (!modifiers.matchesPredicate) {
-		return null;
-	}
-	return (
-		<MenuItem
-			key={option.value}
-			active={modifiers.active}
-			disabled={modifiers.disabled}
-			text={option.label}
-			onClick={handleClick}
-			onFocus={handleFocus}
-			roleStructure="listoption"
-			style={{ paddingLeft: 8, paddingRight: 8 }}
-		/>
-	);
-};
+export type TaskBranchOption = BranchSelectOption;
 
 export function TaskInlineCreateCard({
 	prompt,
@@ -109,26 +78,14 @@ export function TaskInlineCreateCard({
 				style={{ marginTop: -5, marginBottom: 0 }}
 			>
 				<span style={{ display: "block", marginBottom: 4 }}>Worktree branch</span>
-				<BranchSelect
-					items={branchOptions}
-					itemRenderer={renderBranchOption}
-					itemPredicate={filterBranch}
-					onItemSelect={(option) => onBranchRefChange(option.value)}
-					popoverProps={{ matchTargetWidth: true, minimal: true }}
-					inputProps={{ size: "small" }}
-					resetOnClose
-					noResults={<MenuItem disabled text="No matching branches" roleStructure="listoption" />}
-				>
-					<Button
-						id={branchSelectId}
-						variant="outlined"
-						alignText="left"
-						fill
-						icon="git-branch"
-						endIcon="caret-down"
-						text={branchOptions.find((o) => o.value === branchRef)?.label ?? "No branches detected"}
-					/>
-				</BranchSelect>
+				<BranchSelectDropdown
+					id={branchSelectId}
+					options={branchOptions}
+					selectedValue={branchRef}
+					onSelect={onBranchRefChange}
+					fill
+					emptyText="No branches detected"
+				/>
 			</FormGroup>
 
 			<div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>

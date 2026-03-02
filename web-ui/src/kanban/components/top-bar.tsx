@@ -19,16 +19,12 @@ import {
 import { IconNames, type IconName } from "@blueprintjs/icons";
 import { useState } from "react";
 
+import { BranchSelectDropdown, type BranchSelectOption } from "@/kanban/components/branch-select-dropdown";
 import { GitStatusLabel } from "@/kanban/components/git-status-label";
 import { OpenWorkspaceButton } from "@/kanban/components/open-workspace-button";
 import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 import type { OpenTargetId, OpenTargetOption } from "@/kanban/utils/open-targets";
 import { formatPathForDisplay } from "@/kanban/utils/path-display";
-
-interface BranchSelectOption {
-	value: string;
-	label: string;
-}
 
 const BLUEPRINT_ICON_NAMES = new Set<IconName>(Object.values(IconNames));
 
@@ -224,39 +220,24 @@ export function TopBar({
 						{hasHomeBranchPicker ? (
 							<>
 								<Tooltip placement="bottom" content="Switch the branch for this project." disabled={isBranchPickerOpen}>
-									<Popover
-										interactionKind={PopoverInteractionKind.CLICK}
-										placement="bottom-start"
-										onOpening={() => setIsBranchPickerOpen(true)}
-										onClosing={() => setIsBranchPickerOpen(false)}
-										content={(
-											<Menu style={{ maxHeight: 300, overflowY: "auto" }}>
-												{(homeBranchOptions ?? []).map((option) => (
-													<MenuItem
-														key={option.value}
-														text={option.label}
-														active={option.value === selectedBranchOption}
-														onClick={() => onSelectHomeBranch?.(option.value)}
-														labelElement={option.value === selectedBranchOption ? <Icon icon="small-tick" /> : undefined}
-													/>
-												))}
-											</Menu>
-										)}
-									>
-										<Button
-											size="small"
-											variant="outlined"
-											icon={<Icon icon="git-branch" size={12} />}
-											endIcon="caret-down"
-											text={selectedBranchOption ?? branchLabel}
-											disabled={Boolean(runningGitAction) || Boolean(isSwitchingHomeBranch)}
-											className={Classes.MONOSPACE_TEXT}
-											style={{
-												fontSize: "var(--bp-typography-size-body-small)",
-												maxWidth: 200,
-											}}
-										/>
-									</Popover>
+									<BranchSelectDropdown
+										options={homeBranchOptions ?? []}
+										selectedValue={selectedBranchOption}
+										onSelect={(branch) => onSelectHomeBranch?.(branch)}
+										size="small"
+										buttonText={selectedBranchOption ?? branchLabel}
+										disabled={Boolean(runningGitAction) || Boolean(isSwitchingHomeBranch)}
+										buttonClassName={Classes.MONOSPACE_TEXT}
+										buttonStyle={{
+											fontSize: "var(--bp-typography-size-body-small)",
+											maxWidth: 200,
+										}}
+										matchTargetWidth={false}
+										dropdownStyle={{ minWidth: 180 }}
+										menuStyle={{ maxHeight: 300, overflowY: "auto" }}
+										showSelectedIndicator
+										onPopoverOpenChange={setIsBranchPickerOpen}
+									/>
 								</Tooltip>
 								<span
 									className={Classes.MONOSPACE_TEXT}

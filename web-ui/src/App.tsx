@@ -1129,14 +1129,6 @@ export default function App(): ReactElement {
 					message: `Could not switch to ${normalizedBranch}. ${errorMessage}`,
 					timeout: 7000,
 				});
-				if (output.trim()) {
-					showAppToast({
-						intent: "none",
-						icon: "console",
-						message: output,
-						timeout: 9000,
-					});
-				}
 				return;
 			}
 			setGitSummary(payload.summary);
