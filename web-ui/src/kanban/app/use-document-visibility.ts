@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+
+import { useDocumentEvent } from "@/kanban/hooks/react-use";
 
 export function useDocumentVisibility(): boolean {
 	const [isDocumentVisible, setIsDocumentVisible] = useState<boolean>(() => {
@@ -8,18 +10,9 @@ export function useDocumentVisibility(): boolean {
 		return document.visibilityState === "visible";
 	});
 
-	useEffect(() => {
-		if (typeof document === "undefined") {
-			return;
-		}
-		const handleVisibilityChange = () => {
-			setIsDocumentVisible(document.visibilityState === "visible");
-		};
-		document.addEventListener("visibilitychange", handleVisibilityChange);
-		return () => {
-			document.removeEventListener("visibilitychange", handleVisibilityChange);
-		};
-	}, []);
+	useDocumentEvent("visibilitychange", () => {
+		setIsDocumentVisible(document.visibilityState === "visible");
+	});
 
 	return isDocumentVisible;
 }

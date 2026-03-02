@@ -9,12 +9,11 @@ import {
 	countTasksByColumn,
 	createIdleTaskSession,
 	filterTask,
-	loadPersistedTaskStartInPlanMode,
-	loadPersistedTaskWorkspaceMode,
+	normalizeTaskWorkspaceMode,
 	parseProjectIdFromPathname,
-	persistTaskStartInPlanMode,
-	persistTaskWorkspaceMode,
 	renderTask,
+	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
+	TASK_WORKSPACE_MODE_STORAGE_KEY,
 	type SearchableTask,
 } from "@/kanban/app/app-utils";
 import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
@@ -53,6 +52,11 @@ import {
 	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
 	splitPromptToTitleDescription,
 } from "@/kanban/utils/task-prompt";
+import {
+	useBooleanLocalStorageValue,
+	useRawLocalStorageValue,
+	useWindowEvent,
+} from "@/kanban/hooks/react-use";
 import {
 	getBrowserNotificationPermission,
 	hasPromptedForBrowserNotificationPermission,
@@ -187,13 +191,19 @@ export default function App(): ReactElement {
 	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
-	const [newTaskStartInPlanMode, setNewTaskStartInPlanMode] = useState<boolean>(() =>
-		loadPersistedTaskStartInPlanMode(),
+	const [newTaskStartInPlanMode, setNewTaskStartInPlanMode] = useBooleanLocalStorageValue(
+		TASK_START_IN_PLAN_MODE_STORAGE_KEY,
+		false,
 	);
-	const [newTaskWorkspaceMode, setNewTaskWorkspaceMode] = useState<TaskWorkspaceMode>(() =>
-		loadPersistedTaskWorkspaceMode(),
+	const [persistedNewTaskWorkspaceMode, setPersistedNewTaskWorkspaceMode] = useRawLocalStorageValue<TaskWorkspaceMode>(
+		TASK_WORKSPACE_MODE_STORAGE_KEY,
+		"worktree",
+		(value) => normalizeTaskWorkspaceMode(value),
 	);
-	const preferredNewTaskWorkspaceModeRef = useRef<TaskWorkspaceMode>(newTaskWorkspaceMode);
+	const [newTaskWorkspaceMode, setNewTaskWorkspaceMode] = useState<TaskWorkspaceMode>(
+		persistedNewTaskWorkspaceMode,
+	);
+	const preferredNewTaskWorkspaceModeRef = useRef<TaskWorkspaceMode>(persistedNewTaskWorkspaceMode);
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
@@ -1513,19 +1523,14 @@ export default function App(): ReactElement {
 		setRequestedProjectId(null);
 	}, [hasNoProjects, requestedProjectId]);
 
-	useEffect(() => {
+	const handlePopState = useCallback(() => {
 		if (typeof window === "undefined") {
 			return;
 		}
-		const handlePopState = () => {
-			const nextProjectId = parseProjectIdFromPathname(window.location.pathname);
-			setRequestedProjectId(nextProjectId);
-		};
-		window.addEventListener("popstate", handlePopState);
-		return () => {
-			window.removeEventListener("popstate", handlePopState);
-		};
+		const nextProjectId = parseProjectIdFromPathname(window.location.pathname);
+		setRequestedProjectId(nextProjectId);
 	}, []);
+	useWindowEvent("popstate", handlePopState);
 
 	useEffect(() => {
 		if (!requestedProjectId || !currentProjectId) {
@@ -1551,12 +1556,8 @@ export default function App(): ReactElement {
 			return;
 		}
 		preferredNewTaskWorkspaceModeRef.current = newTaskWorkspaceMode;
-		persistTaskWorkspaceMode(newTaskWorkspaceMode);
-	}, [canUseWorktree, newTaskWorkspaceMode]);
-
-	useEffect(() => {
-		persistTaskStartInPlanMode(newTaskStartInPlanMode);
-	}, [newTaskStartInPlanMode]);
+		setPersistedNewTaskWorkspaceMode(newTaskWorkspaceMode);
+	}, [canUseWorktree, newTaskWorkspaceMode, setPersistedNewTaskWorkspaceMode]);
 
 	useEffect(() => {
 		if (!isWorktreeCapabilityKnown) {
@@ -1659,44 +1660,40 @@ export default function App(): ReactElement {
 		}
 	}, [board, editingTaskId]);
 
-	useEffect(() => {
-		const handleKeyDown = (event: KeyboardEvent) => {
-			const key = event.key.toLowerCase();
-			if ((event.metaKey || event.ctrlKey) && key === "j") {
-				event.preventDefault();
-				if (selectedCard) {
-					detailTerminalToggleRef.current?.();
-					return;
-				}
-				homeTerminalToggleRef.current?.();
+	const handleGlobalKeyDown = useCallback((event: KeyboardEvent) => {
+		const key = event.key.toLowerCase();
+		if ((event.metaKey || event.ctrlKey) && key === "j") {
+			event.preventDefault();
+			if (selectedCard) {
+				detailTerminalToggleRef.current?.();
 				return;
 			}
+			homeTerminalToggleRef.current?.();
+			return;
+		}
 
-			const target = event.target as HTMLElement | null;
-			const isTypingTarget =
-				target?.tagName === "INPUT" ||
-				target?.tagName === "TEXTAREA" ||
-				target?.isContentEditable;
-			if (isTypingTarget) {
-				return;
-			}
+		const target = event.target as HTMLElement | null;
+		const isTypingTarget =
+			target?.tagName === "INPUT" ||
+			target?.tagName === "TEXTAREA" ||
+			target?.isContentEditable;
+		if (isTypingTarget) {
+			return;
+		}
 
-			if ((event.metaKey || event.ctrlKey) && key === "k") {
-				event.preventDefault();
-				setIsCommandPaletteOpen((current) => !current);
-				return;
-			}
+		if ((event.metaKey || event.ctrlKey) && key === "k") {
+			event.preventDefault();
+			setIsCommandPaletteOpen((current) => !current);
+			return;
+		}
 
-			if (!event.metaKey && !event.ctrlKey && key === "c") {
-				event.preventDefault();
-				setEditingTaskId(null);
-				setIsInlineTaskCreateOpen(true);
-			}
-		};
-
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		if (!event.metaKey && !event.ctrlKey && key === "c") {
+			event.preventDefault();
+			setEditingTaskId(null);
+			setIsInlineTaskCreateOpen(true);
+		}
 	}, [selectedCard]);
+	useWindowEvent("keydown", handleGlobalKeyDown);
 
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);

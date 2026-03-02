@@ -1,14 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { showAppToast } from "@/kanban/components/app-toaster";
+import { useRawLocalStorageValue } from "@/kanban/hooks/react-use";
 import type { RuntimeShortcutRunResponse } from "@/kanban/runtime/types";
 import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
 import {
+	PREFERRED_OPEN_TARGET_STORAGE_KEY,
 	buildOpenCommand,
 	getOpenTargetOption,
 	getOpenTargetOptions,
-	loadPersistedOpenTarget,
-	persistOpenTarget,
+	normalizeOpenTargetId,
 	type OpenTargetId,
 	type OpenTargetOption,
 } from "@/kanban/utils/open-targets";
@@ -51,8 +52,10 @@ export function useOpenWorkspace({
 	currentProjectId,
 	workspacePath,
 }: UseOpenWorkspaceParams): UseOpenWorkspaceResult {
-	const [preferredOpenTargetId, setPreferredOpenTargetId] = useState<OpenTargetId>(() =>
-		loadPersistedOpenTarget(),
+	const [preferredOpenTargetId, setPreferredOpenTargetId] = useRawLocalStorageValue<OpenTargetId>(
+		PREFERRED_OPEN_TARGET_STORAGE_KEY,
+		"vscode",
+		(value) => normalizeOpenTargetId(value),
 	);
 	const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
 	const selectedOpenTarget = useMemo(
@@ -63,8 +66,7 @@ export function useOpenWorkspace({
 
 	const onSelectOpenTarget = useCallback((targetId: OpenTargetId) => {
 		setPreferredOpenTargetId(targetId);
-		persistOpenTarget(targetId);
-	}, []);
+	}, [setPreferredOpenTargetId]);
 
 	const showOpenFailureToast = useCallback((message: string) => {
 		showAppToast(

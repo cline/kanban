@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
 import { Classes as SelectClasses } from "@blueprintjs/select";
 
+import { useDebouncedEffect } from "@/kanban/hooks/react-use";
 import type {
 	RuntimeSlashCommandDescription,
 	RuntimeSlashCommandsResponse,
@@ -127,6 +128,7 @@ export function TaskPromptComposer({
 	const popoverRef = useRef<InstanceType<typeof Popover> | null>(null);
 	const menuRef = useRef<HTMLUListElement | null>(null);
 	const suggestionItemRefs = useRef(new Map<string, HTMLLIElement>());
+	const mentionSearchRequestIdRef = useRef(0);
 	const [cursorIndex, setCursorIndex] = useState(0);
 	const [mentionSuggestions, setMentionSuggestions] = useState<PromptSuggestion[]>([]);
 	const [isMentionSearchLoading, setIsMentionSearchLoading] = useState(false);
@@ -198,14 +200,21 @@ export function TaskPromptComposer({
 
 	useEffect(() => {
 		if (!activeToken || activeToken.kind !== "mention") {
+			mentionSearchRequestIdRef.current += 1;
 			setMentionSuggestions([]);
 			setIsMentionSearchLoading(false);
 			return;
 		}
+		mentionSearchRequestIdRef.current += 1;
+	}, [activeToken, workspaceId]);
 
-		let cancelled = false;
-		const timeoutId = window.setTimeout(async () => {
-			setIsMentionSearchLoading(true);
+	useDebouncedEffect(() => {
+		if (!activeToken || activeToken.kind !== "mention") {
+			return;
+		}
+		const requestId = mentionSearchRequestIdRef.current;
+		setIsMentionSearchLoading(true);
+		void (async () => {
 			try {
 				const params = new URLSearchParams({
 					q: activeToken.query,
@@ -218,7 +227,7 @@ export function TaskPromptComposer({
 					throw new Error(`Workspace file search failed with ${response.status}`);
 				}
 				const payload = (await response.json()) as RuntimeWorkspaceFileSearchResponse;
-				if (cancelled) {
+				if (requestId !== mentionSearchRequestIdRef.current) {
 					return;
 				}
 				setMentionSuggestions(
@@ -232,21 +241,16 @@ export function TaskPromptComposer({
 						: [],
 				);
 			} catch {
-				if (!cancelled) {
+				if (requestId === mentionSearchRequestIdRef.current) {
 					setMentionSuggestions([]);
 				}
 			} finally {
-				if (!cancelled) {
+				if (requestId === mentionSearchRequestIdRef.current) {
 					setIsMentionSearchLoading(false);
 				}
 			}
-		}, MENTION_QUERY_DEBOUNCE_MS);
-
-		return () => {
-			cancelled = true;
-			window.clearTimeout(timeoutId);
-		};
-	}, [activeToken, workspaceId]);
+		})();
+	}, MENTION_QUERY_DEBOUNCE_MS, [activeToken, workspaceId]);
 
 	const slashSuggestions = useMemo<PromptSuggestion[]>(() => {
 		if (!activeToken || activeToken.kind !== "slash") {

@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
 	broadcastNotificationBadgeClear,
 	createNotificationBadgeSyncSourceId,
 	subscribeToNotificationBadgeClear,
 } from "@/kanban/utils/notification-badge-sync";
+import {
+	useDocumentTitle,
+	useInterval,
+	useUnmount,
+	useWindowEvent,
+} from "@/kanban/hooks/react-use";
 import {
 	getBrowserNotificationPermission,
 } from "@/kanban/utils/notification-permission";
@@ -138,36 +144,28 @@ export function useReviewReadyNotifications({
 	}, [activeWorkspaceId, isDocumentVisible]);
 
 	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
+		if (activeWorkspaceId && isDocumentVisible) {
+			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
 		}
-		if (!activeWorkspaceId || !isDocumentVisible) {
-			return;
-		}
-		const tabId = notificationPresenceTabIdRef.current;
-		const workspaceId = activeWorkspaceId;
-		const heartbeat = window.setInterval(() => {
-			markTabVisible(tabId, workspaceId);
-		}, TAB_VISIBILITY_HEARTBEAT_INTERVAL_MS);
-		return () => {
-			window.clearInterval(heartbeat);
-		};
 	}, [activeWorkspaceId, isDocumentVisible]);
 
-	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
-		}
-		const tabId = notificationPresenceTabIdRef.current;
-		const handlePageHide = () => {
-			markTabHidden(tabId);
-		};
-		window.addEventListener("pagehide", handlePageHide);
-		return () => {
-			window.removeEventListener("pagehide", handlePageHide);
-			markTabHidden(tabId);
-		};
+	useInterval(
+		() => {
+			if (!activeWorkspaceId || !isDocumentVisible) {
+				return;
+			}
+			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
+		},
+		activeWorkspaceId && isDocumentVisible ? TAB_VISIBILITY_HEARTBEAT_INTERVAL_MS : null,
+	);
+
+	const handlePageHide = useCallback(() => {
+		markTabHidden(notificationPresenceTabIdRef.current);
 	}, []);
+	useWindowEvent("pagehide", handlePageHide);
+	useUnmount(() => {
+		markTabHidden(notificationPresenceTabIdRef.current);
+	});
 
 	useEffect(() => {
 		const syncSourceId = notificationBadgeSyncSourceIdRef.current;
@@ -194,13 +192,9 @@ export function useReviewReadyNotifications({
 		setPendingReviewReadyNotificationCount(0);
 	}, [activeWorkspaceId]);
 
-	useEffect(() => {
-		if (typeof document === "undefined") {
-			return;
-		}
-		const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanbanana` : "Kanbanana";
-		document.title = pendingReviewReadyNotificationCount > 0
-			? `(${pendingReviewReadyNotificationCount}) ${baseTitle}`
-			: baseTitle;
-	}, [pendingReviewReadyNotificationCount, workspaceTitle]);
+	const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanbanana` : "Kanbanana";
+	const documentTitle = pendingReviewReadyNotificationCount > 0
+		? `(${pendingReviewReadyNotificationCount}) ${baseTitle}`
+		: baseTitle;
+	useDocumentTitle(documentTitle);
 }

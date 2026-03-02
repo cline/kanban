@@ -2,6 +2,8 @@ import { Colors } from "@blueprintjs/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactElement, ReactNode } from "react";
 
+import { useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
+
 const NAVBAR_HEIGHT_PX = 40;
 
 function getDefaultPaneHeight(minHeight: number): number {
@@ -37,33 +39,29 @@ export function ResizableBottomPane({
 	const [height, setHeight] = useState<number>(() =>
 		clampHeight(initialHeight ?? getDefaultPaneHeight(minHeight), minHeight),
 	);
+	const [isDragging, setIsDragging] = useState(false);
 	const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
-	const cleanupDragRef = useRef<(() => void) | null>(null);
+	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
 
 	const stopDrag = useCallback(() => {
-		const cleanup = cleanupDragRef.current;
-		if (cleanup) {
-			cleanup();
+		setIsDragging(false);
+		const previousBodyStyle = previousBodyStyleRef.current;
+		if (previousBodyStyle) {
+			document.body.style.userSelect = previousBodyStyle.userSelect;
+			document.body.style.cursor = previousBodyStyle.cursor;
+			previousBodyStyleRef.current = null;
 		}
-		cleanupDragRef.current = null;
 		dragStateRef.current = null;
 	}, []);
 
-	useEffect(() => {
-		return () => {
-			stopDrag();
-		};
-	}, [stopDrag]);
+	useUnmount(() => {
+		stopDrag();
+	});
 
-	useEffect(() => {
-		const handleResize = () => {
-			setHeight((current) => clampHeight(current, minHeight));
-		};
-		window.addEventListener("resize", handleResize);
-		return () => {
-			window.removeEventListener("resize", handleResize);
-		};
+	const handleResize = useCallback(() => {
+		setHeight((current) => clampHeight(current, minHeight));
 	}, [minHeight]);
+	useWindowEvent("resize", handleResize);
 
 	useEffect(() => {
 		if (typeof initialHeight !== "number") {
@@ -76,45 +74,47 @@ export function ResizableBottomPane({
 		onHeightChange?.(height);
 	}, [height, onHeightChange]);
 
+	const handleMouseMove = useCallback((event: MouseEvent) => {
+		if (!isDragging) {
+			return;
+		}
+		const dragState = dragStateRef.current;
+		if (!dragState) {
+			return;
+		}
+		const deltaY = event.clientY - dragState.startY;
+		const nextHeight = clampHeight(dragState.startHeight - deltaY, minHeight);
+		setHeight(nextHeight);
+	}, [isDragging, minHeight]);
+
+	const handleMouseUp = useCallback(() => {
+		if (!isDragging) {
+			return;
+		}
+		stopDrag();
+	}, [isDragging, stopDrag]);
+	useWindowEvent("mousemove", isDragging ? handleMouseMove : null);
+	useWindowEvent("mouseup", isDragging ? handleMouseUp : null);
+
 	const handleResizeMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {
 			event.preventDefault();
-			if (cleanupDragRef.current) {
+			if (isDragging) {
 				stopDrag();
 			}
 			const startY = event.clientY;
 			const startHeight = height;
 			dragStateRef.current = { startY, startHeight };
+			setIsDragging(true);
 
-			const previousUserSelect = document.body.style.userSelect;
-			const previousCursor = document.body.style.cursor;
+			previousBodyStyleRef.current = {
+				userSelect: document.body.style.userSelect,
+				cursor: document.body.style.cursor,
+			};
 			document.body.style.userSelect = "none";
 			document.body.style.cursor = "ns-resize";
-
-			const handleMouseMove = (moveEvent: MouseEvent) => {
-				const dragState = dragStateRef.current;
-				if (!dragState) {
-					return;
-				}
-				const deltaY = moveEvent.clientY - dragState.startY;
-				const nextHeight = clampHeight(dragState.startHeight - deltaY, minHeight);
-				setHeight(nextHeight);
-			};
-
-			const handleMouseUp = () => {
-				stopDrag();
-			};
-
-			window.addEventListener("mousemove", handleMouseMove);
-			window.addEventListener("mouseup", handleMouseUp);
-			cleanupDragRef.current = () => {
-				window.removeEventListener("mousemove", handleMouseMove);
-				window.removeEventListener("mouseup", handleMouseUp);
-				document.body.style.userSelect = previousUserSelect;
-				document.body.style.cursor = previousCursor;
-			};
 		},
-		[height, minHeight, stopDrag],
+		[height, isDragging, stopDrag],
 	);
 
 	return (

@@ -17,9 +17,10 @@ import {
 import type { IconName } from "@blueprintjs/icons";
 import { Select } from "@blueprintjs/select";
 import type { ItemRenderer } from "@blueprintjs/select";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { TASK_GIT_PROMPT_VARIABLES } from "@/kanban/git-actions/build-task-git-action-prompt";
+import { useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
 import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 import {
@@ -294,6 +295,9 @@ export function RuntimeSettingsDialog({
 					: "PR prompt template for worktrees";
 	const selectedPromptMode = selectedPromptVariant.endsWith("worktree") ? "worktree" : "local";
 	const baseRefVariable = TASK_GIT_PROMPT_VARIABLES[0];
+	const refreshNotificationPermission = useCallback(() => {
+		setNotificationPermission(getBrowserNotificationPermission());
+	}, []);
 
 	const supportedAgents = useMemo(() => config?.agents ?? [], [config?.agents]);
 	const configuredAgentId = config?.selectedAgentId ?? null;
@@ -390,15 +394,9 @@ export function RuntimeSettingsDialog({
 		if (!open) {
 			return;
 		}
-		const refreshPermission = () => {
-			setNotificationPermission(getBrowserNotificationPermission());
-		};
-		refreshPermission();
-		window.addEventListener("focus", refreshPermission);
-		return () => {
-			window.removeEventListener("focus", refreshPermission);
-		};
-	}, [open]);
+		refreshNotificationPermission();
+	}, [open, refreshNotificationPermission]);
+	useWindowEvent("focus", open ? refreshNotificationPermission : null);
 
 	useEffect(() => {
 		if (!open || initialSection !== "shortcuts") {
@@ -430,14 +428,12 @@ export function RuntimeSettingsDialog({
 		};
 	}, [pendingShortcutScrollId, shortcuts]);
 
-	useEffect(() => {
-		return () => {
-			if (copiedVariableResetTimerRef.current !== null) {
-				window.clearTimeout(copiedVariableResetTimerRef.current);
-				copiedVariableResetTimerRef.current = null;
-			}
-		};
-	}, []);
+	useUnmount(() => {
+		if (copiedVariableResetTimerRef.current !== null) {
+			window.clearTimeout(copiedVariableResetTimerRef.current);
+			copiedVariableResetTimerRef.current = null;
+		}
+	});
 
 	const handleCopyVariableToken = (token: string) => {
 		void (async () => {

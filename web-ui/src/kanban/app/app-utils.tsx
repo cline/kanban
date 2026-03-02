@@ -5,8 +5,8 @@ import type { TaskWorkspaceMode } from "@/kanban/components/task-inline-create-c
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardData } from "@/kanban/types";
 
-const TASK_WORKSPACE_MODE_STORAGE_KEY = "kanbanana.task-workspace-mode";
-const TASK_START_IN_PLAN_MODE_STORAGE_KEY = "kanbanana.task-start-in-plan-mode";
+export const TASK_WORKSPACE_MODE_STORAGE_KEY = "kanbanana.task-workspace-mode";
+export const TASK_START_IN_PLAN_MODE_STORAGE_KEY = "kanbanana.task-start-in-plan-mode";
 
 export interface SearchableTask {
 	id: string;
@@ -79,6 +79,13 @@ export function loadPersistedTaskWorkspaceMode(): TaskWorkspaceMode {
 		// Ignore storage access failures and use defaults.
 	}
 	return "worktree";
+}
+
+export function normalizeTaskWorkspaceMode(value: string | null | undefined): TaskWorkspaceMode | null {
+	if (value === "local" || value === "worktree") {
+		return value;
+	}
+	return null;
 }
 
 export function loadPersistedTaskStartInPlanMode(): boolean {

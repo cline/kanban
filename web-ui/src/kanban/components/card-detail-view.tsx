@@ -1,6 +1,6 @@
 import { Colors } from "@blueprintjs/core";
 import type { DropResult } from "@hello-pangea/dnd";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
@@ -8,6 +8,7 @@ import { ColumnContextPanel } from "@/kanban/components/detail-panels/column-con
 import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
 import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
+import { useWindowEvent } from "@/kanban/hooks/react-use";
 import { useRuntimeWorkspaceChanges } from "@/kanban/runtime/use-runtime-workspace-changes";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard, CardSelection, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
@@ -104,50 +105,47 @@ export function CardDetailView({
 		return runtimeFiles.map((file) => file.path);
 	}, [runtimeFiles]);
 
-	useEffect(() => {
-		function handleKeyDown(event: KeyboardEvent) {
-			const target = event.target as HTMLElement | null;
-			const isTypingTarget =
-				target?.tagName === "INPUT" ||
-				target?.tagName === "TEXTAREA" ||
-				target?.isContentEditable;
-			if (isTypingTarget) {
-				return;
-			}
+	const handleKeyDown = useCallback((event: KeyboardEvent) => {
+		const target = event.target as HTMLElement | null;
+		const isTypingTarget =
+			target?.tagName === "INPUT" ||
+			target?.tagName === "TEXTAREA" ||
+			target?.isContentEditable;
+		if (isTypingTarget) {
+			return;
+		}
 
-			if (event.key === "Escape") {
-				onBack();
-				return;
-			}
+		if (event.key === "Escape") {
+			onBack();
+			return;
+		}
 
-			const cards = selection.column.cards;
-			const currentIndex = cards.findIndex((card) => card.id === selection.card.id);
-			if (currentIndex === -1) {
-				return;
-			}
+		const cards = selection.column.cards;
+		const currentIndex = cards.findIndex((card) => card.id === selection.card.id);
+		if (currentIndex === -1) {
+			return;
+		}
 
-			if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-				event.preventDefault();
-				const previousIndex = (currentIndex - 1 + cards.length) % cards.length;
-				const previousCard = cards[previousIndex];
-				if (previousCard) {
-					onCardSelect(previousCard.id);
-				}
-				return;
+		if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+			event.preventDefault();
+			const previousIndex = (currentIndex - 1 + cards.length) % cards.length;
+			const previousCard = cards[previousIndex];
+			if (previousCard) {
+				onCardSelect(previousCard.id);
 			}
+			return;
+		}
 
-			if (event.key === "ArrowDown" || event.key === "ArrowRight") {
-				event.preventDefault();
-				const nextIndex = (currentIndex + 1) % cards.length;
-				const nextCard = cards[nextIndex];
-				if (nextCard) {
-					onCardSelect(nextCard.id);
-				}
+		if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+			event.preventDefault();
+			const nextIndex = (currentIndex + 1) % cards.length;
+			const nextCard = cards[nextIndex];
+			if (nextCard) {
+				onCardSelect(nextCard.id);
 			}
 		}
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [onBack, onCardSelect, selection.card.id, selection.column.cards]);
+	useWindowEvent("keydown", handleKeyDown);
 
 	useEffect(() => {
 		if (selectedPath && availablePaths.includes(selectedPath)) {

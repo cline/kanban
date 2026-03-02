@@ -10,7 +10,7 @@ import windsurfIcon from "@/kanban/assets/open-targets/windsurf.svg";
 import xcodeIcon from "@/kanban/assets/open-targets/xcode.svg";
 import zedIcon from "@/kanban/assets/open-targets/zed.svg";
 
-const PREFERRED_OPEN_TARGET_STORAGE_KEY = "kanbanana.preferred-open-target";
+export const PREFERRED_OPEN_TARGET_STORAGE_KEY = "kanbanana.preferred-open-target";
 
 export type OpenTargetId =
 	| "vscode"
@@ -102,7 +102,7 @@ function isOpenTargetId(value: string | null): value is OpenTargetId {
 	return openTargetById.has(value as OpenTargetId);
 }
 
-function normalizeOpenTargetId(value: string | null): OpenTargetId | null {
+export function normalizeOpenTargetId(value: string | null): OpenTargetId | null {
 	if (!value) {
 		return null;
 	}
