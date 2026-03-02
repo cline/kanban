@@ -172,6 +172,9 @@ export default function App(): ReactElement {
 		false,
 	);
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
+	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>(
+		{},
+	);
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
@@ -946,12 +949,25 @@ export default function App(): ReactElement {
 		return options;
 	}, [workspaceGit]);
 
+	const lastCreatedTaskBranchRef = useMemo(() => {
+		if (!currentProjectId) {
+			return null;
+		}
+		return lastCreatedTaskBranchByProjectId[currentProjectId] ?? null;
+	}, [currentProjectId, lastCreatedTaskBranchByProjectId]);
+
 	const defaultTaskBranchRef = useMemo(() => {
 		if (!workspaceGit) {
 			return "";
 		}
+		if (
+			lastCreatedTaskBranchRef &&
+			createTaskBranchOptions.some((option) => option.value === lastCreatedTaskBranchRef)
+		) {
+			return lastCreatedTaskBranchRef;
+		}
 		return workspaceGit.currentBranch ?? workspaceGit.defaultBranch ?? createTaskBranchOptions[0]?.value ?? "";
-	}, [createTaskBranchOptions, workspaceGit]);
+	}, [createTaskBranchOptions, lastCreatedTaskBranchRef, workspaceGit]);
 
 	const refreshWorkspaceState = useCallback(async () => {
 		if (!currentProjectId) {
@@ -1773,11 +1789,18 @@ export default function App(): ReactElement {
 				baseRef,
 			}),
 		);
+		if (currentProjectId) {
+			setLastCreatedTaskBranchByProjectId((current) => ({
+				...current,
+				[currentProjectId]: baseRef,
+			}));
+		}
 		setNewTaskPrompt("");
-		setNewTaskBranchRef(defaultTaskBranchRef);
+		setNewTaskBranchRef(baseRef);
 		setIsInlineTaskCreateOpen(false);
 		setWorktreeError(null);
 	}, [
+		currentProjectId,
 		defaultTaskBranchRef,
 		newTaskBranchRef,
 		newTaskPrompt,
