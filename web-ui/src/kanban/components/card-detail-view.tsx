@@ -75,8 +75,7 @@ function WorkspaceChangesEmptyPanel(): React.ReactElement {
 			<div className="kb-empty-state-center" style={{ flex: 1 }}>
 				<NonIdealState
 					icon="comparison"
-					title="No changes found"
-					description="This workspace has no changes to review yet."
+					title="No working changes"
 				/>
 			</div>
 		</div>
