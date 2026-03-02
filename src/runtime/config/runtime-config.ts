@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 
 import type { RuntimeAgentId, RuntimeProjectShortcut } from "../api-contract.js";
 import { detectInstalledCommands } from "../terminal/agent-registry.js";
+import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils.js";
 
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
@@ -127,28 +128,6 @@ function normalizeShortcuts(shortcuts: RuntimeProjectShortcut[] | null | undefin
 		}
 	}
 	return normalized;
-}
-
-function areShortcutsEqual(left: RuntimeProjectShortcut[], right: RuntimeProjectShortcut[]): boolean {
-	if (left.length !== right.length) {
-		return false;
-	}
-	for (let index = 0; index < left.length; index += 1) {
-		const leftItem = left[index];
-		const rightItem = right[index];
-		if (!leftItem || !rightItem) {
-			return false;
-		}
-		if (
-			leftItem.id !== rightItem.id ||
-			leftItem.label !== rightItem.label ||
-			leftItem.command !== rightItem.command ||
-			(leftItem.icon ?? "") !== (rightItem.icon ?? "")
-		) {
-			return false;
-		}
-	}
-	return true;
 }
 
 function normalizePromptTemplate(value: unknown, fallback: string): string {
@@ -390,7 +369,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
 		nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
 		nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||
-		!areShortcutsEqual(nextConfig.shortcuts, current.shortcuts);
+		!areRuntimeProjectShortcutsEqual(nextConfig.shortcuts, current.shortcuts);
 
 	if (!hasChanges) {
 		return current;

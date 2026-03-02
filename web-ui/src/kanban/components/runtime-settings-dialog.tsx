@@ -18,6 +18,7 @@ import type { IconName } from "@blueprintjs/icons";
 import { Select } from "@blueprintjs/select";
 import type { ItemRenderer } from "@blueprintjs/select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 
 import { TASK_GIT_PROMPT_VARIABLES } from "@/kanban/git-actions/build-task-git-action-prompt";
 import { useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
@@ -39,28 +40,6 @@ const AGENT_INSTALL_URLS: Partial<Record<RuntimeAgentId, string>> = {
 
 function normalizeTemplateForComparison(value: string): string {
 	return value.replaceAll("\r\n", "\n").trim();
-}
-
-function areShortcutsEqual(left: RuntimeProjectShortcut[], right: RuntimeProjectShortcut[]): boolean {
-	if (left.length !== right.length) {
-		return false;
-	}
-	for (let index = 0; index < left.length; index += 1) {
-		const leftItem = left[index];
-		const rightItem = right[index];
-		if (!leftItem || !rightItem) {
-			return false;
-		}
-		if (
-			leftItem.id !== rightItem.id ||
-			leftItem.label !== rightItem.label ||
-			leftItem.command !== rightItem.command ||
-			(leftItem.icon ?? "") !== (rightItem.icon ?? "")
-		) {
-			return false;
-		}
-	}
-	return true;
 }
 
 type GitPromptVariant = "commit" | "pr";
@@ -290,7 +269,7 @@ export function RuntimeSettingsDialog({
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
 			return true;
 		}
-		if (!areShortcutsEqual(shortcuts, initialShortcuts)) {
+		if (!areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts)) {
 			return true;
 		}
 		if (

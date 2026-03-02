@@ -13,6 +13,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"@": resolve(__dirname, "src"),
+			"@runtime-shortcuts": resolve(__dirname, "../src/runtime/config/shortcut-utils.ts"),
 		},
 	},
 	server: {

@@ -64,30 +64,6 @@ export function buildProjectPathname(projectId: string): string {
 	return `/${encodeURIComponent(projectId)}`;
 }
 
-export function loadPersistedTaskStartInPlanMode(): boolean {
-	if (typeof window === "undefined") {
-		return false;
-	}
-	try {
-		const value = window.localStorage.getItem(TASK_START_IN_PLAN_MODE_STORAGE_KEY);
-		return value === "true";
-	} catch {
-		// Ignore storage access failures and use defaults.
-	}
-	return false;
-}
-
-export function persistTaskStartInPlanMode(value: boolean): void {
-	if (typeof window === "undefined") {
-		return;
-	}
-	try {
-		window.localStorage.setItem(TASK_START_IN_PLAN_MODE_STORAGE_KEY, String(value));
-	} catch {
-		// Ignore storage access failures.
-	}
-}
-
 export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary {
 	return {
 		taskId,
