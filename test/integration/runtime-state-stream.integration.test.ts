@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdirSync } from "node:fs";
 import { realpath } from "node:fs/promises";
@@ -109,6 +109,16 @@ async function getAvailablePort(): Promise<number> {
 		throw new Error("Could not allocate a test port.");
 	}
 	return port;
+}
+
+function initGitRepository(path: string): void {
+	const init = spawnSync("git", ["init"], {
+		cwd: path,
+		stdio: "ignore",
+	});
+	if (init.status !== 0) {
+		throw new Error(`Failed to initialize git repository at ${path}`);
+	}
 }
 
 async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): Promise<{ runtimeUrl: string }> {
@@ -331,6 +341,8 @@ describe.sequential("runtime state stream integration", () => {
 		const projectBPath = join(tempRoot, "project-b");
 		mkdirSync(projectAPath, { recursive: true });
 		mkdirSync(projectBPath, { recursive: true });
+		initGitRepository(projectAPath);
+		initGitRepository(projectBPath);
 
 		const port = await getAvailablePort();
 		const server = await startKanbananaServer({
@@ -443,6 +455,7 @@ describe.sequential("runtime state stream integration", () => {
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanbanana-project-hook-stream-");
 
 		mkdirSync(projectPath, { recursive: true });
+		initGitRepository(projectPath);
 
 		const port = await getAvailablePort();
 		const server = await startKanbananaServer({
@@ -518,6 +531,7 @@ describe.sequential("runtime state stream integration", () => {
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanbanana-project-stale-review-");
 
 		mkdirSync(projectPath, { recursive: true });
+		initGitRepository(projectPath);
 
 		const taskId = "stale-review-task";
 		const taskTitle = "Stale Review Task";
@@ -635,6 +649,8 @@ describe.sequential("runtime state stream integration", () => {
 		const projectBPath = join(tempRoot, "project-b");
 		mkdirSync(projectAPath, { recursive: true });
 		mkdirSync(projectBPath, { recursive: true });
+		initGitRepository(projectAPath);
+		initGitRepository(projectBPath);
 
 		const port = await getAvailablePort();
 		const server = await startKanbananaServer({
