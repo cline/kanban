@@ -45,6 +45,8 @@ export function CardDetailView({
 	bottomTerminalSummary,
 	bottomTerminalSubtitle,
 	onBottomTerminalClose,
+	bottomTerminalPaneHeight,
+	onBottomTerminalPaneHeightChange,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -78,6 +80,8 @@ export function CardDetailView({
 	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
 	bottomTerminalSubtitle?: string | null;
 	onBottomTerminalClose: () => void;
+	bottomTerminalPaneHeight?: number;
+	onBottomTerminalPaneHeightChange?: (height: number) => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(
@@ -214,7 +218,11 @@ export function CardDetailView({
 						/>
 				</div>
 				{bottomTerminalOpen && bottomTerminalTaskId ? (
-					<ResizableBottomPane minHeight={200}>
+					<ResizableBottomPane
+						minHeight={200}
+						initialHeight={bottomTerminalPaneHeight}
+						onHeightChange={onBottomTerminalPaneHeightChange}
+					>
 						<div
 							style={{
 								display: "flex",

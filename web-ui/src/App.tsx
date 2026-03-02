@@ -237,8 +237,14 @@ export default function App(): ReactElement {
 	const [isHomeTerminalOpen, setIsHomeTerminalOpen] = useState(false);
 	const [isHomeTerminalStarting, setIsHomeTerminalStarting] = useState(false);
 	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
+	const [homeTerminalPaneHeight, setHomeTerminalPaneHeight] = useState<number | undefined>(
+		undefined,
+	);
 	const [isDetailTerminalOpen, setIsDetailTerminalOpen] = useState(false);
 	const [isDetailTerminalStarting, setIsDetailTerminalStarting] = useState(false);
+	const [detailTerminalPaneHeight, setDetailTerminalPaneHeight] = useState<number | undefined>(
+		undefined,
+	);
 	const [runtimeProjectConfigRefreshNonce, setRuntimeProjectConfigRefreshNonce] = useState(0);
 	const [lastShortcutOutput, setLastShortcutOutput] = useState<{
 		label: string;
@@ -2786,7 +2792,10 @@ export default function App(): ReactElement {
 										/>
 									</div>
 									{isHomeTerminalOpen ? (
-										<ResizableBottomPane>
+										<ResizableBottomPane
+											initialHeight={homeTerminalPaneHeight}
+											onHeightChange={setHomeTerminalPaneHeight}
+										>
 											<div
 												style={{
 													display: "flex",
@@ -2855,6 +2864,8 @@ export default function App(): ReactElement {
 									bottomTerminalSummary={detailShellSummary}
 									bottomTerminalSubtitle={detailShellSubtitle}
 									onBottomTerminalClose={() => setIsDetailTerminalOpen(false)}
+									bottomTerminalPaneHeight={detailTerminalPaneHeight}
+									onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
 								/>
 							</div>
 						) : null}

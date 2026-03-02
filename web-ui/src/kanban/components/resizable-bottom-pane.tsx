@@ -26,11 +26,17 @@ function clampHeight(value: number, minHeight: number): number {
 export function ResizableBottomPane({
 	children,
 	minHeight = 220,
+	initialHeight,
+	onHeightChange,
 }: {
 	children: ReactNode;
 	minHeight?: number;
+	initialHeight?: number;
+	onHeightChange?: (height: number) => void;
 }): ReactElement {
-	const [height, setHeight] = useState<number>(() => getDefaultPaneHeight(minHeight));
+	const [height, setHeight] = useState<number>(() =>
+		clampHeight(initialHeight ?? getDefaultPaneHeight(minHeight), minHeight),
+	);
 	const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
 	const cleanupDragRef = useRef<(() => void) | null>(null);
 
@@ -58,6 +64,17 @@ export function ResizableBottomPane({
 			window.removeEventListener("resize", handleResize);
 		};
 	}, [minHeight]);
+
+	useEffect(() => {
+		if (typeof initialHeight !== "number") {
+			return;
+		}
+		setHeight(clampHeight(initialHeight, minHeight));
+	}, [initialHeight, minHeight]);
+
+	useEffect(() => {
+		onHeightChange?.(height);
+	}, [height, onHeightChange]);
 
 	const handleResizeMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {
