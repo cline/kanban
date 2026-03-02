@@ -16,6 +16,7 @@ import {
 } from "@/kanban/app/app-utils";
 import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
 import { useReviewReadyNotifications } from "@/kanban/app/use-review-ready-notifications";
+import { useTaskWorkspaceSnapshots } from "@/kanban/app/use-task-workspace-snapshots";
 import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
@@ -160,12 +161,6 @@ export default function App(): ReactElement {
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
 		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
-	const [workspaceSnapshots, setWorkspaceSnapshots] =
-		useState<Record<string, ReviewTaskWorkspaceSnapshot>>({});
-	const reviewWorkspaceSnapshotLoadingRef = useRef<Set<string>>(new Set());
-	const inProgressWorkspaceSnapshotLoadingRef = useRef<Set<string>>(new Set());
-	const reviewWorkspaceSnapshotAttemptedRef = useRef<Set<string>>(new Set());
-	const activeReviewTaskIdsRef = useRef<Set<string>>(new Set());
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
@@ -310,11 +305,7 @@ export default function App(): ReactElement {
 				setWorkspacePath(null);
 				setWorkspaceGit(null);
 				setAppliedWorkspaceProjectId(null);
-				setWorkspaceSnapshots({});
-				reviewWorkspaceSnapshotLoadingRef.current.clear();
-				inProgressWorkspaceSnapshotLoadingRef.current.clear();
-				reviewWorkspaceSnapshotAttemptedRef.current.clear();
-				activeReviewTaskIdsRef.current = new Set();
+				resetWorkspaceSnapshots();
 				setBoard(createInitialBoardData());
 				setSessions({});
 				setWorkspaceRevision(null);
@@ -343,10 +334,7 @@ export default function App(): ReactElement {
 			if (shouldHydrateBoard) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
 				setBoard(normalized);
-				setWorkspaceSnapshots({});
-				reviewWorkspaceSnapshotLoadingRef.current.clear();
-				inProgressWorkspaceSnapshotLoadingRef.current.clear();
-				reviewWorkspaceSnapshotAttemptedRef.current.clear();
+				resetWorkspaceSnapshots();
 				setWorkspaceHydrationNonce((current) => current + 1);
 			}
 			setWorkspaceRevision(nextWorkspaceState.revision);
@@ -644,6 +632,20 @@ export default function App(): ReactElement {
 			? selectedTaskWorkspaceInfo
 			: null;
 	}, [selectedCard, selectedTaskWorkspaceInfo]);
+	const reviewCards = useMemo(() => {
+		return board.columns.find((column) => column.id === "review")?.cards ?? [];
+	}, [board.columns]);
+	const inProgressCards = useMemo(() => {
+		return board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
+	}, [board.columns]);
+	const { workspaceSnapshots, resetWorkspaceSnapshots } = useTaskWorkspaceSnapshots({
+		currentProjectId,
+		reviewCards,
+		inProgressCards,
+		workspaceStatusRetrievedAt,
+		isDocumentVisible,
+		fetchReviewWorkspaceSnapshot,
+	});
 	const setTaskGitActionLoading = useCallback((
 		taskId: string,
 		action: TaskGitAction,
@@ -822,22 +824,6 @@ export default function App(): ReactElement {
 	const handleAgentOpenPrTask = useCallback((taskId: string) => {
 		void runTaskGitAction(taskId, "pr", "agent");
 	}, [runTaskGitAction]);
-	const reviewCards = useMemo(() => {
-		return board.columns.find((column) => column.id === "review")?.cards ?? [];
-	}, [board.columns]);
-	const inProgressCards = useMemo(() => {
-		return board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
-	}, [board.columns]);
-	const activeWorkspaceSnapshotTaskIds = useMemo(() => {
-		const ids = new Set<string>();
-		for (const card of reviewCards) {
-			ids.add(card.id);
-		}
-		for (const card of inProgressCards) {
-			ids.add(card.id);
-		}
-		return ids;
-	}, [inProgressCards, reviewCards]);
 
 	const searchableTasks = useMemo((): SearchableTask[] => {
 		return board.columns.flatMap((column) =>
@@ -900,170 +886,6 @@ export default function App(): ReactElement {
 		});
 		previousSessionsRef.current = sessions;
 	}, [sessions]);
-
-	useEffect(() => {
-		setWorkspaceSnapshots((current) => {
-			let changed = false;
-			const next: Record<string, ReviewTaskWorkspaceSnapshot> = {};
-			for (const [taskId, snapshot] of Object.entries(current)) {
-				if (activeWorkspaceSnapshotTaskIds.has(taskId)) {
-					next[taskId] = snapshot;
-					continue;
-				}
-				changed = true;
-			}
-			return changed ? next : current;
-		});
-	}, [activeWorkspaceSnapshotTaskIds]);
-
-	useEffect(() => {
-		const reviewTaskIds = new Set(reviewCards.map((card) => card.id));
-		activeReviewTaskIdsRef.current = reviewTaskIds;
-		reviewWorkspaceSnapshotLoadingRef.current.forEach((taskId) => {
-			if (!reviewTaskIds.has(taskId)) {
-				reviewWorkspaceSnapshotLoadingRef.current.delete(taskId);
-			}
-		});
-		reviewWorkspaceSnapshotAttemptedRef.current.forEach((taskId) => {
-			if (!reviewTaskIds.has(taskId)) {
-				reviewWorkspaceSnapshotAttemptedRef.current.delete(taskId);
-			}
-		});
-		if (!currentProjectId) {
-			reviewWorkspaceSnapshotLoadingRef.current.clear();
-			reviewWorkspaceSnapshotAttemptedRef.current.clear();
-			return;
-		}
-		for (const reviewCard of reviewCards) {
-			if (workspaceSnapshots[reviewCard.id]) {
-				continue;
-			}
-			if (reviewWorkspaceSnapshotAttemptedRef.current.has(reviewCard.id)) {
-				continue;
-			}
-			if (reviewWorkspaceSnapshotLoadingRef.current.has(reviewCard.id)) {
-				continue;
-			}
-			reviewWorkspaceSnapshotAttemptedRef.current.add(reviewCard.id);
-			reviewWorkspaceSnapshotLoadingRef.current.add(reviewCard.id);
-			void (async () => {
-				const snapshot = await fetchReviewWorkspaceSnapshot(reviewCard);
-				reviewWorkspaceSnapshotLoadingRef.current.delete(reviewCard.id);
-				if (!snapshot || !activeReviewTaskIdsRef.current.has(reviewCard.id)) {
-					return;
-				}
-				setWorkspaceSnapshots((current) => {
-					const existing = current[reviewCard.id];
-					if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
-						return current;
-					}
-					return {
-						...current,
-						[reviewCard.id]: snapshot,
-					};
-				});
-			})();
-		}
-	}, [currentProjectId, fetchReviewWorkspaceSnapshot, reviewCards, workspaceSnapshots]);
-
-	useEffect(() => {
-		const inProgressTaskIds = new Set(inProgressCards.map((card) => card.id));
-		inProgressWorkspaceSnapshotLoadingRef.current.forEach((taskId) => {
-			if (!inProgressTaskIds.has(taskId)) {
-				inProgressWorkspaceSnapshotLoadingRef.current.delete(taskId);
-			}
-		});
-
-		if (!currentProjectId) {
-			inProgressWorkspaceSnapshotLoadingRef.current.clear();
-			return;
-		}
-		for (const card of inProgressCards) {
-			if (workspaceSnapshots[card.id]) {
-				continue;
-			}
-			if (inProgressWorkspaceSnapshotLoadingRef.current.has(card.id)) {
-				continue;
-			}
-			inProgressWorkspaceSnapshotLoadingRef.current.add(card.id);
-			void (async () => {
-				const snapshot = await fetchReviewWorkspaceSnapshot(card);
-				inProgressWorkspaceSnapshotLoadingRef.current.delete(card.id);
-				if (!snapshot) {
-					return;
-				}
-				setWorkspaceSnapshots((current) => {
-					const existing = current[card.id];
-					if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
-						return current;
-					}
-					return {
-						...current,
-						[card.id]: snapshot,
-					};
-				});
-			})();
-		}
-	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards, workspaceSnapshots]);
-
-	useEffect(() => {
-		if (!currentProjectId || workspaceStatusRetrievedAt <= 0 || !isDocumentVisible) {
-			return;
-		}
-		for (const card of inProgressCards) {
-			if (inProgressWorkspaceSnapshotLoadingRef.current.has(card.id)) {
-				continue;
-			}
-			inProgressWorkspaceSnapshotLoadingRef.current.add(card.id);
-			void (async () => {
-				const snapshot = await fetchReviewWorkspaceSnapshot(card);
-				inProgressWorkspaceSnapshotLoadingRef.current.delete(card.id);
-				if (!snapshot) {
-					return;
-				}
-				setWorkspaceSnapshots((current) => {
-					const existing = current[card.id];
-					if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
-						return current;
-					}
-					return {
-						...current,
-						[card.id]: snapshot,
-					};
-				});
-			})();
-		}
-		for (const card of reviewCards) {
-			if (reviewWorkspaceSnapshotLoadingRef.current.has(card.id)) {
-				continue;
-			}
-			reviewWorkspaceSnapshotLoadingRef.current.add(card.id);
-			void (async () => {
-				const snapshot = await fetchReviewWorkspaceSnapshot(card);
-				reviewWorkspaceSnapshotLoadingRef.current.delete(card.id);
-				if (!snapshot) {
-					return;
-				}
-				setWorkspaceSnapshots((current) => {
-					const existing = current[card.id];
-					if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
-						return current;
-					}
-					return {
-						...current,
-						[card.id]: snapshot,
-					};
-				});
-			})();
-		}
-	}, [
-		currentProjectId,
-		fetchReviewWorkspaceSnapshot,
-		inProgressCards,
-		isDocumentVisible,
-		reviewCards,
-		workspaceStatusRetrievedAt,
-	]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -1424,12 +1246,8 @@ export default function App(): ReactElement {
 		setIsDetailTerminalStarting(false);
 		detailTerminalSelectionKeyRef.current = null;
 		setGitActionError(null);
-		setWorkspaceSnapshots({});
-		reviewWorkspaceSnapshotLoadingRef.current.clear();
-		inProgressWorkspaceSnapshotLoadingRef.current.clear();
-		reviewWorkspaceSnapshotAttemptedRef.current.clear();
-		activeReviewTaskIdsRef.current = new Set();
-	}, [currentProjectId]);
+		resetWorkspaceSnapshots();
+	}, [currentProjectId, resetWorkspaceSnapshots]);
 
 	useEffect(() => {
 		if (!currentProjectId) {
