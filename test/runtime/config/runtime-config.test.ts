@@ -239,6 +239,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				const current = await loadRuntimeConfig(tempProject);
 				await saveRuntimeConfig(tempProject, {
 					selectedAgentId: "claude",
+					selectedShortcutId: null,
 					readyForReviewNotificationsEnabled: true,
 					shortcuts: [],
 					commitLocalPromptTemplate: current.commitLocalPromptTemplateDefault,

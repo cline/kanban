@@ -47,6 +47,7 @@ export function CardDetailView({
 	onBottomTerminalClose,
 	bottomTerminalPaneHeight,
 	onBottomTerminalPaneHeightChange,
+	onBottomTerminalConnectionReady,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -82,6 +83,7 @@ export function CardDetailView({
 	onBottomTerminalClose: () => void;
 	bottomTerminalPaneHeight?: number;
 	onBottomTerminalPaneHeightChange?: (height: number) => void;
+	onBottomTerminalConnectionReady?: (taskId: string) => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(
@@ -247,6 +249,7 @@ export function CardDetailView({
 								terminalBackgroundColor={Colors.DARK_GRAY2}
 								cursorColor={Colors.LIGHT_GRAY5}
 								showRightBorder={false}
+								onConnectionReady={onBottomTerminalConnectionReady}
 							/>
 						</div>
 					</ResizableBottomPane>

@@ -99,6 +99,7 @@ export function AgentTerminalPanel({
 	cursorColor = Colors.LIGHT_GRAY5,
 	showRightBorder = true,
 	isVisible = true,
+	onConnectionReady,
 }: {
 	taskId: string;
 	workspaceId: string | null;
@@ -121,6 +122,7 @@ export function AgentTerminalPanel({
 	cursorColor?: string;
 	showRightBorder?: boolean;
 	isVisible?: boolean;
+	onConnectionReady?: (taskId: string) => void;
 }): React.ReactElement {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<Terminal | null>(null);
@@ -244,6 +246,7 @@ export function AgentTerminalPanel({
 				return;
 			}
 			setLastError(null);
+			onConnectionReady?.(taskId);
 			requestResize();
 		};
 
@@ -297,7 +300,7 @@ export function AgentTerminalPanel({
 			}
 			ws.close();
 		};
-	}, [onSummary, requestResize, taskId, workspaceId]);
+	}, [onConnectionReady, onSummary, requestResize, taskId, workspaceId]);
 
 	const handleStop = useCallback(async () => {
 		setIsStopping(true);

@@ -1254,6 +1254,7 @@ async function startServer(
 					const currentRuntimeConfig = await loadScopedRuntimeConfig(scope);
 					const nextRuntimeConfig = await saveRuntimeConfig(scope.workspacePath, {
 						selectedAgentId: body.selectedAgentId ?? currentRuntimeConfig.selectedAgentId,
+						selectedShortcutId: body.selectedShortcutId ?? currentRuntimeConfig.selectedShortcutId,
 						shortcuts: body.shortcuts ?? currentRuntimeConfig.shortcuts,
 						readyForReviewNotificationsEnabled:
 							body.readyForReviewNotificationsEnabled ?? currentRuntimeConfig.readyForReviewNotificationsEnabled,

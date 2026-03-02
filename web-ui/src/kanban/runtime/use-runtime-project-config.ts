@@ -1,18 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
 import type { RuntimeConfigResponse } from "@/kanban/runtime/types";
 
 export interface UseRuntimeProjectConfigResult {
 	config: RuntimeConfigResponse | null;
+	refresh: () => void;
 }
 
 export function useRuntimeProjectConfig(
 	workspaceId: string | null,
-	refreshNonce = 0,
 ): UseRuntimeProjectConfigResult {
 	const [config, setConfig] = useState<RuntimeConfigResponse | null>(null);
 	const previousWorkspaceIdRef = useRef<string | null>(null);
+	const fetchConfig = useCallback(async (targetWorkspaceId: string): Promise<RuntimeConfigResponse | null> => {
+		try {
+			return await fetchRuntimeConfig(targetWorkspaceId);
+		} catch {
+			return null;
+		}
+	}, []);
 
 	useEffect(() => {
 		if (!workspaceId) {
@@ -27,23 +34,37 @@ export function useRuntimeProjectConfig(
 		}
 		let cancelled = false;
 		void (async () => {
-			try {
-				const fetched = await fetchRuntimeConfig(workspaceId);
-				if (!cancelled) {
-					setConfig(fetched);
-				}
-			} catch {
-				if (!cancelled && didWorkspaceChange) {
-					setConfig(null);
-				}
+			const fetched = await fetchConfig(workspaceId);
+			if (cancelled) {
+				return;
+			}
+			if (fetched) {
+				setConfig(fetched);
+				return;
+			}
+			if (didWorkspaceChange) {
+				setConfig(null);
 			}
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [refreshNonce, workspaceId]);
+	}, [fetchConfig, workspaceId]);
+
+	const refresh = useCallback(() => {
+		if (!workspaceId) {
+			return;
+		}
+		void (async () => {
+			const fetched = await fetchConfig(workspaceId);
+			if (fetched) {
+				setConfig(fetched);
+			}
+		})();
+	}, [fetchConfig, workspaceId]);
 
 	return {
 		config,
+		refresh,
 	};
 }

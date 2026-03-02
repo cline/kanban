@@ -26,7 +26,10 @@ import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
 import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
-import { RuntimeSettingsDialog } from "@/kanban/components/runtime-settings-dialog";
+import {
+	RuntimeSettingsDialog,
+	type RuntimeSettingsSection,
+} from "@/kanban/components/runtime-settings-dialog";
 import { TaskInlineCreateCard, type TaskWorkspaceMode } from "@/kanban/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
 import { TopBar, type TopBarTaskGitSummary } from "@/kanban/components/top-bar";
@@ -37,6 +40,7 @@ import {
 } from "@/kanban/git-actions/build-task-git-action-prompt";
 import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
 import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
+import { useTerminalConnectionReady } from "@/kanban/runtime/use-terminal-connection-ready";
 import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
 import {
 	fetchWorkspaceState,
@@ -64,7 +68,6 @@ import type {
 	RuntimeProjectRemoveResponse,
 	RuntimeShellSessionStartResponse,
 	RuntimeWorkspaceStateResponse,
-	RuntimeShortcutRunResponse,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskSessionInputResponse,
 	RuntimeTaskWorkspaceInfoResponse,
@@ -203,6 +206,7 @@ export default function App(): ReactElement {
 	const activeReviewTaskIdsRef = useRef<Set<string>>(new Set());
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
 	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
@@ -245,11 +249,6 @@ export default function App(): ReactElement {
 	const [detailTerminalPaneHeight, setDetailTerminalPaneHeight] = useState<number | undefined>(
 		undefined,
 	);
-	const [runtimeProjectConfigRefreshNonce, setRuntimeProjectConfigRefreshNonce] = useState(0);
-	const [lastShortcutOutput, setLastShortcutOutput] = useState<{
-		label: string;
-		result: RuntimeShortcutRunResponse;
-	} | null>(null);
 	const [requestedProjectId, setRequestedProjectId] = useState<string | null>(() => {
 		if (typeof window === "undefined") {
 			return null;
@@ -298,12 +297,23 @@ export default function App(): ReactElement {
 	const isRuntimeDisconnected = isRuntimeConnectionFailure(streamError);
 	const shouldUseNavigationPath =
 		isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
-	const { config: runtimeProjectConfig } = useRuntimeProjectConfig(
-		currentProjectId,
-		runtimeProjectConfigRefreshNonce,
-	);
+	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } =
+		useRuntimeProjectConfig(currentProjectId);
+	const { markConnectionReady: markTerminalConnectionReady, prepareWaitForConnection: prepareWaitForTerminalConnectionReady } =
+		useTerminalConnectionReady();
 	const readyForReviewNotificationsEnabled =
 		runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
+	const shortcuts = runtimeProjectConfig?.shortcuts ?? [];
+	const selectedShortcutId = useMemo(() => {
+		if (shortcuts.length === 0) {
+			return null;
+		}
+		const configured = runtimeProjectConfig?.selectedShortcutId ?? null;
+		if (configured && shortcuts.some((shortcut) => shortcut.id === configured)) {
+			return configured;
+		}
+		return shortcuts[0]?.id ?? null;
+	}, [runtimeProjectConfig?.selectedShortcutId, shortcuts]);
 	// Project list counts are server-driven and can lag behind local board edits by a short
 	// persistence/broadcast round-trip, so we optimistically overlay the active project's counts.
 	const displayedProjects = useMemo(() => {
@@ -2204,51 +2214,142 @@ export default function App(): ReactElement {
 		[board, fetchTaskWorkingChangeCount, fetchTaskWorkspaceInfo, performMoveTaskToTrash, selectedTaskWorkspaceInfo],
 	);
 
-	const handleRunShortcut = useCallback(
-		async (shortcutId: string) => {
-			const shortcut = runtimeProjectConfig?.shortcuts.find((item) => item.id === shortcutId);
-			if (!shortcut) {
-				return;
-			}
+	const handleOpenSettings = useCallback((section?: RuntimeSettingsSection) => {
+		setSettingsInitialSection(section ?? null);
+		setIsSettingsOpen(true);
+	}, []);
 
-			setRunningShortcutId(shortcutId);
+	const saveSelectedShortcutPreference = useCallback(
+		async (nextShortcutId: string | null): Promise<boolean> => {
+			if (!currentProjectId) {
+				return false;
+			}
 			try {
-				const response = await workspaceFetch("/api/runtime/shortcut/run", {
-					method: "POST",
+				const response = await workspaceFetch("/api/runtime/config", {
+					method: "PUT",
 					headers: {
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({
-						command: shortcut.command,
+						selectedShortcutId: nextShortcutId,
 					}),
 					workspaceId: currentProjectId,
 				});
 				if (!response.ok) {
 					const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-					throw new Error(payload?.error ?? `Shortcut run failed with ${response.status}`);
+					throw new Error(payload?.error ?? `Could not save shortcut preference (${response.status}).`);
 				}
-				const result = (await response.json()) as RuntimeShortcutRunResponse;
-				setLastShortcutOutput({
-					label: shortcut.label,
-					result,
-				});
+				refreshRuntimeProjectConfig();
+				return true;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				setLastShortcutOutput({
-					label: shortcut.label,
-					result: {
-						exitCode: 1,
-						stdout: "",
-						stderr: message,
-						combinedOutput: message,
-						durationMs: 0,
+				showAppToast(
+					{
+						intent: "danger",
+						icon: "error",
+						message: `Could not save shortcut selection: ${message}`,
+						timeout: 5000,
 					},
-				});
+					"shortcut-selection-save-failed",
+				);
+				return false;
+			}
+		},
+		[currentProjectId, refreshRuntimeProjectConfig],
+	);
+
+	const handleSelectShortcutId = useCallback(
+		(shortcutId: string) => {
+			if (shortcutId === runtimeProjectConfig?.selectedShortcutId) {
+				return;
+			}
+			void saveSelectedShortcutPreference(shortcutId);
+		},
+		[runtimeProjectConfig?.selectedShortcutId, saveSelectedShortcutPreference],
+	);
+
+	const handleRunShortcut = useCallback(
+		async (shortcutId: string) => {
+			const shortcut = shortcuts.find((item) => item.id === shortcutId);
+			if (!shortcut || !currentProjectId) {
+				return;
+			}
+
+			setRunningShortcutId(shortcutId);
+			try {
+				let targetTaskId = HOME_TERMINAL_TASK_ID;
+				let shouldWaitForConnection = false;
+				let waitForTerminalConnectionReady: (() => Promise<void>) | null = null;
+				const activeSelection = selectedCard;
+				if (activeSelection) {
+					targetTaskId = getDetailTerminalTaskId(activeSelection.card);
+					const selectionKey = `${activeSelection.card.id}:${activeSelection.card.baseRef ?? ""}`;
+					const detailWasAlreadyOpenForSelection =
+						isDetailTerminalOpen && detailTerminalSelectionKeyRef.current === selectionKey;
+					shouldWaitForConnection = !detailWasAlreadyOpenForSelection;
+					if (shouldWaitForConnection) {
+						waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(targetTaskId);
+					}
+					detailTerminalSelectionKeyRef.current = selectionKey;
+					setIsDetailTerminalOpen(true);
+					const started = await startDetailTerminalForCard(activeSelection.card, { showLoading: true });
+					if (!started) {
+						if (detailTerminalSelectionKeyRef.current === selectionKey) {
+							detailTerminalSelectionKeyRef.current = null;
+						}
+						throw new Error("Could not open detail terminal.");
+					}
+				} else {
+					const homeWasAlreadyOpenForProject =
+						isHomeTerminalOpen && homeTerminalProjectIdRef.current === currentProjectId;
+					shouldWaitForConnection = !homeWasAlreadyOpenForProject;
+					if (shouldWaitForConnection) {
+						waitForTerminalConnectionReady =
+							prepareWaitForTerminalConnectionReady(HOME_TERMINAL_TASK_ID);
+					}
+					homeTerminalProjectIdRef.current = currentProjectId;
+					setIsHomeTerminalOpen(true);
+					const started = await startHomeTerminalSession();
+					if (!started) {
+						homeTerminalProjectIdRef.current = null;
+						setIsHomeTerminalOpen(false);
+						throw new Error("Could not open terminal.");
+					}
+				}
+
+				if (shouldWaitForConnection && waitForTerminalConnectionReady) {
+					await waitForTerminalConnectionReady();
+				}
+				const runResult = await sendTaskSessionInput(targetTaskId, shortcut.command, { appendNewline: true });
+				if (!runResult.ok) {
+					throw new Error(runResult.message ?? "Could not run shortcut command.");
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				showAppToast(
+					{
+						intent: "danger",
+						icon: "error",
+						message: `Could not run shortcut "${shortcut.label}": ${message}`,
+						timeout: 6000,
+					},
+					`shortcut-run-failed:${shortcut.id}`,
+				);
 			} finally {
 				setRunningShortcutId(null);
 			}
 		},
-		[currentProjectId, runtimeProjectConfig?.shortcuts],
+		[
+			currentProjectId,
+			shortcuts,
+			selectedCard,
+			isDetailTerminalOpen,
+			isHomeTerminalOpen,
+			startDetailTerminalForCard,
+			startHomeTerminalSession,
+			sendTaskSessionInput,
+			prepareWaitForTerminalConnectionReady,
+		],
 	);
 
 	const kickoffTaskInProgress = useCallback(
@@ -2698,8 +2799,10 @@ export default function App(): ReactElement {
 					onToggleTerminal={selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal}
 					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
-					onOpenSettings={() => setIsSettingsOpen(true)}
-					shortcuts={runtimeProjectConfig?.shortcuts ?? []}
+					onOpenSettings={handleOpenSettings}
+					shortcuts={shortcuts}
+					selectedShortcutId={selectedShortcutId}
+					onSelectShortcutId={handleSelectShortcutId}
 					runningShortcutId={runningShortcutId}
 					onRunShortcut={handleRunShortcut}
 					openTargetOptions={openTargetOptions}
@@ -2712,8 +2815,6 @@ export default function App(): ReactElement {
 					<RuntimeStatusBanners
 						worktreeError={worktreeError}
 						onDismissWorktreeError={() => setWorktreeError(null)}
-						shortcutOutput={lastShortcutOutput}
-						onClearShortcutOutput={() => setLastShortcutOutput(null)}
 					/>
 					<div style={{ position: "relative", display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
 						<div
@@ -2821,6 +2922,7 @@ export default function App(): ReactElement {
 													cursorColor={Colors.LIGHT_GRAY5}
 													showRightBorder={false}
 													isVisible={!selectedCard}
+													onConnectionReady={markTerminalConnectionReady}
 												/>
 											</div>
 										</ResizableBottomPane>
@@ -2866,19 +2968,26 @@ export default function App(): ReactElement {
 									onBottomTerminalClose={() => setIsDetailTerminalOpen(false)}
 									bottomTerminalPaneHeight={detailTerminalPaneHeight}
 									onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
+									onBottomTerminalConnectionReady={markTerminalConnectionReady}
 								/>
 							</div>
 						) : null}
 					</div>
 			</div>
-				<RuntimeSettingsDialog
-					open={isSettingsOpen}
-					workspaceId={currentProjectId}
-					onOpenChange={setIsSettingsOpen}
-					onSaved={() => {
-						setRuntimeProjectConfigRefreshNonce((current) => current + 1);
+					<RuntimeSettingsDialog
+						open={isSettingsOpen}
+						workspaceId={currentProjectId}
+					initialSection={settingsInitialSection}
+					onOpenChange={(nextOpen) => {
+						setIsSettingsOpen(nextOpen);
+						if (!nextOpen) {
+							setSettingsInitialSection(null);
+						}
 					}}
-				/>
+						onSaved={() => {
+							refreshRuntimeProjectConfig();
+						}}
+					/>
 			<Omnibar<SearchableTask>
 				isOpen={isCommandPaletteOpen}
 				onClose={() => setIsCommandPaletteOpen(false)}

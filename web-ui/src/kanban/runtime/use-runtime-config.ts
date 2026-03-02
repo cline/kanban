@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchRuntimeConfig, saveRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/kanban/runtime/types";
@@ -9,6 +9,7 @@ export interface UseRuntimeConfigResult {
 	isSaving: boolean;
 	save: (nextConfig: {
 		selectedAgentId?: RuntimeAgentId;
+		selectedShortcutId?: string | null;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
 		commitLocalPromptTemplate?: string;
@@ -22,11 +23,23 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 	const [config, setConfig] = useState<RuntimeConfigResponse | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const previousWorkspaceIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
-		if (!open || !workspaceId) {
+		if (!workspaceId) {
+			previousWorkspaceIdRef.current = null;
+			setConfig(null);
 			setIsLoading(false);
 			return;
+		}
+		if (!open) {
+			setIsLoading(false);
+			return;
+		}
+		const didWorkspaceChange = previousWorkspaceIdRef.current !== workspaceId;
+		previousWorkspaceIdRef.current = workspaceId;
+		if (didWorkspaceChange) {
+			setConfig(null);
 		}
 		let cancelled = false;
 		setIsLoading(true);
@@ -52,6 +65,7 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 	const save = useCallback(
 		async (nextConfig: {
 			selectedAgentId?: RuntimeAgentId;
+			selectedShortcutId?: string | null;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
 			commitLocalPromptTemplate?: string;

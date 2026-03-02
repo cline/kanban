@@ -7,6 +7,7 @@ import {
 	Icon,
 	Menu,
 	MenuItem,
+	MenuDivider,
 	Navbar,
 	NavbarDivider,
 	NavbarGroup,
@@ -15,6 +16,7 @@ import {
 	Tag,
 	Tooltip,
 } from "@blueprintjs/core";
+import { IconNames, type IconName } from "@blueprintjs/icons";
 import { useState } from "react";
 
 import { GitStatusLabel } from "@/kanban/components/git-status-label";
@@ -28,6 +30,8 @@ interface BranchSelectOption {
 	label: string;
 }
 
+const BLUEPRINT_ICON_NAMES = new Set<IconName>(Object.values(IconNames));
+
 export interface TopBarTaskGitSummary {
 	hasGit: boolean;
 	branch: string | null;
@@ -38,8 +42,19 @@ export interface TopBarTaskGitSummary {
 	scopeLabel?: string | null;
 }
 
+type SettingsSection = "shortcuts";
+
 function getWorkspacePathSegments(path: string): string[] {
 	return path.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
+}
+
+function resolveShortcutIcon(icon: string | undefined): IconName {
+	const normalized = icon?.trim();
+	if (!normalized) {
+		return "console";
+	}
+	const candidate = normalized as IconName;
+	return BLUEPRINT_ICON_NAMES.has(candidate) ? candidate : "console";
 }
 
 export function TopBar({
@@ -64,6 +79,8 @@ export function TopBar({
 	isTerminalLoading,
 	onOpenSettings,
 	shortcuts,
+	selectedShortcutId,
+	onSelectShortcutId,
 	runningShortcutId,
 	onRunShortcut,
 	openTargetOptions,
@@ -92,8 +109,10 @@ export function TopBar({
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
-	onOpenSettings?: () => void;
+	onOpenSettings?: (section?: SettingsSection) => void;
 	shortcuts?: RuntimeProjectShortcut[];
+	selectedShortcutId?: string | null;
+	onSelectShortcutId?: (shortcutId: string) => void;
 	runningShortcutId?: string | null;
 	onRunShortcut?: (shortcutId: string) => void;
 	openTargetOptions: readonly OpenTargetOption[];
@@ -128,6 +147,13 @@ export function TopBar({
 	const isMacPlatform = typeof navigator !== "undefined" &&
 		/Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 	const terminalShortcutIcon = isMacPlatform ? "key-command" : "key-control";
+	const handleAddShortcut = () => {
+		onOpenSettings?.("shortcuts");
+	};
+	const selectedShortcut =
+		(shortcuts ?? []).find((shortcut) => shortcut.id === selectedShortcutId) ??
+		(shortcuts ?? [])[0] ??
+		null;
 
 	return (
 		<Navbar
@@ -264,6 +290,7 @@ export function TopBar({
 							<Tooltip placement="bottom" content="Fetch latest refs from upstream without changing your local branch or files.">
 								<Button
 									icon={<Icon icon="circle-arrow-down" size={18} />}
+									size="small"
 									variant="minimal"
 									onClick={onGitFetch}
 									loading={runningGitAction === "fetch"}
@@ -273,6 +300,7 @@ export function TopBar({
 							<Tooltip placement="bottom" content={pullTooltip}>
 								<Button
 									icon="download"
+									size="small"
 									text={<span style={{ color: Colors.GRAY3 }}>{pullCount}</span>}
 									variant="minimal"
 									onClick={onGitPull}
@@ -283,6 +311,7 @@ export function TopBar({
 							<Tooltip placement="bottom" content={pushTooltip}>
 								<Button
 									icon="upload"
+									size="small"
 									text={<span style={{ color: Colors.GRAY3 }}>{pushCount}</span>}
 									variant="minimal"
 									onClick={onGitPush}
@@ -317,6 +346,56 @@ export function TopBar({
 				) : null}
 			</NavbarGroup>
 			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40, paddingRight: 2 }}>
+				{selectedShortcut && onRunShortcut ? (
+					<ButtonGroup>
+						<Button
+							variant="outlined"
+							size="small"
+							icon={<Icon icon={resolveShortcutIcon(selectedShortcut.icon)} size={13} />}
+							text={selectedShortcut.label}
+							loading={Boolean(runningShortcutId)}
+							onClick={() => onRunShortcut(selectedShortcut.id)}
+							disabled={Boolean(runningShortcutId)}
+							style={{ fontSize: "var(--bp-typography-size-body-small)" }}
+						/>
+						<Popover
+							interactionKind={PopoverInteractionKind.CLICK}
+							placement="bottom-end"
+							content={(
+								<Menu>
+									{(shortcuts ?? []).map((shortcut) => (
+										<MenuItem
+											key={shortcut.id}
+											icon={resolveShortcutIcon(shortcut.icon)}
+											text={shortcut.label}
+											active={shortcut.id === selectedShortcut.id}
+											onClick={() => onSelectShortcutId?.(shortcut.id)}
+											labelElement={
+												shortcut.id === selectedShortcut.id
+													? <Icon icon="small-tick" />
+													: undefined
+											}
+										/>
+									))}
+									<MenuDivider />
+									<MenuItem
+										icon="plus"
+										text="Add shortcut"
+										onClick={handleAddShortcut}
+									/>
+								</Menu>
+							)}
+						>
+							<Button
+								size="small"
+								variant="outlined"
+								icon="caret-down"
+								aria-label="Select shortcut"
+								disabled={Boolean(runningShortcutId)}
+							/>
+						</Popover>
+					</ButtonGroup>
+				) : null}
 				{onToggleTerminal ? (
 					<Tooltip
 						placement="bottom"
@@ -333,29 +412,23 @@ export function TopBar({
 					>
 						<Button
 							icon="console"
+							size="small"
 							variant="minimal"
 							onClick={onToggleTerminal}
 							disabled={Boolean(isTerminalLoading)}
 							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
+							style={{ marginLeft: 9 }}
 						/>
 					</Tooltip>
 				) : null}
-				{shortcuts?.map((shortcut) => (
-					<Button
-						key={shortcut.id}
-						variant="outlined"
-						size="small"
-						text={runningShortcutId === shortcut.id ? `Running ${shortcut.label}...` : shortcut.label}
-						onClick={() => onRunShortcut?.(shortcut.id)}
-						disabled={runningShortcutId === shortcut.id}
-					/>
-				))}
 				<Button
 					icon="cog"
+					size="small"
 					variant="minimal"
-					onClick={onOpenSettings}
+					onClick={() => onOpenSettings?.()}
 					aria-label="Settings"
 					data-testid="open-settings-button"
+					style={{ marginLeft: 5, marginRight: 2 }}
 				/>
 			</NavbarGroup>
 		</Navbar>

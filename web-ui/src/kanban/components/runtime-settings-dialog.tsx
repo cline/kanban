@@ -9,10 +9,14 @@ import {
 	HTMLSelect,
 	Icon,
 	InputGroup,
+	MenuItem,
 	Switch,
 	Tag,
 	TextArea,
 } from "@blueprintjs/core";
+import type { IconName } from "@blueprintjs/icons";
+import { Select } from "@blueprintjs/select";
+import type { ItemRenderer } from "@blueprintjs/select";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { TASK_GIT_PROMPT_VARIABLES } from "@/kanban/git-actions/build-task-git-action-prompt";
@@ -49,7 +53,8 @@ function areShortcutsEqual(left: RuntimeProjectShortcut[], right: RuntimeProject
 		if (
 			leftItem.id !== rightItem.id ||
 			leftItem.label !== rightItem.label ||
-			leftItem.command !== rightItem.command
+			leftItem.command !== rightItem.command ||
+			(leftItem.icon ?? "") !== (rightItem.icon ?? "")
 		) {
 			return false;
 		}
@@ -65,6 +70,51 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: GitPromptVariant; label: string
 	{ value: "commit-local", label: "Commit (Local)" },
 	{ value: "pr-local", label: "Make PR (Local)" },
 ];
+
+const SHORTCUT_ICON_OPTIONS: Array<{ value: IconName; label: string }> = [
+	{ value: "play", label: "Play" },
+	{ value: "console", label: "Terminal" },
+	{ value: "bug", label: "Debug" },
+	{ value: "download", label: "Download" },
+	{ value: "upload", label: "Upload" },
+	{ value: "build", label: "Build" },
+	{ value: "code", label: "Code" },
+	{ value: "rocket", label: "Deploy" },
+];
+const SHORTCUT_ICON_VALUES = new Set<IconName>(SHORTCUT_ICON_OPTIONS.map((option) => option.value));
+const ShortcutIconSelect = Select.ofType<{ value: IconName; label: string }>();
+export type RuntimeSettingsSection = "shortcuts";
+
+const renderShortcutIconOption: ItemRenderer<{ value: IconName; label: string }> = (
+	option,
+	{ handleClick, handleFocus, modifiers },
+) => {
+	if (!modifiers.matchesPredicate) {
+		return null;
+	}
+	return (
+		<MenuItem
+			key={option.value}
+			active={modifiers.active}
+			disabled={modifiers.disabled}
+			icon={option.value}
+			text={option.label}
+			onClick={handleClick}
+			onFocus={handleFocus}
+			roleStructure="listoption"
+		/>
+	);
+};
+
+function getShortcutIconOption(icon: string | undefined): { value: IconName; label: string } {
+	if (icon && SHORTCUT_ICON_VALUES.has(icon as IconName)) {
+		const match = SHORTCUT_ICON_OPTIONS.find((option) => option.value === icon);
+		if (match) {
+			return match;
+		}
+	}
+	return SHORTCUT_ICON_OPTIONS[0] ?? { value: "console", label: "Terminal" };
+}
 
 function formatNotificationPermissionStatus(permission: BrowserNotificationPermission): string {
 	if (permission === "default") {
@@ -168,11 +218,13 @@ export function RuntimeSettingsDialog({
 	workspaceId,
 	onOpenChange,
 	onSaved,
+	initialSection,
 }: {
 	open: boolean;
 	workspaceId: string | null;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
+	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId);
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
@@ -188,7 +240,10 @@ export function RuntimeSettingsDialog({
 	const [selectedPromptVariant, setSelectedPromptVariant] = useState<GitPromptVariant>("commit-worktree");
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
+	const [pendingShortcutScrollId, setPendingShortcutScrollId] = useState<string | null>(null);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
+	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
+	const shortcutRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const commitLocalPromptTemplateDefault = config?.commitLocalPromptTemplateDefault ?? "";
 	const commitWorktreePromptTemplateDefault = config?.commitWorktreePromptTemplateDefault ?? "";
 	const openPrLocalPromptTemplateDefault = config?.openPrLocalPromptTemplateDefault ?? "";
@@ -346,6 +401,36 @@ export function RuntimeSettingsDialog({
 	}, [open]);
 
 	useEffect(() => {
+		if (!open || initialSection !== "shortcuts") {
+			return;
+		}
+		const timeout = window.setTimeout(() => {
+			shortcutsSectionRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+		}, 500);
+		return () => {
+			window.clearTimeout(timeout);
+		};
+	}, [initialSection, open]);
+
+	useEffect(() => {
+		if (!pendingShortcutScrollId) {
+			return;
+		}
+		const frame = window.requestAnimationFrame(() => {
+			const target = shortcutRowRefs.current[pendingShortcutScrollId];
+			if (target) {
+				target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+				const firstInput = target.querySelector("input");
+				firstInput?.focus();
+				setPendingShortcutScrollId(null);
+			}
+		});
+		return () => {
+			window.cancelAnimationFrame(frame);
+		};
+	}, [pendingShortcutScrollId, shortcuts]);
+
+	useEffect(() => {
 		return () => {
 			if (copiedVariableResetTimerRef.current !== null) {
 				window.clearTimeout(copiedVariableResetTimerRef.current);
@@ -464,7 +549,7 @@ export function RuntimeSettingsDialog({
 				) : null}
 
 				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 4px" }}>
-					<h6 className={Classes.HEADING} style={{ margin: 0 }}>Git shortcut prompts</h6>
+					<h6 className={Classes.HEADING} style={{ margin: 0 }}>Git button prompts</h6>
 				</div>
 				<p className={Classes.TEXT_MUTED} style={{ margin: "0 0 8px" }}>
 					Modify the prompts sent to the agent when using Commit or Make PR on tasks in Review.
@@ -544,27 +629,60 @@ export function RuntimeSettingsDialog({
 				</p>
 
 				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "12px 0 8px" }}>
-					<h6 className={Classes.HEADING} style={{ margin: 0 }}>Script shortcuts</h6>
+					<h6 ref={shortcutsSectionRef} className={Classes.HEADING} style={{ margin: 0 }}>Script shortcuts</h6>
 					<Button
 						icon="plus"
 						text="Add"
 						variant="minimal"
 						size="small"
-						onClick={() =>
+						onClick={() => {
+							const nextId = crypto.randomUUID();
 							setShortcuts((current) => [
 								...current,
 								{
-									id: crypto.randomUUID(),
+									id: nextId,
 									label: "Run",
 									command: "",
+									icon: "play",
 								},
-							])
-						}
+							]);
+							setPendingShortcutScrollId(nextId);
+						}}
 					/>
 				</div>
 
 				{shortcuts.map((shortcut) => (
-					<div key={shortcut.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 8, marginBottom: 4 }}>
+					<div
+						key={shortcut.id}
+						ref={(node) => {
+							shortcutRowRefs.current[shortcut.id] = node;
+						}}
+						style={{ display: "grid", gridTemplateColumns: "max-content 1fr 2fr auto", gap: 8, marginBottom: 4 }}
+					>
+						<ShortcutIconSelect
+							items={SHORTCUT_ICON_OPTIONS}
+							itemRenderer={renderShortcutIconOption}
+							filterable={false}
+							popoverProps={{ matchTargetWidth: false }}
+							onItemSelect={(option) =>
+								setShortcuts((current) =>
+									current.map((item) =>
+										item.id === shortcut.id
+											? { ...item, icon: option.value }
+											: item,
+									),
+								)
+							}
+						>
+							<Button
+								variant="outlined"
+								size="small"
+								alignText="left"
+								icon={getShortcutIconOption(shortcut.icon).value}
+								endIcon="caret-down"
+								text={getShortcutIconOption(shortcut.icon).label}
+							/>
+						</ShortcutIconSelect>
 						<InputGroup
 							value={shortcut.label}
 							onChange={(event) =>

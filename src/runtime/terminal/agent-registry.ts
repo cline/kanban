@@ -203,6 +203,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 
 	return {
 		selectedAgentId: runtimeConfig.selectedAgentId,
+		selectedShortcutId: runtimeConfig.selectedShortcutId,
 		effectiveCommand,
 		globalConfigPath: runtimeConfig.globalConfigPath,
 		projectConfigPath: runtimeConfig.projectConfigPath,

@@ -7,6 +7,7 @@ import { detectInstalledCommands } from "../terminal/agent-registry.js";
 
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
+	selectedShortcutId?: string;
 	readyForReviewNotificationsEnabled?: boolean;
 	commitLocalPromptTemplate?: string;
 	commitWorktreePromptTemplate?: string;
@@ -22,6 +23,7 @@ export interface RuntimeConfigState {
 	globalConfigPath: string;
 	projectConfigPath: string;
 	selectedAgentId: RuntimeAgentId;
+	selectedShortcutId: string | null;
 	readyForReviewNotificationsEnabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
 	commitLocalPromptTemplate: string;
@@ -153,6 +155,14 @@ function normalizeBoolean(value: unknown, fallback: boolean): boolean {
 	return fallback;
 }
 
+function normalizeShortcutId(value: unknown): string | null {
+	if (typeof value !== "string") {
+		return null;
+	}
+	const normalized = value.trim();
+	return normalized.length > 0 ? normalized : null;
+}
+
 function hasOwnKey<T extends object>(value: T | null, key: keyof T): boolean {
 	if (!value) {
 		return false;
@@ -183,6 +193,7 @@ function toRuntimeConfigState({
 		globalConfigPath,
 		projectConfigPath,
 		selectedAgentId: normalizeAgentId(globalConfig?.selectedAgentId),
+		selectedShortcutId: normalizeShortcutId(globalConfig?.selectedShortcutId),
 		readyForReviewNotificationsEnabled: normalizeBoolean(
 			globalConfig?.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
@@ -224,6 +235,7 @@ async function writeRuntimeGlobalConfigFile(
 	configPath: string,
 	config: {
 		selectedAgentId?: RuntimeAgentId;
+		selectedShortcutId?: string | null;
 		readyForReviewNotificationsEnabled?: boolean;
 		commitLocalPromptTemplate?: string;
 		commitWorktreePromptTemplate?: string;
@@ -235,6 +247,11 @@ async function writeRuntimeGlobalConfigFile(
 	const selectedAgentId = config.selectedAgentId === undefined ? undefined : normalizeAgentId(config.selectedAgentId);
 	const existingSelectedAgentId = hasOwnKey(existing, "selectedAgentId")
 		? normalizeAgentId(existing?.selectedAgentId)
+		: undefined;
+	const selectedShortcutId =
+		config.selectedShortcutId === undefined ? undefined : normalizeShortcutId(config.selectedShortcutId);
+	const existingSelectedShortcutId = hasOwnKey(existing, "selectedShortcutId")
+		? normalizeShortcutId(existing?.selectedShortcutId)
 		: undefined;
 	const readyForReviewNotificationsEnabled =
 		config.readyForReviewNotificationsEnabled === undefined
@@ -264,6 +281,13 @@ async function writeRuntimeGlobalConfigFile(
 		}
 	} else if (existingSelectedAgentId !== undefined) {
 		payload.selectedAgentId = existingSelectedAgentId;
+	}
+	if (selectedShortcutId !== undefined) {
+		if (selectedShortcutId) {
+			payload.selectedShortcutId = selectedShortcutId;
+		}
+	} else if (existingSelectedShortcutId) {
+		payload.selectedShortcutId = existingSelectedShortcutId;
 	}
 	if (
 		hasOwnKey(existing, "readyForReviewNotificationsEnabled") ||
@@ -343,6 +367,7 @@ export async function saveRuntimeConfig(
 	cwd: string,
 	config: {
 		selectedAgentId: RuntimeAgentId;
+		selectedShortcutId: string | null;
 		readyForReviewNotificationsEnabled: boolean;
 		shortcuts: RuntimeProjectShortcut[];
 		commitLocalPromptTemplate: string;
@@ -355,6 +380,7 @@ export async function saveRuntimeConfig(
 	const projectConfigPath = getRuntimeProjectConfigPath(cwd);
 	await writeRuntimeGlobalConfigFile(globalConfigPath, {
 		selectedAgentId: config.selectedAgentId,
+		selectedShortcutId: config.selectedShortcutId,
 		readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
 		commitLocalPromptTemplate: config.commitLocalPromptTemplate,
 		commitWorktreePromptTemplate: config.commitWorktreePromptTemplate,
@@ -366,6 +392,7 @@ export async function saveRuntimeConfig(
 		globalConfigPath,
 		projectConfigPath,
 		selectedAgentId: normalizeAgentId(config.selectedAgentId),
+		selectedShortcutId: normalizeShortcutId(config.selectedShortcutId),
 		readyForReviewNotificationsEnabled: normalizeBoolean(
 			config.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
