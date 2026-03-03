@@ -12,7 +12,8 @@ Kanbanana is a local orchestration board for coding agents. It runs an HTTP/WebS
 ```bash
 npm run install:all
 npm run build
-node dist/cli.js --help
+npm link
+kanbanana --help
 ```
 
 For local development:
