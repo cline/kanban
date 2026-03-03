@@ -52,6 +52,9 @@ import {
 	splitPromptToTitleDescription,
 } from "@/kanban/utils/task-prompt";
 import {
+	trackTaskCreated,
+} from "@/kanban/telemetry/events";
+import {
 	useBooleanLocalStorageValue,
 	useWindowEvent,
 } from "@/kanban/hooks/react-use";
@@ -1783,6 +1786,11 @@ export default function App(): ReactElement {
 				baseRef,
 			}),
 		);
+		trackTaskCreated({
+			selected_agent_id: runtimeProjectConfig?.selectedAgentId ?? "unknown",
+			start_in_plan_mode: newTaskStartInPlanMode,
+			prompt_character_count: prompt.length,
+		});
 		if (currentProjectId) {
 			setLastCreatedTaskBranchByProjectId((current) => ({
 				...current,
@@ -1799,6 +1807,7 @@ export default function App(): ReactElement {
 		newTaskBranchRef,
 		newTaskPrompt,
 		newTaskStartInPlanMode,
+		runtimeProjectConfig?.selectedAgentId,
 	]);
 
 	const performMoveTaskToTrash = useCallback(

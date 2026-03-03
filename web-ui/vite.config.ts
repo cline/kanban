@@ -7,6 +7,7 @@ const rootPkg = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "
 
 export default defineConfig({
 	plugins: [react()],
+	envPrefix: ["VITE_", "POSTHOG_"],
 	define: {
 		__APP_VERSION__: JSON.stringify(rootPkg.version),
 	},

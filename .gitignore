@@ -5,3 +5,9 @@ coverage
 test-results
 playwright-report
 .worktrees
+.env
+.env.*
+!.env.example
+web-ui/.env
+web-ui/.env.*
+!web-ui/.env.example
