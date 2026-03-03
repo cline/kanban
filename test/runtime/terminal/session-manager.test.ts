@@ -29,6 +29,7 @@ describe("TerminalSessionManager preview behavior", () => {
 			active: {
 				claudeTrustBuffer: "trust this folder",
 				awaitingCodexPromptAfterEnter: true,
+				activityChunkBuffer: "",
 				activityPreviewTracker: {
 					append: vi.fn(),
 					resize: vi.fn(),
@@ -57,6 +58,7 @@ describe("TerminalSessionManager preview behavior", () => {
 		const entry = {
 			summary: createSummary({ lastActivityLine: "previous line" }),
 			active: {
+				activityChunkBuffer: "",
 				activityPreviewTracker: {
 					append: vi.fn(),
 					resize: vi.fn(),
@@ -82,6 +84,44 @@ describe("TerminalSessionManager preview behavior", () => {
 		).publishLatestActivityLine.bind(manager);
 		publishLatestActivityLine(entry, active);
 		expect(entry.summary.lastActivityLine).toBeNull();
+		expect(onState).toHaveBeenCalledTimes(1);
+	});
+
+	it("flushes queued activity chunks before extracting preview", () => {
+		const manager = new TerminalSessionManager();
+		const append = vi.fn();
+		const extract = vi.fn<() => string | null>().mockReturnValue("parsed line");
+		const onState = vi.fn();
+		const entry = {
+			summary: createSummary({ lastActivityLine: null }),
+			active: {
+				activityChunkBuffer: "chunk-achunk-b",
+				activityPreviewTracker: {
+					append,
+					resize: vi.fn(),
+					extract,
+				},
+			},
+			listenerIdCounter: 1,
+			listeners: new Map([
+				[
+					1,
+					{
+						onState,
+					},
+				],
+			]),
+		};
+		const active = entry.active;
+		const publishLatestActivityLine = (
+			manager as unknown as {
+				publishLatestActivityLine: (sessionEntry: unknown, activeState: unknown) => void;
+			}
+		).publishLatestActivityLine.bind(manager);
+		publishLatestActivityLine(entry, active);
+		expect(append).toHaveBeenCalledWith("chunk-achunk-b");
+		expect(entry.active.activityChunkBuffer).toBe("");
+		expect(entry.summary.lastActivityLine).toBe("parsed line");
 		expect(onState).toHaveBeenCalledTimes(1);
 	});
 });
