@@ -19,6 +19,15 @@ describe("resolveKanbananaCommandParts", () => {
 		expect(parts).toEqual(["/usr/local/bin/node", "/repo/node_modules/tsx/dist/cli.mjs", "/repo/src/cli.ts"]);
 	});
 
+	it("preserves node execArgv for source entrypoints", () => {
+		const parts = resolveKanbananaCommandParts({
+			execPath: "/usr/local/bin/node",
+			execArgv: ["--import", "tsx"],
+			argv: ["/usr/local/bin/node", "/repo/src/cli.ts", "--no-open"],
+		});
+		expect(parts).toEqual(["/usr/local/bin/node", "--import", "tsx", "/repo/src/cli.ts"]);
+	});
+
 	it("falls back to execPath when no entrypoint path is available", () => {
 		const parts = resolveKanbananaCommandParts({
 			execPath: "/usr/local/bin/kanbanana",

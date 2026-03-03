@@ -1,6 +1,15 @@
 export interface RuntimeInvocationContext {
 	execPath: string;
 	argv: string[];
+	execArgv?: string[];
+}
+
+function resolveNodeCommandPrefix(context: RuntimeInvocationContext): string[] {
+	const execArgv = context.execArgv ?? [];
+	if (execArgv.length === 0) {
+		return [context.execPath];
+	}
+	return [context.execPath, ...execArgv];
 }
 
 function isLikelyTsxCliEntrypoint(value: string): boolean {
@@ -25,24 +34,33 @@ function looksLikeEntrypointPath(value: string): boolean {
 }
 
 export function resolveKanbananaCommandParts(
-	context: RuntimeInvocationContext = { execPath: process.execPath, argv: process.argv },
+	context: RuntimeInvocationContext = {
+		execPath: process.execPath,
+		argv: process.argv,
+		execArgv: process.execArgv,
+	},
 ): string[] {
+	const commandPrefix = resolveNodeCommandPrefix(context);
 	const entrypoint = context.argv[1];
 	if (!entrypoint || !looksLikeEntrypointPath(entrypoint)) {
-		return [context.execPath];
+		return commandPrefix;
 	}
 
 	const tsxTarget = context.argv[2];
 	if (tsxTarget && isLikelyTsxCliEntrypoint(entrypoint) && looksLikeEntrypointPath(tsxTarget)) {
-		return [context.execPath, entrypoint, tsxTarget];
+		return [...commandPrefix, entrypoint, tsxTarget];
 	}
 
-	return [context.execPath, entrypoint];
+	return [...commandPrefix, entrypoint];
 }
 
 export function buildKanbananaCommandParts(
 	args: string[],
-	context: RuntimeInvocationContext = { execPath: process.execPath, argv: process.argv },
+	context: RuntimeInvocationContext = {
+		execPath: process.execPath,
+		argv: process.argv,
+		execArgv: process.execArgv,
+	},
 ): string[] {
 	return [...resolveKanbananaCommandParts(context), ...args];
 }
