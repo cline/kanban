@@ -230,7 +230,7 @@ export function applyDragResult(board: BoardData, result: DropResult): { board: 
 
 	const isAllowedCrossColumnMove =
 		(sourceColumn.id === "backlog" && destinationColumn.id === "in_progress") ||
-		(sourceColumn.id === "review" && destinationColumn.id === "trash");
+		(destinationColumn.id === "trash" && sourceColumn.id !== "trash");
 	if (!isAllowedCrossColumnMove) {
 		return { board };
 	}

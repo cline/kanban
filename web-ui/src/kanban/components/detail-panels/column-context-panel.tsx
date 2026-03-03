@@ -57,10 +57,7 @@ function ColumnSection({
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canClearTrash = column.id === "trash" && onClearTrash;
-	const cardDropType =
-		column.id === "backlog" || column.id === "in_progress"
-			? "CARD-WORKFLOW-A"
-			: "CARD-WORKFLOW-B";
+	const cardDropType = "CARD";
 
 	return (
 		<div>

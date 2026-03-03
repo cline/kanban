@@ -490,7 +490,9 @@ export default function App(): ReactElement {
 		}
 	}, [currentProjectId, upsertSession]);
 
-	const cleanupTaskWorkspace = useCallback(async (taskId: string): Promise<RuntimeWorktreeDeleteResponse | null> => {
+	const cleanupTaskWorkspace = useCallback(async (
+		taskId: string,
+	): Promise<RuntimeWorktreeDeleteResponse | null> => {
 		try {
 			const response = await workspaceFetch("/api/workspace/worktree/delete", {
 				method: "POST",
@@ -544,7 +546,9 @@ export default function App(): ReactElement {
 		[currentProjectId],
 	);
 
-	const fetchTaskWorkingChangeCount = useCallback(async (task: BoardCard): Promise<number | null> => {
+	const fetchTaskWorkingChangeCount = useCallback(async (
+		task: BoardCard,
+	): Promise<number | null> => {
 		if (!currentProjectId) {
 			return null;
 		}
@@ -1855,7 +1859,17 @@ export default function App(): ReactElement {
 			await cleanupTaskWorkspace(task.id);
 			if (selectedTaskId === task.id) {
 				const info = await fetchTaskWorkspaceInfo(task);
-				setSelectedTaskWorkspaceInfo(info);
+				setSelectedTaskWorkspaceInfo(
+					info ?? {
+						taskId: task.id,
+						path: "",
+						exists: false,
+						baseRef: task.baseRef,
+						branch: null,
+						isDetached: true,
+						headCommit: null,
+					},
+				);
 			}
 		},
 		[cleanupTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, stopTaskSession],
@@ -1870,6 +1884,7 @@ export default function App(): ReactElement {
 
 			const changeCount = await fetchTaskWorkingChangeCount(selection.card);
 			if (changeCount == null) {
+				await performMoveTaskToTrash(selection.card);
 				return;
 			}
 
