@@ -832,6 +832,41 @@ export default function App(): ReactElement {
 	const handleAgentOpenPrTask = useCallback((taskId: string) => {
 		void runTaskGitAction(taskId, "pr", "agent");
 	}, [runTaskGitAction]);
+	const handleAddReviewComments = useCallback(async (taskId: string, text: string) => {
+		const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false });
+		if (!typed.ok) {
+			showAppToast({
+				intent: "danger",
+				icon: "warning-sign",
+				message: typed.message ?? "Could not add review comments to the task session.",
+				timeout: 7000,
+			});
+		}
+	}, [sendTaskSessionInput]);
+	const handleSendReviewComments = useCallback(async (taskId: string, text: string) => {
+		const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false });
+		if (!typed.ok) {
+			showAppToast({
+				intent: "danger",
+				icon: "warning-sign",
+				message: typed.message ?? "Could not send review comments to the task session.",
+				timeout: 7000,
+			});
+			return;
+		}
+		await new Promise<void>((resolve) => {
+			setTimeout(resolve, 200);
+		});
+		const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+		if (!submitted.ok) {
+			showAppToast({
+				intent: "danger",
+				icon: "warning-sign",
+				message: submitted.message ?? "Could not submit review comments to the task session.",
+				timeout: 7000,
+			});
+		}
+	}, [sendTaskSessionInput]);
 
 	const searchableTasks = useMemo((): SearchableTask[] => {
 		return board.columns.flatMap((column) =>
@@ -2562,6 +2597,8 @@ export default function App(): ReactElement {
 									agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									reviewWorkspaceSnapshots={workspaceSnapshots}
+									onAddReviewComments={(taskId: string, text: string) => { void handleAddReviewComments(taskId, text); }}
+									onSendReviewComments={(taskId: string, text: string) => { void handleSendReviewComments(taskId, text); }}
 									onMoveToTrash={handleMoveToTrash}
 									bottomTerminalOpen={isDetailTerminalOpen}
 									bottomTerminalTaskId={detailShellTaskId}

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
 import { ColumnContextPanel } from "@/kanban/components/detail-panels/column-context-panel";
-import { DiffViewerPanel } from "@/kanban/components/detail-panels/diff-viewer-panel";
+import { DiffViewerPanel, type DiffLineComment } from "@/kanban/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
 import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
 import { panelSeparatorColor } from "@/kanban/data/column-colors";
@@ -109,6 +109,8 @@ export function CardDetailView({
 	agentCommitTaskLoadingById,
 	agentOpenPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
+	onAddReviewComments,
+	onSendReviewComments,
 	onMoveToTrash,
 	bottomTerminalOpen,
 	bottomTerminalTaskId,
@@ -145,6 +147,8 @@ export function CardDetailView({
 	agentCommitTaskLoadingById?: Record<string, boolean>;
 	agentOpenPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
+	onAddReviewComments?: (taskId: string, text: string) => void;
+	onSendReviewComments?: (taskId: string, text: string) => void;
 	onMoveToTrash: () => void;
 	bottomTerminalOpen: boolean;
 	bottomTerminalTaskId: string | null;
@@ -156,6 +160,7 @@ export function CardDetailView({
 	onBottomTerminalConnectionReady?: (taskId: string) => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
+	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const { changes: workspaceChanges, isRuntimeAvailable, refresh } = useRuntimeWorkspaceChanges(
 		selection.card.id,
 		currentProjectId,
@@ -229,6 +234,10 @@ export function CardDetailView({
 	}, [availablePaths, selectedPath]);
 
 	useEffect(() => {
+		setDiffComments(new Map());
+	}, [selection.card.id]);
+
+	useEffect(() => {
 		void refresh();
 	}, [refresh, sessionSummary?.state]);
 
@@ -290,6 +299,10 @@ export function CardDetailView({
 									workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
 									selectedPath={selectedPath}
 									onSelectedPathChange={setSelectedPath}
+									onAddToTerminal={onAddReviewComments ? (formatted) => onAddReviewComments(selection.card.id, formatted) : undefined}
+									onSendToTerminal={onSendReviewComments ? (formatted) => onSendReviewComments(selection.card.id, formatted) : undefined}
+									comments={diffComments}
+									onCommentsChange={setDiffComments}
 								/>
 								<FileTreePanel
 									workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}

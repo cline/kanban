@@ -136,6 +136,73 @@ body,
 	padding: 1px 2px 1px 0;
 	line-height: var(--bp-typography-line-height-large);
 	font-size: var(--bp-typography-size-body-small);
+	cursor: pointer;
+}
+
+.kb-diff-row:hover {
+	background: oklch(from var(--bp-palette-dark-gray-5) l c h / 0.5);
+}
+
+.kb-diff-row-added:hover {
+	background: oklch(from var(--bp-intent-success-rest) l c h / 0.3);
+}
+
+.kb-diff-row-removed:hover {
+	background: oklch(from var(--bp-intent-danger-rest) l c h / 0.3);
+}
+
+.kb-diff-line-number {
+	position: relative;
+	text-align: right;
+	user-select: none;
+}
+
+.kb-diff-comment-gutter {
+	position: absolute;
+	inset: 0;
+	display: none;
+	align-items: center;
+	justify-content: center;
+}
+
+.kb-diff-row:hover .kb-diff-comment-gutter {
+	display: flex;
+}
+
+.kb-diff-row:hover .kb-diff-line-number-text {
+	opacity: 0;
+}
+
+.kb-diff-row-commented .kb-diff-comment-gutter {
+	display: flex;
+}
+
+.kb-diff-row-commented .kb-diff-line-number-text {
+	opacity: 0;
+}
+
+.kb-diff-gutter-icon-delete {
+	display: none;
+}
+
+.kb-diff-row-commented .kb-diff-comment-gutter:hover .kb-diff-gutter-icon-comment {
+	display: none;
+}
+
+.kb-diff-row-commented .kb-diff-comment-gutter:hover .kb-diff-gutter-icon-delete {
+	display: contents;
+}
+
+.kb-diff-row-commented.kb-diff-row-context {
+	background: oklch(from var(--bp-palette-dark-gray-5) l c h / 0.5);
+}
+
+.kb-diff-row-commented.kb-diff-row-added {
+	background: oklch(from var(--bp-intent-success-rest) l c h / 0.3);
+}
+
+.kb-diff-row-commented.kb-diff-row-removed {
+	background: oklch(from var(--bp-intent-danger-rest) l c h / 0.3);
 }
 
 .kb-diff-row-added {
@@ -223,6 +290,22 @@ body,
 
 .kb-diff-file-header[aria-expanded="false"] {
 	border-bottom: none;
+}
+
+/* -- Diff comment UI -- */
+
+.kb-diff-inline-comment {
+	padding: 4px 6px;
+}
+
+.kb-diff-comments-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	border-top: 1px solid var(--bp-palette-dark-gray-5);
+	background: var(--bp-palette-dark-gray-2);
 }
 
 /* -- Focus ring fix (Blueprint uses :focus, not :focus-visible) -- */

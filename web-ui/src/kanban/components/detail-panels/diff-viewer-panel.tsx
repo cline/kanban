@@ -23,7 +23,7 @@ import "prismjs/components/prism-swift";
 import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-yaml";
-import { Button, Card, Classes, Colors, Icon, NonIdealState } from "@blueprintjs/core";
+import { Button, Card, Classes, Colors, Icon, NonIdealState, TextArea } from "@blueprintjs/core";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -74,6 +74,30 @@ interface FileDiffGroup {
 	}>;
 	added: number;
 	removed: number;
+}
+
+export interface DiffLineComment {
+	filePath: string;
+	lineNumber: number;
+	lineText: string;
+	variant: "added" | "removed" | "context";
+	comment: string;
+}
+
+function commentKey(filePath: string, lineNumber: number, variant: DiffLineComment["variant"]): string {
+	return `${filePath}:${variant}:${lineNumber}`;
+}
+
+function formatCommentsForTerminal(comments: DiffLineComment[]): string {
+	const lines: string[] = [];
+	for (const comment of comments) {
+		lines.push(`${comment.filePath}:${comment.lineNumber} | ${comment.lineText}`);
+		for (const commentLine of comment.comment.split("\n")) {
+			lines.push(`> ${commentLine}`);
+		}
+		lines.push("");
+	}
+	return lines.join("\n").trimEnd();
 }
 
 const PRISM_LANGUAGE_BY_EXTENSION: Record<string, string> = {
@@ -511,14 +535,60 @@ function DiffRowText({
 	);
 }
 
+function InlineComment({
+	comment,
+	onChange,
+	onDelete,
+}: {
+	comment: DiffLineComment;
+	onChange: (text: string) => void;
+	onDelete: () => void;
+}): React.ReactElement {
+	const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+	useEffect(() => {
+		textAreaRef.current?.focus();
+	}, []);
+
+	return (
+		<div className="kb-diff-inline-comment">
+			<TextArea
+				inputRef={textAreaRef}
+				value={comment.comment}
+				onChange={(event) => onChange(event.target.value)}
+				onKeyDown={(event) => {
+					if (event.key === "Escape") {
+						event.preventDefault();
+						onDelete();
+					}
+				}}
+				onClick={(event) => event.stopPropagation()}
+				placeholder="Add a comment..."
+				autoResize
+				rows={1}
+				fill
+				style={{ fontSize: "var(--bp-typography-size-body-small)" }}
+			/>
+		</div>
+	);
+}
+
 function UnifiedDiff({
 	path,
 	oldText,
 	newText,
+	comments,
+	onAddComment,
+	onUpdateComment,
+	onDeleteComment,
 }: {
 	path: string;
 	oldText: string | null | undefined;
 	newText: string;
+	comments: Map<string, DiffLineComment>;
+	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
+	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
+	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
 }): React.ReactElement {
 	const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
@@ -541,23 +611,45 @@ function UnifiedDiff({
 		}));
 	}, []);
 
-	const renderRow = useCallback((row: UnifiedDiffRow): React.ReactElement => {
-			const rowClass =
-				row.variant === "added"
+	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
+		const rowKey = row.lineNumber != null ? commentKey(path, row.lineNumber, row.variant) : null;
+		const existingComment = rowKey ? comments.get(rowKey) : null;
+		const hasComment = existingComment != null;
+		const baseClass =
+			row.variant === "added"
 				? "kb-diff-row kb-diff-row-added"
 				: row.variant === "removed"
 					? "kb-diff-row kb-diff-row-removed"
-						: "kb-diff-row kb-diff-row-context";
-			const highlightedLineHtml =
-				row.lineNumber == null
-					? null
-					: row.variant === "removed"
-						? highlightedOldByLine.get(row.lineNumber) ?? null
-						: highlightedNewByLine.get(row.lineNumber) ?? null;
+					: "kb-diff-row kb-diff-row-context";
+		const rowClass = hasComment ? `${baseClass} kb-diff-row-commented` : baseClass;
+		const canClickRow = row.lineNumber != null && !hasComment;
+		const highlightedLineHtml =
+			row.lineNumber == null
+				? null
+				: row.variant === "removed"
+					? highlightedOldByLine.get(row.lineNumber) ?? null
+					: highlightedNewByLine.get(row.lineNumber) ?? null;
 
-			return (
-				<div key={row.key} className={rowClass}>
-					<span style={{ color: Colors.GRAY2, textAlign: "right", userSelect: "none" }}>{row.lineNumber ?? ""}</span>
+		const handleRowClick = row.lineNumber != null && !hasComment ? () => {
+			onAddComment(row.lineNumber!, row.text, row.variant);
+		} : undefined;
+
+		return (
+			<div key={row.key}>
+				<div className={rowClass} style={canClickRow ? undefined : { cursor: "default" }} onClick={handleRowClick}>
+					<span className="kb-diff-line-number" style={{ color: Colors.GRAY2 }}>
+						<span className="kb-diff-line-number-text">{row.lineNumber ?? ""}</span>
+						{row.lineNumber != null ? (
+							<span
+								className="kb-diff-comment-gutter"
+								onClick={hasComment ? (event) => { event.stopPropagation(); onDeleteComment(row.lineNumber!, row.variant); } : undefined}
+								style={hasComment ? { cursor: "pointer" } : undefined}
+							>
+								<span className="kb-diff-gutter-icon-comment"><Icon icon="comment" size={12} /></span>
+								<span className="kb-diff-gutter-icon-delete"><Icon icon="cross" size={12} color={Colors.RED5} /></span>
+							</span>
+						) : null}
+					</span>
 					<DiffRowText
 						row={row}
 						highlightedLineHtml={highlightedLineHtml}
@@ -565,8 +657,16 @@ function UnifiedDiff({
 						language={prismLanguage}
 					/>
 				</div>
-			);
-		}, [highlightedNewByLine, highlightedOldByLine, prismGrammar, prismLanguage]);
+				{existingComment ? (
+					<InlineComment
+						comment={existingComment}
+						onChange={(text) => onUpdateComment(row.lineNumber!, row.variant, text)}
+						onDelete={() => onDeleteComment(row.lineNumber!, row.variant)}
+					/>
+				) : null}
+			</div>
+		);
+	};
 
 	return (
 		<>
@@ -599,10 +699,18 @@ export function DiffViewerPanel({
 	workspaceFiles,
 	selectedPath,
 	onSelectedPathChange,
+	onAddToTerminal,
+	onSendToTerminal,
+	comments,
+	onCommentsChange,
 }: {
 	workspaceFiles: RuntimeWorkspaceFileChange[] | null;
 	selectedPath: string | null;
 	onSelectedPathChange: (path: string) => void;
+	onAddToTerminal?: (formatted: string) => void;
+	onSendToTerminal?: (formatted: string) => void;
+	comments: Map<string, DiffLineComment>;
+	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -748,6 +856,82 @@ export function DiffViewerPanel({
 		scrollToPath(selectedPath);
 	}, [scrollToPath, selectedPath]);
 
+	const handleAddComment = useCallback((filePath: string, lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => {
+		const key = commentKey(filePath, lineNumber, variant);
+		if (comments.has(key)) {
+			return;
+		}
+		const next = new Map(comments);
+		next.set(key, {
+			filePath,
+			lineNumber,
+			lineText,
+			variant,
+			comment: "",
+		});
+		onCommentsChange(next);
+	}, [comments, onCommentsChange]);
+
+	const handleUpdateComment = useCallback((filePath: string, lineNumber: number, variant: "added" | "removed" | "context", text: string) => {
+		const key = commentKey(filePath, lineNumber, variant);
+		const existing = comments.get(key);
+		if (!existing) {
+			return;
+		}
+		const next = new Map(comments);
+		next.set(key, { ...existing, comment: text });
+		onCommentsChange(next);
+	}, [comments, onCommentsChange]);
+
+	const handleDeleteComment = useCallback((filePath: string, lineNumber: number, variant: "added" | "removed" | "context") => {
+		const next = new Map(comments);
+		next.delete(commentKey(filePath, lineNumber, variant));
+		onCommentsChange(next);
+	}, [comments, onCommentsChange]);
+
+	const nonEmptyComments = useMemo(() => {
+		return Array.from(comments.values()).filter((c) => c.comment.trim().length > 0);
+	}, [comments]);
+
+	const buildFormattedComments = useCallback((): string | null => {
+		if (nonEmptyComments.length === 0) {
+			return null;
+		}
+		const sorted = [...nonEmptyComments].sort((a, b) => {
+			const pathCmp = a.filePath.localeCompare(b.filePath);
+			if (pathCmp !== 0) {
+				return pathCmp;
+			}
+			return a.lineNumber - b.lineNumber;
+		});
+		return formatCommentsForTerminal(sorted);
+	}, [nonEmptyComments]);
+
+	const handleAddComments = useCallback(() => {
+		const formatted = buildFormattedComments();
+		if (!formatted || !onAddToTerminal) {
+			return;
+		}
+		onAddToTerminal(formatted);
+		onCommentsChange(new Map());
+	}, [buildFormattedComments, onAddToTerminal, onCommentsChange]);
+
+	const handleSendComments = useCallback(() => {
+		const formatted = buildFormattedComments();
+		if (!formatted || !onSendToTerminal) {
+			return;
+		}
+		onSendToTerminal(formatted);
+		onCommentsChange(new Map());
+	}, [buildFormattedComments, onCommentsChange, onSendToTerminal]);
+
+	const handleClearAllComments = useCallback(() => {
+		onCommentsChange(new Map());
+	}, [onCommentsChange]);
+
+	const hasAnyComments = comments.size > 0;
+	const nonEmptyCount = nonEmptyComments.length;
+
 	return (
 		<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}>
 			{groupedByPath.length === 0 ? (
@@ -755,48 +939,49 @@ export function DiffViewerPanel({
 					<NonIdealState icon="comparison" />
 				</div>
 			) : (
-				<div
-					ref={scrollContainerRef}
-					onScroll={handleDiffScroll}
-					style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 12 }}
-				>
-					{groupedByPath.map((group) => {
-						const isExpanded = expandedPaths[group.path] ?? true;
-						return (
-							<section
-								key={group.path}
-								ref={(node) => {
-									sectionElementsRef.current[group.path] = node;
-								}}
-								style={{ marginBottom: 12 }}
-							>
-								<Card compact interactive={false} style={{ overflow: "hidden", padding: 0 }}>
-									<Button
-										variant="minimal"
-										fill
-										alignText="left"
-										className="kb-diff-file-header"
-										aria-expanded={isExpanded}
-										aria-current={selectedPath === group.path ? "true" : undefined}
-										icon={<Icon icon={isExpanded ? "chevron-down" : "chevron-right"} size={12} />}
-										onClick={() => {
-											const container = scrollContainerRef.current;
-											const sectionEl = sectionElementsRef.current[group.path];
-											const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
-											const nextExpanded = !(expandedPaths[group.path] ?? true);
-											suppressScrollSyncUntilRef.current = Date.now() + 250;
-											setExpandedPaths((prev) => ({
-												...prev,
-												[group.path]: nextExpanded,
-											}));
-											requestAnimationFrame(() => {
-												if (previousTop == null || !container || !sectionEl) {
-													return;
-												}
-												const nextTop = sectionEl.getBoundingClientRect().top;
-												container.scrollTop += nextTop - previousTop;
-											});
-										}}
+				<>
+					<div
+						ref={scrollContainerRef}
+						onScroll={handleDiffScroll}
+						style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 12 }}
+					>
+						{groupedByPath.map((group) => {
+							const isExpanded = expandedPaths[group.path] ?? true;
+							return (
+								<section
+									key={group.path}
+									ref={(node) => {
+										sectionElementsRef.current[group.path] = node;
+									}}
+									style={{ marginBottom: 12 }}
+								>
+									<Card compact interactive={false} style={{ overflow: "hidden", padding: 0 }}>
+										<Button
+											variant="minimal"
+											fill
+											alignText="left"
+											className="kb-diff-file-header"
+											aria-expanded={isExpanded}
+											aria-current={selectedPath === group.path ? "true" : undefined}
+											icon={<Icon icon={isExpanded ? "chevron-down" : "chevron-right"} size={12} />}
+											onClick={() => {
+												const container = scrollContainerRef.current;
+												const sectionEl = sectionElementsRef.current[group.path];
+												const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
+												const nextExpanded = !(expandedPaths[group.path] ?? true);
+												suppressScrollSyncUntilRef.current = Date.now() + 250;
+												setExpandedPaths((prev) => ({
+													...prev,
+													[group.path]: nextExpanded,
+												}));
+												requestAnimationFrame(() => {
+													if (previousTop == null || !container || !sectionEl) {
+														return;
+													}
+													const nextTop = sectionEl.getBoundingClientRect().top;
+													container.scrollTop += nextTop - previousTop;
+												});
+											}}
 											text={
 												<span className={Classes.TEXT_OVERFLOW_ELLIPSIS} title={group.path}>
 													{truncatePathMiddle(group.path)}
@@ -809,28 +994,47 @@ export function DiffViewerPanel({
 													<span style={{ color: Colors.RED5 }}>-{group.removed}</span>
 												</span>
 											}
-									/>
+										/>
 										{isExpanded ? (
 											<div>
 												{group.entries.map((entry) => (
-												<div
-													key={entry.id}
+													<div
+														key={entry.id}
 														className="kb-diff-entry"
 													>
-														<UnifiedDiff
-															path={group.path}
-															oldText={entry.oldText}
-															newText={entry.newText}
-														/>
+															<UnifiedDiff
+																path={group.path}
+																oldText={entry.oldText}
+																newText={entry.newText}
+																comments={comments}
+																onAddComment={(lineNumber, lineText, variant) =>
+																	handleAddComment(group.path, lineNumber, lineText, variant)
+																}
+																onUpdateComment={(lineNumber, variant, text) => handleUpdateComment(group.path, lineNumber, variant, text)}
+																onDeleteComment={(lineNumber, variant) => handleDeleteComment(group.path, lineNumber, variant)}
+															/>
 													</div>
 												))}
 											</div>
-									) : null}
-								</Card>
-							</section>
-						);
-					})}
-				</div>
+										) : null}
+									</Card>
+								</section>
+							);
+						})}
+					</div>
+					{hasAnyComments && (onAddToTerminal || onSendToTerminal) ? (
+						<div className="kb-diff-comments-footer">
+							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+								<span className={Classes.TEXT_MUTED}>{nonEmptyCount} {nonEmptyCount === 1 ? "comment" : "comments"}</span>
+								<Button text="Clear All" variant="minimal" size="small" intent="danger" onClick={handleClearAllComments} />
+							</div>
+							<div style={{ display: "flex", gap: 4 }}>
+								{onAddToTerminal ? <Button text="Add" variant="outlined" size="small" disabled={nonEmptyCount === 0} onClick={handleAddComments} /> : null}
+								{onSendToTerminal ? <Button text="Send" intent="primary" variant="solid" size="small" disabled={nonEmptyCount === 0} onClick={handleSendComments} /> : null}
+							</div>
+						</div>
+					) : null}
+				</>
 			)}
 		</div>
 	);
