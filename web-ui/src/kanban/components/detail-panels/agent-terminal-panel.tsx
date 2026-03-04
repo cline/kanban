@@ -234,6 +234,16 @@ export function AgentTerminalPanel({
 	}, [autoFocus, isVisible, requestResize]);
 
 	useEffect(() => {
+		const terminal = terminalRef.current;
+		if (!terminal) {
+			return;
+		}
+		terminal.reset();
+		setIsStopping(false);
+		setLastError(null);
+	}, [taskId, workspaceId]);
+
+	useEffect(() => {
 		if (!workspaceId) {
 			setLastError("No project selected.");
 			return;
