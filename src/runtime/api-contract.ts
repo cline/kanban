@@ -541,7 +541,7 @@ export const runtimeTerminalWsServerMessageSchema = z.discriminatedUnion("type",
 ]);
 export type RuntimeTerminalWsServerMessage = z.infer<typeof runtimeTerminalWsServerMessageSchema>;
 
-export const runtimeHookEventSchema = z.enum(["review", "inprogress"]);
+export const runtimeHookEventSchema = z.enum(["to_review", "to_in_progress"]);
 export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;
 
 export const runtimeHookIngestRequestSchema = z.object({

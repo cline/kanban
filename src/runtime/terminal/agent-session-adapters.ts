@@ -13,6 +13,7 @@ import type { SessionTransitionEvent } from "./session-state-machine.js";
 export interface AgentAdapterLaunchInput {
 	taskId: string;
 	agentId: RuntimeAgentId;
+	binary?: string;
 	args: string[];
 	cwd: string;
 	prompt: string;
@@ -28,6 +29,7 @@ export type AgentOutputTransitionDetector = (
 ) => SessionTransitionEvent | null;
 
 export interface PreparedAgentLaunch {
+	binary?: string;
 	args: string[];
 	env: Record<string, string | undefined>;
 	writesPromptInternally: boolean;
@@ -72,9 +74,121 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 	};
 }
 
-function buildHookCommand(event: "review" | "inprogress"): string {
-	const parts = buildKanbananaCommandParts(["hooks", "ingest", "--event", event]);
+function buildHookCommand(event: "to_review" | "to_in_progress"): string {
+	const parts = buildHooksCommandParts(["ingest", "--event", event]);
 	return parts.map(shellQuote).join(" ");
+}
+
+function buildHooksCommandParts(args: string[]): string[] {
+	return buildKanbananaCommandParts(["hooks", ...args]);
+}
+
+function buildHooksCommand(args: string[]): string {
+	return buildHooksCommandParts(args).map(shellQuote).join(" ");
+}
+
+function buildOpenCodePluginContent(reviewCommand: string, toInProgressCommand: string): string {
+	const reviewCmd = escapeForTemplateLiteral(reviewCommand);
+	const toInProgressCmd = escapeForTemplateLiteral(toInProgressCommand);
+	return `export const KanbananaPlugin = async ({ $, client }) => {
+  if (globalThis.__kanbananaOpencodePluginV2) return {};
+  globalThis.__kanbananaOpencodePluginV2 = true;
+
+  if (!process?.env?.KANBANANA_HOOK_TASK_ID) return {};
+
+  let currentState = "idle";
+  let rootSessionID = null;
+  const childSessionCache = new Map();
+
+  const notifyReview = async () => {
+    try {
+      await $\`${reviewCmd}\`;
+    } catch {
+      // Best effort: hook errors should never break OpenCode event handling.
+    }
+  };
+
+  const notifyInprogress = async () => {
+    try {
+      await $\`${toInProgressCmd}\`;
+    } catch {
+      // Best effort: hook errors should never break OpenCode event handling.
+    }
+  };
+
+  const isChildSession = async (sessionID) => {
+    if (!sessionID) return true;
+    if (!client?.session?.list) return true;
+    if (childSessionCache.has(sessionID)) {
+      return childSessionCache.get(sessionID);
+    }
+    try {
+      const sessions = await client.session.list();
+      const session = sessions.data?.find((candidate) => candidate.id === sessionID);
+      const isChild = !!session?.parentID;
+      childSessionCache.set(sessionID, isChild);
+      return isChild;
+    } catch {
+      return true;
+    }
+  };
+
+  const handleBusy = async (sessionID) => {
+    if (!rootSessionID) {
+      rootSessionID = sessionID;
+    }
+    if (sessionID !== rootSessionID) {
+      return;
+    }
+    if (currentState === "idle") {
+      currentState = "busy";
+      await notifyInprogress();
+    }
+  };
+
+  const handleReview = async (sessionID) => {
+    if (rootSessionID && sessionID !== rootSessionID) {
+      return;
+    }
+    if (currentState === "busy") {
+      currentState = "idle";
+      await notifyReview();
+      rootSessionID = null;
+    }
+  };
+
+  return {
+    event: async ({ event }) => {
+      const sessionID = event.properties?.sessionID;
+      if (await isChildSession(sessionID)) {
+        return;
+      }
+
+      if (event.type === "session.status") {
+        const status = event.properties?.status;
+        if (status?.type === "busy") {
+          await handleBusy(sessionID);
+        } else if (status?.type === "idle") {
+          await handleReview(sessionID);
+        }
+      }
+
+      if (event.type === "session.busy") {
+        await handleBusy(sessionID);
+      }
+      if (event.type === "session.idle" || event.type === "session.error") {
+        await handleReview(sessionID);
+      }
+    },
+    "permission.ask": async (_permission, output) => {
+      if (output?.status === "ask") {
+        await notifyReview();
+        currentState = "idle";
+      }
+    },
+  };
+};
+`;
 }
 
 function getHookAgentDirectory(agentId: RuntimeAgentId): string {
@@ -143,14 +257,23 @@ const claudeAdapter: AgentSessionAdapter = {
 			const settingsPath = join(getHookAgentDirectory("claude"), "settings.json");
 			const hooksSettings = {
 				hooks: {
-					Stop: [{ hooks: [{ type: "command", command: buildHookCommand("review") }] }],
+					Stop: [{ hooks: [{ type: "command", command: buildHookCommand("to_review") }] }],
+					PermissionRequest: [
+						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("to_review") }] },
+					],
+					PostToolUse: [
+						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("to_in_progress") }] },
+					],
+					PostToolUseFailure: [
+						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("to_in_progress") }] },
+					],
 					Notification: [
 						{
 							matcher: "permission_prompt",
-							hooks: [{ type: "command", command: buildHookCommand("review") }],
+							hooks: [{ type: "command", command: buildHookCommand("to_review") }],
 						},
 					],
-					UserPromptSubmit: [{ hooks: [{ type: "command", command: buildHookCommand("inprogress") }] }],
+					UserPromptSubmit: [{ hooks: [{ type: "command", command: buildHookCommand("to_in_progress") }] }],
 				},
 			};
 			await ensureTextFile(settingsPath, JSON.stringify(hooksSettings, null, 2));
@@ -192,8 +315,9 @@ function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): 
 
 const codexAdapter: AgentSessionAdapter = {
 	async prepare(input) {
-		const args = [...input.args];
+		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
+		let binary = input.binary;
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
@@ -205,34 +329,38 @@ const codexAdapter: AgentSessionAdapter = {
 					port: hooks.serverPort,
 				}),
 			);
-			if (process.platform === "win32") {
-				const notifyArray = JSON.stringify(buildKanbananaCommandParts(["hooks", "ingest", "--event", "review"]));
-				args.push("-c", `notify=${notifyArray}`);
-			} else {
-				const scriptPath = join(getHookAgentDirectory("codex"), "notify-review.sh");
-				const scriptBody = `#!/bin/sh\n${buildHookCommand("review")}\n`;
-				await ensureTextFile(scriptPath, scriptBody, true);
-				const notifyArray = JSON.stringify(["/bin/sh", scriptPath]);
-				args.push("-c", `notify=${notifyArray}`);
-			}
 		}
 
 		const trimmed = input.prompt.trim();
 		if (trimmed) {
 			const initialPrompt = input.startInPlanMode ? `/plan\n${trimmed}` : trimmed;
-			args.push(initialPrompt);
+			codexArgs.push(initialPrompt);
+		}
+
+		if (hooks) {
+			const wrapperParts = buildHooksCommandParts([
+				"codex-wrapper",
+				"--real-binary",
+				input.binary ?? "codex",
+				"--",
+				...codexArgs,
+			]);
+			binary = wrapperParts[0];
+			const args = wrapperParts.slice(1);
 			return {
+				binary,
 				args,
 				env,
-				writesPromptInternally: true,
+				writesPromptInternally: Boolean(trimmed),
 				detectOutputTransition: codexPromptDetector,
 			};
 		}
 
 		return {
-			args,
+			binary,
+			args: codexArgs,
 			env,
-			writesPromptInternally: false,
+			writesPromptInternally: Boolean(trimmed),
 			detectOutputTransition: codexPromptDetector,
 		};
 	},
@@ -250,11 +378,25 @@ const geminiAdapter: AgentSessionAdapter = {
 		const hooks = resolveHookContext(input);
 		if (hooks) {
 			const configPath = join(getHookAgentDirectory("gemini"), "settings.json");
+			const geminiHookCommand = buildHooksCommand(["gemini-hook"]);
+
 			const config = {
 				hooks: {
-					AfterAgent: [{ hooks: [{ type: "command", command: buildHookCommand("review") }] }],
-					Notification: [{ hooks: [{ type: "command", command: buildHookCommand("review") }] }],
-					BeforeAgent: [{ hooks: [{ type: "command", command: buildHookCommand("inprogress") }] }],
+					AfterTool: [
+						{
+							hooks: [{ type: "command", command: geminiHookCommand }],
+						},
+					],
+					AfterAgent: [
+						{
+							hooks: [{ type: "command", command: geminiHookCommand }],
+						},
+					],
+					BeforeAgent: [
+						{
+							hooks: [{ type: "command", command: geminiHookCommand }],
+						},
+					],
 				},
 			};
 			await ensureTextFile(configPath, JSON.stringify(config, null, 2));
@@ -540,33 +682,10 @@ const opencodeAdapter: AgentSessionAdapter = {
 			const pluginPath = join(getHookAgentDirectory("opencode"), "kanbanana.js");
 			const configPath = join(getHookAgentDirectory("opencode"), "opencode.json");
 
-			const reviewCmd = escapeForTemplateLiteral(buildHookCommand("review"));
-			const inprogressCmd = escapeForTemplateLiteral(buildHookCommand("inprogress"));
-			const pluginContent = `export const KanbananaPlugin = async ({ $ }) => {
-  return {
-    event: async ({ event }) => {
-      if (event.type === "session.idle") {
-        try {
-          await $\`${reviewCmd}\`;
-        } catch {
-          // Best effort: hook errors should never break OpenCode event handling.
-        }
-      }
-      if (event.type.startsWith("session.") && event.type !== "session.idle") {
-        const statusType = event?.properties?.status?.type;
-        if (statusType === "idle") {
-          return;
-        }
-        try {
-          await $\`${inprogressCmd}\`;
-        } catch {
-          // Best effort: hook errors should never break OpenCode event handling.
-        }
-      }
-    },
-  };
-};
-`;
+			const pluginContent = buildOpenCodePluginContent(
+				buildHookCommand("to_review"),
+				buildHookCommand("to_in_progress"),
+			);
 			await ensureTextFile(pluginPath, pluginContent);
 			const pluginFileUrl = pathToFileURL(pluginPath).href;
 			const config = {

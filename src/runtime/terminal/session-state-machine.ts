@@ -1,8 +1,8 @@
 import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../api-contract.js";
 
 export type SessionTransitionEvent =
-	| { type: "hook.review" }
-	| { type: "hook.inprogress" }
+	| { type: "hook.to_review" }
+	| { type: "hook.to_in_progress" }
 	| { type: "agent.prompt-ready" }
 	| { type: "process.exit"; exitCode: number | null; interrupted: boolean };
 
@@ -28,7 +28,7 @@ export function reduceSessionTransition(
 	event: SessionTransitionEvent,
 ): SessionTransitionResult {
 	switch (event.type) {
-		case "hook.review": {
+		case "hook.to_review": {
 			if (summary.state !== "running") {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };
 			}
@@ -41,7 +41,7 @@ export function reduceSessionTransition(
 				clearAttentionBuffer: true,
 			};
 		}
-		case "hook.inprogress":
+		case "hook.to_in_progress":
 		case "agent.prompt-ready": {
 			if (summary.state !== "awaiting_review" || !canReturnToRunning(summary.reviewReason)) {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };

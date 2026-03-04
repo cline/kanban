@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { WebSocket, WebSocketServer } from "ws";
 
-import { isHooksSubcommand, runHooksIngest } from "./hooks-cli.js";
+import { isHooksSubcommand, runHooksSubcommand } from "./hooks-cli.js";
 import type {
 	RuntimeAgentId,
 	RuntimeBoardColumnId,
@@ -1519,7 +1519,7 @@ async function startServer(
 async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
 	if (isHooksSubcommand(argv)) {
-		await runHooksIngest(argv);
+		await runHooksSubcommand(argv);
 		return;
 	}
 

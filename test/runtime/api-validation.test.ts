@@ -37,12 +37,12 @@ describe("parseHookIngestRequest", () => {
 		const parsed = parseHookIngestRequest({
 			taskId: "  task-123  ",
 			workspaceId: "  workspace-456  ",
-			event: "review",
+			event: "to_review",
 		});
 		expect(parsed).toEqual({
 			taskId: "task-123",
 			workspaceId: "workspace-456",
-			event: "review",
+			event: "to_review",
 		});
 	});
 
@@ -51,7 +51,7 @@ describe("parseHookIngestRequest", () => {
 			parseHookIngestRequest({
 				taskId: "task-1",
 				workspaceId: "   ",
-				event: "review",
+				event: "to_review",
 			});
 		}).toThrow("Missing workspaceId");
 	});

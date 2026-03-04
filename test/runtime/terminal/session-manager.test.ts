@@ -42,10 +42,10 @@ describe("TerminalSessionManager preview behavior", () => {
 		};
 		const applySessionEvent = (
 			manager as unknown as {
-				applySessionEvent: (sessionEntry: unknown, event: { type: "hook.review" }) => RuntimeTaskSessionSummary;
+				applySessionEvent: (sessionEntry: unknown, event: { type: "hook.to_review" }) => RuntimeTaskSessionSummary;
 			}
 		).applySessionEvent;
-		const nextSummary = applySessionEvent(entry, { type: "hook.review" });
+		const nextSummary = applySessionEvent(entry, { type: "hook.to_review" });
 		expect(nextSummary.state).toBe("awaiting_review");
 		expect(entry.active.claudeTrustBuffer).toBe("");
 		expect(reset).not.toHaveBeenCalled();

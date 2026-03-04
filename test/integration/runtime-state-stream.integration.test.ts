@@ -661,7 +661,7 @@ describe.sequential("runtime state stream integration", () => {
 				payload: {
 					taskId,
 					workspaceId,
-					event: "review",
+					event: "to_review",
 				},
 			});
 			expect(hookResponse.status).toBe(200);

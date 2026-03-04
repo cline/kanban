@@ -274,6 +274,7 @@ export class TerminalSessionManager {
 		const launch = await prepareAgentLaunch({
 			taskId: request.taskId,
 			agentId: request.agentId,
+			binary: request.binary,
 			args: request.args,
 			cwd: request.cwd,
 			prompt: request.prompt,
@@ -294,8 +295,11 @@ export class TerminalSessionManager {
 		await ensureNodePtySpawnHelperExecutable();
 
 		let ptyProcess: pty.IPty;
+		// Adapters can wrap the configured agent binary when they need extra runtime wiring
+		// (for example, Codex uses a wrapper script to watch session logs for hook transitions).
+		const spawnBinary = launch.binary ?? request.binary;
 		try {
-			ptyProcess = pty.spawn(request.binary, launch.args, {
+			ptyProcess = pty.spawn(spawnBinary, launch.args, {
 				name: "xterm-256color",
 				cwd: request.cwd,
 				env,
@@ -320,7 +324,7 @@ export class TerminalSessionManager {
 				exitCode: null,
 			});
 			this.emitSummary(summary);
-			throw new Error(formatSpawnFailure(request.binary, error));
+			throw new Error(formatSpawnFailure(spawnBinary, error));
 		}
 
 		const active: ActiveProcessState = {
@@ -667,7 +671,7 @@ export class TerminalSessionManager {
 			return cloneSummary(entry.summary);
 		}
 		const before = entry.summary;
-		const summary = this.applySessionEvent(entry, { type: "hook.review" });
+		const summary = this.applySessionEvent(entry, { type: "hook.to_review" });
 		if (summary !== before && entry.active) {
 			for (const listener of entry.listeners.values()) {
 				listener.onState?.(cloneSummary(summary));
@@ -683,7 +687,7 @@ export class TerminalSessionManager {
 			return null;
 		}
 		const before = entry.summary;
-		const summary = this.applySessionEvent(entry, { type: "hook.inprogress" });
+		const summary = this.applySessionEvent(entry, { type: "hook.to_in_progress" });
 		if (summary !== before && entry.active) {
 			for (const listener of entry.listeners.values()) {
 				listener.onState?.(cloneSummary(summary));

@@ -1,5 +1,6 @@
 import type { WebSocket } from "ws";
 import type {
+	RuntimeHookEvent,
 	RuntimeHookIngestResponse,
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
@@ -20,8 +21,8 @@ export interface CreateHooksApiDependencies {
 	sendRuntimeStateMessage: (client: WebSocket, payload: RuntimeStateStreamMessage) => void;
 }
 
-function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: "review" | "inprogress"): boolean {
-	if (event === "review") {
+function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: RuntimeHookEvent): boolean {
+	if (event === "to_review") {
 		return summary.state === "running";
 	}
 	return (
@@ -58,13 +59,12 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 				if (!canTransitionTaskForHookEvent(summary, event)) {
 					return {
-						ok: false,
-						error: `Task "${taskId}" cannot handle "${event}" from state "${summary.state}" (${summary.reviewReason ?? "no reason"})`,
+						ok: true,
 					} satisfies RuntimeHookIngestResponse;
 				}
 
 				const transitionedSummary =
-					event === "review" ? manager.transitionToReview(taskId, "hook") : manager.transitionToRunning(taskId);
+					event === "to_review" ? manager.transitionToReview(taskId, "hook") : manager.transitionToRunning(taskId);
 				if (!transitionedSummary) {
 					return {
 						ok: false,
@@ -73,7 +73,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				}
 
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
-				if (event === "review") {
+				if (event === "to_review") {
 					const runtimeClients = deps.runtimeStateClientsByWorkspaceId.get(workspaceId);
 					if (runtimeClients && runtimeClients.size > 0) {
 						const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
