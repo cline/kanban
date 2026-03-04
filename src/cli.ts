@@ -1520,58 +1520,47 @@ async function startServer(
 				try {
 					const body = parseHookIngestRequest(await readJsonBody(req));
 					const taskId = body.taskId;
+					const workspaceId = body.workspaceId;
 					const event = body.event;
-
-					let matchedWorkspaceId: string | null = null;
-					let matchedManager: TerminalSessionManager | null = null;
-					let matchedSummary: RuntimeTaskSessionSummary | null = null;
-					for (const [wsId, manager] of terminalManagersByWorkspaceId.entries()) {
-						const summary = manager.getSummary(taskId);
-						if (!summary) {
-							continue;
-						}
-						const eligibleForReview = summary.state === "running";
-						const eligibleForInProgress =
-							summary.state === "awaiting_review" &&
-							(summary.reviewReason === "attention" || summary.reviewReason === "hook");
-						const eligible = event === "review" ? eligibleForReview : eligibleForInProgress;
-						if (eligible) {
-							matchedWorkspaceId = wsId;
-							matchedManager = manager;
-							matchedSummary = summary;
-							break;
-						}
-						if (!matchedManager) {
-							matchedWorkspaceId = wsId;
-							matchedManager = manager;
-							matchedSummary = summary;
-						}
-					}
-					if (!matchedManager || !matchedWorkspaceId || !matchedSummary) {
+					const knownWorkspacePath = workspacePathsById.get(workspaceId);
+					const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
+					const workspacePath = knownWorkspacePath ?? workspaceContext?.repoPath ?? null;
+					if (!workspacePath) {
 						sendJson(res, 404, {
 							ok: false,
-							error: `Task "${taskId}" not found in any workspace`,
+							error: `Workspace "${workspaceId}" not found`,
 						} satisfies RuntimeHookIngestResponse);
 						return;
 					}
-					const eligibleForReview = matchedSummary.state === "running";
+
+					const manager = await ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
+					const summary = manager.getSummary(taskId);
+					if (!summary) {
+						sendJson(res, 404, {
+							ok: false,
+							error: `Task "${taskId}" not found in workspace "${workspaceId}"`,
+						} satisfies RuntimeHookIngestResponse);
+						return;
+					}
+
+					const eligibleForReview = summary.state === "running";
 					const eligibleForInProgress =
-						matchedSummary.state === "awaiting_review" &&
-						(matchedSummary.reviewReason === "attention" || matchedSummary.reviewReason === "hook");
+						summary.state === "awaiting_review" &&
+						(summary.reviewReason === "attention" || summary.reviewReason === "hook");
 					const eligible = event === "review" ? eligibleForReview : eligibleForInProgress;
 					if (!eligible) {
 						sendJson(res, 409, {
 							ok: false,
-							error: `Task "${taskId}" cannot handle "${event}" from state "${matchedSummary.state}" (${matchedSummary.reviewReason ?? "no reason"})`,
+							error: `Task "${taskId}" cannot handle "${event}" from state "${summary.state}" (${summary.reviewReason ?? "no reason"})`,
 						} satisfies RuntimeHookIngestResponse);
 						return;
 					}
 
 					let transitionedSummary: RuntimeTaskSessionSummary | null = null;
 					if (event === "review") {
-						transitionedSummary = matchedManager.transitionToReview(taskId, "hook");
+						transitionedSummary = manager.transitionToReview(taskId, "hook");
 					} else {
-						transitionedSummary = matchedManager.transitionToRunning(taskId);
+						transitionedSummary = manager.transitionToRunning(taskId);
 					}
 					if (!transitionedSummary) {
 						sendJson(res, 500, {
@@ -1581,16 +1570,13 @@ async function startServer(
 						return;
 					}
 
-					const matchedWorkspacePath = workspacePathsById.get(matchedWorkspaceId);
-					if (matchedWorkspacePath) {
-						void broadcastRuntimeWorkspaceStateUpdated(matchedWorkspaceId, matchedWorkspacePath);
-					}
+					void broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
 					if (event === "review") {
-						const runtimeClients = runtimeStateClientsByWorkspaceId.get(matchedWorkspaceId);
+						const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
 						if (runtimeClients && runtimeClients.size > 0) {
 							const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
 								type: "task_ready_for_review",
-								workspaceId: matchedWorkspaceId,
+								workspaceId,
 								taskId,
 								triggeredAt: Date.now(),
 							};

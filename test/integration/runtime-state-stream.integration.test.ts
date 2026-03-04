@@ -620,6 +620,7 @@ describe.sequential("runtime state stream integration", () => {
 				method: "POST",
 				body: {
 					taskId,
+					workspaceId,
 					event: "review",
 				},
 			});

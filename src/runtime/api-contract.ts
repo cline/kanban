@@ -546,6 +546,7 @@ export type RuntimeHookEvent = z.infer<typeof runtimeHookEventSchema>;
 
 export const runtimeHookIngestRequestSchema = z.object({
 	taskId: z.string(),
+	workspaceId: z.string(),
 	event: runtimeHookEventSchema,
 });
 export type RuntimeHookIngestRequest = z.infer<typeof runtimeHookIngestRequestSchema>;

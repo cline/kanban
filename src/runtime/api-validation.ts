@@ -250,12 +250,17 @@ export function parseShellSessionStartRequest(value: unknown): RuntimeShellSessi
 export function parseHookIngestRequest(value: unknown): RuntimeHookIngestRequest {
 	const parsed = parseWithSchema(runtimeHookIngestRequestSchema, value);
 	const taskId = parsed.taskId.trim();
+	const workspaceId = parsed.workspaceId.trim();
 	if (!taskId) {
 		throw new Error("Missing taskId");
+	}
+	if (!workspaceId) {
+		throw new Error("Missing workspaceId");
 	}
 	return {
 		...parsed,
 		taskId,
+		workspaceId,
 	};
 }
 
