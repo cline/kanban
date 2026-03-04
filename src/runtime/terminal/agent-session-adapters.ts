@@ -1,10 +1,12 @@
-import { access, chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { RuntimeAgentId, RuntimeTaskSessionSummary } from "../api-contract.js";
 import { buildKanbananaCommandParts } from "../kanbanana-command.js";
+import { getRuntimeHomePath } from "../state/workspace-state.js";
+import { createHookRuntimeEnv } from "./hook-runtime-context.js";
 import { stripAnsi } from "./output-utils.js";
 import type { SessionTransitionEvent } from "./session-state-machine.js";
 
@@ -35,12 +37,8 @@ export interface PreparedAgentLaunch {
 
 interface HookContext {
 	taskId: string;
+	workspaceId: string;
 	serverPort: number;
-}
-
-interface SessionTempDir {
-	dir: string;
-	cleanup: () => Promise<void>;
 }
 
 interface AgentSessionAdapter {
@@ -60,43 +58,49 @@ function shellQuote(value: string): string {
 
 function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null {
 	const serverPort = input.serverPort;
+	const workspaceId = input.workspaceId?.trim();
 	if (typeof serverPort !== "number" || !Number.isInteger(serverPort) || serverPort < 1) {
+		return null;
+	}
+	if (!workspaceId) {
 		return null;
 	}
 	return {
 		taskId: input.taskId,
+		workspaceId,
 		serverPort,
 	};
 }
 
-function buildHookCommand(context: HookContext, event: "review" | "inprogress"): string {
-	const parts = buildKanbananaCommandParts([
-		"hooks",
-		"ingest",
-		"--task-id",
-		context.taskId,
-		"--event",
-		event,
-		"--port",
-		String(context.serverPort),
-	]);
+function buildHookCommand(event: "review" | "inprogress"): string {
+	const parts = buildKanbananaCommandParts(["hooks", "ingest", "--event", event]);
 	return parts.map(shellQuote).join(" ");
 }
 
-async function createSessionTempDir(input: AgentAdapterLaunchInput, scope: string): Promise<SessionTempDir> {
-	const workspaceId = input.workspaceId ?? "default";
-	const dir = join(tmpdir(), "kanbanana-hooks", workspaceId, `${scope}-${input.taskId}-${process.pid}-${Date.now()}`);
-	await mkdir(dir, { recursive: true });
-	return {
-		dir,
-		cleanup: async () => {
-			try {
-				await rm(dir, { recursive: true, force: true });
-			} catch {
-				// Best effort cleanup.
-			}
-		},
-	};
+function getHookAgentDirectory(agentId: RuntimeAgentId): string {
+	return join(getRuntimeHomePath(), "hooks", agentId);
+}
+
+async function readFileIfExists(filePath: string): Promise<string | null> {
+	try {
+		return await readFile(filePath, "utf8");
+	} catch (error) {
+		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+			return null;
+		}
+		throw error;
+	}
+}
+
+async function ensureTextFile(filePath: string, content: string, executable = false): Promise<void> {
+	await mkdir(dirname(filePath), { recursive: true });
+	const existing = await readFileIfExists(filePath);
+	if (existing !== content) {
+		await writeFile(filePath, content, "utf8");
+	}
+	if (executable) {
+		await chmod(filePath, 0o755);
+	}
 }
 
 function withPrompt(args: string[], prompt: string, mode: "append" | "flag", flag?: string): PreparedAgentLaunch {
@@ -124,7 +128,6 @@ const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
-		let cleanup: (() => Promise<void>) | undefined;
 		if (input.startInPlanMode) {
 			const withoutImmediateBypass = args.filter((arg) => arg !== "--dangerously-skip-permissions");
 			args.length = 0;
@@ -137,23 +140,29 @@ const claudeAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const temp = await createSessionTempDir(input, "claude");
-			cleanup = temp.cleanup;
-			const settingsPath = join(temp.dir, "settings.json");
+			const settingsPath = join(getHookAgentDirectory("claude"), "settings.json");
 			const hooksSettings = {
 				hooks: {
-					Stop: [{ hooks: [{ type: "command", command: buildHookCommand(hooks, "review") }] }],
+					Stop: [{ hooks: [{ type: "command", command: buildHookCommand("review") }] }],
 					Notification: [
 						{
 							matcher: "permission_prompt",
-							hooks: [{ type: "command", command: buildHookCommand(hooks, "review") }],
+							hooks: [{ type: "command", command: buildHookCommand("review") }],
 						},
 					],
-					UserPromptSubmit: [{ hooks: [{ type: "command", command: buildHookCommand(hooks, "inprogress") }] }],
+					UserPromptSubmit: [{ hooks: [{ type: "command", command: buildHookCommand("inprogress") }] }],
 				},
 			};
-			await writeFile(settingsPath, JSON.stringify(hooksSettings, null, 2), "utf8");
+			await ensureTextFile(settingsPath, JSON.stringify(hooksSettings, null, 2));
 			args.push("--settings", settingsPath);
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+					port: hooks.serverPort,
+				}),
+			);
 		}
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
@@ -163,7 +172,6 @@ const claudeAdapter: AgentSessionAdapter = {
 				...withPromptLaunch.env,
 				...env,
 			},
-			cleanup,
 		};
 	},
 };
@@ -186,31 +194,24 @@ const codexAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
-		let cleanup: (() => Promise<void>) | undefined;
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+					port: hooks.serverPort,
+				}),
+			);
 			if (process.platform === "win32") {
-				const notifyArray = JSON.stringify(
-					buildKanbananaCommandParts([
-						"hooks",
-						"ingest",
-						"--task-id",
-						hooks.taskId,
-						"--event",
-						"review",
-						"--port",
-						String(hooks.serverPort),
-					]),
-				);
+				const notifyArray = JSON.stringify(buildKanbananaCommandParts(["hooks", "ingest", "--event", "review"]));
 				args.push("-c", `notify=${notifyArray}`);
 			} else {
-				const temp = await createSessionTempDir(input, "codex");
-				cleanup = temp.cleanup;
-				const scriptPath = join(temp.dir, "notify-review.sh");
-				const scriptBody = `#!/bin/sh\n${buildHookCommand(hooks, "review")}\n`;
-				await writeFile(scriptPath, scriptBody, "utf8");
-				await chmod(scriptPath, 0o755);
+				const scriptPath = join(getHookAgentDirectory("codex"), "notify-review.sh");
+				const scriptBody = `#!/bin/sh\n${buildHookCommand("review")}\n`;
+				await ensureTextFile(scriptPath, scriptBody, true);
 				const notifyArray = JSON.stringify(["/bin/sh", scriptPath]);
 				args.push("-c", `notify=${notifyArray}`);
 			}
@@ -224,7 +225,6 @@ const codexAdapter: AgentSessionAdapter = {
 				args,
 				env,
 				writesPromptInternally: true,
-				cleanup,
 				detectOutputTransition: codexPromptDetector,
 			};
 		}
@@ -233,7 +233,6 @@ const codexAdapter: AgentSessionAdapter = {
 			args,
 			env,
 			writesPromptInternally: false,
-			cleanup,
 			detectOutputTransition: codexPromptDetector,
 		};
 	},
@@ -243,7 +242,6 @@ const geminiAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
-		let cleanup: (() => Promise<void>) | undefined;
 
 		if (input.startInPlanMode) {
 			args.push("--approval-mode=plan");
@@ -251,17 +249,23 @@ const geminiAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const temp = await createSessionTempDir(input, "gemini");
-			cleanup = temp.cleanup;
-			const configPath = join(temp.dir, "settings.json");
+			const configPath = join(getHookAgentDirectory("gemini"), "settings.json");
 			const config = {
 				hooks: {
-					AfterAgent: [{ hooks: [{ type: "command", command: buildHookCommand(hooks, "review") }] }],
-					Notification: [{ hooks: [{ type: "command", command: buildHookCommand(hooks, "review") }] }],
-					BeforeAgent: [{ hooks: [{ type: "command", command: buildHookCommand(hooks, "inprogress") }] }],
+					AfterAgent: [{ hooks: [{ type: "command", command: buildHookCommand("review") }] }],
+					Notification: [{ hooks: [{ type: "command", command: buildHookCommand("review") }] }],
+					BeforeAgent: [{ hooks: [{ type: "command", command: buildHookCommand("inprogress") }] }],
 				},
 			};
-			await writeFile(configPath, JSON.stringify(config, null, 2), "utf8");
+			await ensureTextFile(configPath, JSON.stringify(config, null, 2));
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+					port: hooks.serverPort,
+				}),
+			);
 			env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = configPath;
 		}
 
@@ -272,7 +276,6 @@ const geminiAdapter: AgentSessionAdapter = {
 				args,
 				env,
 				writesPromptInternally: true,
-				cleanup,
 			};
 		}
 
@@ -280,7 +283,6 @@ const geminiAdapter: AgentSessionAdapter = {
 			args,
 			env,
 			writesPromptInternally: false,
-			cleanup,
 		};
 	},
 };
@@ -524,7 +526,6 @@ const opencodeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
-		let cleanup: (() => Promise<void>) | undefined;
 		const baseConfigPath = await resolveOpenCodeBaseConfigPath(input.env?.OPENCODE_CONFIG);
 
 		if (input.startInPlanMode) {
@@ -536,13 +537,11 @@ const opencodeAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const temp = await createSessionTempDir(input, "opencode");
-			cleanup = temp.cleanup;
-			const pluginPath = join(temp.dir, `kanbanana-${input.taskId}.js`);
-			const configPath = join(temp.dir, "opencode.json");
+			const pluginPath = join(getHookAgentDirectory("opencode"), "kanbanana.js");
+			const configPath = join(getHookAgentDirectory("opencode"), "opencode.json");
 
-			const reviewCmd = escapeForTemplateLiteral(buildHookCommand(hooks, "review"));
-			const inprogressCmd = escapeForTemplateLiteral(buildHookCommand(hooks, "inprogress"));
+			const reviewCmd = escapeForTemplateLiteral(buildHookCommand("review"));
+			const inprogressCmd = escapeForTemplateLiteral(buildHookCommand("inprogress"));
 			const pluginContent = `export const KanbananaPlugin = async ({ $ }) => {
   return {
     event: async ({ event }) => {
@@ -568,12 +567,20 @@ const opencodeAdapter: AgentSessionAdapter = {
   };
 };
 `;
-			await writeFile(pluginPath, pluginContent, "utf8");
+			await ensureTextFile(pluginPath, pluginContent);
 			const pluginFileUrl = pathToFileURL(pluginPath).href;
 			const config = {
 				plugin: [pluginFileUrl],
 			};
-			await writeFile(configPath, JSON.stringify(config), "utf8");
+			await ensureTextFile(configPath, JSON.stringify(config));
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+					port: hooks.serverPort,
+				}),
+			);
 			env.OPENCODE_CONFIG = configPath;
 		}
 
@@ -593,7 +600,6 @@ const opencodeAdapter: AgentSessionAdapter = {
 				args,
 				env,
 				writesPromptInternally: true,
-				cleanup,
 			};
 		}
 
@@ -601,7 +607,6 @@ const opencodeAdapter: AgentSessionAdapter = {
 			args,
 			env,
 			writesPromptInternally: false,
-			cleanup,
 		};
 	},
 };

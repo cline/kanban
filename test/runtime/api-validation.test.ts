@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseWorkspaceFileSearchRequest } from "../../src/runtime/api-validation.js";
+import { parseHookIngestRequest, parseWorkspaceFileSearchRequest } from "../../src/runtime/api-validation.js";
 
 describe("parseWorkspaceFileSearchRequest", () => {
 	it("parses q and limit", () => {
@@ -29,5 +29,30 @@ describe("parseWorkspaceFileSearchRequest", () => {
 		expect(() => {
 			parseWorkspaceFileSearchRequest(new URLSearchParams({ q: "board", limit: "0" }));
 		}).toThrow("Invalid file search limit parameter.");
+	});
+});
+
+describe("parseHookIngestRequest", () => {
+	it("parses and trims task and workspace identifiers", () => {
+		const parsed = parseHookIngestRequest({
+			taskId: "  task-123  ",
+			workspaceId: "  workspace-456  ",
+			event: "review",
+		});
+		expect(parsed).toEqual({
+			taskId: "task-123",
+			workspaceId: "workspace-456",
+			event: "review",
+		});
+	});
+
+	it("throws when workspaceId is missing", () => {
+		expect(() => {
+			parseHookIngestRequest({
+				taskId: "task-1",
+				workspaceId: "   ",
+				event: "review",
+			});
+		}).toThrow("Missing workspaceId");
 	});
 });

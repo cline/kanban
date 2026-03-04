@@ -1,51 +1,42 @@
 import type { RuntimeHookEvent, RuntimeHookIngestResponse } from "./runtime/api-contract.js";
+import { parseHookRuntimeContextFromEnv } from "./runtime/terminal/hook-runtime-context.js";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["review", "inprogress"]);
 
 interface HooksIngestArgs {
-	taskId: string;
 	event: RuntimeHookEvent;
+	taskId: string;
+	workspaceId: string;
 	port: number;
 }
 
 function parseHooksIngestArgs(argv: string[]): HooksIngestArgs {
-	let taskId: string | null = null;
 	let event: string | null = null;
-	let port: string | null = null;
 
 	for (let i = 0; i < argv.length; i += 1) {
 		const arg = argv[i];
 		const next = argv[i + 1];
-		if (arg === "--task-id" && next) {
-			taskId = next;
-			i += 1;
-		} else if (arg === "--event" && next) {
+		if (arg === "--event" && next) {
 			event = next;
-			i += 1;
-		} else if (arg === "--port" && next) {
-			port = next;
 			i += 1;
 		}
 	}
 
-	if (!taskId) {
-		throw new Error("Missing required flag: --task-id");
-	}
 	if (!event) {
 		throw new Error("Missing required flag: --event");
 	}
 	if (!VALID_EVENTS.has(event as RuntimeHookEvent)) {
 		throw new Error(`Invalid event "${event}". Must be one of: ${[...VALID_EVENTS].join(", ")}`);
 	}
-	if (!port) {
-		throw new Error("Missing required flag: --port");
-	}
-	const portNumber = Number.parseInt(port, 10);
-	if (!Number.isFinite(portNumber) || portNumber < 1 || portNumber > 65535) {
-		throw new Error(`Invalid port "${port}". Must be a number between 1 and 65535`);
-	}
 
-	return { taskId, event: event as RuntimeHookEvent, port: portNumber };
+	const context = parseHookRuntimeContextFromEnv();
+
+	return {
+		event: event as RuntimeHookEvent,
+		taskId: context.taskId,
+		workspaceId: context.workspaceId,
+		port: context.port,
+	};
 }
 
 export function isHooksSubcommand(argv: string[]): boolean {
@@ -64,7 +55,11 @@ export async function runHooksIngest(argv: string[]): Promise<void> {
 	}
 
 	const url = `http://127.0.0.1:${args.port}/api/hooks/ingest`;
-	const body = JSON.stringify({ taskId: args.taskId, event: args.event });
+	const body = JSON.stringify({
+		taskId: args.taskId,
+		workspaceId: args.workspaceId,
+		event: args.event,
+	});
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), 3000);
 
