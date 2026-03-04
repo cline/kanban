@@ -1737,7 +1737,11 @@ export default function App(): ReactElement {
 	);
 
 	const requestMoveTaskToTrash = useCallback(
-		async (taskId: string, _fromColumnId: BoardColumnId): Promise<void> => {
+		async (
+			taskId: string,
+			fromColumnId: BoardColumnId,
+			options?: { optimisticMoveApplied?: boolean },
+		): Promise<void> => {
 			const selection = findCardSelection(board, taskId);
 			if (!selection) {
 				return;
@@ -1750,6 +1754,16 @@ export default function App(): ReactElement {
 			}
 
 			if (changeCount > 0) {
+				if (options?.optimisticMoveApplied) {
+					setBoard((currentBoard) => {
+						const currentColumnId = getTaskColumnId(currentBoard, taskId);
+						if (currentColumnId !== "trash") {
+							return currentBoard;
+						}
+						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+						return reverted.moved ? reverted.board : currentBoard;
+					});
+				}
 				const workspaceInfo =
 					selectedTaskWorkspaceInfo && selectedTaskWorkspaceInfo.taskId === selection.card.id
 						? selectedTaskWorkspaceInfo
@@ -1975,7 +1989,10 @@ export default function App(): ReactElement {
 			}
 
 			if (moveEvent.toColumnId === "trash") {
-				void requestMoveTaskToTrash(moveEvent.taskId, moveEvent.fromColumnId);
+				setBoard(applied.board);
+				void requestMoveTaskToTrash(moveEvent.taskId, moveEvent.fromColumnId, {
+					optimisticMoveApplied: true,
+				});
 				return;
 			}
 
