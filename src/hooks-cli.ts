@@ -1,5 +1,8 @@
-import type { RuntimeHookEvent, RuntimeHookIngestResponse } from "./runtime/api-contract.js";
+import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
+
+import type { RuntimeHookEvent } from "./runtime/api-contract.js";
 import { parseHookRuntimeContextFromEnv } from "./runtime/terminal/hook-runtime-context.js";
+import type { RuntimeAppRouter } from "./runtime/trpc/app-router.js";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["review", "inprogress"]);
 
@@ -8,6 +11,22 @@ interface HooksIngestArgs {
 	taskId: string;
 	workspaceId: string;
 	port: number;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+	let timeoutHandle: NodeJS.Timeout | null = null;
+	const timeoutPromise = new Promise<never>((_, reject) => {
+		timeoutHandle = setTimeout(() => {
+			reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+		}, timeoutMs);
+	});
+	try {
+		return await Promise.race([promise, timeoutPromise]);
+	} finally {
+		if (timeoutHandle) {
+			clearTimeout(timeoutHandle);
+		}
+	}
 }
 
 function parseHooksIngestArgs(argv: string[]): HooksIngestArgs {
@@ -54,57 +73,35 @@ export async function runHooksIngest(argv: string[]): Promise<void> {
 		return;
 	}
 
-	const url = `http://127.0.0.1:${args.port}/api/hooks/ingest`;
-	const body = JSON.stringify({
-		taskId: args.taskId,
-		workspaceId: args.workspaceId,
-		event: args.event,
+	const trpcClient = createTRPCProxyClient<RuntimeAppRouter>({
+		links: [
+			httpBatchLink({
+				url: `http://127.0.0.1:${args.port}/api/trpc`,
+				maxItems: 1,
+			}),
+		],
 	});
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 3000);
 
 	try {
-		const response = await fetch(url, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body,
-			signal: controller.signal,
-		});
+		const ingestResponse = await withTimeout(
+			trpcClient.hooks.ingest.mutate({
+				taskId: args.taskId,
+				workspaceId: args.workspaceId,
+				event: args.event,
+			}),
+			3000,
+			"kanbanana hooks ingest",
+		);
 
-		// Hook events can legitimately race with session state updates.
-		// A 409 here means "no-op for current state", not a fatal failure.
-		if (response.status === 409) {
-			return;
-		}
-
-		if (!response.ok) {
-			const text = await response.text().catch(() => "");
-			let errorMessage = `HTTP ${response.status}`;
-			try {
-				const parsed = JSON.parse(text) as RuntimeHookIngestResponse;
-				if (parsed.error) {
-					errorMessage = parsed.error;
-				}
-			} catch {
-				if (text) {
-					errorMessage = text;
-				}
-			}
+		if (ingestResponse.ok === false) {
+			const errorMessage = ingestResponse.error ?? "Hook ingest failed";
 			process.stderr.write(`kanbanana hooks ingest: ${errorMessage}\n`);
-			process.exitCode = 1;
-			return;
-		}
-
-		const payload = (await response.json().catch(() => null)) as RuntimeHookIngestResponse | null;
-		if (payload && payload.ok === false) {
-			process.stderr.write(`kanbanana hooks ingest: ${payload.error ?? "Hook ingest failed"}\n`);
 			process.exitCode = 1;
 		}
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message =
+			error instanceof TRPCClientError ? error.message : error instanceof Error ? error.message : String(error);
 		process.stderr.write(`kanbanana hooks ingest: ${message}\n`);
 		process.exitCode = 1;
-	} finally {
-		clearTimeout(timeout);
 	}
 }

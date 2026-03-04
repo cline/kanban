@@ -71,6 +71,8 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@trpc/client": "^11.11.0",
+    "@trpc/server": "^11.11.0",
     "node-pty": "^1.1.0-beta34",
     "ws": "^8.18.0",
     "zod": "^4.3.6"

@@ -7,13 +7,13 @@ import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { panelSeparatorColor } from "@/kanban/data/column-colors";
-import { encodeTextToBase64, decodeBase64ToText } from "@/kanban/terminal/base64";
+import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
+import { decodeBase64ToText, encodeTextToBase64 } from "@/kanban/terminal/base64";
 import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTerminalWsClientMessage,
 	RuntimeTerminalWsServerMessage,
 } from "@/kanban/runtime/types";
-import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
 
 type TerminalWithViewportCore = Terminal & {
 	_core?: {
@@ -317,20 +317,16 @@ export function AgentTerminalPanel({
 	const handleStop = useCallback(async () => {
 		setIsStopping(true);
 		sendMessage({ type: "stop" });
-			try {
-				await workspaceFetch("/api/runtime/task-session/stop", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({ taskId }),
-					workspaceId,
-				});
-			} catch {
-				// Keep terminal usable even if stop API fails.
+		try {
+			if (workspaceId) {
+				const trpcClient = getRuntimeTrpcClient(workspaceId);
+				await trpcClient.runtime.stopTaskSession.mutate({ taskId });
 			}
-			setIsStopping(false);
-		}, [sendMessage, taskId, workspaceId]);
+		} catch {
+			// Keep terminal usable even if stop API fails.
+		}
+		setIsStopping(false);
+	}, [sendMessage, taskId, workspaceId]);
 
 	const handleClear = useCallback(() => {
 		terminalRef.current?.clear();

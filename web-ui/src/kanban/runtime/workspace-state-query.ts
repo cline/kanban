@@ -1,9 +1,10 @@
+import { TRPCClientError } from "@trpc/client";
+
 import type {
-	RuntimeWorkspaceStateConflictResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
 } from "@/kanban/runtime/types";
-import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
+import { createWorkspaceTrpcClient, readTrpcConflictRevision } from "@/kanban/runtime/trpc-client";
 
 export class WorkspaceStateConflictError extends Error {
 	readonly currentRevision: number;
@@ -16,36 +17,24 @@ export class WorkspaceStateConflictError extends Error {
 }
 
 export async function fetchWorkspaceState(workspaceId: string): Promise<RuntimeWorkspaceStateResponse> {
-	const response = await workspaceFetch("/api/workspace/state", {
-		workspaceId,
-	});
-	if (!response.ok) {
-		throw new Error(`Workspace state request failed with ${response.status}`);
-	}
-	return (await response.json()) as RuntimeWorkspaceStateResponse;
+	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+	return await trpcClient.workspace.getState.query();
 }
 
 export async function saveWorkspaceState(
 	workspaceId: string,
 	payload: RuntimeWorkspaceStateSaveRequest,
 ): Promise<RuntimeWorkspaceStateResponse> {
-	const response = await workspaceFetch("/api/workspace/state", {
-		method: "PUT",
-		headers: {
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify(payload),
-		workspaceId,
-	});
-	if (response.status === 409) {
-		const conflict = (await response.json().catch(() => null)) as RuntimeWorkspaceStateConflictResponse | null;
-		if (conflict && typeof conflict.currentRevision === "number") {
-			throw new WorkspaceStateConflictError(conflict.currentRevision, conflict.error);
+	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+	try {
+		return await trpcClient.workspace.saveState.mutate(payload);
+	} catch (error) {
+		if (error instanceof TRPCClientError) {
+			const conflictRevision = readTrpcConflictRevision(error);
+			if (typeof conflictRevision === "number") {
+				throw new WorkspaceStateConflictError(conflictRevision, error.message);
+			}
 		}
-		throw new WorkspaceStateConflictError(0);
+		throw error;
 	}
-	if (!response.ok) {
-		throw new Error(`Workspace save request failed with ${response.status}`);
-	}
-	return (await response.json()) as RuntimeWorkspaceStateResponse;
 }

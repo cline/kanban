@@ -2,8 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { useRawLocalStorageValue } from "@/kanban/hooks/react-use";
-import type { RuntimeShortcutRunResponse } from "@/kanban/runtime/types";
-import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
+import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import {
 	PREFERRED_OPEN_TARGET_STORAGE_KEY,
 	buildOpenCommand,
@@ -28,20 +27,6 @@ interface UseOpenWorkspaceResult {
 	onOpenWorkspace: () => void;
 	canOpenWorkspace: boolean;
 	isOpeningWorkspace: boolean;
-}
-
-type OpenWorkspacePayload =
-	| RuntimeShortcutRunResponse
-	| {
-		error?: string;
-	}
-	| null;
-
-function getOpenWorkspaceFailureMessage(payload: OpenWorkspacePayload, statusCode: number): string {
-	if (payload && "error" in payload && typeof payload.error === "string" && payload.error) {
-		return payload.error;
-	}
-	return `Open command failed with ${statusCode}.`;
 }
 
 function getFirstOutputLine(output: string): string | null {
@@ -88,21 +73,10 @@ export function useOpenWorkspace({
 		void (async () => {
 			setIsOpeningWorkspace(true);
 			try {
-				const response = await workspaceFetch("/api/runtime/shortcut/run", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						command: buildOpenCommand(preferredOpenTargetId, workspacePath),
-					}),
-					workspaceId: currentProjectId,
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.runtime.runShortcut.mutate({
+					command: buildOpenCommand(preferredOpenTargetId, workspacePath),
 				});
-				const payload = (await response.json().catch(() => null)) as OpenWorkspacePayload;
-				if (!response.ok || !payload || !("exitCode" in payload)) {
-					showOpenFailureToast(getOpenWorkspaceFailureMessage(payload, response.status));
-					return;
-				}
 				if (payload.exitCode !== 0) {
 					const details = getFirstOutputLine(payload.combinedOutput) ?? `Exited with code ${payload.exitCode}.`;
 					showOpenFailureToast(details);

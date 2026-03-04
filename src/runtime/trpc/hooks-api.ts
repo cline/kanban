@@ -1,0 +1,98 @@
+import type { WebSocket } from "ws";
+import type {
+	RuntimeHookIngestResponse,
+	RuntimeStateStreamMessage,
+	RuntimeStateStreamTaskReadyForReviewMessage,
+	RuntimeTaskSessionSummary,
+} from "../api-contract.js";
+import { parseHookIngestRequest } from "../api-validation.js";
+import { loadWorkspaceContextById } from "../state/workspace-state.js";
+import type { TerminalSessionManager } from "../terminal/session-manager.js";
+import type { RuntimeTrpcContext } from "./app-router.js";
+
+interface RuntimeHookClientsByWorkspaceId extends Map<string, Set<WebSocket>> {}
+
+export interface CreateHooksApiDependencies {
+	workspacePathsById: Map<string, string>;
+	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
+	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
+	runtimeStateClientsByWorkspaceId: RuntimeHookClientsByWorkspaceId;
+	sendRuntimeStateMessage: (client: WebSocket, payload: RuntimeStateStreamMessage) => void;
+}
+
+function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: "review" | "inprogress"): boolean {
+	if (event === "review") {
+		return summary.state === "running";
+	}
+	return (
+		summary.state === "awaiting_review" && (summary.reviewReason === "attention" || summary.reviewReason === "hook")
+	);
+}
+
+export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
+	return {
+		ingest: async (input) => {
+			try {
+				const body = parseHookIngestRequest(input);
+				const taskId = body.taskId;
+				const workspaceId = body.workspaceId;
+				const event = body.event;
+				const knownWorkspacePath = deps.workspacePathsById.get(workspaceId);
+				const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
+				const workspacePath = knownWorkspacePath ?? workspaceContext?.repoPath ?? null;
+				if (!workspacePath) {
+					return {
+						ok: false,
+						error: `Workspace "${workspaceId}" not found`,
+					} satisfies RuntimeHookIngestResponse;
+				}
+
+				const manager = await deps.ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
+				const summary = manager.getSummary(taskId);
+				if (!summary) {
+					return {
+						ok: false,
+						error: `Task "${taskId}" not found in workspace "${workspaceId}"`,
+					} satisfies RuntimeHookIngestResponse;
+				}
+
+				if (!canTransitionTaskForHookEvent(summary, event)) {
+					return {
+						ok: false,
+						error: `Task "${taskId}" cannot handle "${event}" from state "${summary.state}" (${summary.reviewReason ?? "no reason"})`,
+					} satisfies RuntimeHookIngestResponse;
+				}
+
+				const transitionedSummary =
+					event === "review" ? manager.transitionToReview(taskId, "hook") : manager.transitionToRunning(taskId);
+				if (!transitionedSummary) {
+					return {
+						ok: false,
+						error: `Task "${taskId}" transition failed`,
+					} satisfies RuntimeHookIngestResponse;
+				}
+
+				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
+				if (event === "review") {
+					const runtimeClients = deps.runtimeStateClientsByWorkspaceId.get(workspaceId);
+					if (runtimeClients && runtimeClients.size > 0) {
+						const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
+							type: "task_ready_for_review",
+							workspaceId,
+							taskId,
+							triggeredAt: Date.now(),
+						};
+						for (const client of runtimeClients) {
+							deps.sendRuntimeStateMessage(client, payload);
+						}
+					}
+				}
+
+				return { ok: true } satisfies RuntimeHookIngestResponse;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, error: message } satisfies RuntimeHookIngestResponse;
+			}
+		},
+	};
+}

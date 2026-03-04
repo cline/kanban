@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 
 import { fetchRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
 import type { RuntimeConfigResponse } from "@/kanban/runtime/types";
+import { useTrpcQuery } from "@/kanban/runtime/use-trpc-query";
 
 export interface UseRuntimeProjectConfigResult {
 	config: RuntimeConfigResponse | null;
@@ -11,60 +12,23 @@ export interface UseRuntimeProjectConfigResult {
 export function useRuntimeProjectConfig(
 	workspaceId: string | null,
 ): UseRuntimeProjectConfigResult {
-	const [config, setConfig] = useState<RuntimeConfigResponse | null>(null);
-	const previousWorkspaceIdRef = useRef<string | null>(null);
-	const fetchConfig = useCallback(async (targetWorkspaceId: string): Promise<RuntimeConfigResponse | null> => {
-		try {
-			return await fetchRuntimeConfig(targetWorkspaceId);
-		} catch {
-			return null;
-		}
-	}, []);
-
-	useEffect(() => {
+	const queryFn = useCallback(async () => {
 		if (!workspaceId) {
-			setConfig(null);
-			previousWorkspaceIdRef.current = null;
-			return;
+			throw new Error("No workspace selected.");
 		}
-		const didWorkspaceChange = previousWorkspaceIdRef.current !== workspaceId;
-		previousWorkspaceIdRef.current = workspaceId;
-		if (didWorkspaceChange) {
-			setConfig(null);
-		}
-		let cancelled = false;
-		void (async () => {
-			const fetched = await fetchConfig(workspaceId);
-			if (cancelled) {
-				return;
-			}
-			if (fetched) {
-				setConfig(fetched);
-				return;
-			}
-			if (didWorkspaceChange) {
-				setConfig(null);
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [fetchConfig, workspaceId]);
+		return await fetchRuntimeConfig(workspaceId);
+	}, [workspaceId]);
+	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
+		enabled: workspaceId !== null,
+		queryFn,
+	});
 
 	const refresh = useCallback(() => {
-		if (!workspaceId) {
-			return;
-		}
-		void (async () => {
-			const fetched = await fetchConfig(workspaceId);
-			if (fetched) {
-				setConfig(fetched);
-			}
-		})();
-	}, [fetchConfig, workspaceId]);
+		void configQuery.refetch();
+	}, [configQuery.refetch]);
 
 	return {
-		config,
+		config: workspaceId ? configQuery.data : null,
 		refresh,
 	};
 }

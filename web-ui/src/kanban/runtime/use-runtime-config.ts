@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchRuntimeConfig, saveRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/kanban/runtime/types";
+import { useTrpcQuery } from "@/kanban/runtime/use-trpc-query";
 
 export interface UseRuntimeConfigResult {
 	config: RuntimeConfigResponse | null;
@@ -18,47 +19,28 @@ export interface UseRuntimeConfigResult {
 }
 
 export function useRuntimeConfig(open: boolean, workspaceId: string | null): UseRuntimeConfigResult {
-	const [config, setConfig] = useState<RuntimeConfigResponse | null>(null);
-	const [isLoading, setIsLoading] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const previousWorkspaceIdRef = useRef<string | null>(null);
+	const queryFn = useCallback(async () => {
+		if (!workspaceId) {
+			throw new Error("No workspace selected.");
+		}
+		return await fetchRuntimeConfig(workspaceId);
+	}, [workspaceId]);
+	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
+		enabled: open && workspaceId !== null,
+		queryFn,
+		retainDataOnError: true,
+	});
+	const setConfigData = configQuery.setData;
 
 	useEffect(() => {
-		if (!workspaceId) {
-			previousWorkspaceIdRef.current = null;
-			setConfig(null);
-			setIsLoading(false);
+		if (previousWorkspaceIdRef.current === workspaceId) {
 			return;
 		}
-		if (!open) {
-			setIsLoading(false);
-			return;
-		}
-		const didWorkspaceChange = previousWorkspaceIdRef.current !== workspaceId;
 		previousWorkspaceIdRef.current = workspaceId;
-		if (didWorkspaceChange) {
-			setConfig(null);
-		}
-		let cancelled = false;
-		setIsLoading(true);
-		void (async () => {
-			try {
-				const fetched = await fetchRuntimeConfig(workspaceId);
-				if (!cancelled) {
-					setConfig(fetched);
-				}
-			} catch {
-				// Keep existing settings visible if runtime fetch fails.
-			} finally {
-				if (!cancelled) {
-					setIsLoading(false);
-				}
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [open, workspaceId]);
+		setConfigData(null);
+	}, [setConfigData, workspaceId]);
 
 	const save = useCallback(
 		async (nextConfig: {
@@ -75,7 +57,7 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 			setIsSaving(true);
 			try {
 				const saved = await saveRuntimeConfig(workspaceId, nextConfig);
-				setConfig(saved);
+				setConfigData(saved);
 				return saved;
 			} catch {
 				return null;
@@ -83,12 +65,12 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 				setIsSaving(false);
 			}
 		},
-		[workspaceId],
+		[setConfigData, workspaceId],
 	);
 
 	return {
-		config: workspaceId ? config : null,
-		isLoading: open ? isLoading : false,
+		config: workspaceId ? configQuery.data : null,
+		isLoading: open ? configQuery.isLoading : false,
 		isSaving,
 		save,
 	};

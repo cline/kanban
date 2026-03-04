@@ -4,12 +4,10 @@ import type { KeyboardEvent, ReactElement } from "react";
 import { Classes as SelectClasses } from "@blueprintjs/select";
 
 import { useDebouncedEffect } from "@/kanban/hooks/react-use";
+import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import type {
 	RuntimeSlashCommandDescription,
-	RuntimeSlashCommandsResponse,
-	RuntimeWorkspaceFileSearchResponse,
 } from "@/kanban/runtime/types";
-import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
 
 const FILE_MENTION_LIMIT = 8;
 const MENTION_QUERY_DEBOUNCE_MS = 120;
@@ -157,13 +155,11 @@ export function TaskPromptComposer({
 		setIsSlashCommandsLoading(true);
 		void (async () => {
 			try {
-				const response = await workspaceFetch("/api/runtime/slash-commands", {
-					workspaceId,
-				});
-				if (!response.ok) {
-					throw new Error(`Slash command request failed with ${response.status}`);
+				if (!workspaceId) {
+					throw new Error("No workspace selected.");
 				}
-				const payload = (await response.json()) as RuntimeSlashCommandsResponse;
+				const trpcClient = getRuntimeTrpcClient(workspaceId);
+				const payload = await trpcClient.runtime.getSlashCommands.query(null);
 				if (cancelled) {
 					return;
 				}
@@ -216,17 +212,14 @@ export function TaskPromptComposer({
 		setIsMentionSearchLoading(true);
 		void (async () => {
 			try {
-				const params = new URLSearchParams({
-					q: activeToken.query,
-					limit: String(FILE_MENTION_LIMIT),
-				});
-				const response = await workspaceFetch(`/api/workspace/files/search?${params.toString()}`, {
-					workspaceId,
-				});
-				if (!response.ok) {
-					throw new Error(`Workspace file search failed with ${response.status}`);
+				if (!workspaceId) {
+					throw new Error("No workspace selected.");
 				}
-				const payload = (await response.json()) as RuntimeWorkspaceFileSearchResponse;
+				const trpcClient = getRuntimeTrpcClient(workspaceId);
+				const payload = await trpcClient.workspace.searchFiles.query({
+					query: activeToken.query,
+					limit: FILE_MENTION_LIMIT,
+				});
 				if (requestId !== mentionSearchRequestIdRef.current) {
 					return;
 				}

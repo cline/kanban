@@ -309,24 +309,55 @@ async function connectRuntimeStream(url: string): Promise<RuntimeStreamClient> {
 }
 
 async function requestJson<T>(input: {
-	url: string;
-	method?: "GET" | "POST" | "PUT";
+	baseUrl: string;
+	procedure: string;
+	type: "query" | "mutation";
 	workspaceId?: string | null;
-	body?: unknown;
+	payload?: unknown;
 }): Promise<{ status: number; payload: T }> {
+	const unwrapTrpcPayload = (value: unknown): unknown => {
+		const envelope = Array.isArray(value) ? value[0] : value;
+		if (!envelope || typeof envelope !== "object") {
+			return value;
+		}
+		if ("result" in envelope) {
+			const result = (envelope as { result?: { data?: unknown } }).result;
+			const data = result?.data;
+			if (data && typeof data === "object" && "json" in data) {
+				return (data as { json: unknown }).json;
+			}
+			return data;
+		}
+		if ("error" in envelope) {
+			return (envelope as { error: unknown }).error;
+		}
+		return value;
+	};
 	const headers = new Headers();
 	if (input.workspaceId) {
 		headers.set("x-kanbanana-workspace-id", input.workspaceId);
 	}
-	if (input.body !== undefined) {
+	let url = `${input.baseUrl}/api/trpc/${input.procedure}`;
+	let method: "GET" | "POST";
+	let body: string | undefined;
+	if (input.type === "query") {
+		method = "GET";
+		if (input.payload !== undefined) {
+			url += `?input=${encodeURIComponent(JSON.stringify(input.payload))}`;
+		}
+	} else {
+		method = "POST";
+		body = input.payload === undefined ? undefined : JSON.stringify(input.payload);
+	}
+	if (body !== undefined) {
 		headers.set("Content-Type", "application/json");
 	}
-	const response = await fetch(input.url, {
-		method: input.method ?? "GET",
+	const response = await fetch(url, {
+		method,
 		headers,
-		body: input.body === undefined ? undefined : JSON.stringify(input.body),
+		body,
 	});
-	const payload = (await response.json()) as T;
+	const payload = unwrapTrpcPayload(await response.json().catch(() => null)) as T;
 	return {
 		status: response.status,
 		payload,
@@ -352,8 +383,9 @@ describe.sequential("runtime state stream integration", () => {
 			expect(runtimeUrl.pathname).toBe("/");
 
 			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
-				url: `http://127.0.0.1:${port}/api/projects`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.list",
+				type: "query",
 			});
 			expect(projectsResponse.status).toBe(200);
 			expect(projectsResponse.payload.currentProjectId).toBeNull();
@@ -403,10 +435,11 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceAId).not.toBe("");
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
-				url: `http://127.0.0.1:${firstPort}/api/projects/add`,
-				method: "POST",
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "projects.add",
+				type: "mutation",
 				workspaceId: workspaceAId,
-				body: {
+				payload: {
 					path: projectBPath,
 				},
 			});
@@ -435,8 +468,9 @@ describe.sequential("runtime state stream integration", () => {
 			const expectedProjectAPath = await realpath(projectAPath).catch(() => resolve(projectAPath));
 
 			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
-				url: `http://127.0.0.1:${secondPort}/api/projects`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${secondPort}`,
+				procedure: "projects.list",
+				type: "query",
 			});
 			expect(projectsResponse.status).toBe(200);
 			expect(projectsResponse.payload.currentProjectId).toBe(workspaceAId);
@@ -486,10 +520,11 @@ describe.sequential("runtime state stream integration", () => {
 			const expectedProjectBPath = await realpath(projectBPath).catch(() => resolve(projectBPath));
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
-				url: `http://127.0.0.1:${port}/api/projects/add`,
-				method: "POST",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.add",
+				type: "mutation",
 				workspaceId: workspaceAId,
-				body: {
+				payload: {
 					path: projectBPath,
 				},
 			});
@@ -521,16 +556,18 @@ describe.sequential("runtime state stream integration", () => {
 			expect(snapshotB.workspaceState?.repoPath).toBe(expectedProjectBPath);
 
 			const currentWorkspaceBState = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${port}/api/workspace/state`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "workspace.getState",
+				type: "query",
 				workspaceId: workspaceBId,
 			});
 			const previousRevision = currentWorkspaceBState.payload.revision;
 			const saveWorkspaceBResponse = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${port}/api/workspace/state`,
-				method: "PUT",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "workspace.saveState",
+				type: "mutation",
 				workspaceId: workspaceBId,
-				body: {
+				payload: {
 					board: createBoard("Realtime Task"),
 					sessions: currentWorkspaceBState.payload.sessions,
 					expectedRevision: previousRevision,
@@ -554,8 +591,9 @@ describe.sequential("runtime state stream integration", () => {
 			).toBe(false);
 
 			const projectsAfterUpdate = await requestJson<RuntimeProjectsResponse>({
-				url: `http://127.0.0.1:${port}/api/projects`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.list",
+				type: "query",
 				workspaceId: workspaceAId,
 			});
 			expect(projectsAfterUpdate.status).toBe(200);
@@ -604,10 +642,11 @@ describe.sequential("runtime state stream integration", () => {
 
 			const taskId = "hook-review-task";
 			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
-				url: `http://127.0.0.1:${port}/api/runtime/shell-session/start`,
-				method: "POST",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "runtime.startShellSession",
+				type: "mutation",
 				workspaceId,
-				body: {
+				payload: {
 					taskId,
 					baseRef: "HEAD",
 				},
@@ -616,9 +655,10 @@ describe.sequential("runtime state stream integration", () => {
 			expect(startShellResponse.payload.ok).toBe(true);
 
 			const hookResponse = await requestJson<RuntimeHookIngestResponse>({
-				url: `http://127.0.0.1:${port}/api/hooks/ingest`,
-				method: "POST",
-				body: {
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "hooks.ingest",
+				type: "mutation",
+				payload: {
 					taskId,
 					workspaceId,
 					event: "review",
@@ -637,10 +677,11 @@ describe.sequential("runtime state stream integration", () => {
 			expect(readyMessage.triggeredAt).toBeGreaterThan(0);
 
 			await requestJson({
-				url: `http://127.0.0.1:${port}/api/runtime/task-session/stop`,
-				method: "POST",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "runtime.stopTaskSession",
+				type: "mutation",
 				workspaceId,
-				body: { taskId },
+				payload: { taskId },
 			});
 		} finally {
 			if (stream) {
@@ -676,17 +717,19 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceId).not.toBe("");
 
 			const currentState = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${firstPort}/api/workspace/state`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.getState",
+				type: "query",
 				workspaceId,
 			});
 			expect(currentState.status).toBe(200);
 
 			const seedResponse = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${firstPort}/api/workspace/state`,
-				method: "PUT",
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.saveState",
+				type: "mutation",
 				workspaceId,
-				body: {
+				payload: {
 					board: createReviewBoard(taskId, taskTitle),
 					sessions: {
 						[taskId]: {
@@ -724,8 +767,9 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceId).not.toBe("");
 
 			const hydratedState = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${secondPort}/api/workspace/state`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${secondPort}`,
+				procedure: "workspace.getState",
+				type: "query",
 				workspaceId,
 			});
 			expect(hydratedState.status).toBe(200);
@@ -748,8 +792,9 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceId).not.toBe("");
 
 			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${thirdPort}/api/workspace/state`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				procedure: "workspace.getState",
+				type: "query",
 				workspaceId,
 			});
 			expect(finalState.status).toBe(200);
@@ -791,17 +836,19 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceId).not.toBe("");
 
 			const currentState = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${firstPort}/api/workspace/state`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.getState",
+				type: "query",
 				workspaceId,
 			});
 			expect(currentState.status).toBe(200);
 
 			const seedResponse = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${firstPort}/api/workspace/state`,
-				method: "PUT",
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.saveState",
+				type: "mutation",
 				workspaceId,
-				body: {
+				payload: {
 					board: createReviewBoard(taskId, taskTitle),
 					sessions: {
 						[taskId]: {
@@ -823,9 +870,14 @@ describe.sequential("runtime state stream integration", () => {
 			});
 			expect(seedResponse.status).toBe(200);
 			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
-				url: `http://127.0.0.1:${firstPort}/api/workspace/task-context?taskId=${encodeURIComponent(taskId)}&baseRef=${encodeURIComponent("HEAD")}`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.getTaskContext",
+				type: "query",
 				workspaceId,
+				payload: {
+					taskId,
+					baseRef: "HEAD",
+				},
 			});
 			expect(taskWorkspaceInfo.status).toBe(200);
 			mkdirSync(taskWorkspaceInfo.payload.path, { recursive: true });
@@ -846,8 +898,9 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceId).not.toBe("");
 
 			const hydratedState = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${secondPort}/api/workspace/state`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${secondPort}`,
+				procedure: "workspace.getState",
+				type: "query",
 				workspaceId,
 			});
 			expect(hydratedState.status).toBe(200);
@@ -870,8 +923,9 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceId).not.toBe("");
 
 			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
-				url: `http://127.0.0.1:${thirdPort}/api/workspace/state`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				procedure: "workspace.getState",
+				type: "query",
 				workspaceId,
 			});
 			expect(finalState.status).toBe(200);
@@ -883,9 +937,14 @@ describe.sequential("runtime state stream integration", () => {
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
 			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
-				url: `http://127.0.0.1:${thirdPort}/api/workspace/task-context?taskId=${encodeURIComponent(taskId)}&baseRef=${encodeURIComponent("HEAD")}`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				procedure: "workspace.getTaskContext",
+				type: "query",
 				workspaceId,
+				payload: {
+					taskId,
+					baseRef: "HEAD",
+				},
 			});
 			expect(workspaceInfo.status).toBe(200);
 			expect(workspaceInfo.payload.exists).toBe(false);
@@ -924,10 +983,11 @@ describe.sequential("runtime state stream integration", () => {
 			const expectedProjectBPath = await realpath(projectBPath).catch(() => resolve(projectBPath));
 
 			const addProjectResponse = await requestJson<RuntimeProjectAddResponse>({
-				url: `http://127.0.0.1:${port}/api/projects/add`,
-				method: "POST",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.add",
+				type: "mutation",
 				workspaceId: workspaceAId,
-				body: {
+				payload: {
 					path: projectBPath,
 				},
 			});
@@ -948,10 +1008,11 @@ describe.sequential("runtime state stream integration", () => {
 			expect(initialSnapshot.currentProjectId).toBe(workspaceAId);
 
 			const removeResponse = await requestJson<RuntimeProjectRemoveResponse>({
-				url: `http://127.0.0.1:${port}/api/projects/remove`,
-				method: "POST",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.remove",
+				type: "mutation",
 				workspaceId: workspaceAId,
-				body: {
+				payload: {
 					projectId: workspaceAId,
 				},
 			});
@@ -975,8 +1036,9 @@ describe.sequential("runtime state stream integration", () => {
 			expect(fallbackSnapshot.workspaceState?.repoPath).toBe(expectedProjectBPath);
 
 			const projectsAfterRemoval = await requestJson<RuntimeProjectsResponse>({
-				url: `http://127.0.0.1:${port}/api/projects`,
-				method: "GET",
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.list",
+				type: "query",
 				workspaceId: workspaceBId,
 			});
 			expect(projectsAfterRemoval.status).toBe(200);

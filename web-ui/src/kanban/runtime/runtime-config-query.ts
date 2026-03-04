@@ -1,19 +1,9 @@
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/kanban/runtime/types";
-import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
-
-interface RuntimeConfigError {
-	error: string;
-}
+import { createWorkspaceTrpcClient } from "@/kanban/runtime/trpc-client";
 
 export async function fetchRuntimeConfig(workspaceId: string): Promise<RuntimeConfigResponse> {
-	const response = await workspaceFetch("/api/runtime/config", {
-		workspaceId,
-	});
-	if (!response.ok) {
-		const payload = (await response.json().catch(() => null)) as RuntimeConfigError | null;
-		throw new Error(payload?.error ?? `Runtime config request failed with ${response.status}`);
-	}
-	return (await response.json()) as RuntimeConfigResponse;
+	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+	return await trpcClient.runtime.getConfig.query();
 }
 
 export async function saveRuntimeConfig(
@@ -27,17 +17,6 @@ export async function saveRuntimeConfig(
 		openPrPromptTemplate?: string;
 	},
 ): Promise<RuntimeConfigResponse> {
-	const response = await workspaceFetch("/api/runtime/config", {
-		method: "PUT",
-		headers: {
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify(nextConfig),
-		workspaceId,
-	});
-	if (!response.ok) {
-		const payload = (await response.json().catch(() => null)) as RuntimeConfigError | null;
-		throw new Error(payload?.error ?? `Runtime config save failed with ${response.status}`);
-	}
-	return (await response.json()) as RuntimeConfigResponse;
+	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+	return await trpcClient.runtime.saveConfig.mutate(nextConfig);
 }

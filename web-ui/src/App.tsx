@@ -41,7 +41,8 @@ import {
 import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
 import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
 import { useTerminalConnectionReady } from "@/kanban/runtime/use-terminal-connection-ready";
-import { workspaceFetch } from "@/kanban/runtime/workspace-fetch";
+import { saveRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
+import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import {
 	fetchWorkspaceState,
 	saveWorkspaceState,
@@ -64,19 +65,11 @@ import {
 	requestBrowserNotificationPermission,
 } from "@/kanban/utils/notification-permission";
 import type {
-	RuntimeProjectAddResponse,
-	RuntimeGitCheckoutResponse,
-	RuntimeProjectDirectoryPickerResponse,
 	RuntimeGitRepositoryInfo,
-	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
-	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
-	RuntimeProjectRemoveResponse,
-	RuntimeShellSessionStartResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeTaskSessionSummary,
-	RuntimeTaskSessionInputResponse,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
@@ -368,28 +361,19 @@ export default function App(): ReactElement {
 		message?: string;
 		response?: Extract<RuntimeWorktreeEnsureResponse, { ok: true }>;
 	}> => {
+		if (!currentProjectId) {
+			return { ok: false, message: "No project selected." };
+		}
 		try {
-			const response = await workspaceFetch("/api/workspace/worktree/ensure", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					taskId: task.id,
-					baseRef: task.baseRef,
-				}),
-				workspaceId: currentProjectId,
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.workspace.ensureWorktree.mutate({
+				taskId: task.id,
+				baseRef: task.baseRef,
 			});
-			const payload = (await response.json().catch(() => null)) as
-				| RuntimeWorktreeEnsureResponse
-				| { error?: string }
-				| null;
-			if (!response.ok || !payload || !("ok" in payload) || !payload.ok) {
+			if (!payload.ok) {
 				return {
 					ok: false,
-					message:
-						(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
-						`Worktree setup failed with ${response.status}.`,
+					message: payload.error ?? "Worktree setup failed.",
 				};
 			}
 			return { ok: true, response: payload };
@@ -400,28 +384,22 @@ export default function App(): ReactElement {
 	}, [currentProjectId]);
 
 	const startTaskSession = useCallback(async (task: BoardCard): Promise<{ ok: boolean; message?: string }> => {
+		if (!currentProjectId) {
+			return { ok: false, message: "No project selected." };
+		}
 		try {
 			const kickoffPrompt = task.prompt.trim() || task.description.trim() || task.title;
-			const response = await workspaceFetch("/api/runtime/task-session/start", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					taskId: task.id,
-					prompt: kickoffPrompt,
-					startInPlanMode: task.startInPlanMode,
-					baseRef: task.baseRef,
-				}),
-				workspaceId: currentProjectId,
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.runtime.startTaskSession.mutate({
+				taskId: task.id,
+				prompt: kickoffPrompt,
+				startInPlanMode: task.startInPlanMode,
+				baseRef: task.baseRef,
 			});
-			const payload = (await response.json().catch(() => null)) as
-				| { ok?: boolean; error?: string; summary?: RuntimeTaskSessionSummary | null }
-				| null;
-			if (!response.ok || !payload || !payload.ok || !payload.summary) {
+			if (!payload.ok || !payload.summary) {
 				return {
 					ok: false,
-					message: payload?.error ?? `Task session start failed with ${response.status}.`,
+					message: payload.error ?? "Task session start failed.",
 				};
 			}
 			upsertSession(payload.summary);
@@ -433,15 +411,12 @@ export default function App(): ReactElement {
 	}, [currentProjectId, upsertSession]);
 
 	const stopTaskSession = useCallback(async (taskId: string): Promise<void> => {
+		if (!currentProjectId) {
+			return;
+		}
 		try {
-			await workspaceFetch("/api/runtime/task-session/stop", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ taskId }),
-				workspaceId: currentProjectId,
-			});
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			await trpcClient.runtime.stopTaskSession.mutate({ taskId });
 		} catch {
 			// Ignore stop errors during cleanup.
 		}
@@ -458,26 +433,14 @@ export default function App(): ReactElement {
 			return { ok: false, message: "No project selected." };
 		}
 		try {
-			const response = await workspaceFetch("/api/runtime/task-session/input", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					taskId,
-					text,
-					appendNewline: options?.appendNewline ?? true,
-				}),
-				workspaceId: currentProjectId,
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.runtime.sendTaskSessionInput.mutate({
+				taskId,
+				text,
+				appendNewline: options?.appendNewline ?? true,
 			});
-			const payload = (await response.json().catch(() => null)) as
-				| RuntimeTaskSessionInputResponse
-				| { error?: string; summary?: RuntimeTaskSessionSummary | null }
-				| null;
-			if (!response.ok || !payload || !("ok" in payload) || !payload.ok) {
-				const errorMessage =
-					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
-					`Task session input failed with ${response.status}.`;
+			if (!payload.ok) {
+				const errorMessage = payload.error || "Task session input failed.";
 				return { ok: false, message: errorMessage };
 			}
 			if (payload.summary) {
@@ -493,23 +456,14 @@ export default function App(): ReactElement {
 	const cleanupTaskWorkspace = useCallback(async (
 		taskId: string,
 	): Promise<RuntimeWorktreeDeleteResponse | null> => {
+		if (!currentProjectId) {
+			return null;
+		}
 		try {
-			const response = await workspaceFetch("/api/workspace/worktree/delete", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ taskId }),
-				workspaceId: currentProjectId,
-			});
-			const payload = (await response.json().catch(() => null)) as
-				| RuntimeWorktreeDeleteResponse
-				| { error?: string }
-				| null;
-			if (!response.ok || !payload || !("ok" in payload) || !payload.ok) {
-				const message =
-					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
-					`Could not clean up task workspace (${response.status}).`;
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.workspace.deleteWorktree.mutate({ taskId });
+			if (!payload.ok) {
+				const message = payload.error ?? "Could not clean up task workspace.";
 				setWorktreeError(message);
 				return null;
 			}
@@ -524,19 +478,15 @@ export default function App(): ReactElement {
 
 	const fetchTaskWorkspaceInfo = useCallback(
 		async (task: BoardCard): Promise<RuntimeTaskWorkspaceInfoResponse | null> => {
+			if (!currentProjectId) {
+				return null;
+			}
 			try {
-				const params = new URLSearchParams({
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				return await trpcClient.workspace.getTaskContext.query({
 					taskId: task.id,
+					baseRef: task.baseRef,
 				});
-				params.set("baseRef", task.baseRef);
-				const response = await workspaceFetch(`/api/workspace/task-context?${params.toString()}`, {
-					workspaceId: currentProjectId,
-				});
-				if (!response.ok) {
-					const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-					throw new Error(payload?.error ?? `Task workspace request failed with ${response.status}`);
-				}
-				return (await response.json()) as RuntimeTaskWorkspaceInfoResponse;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				setWorktreeError(message);
@@ -553,18 +503,11 @@ export default function App(): ReactElement {
 			return null;
 		}
 		try {
-			const params = new URLSearchParams({
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.workspace.getGitSummary.query({
 				taskId: task.id,
+				baseRef: task.baseRef,
 			});
-			params.set("baseRef", task.baseRef);
-			const response = await workspaceFetch(`/api/workspace/git/summary?${params.toString()}`, {
-				workspaceId: currentProjectId,
-			});
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-				throw new Error(payload?.error ?? `Workspace request failed with ${response.status}`);
-			}
-			const payload = (await response.json()) as RuntimeGitSummaryResponse;
 			if (!payload.ok) {
 				throw new Error(payload.error ?? "Workspace summary request failed.");
 			}
@@ -587,13 +530,11 @@ export default function App(): ReactElement {
 
 			let workspaceInfo: RuntimeTaskWorkspaceInfoResponse;
 			try {
-				const infoResponse = await workspaceFetch(`/api/workspace/task-context?${params.toString()}`, {
-					workspaceId: currentProjectId,
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				workspaceInfo = await trpcClient.workspace.getTaskContext.query({
+					taskId: task.id,
+					baseRef: task.baseRef,
 				});
-				if (!infoResponse.ok) {
-					return null;
-				}
-				workspaceInfo = (await infoResponse.json()) as RuntimeTaskWorkspaceInfoResponse;
 			} catch {
 				return null;
 			}
@@ -602,16 +543,15 @@ export default function App(): ReactElement {
 			let additions: number | null = null;
 			let deletions: number | null = null;
 			try {
-				const summaryResponse = await workspaceFetch(`/api/workspace/git/summary?${params.toString()}`, {
-					workspaceId: currentProjectId,
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const summaryPayload = await trpcClient.workspace.getGitSummary.query({
+					taskId: task.id,
+					baseRef: task.baseRef,
 				});
-				if (summaryResponse.ok) {
-					const summaryPayload = (await summaryResponse.json()) as RuntimeGitSummaryResponse;
-					if (summaryPayload.ok) {
-						changedFiles = summaryPayload.summary.changedFiles;
-						additions = summaryPayload.summary.additions;
-						deletions = summaryPayload.summary.deletions;
-					}
+				if (summaryPayload.ok) {
+					changedFiles = summaryPayload.summary.changedFiles;
+					additions = summaryPayload.summary.additions;
+					deletions = summaryPayload.summary.deletions;
 				}
 			} catch {
 				// Swallow errors: this snapshot is informational and should never block review cards.
@@ -1053,18 +993,10 @@ export default function App(): ReactElement {
 			return;
 		}
 		try {
-			const response = await workspaceFetch("/api/workspace/git/summary", {
-				workspaceId: currentProjectId,
-			});
-			const payload = (await response.json().catch(() => null)) as
-				| RuntimeGitSummaryResponse
-				| { error?: string }
-				| null;
-			if (!response.ok || !payload || !("ok" in payload) || !payload.ok || !payload.summary) {
-				throw new Error(
-					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
-						`Git summary request failed with ${response.status}.`,
-				);
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.workspace.getGitSummary.query(null);
+			if (!payload.ok || !payload.summary) {
+				throw new Error(payload.error ?? "Git summary request failed.");
 			}
 			setGitSummary(payload.summary);
 		} catch {
@@ -1078,29 +1010,12 @@ export default function App(): ReactElement {
 		}
 		setRunningGitAction(action);
 		try {
-			const response = await workspaceFetch(`/api/workspace/git/${action}`, {
-				method: "POST",
-				workspaceId: currentProjectId,
-			});
-			const payload = (await response.json().catch(() => null)) as
-				| RuntimeGitSyncResponse
-				| { error?: string; output?: string; summary?: RuntimeGitSyncSummary }
-				| null;
-			if (!response.ok || !payload || !("ok" in payload) || !payload.ok || !payload.summary) {
-				const errorMessage =
-					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
-					`${action} failed with ${response.status}.`;
-				const output =
-					payload && "output" in payload && typeof payload.output === "string"
-						? payload.output
-						: "";
-				const fallbackSummary =
-					payload &&
-					"summary" in payload &&
-					payload.summary &&
-					typeof payload.summary === "object"
-						? payload.summary
-						: null;
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.workspace.runGitSyncAction.mutate({ action });
+			if (!payload.ok || !payload.summary) {
+				const errorMessage = payload.error ?? `${action} failed.`;
+				const output = payload.output ?? "";
+				const fallbackSummary = payload.summary ?? null;
 				if (fallbackSummary) {
 					setGitSummary(fallbackSummary);
 				}
@@ -1137,33 +1052,13 @@ export default function App(): ReactElement {
 		}
 		setIsSwitchingHomeBranch(true);
 		try {
-			const response = await workspaceFetch("/api/workspace/git/checkout", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ branch: normalizedBranch }),
-				workspaceId: currentProjectId,
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.workspace.checkoutGitBranch.mutate({
+				branch: normalizedBranch,
 			});
-			const payload = (await response.json().catch(() => null)) as
-				| RuntimeGitCheckoutResponse
-				| { error?: string; output?: string; summary?: RuntimeGitSyncSummary }
-				| null;
-			if (!response.ok || !payload || !("ok" in payload) || !payload.ok || !payload.summary) {
-				const errorMessage =
-					(payload && "error" in payload && typeof payload.error === "string" && payload.error) ||
-					`Switch branch failed with ${response.status}.`;
-				const output =
-					payload && "output" in payload && typeof payload.output === "string"
-						? payload.output
-						: "";
-				const fallbackSummary =
-					payload &&
-					"summary" in payload &&
-					payload.summary &&
-					typeof payload.summary === "object"
-						? payload.summary
-						: null;
+			if (!payload.ok || !payload.summary) {
+				const errorMessage = payload.error ?? "Switch branch failed.";
+				const fallbackSummary = payload.summary ?? null;
 				if (fallbackSummary) {
 					setGitSummary(fallbackSummary);
 				}
@@ -1474,31 +1369,18 @@ export default function App(): ReactElement {
 
 	const handleAddProject = useCallback(async () => {
 		try {
-			const pickResponse = await workspaceFetch("/api/projects/pick-directory", {
-				method: "POST",
-				workspaceId: currentProjectId,
-			});
-			const picked = (await pickResponse.json().catch(() => null)) as RuntimeProjectDirectoryPickerResponse | null;
-			if (!pickResponse.ok || !picked?.ok || !picked.path) {
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const picked = await trpcClient.projects.pickDirectory.mutate();
+			if (!picked.ok || !picked.path) {
 				if (picked?.error && picked.error !== "No directory was selected.") {
 					throw new Error(picked.error);
 				}
 				return;
 			}
 
-			const addResponse = await workspaceFetch("/api/projects/add", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					path: picked.path,
-				}),
-				workspaceId: currentProjectId,
-			});
-			const added = (await addResponse.json().catch(() => null)) as RuntimeProjectAddResponse | null;
-			if (!addResponse.ok || !added?.ok || !added.project) {
-				throw new Error(added?.error ?? `Could not add project (${addResponse.status}).`);
+			const added = await trpcClient.projects.add.mutate({ path: picked.path });
+			if (!added.ok || !added.project) {
+				throw new Error(added.error ?? "Could not add project.");
 			}
 			if (!currentProjectId) {
 				setCanPersistWorkspaceState(false);
@@ -1525,17 +1407,10 @@ export default function App(): ReactElement {
 			}
 			setRemovingProjectId(projectId);
 			try {
-				const response = await workspaceFetch("/api/projects/remove", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({ projectId }),
-					workspaceId: currentProjectId,
-				});
-				const payload = (await response.json().catch(() => null)) as RuntimeProjectRemoveResponse | null;
-				if (!response.ok || !payload?.ok) {
-					throw new Error(payload?.error ?? `Could not remove project (${response.status}).`);
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.projects.remove.mutate({ projectId });
+				if (!payload.ok) {
+					throw new Error(payload.error ?? "Could not remove project.");
 				}
 				if (currentProjectId === projectId) {
 					setCanPersistWorkspaceState(false);
@@ -1562,21 +1437,14 @@ export default function App(): ReactElement {
 		}
 		setIsHomeTerminalStarting(true);
 		try {
-			const response = await workspaceFetch("/api/runtime/shell-session/start", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					taskId: HOME_TERMINAL_TASK_ID,
-					rows: HOME_TERMINAL_ROWS,
-					baseRef: workspaceGit?.currentBranch ?? workspaceGit?.defaultBranch ?? "HEAD",
-				}),
-				workspaceId: currentProjectId,
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.runtime.startShellSession.mutate({
+				taskId: HOME_TERMINAL_TASK_ID,
+				rows: HOME_TERMINAL_ROWS,
+				baseRef: workspaceGit?.currentBranch ?? workspaceGit?.defaultBranch ?? "HEAD",
 			});
-			const payload = (await response.json().catch(() => null)) as RuntimeShellSessionStartResponse | null;
-			if (!response.ok || !payload?.ok || !payload.summary) {
-				throw new Error(payload?.error ?? `Could not start terminal session (${response.status}).`);
+			if (!payload.ok || !payload.summary) {
+				throw new Error(payload.error ?? "Could not start terminal session.");
 			}
 			upsertSession(payload.summary);
 			setHomeTerminalShellBinary(
@@ -1617,22 +1485,15 @@ export default function App(): ReactElement {
 			}
 			try {
 				const targetTaskId = getDetailTerminalTaskId(card);
-				const response = await workspaceFetch("/api/runtime/shell-session/start", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-						body: JSON.stringify({
-							taskId: targetTaskId,
-							rows: HOME_TERMINAL_ROWS,
-							workspaceTaskId: card.id,
-							baseRef: card.baseRef,
-						}),
-					workspaceId: currentProjectId,
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.runtime.startShellSession.mutate({
+					taskId: targetTaskId,
+					rows: HOME_TERMINAL_ROWS,
+					workspaceTaskId: card.id,
+					baseRef: card.baseRef,
 				});
-				const payload = (await response.json().catch(() => null)) as RuntimeShellSessionStartResponse | null;
-				if (!response.ok || !payload?.ok || !payload.summary) {
-					throw new Error(payload?.error ?? `Could not start detail terminal session (${response.status}).`);
+				if (!payload.ok || !payload.summary) {
+					throw new Error(payload.error ?? "Could not start detail terminal session.");
 				}
 				upsertSession(payload.summary);
 				return true;
@@ -1918,20 +1779,9 @@ export default function App(): ReactElement {
 				return false;
 			}
 			try {
-				const response = await workspaceFetch("/api/runtime/config", {
-					method: "PUT",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						selectedShortcutId: nextShortcutId,
-					}),
-					workspaceId: currentProjectId,
+				await saveRuntimeConfig(currentProjectId, {
+					selectedShortcutId: nextShortcutId,
 				});
-				if (!response.ok) {
-					const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-					throw new Error(payload?.error ?? `Could not save shortcut preference (${response.status}).`);
-				}
 				refreshRuntimeProjectConfig();
 				return true;
 			} catch (error) {

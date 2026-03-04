@@ -7,6 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { homedir } from "node:os";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { isHooksSubcommand, runHooksIngest } from "./hooks-cli.js";
@@ -14,56 +15,19 @@ import type {
 	RuntimeAgentId,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
-	RuntimeConfigResponse,
-	RuntimeGitCheckoutResponse,
-	RuntimeGitSummaryResponse,
-	RuntimeGitSyncAction,
-	RuntimeGitSyncResponse,
-	RuntimeHookIngestResponse,
-	RuntimeProjectAddResponse,
-	RuntimeProjectDirectoryPickerResponse,
-	RuntimeProjectRemoveResponse,
 	RuntimeProjectSummary,
-	RuntimeProjectsResponse,
 	RuntimeProjectTaskCounts,
-	RuntimeShellSessionStartResponse,
 	RuntimeShortcutRunResponse,
-	RuntimeSlashCommandsResponse,
 	RuntimeStateStreamErrorMessage,
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
-	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
 	RuntimeStateStreamWorkspaceRetrieveStatusMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
-	RuntimeTaskSessionInputResponse,
-	RuntimeTaskSessionStartResponse,
-	RuntimeTaskSessionStopResponse,
 	RuntimeTaskSessionSummary,
-	RuntimeWorkspaceFileSearchResponse,
-	RuntimeWorkspaceStateConflictResponse,
 	RuntimeWorkspaceStateResponse,
 } from "./runtime/api-contract.js";
-import {
-	parseGitCheckoutRequest,
-	parseHookIngestRequest,
-	parseOptionalTaskWorkspaceInfoRequest,
-	parseProjectAddRequest,
-	parseProjectRemoveRequest,
-	parseRuntimeConfigSaveRequest,
-	parseShellSessionStartRequest,
-	parseShortcutRunRequest,
-	parseTaskSessionInputRequest,
-	parseTaskSessionStartRequest,
-	parseTaskSessionStopRequest,
-	parseTaskWorkspaceInfoRequest,
-	parseWorkspaceChangesRequest,
-	parseWorkspaceFileSearchRequest,
-	parseWorkspaceStateSaveRequest,
-	parseWorktreeDeleteRequest,
-	parseWorktreeEnsureRequest,
-} from "./runtime/api-validation.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./runtime/config/runtime-config.js";
 import {
 	listWorkspaceIndexEntries,
@@ -74,21 +38,15 @@ import {
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
 	saveWorkspaceState,
-	WorkspaceStateConflictError,
 } from "./runtime/state/workspace-state.js";
-import { buildRuntimeConfigResponse, resolveAgentCommand } from "./runtime/terminal/agent-registry.js";
 import { TerminalSessionManager } from "./runtime/terminal/session-manager.js";
-import { discoverRuntimeSlashCommands } from "./runtime/terminal/slash-commands.js";
 import { createTerminalWebSocketBridge } from "./runtime/terminal/ws-server.js";
-import { getWorkspaceChanges } from "./runtime/workspace/get-workspace-changes.js";
-import { getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "./runtime/workspace/git-sync.js";
-import { searchWorkspaceFiles } from "./runtime/workspace/search-workspace-files.js";
-import {
-	deleteTaskWorktree,
-	ensureTaskWorktree,
-	getTaskWorkspaceInfo,
-	resolveTaskCwd,
-} from "./runtime/workspace/task-worktree.js";
+import { type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "./runtime/trpc/app-router.js";
+import { createHooksApi } from "./runtime/trpc/hooks-api.js";
+import { createProjectsApi } from "./runtime/trpc/projects-api.js";
+import { createRuntimeApi } from "./runtime/trpc/runtime-api.js";
+import { createWorkspaceApi } from "./runtime/trpc/workspace-api.js";
+import { deleteTaskWorktree } from "./runtime/workspace/task-worktree.js";
 
 interface CliOptions {
 	help: boolean;
@@ -262,28 +220,6 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
 		"Cache-Control": "no-store",
 	});
 	response.end(JSON.stringify(payload));
-}
-
-async function readJsonBody(request: IncomingMessage): Promise<unknown> {
-	const chunks: Uint8Array[] = [];
-	let totalBytes = 0;
-	const maxBytes = 1024 * 1024;
-
-	for await (const chunk of request) {
-		const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-		totalBytes += bytes.byteLength;
-		if (totalBytes > maxBytes) {
-			throw new Error("Request body too large.");
-		}
-		chunks.push(bytes);
-	}
-
-	const body = Buffer.concat(chunks).toString("utf8");
-	if (!body.trim()) {
-		throw new Error("Request body is empty.");
-	}
-
-	return JSON.parse(body) as unknown;
 }
 
 function resolveProjectInputPath(inputPath: string, cwd: string): string {
@@ -532,15 +468,19 @@ async function canReachKanbananaServer(port: number, workspaceId: string | null)
 		if (workspaceId) {
 			headers["x-kanbanana-workspace-id"] = workspaceId;
 		}
-		const response = await fetch(`http://127.0.0.1:${port}/api/projects`, {
+		const response = await fetch(`http://127.0.0.1:${port}/api/trpc/projects.list`, {
+			method: "GET",
 			headers,
 			signal: AbortSignal.timeout(1_500),
 		});
-		if (!response.ok) {
+		if (response.status === 404) {
 			return false;
 		}
-		const payload = (await response.json().catch(() => null)) as RuntimeProjectsResponse | null;
-		return Boolean(payload && Array.isArray(payload.projects));
+		const payload = (await response.json().catch(() => null)) as {
+			result?: { data?: unknown };
+			error?: unknown;
+		} | null;
+		return Boolean(payload && (payload.result || payload.error));
 	} catch {
 		return false;
 	}
@@ -1254,790 +1194,112 @@ async function startServer(
 		terminalSummaryUnsubscribeByWorkspaceId.clear();
 	};
 
+	const resolveWorkspaceScopeFromRequest = async (
+		request: IncomingMessage,
+		requestUrl: URL,
+	): Promise<{
+		requestedWorkspaceId: string | null;
+		workspaceScope: RuntimeTrpcWorkspaceScope | null;
+	}> => {
+		const requestedWorkspaceId = readWorkspaceIdFromRequest(request, requestUrl);
+		if (!requestedWorkspaceId) {
+			return {
+				requestedWorkspaceId: null,
+				workspaceScope: null,
+			};
+		}
+		const requestedWorkspaceContext = await loadWorkspaceContextById(requestedWorkspaceId);
+		if (!requestedWorkspaceContext) {
+			return {
+				requestedWorkspaceId,
+				workspaceScope: null,
+			};
+		}
+		return {
+			requestedWorkspaceId,
+			workspaceScope: {
+				workspaceId: requestedWorkspaceContext.workspaceId,
+				workspacePath: requestedWorkspaceContext.repoPath,
+			},
+		};
+	};
+
+	const getScopedTerminalManager = async (scope: RuntimeTrpcWorkspaceScope): Promise<TerminalSessionManager> =>
+		await ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
+
+	const loadScopedRuntimeConfig = async (scope: RuntimeTrpcWorkspaceScope) => {
+		if (scope.workspaceId === getActiveWorkspaceId()) {
+			return runtimeConfig;
+		}
+		return await loadRuntimeConfig(scope.workspacePath);
+	};
+
+	const trpcHttpHandler = createHTTPHandler({
+		basePath: "/api/trpc/",
+		router: runtimeAppRouter,
+		createContext: async ({ req }) => {
+			const requestUrl = new URL(req.url ?? "/", "http://localhost");
+			const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
+			return {
+				requestedWorkspaceId: scope.requestedWorkspaceId,
+				workspaceScope: scope.workspaceScope,
+				runtimeApi: createRuntimeApi({
+					port,
+					getActiveWorkspaceId,
+					loadScopedRuntimeConfig,
+					setActiveRuntimeConfig: (nextRuntimeConfig) => {
+						runtimeConfig = nextRuntimeConfig;
+					},
+					getScopedTerminalManager,
+					resolveInteractiveShellCommand,
+					runShortcutCommand,
+				}),
+				workspaceApi: createWorkspaceApi({
+					ensureTerminalManagerForWorkspace,
+					broadcastRuntimeWorkspaceStateUpdated,
+					broadcastRuntimeProjectsUpdated,
+					buildWorkspaceStateSnapshot,
+				}),
+				projectsApi: createProjectsApi({
+					workspacePathsById,
+					getActiveWorkspacePath,
+					getActiveWorkspaceId,
+					setActiveWorkspace,
+					clearActiveWorkspace,
+					resolveProjectInputPath,
+					assertPathIsDirectory,
+					hasGitRepository,
+					summarizeProjectTaskCounts,
+					toProjectSummary,
+					broadcastRuntimeProjectsUpdated,
+					getTerminalManagerForWorkspace,
+					disposeWorkspaceRuntimeResources,
+					collectProjectWorktreeTaskIdsForRemoval,
+					warn: (message) => {
+						console.warn(`[kanbanana] ${message}`);
+					},
+					buildProjectsPayload,
+					pickDirectoryPathFromSystemDialog,
+				}),
+				hooksApi: createHooksApi({
+					workspacePathsById,
+					ensureTerminalManagerForWorkspace,
+					broadcastRuntimeWorkspaceStateUpdated,
+					runtimeStateClientsByWorkspaceId,
+					sendRuntimeStateMessage,
+				}),
+			};
+		},
+	});
+
 	const server = createServer(async (req, res) => {
 		try {
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
-			const isApiRequest = pathname.startsWith("/api/");
-			const requestedWorkspaceId = isApiRequest ? readWorkspaceIdFromRequest(req, requestUrl) : null;
-			const requestedWorkspaceContext = requestedWorkspaceId
-				? await loadWorkspaceContextById(requestedWorkspaceId)
-				: null;
-			const getRequiredWorkspaceScope = (): { workspaceId: string; workspacePath: string } | null => {
-				if (!requestedWorkspaceId) {
-					sendJson(res, 400, {
-						error: "Missing workspace scope. Include x-kanbanana-workspace-id header or workspaceId query parameter.",
-					});
-					return null;
-				}
-				if (!requestedWorkspaceContext) {
-					sendJson(res, 404, {
-						error: `Unknown workspace ID: ${requestedWorkspaceId}`,
-					});
-					return null;
-				}
-				return {
-					workspaceId: requestedWorkspaceContext.workspaceId,
-					workspacePath: requestedWorkspaceContext.repoPath,
-				};
-			};
-
-			const getScopedTerminalManager = async (scope: {
-				workspaceId: string;
-				workspacePath: string;
-			}): Promise<TerminalSessionManager> =>
-				await ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
-
-			const loadScopedRuntimeConfig = async (scope: { workspaceId: string; workspacePath: string }) => {
-				if (scope.workspaceId === getActiveWorkspaceId()) {
-					return runtimeConfig;
-				}
-				return await loadRuntimeConfig(scope.workspacePath);
-			};
-
-			if (pathname === "/api/runtime/config" && req.method === "GET") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				const scopedRuntimeConfig = await loadScopedRuntimeConfig(scope);
-				const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(scopedRuntimeConfig);
-				sendJson(res, 200, payload);
+			if (pathname.startsWith("/api/trpc")) {
+				await trpcHttpHandler(req, res);
 				return;
 			}
-
-			if (pathname === "/api/runtime/slash-commands" && req.method === "GET") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const scopedRuntimeConfig = await loadScopedRuntimeConfig(scope);
-					const resolved = resolveAgentCommand(scopedRuntimeConfig);
-					if (!resolved) {
-						sendJson(res, 200, {
-							agentId: null,
-							commands: [],
-							error: "No runnable agent command is configured.",
-						} satisfies RuntimeSlashCommandsResponse);
-						return;
-					}
-					const taskScope = parseOptionalTaskWorkspaceInfoRequest(requestUrl.searchParams);
-					let commandCwd = scope.workspacePath;
-					if (taskScope) {
-						commandCwd = await resolveTaskCwd({
-							cwd: scope.workspacePath,
-							taskId: taskScope.taskId,
-							baseRef: taskScope.baseRef,
-							ensure: false,
-						});
-					}
-					const discovered = await discoverRuntimeSlashCommands(resolved, commandCwd);
-					sendJson(res, 200, {
-						agentId: resolved.agentId,
-						commands: discovered.commands,
-						error: discovered.error,
-					} satisfies RuntimeSlashCommandsResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/runtime/config" && req.method === "PUT") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseRuntimeConfigSaveRequest(await readJsonBody(req));
-					const nextRuntimeConfig = await updateRuntimeConfig(scope.workspacePath, body);
-					if (scope.workspaceId === getActiveWorkspaceId()) {
-						runtimeConfig = nextRuntimeConfig;
-					}
-					const payload: RuntimeConfigResponse = buildRuntimeConfigResponse(nextRuntimeConfig);
-					sendJson(res, 200, payload);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/runtime/task-session/start" && req.method === "POST") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseTaskSessionStartRequest(await readJsonBody(req));
-					const scopedRuntimeConfig = await loadScopedRuntimeConfig(scope);
-					const resolved = resolveAgentCommand(scopedRuntimeConfig);
-					if (!resolved) {
-						sendJson(res, 400, {
-							ok: false,
-							summary: null,
-							error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
-						} satisfies RuntimeTaskSessionStartResponse);
-						return;
-					}
-					const taskCwd = await resolveTaskCwd({
-						cwd: scope.workspacePath,
-						taskId: body.taskId,
-						baseRef: body.baseRef,
-						ensure: true,
-					});
-					const terminalManager = await getScopedTerminalManager(scope);
-					const summary = await terminalManager.startTaskSession({
-						taskId: body.taskId,
-						agentId: resolved.agentId,
-						binary: resolved.binary,
-						args: resolved.args,
-						cwd: taskCwd,
-						prompt: body.prompt,
-						startInPlanMode: body.startInPlanMode,
-						cols: body.cols,
-						rows: body.rows,
-						serverPort: port,
-						workspaceId: scope.workspaceId,
-					});
-					sendJson(res, 200, {
-						ok: true,
-						summary,
-					} satisfies RuntimeTaskSessionStartResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						summary: null,
-						error: message,
-					} satisfies RuntimeTaskSessionStartResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/runtime/task-session/stop" && req.method === "POST") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseTaskSessionStopRequest(await readJsonBody(req));
-					const terminalManager = await getScopedTerminalManager(scope);
-					const summary = terminalManager.stopTaskSession(body.taskId);
-					sendJson(res, 200, {
-						ok: Boolean(summary),
-						summary,
-					} satisfies RuntimeTaskSessionStopResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						summary: null,
-						error: message,
-					} satisfies RuntimeTaskSessionStopResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/runtime/task-session/input" && req.method === "POST") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseTaskSessionInputRequest(await readJsonBody(req));
-					const terminalManager = await getScopedTerminalManager(scope);
-					const payloadText = body.appendNewline ? `${body.text}\n` : body.text;
-					const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
-					if (!summary) {
-						sendJson(res, 409, {
-							ok: false,
-							summary: null,
-							error: "Task session is not running.",
-						} satisfies RuntimeTaskSessionInputResponse);
-						return;
-					}
-					sendJson(res, 200, {
-						ok: true,
-						summary,
-					} satisfies RuntimeTaskSessionInputResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						summary: null,
-						error: message,
-					} satisfies RuntimeTaskSessionInputResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/runtime/shell-session/start" && req.method === "POST") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseShellSessionStartRequest(await readJsonBody(req));
-					const terminalManager = await getScopedTerminalManager(scope);
-					const shell = resolveInteractiveShellCommand();
-					const shellCwd = body.workspaceTaskId
-						? await resolveTaskCwd({
-								cwd: scope.workspacePath,
-								taskId: body.workspaceTaskId,
-								baseRef: body.baseRef,
-								ensure: true,
-							})
-						: scope.workspacePath;
-					const summary = await terminalManager.startShellSession({
-						taskId: body.taskId,
-						cwd: shellCwd,
-						cols: body.cols,
-						rows: body.rows,
-						binary: shell.binary,
-						args: shell.args,
-					});
-					sendJson(res, 200, {
-						ok: true,
-						summary,
-						shellBinary: shell.binary,
-					} satisfies RuntimeShellSessionStartResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						summary: null,
-						shellBinary: null,
-						error: message,
-					} satisfies RuntimeShellSessionStartResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/hooks/ingest" && req.method === "POST") {
-				try {
-					const body = parseHookIngestRequest(await readJsonBody(req));
-					const taskId = body.taskId;
-					const workspaceId = body.workspaceId;
-					const event = body.event;
-					const knownWorkspacePath = workspacePathsById.get(workspaceId);
-					const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
-					const workspacePath = knownWorkspacePath ?? workspaceContext?.repoPath ?? null;
-					if (!workspacePath) {
-						sendJson(res, 404, {
-							ok: false,
-							error: `Workspace "${workspaceId}" not found`,
-						} satisfies RuntimeHookIngestResponse);
-						return;
-					}
-
-					const manager = await ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
-					const summary = manager.getSummary(taskId);
-					if (!summary) {
-						sendJson(res, 404, {
-							ok: false,
-							error: `Task "${taskId}" not found in workspace "${workspaceId}"`,
-						} satisfies RuntimeHookIngestResponse);
-						return;
-					}
-
-					const eligibleForReview = summary.state === "running";
-					const eligibleForInProgress =
-						summary.state === "awaiting_review" &&
-						(summary.reviewReason === "attention" || summary.reviewReason === "hook");
-					const eligible = event === "review" ? eligibleForReview : eligibleForInProgress;
-					if (!eligible) {
-						sendJson(res, 409, {
-							ok: false,
-							error: `Task "${taskId}" cannot handle "${event}" from state "${summary.state}" (${summary.reviewReason ?? "no reason"})`,
-						} satisfies RuntimeHookIngestResponse);
-						return;
-					}
-
-					let transitionedSummary: RuntimeTaskSessionSummary | null = null;
-					if (event === "review") {
-						transitionedSummary = manager.transitionToReview(taskId, "hook");
-					} else {
-						transitionedSummary = manager.transitionToRunning(taskId);
-					}
-					if (!transitionedSummary) {
-						sendJson(res, 500, {
-							ok: false,
-							error: `Task "${taskId}" transition failed`,
-						} satisfies RuntimeHookIngestResponse);
-						return;
-					}
-
-					void broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
-					if (event === "review") {
-						const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-						if (runtimeClients && runtimeClients.size > 0) {
-							const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
-								type: "task_ready_for_review",
-								workspaceId,
-								taskId,
-								triggeredAt: Date.now(),
-							};
-							for (const client of runtimeClients) {
-								sendRuntimeStateMessage(client, payload);
-							}
-						}
-					}
-
-					sendJson(res, 200, { ok: true } satisfies RuntimeHookIngestResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { ok: false, error: message } satisfies RuntimeHookIngestResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/runtime/shortcut/run" && req.method === "POST") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseShortcutRunRequest(await readJsonBody(req));
-					const response = await runShortcutCommand(body.command, scope.workspacePath);
-					sendJson(res, 200, response);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/git/summary" && req.method === "GET") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const taskScope = parseOptionalTaskWorkspaceInfoRequest(requestUrl.searchParams);
-					let summaryCwd = scope.workspacePath;
-					if (taskScope) {
-						summaryCwd = await resolveTaskCwd({
-							cwd: scope.workspacePath,
-							taskId: taskScope.taskId,
-							baseRef: taskScope.baseRef,
-							ensure: false,
-						});
-					}
-					const summary = await getGitSyncSummary(summaryCwd);
-					sendJson(res, 200, {
-						ok: true,
-						summary,
-					} satisfies RuntimeGitSummaryResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						summary: {
-							currentBranch: null,
-							upstreamBranch: null,
-							changedFiles: 0,
-							additions: 0,
-							deletions: 0,
-							aheadCount: 0,
-							behindCount: 0,
-						},
-						error: message,
-					} satisfies RuntimeGitSummaryResponse);
-				}
-				return;
-			}
-
-			if (
-				(pathname === "/api/workspace/git/fetch" ||
-					pathname === "/api/workspace/git/pull" ||
-					pathname === "/api/workspace/git/push") &&
-				req.method === "POST"
-			) {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				const action: RuntimeGitSyncAction = pathname.endsWith("/fetch")
-					? "fetch"
-					: pathname.endsWith("/pull")
-						? "pull"
-						: "push";
-				try {
-					const response = await runGitSyncAction({
-						cwd: scope.workspacePath,
-						action,
-					});
-					sendJson(res, response.ok ? 200 : 400, response satisfies RuntimeGitSyncResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						action,
-						summary: {
-							currentBranch: null,
-							upstreamBranch: null,
-							changedFiles: 0,
-							additions: 0,
-							deletions: 0,
-							aheadCount: 0,
-							behindCount: 0,
-						},
-						output: "",
-						error: message,
-					} satisfies RuntimeGitSyncResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/git/checkout" && req.method === "POST") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseGitCheckoutRequest(await readJsonBody(req));
-					const response = await runGitCheckoutAction({
-						cwd: scope.workspacePath,
-						branch: body.branch,
-					});
-					if (response.ok) {
-						void broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
-					}
-					sendJson(res, response.ok ? 200 : 400, response satisfies RuntimeGitCheckoutResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						branch: "",
-						summary: {
-							currentBranch: null,
-							upstreamBranch: null,
-							changedFiles: 0,
-							additions: 0,
-							deletions: 0,
-							aheadCount: 0,
-							behindCount: 0,
-						},
-						output: "",
-						error: message,
-					} satisfies RuntimeGitCheckoutResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/changes" && req.method === "GET") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const query = parseWorkspaceChangesRequest(requestUrl.searchParams);
-					const taskCwd = await resolveTaskCwd({
-						cwd: scope.workspacePath,
-						taskId: query.taskId,
-						baseRef: query.baseRef,
-						ensure: false,
-					});
-					const response = await getWorkspaceChanges(taskCwd);
-					sendJson(res, 200, response);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/worktree/ensure" && req.method === "POST") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseWorktreeEnsureRequest(await readJsonBody(req));
-					const response = await ensureTaskWorktree({
-						cwd: scope.workspacePath,
-						taskId: body.taskId,
-						baseRef: body.baseRef,
-					});
-					sendJson(res, response.ok ? 200 : 500, response);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/worktree/delete" && req.method === "POST") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseWorktreeDeleteRequest(await readJsonBody(req));
-					const response = await deleteTaskWorktree({
-						repoPath: scope.workspacePath,
-						taskId: body.taskId,
-					});
-					sendJson(res, response.ok ? 200 : 500, response);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/task-context" && req.method === "GET") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const query = parseTaskWorkspaceInfoRequest(requestUrl.searchParams);
-					const response = await getTaskWorkspaceInfo({
-						cwd: scope.workspacePath,
-						taskId: query.taskId,
-						baseRef: query.baseRef,
-					});
-					sendJson(res, 200, response);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/files/search" && req.method === "GET") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const query = parseWorkspaceFileSearchRequest(requestUrl.searchParams);
-					const files = await searchWorkspaceFiles(scope.workspacePath, query.query, query.limit);
-					const response: RuntimeWorkspaceFileSearchResponse = {
-						query: query.query,
-						files,
-					};
-					sendJson(res, 200, response);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/state" && req.method === "GET") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const response = await buildWorkspaceStateSnapshot(scope.workspaceId, scope.workspacePath);
-					sendJson(res, 200, response);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/workspace/state" && req.method === "PUT") {
-				const scope = getRequiredWorkspaceScope();
-				if (!scope) {
-					return;
-				}
-				try {
-					const body = parseWorkspaceStateSaveRequest(await readJsonBody(req));
-					const terminalManager = await getScopedTerminalManager(scope);
-					for (const summary of terminalManager.listSummaries()) {
-						body.sessions[summary.taskId] = summary;
-					}
-					const response: RuntimeWorkspaceStateResponse = await saveWorkspaceState(scope.workspacePath, body);
-					void broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
-					void broadcastRuntimeProjectsUpdated(scope.workspaceId);
-					sendJson(res, 200, response);
-				} catch (error) {
-					if (error instanceof WorkspaceStateConflictError) {
-						sendJson(res, 409, {
-							error: error.message,
-							currentRevision: error.currentRevision,
-						} satisfies RuntimeWorkspaceStateConflictResponse);
-						return;
-					}
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/projects" && req.method === "GET") {
-				try {
-					const payload = await buildProjectsPayload(requestedWorkspaceContext?.workspaceId ?? null);
-					sendJson(res, 200, {
-						currentProjectId: payload.currentProjectId,
-						projects: payload.projects,
-					} satisfies RuntimeProjectsResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, { error: message });
-				}
-				return;
-			}
-
-			if (pathname === "/api/projects/add" && req.method === "POST") {
-				try {
-					const body = parseProjectAddRequest(await readJsonBody(req));
-					const resolveBasePath = requestedWorkspaceContext?.repoPath ?? getActiveWorkspacePath() ?? process.cwd();
-					const projectPath = resolveProjectInputPath(body.path, resolveBasePath);
-					await assertPathIsDirectory(projectPath);
-					if (!hasGitRepository(projectPath)) {
-						sendJson(res, 400, {
-							ok: false,
-							project: null,
-							error: "No git repository detected. Only projects with git initialized can be added.",
-						} satisfies RuntimeProjectAddResponse);
-						return;
-					}
-					const context = await loadWorkspaceContext(projectPath);
-					workspacePathsById.set(context.workspaceId, context.repoPath);
-					const projectsAfterAdd = await listWorkspaceIndexEntries();
-					const hasActiveWorkspace = activeWorkspaceId
-						? projectsAfterAdd.some((project) => project.workspaceId === activeWorkspaceId)
-						: false;
-					if (!hasActiveWorkspace) {
-						await setActiveWorkspace(context.workspaceId, context.repoPath);
-					}
-					const taskCounts = await summarizeProjectTaskCounts(context.workspaceId, context.repoPath);
-					sendJson(res, 200, {
-						ok: true,
-						project: toProjectSummary({
-							workspaceId: context.workspaceId,
-							repoPath: context.repoPath,
-							taskCounts,
-						}),
-					} satisfies RuntimeProjectAddResponse);
-					void broadcastRuntimeProjectsUpdated(context.workspaceId);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						project: null,
-						error: message,
-					} satisfies RuntimeProjectAddResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/projects/remove" && req.method === "POST") {
-				try {
-					const body = parseProjectRemoveRequest(await readJsonBody(req));
-					const projectsBeforeRemoval = await listWorkspaceIndexEntries();
-					const projectToRemove = projectsBeforeRemoval.find((project) => project.workspaceId === body.projectId);
-					if (!projectToRemove) {
-						sendJson(res, 404, {
-							ok: false,
-							error: `Unknown project ID: ${body.projectId}`,
-						} satisfies RuntimeProjectRemoveResponse);
-						return;
-					}
-
-					const taskIdsToCleanup = new Set<string>();
-					try {
-						const workspaceState = await loadWorkspaceState(projectToRemove.repoPath);
-						for (const taskId of collectProjectWorktreeTaskIdsForRemoval(workspaceState.board)) {
-							taskIdsToCleanup.add(taskId);
-						}
-					} catch {
-						// Best effort: if board state cannot be read, skip worktree cleanup IDs.
-					}
-
-					const removedTerminalManager = getTerminalManagerForWorkspace(body.projectId);
-					if (removedTerminalManager) {
-						removedTerminalManager.markInterruptedAndStopAll();
-					}
-
-					const removed = await removeWorkspaceIndexEntry(body.projectId);
-					if (!removed) {
-						throw new Error(`Could not remove project index entry for "${body.projectId}".`);
-					}
-					await removeWorkspaceStateFiles(body.projectId);
-					disposeWorkspaceRuntimeResources(body.projectId, {
-						stopTerminalSessions: false,
-					});
-
-					if (activeWorkspaceId === body.projectId) {
-						const remaining = await listWorkspaceIndexEntries();
-						const fallbackWorkspace = remaining[0];
-						if (fallbackWorkspace) {
-							await setActiveWorkspace(fallbackWorkspace.workspaceId, fallbackWorkspace.repoPath);
-						} else {
-							clearActiveWorkspace();
-						}
-					}
-					sendJson(res, 200, {
-						ok: true,
-					} satisfies RuntimeProjectRemoveResponse);
-					void broadcastRuntimeProjectsUpdated(activeWorkspaceId);
-					if (taskIdsToCleanup.size > 0) {
-						const cleanupTaskIds = Array.from(taskIdsToCleanup);
-						void (async () => {
-							const deletions = await Promise.all(
-								cleanupTaskIds.map(async (taskId) => ({
-									taskId,
-									deleted: await deleteTaskWorktree({
-										repoPath: projectToRemove.repoPath,
-										taskId,
-									}),
-								})),
-							);
-							for (const { taskId, deleted } of deletions) {
-								if (deleted.ok) {
-									continue;
-								}
-								const message = deleted.error ?? `Could not delete task workspace for task "${taskId}".`;
-								console.warn(`[kanbanana] ${message}`);
-							}
-						})();
-					}
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						error: message,
-					} satisfies RuntimeProjectRemoveResponse);
-				}
-				return;
-			}
-
-			if (pathname === "/api/projects/pick-directory" && req.method === "POST") {
-				try {
-					const selectedPath = pickDirectoryPathFromSystemDialog();
-					if (!selectedPath) {
-						sendJson(res, 200, {
-							ok: false,
-							path: null,
-							error: "No directory was selected.",
-						} satisfies RuntimeProjectDirectoryPickerResponse);
-						return;
-					}
-					sendJson(res, 200, {
-						ok: true,
-						path: selectedPath,
-					} satisfies RuntimeProjectDirectoryPickerResponse);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					sendJson(res, 500, {
-						ok: false,
-						path: null,
-						error: message,
-					} satisfies RuntimeProjectDirectoryPickerResponse);
-				}
-				return;
-			}
-
 			if (pathname.startsWith("/api/")) {
 				sendJson(res, 404, { error: "Not found" });
 				return;
