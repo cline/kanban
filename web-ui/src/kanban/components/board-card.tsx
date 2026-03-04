@@ -1,9 +1,10 @@
 import { Button, Card, Classes, Colors, Elevation, Icon, Spinner } from "@blueprintjs/core";
 import { Draggable } from "@hello-pangea/dnd";
 import type { MouseEvent } from "react";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { useMeasure } from "@/kanban/hooks/react-use";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type {
 	BoardCard as BoardCardModel,
@@ -11,6 +12,12 @@ import type {
 	ReviewTaskWorkspaceSnapshot,
 } from "@/kanban/types";
 import { formatPathForDisplay } from "@/kanban/utils/path-display";
+import { splitPromptToTitleDescriptionByWidth } from "@/kanban/utils/task-prompt";
+import {
+	DEFAULT_TEXT_MEASURE_FONT,
+	measureTextWidth,
+	readElementFontShorthand,
+} from "@/kanban/utils/text-measure";
 
 export function BoardCard({
 	card,
@@ -42,9 +49,49 @@ export function BoardCard({
 	isOpenPrLoading?: boolean;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
+	const [titleContainerRef, titleRect] = useMeasure<HTMLDivElement>();
+	const titleRef = useRef<HTMLParagraphElement | null>(null);
+	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const showPreview = columnId === "in_progress" || columnId === "review";
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
+	const displayPrompt = useMemo(() => {
+		const prompt = card.prompt.trim();
+		if (prompt) {
+			return prompt;
+		}
+		const description = card.description.trim();
+		if (!description) {
+			return card.title.trim();
+		}
+		return `${card.title.trim()}\n${description}`;
+	}, [card.description, card.prompt, card.title]);
+	const displayPromptSplit = useMemo(() => {
+		if (!displayPrompt) {
+			return {
+				title: card.title,
+				description: card.description,
+			};
+		}
+		if (titleRect.width <= 0) {
+			return {
+				title: card.title,
+				description: card.description,
+			};
+		}
+		const split = splitPromptToTitleDescriptionByWidth(displayPrompt, {
+			maxTitleWidthPx: titleRect.width,
+			measureText: (value) => measureTextWidth(value, titleFont),
+		});
+		return {
+			title: split.title || card.title,
+			description: split.description,
+		};
+	}, [card.description, card.title, displayPrompt, titleFont, titleRect.width]);
+
+	useEffect(() => {
+		setTitleFont(readElementFontShorthand(titleRef.current, DEFAULT_TEXT_MEASURE_FONT));
+	}, [titleRect.width]);
 
 	const stopEvent = (event: MouseEvent<HTMLElement>) => {
 		event.preventDefault();
@@ -119,8 +166,9 @@ export function BoardCard({
 										{statusMarker}
 									</div>
 								) : null}
-								<div style={{ flex: "1 1 auto", minWidth: 0 }}>
+								<div ref={titleContainerRef} style={{ flex: "1 1 auto", minWidth: 0 }}>
 									<p
+										ref={titleRef}
 										className="kb-line-clamp-1"
 										style={{
 											margin: 0,
@@ -129,7 +177,7 @@ export function BoardCard({
 											textDecoration: isTrashCard ? "line-through" : undefined,
 										}}
 									>
-										{card.title}
+										{displayPromptSplit.title}
 									</p>
 								</div>
 								{columnId === "backlog" ? (
@@ -160,7 +208,7 @@ export function BoardCard({
 									/>
 								) : null}
 							</div>
-							{card.description ? (
+							{displayPromptSplit.description ? (
 								<p
 									className={`${isTrashCard ? "" : Classes.TEXT_MUTED} kb-line-clamp-5`}
 									style={{
@@ -170,7 +218,7 @@ export function BoardCard({
 										color: isTrashCard ? Colors.GRAY1 : undefined,
 									}}
 								>
-									{card.description}
+									{displayPromptSplit.description}
 								</p>
 							) : null}
 							{showPreview && sessionSummary?.lastActivityLine ? (

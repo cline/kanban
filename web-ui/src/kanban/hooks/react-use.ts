@@ -5,6 +5,7 @@ import {
 	useEvent as useReactUseEvent,
 	useInterval as useReactUseInterval,
 	useLocalStorage as useReactUseLocalStorage,
+	useMeasure as useReactUseMeasure,
 	useTitle as useReactUseTitle,
 	useUnmount as useReactUseUnmount,
 } from "react-use";
@@ -119,6 +120,10 @@ export function useRawLocalStorageValue<T extends string>(
 
 export function useDocumentTitle(title: string): void {
 	useReactUseTitle(title);
+}
+
+export function useMeasure<T extends Element = Element>() {
+	return useReactUseMeasure<T>();
 }
 
 export function useUnmount(fn: () => void): void {
