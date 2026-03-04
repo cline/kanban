@@ -47,21 +47,47 @@ const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: RuntimeAgentId[] = ["claude", "codex", "opencode", "gemini", "cline"];
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
-const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree (possibly on detached HEAD). Commit these changes and get the commit onto {{base_ref}}.
+const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a task worktree on a detached HEAD. Commit the working changes onto {{base_ref}} using the following instructions:
 
-1. Stage and commit the changes here (this works even on detached HEAD). Capture the commit hash.
-2. Run git worktree list to find where {{base_ref}} is checked out.
-3. If {{base_ref}} is checked out in another worktree at path P, run: git -C P cherry-pick <hash>
-4. If {{base_ref}} is not checked out anywhere, check it out in this worktree and cherry-pick the commit onto it.
-5. Resolve conflicts if they arise.
-6. Report the final commit hash on {{base_ref}}.`;
-const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `You are in a worktree (possibly on detached HEAD). Create a pull request against {{base_ref}}.
+- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
+- Do not edit files outside git workflows unless required for conflict resolution.
+- Preserve any pre-existing user uncommitted changes in the base worktree.
 
-1. If on detached HEAD, create a new branch at the current commit.
-2. Commit any uncommitted changes on that branch.
-3. Push the branch to origin.
-4. Create the PR targeting {{base_ref}} (use gh CLI if available).
-5. If PR creation is blocked, explain why and provide instructions to finish it manually.`;
+Steps:
+1. In the current task worktree, stage and create a commit for the pending task changes.
+2. Find where {{base_ref}} is checked out:
+   - Run: git worktree list --porcelain
+   - If branch {{base_ref}} is checked out in path P, use that P.
+   - If not checked out anywhere, use current worktree as P by checking out {{base_ref}} there.
+3. In P, verify current branch is {{base_ref}}.
+4. If P has uncommitted changes, stash them: git -C P stash push -u -m "kanbanana-pre-cherry-pick"
+5. Cherry-pick the task commit into P.
+6. If cherry-pick conflicts, resolve carefully, preserving both the intended task changes and existing user edits.
+7. If a stash was created, restore it with: git -C P stash pop
+8. If stash pop conflicts, resolve them while preserving pre-existing user edits.
+9. Report:
+   - Final commit hash on {{base_ref}}
+   - Whether stash was used
+   - Whether conflicts were resolved
+   - Any remaining manual follow-up needed`;
+const DEFAULT_OPEN_PR_PROMPT_TEMPLATE = `You are in a task worktree on a detached HEAD. Open a pull request targeting {{base_ref}} using the following instructions:
+
+- Do not run destructive commands: git reset --hard, git clean -fdx, git worktree remove, rm/mv on repository paths.
+- Do not modify the base worktree.
+- Keep all PR preparation in the current task worktree.
+
+Steps:
+1. Ensure all intended changes are committed in the current task worktree.
+2. If currently on detached HEAD, create a branch at the current commit in this worktree.
+3. Push the branch to origin and set upstream.
+4. Create a pull request with base {{base_ref}} and head as the pushed branch (use gh CLI if available).
+5. If a pull request already exists for the same head and base, return that existing PR URL instead of creating a duplicate.
+6. If PR creation is blocked, explain exactly why and provide the exact commands to complete it manually.
+7. Report:
+   - PR URL
+   - Base branch
+   - Head branch
+   - Any follow-up needed`;
 
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
 	const detected = new Set(detectedCommands);
