@@ -50,7 +50,7 @@ import {
 import { useWorkspacePersistence } from "@/kanban/runtime/use-workspace-persistence";
 import {
 	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
-	splitPromptToTitleDescription,
+	truncateTaskPromptLabel,
 } from "@/kanban/utils/task-prompt";
 import {
 	trackTaskCreated,
@@ -388,7 +388,7 @@ export default function App(): ReactElement {
 			return { ok: false, message: "No project selected." };
 		}
 		try {
-			const kickoffPrompt = task.prompt.trim() || task.description.trim() || task.title;
+			const kickoffPrompt = task.prompt.trim();
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
 			const payload = await trpcClient.runtime.startTaskSession.mutate({
 				taskId: task.id,
@@ -816,7 +816,7 @@ export default function App(): ReactElement {
 		return board.columns.flatMap((column) =>
 			column.cards.map((card) => ({
 				id: card.id,
-				title: card.title,
+				title: truncateTaskPromptLabel(card.prompt) || `Task ${card.id}`,
 				columnTitle: column.title,
 			})),
 		);
@@ -1605,7 +1605,7 @@ export default function App(): ReactElement {
 			setSelectedTaskWorkspaceInfo(null);
 			setIsInlineTaskCreateOpen(false);
 			setNewTaskPrompt("");
-			const taskPrompt = task.prompt.trim() || [task.title, task.description].filter(Boolean).join("\n\n");
+			const taskPrompt = task.prompt.trim();
 			setEditingTaskId(task.id);
 			setEditTaskPrompt(taskPrompt);
 			setEditTaskStartInPlanMode(task.startInPlanMode);
@@ -1634,18 +1634,10 @@ export default function App(): ReactElement {
 			return;
 		}
 
-		const parsedPrompt = splitPromptToTitleDescription(prompt);
-		const title = parsedPrompt.title.trim();
-		if (!title) {
-			return;
-		}
-
 		const baseRef = editTaskBranchRef || defaultTaskBranchRef;
 
 		setBoard((currentBoard) => {
 			const updated = updateTask(currentBoard, editingTaskId, {
-				title,
-				description: parsedPrompt.description,
 				prompt,
 				startInPlanMode: editTaskStartInPlanMode,
 				baseRef,
@@ -1671,16 +1663,9 @@ export default function App(): ReactElement {
 		if (!(newTaskBranchRef || defaultTaskBranchRef)) {
 			return;
 		}
-		const parsedPrompt = splitPromptToTitleDescription(prompt);
-		const title = parsedPrompt.title.trim();
-		if (!title) {
-			return;
-		}
 		const baseRef = newTaskBranchRef || defaultTaskBranchRef;
 		setBoard((currentBoard) =>
 			addTaskToColumn(currentBoard, "backlog", {
-				title,
-				description: parsedPrompt.description,
 				prompt,
 				startInPlanMode: newTaskStartInPlanMode,
 				baseRef,
@@ -1771,7 +1756,7 @@ export default function App(): ReactElement {
 				setPendingTrashWarning({
 					taskId,
 					fileCount: changeCount,
-					taskTitle: selection.card.title,
+					taskTitle: truncateTaskPromptLabel(selection.card.prompt) || `Task ${taskId}`,
 					workspaceInfo,
 				});
 				return;

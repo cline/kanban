@@ -4,9 +4,7 @@ import { createInitialBoardData } from "@/kanban/data/board-data";
 import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } from "@/kanban/types";
 
 export interface TaskDraft {
-	title: string;
-	description?: string;
-	prompt?: string;
+	prompt: string;
 	startInPlanMode?: boolean;
 	baseRef: string;
 }
@@ -44,17 +42,16 @@ function createUniqueTaskId(existingIds: Set<string>): string {
 
 function createTask(draft: TaskDraft, existingIds: Set<string>): BoardCard {
 	const now = Date.now();
-	const title = draft.title.trim();
-	const description = draft.description?.trim() ?? "";
-	const prompt = draft.prompt?.trim() || description || title;
+	const prompt = draft.prompt.trim();
+	if (!prompt) {
+		throw new Error("Task prompt is required.");
+	}
 	const baseRef = draft.baseRef.trim();
 	if (!baseRef) {
 		throw new Error("Task base branch is required.");
 	}
 	return {
 		id: createUniqueTaskId(existingIds),
-		title,
-		description,
 		prompt,
 		startInPlanMode: Boolean(draft.startInPlanMode),
 		baseRef,
@@ -91,25 +88,22 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	const card = rawCard as {
 		id?: unknown;
-		title?: unknown;
-		description?: unknown;
 		prompt?: unknown;
 		startInPlanMode?: unknown;
 		baseRef?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
+		title?: unknown;
+		description?: unknown;
 	};
-
-	const title = typeof card.title === "string" ? card.title.trim() : "";
-	if (!title) {
+	const legacyTitle = typeof card.title === "string" ? card.title.trim() : "";
+	const legacyDescription = typeof card.description === "string" ? card.description.trim() : "";
+	const prompt = typeof card.prompt === "string"
+		? card.prompt.trim()
+		: [legacyTitle, legacyDescription].filter(Boolean).join("\n");
+	if (!prompt) {
 		return null;
 	}
-
-	const description = typeof card.description === "string" ? card.description : "";
-	const prompt =
-		typeof card.prompt === "string"
-			? card.prompt
-			: description.trim() || title;
 	const baseRef = typeof card.baseRef === "string" ? card.baseRef.trim() : "";
 	if (!baseRef) {
 		return null;
@@ -119,8 +113,6 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(),
-		title,
-		description,
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		baseRef,
@@ -171,8 +163,8 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 }
 
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {
-	const title = draft.title.trim();
-	if (!title) return board;
+	const prompt = draft.prompt.trim();
+	if (!prompt) return board;
 	const existingIds = new Set<string>();
 	for (const column of board.columns) {
 		for (const card of column.cards) {
@@ -325,12 +317,10 @@ export function updateTask(
 	taskId: string,
 	draft: TaskDraft,
 ): { board: BoardData; updated: boolean } {
-	const title = draft.title.trim();
-	if (!title) {
+	const prompt = draft.prompt.trim();
+	if (!prompt) {
 		return { board, updated: false };
 	}
-	const description = draft.description?.trim() ?? "";
-	const prompt = draft.prompt?.trim() || description || title;
 	const baseRef = draft.baseRef.trim();
 	if (!baseRef) {
 		return { board, updated: false };
@@ -347,8 +337,6 @@ export function updateTask(
 			updated = true;
 			return {
 				...card,
-				title,
-				description,
 				prompt,
 				startInPlanMode: Boolean(draft.startInPlanMode),
 				baseRef,

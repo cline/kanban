@@ -2,8 +2,6 @@ export type BoardColumnId = "backlog" | "in_progress" | "review" | "trash";
 
 export interface BoardCard {
 	id: string;
-	title: string;
-	description: string;
 	prompt: string;
 	startInPlanMode: boolean;
 	baseRef: string;

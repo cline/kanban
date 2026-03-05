@@ -26,8 +26,6 @@ function createBoard(title: string): RuntimeBoardData {
 				cards: [
 					{
 						id: "task-1",
-						title,
-						description: "",
 						prompt: title,
 						startInPlanMode: false,
 						baseRef: "main",
@@ -110,7 +108,7 @@ describe.sequential("workspace-state integration", () => {
 					expectedRevision: initial.revision,
 				});
 				expect(firstSave.revision).toBe(1);
-				expect(firstSave.board.columns[0]?.cards[0]?.title).toBe("Task One");
+				expect(firstSave.board.columns[0]?.cards[0]?.prompt).toBe("Task One");
 
 				const secondSave = await saveWorkspaceState(workspacePath, {
 					board: createBoard("Task Two"),
@@ -118,7 +116,7 @@ describe.sequential("workspace-state integration", () => {
 					expectedRevision: firstSave.revision,
 				});
 				expect(secondSave.revision).toBe(2);
-				expect(secondSave.board.columns[0]?.cards[0]?.title).toBe("Task Two");
+				expect(secondSave.board.columns[0]?.cards[0]?.prompt).toBe("Task Two");
 
 				await expect(
 					saveWorkspaceState(workspacePath, {
@@ -133,7 +131,7 @@ describe.sequential("workspace-state integration", () => {
 
 				const loadedAfterConflict = await loadWorkspaceState(workspacePath);
 				expect(loadedAfterConflict.revision).toBe(2);
-				expect(loadedAfterConflict.board.columns[0]?.cards[0]?.title).toBe("Task Two");
+				expect(loadedAfterConflict.board.columns[0]?.cards[0]?.prompt).toBe("Task Two");
 			} finally {
 				cleanup();
 			}
@@ -194,8 +192,6 @@ describe.sequential("workspace-state integration", () => {
 									title: "Backlog",
 									cards: [
 										{
-											title: "Missing ID and baseRef",
-											description: "",
 											prompt: "Missing ID and baseRef",
 											startInPlanMode: false,
 											createdAt: Date.now(),

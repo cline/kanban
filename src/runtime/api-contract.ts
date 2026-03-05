@@ -75,8 +75,6 @@ export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;
 
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
-	title: z.string(),
-	description: z.string(),
 	prompt: z.string(),
 	startInPlanMode: z.boolean(),
 	baseRef: z.string(),

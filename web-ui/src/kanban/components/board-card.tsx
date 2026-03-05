@@ -12,7 +12,7 @@ import type {
 	ReviewTaskWorkspaceSnapshot,
 } from "@/kanban/types";
 import { formatPathForDisplay } from "@/kanban/utils/path-display";
-import { splitPromptToTitleDescriptionByWidth } from "@/kanban/utils/task-prompt";
+import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/kanban/utils/task-prompt";
 import {
 	DEFAULT_TEXT_MEASURE_FONT,
 	measureTextWidth,
@@ -56,27 +56,20 @@ export function BoardCard({
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
 	const displayPrompt = useMemo(() => {
-		const prompt = card.prompt.trim();
-		if (prompt) {
-			return prompt;
-		}
-		const description = card.description.trim();
-		if (!description) {
-			return card.title.trim();
-		}
-		return `${card.title.trim()}\n${description}`;
-	}, [card.description, card.prompt, card.title]);
+		return card.prompt.trim();
+	}, [card.prompt]);
 	const displayPromptSplit = useMemo(() => {
+		const fallbackTitle = truncateTaskPromptLabel(card.prompt);
 		if (!displayPrompt) {
 			return {
-				title: card.title,
-				description: card.description,
+				title: fallbackTitle,
+				description: "",
 			};
 		}
 		if (titleRect.width <= 0) {
 			return {
-				title: card.title,
-				description: card.description,
+				title: fallbackTitle,
+				description: "",
 			};
 		}
 		const split = splitPromptToTitleDescriptionByWidth(displayPrompt, {
@@ -84,10 +77,10 @@ export function BoardCard({
 			measureText: (value) => measureTextWidth(value, titleFont),
 		});
 		return {
-			title: split.title || card.title,
+			title: split.title || fallbackTitle,
 			description: split.description,
 		};
-	}, [card.description, card.title, displayPrompt, titleFont, titleRect.width]);
+	}, [card.prompt, displayPrompt, titleFont, titleRect.width]);
 
 	useEffect(() => {
 		setTitleFont(readElementFontShorthand(titleRef.current, DEFAULT_TEXT_MEASURE_FONT));

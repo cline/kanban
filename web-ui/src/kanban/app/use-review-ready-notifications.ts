@@ -20,6 +20,7 @@ import {
 	markTabHidden,
 	markTabVisible,
 } from "@/kanban/utils/tab-visibility-presence";
+import { truncateTaskPromptLabel } from "@/kanban/utils/task-prompt";
 import { findCardSelection } from "@/kanban/state/board-state";
 import type { BoardData } from "@/kanban/types";
 import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/kanban/runtime/types";
@@ -156,7 +157,9 @@ export function useReviewReadyNotifications({
 			return;
 		}
 		const selection = findCardSelection(board, latestTaskReadyForReview.taskId);
-		const taskTitle = selection?.card.title?.trim() || `Task ${latestTaskReadyForReview.taskId}`;
+		const taskTitle = selection
+			? (truncateTaskPromptLabel(selection.card.prompt) || `Task ${latestTaskReadyForReview.taskId}`)
+			: `Task ${latestTaskReadyForReview.taskId}`;
 		setPendingReviewReadyNotificationCount((current) => current + 1);
 		const notificationTitle = workspaceTitle
 			? `🍌 ${workspaceTitle} ready for review`

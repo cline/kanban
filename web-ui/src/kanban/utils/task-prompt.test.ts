@@ -1,24 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	truncateTaskPromptLabel,
 	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
-	splitPromptToTitleDescription,
 	splitPromptToTitleDescriptionByWidth,
 } from "@/kanban/utils/task-prompt";
 
-describe("splitPromptToTitleDescription", () => {
-	it("uses the first line as title and keeps remaining lines as description", () => {
-		expect(splitPromptToTitleDescription("title\nline one\nline two")).toEqual({
-			title: "title",
-			description: "line one\nline two",
-		});
-	});
-
-	it("returns empty values for empty prompt", () => {
-		expect(splitPromptToTitleDescription("   ")).toEqual({
-			title: "",
-			description: "",
-		});
+describe("truncateTaskPromptLabel", () => {
+	it("normalizes whitespace and truncates when needed", () => {
+		expect(truncateTaskPromptLabel("hello\nworld", 20)).toBe("hello world");
+		expect(truncateTaskPromptLabel("abcdefghijklmnopqrstuvwxyz", 5)).toBe("abcde…");
 	});
 });
 
@@ -45,14 +36,14 @@ describe("splitPromptToTitleDescriptionByWidth", () => {
 		});
 	});
 
-	it("keeps existing multiline description while adding first-line overflow", () => {
+	it("normalizes multiline prompts before splitting", () => {
 		const measured = splitPromptToTitleDescriptionByWidth("abcdefghij\nline two", {
 			maxTitleWidthPx: 4,
 			measureText: (value) => value.length,
 		});
 		expect(measured).toEqual({
 			title: "abcd",
-			description: "efghij\n\nline two",
+			description: "efghij line two",
 		});
 	});
 });
