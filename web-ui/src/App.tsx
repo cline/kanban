@@ -124,6 +124,29 @@ function matchesWorkspaceInfoSelection(
 	return workspaceInfo.taskId === card.id && workspaceInfo.baseRef === card.baseRef;
 }
 
+function isDetailViewColumnId(columnId: BoardColumnId): boolean {
+	return columnId === "in_progress" || columnId === "review";
+}
+
+function getNextDetailTaskIdAfterTrashMove(board: BoardData, taskId: string): string | null {
+	const detailTaskIds: string[] = [];
+	for (const column of board.columns) {
+		if (!isDetailViewColumnId(column.id)) {
+			continue;
+		}
+		for (const card of column.cards) {
+			detailTaskIds.push(card.id);
+		}
+	}
+
+	const currentIndex = detailTaskIds.indexOf(taskId);
+	if (currentIndex === -1) {
+		return detailTaskIds[0] ?? null;
+	}
+
+	return detailTaskIds[currentIndex + 1] ?? detailTaskIds[currentIndex - 1] ?? null;
+}
+
 function isRuntimeConnectionFailure(message: string | null): boolean {
 	if (!message) {
 		return false;
@@ -865,6 +888,11 @@ export default function App(): ReactElement {
 				) {
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
 					if (moved.moved) {
+						setSelectedTaskId((currentSelectedTaskId) =>
+							currentSelectedTaskId === summary.taskId
+								? getNextDetailTaskIdAfterTrashMove(nextBoard, summary.taskId)
+								: currentSelectedTaskId,
+						);
 						nextBoard = moved.board;
 					}
 				}
@@ -1700,25 +1728,18 @@ export default function App(): ReactElement {
 			await stopTaskSession(task.id);
 			setBoard((currentBoard) => {
 				const moved = moveTaskToColumn(currentBoard, task.id, "trash");
+				if (moved.moved) {
+					setSelectedTaskId((currentSelectedTaskId) =>
+						currentSelectedTaskId === task.id
+							? getNextDetailTaskIdAfterTrashMove(currentBoard, task.id)
+							: currentSelectedTaskId,
+					);
+				}
 				return moved.moved ? moved.board : currentBoard;
 			});
 			await cleanupTaskWorkspace(task.id);
-			if (selectedTaskId === task.id) {
-				const info = await fetchTaskWorkspaceInfo(task);
-				setSelectedTaskWorkspaceInfo(
-					info ?? {
-						taskId: task.id,
-						path: "",
-						exists: false,
-						baseRef: task.baseRef,
-						branch: null,
-						isDetached: true,
-						headCommit: null,
-					},
-				);
-			}
 		},
-		[cleanupTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, stopTaskSession],
+		[cleanupTaskWorkspace, stopTaskSession],
 	);
 
 	const requestMoveTaskToTrash = useCallback(
@@ -1732,8 +1753,20 @@ export default function App(): ReactElement {
 				return;
 			}
 
+			const moveSelectionIfOptimisticMoveIsConfirmed = () => {
+				if (!options?.optimisticMoveApplied) {
+					return;
+				}
+				setSelectedTaskId((currentSelectedTaskId) =>
+					currentSelectedTaskId === taskId
+						? getNextDetailTaskIdAfterTrashMove(board, taskId)
+						: currentSelectedTaskId,
+				);
+			};
+
 			const changeCount = await fetchTaskWorkingChangeCount(selection.card);
 			if (changeCount == null) {
+				moveSelectionIfOptimisticMoveIsConfirmed();
 				await performMoveTaskToTrash(selection.card);
 				return;
 			}
@@ -1762,6 +1795,7 @@ export default function App(): ReactElement {
 				return;
 			}
 
+			moveSelectionIfOptimisticMoveIsConfirmed();
 			await performMoveTaskToTrash(selection.card);
 		},
 		[board, fetchTaskWorkingChangeCount, fetchTaskWorkspaceInfo, performMoveTaskToTrash, selectedTaskWorkspaceInfo],
