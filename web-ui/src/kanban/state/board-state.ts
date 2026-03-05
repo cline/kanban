@@ -1,4 +1,10 @@
 import type { DropResult } from "@hello-pangea/dnd";
+import { createShortTaskId } from "@runtime-task-id";
+import {
+	addTaskToColumn as addRuntimeTaskToColumn,
+	getTaskColumnId as getRuntimeTaskColumnId,
+	moveTaskToColumn as moveRuntimeTaskToColumn,
+} from "@runtime-task-state";
 
 import { createInitialBoardData } from "@/kanban/data/board-data";
 import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } from "@/kanban/types";
@@ -15,8 +21,6 @@ export interface TaskMoveEvent {
 	toColumnId: BoardColumnId;
 }
 
-const TASK_ID_LENGTH = 5;
-
 function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
 	const result = Array.from(list);
 	const [removed] = result.splice(startIndex, 1);
@@ -24,40 +28,6 @@ function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
 		result.splice(endIndex, 0, removed);
 	}
 	return result;
-}
-
-function createShortTaskId(): string {
-	return crypto.randomUUID().replaceAll("-", "").slice(0, TASK_ID_LENGTH);
-}
-
-function createUniqueTaskId(existingIds: Set<string>): string {
-	for (let attempt = 0; attempt < 16; attempt += 1) {
-		const candidate = createShortTaskId();
-		if (!existingIds.has(candidate)) {
-			return candidate;
-		}
-	}
-	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`.slice(0, TASK_ID_LENGTH);
-}
-
-function createTask(draft: TaskDraft, existingIds: Set<string>): BoardCard {
-	const now = Date.now();
-	const prompt = draft.prompt.trim();
-	if (!prompt) {
-		throw new Error("Task prompt is required.");
-	}
-	const baseRef = draft.baseRef.trim();
-	if (!baseRef) {
-		throw new Error("Task base branch is required.");
-	}
-	return {
-		id: createUniqueTaskId(existingIds),
-		prompt,
-		startInPlanMode: Boolean(draft.startInPlanMode),
-		baseRef,
-		createdAt: now,
-		updatedAt: now,
-	};
 }
 
 function updateTaskTimestamp(task: BoardCard): BoardCard {
@@ -106,7 +76,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	const now = Date.now();
 
 	return {
-		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(),
+		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(() => crypto.randomUUID()),
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		baseRef,
@@ -159,25 +129,12 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {
 	const prompt = draft.prompt.trim();
 	if (!prompt) return board;
-	const existingIds = new Set<string>();
-	for (const column of board.columns) {
-		for (const card of column.cards) {
-			existingIds.add(card.id);
-		}
-	}
-
-	const columns = board.columns.map((column) => {
-		if (column.id !== columnId) {
-			return column;
-		}
-		const task = createTask(draft, existingIds);
-		return {
-			...column,
-			cards: [task, ...column.cards],
-		};
-	});
-
-	return withUpdatedColumns(board, columns);
+	const result = addRuntimeTaskToColumn(board, columnId, {
+		prompt,
+		startInPlanMode: draft.startInPlanMode,
+		baseRef: draft.baseRef,
+	}, () => crypto.randomUUID());
+	return result.board;
 }
 
 export function applyDragResult(board: BoardData, result: DropResult): { board: BoardData; moveEvent?: TaskMoveEvent } {
@@ -249,60 +206,15 @@ export function applyDragResult(board: BoardData, result: DropResult): { board: 
 		},
 	};
 }
-
 export function moveTaskToColumn(
 	board: BoardData,
 	taskId: string,
 	targetColumnId: BoardColumnId,
 ): { board: BoardData; moved: boolean } {
-	let sourceColumnIndex = -1;
-	let sourceTaskIndex = -1;
-
-	for (const [columnIndex, column] of board.columns.entries()) {
-		const taskIndex = column.cards.findIndex((card) => card.id === taskId);
-		if (taskIndex !== -1) {
-			sourceColumnIndex = columnIndex;
-			sourceTaskIndex = taskIndex;
-			break;
-		}
-	}
-
-	if (sourceColumnIndex === -1 || sourceTaskIndex === -1) {
-		return { board, moved: false };
-	}
-
-	const destinationColumnIndex = board.columns.findIndex((column) => column.id === targetColumnId);
-	if (destinationColumnIndex === -1) {
-		return { board, moved: false };
-	}
-
-	if (sourceColumnIndex === destinationColumnIndex) {
-		return { board, moved: false };
-	}
-
-	const sourceColumn = board.columns[sourceColumnIndex];
-	const destinationColumn = board.columns[destinationColumnIndex];
-	if (!sourceColumn || !destinationColumn) {
-		return { board, moved: false };
-	}
-	const sourceCards = Array.from(sourceColumn.cards);
-	const [task] = sourceCards.splice(sourceTaskIndex, 1);
-	if (!task) {
-		return { board, moved: false };
-	}
-
-	const updatedTask = updateTaskTimestamp(task);
-	const destinationCards =
-		targetColumnId === "trash"
-			? [updatedTask, ...destinationColumn.cards]
-			: [...destinationColumn.cards, updatedTask];
-	const columns = Array.from(board.columns);
-	columns[sourceColumnIndex] = { ...sourceColumn, cards: sourceCards };
-	columns[destinationColumnIndex] = { ...destinationColumn, cards: destinationCards };
-
+	const moved = moveRuntimeTaskToColumn(board, taskId, targetColumnId);
 	return {
-		board: withUpdatedColumns(board, columns),
-		moved: true,
+		board: moved.moved ? moved.board : board,
+		moved: moved.moved,
 	};
 }
 
@@ -404,10 +316,5 @@ export function findCardSelection(board: BoardData, taskId: string): CardSelecti
 }
 
 export function getTaskColumnId(board: BoardData, taskId: string): BoardColumnId | null {
-	for (const column of board.columns) {
-		if (column.cards.some((task) => task.id === taskId)) {
-			return column.id;
-		}
-	}
-	return null;
+	return getRuntimeTaskColumnId(board, taskId);
 }

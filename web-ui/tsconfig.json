@@ -15,7 +15,9 @@
       "@/*": ["src/*"],
       "@runtime-contract": ["../src/runtime/api-contract.ts"],
       "@runtime-trpc": ["../src/runtime/trpc/app-router.ts"],
-      "@runtime-shortcuts": ["../src/runtime/config/shortcut-utils.ts"]
+      "@runtime-shortcuts": ["../src/runtime/config/shortcut-utils.ts"],
+      "@runtime-task-id": ["../src/runtime/task-id.ts"],
+      "@runtime-task-state": ["../src/runtime/task-board-mutations.ts"]
     },
     "types": ["vitest/globals"]
   },

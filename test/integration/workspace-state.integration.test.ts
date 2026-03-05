@@ -172,6 +172,33 @@ describe.sequential("workspace-state integration", () => {
 		});
 	});
 
+	it("can require an existing project without auto-creating workspace entries", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanbanana-workspace-autocreate-");
+			try {
+				const workspacePath = join(sandboxRoot, "gamma");
+				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
+
+				await expect(
+					loadWorkspaceContext(workspacePath, {
+						autoCreateIfMissing: false,
+					}),
+				).rejects.toThrow("is not added to Kanbanana yet");
+
+				const created = await loadWorkspaceContext(workspacePath);
+				expect(created.repoPath).toBeTruthy();
+
+				const existing = await loadWorkspaceContext(workspacePath, {
+					autoCreateIfMissing: false,
+				});
+				expect(existing.workspaceId).toBe(created.workspaceId);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("fails loudly when persisted board data is malformed", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanbanana-malformed-board-");

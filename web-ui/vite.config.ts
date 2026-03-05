@@ -15,6 +15,8 @@ export default defineConfig({
 		alias: {
 			"@": resolve(__dirname, "src"),
 			"@runtime-shortcuts": resolve(__dirname, "../src/runtime/config/shortcut-utils.ts"),
+			"@runtime-task-id": resolve(__dirname, "../src/runtime/task-id.ts"),
+			"@runtime-task-state": resolve(__dirname, "../src/runtime/task-board-mutations.ts"),
 		},
 	},
 	server: {

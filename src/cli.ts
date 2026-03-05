@@ -11,6 +11,7 @@ import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { isHooksSubcommand, runHooksSubcommand } from "./hooks-cli.js";
+import { isMcpSubcommand, runMcpSubcommand } from "./mcp-cli.js";
 import type {
 	RuntimeAgentId,
 	RuntimeBoardColumnId,
@@ -162,6 +163,7 @@ function printHelp(): void {
 	console.log("");
 	console.log("Usage:");
 	console.log("  kanbanana [--port <number>] [--agent <id>] [--no-open] [--help] [--version]");
+	console.log("  kanbanana mcp");
 	console.log("");
 	console.log(`Default port: ${DEFAULT_PORT}`);
 	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);
@@ -1518,6 +1520,10 @@ async function startServer(
 
 async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
+	if (isMcpSubcommand(argv)) {
+		await runMcpSubcommand(argv);
+		return;
+	}
 	if (isHooksSubcommand(argv)) {
 		await runHooksSubcommand(argv);
 		return;

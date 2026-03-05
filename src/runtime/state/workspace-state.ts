@@ -129,6 +129,10 @@ export interface RuntimeWorkspaceContext {
 	git: RuntimeGitRepositoryInfo;
 }
 
+export interface LoadWorkspaceContextOptions {
+	autoCreateIfMissing?: boolean;
+}
+
 function createEmptyBoard(): RuntimeBoardData {
 	return {
 		columns: BOARD_COLUMNS.map((column) => ({
@@ -340,6 +344,18 @@ function ensureWorkspaceEntry(
 	};
 }
 
+function findWorkspaceEntry(index: WorkspaceIndexFile, repoPath: string): WorkspaceIndexEntry | null {
+	const workspaceId = index.repoPathToId[repoPath];
+	if (!workspaceId) {
+		return null;
+	}
+	const entry = index.entries[workspaceId];
+	if (!entry || entry.repoPath !== repoPath) {
+		return null;
+	}
+	return entry;
+}
+
 function runGitCapture(cwd: string, args: string[]): string | null {
 	const result = spawnSync("git", args, {
 		cwd,
@@ -470,10 +486,29 @@ export class WorkspaceStateConflictError extends Error {
 	}
 }
 
-export async function loadWorkspaceContext(cwd: string): Promise<RuntimeWorkspaceContext> {
+export async function loadWorkspaceContext(
+	cwd: string,
+	options: LoadWorkspaceContextOptions = {},
+): Promise<RuntimeWorkspaceContext> {
 	const repoPath = await resolveWorkspacePath(cwd);
+	const autoCreateIfMissing = options.autoCreateIfMissing ?? true;
 	let index = await readWorkspaceIndex();
-	const ensured = ensureWorkspaceEntry(index, repoPath);
+	const existingEntry = findWorkspaceEntry(index, repoPath);
+	if (!autoCreateIfMissing) {
+		if (!existingEntry) {
+			throw new Error(`Project ${repoPath} is not added to Kanbanana yet.`);
+		}
+		return {
+			repoPath,
+			workspaceId: existingEntry.workspaceId,
+			statePath: getWorkspaceDirectoryPath(existingEntry.workspaceId),
+			git: detectGitRepositoryInfo(repoPath),
+		};
+	}
+
+	const ensured = existingEntry
+		? { index, entry: existingEntry, changed: false }
+		: ensureWorkspaceEntry(index, repoPath);
 	index = ensured.index;
 	if (ensured.changed) {
 		await writeWorkspaceIndex(index);
