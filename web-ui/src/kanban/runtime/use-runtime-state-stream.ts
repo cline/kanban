@@ -47,6 +47,7 @@ export interface UseRuntimeStateStreamResult {
 	workspaceStatusRetrievedAt: number;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	streamError: string | null;
+	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
 }
 
@@ -57,11 +58,13 @@ interface RuntimeStateStreamStore {
 	workspaceStatusRetrievedAt: number;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	streamError: string | null;
+	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
 }
 
 type RuntimeStateStreamAction =
 	| { type: "requested_workspace_changed" }
+	| { type: "stream_connected" }
 	| { type: "snapshot"; payload: RuntimeStateStreamSnapshotMessage }
 	| {
 			type: "projects_updated";
@@ -72,7 +75,8 @@ type RuntimeStateStreamAction =
 	| { type: "workspace_retrieve_status"; payload: RuntimeStateStreamWorkspaceRetrieveStatusMessage }
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
 	| { type: "task_sessions_updated"; summaries: RuntimeTaskSessionSummary[] }
-	| { type: "stream_error"; message: string };
+	| { type: "stream_error"; message: string }
+	| { type: "stream_disconnected"; message: string };
 
 function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | null): RuntimeStateStreamStore {
 	return {
@@ -82,6 +86,7 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		workspaceStatusRetrievedAt: 0,
 		latestTaskReadyForReview: null,
 		streamError: null,
+		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
 	};
 }
@@ -105,7 +110,15 @@ function runtimeStateStreamReducer(
 			...state,
 			workspaceState: null,
 			streamError: null,
+			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: false,
+		};
+	}
+	if (action.type === "stream_connected") {
+		return {
+			...state,
+			streamError: null,
+			isRuntimeDisconnected: false,
 		};
 	}
 	if (action.type === "snapshot") {
@@ -116,6 +129,7 @@ function runtimeStateStreamReducer(
 			workspaceStatusRetrievedAt: state.workspaceStatusRetrievedAt,
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
 			streamError: null,
+			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: true,
 		};
 	}
@@ -167,6 +181,14 @@ function runtimeStateStreamReducer(
 		return {
 			...state,
 			streamError: action.message,
+			isRuntimeDisconnected: false,
+		};
+	}
+	if (action.type === "stream_disconnected") {
+		return {
+			...state,
+			streamError: action.message,
+			isRuntimeDisconnected: true,
 		};
 	}
 	return state;
@@ -231,7 +253,7 @@ export function useRuntimeStateStream(
 				socket = new WebSocket(getRuntimeStreamUrl(requestedWorkspaceForConnection));
 			} catch (error) {
 				dispatch({
-					type: "stream_error",
+					type: "stream_disconnected",
 					message: error instanceof Error ? error.message : String(error),
 				});
 				scheduleReconnect();
@@ -239,6 +261,7 @@ export function useRuntimeStateStream(
 			}
 			socket.onopen = () => {
 				reconnectAttempt = 0;
+				dispatch({ type: "stream_connected" });
 			};
 			socket.onmessage = (event) => {
 				try {
@@ -318,6 +341,10 @@ export function useRuntimeStateStream(
 				if (cancelled) {
 					return;
 				}
+				dispatch({
+					type: "stream_disconnected",
+					message: "Runtime stream disconnected.",
+				});
 				scheduleReconnect();
 			};
 			socket.onerror = () => {
@@ -325,7 +352,7 @@ export function useRuntimeStateStream(
 					return;
 				}
 				dispatch({
-					type: "stream_error",
+					type: "stream_disconnected",
 					message: "Runtime stream connection failed.",
 				});
 			};
@@ -349,6 +376,7 @@ export function useRuntimeStateStream(
 		workspaceStatusRetrievedAt: state.workspaceStatusRetrievedAt,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		streamError: state.streamError,
+		isRuntimeDisconnected: state.isRuntimeDisconnected,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,
 	};
 }

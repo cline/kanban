@@ -147,16 +147,6 @@ function getNextDetailTaskIdAfterTrashMove(board: BoardData, taskId: string): st
 	return detailTaskIds[currentIndex + 1] ?? detailTaskIds[currentIndex - 1] ?? null;
 }
 
-function isRuntimeConnectionFailure(message: string | null): boolean {
-	if (!message) {
-		return false;
-	}
-	const normalized = message.toLowerCase();
-	return normalized.includes("runtime stream connection failed")
-		|| normalized.includes("failed to construct")
-		|| normalized.includes("websocket");
-}
-
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
@@ -238,6 +228,7 @@ export default function App(): ReactElement {
 		workspaceStatusRetrievedAt,
 		latestTaskReadyForReview,
 		streamError,
+		isRuntimeDisconnected,
 		hasReceivedSnapshot,
 	} = useRuntimeStateStream(requestedProjectId);
 	const navigationCurrentProjectId = requestedProjectId ?? currentProjectId;
@@ -264,7 +255,6 @@ export default function App(): ReactElement {
 		!streamError &&
 		(isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot);
 	const isProjectListLoading = !hasReceivedSnapshot && !streamError;
-	const isRuntimeDisconnected = isRuntimeConnectionFailure(streamError);
 	const shouldUseNavigationPath =
 		isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
 	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } =
@@ -487,14 +477,13 @@ export default function App(): ReactElement {
 			const payload = await trpcClient.workspace.deleteWorktree.mutate({ taskId });
 			if (!payload.ok) {
 				const message = payload.error ?? "Could not clean up task workspace.";
-				setWorktreeError(message);
+				console.error(`[cleanupTaskWorkspace] ${message}`);
 				return null;
 			}
-			setWorktreeError(null);
 			return payload;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			setWorktreeError(message);
+			console.error(`[cleanupTaskWorkspace] ${message}`);
 			return null;
 		}
 	}, [currentProjectId]);
@@ -532,15 +521,16 @@ export default function App(): ReactElement {
 				baseRef: task.baseRef,
 			});
 			if (!payload.ok) {
-				throw new Error(payload.error ?? "Workspace summary request failed.");
+				console.error("[fetchTaskWorkingChangeCount] " + (payload.error ?? "Workspace summary request failed."))
+				return null;
 			}
 			return payload.summary.changedFiles;
-		} catch (error) {
+		} catch (error) {	
 			const message = error instanceof Error ? error.message : String(error);
-			setWorktreeError(message);
+			console.error("[fetchTaskWorkingChangeCount] " + message);
 			return null;
 		}
-	}, [currentProjectId]);
+	}, [currentProjectId]);	
 	const fetchReviewWorkspaceSnapshot = useCallback(
 		async (task: BoardCard): Promise<ReviewTaskWorkspaceSnapshot | null> => {
 			if (!currentProjectId) {
@@ -1184,14 +1174,14 @@ export default function App(): ReactElement {
 			setWorktreeError(null);
 			return;
 		}
-		if (isRuntimeConnectionFailure(streamError)) {
+		if (isRuntimeDisconnected) {
 			lastStreamErrorRef.current = streamError;
 			setWorktreeError(null);
 			return;
 		}
 		lastStreamErrorRef.current = streamError;
 		setWorktreeError(streamError);
-	}, [streamError]);
+	}, [isRuntimeDisconnected, streamError]);
 
 	useEffect(() => {
 		if (workspaceVersionRef.current.projectId !== currentProjectId) {
@@ -2266,14 +2256,14 @@ export default function App(): ReactElement {
 					padding: "24px",
 				}}
 			>
-					<NonIdealState
-						icon={<span style={{ fontSize: "72px", lineHeight: 1 }}>🍌</span>}
-						title="Disconnected from kanbanana"
-						description="Run kanbanana again in your terminal, then reload this tab."
-					/>
-				</div>
-			);
-		}
+				<NonIdealState
+					icon="error"
+					title="Disconnected from kanbanana"
+					description="Run kanbanana again in your terminal, then reload this tab."
+				/>
+			</div>
+		);
+	}
 
 	return (
 		<div className={Classes.DARK} style={{ display: "flex", flexDirection: "row", height: "100svh", minWidth: 0, overflow: "hidden" }}>
