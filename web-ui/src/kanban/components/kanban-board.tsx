@@ -1,10 +1,11 @@
-import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
-import { useCallback, useRef } from "react";
+import { DragDropContext, type BeforeCapture, type DragStart, type DropResult } from "@hello-pangea/dnd";
+import { useCallback, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { BoardColumn } from "@/kanban/components/board-column";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type { BoardCard, BoardData, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
+import { findCardColumnId } from "@/kanban/state/drag-rules";
+import type { BoardCard, BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 
 export function KanbanBoard({
 	data,
@@ -44,13 +45,19 @@ export function KanbanBoard({
 	onDragEnd: (result: DropResult) => void;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
+	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 
-	const handleDragStart = useCallback(() => {
+	const handleBeforeCapture = useCallback((start: BeforeCapture) => {
+		setActiveDragSourceColumnId(findCardColumnId(data.columns, start.draggableId));
+	}, [data]);
+
+	const handleDragStart = useCallback((_start: DragStart) => {
 		dragOccurredRef.current = true;
 	}, []);
 
 	const handleDragEnd = useCallback(
 		(result: DropResult) => {
+			setActiveDragSourceColumnId(null);
 			requestAnimationFrame(() => {
 				dragOccurredRef.current = false;
 			});
@@ -60,7 +67,7 @@ export function KanbanBoard({
 	);
 
 	return (
-		<DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+		<DragDropContext onBeforeCapture={handleBeforeCapture} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
 			<section className="kb-board">
 				{data.columns.map((column) => (
 					<BoardColumn
@@ -80,6 +87,7 @@ export function KanbanBoard({
 						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 						openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 						reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
+						activeDragSourceColumnId={activeDragSourceColumnId}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);

@@ -54,6 +54,7 @@ export function BoardCard({
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const showPreview = columnId === "in_progress" || columnId === "review";
 	const isTrashCard = columnId === "trash";
+	const isCardDraggable = !isTrashCard;
 	const isCardInteractive = !isTrashCard;
 	const displayPrompt = useMemo(() => {
 		return card.prompt.trim();
@@ -116,7 +117,7 @@ export function BoardCard({
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 
 	return (
-		<Draggable draggableId={card.id} index={index} isDragDisabled={isTrashCard}>
+		<Draggable draggableId={card.id} index={index} isDragDisabled={!isCardDraggable}>
 			{(provided, snapshot) => {
 				const isDragging = snapshot.isDragging;
 				const cardElevation = isDragging
@@ -142,7 +143,7 @@ export function BoardCard({
 						style={{
 							...provided.draggableProps.style,
 							marginBottom: 8,
-							cursor: isTrashCard ? "default" : "grab",
+							cursor: isCardDraggable ? "grab" : "default",
 						}}
 						onMouseEnter={() => setIsHovered(true)}
 						onMouseLeave={() => setIsHovered(false)}

@@ -5,8 +5,10 @@ import type { ReactNode } from "react";
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
+import { isCardDropDisabled } from "@/kanban/state/drag-rules";
 import type {
 	BoardCard as BoardCardModel,
+	BoardColumnId,
 	BoardColumn as BoardColumnModel,
 	ReviewTaskWorkspaceSnapshot,
 } from "@/kanban/types";
@@ -28,6 +30,7 @@ export function BoardColumn({
 	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
 	onCardClick,
+	activeDragSourceColumnId,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -45,12 +48,14 @@ export function BoardColumn({
 	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onCardClick?: (card: BoardCardModel) => void;
+	activeDragSourceColumnId?: BoardColumnId | null;
 }): React.ReactElement {
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
 	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
+	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null);
 
 	return (
 		<section
@@ -79,7 +84,7 @@ export function BoardColumn({
 					) : null}
 				</div>
 
-				<Droppable droppableId={column.id} type={cardDropType}>
+				<Droppable droppableId={column.id} type={cardDropType} isDropDisabled={isDropDisabled}>
 					{(cardProvided) => (
 						<div
 							ref={cardProvided.innerRef}

@@ -1,13 +1,15 @@
 import { Button, Classes, Collapse, Colors, Icon } from "@blueprintjs/core";
-import { DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
-import { useState } from "react";
+import { DragDropContext, Droppable, type BeforeCapture, type DropResult } from "@hello-pangea/dnd";
+import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
+import { findCardColumnId, isCardDropDisabled } from "@/kanban/state/drag-rules";
 import type {
 	BoardCard as BoardCardModel,
+	BoardColumnId,
 	BoardColumn,
 	CardSelection,
 	ReviewTaskWorkspaceSnapshot,
@@ -32,6 +34,7 @@ function ColumnSection({
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
+	activeDragSourceColumnId,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -51,6 +54,7 @@ function ColumnSection({
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
+	activeDragSourceColumnId?: BoardColumnId | null;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
 	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
@@ -58,6 +62,7 @@ function ColumnSection({
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
+	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null);
 
 	return (
 		<div>
@@ -90,7 +95,7 @@ function ColumnSection({
 				) : null}
 			</div>
 			<Collapse isOpen={open}>
-				<Droppable droppableId={column.id} type={cardDropType}>
+			<Droppable droppableId={column.id} type={cardDropType} isDropDisabled={isDropDisabled}>
 					{(provided) => {
 						return (
 							<div
@@ -202,6 +207,20 @@ export function ColumnContextPanel({
 	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 }): React.ReactElement {
+	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
+
+	const handleBeforeCapture = useCallback((start: BeforeCapture) => {
+		setActiveDragSourceColumnId(findCardColumnId(selection.allColumns, start.draggableId));
+	}, [selection.allColumns]);
+
+	const handleDragEnd = useCallback(
+		(result: DropResult) => {
+			setActiveDragSourceColumnId(null);
+			onTaskDragEnd(result);
+		},
+		[onTaskDragEnd],
+	);
+
 	return (
 		<div
 			style={{
@@ -214,7 +233,7 @@ export function ColumnContextPanel({
 				borderRight: `1px solid ${panelSeparatorColor}`,
 			}}
 		>
-			<DragDropContext onDragEnd={onTaskDragEnd}>
+			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>
 				<div style={{ flex: "1 1 0", minHeight: 0 }}>
 					{selection.allColumns.map((column) => (
 						<ColumnSection
@@ -237,6 +256,7 @@ export function ColumnContextPanel({
 							commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 							reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
+							activeDragSourceColumnId={activeDragSourceColumnId}
 						/>
 					))}
 				</div>
