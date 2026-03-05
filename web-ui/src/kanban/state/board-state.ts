@@ -93,14 +93,8 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
-		title?: unknown;
-		description?: unknown;
 	};
-	const legacyTitle = typeof card.title === "string" ? card.title.trim() : "";
-	const legacyDescription = typeof card.description === "string" ? card.description.trim() : "";
-	const prompt = typeof card.prompt === "string"
-		? card.prompt.trim()
-		: [legacyTitle, legacyDescription].filter(Boolean).join("\n");
+	const prompt = typeof card.prompt === "string" ? card.prompt.trim() : "";
 	if (!prompt) {
 		return null;
 	}
