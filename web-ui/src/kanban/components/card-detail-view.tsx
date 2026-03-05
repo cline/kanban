@@ -120,6 +120,10 @@ export function CardDetailView({
 	bottomTerminalPaneHeight,
 	onBottomTerminalPaneHeightChange,
 	onBottomTerminalConnectionReady,
+	bottomTerminalAgentCommand,
+	onBottomTerminalSendAgentCommand,
+	isBottomTerminalExpanded,
+	onBottomTerminalToggleExpand,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
@@ -158,6 +162,10 @@ export function CardDetailView({
 	bottomTerminalPaneHeight?: number;
 	onBottomTerminalPaneHeightChange?: (height: number) => void;
 	onBottomTerminalConnectionReady?: (taskId: string) => void;
+	bottomTerminalAgentCommand?: string | null;
+	onBottomTerminalSendAgentCommand?: () => void;
+	isBottomTerminalExpanded?: boolean;
+	onBottomTerminalToggleExpand?: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
@@ -342,6 +350,10 @@ export function CardDetailView({
 								cursorColor={Colors.LIGHT_GRAY5}
 								showRightBorder={false}
 								onConnectionReady={onBottomTerminalConnectionReady}
+								agentCommand={bottomTerminalAgentCommand}
+								onSendAgentCommand={onBottomTerminalSendAgentCommand}
+								isExpanded={isBottomTerminalExpanded}
+								onToggleExpand={onBottomTerminalToggleExpand}
 							/>
 						</div>
 					</ResizableBottomPane>

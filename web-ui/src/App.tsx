@@ -214,6 +214,8 @@ export default function App(): ReactElement {
 	const [detailTerminalPaneHeight, setDetailTerminalPaneHeight] = useState<number | undefined>(
 		undefined,
 	);
+	const [isHomeTerminalExpanded, setIsHomeTerminalExpanded] = useState(false);
+	const [isDetailTerminalExpanded, setIsDetailTerminalExpanded] = useState(false);
 	const [requestedProjectId, setRequestedProjectId] = useState<string | null>(() => {
 		if (typeof window === "undefined") {
 			return null;
@@ -1207,8 +1209,12 @@ export default function App(): ReactElement {
 		setRemovingProjectId(null);
 		setIsHomeTerminalStarting(false);
 		setHomeTerminalShellBinary(null);
+		setIsHomeTerminalExpanded(false);
+		setHomeTerminalPaneHeight(undefined);
 		setIsDetailTerminalOpen(false);
 		setIsDetailTerminalStarting(false);
+		setIsDetailTerminalExpanded(false);
+		setDetailTerminalPaneHeight(undefined);
 		detailTerminalSelectionKeyRef.current = null;
 		setGitActionError(null);
 		resetWorkspaceSnapshots();
@@ -1335,6 +1341,37 @@ export default function App(): ReactElement {
 		}
 	}, [board, editingTaskId]);
 
+	const handleToggleExpandHomeTerminal = useCallback(() => {
+		setIsHomeTerminalExpanded((prev) => {
+			setHomeTerminalPaneHeight(prev ? undefined : 99999);
+			return !prev;
+		});
+	}, []);
+
+	const handleToggleExpandDetailTerminal = useCallback(() => {
+		setIsDetailTerminalExpanded((prev) => {
+			setDetailTerminalPaneHeight(prev ? undefined : 99999);
+			return !prev;
+		});
+	}, []);
+
+	const agentCommand = runtimeProjectConfig?.effectiveCommand ?? null;
+
+	const handleSendAgentCommandToHomeTerminal = useCallback(() => {
+		if (!agentCommand) {
+			return;
+		}
+		void sendTaskSessionInput(HOME_TERMINAL_TASK_ID, agentCommand, { appendNewline: true });
+	}, [agentCommand, sendTaskSessionInput]);
+
+	const handleSendAgentCommandToDetailTerminal = useCallback(() => {
+		if (!agentCommand || !selectedCard) {
+			return;
+		}
+		const terminalTaskId = getDetailTerminalTaskId(selectedCard.card);
+		void sendTaskSessionInput(terminalTaskId, agentCommand, { appendNewline: true });
+	}, [agentCommand, selectedCard, sendTaskSessionInput]);
+
 	const handleGlobalKeyDown = useCallback((event: KeyboardEvent) => {
 		const key = event.key.toLowerCase();
 		if ((event.metaKey || event.ctrlKey) && key === "j") {
@@ -1344,6 +1381,20 @@ export default function App(): ReactElement {
 				return;
 			}
 			homeTerminalToggleRef.current?.();
+			return;
+		}
+
+		if ((event.metaKey || event.ctrlKey) && key === "m") {
+			event.preventDefault();
+			if (selectedCard) {
+				if (isDetailTerminalOpen) {
+					handleToggleExpandDetailTerminal();
+				}
+				return;
+			}
+			if (isHomeTerminalOpen) {
+				handleToggleExpandHomeTerminal();
+			}
 			return;
 		}
 
@@ -1367,7 +1418,7 @@ export default function App(): ReactElement {
 			setEditingTaskId(null);
 			setIsInlineTaskCreateOpen(true);
 		}
-	}, [selectedCard]);
+	}, [handleToggleExpandDetailTerminal, handleToggleExpandHomeTerminal, isDetailTerminalOpen, isHomeTerminalOpen, selectedCard]);
 	useWindowEvent("keydown", handleGlobalKeyDown);
 
 	const handleBack = useCallback(() => {
@@ -1481,6 +1532,8 @@ export default function App(): ReactElement {
 	const handleToggleHomeTerminal = useCallback(() => {
 		if (isHomeTerminalOpen) {
 			setIsHomeTerminalOpen(false);
+			setIsHomeTerminalExpanded(false);
+			setHomeTerminalPaneHeight(undefined);
 			homeTerminalProjectIdRef.current = null;
 			return;
 		}
@@ -1534,6 +1587,8 @@ export default function App(): ReactElement {
 		}
 		if (isDetailTerminalOpen) {
 			setIsDetailTerminalOpen(false);
+			setIsDetailTerminalExpanded(false);
+			setDetailTerminalPaneHeight(undefined);
 			detailTerminalSelectionKeyRef.current = null;
 			return;
 		}
@@ -1601,6 +1656,8 @@ export default function App(): ReactElement {
 			if (!started) {
 				homeTerminalProjectIdRef.current = null;
 				setIsHomeTerminalOpen(false);
+				setIsHomeTerminalExpanded(false);
+				setHomeTerminalPaneHeight(undefined);
 			}
 		})();
 	}, [currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
@@ -1879,6 +1936,8 @@ export default function App(): ReactElement {
 					if (!started) {
 						homeTerminalProjectIdRef.current = null;
 						setIsHomeTerminalOpen(false);
+						setIsHomeTerminalExpanded(false);
+						setHomeTerminalPaneHeight(undefined);
 						throw new Error("Could not open terminal.");
 					}
 				}
@@ -2441,7 +2500,11 @@ export default function App(): ReactElement {
 													summary={homeTerminalSummary}
 													onSummary={upsertSession}
 													showSessionToolbar={false}
-													onClose={() => setIsHomeTerminalOpen(false)}
+													onClose={() => {
+														setIsHomeTerminalOpen(false);
+														setIsHomeTerminalExpanded(false);
+														setHomeTerminalPaneHeight(undefined);
+													}}
 													autoFocus
 													minimalHeaderTitle="Terminal"
 													minimalHeaderSubtitle={homeTerminalShellBinary}
@@ -2451,6 +2514,10 @@ export default function App(): ReactElement {
 													showRightBorder={false}
 													isVisible={!selectedCard}
 													onConnectionReady={markTerminalConnectionReady}
+													agentCommand={agentCommand}
+													onSendAgentCommand={handleSendAgentCommandToHomeTerminal}
+													isExpanded={isHomeTerminalExpanded}
+													onToggleExpand={handleToggleExpandHomeTerminal}
 												/>
 											</div>
 										</ResizableBottomPane>
@@ -2495,10 +2562,18 @@ export default function App(): ReactElement {
 									bottomTerminalTaskId={detailShellTaskId}
 									bottomTerminalSummary={detailShellSummary}
 									bottomTerminalSubtitle={detailShellSubtitle}
-									onBottomTerminalClose={() => setIsDetailTerminalOpen(false)}
+									onBottomTerminalClose={() => {
+										setIsDetailTerminalOpen(false);
+										setIsDetailTerminalExpanded(false);
+										setDetailTerminalPaneHeight(undefined);
+									}}
 									bottomTerminalPaneHeight={detailTerminalPaneHeight}
 									onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
 									onBottomTerminalConnectionReady={markTerminalConnectionReady}
+									bottomTerminalAgentCommand={agentCommand}
+									onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
+									isBottomTerminalExpanded={isDetailTerminalExpanded}
+									onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 								/>
 							</div>
 						) : null}

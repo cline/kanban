@@ -1,6 +1,6 @@
 import "@xterm/xterm/css/xterm.css";
 
-import { Button, Callout, Classes, Colors, Divider, Tag } from "@blueprintjs/core";
+import { Button, Callout, Classes, Colors, Divider, Icon, Tag, Tooltip } from "@blueprintjs/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
@@ -24,6 +24,8 @@ type TerminalWithViewportCore = Terminal & {
 };
 
 const SHIFT_ENTER_SEQUENCE = "\n";
+const isMacPlatform = typeof navigator !== "undefined" &&
+	/Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
 function getWebSocketUrl(taskId: string, workspaceId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -100,6 +102,10 @@ export function AgentTerminalPanel({
 	showRightBorder = true,
 	isVisible = true,
 	onConnectionReady,
+	agentCommand,
+	onSendAgentCommand,
+	isExpanded = false,
+	onToggleExpand,
 }: {
 	taskId: string;
 	workspaceId: string | null;
@@ -123,6 +129,10 @@ export function AgentTerminalPanel({
 	showRightBorder?: boolean;
 	isVisible?: boolean;
 	onConnectionReady?: (taskId: string) => void;
+	agentCommand?: string | null;
+	onSendAgentCommand?: () => void;
+	isExpanded?: boolean;
+	onToggleExpand?: () => void;
 }): React.ReactElement {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<Terminal | null>(null);
@@ -335,6 +345,13 @@ export function AgentTerminalPanel({
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
 	const statusIntent = useMemo(() => getStateIntent(summary), [summary]);
+	const agentLabel = useMemo(() => {
+		const normalizedCommand = agentCommand?.trim();
+		if (!normalizedCommand) {
+			return null;
+		}
+		return normalizedCommand.split(/\s+/)[0] ?? null;
+	}, [agentCommand]);
 
 	return (
 		<div
@@ -386,14 +403,49 @@ export function AgentTerminalPanel({
 							</span>
 						) : null}
 					</div>
+					<div style={{ display: "flex", alignItems: "center", gap: 2, marginRight: "-6px" }}>
+						{agentLabel && onSendAgentCommand ? (
+							<Tooltip placement="top" content={`Run ${agentLabel}`}>
+								<Button
+									icon={<Icon icon="chat" size={12} />}
+									variant="minimal"
+									size="small"
+									onClick={onSendAgentCommand}
+									aria-label={`Run ${agentLabel}`}
+								/>
+							</Tooltip>
+						) : null}
+						{onToggleExpand ? (
+							<Tooltip
+								placement="top"
+								content={(
+									<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+										<span>{isExpanded ? "Collapse" : "Expand"}</span>
+										<span style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
+											<span>(</span>
+											<Icon icon={isMacPlatform ? "key-command" : "key-control"} size={11} />
+											<span>+ M)</span>
+										</span>
+									</span>
+								)}
+							>
+								<Button
+									icon={<Icon icon={isExpanded ? "minimize" : "maximize"} size={12} />}
+									variant="minimal"
+									size="small"
+									onClick={onToggleExpand}
+									aria-label={isExpanded ? "Collapse terminal" : "Expand terminal"}
+								/>
+							</Tooltip>
+						) : null}
 						<Button
 							icon="cross"
 							variant="minimal"
 							size="small"
-							style={{ marginRight: "-6px" }}
 							onClick={onClose}
 							aria-label="Close terminal"
 						/>
+					</div>
 				</div>
 			) : null}
 			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: "3px 1.5px 3px 3px" }}>

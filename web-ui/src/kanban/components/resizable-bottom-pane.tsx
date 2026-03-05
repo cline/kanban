@@ -64,10 +64,11 @@ export function ResizableBottomPane({
 	useWindowEvent("resize", handleResize);
 
 	useEffect(() => {
-		if (typeof initialHeight !== "number") {
+		if (typeof initialHeight === "number") {
+			setHeight(clampHeight(initialHeight, minHeight));
 			return;
 		}
-		setHeight(clampHeight(initialHeight, minHeight));
+		setHeight(getDefaultPaneHeight(minHeight));
 	}, [initialHeight, minHeight]);
 
 	useEffect(() => {
