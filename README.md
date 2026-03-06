@@ -1,131 +1,100 @@
 # kanbanana
 
-Kanbanana is a local orchestration board for coding agents. It runs an HTTP/WebSocket runtime and serves the bundled web UI for managing tasks, sessions, worktrees, and project state.
+A kanban board for coding agents.
 
-## Requirements
+CLI agents are powerful, but using more than one at a time is a mess. You end up juggling terminals, worrying about git conflicts, and manually coordinating who works on what. Kanbanana gives you a simple pattern: a kanban board where each task runs its own agent in its own git worktree, completely isolated from everything else.
 
-- Node.js 20+
-- npm 10+
+You create tasks, hit play, and watch agents work in parallel. When they finish, you review the diffs, leave comments, and merge. That's it.
 
 ## Quick start
 
 ```bash
-npm run install:all
-npm run build
-npm link
-kanbanana --help
+npx kanbanana
 ```
 
-For local development:
+This launches the web UI in your browser and starts the local runtime server. Kanbanana auto-detects which CLI agent you have installed and uses it to run tasks.
+
+If you have multiple agents installed, you can pick one:
 
 ```bash
-npm run dev
+npx kanbanana --agent claude
 ```
 
-## CLI
+Supported agents: `claude`, `codex`, `gemini`, `opencode`, `cline`
+
+## How it works
+
+Kanbanana is a local-only tool. Nothing leaves your machine. It runs an HTTP server on `127.0.0.1:8484` and opens a web UI where you manage everything.
+
+The core idea is simple:
+
+1. You add tasks to the backlog. Each task is just a prompt describing the work.
+2. When you start a task, Kanbanana creates a git worktree for it and launches your chosen CLI agent inside that worktree. The agent works in total isolation from your main branch and from every other task.
+3. While agents work, the board shows live status. You can see which tasks are running, which are waiting for review, and what each agent is doing.
+4. When an agent finishes (or needs input), the task moves to review. You see the full diff of every change, can leave line comments, and decide what to do next.
+5. You merge the work, send it back for more changes, or toss it.
+
+Multiple agents run simultaneously without stepping on each other because each one gets its own worktree. You don't have to think about branches or conflicts until you're ready to merge.
+
+## The MCP server
+
+Kanbanana includes an MCP server that lets your agent manage the board directly. This is where things get interesting: an agent can create tasks, start them, and list what's on the board, turning a single agent into an orchestrator that delegates work to other agents.
+
+To add the MCP server to your agent, point it at:
 
 ```bash
-kanbanana [--port <number>] [--agent <id>] [--no-open] [--help] [--version]
+kanbanana mcp
 ```
 
-- `--port <number>`: bind the local runtime server to a specific port (default: `8484`)
-- `--agent <id>`: set the default agent (`claude`, `codex`, `gemini`, `opencode`, `cline`)
-- `--no-open`: do not auto-open the browser
-- `--help`: print usage
-- `--version`: print version
+The MCP server exposes three tools:
 
-After global install, you can also view the manual page:
+- `list_tasks` -- see what's on the board
+- `create_task` -- add a new task to backlog
+- `start_task` -- kick off a task (creates the worktree, launches the agent)
+
+This means you can tell your agent something like "break this feature into subtasks on the kanban board, then start them all" and it will use the MCP tools to do exactly that. Each subtask runs in its own worktree with its own agent instance, all managed through the board.
+
+## CLI reference
+
+```
+kanbanana [options]
+
+Options:
+  --port <number>   Bind the runtime server to a specific port (default: 8484)
+  --agent <id>      Set the default agent (claude, codex, gemini, opencode, cline)
+  --no-open         Don't auto-open the browser
+  --help            Print usage
+  --version         Print version
+
+Subcommands:
+  kanbanana mcp     Run as an MCP stdio server
+```
+
+After installing globally, you can also view the man page:
 
 ```bash
 man kanbanana
 ```
 
-## Scripts
+## Why a kanban board?
 
-- `npm run build`: build runtime and bundled web UI into `dist`
-- `npm run dev`: run CLI in watch mode
-- `npm run web:dev`: run web UI dev server
-- `npm run web:build`: build web UI
-- `npm run typecheck`: typecheck runtime
-- `npm run web:typecheck`: typecheck web UI
-- `npm run test`: run runtime tests
-- `npm run web:test`: run web UI tests
-- `npm run check`: lint, typecheck, and test runtime package
+The problem with running multiple agents isn't the agents themselves. It's coordination. You need to know what's happening, what's done, and what needs your attention. A kanban board is a natural fit because it gives you that visibility without adding process overhead.
 
-## Tests
+The columns map directly to agent lifecycle:
 
-- `test/integration`: integration tests for runtime behavior and startup flows
-- `test/runtime`: runtime unit tests
-- `test/utilities`: shared test helpers
+- Backlog: work that's defined but not started
+- In Progress: an agent is actively working on it
+- Review: the agent is done (or paused) and needs your eyes
+- Done: merged and finished
 
-## Agent tracking and runtime hooks
+Each transition happens automatically. When you start a task, it moves to in progress. When the agent finishes or hits a permission boundary, it moves to review. You drag it back to in progress if you want the agent to keep going.
 
-Kanbanana tracks agent session state with runtime hook events. The core transition model is:
+This pattern scales. Five tasks running in parallel looks the same as one. You just check the board and handle whatever's in review.
 
-- `in_progress -> review`
-- `review -> in_progress`
+## Contributing
 
-Internal runtime session states are named `running` and `awaiting_review`, and hook events are transition intents:
+See [DEVELOPMENT.md](DEVELOPMENT.md) for setup instructions, scripts, and architecture details.
 
-- `to_in_progress` for `review -> in_progress`
-- `to_review` for `in_progress -> review`
+## License
 
-How it works end to end:
-
-1. `prepareAgentLaunch` wires each agent with hook commands or hook-aware wrappers.
-2. Hook handlers call `kanbanana hooks ...` subcommands.
-3. `kanbanana hooks ingest --event <to_review|to_in_progress>` reads hook context from env:
-   - `KANBANANA_HOOK_TASK_ID`
-   - `KANBANANA_HOOK_WORKSPACE_ID`
-   - `KANBANANA_HOOK_PORT`
-4. The ingest command calls runtime TRPC `hooks.ingest`.
-5. The runtime applies guarded transitions and ignores duplicates or invalid transitions as no-ops.
-
-Current agent mappings:
-
-- Claude
-  - `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure` emit `to_in_progress`
-  - `Stop`, `PermissionRequest`, and `Notification` with `permission_prompt` emit `to_review`
-- Codex
-  - wrapper enables TUI session logging and maps:
-    - `task_started` and `exec_command_begin` to `to_in_progress`
-    - `*_approval_request` to `to_review`
-  - Codex `notify` completion path also emits `to_review`
-- Gemini
-  - `BeforeAgent` and `AfterTool` emit `to_in_progress`
-  - `AfterAgent` emits `to_review`
-  - hook command writes `{}` to stdout immediately to satisfy Gemini hook contract, then notifies in background
-- OpenCode
-  - plugin maps busy activity to `to_in_progress`
-  - plugin maps idle/error and permission ask to `to_review`
-  - plugin filters child sessions to avoid false transitions from nested runs
-
-Important behavior details:
-
-- Hooks are best-effort and should not crash or block the underlying agent process.
-- Hook notify paths are asynchronous to keep agent UX responsive.
-- Runtime transition guards are authoritative and prevent state flapping from duplicate events.
-- Hook transport is implemented in Node and invoked through `kanbanana hooks ...`, so the behavior is consistent across Windows and non-Windows environments.
-
-For a full technical breakdown, see:
-
-- `.plan/docs/runtime-hooks-architecture.md`
-
-## PostHog telemetry config
-
-The web UI reads PostHog settings at build time:
-
-- `POSTHOG_KEY`
-- `POSTHOG_HOST`
-
-Local development:
-- Set these in `web-ui/.env.local` (see `web-ui/.env.example`).
-- If `POSTHOG_KEY` is missing, telemetry does not initialize.
-
-Release builds:
-- The publish workflow injects `POSTHOG_KEY` and `POSTHOG_HOST` from GitHub Secrets.
-- `POSTHOG_HOST` is optional and defaults to `https://data.cline.bot`.
-
-Result:
-- Official releases have telemetry enabled.
-- Forks and source builds have telemetry disabled unless a key is explicitly provided.
+Apache-2.0
