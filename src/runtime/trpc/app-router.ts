@@ -7,6 +7,12 @@ import type {
 	RuntimeConfigSaveRequest,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
+	RuntimeGitCommitDiffRequest,
+	RuntimeGitCommitDiffResponse,
+	RuntimeGitDiscardResponse,
+	RuntimeGitLogRequest,
+	RuntimeGitLogResponse,
+	RuntimeGitRefsResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
@@ -47,6 +53,12 @@ import {
 	runtimeConfigSaveRequestSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
+	runtimeGitCommitDiffRequestSchema,
+	runtimeGitCommitDiffResponseSchema,
+	runtimeGitDiscardResponseSchema,
+	runtimeGitLogRequestSchema,
+	runtimeGitLogResponseSchema,
+	runtimeGitRefsResponseSchema,
 	runtimeGitSummaryResponseSchema,
 	runtimeGitSyncActionSchema,
 	runtimeGitSyncResponseSchema,
@@ -132,6 +144,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitCheckoutRequest,
 		) => Promise<RuntimeGitCheckoutResponse>;
+		discardGitChanges: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeTaskWorkspaceInfoRequest | null,
+		) => Promise<RuntimeGitDiscardResponse>;
 		loadChanges: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceChangesRequest,
@@ -157,6 +173,16 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceStateSaveRequest,
 		) => Promise<RuntimeWorkspaceStateResponse>;
+		loadWorkspaceChanges: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceChangesResponse>;
+		loadGitLog: (scope: RuntimeTrpcWorkspaceScope, input: RuntimeGitLogRequest) => Promise<RuntimeGitLogResponse>;
+		loadGitRefs: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeTaskWorkspaceInfoRequest | null,
+		) => Promise<RuntimeGitRefsResponse>;
+		loadCommitDiff: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeGitCommitDiffRequest,
+		) => Promise<RuntimeGitCommitDiffResponse>;
 	};
 	projectsApi: {
 		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
@@ -296,6 +322,12 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.checkoutGitBranch(ctx.workspaceScope, input);
 			}),
+		discardGitChanges: workspaceProcedure
+			.input(optionalTaskWorkspaceInfoRequestSchema)
+			.output(runtimeGitDiscardResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.discardGitChanges(ctx.workspaceScope, input ?? null);
+			}),
 		getChanges: workspaceProcedure
 			.input(runtimeWorkspaceChangesRequestSchema)
 			.output(runtimeWorkspaceChangesResponseSchema)
@@ -334,6 +366,27 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeWorkspaceStateResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.saveState(ctx.workspaceScope, input);
+			}),
+		getWorkspaceChanges: workspaceProcedure.output(runtimeWorkspaceChangesResponseSchema).query(async ({ ctx }) => {
+			return await ctx.workspaceApi.loadWorkspaceChanges(ctx.workspaceScope);
+		}),
+		getGitLog: workspaceProcedure
+			.input(runtimeGitLogRequestSchema)
+			.output(runtimeGitLogResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.loadGitLog(ctx.workspaceScope, input);
+			}),
+		getGitRefs: workspaceProcedure
+			.input(optionalTaskWorkspaceInfoRequestSchema)
+			.output(runtimeGitRefsResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.loadGitRefs(ctx.workspaceScope, input ?? null);
+			}),
+		getCommitDiff: workspaceProcedure
+			.input(runtimeGitCommitDiffRequestSchema)
+			.output(runtimeGitCommitDiffResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.loadCommitDiff(ctx.workspaceScope, input);
 			}),
 	}),
 	projects: t.router({

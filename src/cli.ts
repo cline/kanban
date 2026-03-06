@@ -30,6 +30,7 @@ import type {
 	RuntimeWorkspaceStateResponse,
 } from "./runtime/api-contract.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./runtime/config/runtime-config.js";
+import { createGitProcessEnv } from "./runtime/git-process-env.js";
 import {
 	buildKanbananaRuntimeUrl,
 	KANBANANA_RUNTIME_HOST,
@@ -245,6 +246,7 @@ function hasGitRepository(path: string): boolean {
 		cwd: path,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
+		env: createGitProcessEnv(),
 	});
 	return result.status === 0 && result.stdout.trim() === "true";
 }

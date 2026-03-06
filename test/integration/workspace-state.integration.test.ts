@@ -15,6 +15,7 @@ import {
 	removeWorkspaceIndexEntry,
 	saveWorkspaceState,
 } from "../../src/runtime/state/workspace-state.js";
+import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 
 function createBoard(title: string): RuntimeBoardData {
@@ -84,6 +85,7 @@ function initGitRepository(path: string): void {
 	const init = spawnSync("git", ["init"], {
 		cwd: path,
 		stdio: "ignore",
+		env: createGitTestEnv(),
 	});
 	if (init.status !== 0) {
 		throw new Error(`Failed to initialize git repository at ${path}`);

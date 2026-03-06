@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 
 import type {
 	RuntimeGitCheckoutResponse,
+	RuntimeGitDiscardResponse,
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
@@ -12,7 +13,8 @@ import { parseGitCheckoutRequest, parseWorktreeDeleteRequest, parseWorktreeEnsur
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { getWorkspaceChanges } from "../workspace/get-workspace-changes.js";
-import { getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync.js";
+import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history.js";
+import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync.js";
 import { searchWorkspaceFiles } from "../workspace/search-workspace-files.js";
 import {
 	deleteTaskWorktree,
@@ -119,6 +121,24 @@ function createEmptyGitCheckoutErrorResponse(error: unknown): RuntimeGitCheckout
 	};
 }
 
+function createEmptyGitDiscardErrorResponse(error: unknown): RuntimeGitDiscardResponse {
+	const message = error instanceof Error ? error.message : String(error);
+	return {
+		ok: false,
+		summary: {
+			currentBranch: null,
+			upstreamBranch: null,
+			changedFiles: 0,
+			additions: 0,
+			deletions: 0,
+			aheadCount: 0,
+			behindCount: 0,
+		},
+		output: "",
+		error: message,
+	};
+}
+
 export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): RuntimeTrpcContext["workspaceApi"] {
 	return {
 		loadGitSummary: async (workspaceScope, input) => {
@@ -168,6 +188,32 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				return response;
 			} catch (error) {
 				return createEmptyGitCheckoutErrorResponse(error);
+			}
+		},
+		discardGitChanges: async (workspaceScope, input) => {
+			try {
+				const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input);
+				let discardCwd = workspaceScope.workspacePath;
+				if (taskScope) {
+					discardCwd = await resolveTaskCwd({
+						cwd: workspaceScope.workspacePath,
+						taskId: taskScope.taskId,
+						baseRef: taskScope.baseRef,
+						ensure: false,
+					});
+				}
+				const response = await discardGitChanges({
+					cwd: discardCwd,
+				});
+				if (response.ok) {
+					void deps.broadcastRuntimeWorkspaceStateUpdated(
+						workspaceScope.workspaceId,
+						workspaceScope.workspacePath,
+					);
+				}
+				return response;
+			} catch (error) {
+				return createEmptyGitDiscardErrorResponse(error);
 			}
 		},
 		loadChanges: async (workspaceScope, input) => {
@@ -240,6 +286,56 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				}
 				throw error;
 			}
+		},
+		loadWorkspaceChanges: async (workspaceScope) => {
+			return await getWorkspaceChanges(workspaceScope.workspacePath);
+		},
+		loadGitLog: async (workspaceScope, input) => {
+			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
+			let logCwd = workspaceScope.workspacePath;
+			if (taskScope) {
+				logCwd = await resolveTaskCwd({
+					cwd: workspaceScope.workspacePath,
+					taskId: taskScope.taskId,
+					baseRef: taskScope.baseRef,
+					ensure: false,
+				});
+			}
+			return await getGitLog({
+				cwd: logCwd,
+				ref: input.ref ?? null,
+				maxCount: input.maxCount,
+				skip: input.skip,
+			});
+		},
+		loadGitRefs: async (workspaceScope, input) => {
+			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input ?? null);
+			let refsCwd = workspaceScope.workspacePath;
+			if (taskScope) {
+				refsCwd = await resolveTaskCwd({
+					cwd: workspaceScope.workspacePath,
+					taskId: taskScope.taskId,
+					baseRef: taskScope.baseRef,
+					ensure: false,
+				});
+			}
+			return await getGitRefs(refsCwd);
+		},
+		loadCommitDiff: async (workspaceScope, input) => {
+			const taskScope = normalizeOptionalTaskWorkspaceScopeInput(input.taskScope ?? null);
+			let diffCwd = workspaceScope.workspacePath;
+			if (taskScope) {
+				diffCwd = await resolveTaskCwd({
+					cwd: workspaceScope.workspacePath,
+					taskId: taskScope.taskId,
+					baseRef: taskScope.baseRef,
+					ensure: false,
+				});
+			}
+			return await getCommitDiff({
+				cwd: diffCwd,
+				commitHash: input.commitHash,
+			});
 		},
 	};
 }

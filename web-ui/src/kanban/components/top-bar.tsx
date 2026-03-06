@@ -17,9 +17,7 @@ import {
 	Tooltip,
 } from "@blueprintjs/core";
 import { IconNames, type IconName } from "@blueprintjs/icons";
-import { useState } from "react";
 
-import { BranchSelectDropdown, type BranchSelectOption } from "@/kanban/components/branch-select-dropdown";
 import { GitStatusLabel } from "@/kanban/components/git-status-label";
 import { OpenWorkspaceButton } from "@/kanban/components/open-workspace-button";
 import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/kanban/runtime/types";
@@ -63,13 +61,11 @@ export function TopBar({
 	onGitFetch,
 	onGitPull,
 	onGitPush,
-	homeBranchOptions,
-	selectedHomeBranch,
-	onSelectHomeBranch,
-	isSwitchingHomeBranch,
 	onToggleTerminal,
 	isTerminalOpen,
 	isTerminalLoading,
+	onToggleGitHistory,
+	isGitHistoryOpen,
 	onOpenSettings,
 	shortcuts,
 	selectedShortcutId,
@@ -95,13 +91,11 @@ export function TopBar({
 	onGitFetch?: () => void;
 	onGitPull?: () => void;
 	onGitPush?: () => void;
-	homeBranchOptions?: readonly BranchSelectOption[];
-	selectedHomeBranch?: string | null;
-	onSelectHomeBranch?: (branch: string) => void;
-	isSwitchingHomeBranch?: boolean;
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
+	onToggleGitHistory?: () => void;
+	isGitHistoryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
 	shortcuts?: RuntimeProjectShortcut[];
 	selectedShortcutId?: string | null;
@@ -116,14 +110,11 @@ export function TopBar({
 	isOpeningWorkspace: boolean;
 	hideProjectDependentActions?: boolean;
 }): React.ReactElement {
-	const [isBranchPickerOpen, setIsBranchPickerOpen] = useState(false);
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
 	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
 	const hasHomeGitSummary = Boolean(gitSummary);
 	const branchLabel = gitSummary?.currentBranch ?? "detached HEAD";
-	const selectedBranchOption = selectedHomeBranch ?? null;
-	const hasHomeBranchPicker = hasHomeGitSummary && Boolean(onSelectHomeBranch) && Boolean(homeBranchOptions?.length);
 	const pullCount = gitSummary?.behindCount ?? 0;
 	const pushCount = gitSummary?.aheadCount ?? 0;
 	const hasTaskGitSummary = Boolean(taskGitSummary);
@@ -217,29 +208,25 @@ export function TopBar({
 				{!hideProjectDependentActions && hasHomeGitSummary ? (
 					<>
 						<NavbarDivider />
-						{hasHomeBranchPicker ? (
+						{onToggleGitHistory ? (
 							<>
-								<Tooltip placement="bottom" content="Switch the branch for this project." disabled={isBranchPickerOpen}>
-									<BranchSelectDropdown
-										options={homeBranchOptions ?? []}
-										selectedValue={selectedBranchOption}
-										onSelect={(branch) => onSelectHomeBranch?.(branch)}
-										size="small"
-										buttonText={selectedBranchOption ?? branchLabel}
-										disabled={Boolean(runningGitAction) || Boolean(isSwitchingHomeBranch)}
-										buttonClassName={Classes.MONOSPACE_TEXT}
-										buttonStyle={{
-											fontSize: "var(--bp-typography-size-body-small)",
-											maxWidth: 200,
-										}}
-										iconSize={12}
-										matchTargetWidth={false}
-										dropdownStyle={{ minWidth: 180 }}
-										menuStyle={{ maxHeight: 300, overflowY: "auto" }}
-										showSelectedIndicator
-										onPopoverOpenChange={setIsBranchPickerOpen}
-									/>
-								</Tooltip>
+								<Button
+									icon={<Icon icon="git-branch" size={12} />}
+									size="small"
+									variant="outlined"
+									active={isGitHistoryOpen}
+									onClick={onToggleGitHistory}
+									className={Classes.MONOSPACE_TEXT}
+									style={{
+										fontSize: "var(--bp-typography-size-body-small)",
+										maxWidth: 200,
+									}}
+									text={
+										<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>
+											{branchLabel}
+										</span>
+									}
+								/>
 								<span
 									className={Classes.MONOSPACE_TEXT}
 									style={{
@@ -381,7 +368,7 @@ export function TopBar({
 							onClick={onToggleTerminal}
 							disabled={Boolean(isTerminalLoading)}
 							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
-							style={{ marginLeft: 9 }}
+							style={{ marginLeft: 5 }}
 						/>
 					</Tooltip>
 				) : null}

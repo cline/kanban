@@ -8,6 +8,7 @@ import type {
 	RuntimeWorkspaceFileChange,
 	RuntimeWorkspaceFileStatus,
 } from "../api-contract.js";
+import { createGitProcessEnv } from "../git-process-env.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
@@ -99,6 +100,7 @@ async function runGit(args: string[], cwd: string): Promise<string> {
 			cwd,
 			encoding: "utf8",
 			maxBuffer: GIT_MAX_BUFFER_BYTES,
+			env: createGitProcessEnv(),
 		});
 		return String(stdout);
 	} catch (error) {

@@ -8,6 +8,7 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../api-contract.js";
+import { createGitProcessEnv } from "../git-process-env.js";
 import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
 
 const execFileAsync = promisify(execFile);
@@ -70,6 +71,7 @@ async function runGit(args: string[]): Promise<string> {
 	const { stdout } = await execFileAsync("git", args, {
 		encoding: "utf8",
 		maxBuffer: GIT_MAX_BUFFER_BYTES,
+		env: createGitProcessEnv(),
 	});
 	return String(stdout).trim();
 }

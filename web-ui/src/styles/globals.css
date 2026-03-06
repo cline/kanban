@@ -351,6 +351,91 @@ body,
 	white-space: pre-line;
 }
 
+/* -- Read-only diff (no hover interactions) -- */
+
+.kb-diff-readonly .kb-diff-row {
+	cursor: default;
+}
+
+.kb-diff-readonly .kb-diff-row:hover {
+	background: inherit;
+}
+
+.kb-diff-readonly .kb-diff-row-added,
+.kb-diff-readonly .kb-diff-row-added:hover {
+	background: oklch(from var(--bp-intent-success-rest) l c h / 0.2);
+}
+
+.kb-diff-readonly .kb-diff-row-removed,
+.kb-diff-readonly .kb-diff-row-removed:hover {
+	background: oklch(from var(--bp-intent-danger-rest) l c h / 0.2);
+}
+
+.kb-diff-readonly .kb-diff-row-context,
+.kb-diff-readonly .kb-diff-row-context:hover {
+	background: transparent;
+}
+
+.kb-diff-readonly .kb-diff-row:hover .kb-diff-comment-gutter {
+	display: none;
+}
+
+.kb-diff-readonly .kb-diff-row:hover .kb-diff-line-number-text {
+	opacity: 1;
+}
+
+/* -- Git history rows (hover selectors) -- */
+
+.kb-git-ref-row {
+	background: none;
+}
+
+.kb-git-ref-row + .kb-git-ref-row,
+.kb-git-ref-row + div + .kb-git-ref-row {
+	margin-top: 4px;
+}
+
+.kb-git-ref-row:hover {
+	background: var(--bp-palette-dark-gray-4);
+}
+
+.kb-git-ref-row-selected,
+.kb-git-ref-row-selected:hover {
+	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.2);
+	color: var(--bp-palette-light-gray-5);
+}
+
+.kb-git-ref-row-selected-warning,
+.kb-git-ref-row-selected-warning:hover {
+	background: oklch(from var(--bp-intent-warning-rest) l c h / 0.2);
+	color: var(--bp-palette-light-gray-5);
+}
+
+.kb-git-working-copy-header {
+	background: oklch(from var(--bp-intent-warning-rest) l c h / 0.2);
+}
+
+.kb-git-commit-row {
+	background: none;
+}
+
+.kb-git-commit-row:hover {
+	background: var(--bp-palette-dark-gray-4);
+}
+
+.kb-git-commit-row-selected,
+.kb-git-commit-row-selected:hover {
+	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.2);
+	color: var(--bp-palette-light-gray-5);
+}
+
+.kb-git-commit-row-selected .kb-git-commit-row-meta,
+.kb-git-commit-row-selected:hover .kb-git-commit-row-meta,
+.kb-git-commit-row-selected .kb-git-commit-row-message,
+.kb-git-commit-row-selected:hover .kb-git-commit-row-message {
+	color: var(--bp-palette-light-gray-5) !important;
+}
+
 /* -- Terminal viewport (hide gutter while keeping wheel scroll) -- */
 
 .kb-terminal-container .xterm-viewport {

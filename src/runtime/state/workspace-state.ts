@@ -16,6 +16,7 @@ import {
 	runtimeTaskSessionSummarySchema,
 	runtimeWorkspaceStateSaveRequestSchema,
 } from "../api-contract.js";
+import { createGitProcessEnv } from "../git-process-env.js";
 
 const RUNTIME_HOME_DIR = ".kanbanana";
 const WORKSPACES_DIR = "workspaces";
@@ -361,6 +362,7 @@ function runGitCapture(cwd: string, args: string[]): string | null {
 		cwd,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
+		env: createGitProcessEnv(),
 	});
 	if (result.status !== 0 || typeof result.stdout !== "string") {
 		return null;

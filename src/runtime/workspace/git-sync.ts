@@ -5,10 +5,12 @@ import { promisify } from "node:util";
 
 import type {
 	RuntimeGitCheckoutResponse,
+	RuntimeGitDiscardResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
 } from "../api-contract.js";
+import { createGitProcessEnv } from "../git-process-env.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
@@ -67,6 +69,7 @@ async function runGitCommand(cwd: string, args: string[]): Promise<GitCommandRes
 			cwd,
 			encoding: "utf8",
 			maxBuffer: GIT_MAX_BUFFER_BYTES,
+			env: createGitProcessEnv(),
 		});
 		const normalizedStdout = String(stdout ?? "").trim();
 		const normalizedStderr = String(stderr ?? "").trim();
@@ -268,5 +271,54 @@ export async function runGitCheckoutAction(options: {
 		branch: requestedBranch,
 		summary: nextSummary,
 		output: commandResult.output,
+	};
+}
+
+export async function discardGitChanges(options: { cwd: string }): Promise<RuntimeGitDiscardResponse> {
+	const repoRoot = await resolveRepoRoot(options.cwd);
+	const initialSummary = await getGitSyncSummary(repoRoot);
+
+	if (initialSummary.changedFiles === 0) {
+		return {
+			ok: true,
+			summary: initialSummary,
+			output: "Working tree is already clean.",
+		};
+	}
+
+	const restoreResult = await runGitCommand(repoRoot, [
+		"restore",
+		"--source=HEAD",
+		"--staged",
+		"--worktree",
+		"--",
+		".",
+	]);
+	const cleanResult = restoreResult.ok ? await runGitCommand(repoRoot, ["clean", "-fd", "--", "."]) : null;
+	const nextSummary = await getGitSyncSummary(repoRoot);
+	const output = [restoreResult.output, cleanResult?.output ?? ""].filter(Boolean).join("\n");
+
+	if (!restoreResult.ok) {
+		return {
+			ok: false,
+			summary: nextSummary,
+			output,
+			error: restoreResult.error ?? "Discard failed.",
+		};
+	}
+
+	if (cleanResult && !cleanResult.ok) {
+		return {
+			ok: false,
+			summary: nextSummary,
+			output,
+			error: cleanResult.error ?? "Discard failed while cleaning untracked files.",
+		};
+	}
+
+	return {
+		ok: true,
+		summary: nextSummary,
+		output,
 	};
 }

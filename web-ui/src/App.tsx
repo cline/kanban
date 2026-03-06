@@ -21,6 +21,8 @@ import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { ClearTrashDialog } from "@/kanban/components/clear-trash-dialog";
+import { GitHistoryView } from "@/kanban/components/git-history-view";
+import { useGitHistoryData } from "@/kanban/components/git-history/use-git-history-data";
 import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
@@ -57,6 +59,7 @@ import {
 } from "@/kanban/telemetry/events";
 import {
 	useBooleanLocalStorageValue,
+	useInterval,
 	useWindowEvent,
 } from "@/kanban/hooks/react-use";
 import {
@@ -109,6 +112,7 @@ const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was r
 const HOME_TERMINAL_TASK_ID = "__home_terminal__";
 const HOME_TERMINAL_ROWS = 16;
 const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
+const GIT_HISTORY_POLL_INTERVAL_MS = 3000;
 
 function getDetailTerminalTaskId(card: BoardCard): string {
 	return `${DETAIL_TERMINAL_TASK_PREFIX}${card.id}`;
@@ -194,6 +198,7 @@ export default function App(): ReactElement {
 	const [taskGitActionLoadingByTaskId, setTaskGitActionLoadingByTaskId] =
 		useState<Record<string, TaskGitActionLoadingState>>({});
 	const [isSwitchingHomeBranch, setIsSwitchingHomeBranch] = useState(false);
+	const [isDiscardingHomeWorkingChanges, setIsDiscardingHomeWorkingChanges] = useState(false);
 	const [gitActionError, setGitActionError] = useState<{
 		action: RuntimeGitSyncAction;
 		message: string;
@@ -203,6 +208,7 @@ export default function App(): ReactElement {
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [runningShortcutId, setRunningShortcutId] = useState<string | null>(null);
 	const [removingProjectId, setRemovingProjectId] = useState<string | null>(null);
+	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [isHomeTerminalOpen, setIsHomeTerminalOpen] = useState(false);
 	const [isHomeTerminalStarting, setIsHomeTerminalStarting] = useState(false);
 	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
@@ -265,6 +271,12 @@ export default function App(): ReactElement {
 		useTerminalConnectionReady();
 	const readyForReviewNotificationsEnabled =
 		runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
+	const gitHistory = useGitHistoryData({
+		workspaceId: currentProjectId,
+		gitSummary,
+		enabled: isGitHistoryOpen,
+	});
+	const refreshGitHistory = gitHistory.refresh;
 	useReviewReadyNotifications({
 		activeWorkspaceId: activeNotificationWorkspaceId,
 		board,
@@ -1024,6 +1036,26 @@ export default function App(): ReactElement {
 		}
 	}, [currentProjectId]);
 
+	useInterval(
+		() => {
+			if (
+				!isGitHistoryOpen
+				|| !currentProjectId
+				|| !isDocumentVisible
+				|| runningGitAction !== null
+				|| isSwitchingHomeBranch
+				|| isDiscardingHomeWorkingChanges
+			) {
+				return;
+			}
+			void (async () => {
+				await refreshGitSummary();
+				refreshGitHistory({ background: true });
+			})();
+		},
+		isGitHistoryOpen && currentProjectId && isDocumentVisible ? GIT_HISTORY_POLL_INTERVAL_MS : null,
+	);
+
 	const runGitAction = useCallback(async (action: RuntimeGitSyncAction) => {
 		if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
 			return;
@@ -1047,6 +1079,7 @@ export default function App(): ReactElement {
 				return;
 			}
 			setGitSummary(payload.summary);
+			refreshGitHistory();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			setGitActionError({
@@ -1057,7 +1090,7 @@ export default function App(): ReactElement {
 		} finally {
 			setRunningGitAction(null);
 		}
-	}, [currentProjectId, isSwitchingHomeBranch, runningGitAction]);
+	}, [currentProjectId, isSwitchingHomeBranch, refreshGitHistory, runningGitAction]);
 
 	const switchHomeBranch = useCallback(async (branch: string) => {
 		const normalizedBranch = branch.trim();
@@ -1091,6 +1124,7 @@ export default function App(): ReactElement {
 				return;
 			}
 			setGitSummary(payload.summary);
+			refreshGitHistory();
 			await refreshWorkspaceState();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -1103,7 +1137,48 @@ export default function App(): ReactElement {
 		} finally {
 			setIsSwitchingHomeBranch(false);
 		}
-	}, [currentProjectId, gitSummary?.currentBranch, isSwitchingHomeBranch, refreshWorkspaceState]);
+	}, [currentProjectId, gitSummary?.currentBranch, isSwitchingHomeBranch, refreshGitHistory, refreshWorkspaceState]);
+
+	const discardHomeWorkingChanges = useCallback(async () => {
+		if (!currentProjectId || isDiscardingHomeWorkingChanges) {
+			return;
+		}
+		setIsDiscardingHomeWorkingChanges(true);
+		try {
+			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const payload = await trpcClient.workspace.discardGitChanges.mutate(null);
+			if (!payload.ok) {
+				if (payload.summary) {
+					setGitSummary(payload.summary);
+				}
+				showAppToast({
+					intent: "danger",
+					icon: "warning-sign",
+					message: payload.error ?? "Could not discard working copy changes.",
+					timeout: 7000,
+				});
+				return;
+			}
+			setGitSummary(payload.summary);
+			refreshGitHistory();
+			showAppToast({
+				intent: "success",
+				icon: "tick",
+				message: "Discarded working copy changes.",
+				timeout: 4000,
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			showAppToast({
+				intent: "danger",
+				icon: "warning-sign",
+				message: `Could not discard working copy changes. ${message}`,
+				timeout: 7000,
+			});
+		} finally {
+			setIsDiscardingHomeWorkingChanges(false);
+		}
+	}, [currentProjectId, isDiscardingHomeWorkingChanges, refreshGitHistory]);
 
 	const persistWorkspaceStateAsync = useCallback(
 		async (input: {
@@ -1206,6 +1281,8 @@ export default function App(): ReactElement {
 		setIsClearTrashDialogOpen(false);
 		setGitSummary(null);
 		setRunningGitAction(null);
+		setIsSwitchingHomeBranch(false);
+		setIsDiscardingHomeWorkingChanges(false);
 		setRemovingProjectId(null);
 		setIsHomeTerminalStarting(false);
 		setHomeTerminalShellBinary(null);
@@ -2372,16 +2449,6 @@ export default function App(): ReactElement {
 									void runGitAction("push");
 								}
 					}
-					homeBranchOptions={selectedCard || hasNoProjects ? undefined : createTaskBranchOptions}
-					selectedHomeBranch={selectedCard || hasNoProjects ? null : gitSummary?.currentBranch ?? null}
-					onSelectHomeBranch={
-						selectedCard || hasNoProjects
-							? undefined
-							: (branch) => {
-									void switchHomeBranch(branch);
-								}
-					}
-					isSwitchingHomeBranch={selectedCard || hasNoProjects ? false : isSwitchingHomeBranch}
 						onToggleTerminal={hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal}
 					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
@@ -2397,6 +2464,8 @@ export default function App(): ReactElement {
 					onOpenWorkspace={onOpenWorkspace}
 					canOpenWorkspace={canOpenWorkspace}
 					isOpeningWorkspace={isOpeningWorkspace}
+					onToggleGitHistory={selectedCard || hasNoProjects ? undefined : () => setIsGitHistoryOpen((prev) => !prev)}
+					isGitHistoryOpen={isGitHistoryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
 					<RuntimeStatusBanners
@@ -2459,25 +2528,37 @@ export default function App(): ReactElement {
 								) : (
 								<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
 									<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0 }}>
-										<KanbanBoard
-											data={board}
-											taskSessions={sessions}
-											onCardSelect={handleCardSelect}
-											onCreateTask={handleOpenCreateTask}
-											onStartTask={handleStartTask}
-											onClearTrash={handleOpenClearTrash}
-											inlineTaskCreator={inlineTaskCreator}
-											editingTaskId={editingTaskId}
-											inlineTaskEditor={inlineTaskEditor}
-											onEditTask={handleOpenEditTask}
-											onCommitTask={handleCommitTask}
-											onOpenPrTask={handleOpenPrTask}
-											commitTaskLoadingById={commitTaskLoadingById}
-											openPrTaskLoadingById={openPrTaskLoadingById}
-											onMoveToTrashTask={handleMoveReviewCardToTrash}
-											reviewWorkspaceSnapshots={workspaceSnapshots}
-											onDragEnd={handleDragEnd}
-										/>
+										{isGitHistoryOpen ? (
+											<GitHistoryView
+												workspaceId={currentProjectId}
+												gitHistory={gitHistory}
+												onCheckoutBranch={(branch) => { void switchHomeBranch(branch); }}
+												onDiscardWorkingChanges={() => {
+													void discardHomeWorkingChanges();
+												}}
+												isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
+											/>
+										) : (
+											<KanbanBoard
+												data={board}
+												taskSessions={sessions}
+												onCardSelect={handleCardSelect}
+												onCreateTask={handleOpenCreateTask}
+												onStartTask={handleStartTask}
+												onClearTrash={handleOpenClearTrash}
+												inlineTaskCreator={inlineTaskCreator}
+												editingTaskId={editingTaskId}
+												inlineTaskEditor={inlineTaskEditor}
+												onEditTask={handleOpenEditTask}
+												onCommitTask={handleCommitTask}
+												onOpenPrTask={handleOpenPrTask}
+												commitTaskLoadingById={commitTaskLoadingById}
+												openPrTaskLoadingById={openPrTaskLoadingById}
+												onMoveToTrashTask={handleMoveReviewCardToTrash}
+												reviewWorkspaceSnapshots={workspaceSnapshots}
+												onDragEnd={handleDragEnd}
+											/>
+										)}
 									</div>
 									{isHomeTerminalOpen ? (
 										<ResizableBottomPane

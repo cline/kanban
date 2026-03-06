@@ -3,7 +3,8 @@ import { EventEmitter } from "node:events";
 import { mkdirSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { createServer } from "node:http";
-import { join, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
@@ -23,7 +24,10 @@ import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceStateResponse,
 } from "../../src/runtime/api-contract.js";
+import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
+
+const requireFromHere = createRequire(import.meta.url);
 
 interface RuntimeStreamClient {
 	socket: WebSocket;
@@ -112,10 +116,28 @@ function initGitRepository(path: string): void {
 	const init = spawnSync("git", ["init"], {
 		cwd: path,
 		stdio: "ignore",
+		env: createGitTestEnv(),
 	});
 	if (init.status !== 0) {
 		throw new Error(`Failed to initialize git repository at ${path}`);
 	}
+}
+
+function resolveTsxCliEntrypoint(): string {
+	const packageJsonPath = requireFromHere.resolve("tsx/package.json");
+	const packageJson = requireFromHere(packageJsonPath) as {
+		bin?: string | Record<string, string>;
+	};
+	const binValue =
+		typeof packageJson.bin === "string"
+			? packageJson.bin
+			: packageJson.bin && typeof packageJson.bin === "object"
+				? (packageJson.bin.tsx ?? Object.values(packageJson.bin)[0])
+				: null;
+	if (!binValue) {
+		throw new Error("Could not resolve tsx CLI entrypoint from package metadata.");
+	}
+	return resolve(dirname(packageJsonPath), binValue);
 }
 
 async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): Promise<{ runtimeUrl: string }> {
@@ -178,16 +200,15 @@ async function startKanbananaServer(input: { cwd: string; homeDir: string; port:
 	runtimeUrl: string;
 	stop: () => Promise<void>;
 }> {
-	const tsxEntrypoint = resolve(process.cwd(), "node_modules/tsx/dist/cli.mjs");
+	const tsxEntrypoint = resolveTsxCliEntrypoint();
 	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
 	const child = spawn(process.execPath, [tsxEntrypoint, cliEntrypoint, "--no-open"], {
 		cwd: input.cwd,
-		env: {
-			...process.env,
+		env: createGitTestEnv({
 			HOME: input.homeDir,
 			USERPROFILE: input.homeDir,
 			KANBANANA_RUNTIME_PORT: String(input.port),
-		},
+		}),
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	const { runtimeUrl } = await waitForProcessStart(child);
