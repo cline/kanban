@@ -112,6 +112,7 @@ export function CardDetailView({
 	onAddReviewComments,
 	onSendReviewComments,
 	onMoveToTrash,
+	gitHistoryPanel,
 	bottomTerminalOpen,
 	bottomTerminalTaskId,
 	bottomTerminalSummary,
@@ -154,6 +155,7 @@ export function CardDetailView({
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
 	onMoveToTrash: () => void;
+	gitHistoryPanel?: ReactNode;
 	bottomTerminalOpen: boolean;
 	bottomTerminalTaskId: string | null;
 	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
@@ -280,85 +282,93 @@ export function CardDetailView({
 				reviewWorkspaceSnapshots={reviewWorkspaceSnapshots}
 				/>
 				<div style={{ display: "flex", flexDirection: "column", width: "80%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
-					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
-						<AgentTerminalPanel
-							taskId={selection.card.id}
-							workspaceId={currentProjectId}
-							summary={sessionSummary}
-							onSummary={onSessionSummary}
-							onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
-							onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
-							isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
-							isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
-							showSessionToolbar={false}
-							autoFocus
-							showReviewGitActions={showReviewGitActions}
-							showMoveToTrash={selection.column.id === "review"}
-							onMoveToTrash={onMoveToTrash}
-						/>
-						{isWorkspaceChangesPending ? (
-							<WorkspaceChangesLoadingPanel />
-						) : hasNoWorkspaceFileChanges ? (
-							<WorkspaceChangesEmptyPanel />
-						) : (
-							<>
-								<DiffViewerPanel
-									workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-									selectedPath={selectedPath}
-									onSelectedPathChange={setSelectedPath}
-									onAddToTerminal={onAddReviewComments ? (formatted) => onAddReviewComments(selection.card.id, formatted) : undefined}
-									onSendToTerminal={onSendReviewComments ? (formatted) => onSendReviewComments(selection.card.id, formatted) : undefined}
-									comments={diffComments}
-									onCommentsChange={setDiffComments}
-								/>
-								<FileTreePanel
-									workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-									selectedPath={selectedPath}
-									onSelectPath={setSelectedPath}
-								/>
-							</>
-						)}
-				</div>
-				{bottomTerminalOpen && bottomTerminalTaskId ? (
-					<ResizableBottomPane
-						minHeight={200}
-						initialHeight={bottomTerminalPaneHeight}
-						onHeightChange={onBottomTerminalPaneHeightChange}
-					>
-						<div
-							style={{
-								display: "flex",
-								flex: "1 1 0",
-								minWidth: 0,
-								paddingLeft: "calc(var(--bp-surface-spacing) * 3)",
-								paddingRight: "calc(var(--bp-surface-spacing) * 3)",
-							}}
-						>
-							<AgentTerminalPanel
-								key={`detail-shell-${bottomTerminalTaskId}`}
-								taskId={bottomTerminalTaskId}
-								workspaceId={currentProjectId}
-								summary={bottomTerminalSummary}
-								onSummary={onSessionSummary}
-								showSessionToolbar={false}
-								autoFocus
-								onClose={onBottomTerminalClose}
-								minimalHeaderTitle="Terminal"
-								minimalHeaderSubtitle={bottomTerminalSubtitle}
-								panelBackgroundColor={Colors.DARK_GRAY2}
-								terminalBackgroundColor={Colors.DARK_GRAY2}
-								cursorColor={Colors.LIGHT_GRAY5}
-								showRightBorder={false}
-								onConnectionReady={onBottomTerminalConnectionReady}
-								agentCommand={bottomTerminalAgentCommand}
-								onSendAgentCommand={onBottomTerminalSendAgentCommand}
-								isExpanded={isBottomTerminalExpanded}
-								onToggleExpand={onBottomTerminalToggleExpand}
-							/>
+					{gitHistoryPanel ? (
+						<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+							{gitHistoryPanel}
 						</div>
-					</ResizableBottomPane>
-				) : null}
-			</div>
+					) : (
+						<>
+							<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+								<AgentTerminalPanel
+									taskId={selection.card.id}
+									workspaceId={currentProjectId}
+									summary={sessionSummary}
+									onSummary={onSessionSummary}
+									onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
+									onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
+									isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
+									isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
+									showSessionToolbar={false}
+									autoFocus
+									showReviewGitActions={showReviewGitActions}
+									showMoveToTrash={selection.column.id === "review"}
+									onMoveToTrash={onMoveToTrash}
+								/>
+								{isWorkspaceChangesPending ? (
+									<WorkspaceChangesLoadingPanel />
+								) : hasNoWorkspaceFileChanges ? (
+									<WorkspaceChangesEmptyPanel />
+								) : (
+									<>
+										<DiffViewerPanel
+											workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+											selectedPath={selectedPath}
+											onSelectedPathChange={setSelectedPath}
+											onAddToTerminal={onAddReviewComments ? (formatted) => onAddReviewComments(selection.card.id, formatted) : undefined}
+											onSendToTerminal={onSendReviewComments ? (formatted) => onSendReviewComments(selection.card.id, formatted) : undefined}
+											comments={diffComments}
+											onCommentsChange={setDiffComments}
+										/>
+										<FileTreePanel
+											workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+											selectedPath={selectedPath}
+											onSelectPath={setSelectedPath}
+										/>
+									</>
+								)}
+							</div>
+							{bottomTerminalOpen && bottomTerminalTaskId ? (
+								<ResizableBottomPane
+									minHeight={200}
+									initialHeight={bottomTerminalPaneHeight}
+									onHeightChange={onBottomTerminalPaneHeightChange}
+								>
+									<div
+										style={{
+											display: "flex",
+											flex: "1 1 0",
+											minWidth: 0,
+											paddingLeft: "calc(var(--bp-surface-spacing) * 3)",
+											paddingRight: "calc(var(--bp-surface-spacing) * 3)",
+										}}
+									>
+										<AgentTerminalPanel
+											key={`detail-shell-${bottomTerminalTaskId}`}
+											taskId={bottomTerminalTaskId}
+											workspaceId={currentProjectId}
+											summary={bottomTerminalSummary}
+											onSummary={onSessionSummary}
+											showSessionToolbar={false}
+											autoFocus
+											onClose={onBottomTerminalClose}
+											minimalHeaderTitle="Terminal"
+											minimalHeaderSubtitle={bottomTerminalSubtitle}
+											panelBackgroundColor={Colors.DARK_GRAY2}
+											terminalBackgroundColor={Colors.DARK_GRAY2}
+											cursorColor={Colors.LIGHT_GRAY5}
+											showRightBorder={false}
+											onConnectionReady={onBottomTerminalConnectionReady}
+											agentCommand={bottomTerminalAgentCommand}
+											onSendAgentCommand={onBottomTerminalSendAgentCommand}
+											isExpanded={isBottomTerminalExpanded}
+											onToggleExpand={onBottomTerminalToggleExpand}
+										/>
+									</div>
+								</ResizableBottomPane>
+							) : null}
+						</>
+					)}
+				</div>
 		</div>
 	);
 }

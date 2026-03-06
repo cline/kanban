@@ -18,7 +18,6 @@ import {
 } from "@blueprintjs/core";
 import { IconNames, type IconName } from "@blueprintjs/icons";
 
-import { GitStatusLabel } from "@/kanban/components/git-status-label";
 import { OpenWorkspaceButton } from "@/kanban/components/open-workspace-button";
 import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 import type { OpenTargetId, OpenTargetOption } from "@/kanban/utils/open-targets";
@@ -47,6 +46,78 @@ function resolveShortcutIcon(icon: string | undefined): IconName {
 	}
 	const candidate = normalized as IconName;
 	return BLUEPRINT_ICON_NAMES.has(candidate) ? candidate : "console";
+}
+
+function GitBranchStatusControl({
+	branchLabel,
+	changedFiles,
+	additions,
+	deletions,
+	onToggleGitHistory,
+	isGitHistoryOpen,
+}: {
+	branchLabel: string;
+	changedFiles: number;
+	additions: number;
+	deletions: number;
+	onToggleGitHistory?: () => void;
+	isGitHistoryOpen?: boolean;
+}): React.ReactElement {
+	if (onToggleGitHistory) {
+		return (
+			<>
+				<Button
+					icon={<Icon icon="git-branch" size={12} />}
+					size="small"
+					variant="outlined"
+					active={isGitHistoryOpen}
+					onClick={onToggleGitHistory}
+					className={Classes.MONOSPACE_TEXT}
+					style={{
+						fontSize: "var(--bp-typography-size-body-small)",
+					}}
+					text={
+						<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>
+							{branchLabel}
+						</span>
+					}
+				/>
+				<span
+					className={Classes.MONOSPACE_TEXT}
+					style={{
+						fontSize: "var(--bp-typography-size-body-small)",
+						color: Colors.GRAY3,
+						marginLeft: 6,
+					}}
+				>
+					({changedFiles} {changedFiles === 1 ? "file" : "files"}
+					<span style={{ color: Colors.GREEN4 }}> +{additions}</span>
+					<span style={{ color: Colors.RED4 }}> -{deletions}</span>
+					)
+				</span>
+			</>
+		);
+	}
+
+	return (
+		<span
+			className={Classes.MONOSPACE_TEXT}
+			style={{
+				fontSize: "var(--bp-typography-size-body-small)",
+				color: Colors.GRAY4,
+				marginRight: 4,
+			}}
+		>
+			<Icon icon="git-branch" size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
+			<span style={{ color: Colors.LIGHT_GRAY5 }}>{branchLabel}</span>
+			<span style={{ marginLeft: 6 }}>
+				<span style={{ color: Colors.GRAY3 }}>({changedFiles} {changedFiles === 1 ? "file" : "files"}</span>
+				<span style={{ color: Colors.GREEN4 }}> +{additions}</span>
+				<span style={{ color: Colors.RED4 }}> -{deletions}</span>
+				<span style={{ color: Colors.GRAY3 }}>)</span>
+			</span>
+		</span>
+	);
 }
 
 export function TopBar({
@@ -122,6 +193,9 @@ export function TopBar({
 		taskGitSummary?.branch ??
 		taskGitSummary?.headCommit?.slice(0, 8) ??
 		"initializing";
+	const taskChangedFiles = taskGitSummary?.changedFiles ?? 0;
+	const taskAdditions = taskGitSummary?.additions ?? 0;
+	const taskDeletions = taskGitSummary?.deletions ?? 0;
 	const pullTooltip = pullCount > 0
 		? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
 		: "Pull from upstream. Branch is already up to date.";
@@ -208,46 +282,14 @@ export function TopBar({
 				{!hideProjectDependentActions && hasHomeGitSummary ? (
 					<>
 						<NavbarDivider />
-						{onToggleGitHistory ? (
-							<>
-								<Button
-									icon={<Icon icon="git-branch" size={12} />}
-									size="small"
-									variant="outlined"
-									active={isGitHistoryOpen}
-									onClick={onToggleGitHistory}
-									className={Classes.MONOSPACE_TEXT}
-									style={{
-										fontSize: "var(--bp-typography-size-body-small)",
-									}}
-									text={
-										<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>
-											{branchLabel}
-										</span>
-									}
-								/>
-								<span
-									className={Classes.MONOSPACE_TEXT}
-									style={{
-										fontSize: "var(--bp-typography-size-body-small)",
-										color: Colors.GRAY3,
-										marginLeft: 6,
-									}}
-								>
-									({gitSummary?.changedFiles ?? 0} {(gitSummary?.changedFiles ?? 0) === 1 ? "file" : "files"}
-									<span style={{ color: Colors.GREEN4 }}> +{gitSummary?.additions ?? 0}</span>
-									<span style={{ color: Colors.RED4 }}> -{gitSummary?.deletions ?? 0}</span>
-									)
-								</span>
-							</>
-						) : (
-							<GitStatusLabel
-								branchLabel={branchLabel}
-								changedFiles={gitSummary?.changedFiles ?? 0}
-								additions={gitSummary?.additions ?? 0}
-								deletions={gitSummary?.deletions ?? 0}
-							/>
-						)}
+						<GitBranchStatusControl
+							branchLabel={branchLabel}
+							changedFiles={gitSummary?.changedFiles ?? 0}
+							additions={gitSummary?.additions ?? 0}
+							deletions={gitSummary?.deletions ?? 0}
+							onToggleGitHistory={onToggleGitHistory}
+							isGitHistoryOpen={isGitHistoryOpen}
+						/>
 						<ButtonGroup style={{ marginLeft: 6 }}>
 							<Tooltip placement="bottom" content="Fetch latest refs from upstream without changing your local branch or files.">
 								<Button
@@ -286,11 +328,13 @@ export function TopBar({
 				) : hasTaskGitSummary ? (
 					<>
 						<NavbarDivider />
-						<GitStatusLabel
+						<GitBranchStatusControl
 							branchLabel={taskBranchLabel}
-							changedFiles={taskGitSummary?.changedFiles ?? null}
-							additions={taskGitSummary?.additions ?? null}
-							deletions={taskGitSummary?.deletions ?? null}
+							changedFiles={taskChangedFiles}
+							additions={taskAdditions}
+							deletions={taskDeletions}
+							onToggleGitHistory={onToggleGitHistory}
+							isGitHistoryOpen={isGitHistoryOpen}
 						/>
 					</>
 				) : null}

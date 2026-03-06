@@ -268,12 +268,6 @@ export default function App(): ReactElement {
 		useTerminalConnectionReady();
 	const readyForReviewNotificationsEnabled =
 		runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
-	const gitHistory = useGitHistoryData({
-		workspaceId: currentProjectId,
-		gitSummary,
-		enabled: isGitHistoryOpen,
-	});
-	const refreshGitHistory = gitHistory.refresh;
 	useReviewReadyNotifications({
 		activeWorkspaceId: activeNotificationWorkspaceId,
 		board,
@@ -622,6 +616,28 @@ export default function App(): ReactElement {
 		isDocumentVisible,
 		fetchReviewWorkspaceSnapshot,
 	});
+	const selectedCardWorkspaceSnapshot = useMemo(() => {
+		if (!selectedCard) {
+			return null;
+		}
+		return workspaceSnapshots[selectedCard.card.id] ?? null;
+	}, [selectedCard, workspaceSnapshots]);
+	const gitHistoryTaskScope = useMemo(() => {
+		if (!selectedCard) {
+			return null;
+		}
+		return {
+			taskId: selectedCard.card.id,
+			baseRef: selectedCard.card.baseRef,
+		};
+	}, [selectedCard?.card.baseRef, selectedCard?.card.id]);
+	const gitHistory = useGitHistoryData({
+		workspaceId: currentProjectId,
+		taskScope: gitHistoryTaskScope,
+		gitSummary: selectedCard ? null : gitSummary,
+		enabled: isGitHistoryOpen,
+	});
+	const refreshGitHistory = gitHistory.refresh;
 	const setTaskGitActionLoading = useCallback((
 		taskId: string,
 		action: TaskGitAction,
@@ -2199,12 +2215,6 @@ export default function App(): ReactElement {
 	const detailSession = selectedCard ? sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id) : null;
 	const detailShellTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card) : null;
 	const detailShellSummary = detailShellTaskId ? sessions[detailShellTaskId] ?? null : null;
-	const selectedCardWorkspaceSnapshot = useMemo(() => {
-		if (!selectedCard) {
-			return null;
-		}
-		return workspaceSnapshots[selectedCard.card.id] ?? null;
-	}, [selectedCard, workspaceSnapshots]);
 	const detailShellSubtitle = useMemo(() => {
 		if (!selectedCard) {
 			return null;
@@ -2424,7 +2434,7 @@ export default function App(): ReactElement {
 					onOpenWorkspace={onOpenWorkspace}
 					canOpenWorkspace={canOpenWorkspace}
 					isOpeningWorkspace={isOpeningWorkspace}
-					onToggleGitHistory={selectedCard || hasNoProjects ? undefined : () => setIsGitHistoryOpen((prev) => !prev)}
+					onToggleGitHistory={hasNoProjects ? undefined : () => setIsGitHistoryOpen((prev) => !prev)}
 					isGitHistoryOpen={isGitHistoryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
@@ -2602,6 +2612,14 @@ export default function App(): ReactElement {
 									onAddReviewComments={(taskId: string, text: string) => { void handleAddReviewComments(taskId, text); }}
 									onSendReviewComments={(taskId: string, text: string) => { void handleSendReviewComments(taskId, text); }}
 									onMoveToTrash={handleMoveToTrash}
+									gitHistoryPanel={
+										isGitHistoryOpen ? (
+											<GitHistoryView
+												workspaceId={currentProjectId}
+												gitHistory={gitHistory}
+											/>
+										) : undefined
+									}
 									bottomTerminalOpen={isDetailTerminalOpen}
 									bottomTerminalTaskId={detailShellTaskId}
 									bottomTerminalSummary={detailShellSummary}
