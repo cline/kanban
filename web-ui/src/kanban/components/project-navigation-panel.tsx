@@ -56,11 +56,11 @@ export function ProjectNavigationPanel({
 			}}
 		>
 			<div style={{ padding: "12px 12px 8px" }}>
-				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-					<span role="img" aria-label="banana" style={{ fontSize: 24 }}>🍌</span>
+				<div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+					<Icon icon="alignment-top" size={20} color="#AAB0B7" style={{ marginTop: 3 }} />
 					<div>
 						<div style={{ fontWeight: 600, fontSize: "var(--bp-typography-size-body-large)" }}>
-							kanbanana <span className={Classes.TEXT_MUTED} style={{ fontWeight: 400, fontSize: "var(--bp-typography-size-body-small)" }}>v{__APP_VERSION__}</span>
+							kanban <span className={Classes.TEXT_MUTED} style={{ fontWeight: 400, fontSize: "var(--bp-typography-size-body-small)" }}>v{__APP_VERSION__}</span>
 						</div>
 						<AnchorButton href={GITHUB_URL} target="_blank" rel="noopener noreferrer" variant="minimal" intent="primary" size="small" style={{ padding: 0, minHeight: 0, fontSize: "var(--bp-typography-size-body-small)" }}>
 							View on GitHub
