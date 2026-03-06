@@ -47,7 +47,7 @@ const AGENT_TEMPLATES: AgentTemplate[] = [
 		id: "cline",
 		label: "Cline CLI",
 		binary: "cline",
-		defaultArgs: ["--yolo"],
+		defaultArgs: ["--auto-approve-all"],
 	},
 ];
 

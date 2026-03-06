@@ -56,6 +56,10 @@ function shellQuote(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+function powerShellQuote(value: string): string {
+	return `"${value.replaceAll("`", "``").replaceAll('"', '`"')}"`;
+}
+
 function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null {
 	const workspaceId = input.workspaceId?.trim();
 	if (!workspaceId) {
@@ -78,6 +82,70 @@ function buildHooksCommandParts(args: string[]): string[] {
 
 function buildHooksCommand(args: string[]): string {
 	return buildHooksCommandParts(args).map(shellQuote).join(" ");
+}
+
+function hasCliOption(args: string[], optionName: string): boolean {
+	for (let i = 0; i < args.length; i += 1) {
+		const arg = args[i];
+		if (arg === optionName || arg.startsWith(`${optionName}=`)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function getClineHookScriptPath(
+	hooksDir: string,
+	hookName: "Notification" | "TaskComplete" | "UserPromptSubmit",
+): string {
+	if (process.platform === "win32") {
+		return join(hooksDir, `${hookName}.ps1`);
+	}
+	return join(hooksDir, hookName);
+}
+
+function buildClineHookScriptContent(event: "to_review" | "to_in_progress"): string {
+	const commandParts = buildHooksCommandParts(["notify", "--event", event]);
+	if (process.platform === "win32") {
+		const command = commandParts.map(powerShellQuote).join(" ");
+		return `try {
+  & ${command} | Out-Null
+} catch {
+}
+Write-Output '{"cancel":false}'
+exit 0
+`;
+	}
+	const command = commandParts.map(shellQuote).join(" ");
+	return `#!/usr/bin/env bash
+${command} >/dev/null 2>&1 || true
+echo '{"cancel":false}'
+`;
+}
+
+function buildClineNotificationHookScriptContent(): string {
+	const commandParts = buildHooksCommandParts(["notify", "--event", "to_review"]);
+	if (process.platform === "win32") {
+		const command = commandParts.map(powerShellQuote).join(" ");
+		return `$inputText = [Console]::In.ReadToEnd()
+if ($inputText -match '"event"\\s*:\\s*"(user_attention|task_complete)"') {
+  try {
+    & ${command} | Out-Null
+  } catch {
+  }
+}
+Write-Output '{"cancel":false}'
+exit 0
+`;
+	}
+	const command = commandParts.map(shellQuote).join(" ");
+	return `#!/usr/bin/env bash
+INPUT="$(cat || true)"
+if printf '%s' "$INPUT" | grep -Eq '"event"[[:space:]]*:[[:space:]]*"(user_attention|task_complete)"'; then
+  ${command} >/dev/null 2>&1 || true
+fi
+echo '{"cancel":false}'
+`;
 }
 
 function buildOpenCodePluginContent(reviewCommand: string, toInProgressCommand: string): string {
@@ -726,6 +794,31 @@ const clineAdapter: AgentSessionAdapter = {
 
 		if (input.startInPlanMode) {
 			args.push("--plan");
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			const hooksDir = getHookAgentDirectory("cline");
+			const notificationHookPath = getClineHookScriptPath(hooksDir, "Notification");
+			const taskCompleteHookPath = getClineHookScriptPath(hooksDir, "TaskComplete");
+			const userPromptSubmitHookPath = getClineHookScriptPath(hooksDir, "UserPromptSubmit");
+			const executable = process.platform !== "win32";
+
+			await ensureTextFile(notificationHookPath, buildClineNotificationHookScriptContent(), executable);
+			await ensureTextFile(taskCompleteHookPath, buildClineHookScriptContent("to_review"), executable);
+			await ensureTextFile(userPromptSubmitHookPath, buildClineHookScriptContent("to_in_progress"), executable);
+
+			if (!hasCliOption(args, "--hooks-dir")) {
+				args.push("--hooks-dir", hooksDir);
+			}
+
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
 		}
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");

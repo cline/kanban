@@ -117,4 +117,53 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(plugin).toContain("session.status");
 		expect(plugin).toContain('currentState = "idle"');
 	});
+
+	it("writes Cline hook scripts and injects --hooks-dir", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "cline",
+			binary: "cline",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		const hooksDir = join(homedir(), ".kanbanana", "hooks", "cline");
+		const notificationHookPath =
+			process.platform === "win32" ? join(hooksDir, "Notification.ps1") : join(hooksDir, "Notification");
+		const taskCompleteHookPath =
+			process.platform === "win32" ? join(hooksDir, "TaskComplete.ps1") : join(hooksDir, "TaskComplete");
+		const userPromptSubmitHookPath =
+			process.platform === "win32" ? join(hooksDir, "UserPromptSubmit.ps1") : join(hooksDir, "UserPromptSubmit");
+
+		expect(launch.env.KANBANANA_HOOK_TASK_ID).toBe("task-1");
+		expect(launch.env.KANBANANA_HOOK_WORKSPACE_ID).toBe("workspace-1");
+
+		const hooksDirArgIndex = launch.args.indexOf("--hooks-dir");
+		expect(hooksDirArgIndex).toBeGreaterThanOrEqual(0);
+		expect(launch.args[hooksDirArgIndex + 1]).toBe(hooksDir);
+
+		expect(existsSync(notificationHookPath)).toBe(true);
+		expect(existsSync(taskCompleteHookPath)).toBe(true);
+		expect(existsSync(userPromptSubmitHookPath)).toBe(true);
+
+		const notificationScript = readFileSync(notificationHookPath, "utf8");
+		expect(notificationScript).toContain("hooks");
+		expect(notificationScript).toContain("to_review");
+		expect(notificationScript).toContain("user_attention");
+		expect(notificationScript).toContain("task_complete");
+		expect(notificationScript).toContain('{"cancel":false}');
+
+		const taskCompleteScript = readFileSync(taskCompleteHookPath, "utf8");
+		expect(taskCompleteScript).toContain("hooks");
+		expect(taskCompleteScript).toContain("to_review");
+		expect(taskCompleteScript).toContain('{"cancel":false}');
+
+		const userPromptSubmitScript = readFileSync(userPromptSubmitHookPath, "utf8");
+		expect(userPromptSubmitScript).toContain("hooks");
+		expect(userPromptSubmitScript).toContain("to_in_progress");
+		expect(userPromptSubmitScript).toContain('{"cancel":false}');
+	});
 });
