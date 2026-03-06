@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
 	createHookRuntimeEnv,
-	KANBANANA_HOOK_PORT_ENV,
 	KANBANANA_HOOK_TASK_ID_ENV,
 	KANBANANA_HOOK_WORKSPACE_ID_ENV,
 	parseHookRuntimeContextFromEnv,
@@ -13,12 +12,10 @@ describe("hook-runtime-context", () => {
 		const env = createHookRuntimeEnv({
 			taskId: "task-1",
 			workspaceId: "workspace-1",
-			port: 8484,
 		});
 		expect(env).toEqual({
 			[KANBANANA_HOOK_TASK_ID_ENV]: "task-1",
 			[KANBANANA_HOOK_WORKSPACE_ID_ENV]: "workspace-1",
-			[KANBANANA_HOOK_PORT_ENV]: "8484",
 		});
 	});
 
@@ -26,12 +23,10 @@ describe("hook-runtime-context", () => {
 		const parsed = parseHookRuntimeContextFromEnv({
 			[KANBANANA_HOOK_TASK_ID_ENV]: "task-2",
 			[KANBANANA_HOOK_WORKSPACE_ID_ENV]: "workspace-2",
-			[KANBANANA_HOOK_PORT_ENV]: "9090",
 		});
 		expect(parsed).toEqual({
 			taskId: "task-2",
 			workspaceId: "workspace-2",
-			port: 9090,
 		});
 	});
 

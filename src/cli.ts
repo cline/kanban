@@ -31,6 +31,12 @@ import type {
 } from "./runtime/api-contract.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./runtime/config/runtime-config.js";
 import {
+	buildKanbananaRuntimeUrl,
+	KANBANANA_RUNTIME_HOST,
+	KANBANANA_RUNTIME_ORIGIN,
+	KANBANANA_RUNTIME_PORT,
+} from "./runtime/runtime-endpoint.js";
+import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
 	loadWorkspaceContextById,
@@ -53,7 +59,6 @@ interface CliOptions {
 	help: boolean;
 	version: boolean;
 	noOpen: boolean;
-	port: number;
 	agent: RuntimeAgentId | null;
 }
 
@@ -72,7 +77,6 @@ const MIME_TYPES: Record<string, string> = {
 	".txt": "text/plain; charset=utf-8",
 };
 
-const DEFAULT_PORT = 8484;
 const TASK_SESSION_STREAM_BATCH_MS = 150;
 const WORKSPACE_FILE_CHANGE_STREAM_BATCH_MS = 25;
 const WORKSPACE_FILE_WATCH_INTERVAL_MS = 2_000;
@@ -96,7 +100,6 @@ function parseCliOptions(argv: string[]): CliOptions {
 	let help = false;
 	let version = false;
 	let noOpen = false;
-	let port = DEFAULT_PORT;
 	let agent: RuntimeAgentId | null = null;
 
 	for (let index = 0; index < argv.length; index += 1) {
@@ -111,19 +114,6 @@ function parseCliOptions(argv: string[]): CliOptions {
 		}
 		if (arg === "--no-open") {
 			noOpen = true;
-			continue;
-		}
-		if (arg === "--port") {
-			const value = argv[index + 1];
-			if (!value) {
-				throw new Error("Missing value for --port.");
-			}
-			const parsed = Number.parseInt(value, 10);
-			if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 65535) {
-				throw new Error(`Invalid port: ${value}`);
-			}
-			port = parsed;
-			index += 1;
 			continue;
 		}
 		if (arg === "--agent") {
@@ -144,7 +134,7 @@ function parseCliOptions(argv: string[]): CliOptions {
 		}
 	}
 
-	return { help, version, noOpen, port, agent };
+	return { help, version, noOpen, agent };
 }
 
 function getWebUiDir(): string {
@@ -162,10 +152,10 @@ function printHelp(): void {
 	console.log("Local orchestration board for coding agents.");
 	console.log("");
 	console.log("Usage:");
-	console.log("  kanbanana [--port <number>] [--agent <id>] [--no-open] [--help] [--version]");
+	console.log("  kanbanana [--agent <id>] [--no-open] [--help] [--version]");
 	console.log("  kanbanana mcp");
 	console.log("");
-	console.log(`Default port: ${DEFAULT_PORT}`);
+	console.log(`Runtime URL: ${KANBANANA_RUNTIME_ORIGIN}`);
 	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);
 }
 
@@ -464,13 +454,13 @@ function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	);
 }
 
-async function canReachKanbananaServer(port: number, workspaceId: string | null): Promise<boolean> {
+async function canReachKanbananaServer(workspaceId: string | null): Promise<boolean> {
 	try {
 		const headers: Record<string, string> = {};
 		if (workspaceId) {
 			headers["x-kanbanana-workspace-id"] = workspaceId;
 		}
-		const response = await fetch(`http://127.0.0.1:${port}/api/trpc/projects.list`, {
+		const response = await fetch(buildKanbananaRuntimeUrl("/api/trpc/projects.list"), {
 			method: "GET",
 			headers,
 			signal: AbortSignal.timeout(1_500),
@@ -488,20 +478,20 @@ async function canReachKanbananaServer(port: number, workspaceId: string | null)
 	}
 }
 
-async function tryOpenExistingServer(port: number, noOpen: boolean): Promise<boolean> {
+async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
 	let workspaceId: string | null = null;
 	if (hasGitRepository(process.cwd())) {
 		const context = await loadWorkspaceContext(process.cwd());
 		workspaceId = context.workspaceId;
 	}
-	const running = await canReachKanbananaServer(port, workspaceId);
+	const running = await canReachKanbananaServer(workspaceId);
 	if (!running) {
 		return false;
 	}
 	const projectUrl = workspaceId
-		? `http://127.0.0.1:${port}/${encodeURIComponent(workspaceId)}`
-		: `http://127.0.0.1:${port}`;
-	console.log(`Kanbanana already running at http://127.0.0.1:${port}`);
+		? buildKanbananaRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
+		: KANBANANA_RUNTIME_ORIGIN;
+	console.log(`Kanbanana already running at ${KANBANANA_RUNTIME_ORIGIN}`);
 	if (!noOpen) {
 		try {
 			openInBrowser(projectUrl);
@@ -691,9 +681,7 @@ function collectShutdownInterruptedTaskIds(
 	return Array.from(taskIds);
 }
 
-async function startServer(
-	port: number,
-): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
+async function startServer(): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
 	const webUiDir = getWebUiDir();
 	const launchedFromGitRepo = hasGitRepository(process.cwd());
 	const initialWorkspace = launchedFromGitRepo ? await loadWorkspaceContext(process.cwd()) : null;
@@ -1246,7 +1234,6 @@ async function startServer(
 				requestedWorkspaceId: scope.requestedWorkspaceId,
 				workspaceScope: scope.workspaceScope,
 				runtimeApi: createRuntimeApi({
-					port,
 					getActiveWorkspaceId,
 					loadScopedRuntimeConfig,
 					setActiveRuntimeConfig: (nextRuntimeConfig) => {
@@ -1321,7 +1308,7 @@ async function startServer(
 	server.on("upgrade", (request, socket, head) => {
 		let requestUrl: URL;
 		try {
-			requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+			requestUrl = new URL(request.url ?? "/", KANBANANA_RUNTIME_ORIGIN);
 		} catch {
 			socket.destroy();
 			return;
@@ -1436,7 +1423,7 @@ async function startServer(
 
 	await new Promise<void>((resolveListen, rejectListen) => {
 		server.once("error", rejectListen);
-		server.listen(port, "127.0.0.1", () => {
+		server.listen(KANBANANA_RUNTIME_PORT, KANBANANA_RUNTIME_HOST, () => {
 			server.off("error", rejectListen);
 			resolveListen();
 		});
@@ -1447,8 +1434,8 @@ async function startServer(
 		throw new Error("Failed to start local server.");
 	}
 	const url = activeWorkspaceId
-		? `http://127.0.0.1:${address.port}/${encodeURIComponent(activeWorkspaceId)}`
-		: `http://127.0.0.1:${address.port}`;
+		? buildKanbananaRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)
+		: KANBANANA_RUNTIME_ORIGIN;
 
 	const close = async () => {
 		disposeRuntimeStreamResources();
@@ -1549,9 +1536,9 @@ async function run(): Promise<void> {
 
 	let runtime: Awaited<ReturnType<typeof startServer>>;
 	try {
-		runtime = await startServer(options.port);
+		runtime = await startServer();
 	} catch (error) {
-		if (isAddressInUseError(error) && (await tryOpenExistingServer(options.port, options.noOpen))) {
+		if (isAddressInUseError(error) && (await tryOpenExistingServer(options.noOpen))) {
 			return;
 		}
 		throw error;

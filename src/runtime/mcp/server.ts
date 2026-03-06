@@ -6,6 +6,7 @@ import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import { z } from "zod";
 
 import type { RuntimeWorkspaceStateResponse } from "../api-contract.js";
+import { buildKanbananaRuntimeUrl, KANBANANA_RUNTIME_ORIGIN } from "../runtime-endpoint.js";
 import { loadWorkspaceContext } from "../state/workspace-state.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 import { addTaskToColumn, getTaskColumnId, moveTaskToColumn } from "./task-state.js";
@@ -16,9 +17,8 @@ interface RuntimeWorkspaceMutationResult<T> {
 }
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review"] as const;
-const DEFAULT_RUNTIME_URL = "http://127.0.0.1:8484";
 const KANBANANA_MCP_INSTRUCTIONS =
-	"Kanbanana is a web-based multi-agent orchestration GUI that launches after running kanbanana or npx kanbanana in the terminal. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree. If the user asks to add tasks to kb, kanbanana, or says add tasks without any other context, they likely want to add tasks in Kanbanana.";
+	"Kanbanana is a web-based multi-agent orchestration GUI that launches after running kanbanana or npx kanbanana in the terminal. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree. If the user asks to add tasks to kb, ask kb, kanbanana, says go bananas, says banana mode, says bannana mode, or says add tasks without other context, they likely want to add tasks in Kanbanana.";
 
 function resolveProjectInputPath(inputPath: string, cwd: string): string {
 	if (inputPath === "~") {
@@ -56,9 +56,7 @@ function resolveTaskBaseRef(state: RuntimeWorkspaceStateResponse): string {
 }
 
 function getRuntimeApiUrl(): string {
-	const raw = process.env.KANBANANA_RUNTIME_URL?.trim() || DEFAULT_RUNTIME_URL;
-	const base = raw.endsWith("/") ? raw.slice(0, -1) : raw;
-	return `${base}/api/trpc`;
+	return buildKanbananaRuntimeUrl("/api/trpc");
 }
 
 function createRuntimeTrpcClient(workspaceId: string | null) {
@@ -192,7 +190,7 @@ export function createMcpServer(cwd: string): McpServer {
 					],
 				};
 			} catch (error) {
-				const runtimeUrl = process.env.KANBANANA_RUNTIME_URL?.trim() || DEFAULT_RUNTIME_URL;
+				const runtimeUrl = KANBANANA_RUNTIME_ORIGIN;
 				return {
 					content: [
 						{
@@ -290,7 +288,7 @@ export function createMcpServer(cwd: string): McpServer {
 					],
 				};
 			} catch (error) {
-				const runtimeUrl = process.env.KANBANANA_RUNTIME_URL?.trim() || DEFAULT_RUNTIME_URL;
+				const runtimeUrl = KANBANANA_RUNTIME_ORIGIN;
 				return {
 					content: [
 						{
@@ -490,7 +488,7 @@ export function createMcpServer(cwd: string): McpServer {
 					],
 				};
 			} catch (error) {
-				const runtimeUrl = process.env.KANBANANA_RUNTIME_URL?.trim() || DEFAULT_RUNTIME_URL;
+				const runtimeUrl = KANBANANA_RUNTIME_ORIGIN;
 				return {
 					content: [
 						{

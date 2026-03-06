@@ -37,13 +37,11 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			serverPort: 8484,
 			workspaceId: "workspace-1",
 		});
 
 		expect(launch.env.KANBANANA_HOOK_TASK_ID).toBe("task-1");
 		expect(launch.env.KANBANANA_HOOK_WORKSPACE_ID).toBe("workspace-1");
-		expect(launch.env.KANBANANA_HOOK_PORT).toBe("8484");
 
 		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
 		expect(launchCommand).toContain("hooks");
@@ -65,7 +63,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			serverPort: 8484,
 			workspaceId: "workspace-1",
 		});
 
@@ -87,7 +84,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			serverPort: 8484,
 			workspaceId: "workspace-1",
 		});
 
@@ -111,7 +107,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
-			serverPort: 8484,
 			workspaceId: "workspace-1",
 		});
 

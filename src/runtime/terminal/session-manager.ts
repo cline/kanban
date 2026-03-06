@@ -73,7 +73,6 @@ export interface StartTaskSessionRequest {
 	cols?: number;
 	rows?: number;
 	env?: Record<string, string | undefined>;
-	serverPort?: number;
 	workspaceId?: string;
 }
 
@@ -280,7 +279,6 @@ export class TerminalSessionManager {
 			prompt: request.prompt,
 			startInPlanMode: request.startInPlanMode,
 			env: request.env,
-			serverPort: request.serverPort,
 			workspaceId: request.workspaceId,
 		});
 

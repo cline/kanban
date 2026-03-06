@@ -180,12 +180,13 @@ async function startKanbananaServer(input: { cwd: string; homeDir: string; port:
 }> {
 	const tsxEntrypoint = resolve(process.cwd(), "node_modules/tsx/dist/cli.mjs");
 	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
-	const child = spawn(process.execPath, [tsxEntrypoint, cliEntrypoint, "--no-open", "--port", String(input.port)], {
+	const child = spawn(process.execPath, [tsxEntrypoint, cliEntrypoint, "--no-open"], {
 		cwd: input.cwd,
 		env: {
 			...process.env,
 			HOME: input.homeDir,
 			USERPROFILE: input.homeDir,
+			KANBANANA_RUNTIME_PORT: String(input.port),
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});

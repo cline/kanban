@@ -7,6 +7,7 @@ import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/cli
 
 import type { RuntimeHookEvent } from "./runtime/api-contract.js";
 import { buildKanbananaCommandParts } from "./runtime/kanbanana-command.js";
+import { buildKanbananaRuntimeUrl } from "./runtime/runtime-endpoint.js";
 import { parseHookRuntimeContextFromEnv } from "./runtime/terminal/hook-runtime-context.js";
 import type { RuntimeAppRouter } from "./runtime/trpc/app-router.js";
 
@@ -19,7 +20,6 @@ interface HooksIngestArgs {
 	event: RuntimeHookEvent;
 	taskId: string;
 	workspaceId: string;
-	port: number;
 }
 
 interface CodexWrapperArgs {
@@ -116,7 +116,6 @@ function parseHooksIngestArgs(argv: string[]): HooksIngestArgs {
 		event,
 		taskId: context.taskId,
 		workspaceId: context.workspaceId,
-		port: context.port,
 	};
 }
 
@@ -124,7 +123,7 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 	const trpcClient = createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
 			httpBatchLink({
-				url: `http://127.0.0.1:${args.port}/api/trpc`,
+				url: buildKanbananaRuntimeUrl("/api/trpc"),
 				maxItems: 1,
 			}),
 		],

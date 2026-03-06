@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 
 import type { RuntimeTerminalWsServerMessage } from "../api-contract.js";
 import { parseTerminalWsClientMessage } from "../api-validation.js";
+import { KANBANANA_RUNTIME_ORIGIN } from "../runtime-endpoint.js";
 import type { TerminalSessionManager } from "./session-manager.js";
 
 interface TerminalWebSocketConnectionContext {
@@ -62,7 +63,7 @@ export function createTerminalWebSocketBridge({
 	server.on("upgrade", (request, socket, head) => {
 		try {
 			const upgradeRequest = request as UpgradeRequest;
-			const url = new URL(request.url ?? "/", "http://127.0.0.1");
+			const url = new URL(request.url ?? "/", KANBANANA_RUNTIME_ORIGIN);
 			if (!isTerminalWebSocketPath(url.pathname)) {
 				return;
 			}

@@ -18,7 +18,6 @@ import { resolveTaskCwd } from "../workspace/task-worktree.js";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router.js";
 
 export interface CreateRuntimeApiDependencies {
-	port: number;
 	getActiveWorkspaceId: () => string | null;
 	loadScopedRuntimeConfig: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeConfigState>;
 	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
@@ -122,7 +121,6 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					startInPlanMode: body.startInPlanMode,
 					cols: body.cols,
 					rows: body.rows,
-					serverPort: deps.port,
 					workspaceId: workspaceScope.workspaceId,
 				});
 				return {

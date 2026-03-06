@@ -122,25 +122,15 @@ describe.sequential("mcp server integration", () => {
 			initGitRepository(repoPath);
 			await loadWorkspaceContext(repoPath);
 
-			const previousRuntimeUrl = process.env.KANBANANA_RUNTIME_URL;
-			process.env.KANBANANA_RUNTIME_URL = "http://127.0.0.1:9";
-			try {
-				await withConnectedMcpClient(repoPath, async (client) => {
-					const { result, payload } = await callToolJson(client, "list_tasks", {
-						projectPath: repoPath,
-					});
-
-					expect(result.isError).toBe(true);
-					expect(payload.ok).toBe(false);
-					expect(payload.error).toContain("Could not list tasks via Kanbanana runtime");
+			await withConnectedMcpClient(repoPath, async (client) => {
+				const { result, payload } = await callToolJson(client, "list_tasks", {
+					projectPath: repoPath,
 				});
-			} finally {
-				if (previousRuntimeUrl === undefined) {
-					delete process.env.KANBANANA_RUNTIME_URL;
-				} else {
-					process.env.KANBANANA_RUNTIME_URL = previousRuntimeUrl;
-				}
-			}
+
+				expect(result.isError).toBe(true);
+				expect(payload.ok).toBe(false);
+				expect(payload.error).toContain("Could not list tasks via Kanbanana runtime");
+			});
 		});
 	});
 });

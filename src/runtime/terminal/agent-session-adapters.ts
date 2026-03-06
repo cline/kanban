@@ -19,7 +19,6 @@ export interface AgentAdapterLaunchInput {
 	prompt: string;
 	startInPlanMode?: boolean;
 	env?: Record<string, string | undefined>;
-	serverPort?: number;
 	workspaceId?: string;
 }
 
@@ -40,7 +39,6 @@ export interface PreparedAgentLaunch {
 interface HookContext {
 	taskId: string;
 	workspaceId: string;
-	serverPort: number;
 }
 
 interface AgentSessionAdapter {
@@ -59,18 +57,13 @@ function shellQuote(value: string): string {
 }
 
 function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null {
-	const serverPort = input.serverPort;
 	const workspaceId = input.workspaceId?.trim();
-	if (typeof serverPort !== "number" || !Number.isInteger(serverPort) || serverPort < 1) {
-		return null;
-	}
 	if (!workspaceId) {
 		return null;
 	}
 	return {
 		taskId: input.taskId,
 		workspaceId,
-		serverPort,
 	};
 }
 
@@ -283,7 +276,6 @@ const claudeAdapter: AgentSessionAdapter = {
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
 					workspaceId: hooks.workspaceId,
-					port: hooks.serverPort,
 				}),
 			);
 		}
@@ -326,7 +318,6 @@ const codexAdapter: AgentSessionAdapter = {
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
 					workspaceId: hooks.workspaceId,
-					port: hooks.serverPort,
 				}),
 			);
 		}
@@ -405,7 +396,6 @@ const geminiAdapter: AgentSessionAdapter = {
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
 					workspaceId: hooks.workspaceId,
-					port: hooks.serverPort,
 				}),
 			);
 			env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = configPath;
@@ -697,7 +687,6 @@ const opencodeAdapter: AgentSessionAdapter = {
 				createHookRuntimeEnv({
 					taskId: hooks.taskId,
 					workspaceId: hooks.workspaceId,
-					port: hooks.serverPort,
 				}),
 			);
 			env.OPENCODE_CONFIG = configPath;
