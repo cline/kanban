@@ -185,7 +185,7 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	startedAt: z.number().nullable(),
 	updatedAt: z.number(),
 	lastOutputAt: z.number().nullable(),
-	lastActivityLine: z.string().nullable(),
+	activityPreview: z.string().nullable(),
 	reviewReason: runtimeTaskSessionReviewReasonSchema,
 	exitCode: z.number().nullable(),
 });

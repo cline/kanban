@@ -25,7 +25,7 @@ import {
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
 
 const MAX_HISTORY_BYTES = 1024 * 1024;
-const ACTIVITY_LINE_THROTTLE_MS = 2500;
+const ACTIVITY_PREVIEW_THROTTLE_MS = 2500;
 const MAX_CLAUDE_TRUST_BUFFER_CHARS = 16_384;
 const require = createRequire(import.meta.url);
 let ensurePtyHelperExecutablePromise: Promise<void> | null = null;
@@ -41,8 +41,8 @@ interface ActiveProcessState {
 	onSessionCleanup: (() => Promise<void>) | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	awaitingCodexPromptAfterEnter: boolean;
-	activityLineTimer: NodeJS.Timeout | null;
-	activityChunkBuffer: string;
+	activityPreviewTimer: NodeJS.Timeout | null;
+	activityPreviewChunkBuffer: string;
 	activityPreviewTracker: ActivityPreviewTracker;
 	autoConfirmedClaudeWorkspaceTrust: boolean;
 	claudeWorkspaceTrustPollTimer: NodeJS.Timeout | null;
@@ -98,10 +98,10 @@ function terminatePtyProcess(active: ActiveProcessState): void {
 	}
 }
 
-function clearActivityLineTimer(active: ActiveProcessState): void {
-	if (active.activityLineTimer) {
-		clearTimeout(active.activityLineTimer);
-		active.activityLineTimer = null;
+function clearActivityPreviewTimer(active: ActiveProcessState): void {
+	if (active.activityPreviewTimer) {
+		clearTimeout(active.activityPreviewTimer);
+		active.activityPreviewTimer = null;
 	}
 }
 
@@ -119,7 +119,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		startedAt: null,
 		updatedAt: now(),
 		lastOutputAt: null,
-		lastActivityLine: null,
+		activityPreview: null,
 		reviewReason: null,
 		exitCode: null,
 	};
@@ -262,7 +262,7 @@ export class TerminalSessionManager {
 
 		if (entry.active) {
 			stopClaudeWorkspaceTrustTimers(entry.active);
-			clearActivityLineTimer(entry.active);
+			clearActivityPreviewTimer(entry.active);
 			terminatePtyProcess(entry.active);
 			entry.active = null;
 		}
@@ -317,7 +317,7 @@ export class TerminalSessionManager {
 				pid: null,
 				startedAt: null,
 				lastOutputAt: null,
-				lastActivityLine: null,
+				activityPreview: null,
 				reviewReason: "error",
 				exitCode: null,
 			});
@@ -336,8 +336,8 @@ export class TerminalSessionManager {
 			onSessionCleanup: launch.cleanup ?? null,
 			detectOutputTransition: launch.detectOutputTransition ?? null,
 			awaitingCodexPromptAfterEnter: false,
-			activityLineTimer: null,
-			activityChunkBuffer: "",
+			activityPreviewTimer: null,
+			activityPreviewChunkBuffer: "",
 			activityPreviewTracker: createActivityPreviewTracker(cols, rows),
 			autoConfirmedClaudeWorkspaceTrust: false,
 			claudeWorkspaceTrustPollTimer: null,
@@ -379,7 +379,7 @@ export class TerminalSessionManager {
 			pid: ptyProcess.pid,
 			startedAt,
 			lastOutputAt: null,
-			lastActivityLine: null,
+			activityPreview: null,
 			reviewReason: null,
 			exitCode: null,
 		});
@@ -406,8 +406,8 @@ export class TerminalSessionManager {
 					entry.active.claudeTrustBuffer = entry.active.claudeTrustBuffer.slice(-MAX_CLAUDE_TRUST_BUFFER_CHARS);
 				}
 			}
-			entry.active.activityChunkBuffer += data;
-			this.queueActivityLinePublish(entry);
+			entry.active.activityPreviewChunkBuffer += data;
+			this.queueActivityPreviewPublish(entry);
 
 			updateSummary(entry, { lastOutputAt: now() });
 
@@ -443,9 +443,9 @@ export class TerminalSessionManager {
 			if (!currentActive) {
 				return;
 			}
-			this.publishLatestActivityLine(currentEntry, currentActive);
+			this.publishLatestActivityPreview(currentEntry, currentActive);
 			stopClaudeWorkspaceTrustTimers(currentActive);
-			clearActivityLineTimer(currentActive);
+			clearActivityPreviewTimer(currentActive);
 
 			const summary = this.applySessionEvent(currentEntry, {
 				type: "process.exit",
@@ -492,7 +492,7 @@ export class TerminalSessionManager {
 
 		if (entry.active) {
 			stopClaudeWorkspaceTrustTimers(entry.active);
-			clearActivityLineTimer(entry.active);
+			clearActivityPreviewTimer(entry.active);
 			terminatePtyProcess(entry.active);
 			entry.active = null;
 		}
@@ -525,7 +525,7 @@ export class TerminalSessionManager {
 				pid: null,
 				startedAt: null,
 				lastOutputAt: null,
-				lastActivityLine: null,
+				activityPreview: null,
 				reviewReason: "error",
 				exitCode: null,
 			});
@@ -544,8 +544,8 @@ export class TerminalSessionManager {
 			onSessionCleanup: null,
 			detectOutputTransition: null,
 			awaitingCodexPromptAfterEnter: false,
-			activityLineTimer: null,
-			activityChunkBuffer: "",
+			activityPreviewTimer: null,
+			activityPreviewChunkBuffer: "",
 			activityPreviewTracker: createActivityPreviewTracker(cols, rows),
 			autoConfirmedClaudeWorkspaceTrust: false,
 			claudeWorkspaceTrustPollTimer: null,
@@ -560,7 +560,7 @@ export class TerminalSessionManager {
 			pid: ptyProcess.pid,
 			startedAt: now(),
 			lastOutputAt: null,
-			lastActivityLine: null,
+			activityPreview: null,
 			reviewReason: null,
 			exitCode: null,
 		});
@@ -587,8 +587,8 @@ export class TerminalSessionManager {
 					entry.active.claudeTrustBuffer = entry.active.claudeTrustBuffer.slice(-MAX_CLAUDE_TRUST_BUFFER_CHARS);
 				}
 			}
-			entry.active.activityChunkBuffer += data;
-			this.queueActivityLinePublish(entry);
+			entry.active.activityPreviewChunkBuffer += data;
+			this.queueActivityPreviewPublish(entry);
 
 			updateSummary(entry, { lastOutputAt: now() });
 
@@ -606,9 +606,9 @@ export class TerminalSessionManager {
 			if (!currentActive) {
 				return;
 			}
-			this.publishLatestActivityLine(currentEntry, currentActive);
+			this.publishLatestActivityPreview(currentEntry, currentActive);
 			stopClaudeWorkspaceTrustTimers(currentActive);
-			clearActivityLineTimer(currentActive);
+			clearActivityPreviewTimer(currentActive);
 
 			const summary = updateSummary(currentEntry, {
 				state: currentActive.shutdownInterrupted ? "interrupted" : "idle",
@@ -700,11 +700,11 @@ export class TerminalSessionManager {
 		if (!entry?.active) {
 			return entry ? cloneSummary(entry.summary) : null;
 		}
-		this.publishLatestActivityLine(entry, entry.active);
+		this.publishLatestActivityPreview(entry, entry.active);
 		const cleanupFn = entry.active.onSessionCleanup;
 		entry.active.onSessionCleanup = null;
 		stopClaudeWorkspaceTrustTimers(entry.active);
-		clearActivityLineTimer(entry.active);
+		clearActivityPreviewTimer(entry.active);
 		terminatePtyProcess(entry.active);
 		if (cleanupFn) {
 			cleanupFn().catch(() => {
@@ -720,10 +720,10 @@ export class TerminalSessionManager {
 			if (!entry.active) {
 				continue;
 			}
-			this.publishLatestActivityLine(entry, entry.active);
+			this.publishLatestActivityPreview(entry, entry.active);
 			entry.active.shutdownInterrupted = true;
 			stopClaudeWorkspaceTrustTimers(entry.active);
-			clearActivityLineTimer(entry.active);
+			clearActivityPreviewTimer(entry.active);
 			terminatePtyProcess(entry.active);
 		}
 		return activeEntries.map((entry) => cloneSummary(entry.summary));
@@ -760,30 +760,30 @@ export class TerminalSessionManager {
 		return created;
 	}
 
-	private queueActivityLinePublish(entry: SessionEntry): void {
-		if (!entry.active || entry.active.activityLineTimer) {
+	private queueActivityPreviewPublish(entry: SessionEntry): void {
+		if (!entry.active || entry.active.activityPreviewTimer) {
 			return;
 		}
 		const activeAtSchedule = entry.active;
-		activeAtSchedule.activityLineTimer = setTimeout(() => {
-			activeAtSchedule.activityLineTimer = null;
-			this.publishLatestActivityLine(entry, activeAtSchedule);
-		}, ACTIVITY_LINE_THROTTLE_MS);
+		activeAtSchedule.activityPreviewTimer = setTimeout(() => {
+			activeAtSchedule.activityPreviewTimer = null;
+			this.publishLatestActivityPreview(entry, activeAtSchedule);
+		}, ACTIVITY_PREVIEW_THROTTLE_MS);
 	}
 
-	private publishLatestActivityLine(entry: SessionEntry, active: ActiveProcessState): void {
+	private publishLatestActivityPreview(entry: SessionEntry, active: ActiveProcessState): void {
 		if (entry.active !== active) {
 			return;
 		}
-		if (active.activityChunkBuffer.length > 0) {
-			active.activityPreviewTracker.append(active.activityChunkBuffer);
-			active.activityChunkBuffer = "";
+		if (active.activityPreviewChunkBuffer.length > 0) {
+			active.activityPreviewTracker.append(active.activityPreviewChunkBuffer);
+			active.activityPreviewChunkBuffer = "";
 		}
-		const parsedLastActivityLine = active.activityPreviewTracker.extract(entry.summary.agentId);
-		if (parsedLastActivityLine === entry.summary.lastActivityLine) {
+		const parsedActivityPreview = active.activityPreviewTracker.extract(entry.summary.agentId);
+		if (parsedActivityPreview === entry.summary.activityPreview) {
 			return;
 		}
-		const summary = updateSummary(entry, { lastActivityLine: parsedLastActivityLine });
+		const summary = updateSummary(entry, { activityPreview: parsedActivityPreview });
 		for (const taskListener of entry.listeners.values()) {
 			taskListener.onState?.(cloneSummary(summary));
 		}

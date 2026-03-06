@@ -267,10 +267,10 @@ export function BoardCard({
 									{displayPromptSplit.description}
 								</p>
 							) : null}
-							{showPreview && sessionSummary?.lastActivityLine ? (
+							{showPreview && sessionSummary?.activityPreview ? (
 								<div className="kb-task-preview-pane">
 									<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-line-clamp-5 kb-task-preview-text`}>
-										{sessionSummary.lastActivityLine}
+										{sessionSummary.activityPreview}
 									</p>
 								</div>
 							) : null}

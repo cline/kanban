@@ -14,7 +14,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
 		lastOutputAt: Date.now(),
-		lastActivityLine: null,
+		activityPreview: null,
 		reviewReason: null,
 		exitCode: null,
 		...overrides,

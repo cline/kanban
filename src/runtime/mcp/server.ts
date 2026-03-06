@@ -162,7 +162,7 @@ export function createMcpServer(cwd: string): McpServer {
 										startedAt: session.startedAt,
 										updatedAt: session.updatedAt,
 										lastOutputAt: session.lastOutputAt,
-										lastActivityLine: session.lastActivityLine,
+										activityPreview: session.activityPreview,
 										reviewReason: session.reviewReason,
 										exitCode: session.exitCode,
 									}

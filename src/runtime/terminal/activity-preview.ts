@@ -450,7 +450,7 @@ function isNoiseLine(line: string): boolean {
 	return false;
 }
 
-function extractLastActivityLineFromRendered(rendered: string[], agentId: RuntimeAgentId | null): string | null {
+function extractActivityPreviewFromRendered(rendered: string[], agentId: RuntimeAgentId | null): string | null {
 	const cutoff = resolveAgentCutoff(agentId, rendered);
 	const candidateLines: string[] = [];
 	for (let index = 0; index < cutoff; index += 1) {
@@ -519,7 +519,7 @@ class IncrementalActivityPreviewTracker implements ActivityPreviewTracker {
 	}
 
 	extract(agentId: RuntimeAgentId | null): string | null {
-		return extractLastActivityLineFromRendered(this.parser.renderLines(), agentId);
+		return extractActivityPreviewFromRendered(this.parser.renderLines(), agentId);
 	}
 }
 

@@ -84,7 +84,7 @@ export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary
 		startedAt: null,
 		updatedAt: Date.now(),
 		lastOutputAt: null,
-		lastActivityLine: null,
+		activityPreview: null,
 		reviewReason: null,
 		exitCode: null,
 	};
