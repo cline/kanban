@@ -50,7 +50,7 @@
     "web:typecheck": "npm --prefix web-ui run typecheck",
     "web:test": "npm --prefix web-ui run test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "biome check .",
+    "lint": "biome lint .",
     "format": "biome check --write .",
     "check": "npm run lint && npm run typecheck && npm run test",
     "test": "vitest run",

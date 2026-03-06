@@ -221,14 +221,13 @@ export function useGitHistoryData({
 			}
 			setLogErrorMessage(message || "Could not load commits.");
 		} finally {
-			if (logAbortControllerRef.current !== abortController) {
-				return;
-			}
-			logAbortControllerRef.current = null;
-			if (options.append) {
-				setIsLoadingMoreCommits(false);
-			} else {
-				setIsLogLoading(false);
+			if (logAbortControllerRef.current === abortController) {
+				logAbortControllerRef.current = null;
+				if (options.append) {
+					setIsLoadingMoreCommits(false);
+				} else {
+					setIsLogLoading(false);
+				}
 			}
 		}
 	}, [abortInFlightLogRequest, enabled, isAbortError, logRef, taskScope, workspaceId]);

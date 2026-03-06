@@ -21,8 +21,15 @@
 	"files": {
 		"includes": [
 			"src/**/*.ts",
+			"src/**/*.tsx",
 			"test/**/*.ts",
 			"vitest.config.ts",
+			"web-ui/src/**/*.ts",
+			"web-ui/src/**/*.tsx",
+			"web-ui/tests/**/*.ts",
+			"web-ui/vite.config.ts",
+			"web-ui/vitest.config.ts",
+			"web-ui/playwright.config.ts",
 			"!dist/**/*",
 			"!node_modules/**/*",
 			"!!**/node_modules",
@@ -34,6 +41,37 @@
 		{
 			"includes": ["src/**/*.ts", "!!src/cli.ts"],
 			"plugins": ["grit/no-console.grit", "grit/no-process-exit.grit"]
+		},
+		{
+			"includes": ["web-ui/src/**/*.ts", "web-ui/src/**/*.tsx", "web-ui/tests/**/*.ts"],
+			"linter": {
+				"rules": {
+					"a11y": {
+						"noNoninteractiveTabindex": "off",
+						"noStaticElementInteractions": "off",
+						"noSvgWithoutTitle": "off",
+						"useAriaPropsForRole": "off",
+						"useFocusableInteractive": "off",
+						"useKeyWithClickEvents": "off",
+						"useSemanticElements": "off"
+					},
+					"complexity": {
+						"noUselessFragments": "off"
+					},
+					"correctness": {
+						"useExhaustiveDependencies": "off"
+					},
+					"security": {
+						"noDangerouslySetInnerHtml": "off"
+					},
+					"style": {
+						"noNonNullAssertion": "off"
+					},
+					"suspicious": {
+						"noArrayIndexKey": "off"
+					}
+				}
+			}
 		}
 	]
 }
