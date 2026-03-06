@@ -219,7 +219,6 @@ export function TopBar({
 									className={Classes.MONOSPACE_TEXT}
 									style={{
 										fontSize: "var(--bp-typography-size-body-small)",
-										maxWidth: 200,
 									}}
 									text={
 										<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>
