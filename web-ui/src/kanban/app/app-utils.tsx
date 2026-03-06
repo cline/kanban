@@ -3,9 +3,18 @@ import type { ItemRenderer } from "@blueprintjs/select";
 
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import { LocalStorageKey } from "@/kanban/storage/local-storage-store";
-import type { BoardData } from "@/kanban/types";
+import type { BoardData, TaskAutoReviewMode } from "@/kanban/types";
 
 export const TASK_START_IN_PLAN_MODE_STORAGE_KEY = LocalStorageKey.TaskStartInPlanMode;
+export const TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY = LocalStorageKey.TaskAutoReviewEnabled;
+export const TASK_AUTO_REVIEW_MODE_STORAGE_KEY = LocalStorageKey.TaskAutoReviewMode;
+
+export function normalizeStoredTaskAutoReviewMode(value: string): TaskAutoReviewMode | null {
+	if (value === "commit" || value === "pr" || value === "move_to_trash") {
+		return value;
+	}
+	return null;
+}
 
 export interface SearchableTask {
 	id: string;

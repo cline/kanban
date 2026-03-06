@@ -27,6 +27,7 @@ export interface PendingTrashWarningState {
 
 interface RequestMoveTaskToTrashOptions {
 	optimisticMoveApplied?: boolean;
+	skipWorkingChangeWarning?: boolean;
 }
 
 function isDetailViewColumnId(columnId: BoardColumnId): boolean {
@@ -221,6 +222,12 @@ export function useLinkedBacklogTaskActions({
 						: currentSelectedTaskId,
 				);
 			};
+
+			if (options?.skipWorkingChangeWarning) {
+				moveSelectionIfOptimisticMoveIsConfirmed();
+				await performMoveTaskToTrash(selection.card, boardSnapshot);
+				return;
+			}
 
 			const changeCount = await fetchTaskWorkingChangeCount(selection.card);
 			if (changeCount == null) {

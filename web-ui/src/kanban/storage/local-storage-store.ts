@@ -1,5 +1,7 @@
 export enum LocalStorageKey {
 	TaskStartInPlanMode = "kanbanana.task-start-in-plan-mode",
+	TaskAutoReviewEnabled = "kanbanana.task-auto-review-enabled",
+	TaskAutoReviewMode = "kanbanana.task-auto-review-mode",
 	NotificationPermissionPrompted = "kanbanana.notifications.permission-prompted",
 	PreferredOpenTarget = "kanbanana.preferred-open-target",
 	NotificationBadgeClearEvent = "kanbanana.notification-badge-clear.v1",

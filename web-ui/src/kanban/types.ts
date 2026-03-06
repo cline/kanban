@@ -1,9 +1,24 @@
+import type { RuntimeTaskAutoReviewMode } from "@/kanban/runtime/types";
+
 export type BoardColumnId = "backlog" | "in_progress" | "review" | "trash";
+
+export type TaskAutoReviewMode = RuntimeTaskAutoReviewMode;
+
+export const DEFAULT_TASK_AUTO_REVIEW_MODE: TaskAutoReviewMode = "commit";
+
+export function resolveTaskAutoReviewMode(mode: TaskAutoReviewMode | null | undefined): TaskAutoReviewMode {
+	if (mode === "pr" || mode === "move_to_trash") {
+		return mode;
+	}
+	return DEFAULT_TASK_AUTO_REVIEW_MODE;
+}
 
 export interface BoardCard {
 	id: string;
 	prompt: string;
 	startInPlanMode: boolean;
+	autoReviewEnabled?: boolean;
+	autoReviewMode?: TaskAutoReviewMode;
 	baseRef: string;
 	createdAt: number;
 	updatedAt: number;

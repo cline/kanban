@@ -11,10 +11,14 @@ import {
 	filterTask,
 	parseProjectIdFromPathname,
 	renderTask,
+	TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
+	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
+	normalizeStoredTaskAutoReviewMode,
 	type SearchableTask,
 } from "@/kanban/app/app-utils";
 import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
+import { useReviewAutoActions } from "@/kanban/app/use-review-auto-actions";
 import { useReviewReadyNotifications } from "@/kanban/app/use-review-ready-notifications";
 import { useTaskWorkspaceSnapshots } from "@/kanban/app/use-task-workspace-snapshots";
 import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
@@ -60,6 +64,7 @@ import {
 import {
 	useBooleanLocalStorageValue,
 	useInterval,
+	useRawLocalStorageValue,
 	useWindowEvent,
 } from "@/kanban/hooks/react-use";
 import {
@@ -95,8 +100,10 @@ import type {
 	BoardCard,
 	BoardColumnId,
 	BoardData,
+	TaskAutoReviewMode,
 	ReviewTaskWorkspaceSnapshot,
 } from "@/kanban/types";
+import { resolveTaskAutoReviewMode } from "@/kanban/types";
 
 type TaskGitActionSource = "card" | "agent";
 
@@ -181,6 +188,19 @@ export default function App(): ReactElement {
 		TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 		false,
 	);
+	const [newTaskAutoReviewEnabled, setNewTaskAutoReviewEnabled] = useBooleanLocalStorageValue(
+		TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
+		false,
+	);
+	const [newTaskAutoReviewMode, setNewTaskAutoReviewMode] = useRawLocalStorageValue<TaskAutoReviewMode>(
+		TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
+		"commit",
+		normalizeStoredTaskAutoReviewMode,
+	);
+	// If the chosen auto action is immediate move-to-trash, plan mode cannot work because
+	// review is auto-consumed; disable and force-off plan mode for new-task creation.
+	const isNewTaskStartInPlanModeDisabled =
+		newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>(
 		{},
@@ -188,6 +208,8 @@ export default function App(): ReactElement {
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
+	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
+	const [editTaskAutoReviewMode, setEditTaskAutoReviewMode] = useState<TaskAutoReviewMode>("commit");
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [gitSummary, setGitSummary] = useState<RuntimeGitSyncSummary | null>(null);
@@ -526,13 +548,13 @@ export default function App(): ReactElement {
 				baseRef: task.baseRef,
 			});
 			if (!payload.ok) {
-				console.error("[fetchTaskWorkingChangeCount] " + (payload.error ?? "Workspace summary request failed."))
+				console.error(`[fetchTaskWorkingChangeCount] ${payload.error ?? "Workspace summary request failed."}`)
 				return null;
 			}
 			return payload.summary.changedFiles;
 		} catch (error) {	
 			const message = error instanceof Error ? error.message : String(error);
-			console.error("[fetchTaskWorkingChangeCount] " + message);
+			console.error(`[fetchTaskWorkingChangeCount] ${message}`);
 			return null;
 		}
 	}, [currentProjectId]);	
@@ -706,7 +728,7 @@ export default function App(): ReactElement {
 				? taskLoadingState?.commitSource
 				: taskLoadingState?.prSource;
 			if (actionInFlightSource !== null && actionInFlightSource !== undefined) {
-				return;
+				return false;
 			}
 			setTaskGitActionLoading(taskId, action, source);
 			try {
@@ -718,7 +740,7 @@ export default function App(): ReactElement {
 						message: "Could not find the selected task card.",
 						timeout: 5000,
 					});
-					return;
+					return false;
 				}
 				if (selection.column.id !== "review") {
 					showAppToast({
@@ -727,7 +749,7 @@ export default function App(): ReactElement {
 						message: "Commit and PR actions are only available for tasks in Review.",
 						timeout: 5000,
 					});
-					return;
+					return false;
 				}
 
 				const snapshotWorkspaceInfo = workspaceSnapshots[taskId]
@@ -751,7 +773,7 @@ export default function App(): ReactElement {
 						message: "Could not resolve task workspace details.",
 						timeout: 6000,
 					});
-					return;
+					return false;
 				}
 
 				const prompt = buildTaskGitActionPrompt({
@@ -774,7 +796,7 @@ export default function App(): ReactElement {
 						message: typed.message ?? "Could not send instructions to the task session.",
 						timeout: 7000,
 					});
-					return;
+					return false;
 				}
 				await new Promise<void>((resolve) => {
 					window.setTimeout(resolve, 200);
@@ -787,8 +809,9 @@ export default function App(): ReactElement {
 						message: submitted.message ?? "Could not submit instructions to the task session.",
 						timeout: 7000,
 					});
-					return;
+					return false;
 				}
+				return true;
 			} finally {
 				setTaskGitActionLoading(taskId, action, null);
 			}
@@ -1291,6 +1314,11 @@ export default function App(): ReactElement {
 		setSelectedTaskWorkspaceInfo(null);
 		setIsInlineTaskCreateOpen(false);
 		setEditingTaskId(null);
+		setEditTaskPrompt("");
+		setEditTaskStartInPlanMode(false);
+		setEditTaskAutoReviewEnabled(false);
+		setEditTaskAutoReviewMode("commit");
+		setEditTaskBranchRef("");
 		setIsClearTrashDialogOpen(false);
 		setGitSummary(null);
 		setRunningGitAction(null);
@@ -1397,6 +1425,13 @@ export default function App(): ReactElement {
 	}, [defaultTaskBranchRef, isInlineTaskCreateOpen, newTaskBranchRef]);
 
 	useEffect(() => {
+		if (!isNewTaskStartInPlanModeDisabled || !newTaskStartInPlanMode) {
+			return;
+		}
+		setNewTaskStartInPlanMode(false);
+	}, [isNewTaskStartInPlanModeDisabled, newTaskStartInPlanMode, setNewTaskStartInPlanMode]);
+
+	useEffect(() => {
 		if (!editingTaskId) {
 			return;
 		}
@@ -1427,6 +1462,8 @@ export default function App(): ReactElement {
 			setEditingTaskId(null);
 			setEditTaskPrompt("");
 			setEditTaskStartInPlanMode(false);
+			setEditTaskAutoReviewEnabled(false);
+			setEditTaskAutoReviewMode("commit");
 			setEditTaskBranchRef("");
 		}
 	}, [board, editingTaskId]);
@@ -1774,6 +1811,8 @@ export default function App(): ReactElement {
 			setEditingTaskId(task.id);
 			setEditTaskPrompt(taskPrompt);
 			setEditTaskStartInPlanMode(task.startInPlanMode);
+			setEditTaskAutoReviewEnabled(task.autoReviewEnabled === true);
+			setEditTaskAutoReviewMode(resolveTaskAutoReviewMode(task.autoReviewMode));
 			const fallbackBranch = task.baseRef || defaultTaskBranchRef;
 			setEditTaskBranchRef(fallbackBranch);
 		},
@@ -1784,6 +1823,8 @@ export default function App(): ReactElement {
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskStartInPlanMode(false);
+		setEditTaskAutoReviewEnabled(false);
+		setEditTaskAutoReviewMode("commit");
 		setEditTaskBranchRef("");
 	}, []);
 
@@ -1805,16 +1846,22 @@ export default function App(): ReactElement {
 			const updated = updateTask(currentBoard, editingTaskId, {
 				prompt,
 				startInPlanMode: editTaskStartInPlanMode,
+				autoReviewEnabled: editTaskAutoReviewEnabled,
+				autoReviewMode: editTaskAutoReviewMode,
 				baseRef,
 			});
 			return updated.updated ? updated.board : currentBoard;
 		});
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
+		setEditTaskAutoReviewEnabled(false);
+		setEditTaskAutoReviewMode("commit");
 		setWorktreeError(null);
 	}, [
 		defaultTaskBranchRef,
 		editTaskBranchRef,
+		editTaskAutoReviewEnabled,
+		editTaskAutoReviewMode,
 		editTaskPrompt,
 		editTaskStartInPlanMode,
 		editingTaskId,
@@ -1833,6 +1880,8 @@ export default function App(): ReactElement {
 			addTaskToColumn(currentBoard, "backlog", {
 				prompt,
 				startInPlanMode: newTaskStartInPlanMode,
+				autoReviewEnabled: newTaskAutoReviewEnabled,
+				autoReviewMode: newTaskAutoReviewMode,
 				baseRef,
 			}),
 		);
@@ -1855,6 +1904,8 @@ export default function App(): ReactElement {
 		currentProjectId,
 		defaultTaskBranchRef,
 		newTaskBranchRef,
+		newTaskAutoReviewEnabled,
+		newTaskAutoReviewMode,
 		newTaskPrompt,
 		newTaskStartInPlanMode,
 		runtimeProjectConfig?.selectedAgentId,
@@ -2094,6 +2145,19 @@ export default function App(): ReactElement {
 		kickoffTaskInProgress,
 	});
 
+	const runAutoReviewGitAction = useCallback(async (taskId: string, action: TaskGitAction) => {
+		return await runTaskGitAction(taskId, action, "card");
+	}, [runTaskGitAction]);
+
+	useReviewAutoActions({
+		board,
+		workspaceSnapshots,
+		taskGitActionLoadingByTaskId,
+		runAutoReviewGitAction,
+		requestMoveTaskToTrash,
+		resetKey: currentProjectId,
+	});
+
 	const handleDragEnd = useCallback(
 		(result: DropResult, options?: { selectDroppedTask?: boolean }) => {
 			if (options?.selectDroppedTask && result.type.startsWith("CARD") && result.destination) {
@@ -2322,6 +2386,11 @@ export default function App(): ReactElement {
 			onCancel={handleCancelCreateTask}
 			startInPlanMode={newTaskStartInPlanMode}
 			onStartInPlanModeChange={setNewTaskStartInPlanMode}
+			startInPlanModeDisabled={isNewTaskStartInPlanModeDisabled}
+			autoReviewEnabled={newTaskAutoReviewEnabled}
+			onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
+			autoReviewMode={newTaskAutoReviewMode}
+			onAutoReviewModeChange={setNewTaskAutoReviewMode}
 			workspaceId={currentProjectId}
 			branchRef={newTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
@@ -2339,6 +2408,10 @@ export default function App(): ReactElement {
 			onCancel={handleCancelEditTask}
 			startInPlanMode={editTaskStartInPlanMode}
 			onStartInPlanModeChange={setEditTaskStartInPlanMode}
+			autoReviewEnabled={editTaskAutoReviewEnabled}
+			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
+			autoReviewMode={editTaskAutoReviewMode}
+			onAutoReviewModeChange={setEditTaskAutoReviewMode}
 			workspaceId={currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}

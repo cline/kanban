@@ -3,13 +3,23 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeBoardDependency,
+	RuntimeTaskAutoReviewMode,
 } from "./api-contract.js";
 import { createUniqueTaskId } from "./task-id.js";
 
 export interface RuntimeCreateTaskInput {
 	prompt: string;
 	startInPlanMode?: boolean;
+	autoReviewEnabled?: boolean;
+	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	baseRef: string;
+}
+
+function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
+	if (value === "pr" || value === "move_to_trash") {
+		return value;
+	}
+	return "commit";
 }
 
 export interface RuntimeCreateTaskResult {
@@ -240,6 +250,8 @@ export function addTaskToColumn(
 		id: createUniqueTaskId(existingIds, randomUuid),
 		prompt,
 		startInPlanMode: Boolean(input.startInPlanMode),
+		autoReviewEnabled: Boolean(input.autoReviewEnabled),
+		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 		baseRef,
 		createdAt: now,
 		updatedAt: now,

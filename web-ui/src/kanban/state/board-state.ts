@@ -3,11 +3,23 @@ import { createShortTaskId } from "@runtime-task-id";
 import * as runtimeTaskState from "@runtime-task-state";
 
 import { createInitialBoardData } from "@/kanban/data/board-data";
-import type { BoardCard, BoardColumn, BoardColumnId, BoardData, BoardDependency, CardSelection } from "@/kanban/types";
+import {
+	DEFAULT_TASK_AUTO_REVIEW_MODE,
+	type BoardCard,
+	type BoardColumn,
+	type BoardColumnId,
+	type BoardData,
+	type BoardDependency,
+	type CardSelection,
+	resolveTaskAutoReviewMode,
+	type TaskAutoReviewMode,
+} from "@/kanban/types";
 
 export interface TaskDraft {
 	prompt: string;
 	startInPlanMode?: boolean;
+	autoReviewEnabled?: boolean;
+	autoReviewMode?: TaskAutoReviewMode;
 	baseRef: string;
 }
 
@@ -56,6 +68,8 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		id?: unknown;
 		prompt?: unknown;
 		startInPlanMode?: unknown;
+		autoReviewEnabled?: unknown;
+		autoReviewMode?: unknown;
 		baseRef?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
@@ -75,6 +89,10 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(() => crypto.randomUUID()),
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
+		autoReviewEnabled: typeof card.autoReviewEnabled === "boolean" ? card.autoReviewEnabled : false,
+		autoReviewMode: resolveTaskAutoReviewMode(
+			typeof card.autoReviewMode === "string" ? (card.autoReviewMode as TaskAutoReviewMode) : undefined,
+		),
 		baseRef,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
@@ -200,6 +218,8 @@ export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft
 	const result = runtimeTaskState.addTaskToColumn(board, columnId, {
 		prompt,
 		startInPlanMode: draft.startInPlanMode,
+		autoReviewEnabled: draft.autoReviewEnabled,
+		autoReviewMode: draft.autoReviewMode,
 		baseRef: draft.baseRef,
 	}, () => crypto.randomUUID());
 	return result.board;
@@ -357,6 +377,8 @@ export function updateTask(
 				...card,
 				prompt,
 				startInPlanMode: Boolean(draft.startInPlanMode),
+				autoReviewEnabled: Boolean(draft.autoReviewEnabled),
+				autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
 				baseRef,
 				updatedAt: Date.now(),
 			};
