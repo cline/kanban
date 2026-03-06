@@ -1,8 +1,17 @@
 export {
+	addTaskDependency,
 	addTaskToColumn,
+	canAddTaskDependency,
+	getReadyLinkedTaskIdsForTaskInTrash,
 	getTaskColumnId,
 	moveTaskToColumn,
+	type RuntimeAddTaskDependencyResult as McpAddTaskDependencyResult,
 	type RuntimeCreateTaskInput as McpCreateTaskInput,
 	type RuntimeCreateTaskResult as McpCreateTaskResult,
 	type RuntimeMoveTaskResult as McpMoveTaskResult,
+	type RuntimeRemoveTaskDependencyResult as McpRemoveTaskDependencyResult,
+	type RuntimeTrashTaskResult as McpTrashTaskResult,
+	removeTaskDependency,
+	trashTaskAndGetReadyLinkedTaskIds,
+	updateTaskDependencies,
 } from "../task-board-mutations.js";

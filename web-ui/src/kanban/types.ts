@@ -15,8 +15,16 @@ export interface BoardColumn {
 	cards: BoardCard[];
 }
 
+export interface BoardDependency {
+	id: string;
+	fromTaskId: string;
+	toTaskId: string;
+	createdAt: number;
+}
+
 export interface BoardData {
 	columns: BoardColumn[];
+	dependencies: BoardDependency[];
 }
 
 export interface ReviewTaskWorkspaceSnapshot {

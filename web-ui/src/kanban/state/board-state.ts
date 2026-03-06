@@ -1,13 +1,9 @@
 import type { DropResult } from "@hello-pangea/dnd";
 import { createShortTaskId } from "@runtime-task-id";
-import {
-	addTaskToColumn as addRuntimeTaskToColumn,
-	getTaskColumnId as getRuntimeTaskColumnId,
-	moveTaskToColumn as moveRuntimeTaskToColumn,
-} from "@runtime-task-state";
+import * as runtimeTaskState from "@runtime-task-state";
 
 import { createInitialBoardData } from "@/kanban/data/board-data";
-import type { BoardCard, BoardColumn, BoardColumnId, BoardData, CardSelection } from "@/kanban/types";
+import type { BoardCard, BoardColumn, BoardColumnId, BoardData, BoardDependency, CardSelection } from "@/kanban/types";
 
 export interface TaskDraft {
 	prompt: string;
@@ -85,12 +81,69 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	};
 }
 
+function createDependencyId(): string {
+	return crypto.randomUUID().replaceAll("-", "").slice(0, 8);
+}
+
+function collectTaskIds(columns: BoardColumn[]): Set<string> {
+	const taskIds = new Set<string>();
+	for (const column of columns) {
+		for (const card of column.cards) {
+			taskIds.add(card.id);
+		}
+	}
+	return taskIds;
+}
+
+function normalizeDependency(rawDependency: unknown, taskIds: Set<string>): BoardDependency | null {
+	if (!rawDependency || typeof rawDependency !== "object") {
+		return null;
+	}
+
+	const dependency = rawDependency as {
+		id?: unknown;
+		fromTaskId?: unknown;
+		toTaskId?: unknown;
+		createdAt?: unknown;
+	};
+	const fromTaskId = typeof dependency.fromTaskId === "string" ? dependency.fromTaskId.trim() : "";
+	const toTaskId = typeof dependency.toTaskId === "string" ? dependency.toTaskId.trim() : "";
+	if (!fromTaskId || !toTaskId || fromTaskId === toTaskId) {
+		return null;
+	}
+	if (!taskIds.has(fromTaskId) || !taskIds.has(toTaskId)) {
+		return null;
+	}
+
+	return {
+		id: typeof dependency.id === "string" && dependency.id ? dependency.id : createDependencyId(),
+		fromTaskId,
+		toTaskId,
+		createdAt: typeof dependency.createdAt === "number" ? dependency.createdAt : Date.now(),
+	};
+}
+function removeDependenciesByTaskIds(board: BoardData, taskIds: Set<string>): BoardData {
+	if (taskIds.size === 0 || board.dependencies.length === 0) {
+		return board;
+	}
+	const dependencies = board.dependencies.filter(
+		(dependency) => !taskIds.has(dependency.fromTaskId) && !taskIds.has(dependency.toTaskId),
+	);
+	if (dependencies.length === board.dependencies.length) {
+		return board;
+	}
+	return {
+		...board,
+		dependencies,
+	};
+}
 export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 	if (!rawBoard || typeof rawBoard !== "object") {
 		return null;
 	}
 
 	const candidateColumns = (rawBoard as { columns?: unknown }).columns;
+	const candidateDependencies = (rawBoard as { dependencies?: unknown }).dependencies;
 	if (!Array.isArray(candidateColumns)) {
 		return null;
 	}
@@ -123,18 +176,77 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 		}
 	}
 
-	return { columns: normalizedColumns };
+	const taskIds = collectTaskIds(normalizedColumns);
+	const normalizedDependencies: BoardDependency[] = [];
+	if (Array.isArray(candidateDependencies)) {
+		for (const rawDependency of candidateDependencies) {
+			const dependency = normalizeDependency(rawDependency, taskIds);
+			if (!dependency) {
+				continue;
+			}
+			normalizedDependencies.push(dependency);
+		}
+	}
+
+	return runtimeTaskState.updateTaskDependencies({
+		columns: normalizedColumns,
+		dependencies: normalizedDependencies,
+	});
 }
 
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {
 	const prompt = draft.prompt.trim();
 	if (!prompt) return board;
-	const result = addRuntimeTaskToColumn(board, columnId, {
+	const result = runtimeTaskState.addTaskToColumn(board, columnId, {
 		prompt,
 		startInPlanMode: draft.startInPlanMode,
 		baseRef: draft.baseRef,
 	}, () => crypto.randomUUID());
 	return result.board;
+}
+
+export interface AddTaskDependencyResult {
+	board: BoardData;
+	added: boolean;
+	reason?: "missing_task" | "same_task" | "duplicate" | "trash_task" | "non_backlog";
+	dependency?: BoardDependency;
+}
+
+export function addTaskDependency(
+	board: BoardData,
+	fromTaskId: string,
+	toTaskId: string,
+): AddTaskDependencyResult {
+	return runtimeTaskState.addTaskDependency(board, fromTaskId, toTaskId);
+}
+
+export function canCreateTaskDependency(
+	board: BoardData,
+	fromTaskId: string,
+	toTaskId: string,
+): boolean {
+	return runtimeTaskState.canAddTaskDependency(board, fromTaskId, toTaskId);
+}
+
+export function removeTaskDependency(
+	board: BoardData,
+	dependencyId: string,
+): { board: BoardData; removed: boolean } {
+	return runtimeTaskState.removeTaskDependency(board, dependencyId);
+}
+
+export function getReadyLinkedTaskIdsForTaskInTrash(
+	board: BoardData,
+	taskId: string,
+): string[] {
+	return runtimeTaskState.getReadyLinkedTaskIdsForTaskInTrash(board, taskId);
+}
+
+export function trashTaskAndGetReadyLinkedTaskIds(
+	board: BoardData,
+	taskId: string,
+): { board: BoardData; moved: boolean; readyTaskIds: string[] } {
+	return runtimeTaskState.trashTaskAndGetReadyLinkedTaskIds(board, taskId);
 }
 
 export function applyDragResult(board: BoardData, result: DropResult): { board: BoardData; moveEvent?: TaskMoveEvent } {
@@ -198,7 +310,7 @@ export function applyDragResult(board: BoardData, result: DropResult): { board: 
 	};
 
 	return {
-		board: withUpdatedColumns(board, columns),
+		board: runtimeTaskState.updateTaskDependencies(withUpdatedColumns(board, columns)),
 		moveEvent: {
 			taskId: movedCard.id,
 			fromColumnId: sourceColumn.id,
@@ -211,7 +323,7 @@ export function moveTaskToColumn(
 	taskId: string,
 	targetColumnId: BoardColumnId,
 ): { board: BoardData; moved: boolean } {
-	const moved = moveRuntimeTaskToColumn(board, taskId, targetColumnId);
+	const moved = runtimeTaskState.moveTaskToColumn(board, taskId, targetColumnId);
 	return {
 		board: moved.moved ? moved.board : board,
 		moved: moved.moved,
@@ -276,7 +388,11 @@ export function removeTask(
 	if (!removed) {
 		return { board, removed: false };
 	}
-	return { board: withUpdatedColumns(board, columns), removed: true };
+	const boardWithUpdatedColumns = withUpdatedColumns(board, columns);
+	return {
+		board: removeDependenciesByTaskIds(boardWithUpdatedColumns, new Set([taskId])),
+		removed: true,
+	};
 }
 
 export function clearColumnTasks(
@@ -294,9 +410,10 @@ export function clearColumnTasks(
 			? { ...column, cards: [] }
 			: column,
 	);
+	const boardWithUpdatedColumns = withUpdatedColumns(board, columns);
 
 	return {
-		board: withUpdatedColumns(board, columns),
+		board: removeDependenciesByTaskIds(boardWithUpdatedColumns, new Set(clearedTaskIds)),
 		clearedTaskIds,
 	};
 }
@@ -316,5 +433,5 @@ export function findCardSelection(board: BoardData, taskId: string): CardSelecti
 }
 
 export function getTaskColumnId(board: BoardData, taskId: string): BoardColumnId | null {
-	return getRuntimeTaskColumnId(board, taskId);
+	return runtimeTaskState.getTaskColumnId(board, taskId);
 }

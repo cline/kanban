@@ -3,9 +3,12 @@ import { useCallback, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { BoardColumn } from "@/kanban/components/board-column";
+import { DependencyOverlay } from "@/kanban/components/dependencies/dependency-overlay";
+import { useDependencyLinking } from "@/kanban/components/dependencies/use-dependency-linking";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
+import { canCreateTaskDependency } from "@/kanban/state/board-state";
 import { findCardColumnId } from "@/kanban/state/drag-rules";
-import type { BoardCard, BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
+import type { BoardCard, BoardColumnId, BoardData, BoardDependency, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 
 export function KanbanBoard({
 	data,
@@ -24,6 +27,9 @@ export function KanbanBoard({
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
+	dependencies,
+	onCreateDependency,
+	onDeleteDependency,
 	onDragEnd,
 }: {
 	data: BoardData;
@@ -42,10 +48,18 @@ export function KanbanBoard({
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
+	dependencies: BoardDependency[];
+	onCreateDependency?: (fromTaskId: string, toTaskId: string) => void;
+	onDeleteDependency?: (dependencyId: string) => void;
 	onDragEnd: (result: DropResult) => void;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
+	const boardRef = useRef<HTMLElement>(null);
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
+	const dependencyLinking = useDependencyLinking({
+		canLinkTasks: (fromTaskId, toTaskId) => canCreateTaskDependency(data, fromTaskId, toTaskId),
+		onCreateDependency,
+	});
 
 	const handleBeforeCapture = useCallback((start: BeforeCapture) => {
 		setActiveDragSourceColumnId(findCardColumnId(data.columns, start.draggableId));
@@ -68,7 +82,7 @@ export function KanbanBoard({
 
 	return (
 		<DragDropContext onBeforeCapture={handleBeforeCapture} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-			<section className="kb-board">
+			<section ref={boardRef} className="kb-board kb-dependency-surface">
 				{data.columns.map((column) => (
 					<BoardColumn
 						key={column.id}
@@ -88,6 +102,11 @@ export function KanbanBoard({
 						openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 						reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
 						activeDragSourceColumnId={activeDragSourceColumnId}
+						onDependencyPointerDown={dependencyLinking.onDependencyPointerDown}
+						onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}
+						dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}
+						dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId ?? null}
+						isDependencyLinking={dependencyLinking.draft !== null}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);
@@ -95,6 +114,12 @@ export function KanbanBoard({
 						}}
 					/>
 				))}
+				<DependencyOverlay
+					containerRef={boardRef}
+					dependencies={dependencies}
+					draft={dependencyLinking.draft}
+					onDeleteDependency={onDeleteDependency}
+				/>
 			</section>
 		</DragDropContext>
 	);

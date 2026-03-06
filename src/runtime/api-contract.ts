@@ -90,8 +90,17 @@ export const runtimeBoardColumnSchema = z.object({
 });
 export type RuntimeBoardColumn = z.infer<typeof runtimeBoardColumnSchema>;
 
+export const runtimeBoardDependencySchema = z.object({
+	id: z.string(),
+	fromTaskId: z.string(),
+	toTaskId: z.string(),
+	createdAt: z.number(),
+});
+export type RuntimeBoardDependency = z.infer<typeof runtimeBoardDependencySchema>;
+
 export const runtimeBoardDataSchema = z.object({
 	columns: z.array(runtimeBoardColumnSchema),
+	dependencies: z.array(runtimeBoardDependencySchema).default([]),
 });
 export type RuntimeBoardData = z.infer<typeof runtimeBoardDataSchema>;
 

@@ -18,5 +18,6 @@ function createEmptyColumn(id: BoardColumnId, title: string): BoardColumn {
 export function createInitialBoardData(): BoardData {
 	return {
 		columns: columnOrder.map((column) => createEmptyColumn(column.id, column.title)),
+		dependencies: [],
 	};
 }

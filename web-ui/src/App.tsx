@@ -63,6 +63,10 @@ import {
 	useWindowEvent,
 } from "@/kanban/hooks/react-use";
 import {
+	type PendingTrashWarningState,
+	useLinkedBacklogTaskActions,
+} from "@/kanban/hooks/use-linked-backlog-task-actions";
+import {
 	getBrowserNotificationPermission,
 	hasPromptedForBrowserNotificationPermission,
 	requestBrowserNotificationPermission,
@@ -93,13 +97,6 @@ import type {
 	BoardData,
 	ReviewTaskWorkspaceSnapshot,
 } from "@/kanban/types";
-
-interface PendingTrashWarningState {
-	taskId: string;
-	fileCount: number;
-	taskTitle: string;
-	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
-}
 
 type TaskGitActionSource = "card" | "agent";
 
@@ -1847,84 +1844,6 @@ export default function App(): ReactElement {
 		runtimeProjectConfig?.selectedAgentId,
 	]);
 
-	const performMoveTaskToTrash = useCallback(
-		async (task: BoardCard): Promise<void> => {
-			await stopTaskSession(task.id);
-			setBoard((currentBoard) => {
-				const moved = moveTaskToColumn(currentBoard, task.id, "trash");
-				if (moved.moved) {
-					setSelectedTaskId((currentSelectedTaskId) =>
-						currentSelectedTaskId === task.id
-							? getNextDetailTaskIdAfterTrashMove(currentBoard, task.id)
-							: currentSelectedTaskId,
-					);
-				}
-				return moved.moved ? moved.board : currentBoard;
-			});
-			await cleanupTaskWorkspace(task.id);
-		},
-		[cleanupTaskWorkspace, stopTaskSession],
-	);
-
-	const requestMoveTaskToTrash = useCallback(
-		async (
-			taskId: string,
-			fromColumnId: BoardColumnId,
-			options?: { optimisticMoveApplied?: boolean },
-		): Promise<void> => {
-			const selection = findCardSelection(board, taskId);
-			if (!selection) {
-				return;
-			}
-
-			const moveSelectionIfOptimisticMoveIsConfirmed = () => {
-				if (!options?.optimisticMoveApplied) {
-					return;
-				}
-				setSelectedTaskId((currentSelectedTaskId) =>
-					currentSelectedTaskId === taskId
-						? getNextDetailTaskIdAfterTrashMove(board, taskId)
-						: currentSelectedTaskId,
-				);
-			};
-
-			const changeCount = await fetchTaskWorkingChangeCount(selection.card);
-			if (changeCount == null) {
-				moveSelectionIfOptimisticMoveIsConfirmed();
-				await performMoveTaskToTrash(selection.card);
-				return;
-			}
-
-			if (changeCount > 0) {
-				if (options?.optimisticMoveApplied) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "trash") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
-					});
-				}
-				const workspaceInfo =
-					selectedTaskWorkspaceInfo && selectedTaskWorkspaceInfo.taskId === selection.card.id
-						? selectedTaskWorkspaceInfo
-						: await fetchTaskWorkspaceInfo(selection.card);
-				setPendingTrashWarning({
-					taskId,
-					fileCount: changeCount,
-					taskTitle: truncateTaskPromptLabel(selection.card.prompt) || `Task ${taskId}`,
-					workspaceInfo,
-				});
-				return;
-			}
-
-			moveSelectionIfOptimisticMoveIsConfirmed();
-			await performMoveTaskToTrash(selection.card);
-		},
-		[board, fetchTaskWorkingChangeCount, fetchTaskWorkspaceInfo, performMoveTaskToTrash, selectedTaskWorkspaceInfo],
-	);
-
 	const handleOpenSettings = useCallback((section?: RuntimeSettingsSection) => {
 		setSettingsInitialSection(section ?? null);
 		setIsSettingsOpen(true);
@@ -2055,19 +1974,27 @@ export default function App(): ReactElement {
 	);
 
 	const kickoffTaskInProgress = useCallback(
-		async (task: BoardCard, taskId: string, fromColumnId: BoardColumnId) => {
+		async (
+			task: BoardCard,
+			taskId: string,
+			fromColumnId: BoardColumnId,
+			options?: { optimisticMove?: boolean },
+		): Promise<boolean> => {
+			const optimisticMove = options?.optimisticMove ?? true;
 			const ensured = await ensureTaskWorkspace(task);
 			if (!ensured.ok) {
 				setWorktreeError(ensured.message ?? "Could not set up task workspace.");
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== "in_progress") {
-						return currentBoard;
-					}
-					const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-					return reverted.moved ? reverted.board : currentBoard;
-				});
-				return;
+				if (optimisticMove) {
+					setBoard((currentBoard) => {
+						const currentColumnId = getTaskColumnId(currentBoard, taskId);
+						if (currentColumnId !== "in_progress") {
+							return currentBoard;
+						}
+						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+						return reverted.moved ? reverted.board : currentBoard;
+					});
+				}
+				return false;
 			}
 			if (selectedTaskId === taskId) {
 				if (ensured.response) {
@@ -2089,17 +2016,30 @@ export default function App(): ReactElement {
 			const started = await startTaskSession(task);
 			if (!started.ok) {
 				setWorktreeError(started.message ?? "Could not start task session.");
+				if (optimisticMove) {
+					setBoard((currentBoard) => {
+						const currentColumnId = getTaskColumnId(currentBoard, taskId);
+						if (currentColumnId !== "in_progress") {
+							return currentBoard;
+						}
+						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+						return reverted.moved ? reverted.board : currentBoard;
+					});
+				}
+				return false;
+			}
+			if (!optimisticMove) {
 				setBoard((currentBoard) => {
 					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== "in_progress") {
+					if (currentColumnId !== fromColumnId) {
 						return currentBoard;
 					}
-					const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-					return reverted.moved ? reverted.board : currentBoard;
+					const moved = moveTaskToColumn(currentBoard, taskId, "in_progress");
+					return moved.moved ? moved.board : currentBoard;
 				});
-				return;
 			}
 			setWorktreeError(null);
+			return true;
 		},
 		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, startTaskSession],
 	);
@@ -2118,6 +2058,25 @@ export default function App(): ReactElement {
 			notificationPermissionPromptInFlightRef.current = false;
 		});
 	}, [readyForReviewNotificationsEnabled]);
+
+	const {
+		confirmMoveTaskToTrash,
+		handleCreateDependency,
+		handleDeleteDependency,
+		requestMoveTaskToTrash,
+	} = useLinkedBacklogTaskActions({
+		board,
+		setBoard,
+		selectedTaskWorkspaceInfo,
+		setSelectedTaskId,
+		setPendingTrashWarning,
+		stopTaskSession,
+		cleanupTaskWorkspace,
+		fetchTaskWorkingChangeCount,
+		fetchTaskWorkspaceInfo,
+		maybeRequestNotificationPermissionForTaskStart,
+		kickoffTaskInProgress,
+	});
 
 	const handleDragEnd = useCallback(
 		(result: DropResult, options?: { selectDroppedTask?: boolean }) => {
@@ -2173,6 +2132,7 @@ export default function App(): ReactElement {
 		},
 		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart],
 	);
+
 
 	const handleDetailTaskDragEnd = useCallback(
 		(result: DropResult) => {
@@ -2556,6 +2516,9 @@ export default function App(): ReactElement {
 												openPrTaskLoadingById={openPrTaskLoadingById}
 												onMoveToTrashTask={handleMoveReviewCardToTrash}
 												reviewWorkspaceSnapshots={workspaceSnapshots}
+											dependencies={board.dependencies}
+											onCreateDependency={handleCreateDependency}
+											onDeleteDependency={handleDeleteDependency}
 												onDragEnd={handleDragEnd}
 											/>
 										)}
@@ -2715,7 +2678,7 @@ export default function App(): ReactElement {
 					if (!selection) {
 						return;
 					}
-					void performMoveTaskToTrash(selection.card);
+					void confirmMoveTaskToTrash(selection.card, board);
 				}}
 			/>
 			<Alert

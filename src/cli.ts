@@ -47,6 +47,7 @@ import {
 	removeWorkspaceStateFiles,
 	saveWorkspaceState,
 } from "./runtime/state/workspace-state.js";
+import { updateTaskDependencies } from "./runtime/task-board-mutations.js";
 import { TerminalSessionManager } from "./runtime/terminal/session-manager.js";
 import { createTerminalWebSocketBridge } from "./runtime/terminal/ws-server.js";
 import { type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "./runtime/trpc/app-router.js";
@@ -599,9 +600,10 @@ function moveTaskToTrash(
 			updatedAt: Date.now(),
 		});
 	}
-	return {
+	return updateTaskDependencies({
+		...board,
 		columns,
-	};
+	});
 }
 
 async function persistInterruptedSessions(

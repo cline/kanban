@@ -228,13 +228,13 @@ export function ColumnContextPanel({
 				flexDirection: "column",
 				width: "20%",
 				minHeight: 0,
-				overflowY: "auto",
+				overflow: "hidden",
 				background: Colors.DARK_GRAY1,
 				borderRight: `1px solid ${panelSeparatorColor}`,
 			}}
 		>
 			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>
-				<div style={{ flex: "1 1 0", minHeight: 0 }}>
+				<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
 					{selection.allColumns.map((column) => (
 						<ColumnSection
 							key={column.id}

@@ -61,6 +61,7 @@ function createBoard(title: string): RuntimeBoardData {
 			{ id: "review", title: "Review", cards: [] },
 			{ id: "trash", title: "Trash", cards: [] },
 		],
+		dependencies: [],
 	};
 }
 
@@ -86,6 +87,7 @@ function createReviewBoard(taskId: string, title: string): RuntimeBoardData {
 			},
 			{ id: "trash", title: "Trash", cards: [] },
 		],
+		dependencies: [],
 	};
 }
 

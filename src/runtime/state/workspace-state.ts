@@ -17,6 +17,7 @@ import {
 	runtimeWorkspaceStateSaveRequestSchema,
 } from "../api-contract.js";
 import { createGitProcessEnv } from "../git-process-env.js";
+import { updateTaskDependencies } from "../task-board-mutations.js";
 
 const RUNTIME_HOME_DIR = ".kanbanana";
 const WORKSPACES_DIR = "workspaces";
@@ -141,6 +142,7 @@ function createEmptyBoard(): RuntimeBoardData {
 			title: column.title,
 			cards: [],
 		})),
+		dependencies: [],
 	};
 }
 
@@ -269,7 +271,9 @@ function parseWorkspaceStateSavePayload(payload: RuntimeWorkspaceStateSaveReques
 async function readWorkspaceBoard(workspaceId: string): Promise<RuntimeBoardData> {
 	const boardPath = getWorkspaceBoardPath(workspaceId);
 	const rawBoard = await readJsonFile(boardPath);
-	return parsePersistedStateFile(boardPath, BOARD_FILENAME, rawBoard, runtimeBoardDataSchema, createEmptyBoard());
+	return updateTaskDependencies(
+		parsePersistedStateFile(boardPath, BOARD_FILENAME, rawBoard, runtimeBoardDataSchema, createEmptyBoard()),
+	);
 }
 
 async function readWorkspaceSessions(workspaceId: string): Promise<Record<string, RuntimeTaskSessionSummary>> {
