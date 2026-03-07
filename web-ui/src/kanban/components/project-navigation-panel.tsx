@@ -57,7 +57,7 @@ export function ProjectNavigationPanel({
 		>
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-					<Icon icon="alignment-top" size={20} color="#AAB0B7" style={{ marginTop: 3 }} />
+					<Icon icon="alignment-top" size={20} color="#AAB0B7" style={{ marginTop: 4.5 }} />
 					<div>
 						<div style={{ fontWeight: 600, fontSize: "var(--bp-typography-size-body-large)" }}>
 							kanban <span className={Classes.TEXT_MUTED} style={{ fontWeight: 400, fontSize: "var(--bp-typography-size-body-small)" }}>v{__APP_VERSION__}</span>
