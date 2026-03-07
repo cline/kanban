@@ -111,6 +111,19 @@ export function useGitHistoryData({
 		retainDataOnError: true,
 	});
 
+	const prevWorkspaceIdRef = useRef(workspaceId);
+	useEffect(() => {
+		if (workspaceId === prevWorkspaceIdRef.current) {
+			return;
+		}
+		prevWorkspaceIdRef.current = workspaceId;
+		setViewMode("commit");
+		setSelectedRefName(null);
+		setSelectedCommitHash(null);
+		setSelectedDiffPath(null);
+		refsQuery.setData(null);
+	}, [workspaceId, refsQuery.setData]);
+
 	const prevBranchRef = useRef(gitSummary?.currentBranch ?? null);
 	useEffect(() => {
 		const current = gitSummary?.currentBranch ?? null;

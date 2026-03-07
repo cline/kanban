@@ -1596,6 +1596,7 @@ export default function App(): ReactElement {
 
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);
+		setIsGitHistoryOpen(false);
 	}, []);
 
 	const handleSelectProject = useCallback((projectId: string) => {
@@ -1605,6 +1606,7 @@ export default function App(): ReactElement {
 		setCanPersistWorkspaceState(false);
 		setRequestedProjectId(projectId);
 		setSelectedTaskId(null);
+		setIsGitHistoryOpen(false);
 		setIsInlineTaskCreateOpen(false);
 		setEditingTaskId(null);
 	}, [currentProjectId]);
@@ -2299,6 +2301,7 @@ export default function App(): ReactElement {
 
 	const handleCardSelect = useCallback((taskId: string) => {
 		setSelectedTaskId(taskId);
+		setIsGitHistoryOpen(false);
 	}, []);
 
 	const handleMoveToTrash = useCallback(() => {
