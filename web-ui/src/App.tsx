@@ -18,6 +18,7 @@ import {
 	type SearchableTask,
 } from "@/kanban/app/app-utils";
 import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
+import { useProgrammaticCardMoves } from "@/kanban/app/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/kanban/app/use-review-auto-actions";
 import { useReviewReadyNotifications } from "@/kanban/app/use-review-ready-notifications";
 import { useTaskWorkspaceSnapshots } from "@/kanban/app/use-task-workspace-snapshots";
@@ -875,6 +876,16 @@ export default function App(): ReactElement {
 		}
 	}, [sendTaskSessionInput]);
 
+	const {
+		handleProgrammaticCardMoveReady,
+		setRequestMoveTaskToTrashHandler,
+		tryProgrammaticCardMove,
+		consumeProgrammaticCardMove,
+		resolvePendingProgrammaticTrashMove,
+		resetProgrammaticCardMoves,
+		requestMoveTaskToTrashWithAnimation,
+	} = useProgrammaticCardMoves();
+
 	const searchableTasks = useMemo((): SearchableTask[] => {
 		return board.columns.flatMap((column) =>
 			column.cards.map((card) => ({
@@ -904,6 +915,10 @@ export default function App(): ReactElement {
 					summary.state === "awaiting_review" &&
 					columnId === "in_progress"
 				) {
+					const startedProgrammaticMove = tryProgrammaticCardMove(summary.taskId, columnId, "review");
+					if (startedProgrammaticMove) {
+						continue;
+					}
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
 					if (moved.moved) {
 						nextBoard = moved.board;
@@ -914,6 +929,12 @@ export default function App(): ReactElement {
 					summary.state === "running" &&
 					columnId === "review"
 				) {
+					const startedProgrammaticMove = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
+						skipKickoff: true,
+					});
+					if (startedProgrammaticMove) {
+						continue;
+					}
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress");
 					if (moved.moved) {
 						nextBoard = moved.board;
@@ -926,11 +947,21 @@ export default function App(): ReactElement {
 					columnId &&
 					columnId !== "trash"
 				) {
+					const nextTaskId = getNextDetailTaskIdAfterTrashMove(nextBoard, summary.taskId);
+					const startedProgrammaticMove = tryProgrammaticCardMove(summary.taskId, columnId, "trash", {
+						skipTrashWorkflow: true,
+					});
+					if (startedProgrammaticMove) {
+						setSelectedTaskId((currentSelectedTaskId) =>
+							currentSelectedTaskId === summary.taskId ? nextTaskId : currentSelectedTaskId,
+						);
+						continue;
+					}
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
 					if (moved.moved) {
 						setSelectedTaskId((currentSelectedTaskId) =>
 							currentSelectedTaskId === summary.taskId
-								? getNextDetailTaskIdAfterTrashMove(nextBoard, summary.taskId)
+								? nextTaskId
 								: currentSelectedTaskId,
 						);
 						nextBoard = moved.board;
@@ -940,7 +971,7 @@ export default function App(): ReactElement {
 			return nextBoard;
 		});
 		previousSessionsRef.current = sessions;
-	}, [sessions]);
+	}, [sessions, tryProgrammaticCardMove]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -1308,6 +1339,7 @@ export default function App(): ReactElement {
 				revision: null,
 			};
 			previousSessionsRef.current = {};
+			resetProgrammaticCardMoves();
 		}
 		setWorktreeError(null);
 		setSelectedTaskId(null);
@@ -1336,7 +1368,7 @@ export default function App(): ReactElement {
 		detailTerminalSelectionKeyRef.current = null;
 		setGitActionError(null);
 		resetWorkspaceSnapshots();
-	}, [currentProjectId, resetWorkspaceSnapshots]);
+	}, [currentProjectId, resetProgrammaticCardMoves, resetWorkspaceSnapshots]);
 
 	useEffect(() => {
 		if (!currentProjectId) {
@@ -2149,12 +2181,16 @@ export default function App(): ReactElement {
 		return await runTaskGitAction(taskId, action, "card");
 	}, [runTaskGitAction]);
 
+	useEffect(() => {
+		setRequestMoveTaskToTrashHandler(requestMoveTaskToTrash);
+	}, [requestMoveTaskToTrash, setRequestMoveTaskToTrashHandler]);
+
 	useReviewAutoActions({
 		board,
 		workspaceSnapshots,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
-		requestMoveTaskToTrash,
+		requestMoveTaskToTrash: requestMoveTaskToTrashWithAnimation,
 		resetKey: currentProjectId,
 	});
 
@@ -2163,8 +2199,11 @@ export default function App(): ReactElement {
 			if (options?.selectDroppedTask && result.type.startsWith("CARD") && result.destination) {
 				setSelectedTaskId(result.draggableId);
 			}
+			const { behavior: programmaticMoveBehavior, programmaticCardMoveInFlight } = consumeProgrammaticCardMove(
+				result.draggableId,
+			);
 
-			const applied = applyDragResult(board, result);
+			const applied = applyDragResult(board, result, { programmaticCardMoveInFlight });
 
 			const moveEvent = applied.moveEvent;
 			if (!moveEvent) {
@@ -2174,15 +2213,27 @@ export default function App(): ReactElement {
 
 			if (moveEvent.toColumnId === "trash") {
 				setBoard(applied.board);
-				void requestMoveTaskToTrash(moveEvent.taskId, moveEvent.fromColumnId, {
+				if (programmaticMoveBehavior?.skipTrashWorkflow) {
+					resolvePendingProgrammaticTrashMove(moveEvent.taskId);
+					return;
+				}
+				const requestPromise = requestMoveTaskToTrash(moveEvent.taskId, moveEvent.fromColumnId, {
 					optimisticMoveApplied: true,
+					skipWorkingChangeWarning: programmaticMoveBehavior?.skipWorkingChangeWarning,
+				});
+				void requestPromise.finally(() => {
+					resolvePendingProgrammaticTrashMove(moveEvent.taskId);
 				});
 				return;
 			}
 
 			setBoard(applied.board);
 
-			if (moveEvent.toColumnId === "in_progress") {
+			if (
+				moveEvent.toColumnId === "in_progress" &&
+				moveEvent.fromColumnId === "backlog" &&
+				!programmaticMoveBehavior?.skipKickoff
+			) {
 				maybeRequestNotificationPermissionForTaskStart();
 				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
 				if (movedSelection) {
@@ -2190,13 +2241,24 @@ export default function App(): ReactElement {
 				}
 			}
 		},
-		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart, requestMoveTaskToTrash],
+		[
+			board,
+			consumeProgrammaticCardMove,
+			kickoffTaskInProgress,
+			maybeRequestNotificationPermissionForTaskStart,
+			requestMoveTaskToTrash,
+			resolvePendingProgrammaticTrashMove,
+		],
 	);
 
 	const handleStartTask = useCallback(
 		(taskId: string) => {
 			const selection = findCardSelection(board, taskId);
 			if (!selection || selection.column.id !== "backlog") {
+				return;
+			}
+			const startedProgrammaticMove = tryProgrammaticCardMove(taskId, selection.column.id, "in_progress");
+			if (startedProgrammaticMove) {
 				return;
 			}
 			const moved = moveTaskToColumn(board, taskId, "in_progress");
@@ -2210,7 +2272,7 @@ export default function App(): ReactElement {
 				void kickoffTaskInProgress(movedSelection.card, taskId, "backlog");
 			}
 		},
-		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart],
+		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart, tryProgrammaticCardMove],
 	);
 
 
@@ -2229,13 +2291,25 @@ export default function App(): ReactElement {
 		if (!selectedCard) {
 			return;
 		}
+		const startedProgrammaticMove = tryProgrammaticCardMove(
+			selectedCard.card.id,
+			selectedCard.column.id,
+			"trash",
+		);
+		if (startedProgrammaticMove) {
+			return;
+		}
 		void requestMoveTaskToTrash(selectedCard.card.id, selectedCard.column.id);
-	}, [requestMoveTaskToTrash, selectedCard]);
+	}, [requestMoveTaskToTrash, selectedCard, tryProgrammaticCardMove]);
 	const handleMoveReviewCardToTrash = useCallback(
 		(taskId: string) => {
+			const startedProgrammaticMove = tryProgrammaticCardMove(taskId, "review", "trash");
+			if (startedProgrammaticMove) {
+				return;
+			}
 			void requestMoveTaskToTrash(taskId, "review");
 		},
-		[requestMoveTaskToTrash],
+		[requestMoveTaskToTrash, tryProgrammaticCardMove],
 	);
 	const handleOpenClearTrash = useCallback(() => {
 		if (trashTaskCount === 0) {
@@ -2599,9 +2673,10 @@ export default function App(): ReactElement {
 												openPrTaskLoadingById={openPrTaskLoadingById}
 												onMoveToTrashTask={handleMoveReviewCardToTrash}
 												reviewWorkspaceSnapshots={workspaceSnapshots}
-											dependencies={board.dependencies}
-											onCreateDependency={handleCreateDependency}
-											onDeleteDependency={handleDeleteDependency}
+												dependencies={board.dependencies}
+												onCreateDependency={handleCreateDependency}
+												onDeleteDependency={handleDeleteDependency}
+												onRequestProgrammaticCardMoveReady={selectedCard ? undefined : handleProgrammaticCardMoveReady}
 												onDragEnd={handleDragEnd}
 											/>
 										)}

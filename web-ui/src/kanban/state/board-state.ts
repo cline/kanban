@@ -3,6 +3,7 @@ import { createShortTaskId } from "@runtime-task-id";
 import * as runtimeTaskState from "@runtime-task-state";
 
 import { createInitialBoardData } from "@/kanban/data/board-data";
+import { isAllowedCrossColumnCardMove, type ProgrammaticCardMoveInFlight } from "@/kanban/state/drag-rules";
 import {
 	DEFAULT_TASK_AUTO_REVIEW_MODE,
 	type BoardCard,
@@ -269,7 +270,11 @@ export function trashTaskAndGetReadyLinkedTaskIds(
 	return runtimeTaskState.trashTaskAndGetReadyLinkedTaskIds(board, taskId);
 }
 
-export function applyDragResult(board: BoardData, result: DropResult): { board: BoardData; moveEvent?: TaskMoveEvent } {
+export function applyDragResult(
+	board: BoardData,
+	result: DropResult,
+	options?: { programmaticCardMoveInFlight?: ProgrammaticCardMoveInFlight | null },
+): { board: BoardData; moveEvent?: TaskMoveEvent } {
 	const { source, destination, type } = result;
 
 	if (!destination) {
@@ -303,9 +308,10 @@ export function applyDragResult(board: BoardData, result: DropResult): { board: 
 		return { board: withUpdatedColumns(board, columns) };
 	}
 
-	const isAllowedCrossColumnMove =
-		(sourceColumn.id === "backlog" && destinationColumn.id === "in_progress") ||
-		(destinationColumn.id === "trash" && sourceColumn.id !== "trash");
+	const isAllowedCrossColumnMove = isAllowedCrossColumnCardMove(sourceColumn.id, destinationColumn.id, {
+		taskId: result.draggableId,
+		programmaticCardMoveInFlight: options?.programmaticCardMoveInFlight,
+	});
 	if (!isAllowedCrossColumnMove) {
 		return { board };
 	}

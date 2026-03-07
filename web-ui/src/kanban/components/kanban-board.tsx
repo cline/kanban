@@ -1,5 +1,13 @@
-import { DragDropContext, type BeforeCapture, type DragStart, type DropResult } from "@hello-pangea/dnd";
-import { useCallback, useRef, useState } from "react";
+import {
+	DragDropContext,
+	type BeforeCapture,
+	type DragStart,
+	type DropResult,
+	type Sensor,
+	type SensorAPI,
+	type SnapDragActions,
+} from "@hello-pangea/dnd";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { BoardColumn } from "@/kanban/components/board-column";
@@ -7,8 +15,12 @@ import { DependencyOverlay } from "@/kanban/components/dependencies/dependency-o
 import { useDependencyLinking } from "@/kanban/components/dependencies/use-dependency-linking";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import { canCreateTaskDependency } from "@/kanban/state/board-state";
-import { findCardColumnId } from "@/kanban/state/drag-rules";
+import { findCardColumnId, type ProgrammaticCardMoveInFlight } from "@/kanban/state/drag-rules";
 import type { BoardCard, BoardColumnId, BoardData, BoardDependency, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
+
+const BOARD_COLUMN_ORDER: BoardColumnId[] = ["backlog", "in_progress", "review", "trash"];
+
+export type RequestProgrammaticCardMove = (move: ProgrammaticCardMoveInFlight) => boolean;
 
 export function KanbanBoard({
 	data,
@@ -31,6 +43,7 @@ export function KanbanBoard({
 	onCreateDependency,
 	onDeleteDependency,
 	onDragEnd,
+	onRequestProgrammaticCardMoveReady,
 }: {
 	data: BoardData;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -52,16 +65,127 @@ export function KanbanBoard({
 	onCreateDependency?: (fromTaskId: string, toTaskId: string) => void;
 	onDeleteDependency?: (dependencyId: string) => void;
 	onDragEnd: (result: DropResult) => void;
+	onRequestProgrammaticCardMoveReady?: (requestMove: RequestProgrammaticCardMove | null) => void;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
 	const boardRef = useRef<HTMLElement>(null);
+	const sensorApiRef = useRef<SensorAPI | null>(null);
+	const latestDataRef = useRef<BoardData>(data);
+	const programmaticCardMoveInFlightRef = useRef<ProgrammaticCardMoveInFlight | null>(null);
+	const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
+	const [programmaticCardMoveInFlight, setProgrammaticCardMoveInFlight] = useState<ProgrammaticCardMoveInFlight | null>(null);
 	const dependencyLinking = useDependencyLinking({
 		canLinkTasks: (fromTaskId, toTaskId) => canCreateTaskDependency(data, fromTaskId, toTaskId),
 		onCreateDependency,
 	});
 
+	useEffect(() => {
+		latestDataRef.current = data;
+	}, [data]);
+
+	const programmaticSensor: Sensor = useCallback((api: SensorAPI) => {
+		sensorApiRef.current = api;
+	}, []);
+
+	const clearProgrammaticCardMoveInFlight = useCallback((taskId?: string) => {
+		if (taskId && programmaticCardMoveInFlightRef.current?.taskId !== taskId) {
+			return;
+		}
+		programmaticCardMoveInFlightRef.current = null;
+		setProgrammaticCardMoveInFlight(null);
+	}, []);
+
+	const requestProgrammaticCardMove = useCallback<RequestProgrammaticCardMove>((move) => {
+		const { taskId, toColumnId: targetColumnId } = move;
+		const board = latestDataRef.current;
+		const sourceColumnId = findCardColumnId(board.columns, taskId);
+		if (!sourceColumnId || sourceColumnId !== move.fromColumnId || sourceColumnId === targetColumnId) {
+			return false;
+		}
+
+		const sensorApi = sensorApiRef.current;
+		if (!sensorApi) {
+			return false;
+		}
+
+		const sourceOrderIndex = BOARD_COLUMN_ORDER.indexOf(sourceColumnId);
+		const targetOrderIndex = BOARD_COLUMN_ORDER.indexOf(targetColumnId);
+		if (sourceOrderIndex < 0 || targetOrderIndex < 0) {
+			return false;
+		}
+
+		const horizontalSteps = targetOrderIndex - sourceOrderIndex;
+		programmaticCardMoveInFlightRef.current = move;
+		setProgrammaticCardMoveInFlight(move);
+		const preDrag = sensorApi.tryGetLock(taskId);
+		if (!preDrag) {
+			clearProgrammaticCardMoveInFlight(taskId);
+			return false;
+		}
+
+		let dragActions: SnapDragActions;
+		try {
+			dragActions = preDrag.snapLift();
+		} catch {
+			clearProgrammaticCardMoveInFlight(taskId);
+			if (preDrag.isActive()) {
+				preDrag.abort();
+			}
+			return false;
+		}
+
+		const moveOneStep = horizontalSteps > 0 ? dragActions.moveRight : dragActions.moveLeft;
+		const targetColumn = board.columns.find((column) => column.id === targetColumnId);
+		const verticalToTopSteps = targetColumnId === "trash"
+			? (targetColumn?.cards.length ?? 0) + 1
+			: 0;
+		const moveSteps: Array<() => void> = [];
+		for (let step = 0; step < Math.abs(horizontalSteps); step += 1) {
+			moveSteps.push(moveOneStep);
+		}
+		for (let step = 0; step < verticalToTopSteps; step += 1) {
+			moveSteps.push(dragActions.moveUp);
+		}
+
+		const performStep = (stepIndex: number) => {
+			if (!dragActions.isActive()) {
+				return;
+			}
+			try {
+				if (stepIndex >= moveSteps.length) {
+					dragActions.drop();
+					return;
+				}
+				moveSteps[stepIndex]?.();
+				window.setTimeout(() => {
+					performStep(stepIndex + 1);
+				}, 90);
+			} catch {
+				clearProgrammaticCardMoveInFlight(taskId);
+				if (dragActions.isActive()) {
+					dragActions.cancel();
+				}
+			}
+		};
+
+		window.requestAnimationFrame(() => {
+			window.requestAnimationFrame(() => {
+				performStep(0);
+			});
+		});
+		return true;
+	}, [clearProgrammaticCardMoveInFlight]);
+
+	useEffect(() => {
+		onRequestProgrammaticCardMoveReady?.(requestProgrammaticCardMove);
+		return () => {
+			onRequestProgrammaticCardMoveReady?.(null);
+		};
+	}, [onRequestProgrammaticCardMoveReady, requestProgrammaticCardMove]);
+
 	const handleBeforeCapture = useCallback((start: BeforeCapture) => {
+		setActiveDragTaskId(start.draggableId);
 		setActiveDragSourceColumnId(findCardColumnId(data.columns, start.draggableId));
 	}, [data]);
 
@@ -71,17 +195,24 @@ export function KanbanBoard({
 
 	const handleDragEnd = useCallback(
 		(result: DropResult) => {
+			setActiveDragTaskId(null);
 			setActiveDragSourceColumnId(null);
+			clearProgrammaticCardMoveInFlight(result.draggableId);
 			requestAnimationFrame(() => {
 				dragOccurredRef.current = false;
 			});
 			onDragEnd(result);
 		},
-		[onDragEnd],
+		[clearProgrammaticCardMoveInFlight, onDragEnd],
 	);
 
 	return (
-		<DragDropContext onBeforeCapture={handleBeforeCapture} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+		<DragDropContext
+			onBeforeCapture={handleBeforeCapture}
+			onDragStart={handleDragStart}
+			onDragEnd={handleDragEnd}
+			sensors={[programmaticSensor]}
+		>
 			<section ref={boardRef} className="kb-board kb-dependency-surface">
 				{data.columns.map((column) => (
 					<BoardColumn
@@ -101,7 +232,9 @@ export function KanbanBoard({
 						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 						openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 						reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
+						activeDragTaskId={activeDragTaskId}
 						activeDragSourceColumnId={activeDragSourceColumnId}
+						programmaticCardMoveInFlight={programmaticCardMoveInFlight}
 						onDependencyPointerDown={dependencyLinking.onDependencyPointerDown}
 						onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}
 						dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}

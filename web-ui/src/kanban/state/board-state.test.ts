@@ -4,11 +4,14 @@ import { createInitialBoardData } from "@/kanban/data/board-data";
 import {
 	addTaskDependency,
 	addTaskToColumn,
+	applyDragResult,
 	clearColumnTasks,
+	getTaskColumnId,
 	moveTaskToColumn,
 	normalizeBoardData,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/kanban/state/board-state";
+import type { ProgrammaticCardMoveInFlight } from "@/kanban/state/drag-rules";
 
 function createBacklogBoard(taskPrompts: string[]): {
 	board: ReturnType<typeof createInitialBoardData>;
@@ -179,6 +182,78 @@ describe("board dependency state", () => {
 		const autoStarted = moveTaskToColumn(trashB.board, taskC, "in_progress");
 		expect(autoStarted.moved).toBe(true);
 		expect(autoStarted.board.dependencies).toEqual([]);
+	});
+
+	it("keeps manual in-progress to review drags disabled", () => {
+		const fixture = createBacklogBoard(["Task A"]);
+		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
+		const movedToInProgress = moveTaskToColumn(fixture.board, taskA, "in_progress");
+		expect(movedToInProgress.moved).toBe(true);
+
+		const attemptedReviewMove = applyDragResult(movedToInProgress.board, {
+			draggableId: taskA,
+			type: "CARD",
+			source: { droppableId: "in_progress", index: 0 },
+			destination: { droppableId: "review", index: 0 },
+			mode: "SNAP",
+			reason: "DROP",
+			combine: null,
+		});
+		expect(attemptedReviewMove.moveEvent).toBeUndefined();
+		expect(getTaskColumnId(attemptedReviewMove.board, taskA)).toBe("in_progress");
+	});
+
+	it("supports programmatic drag transitions between in-progress and review", () => {
+		const fixture = createBacklogBoard(["Task A"]);
+		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
+		const movedToInProgress = moveTaskToColumn(fixture.board, taskA, "in_progress");
+		expect(movedToInProgress.moved).toBe(true);
+		const moveToReview: ProgrammaticCardMoveInFlight = {
+			taskId: taskA,
+			fromColumnId: "in_progress",
+			toColumnId: "review",
+		};
+
+		const movedToReview = applyDragResult(movedToInProgress.board, {
+			draggableId: taskA,
+			type: "CARD",
+			source: { droppableId: "in_progress", index: 0 },
+			destination: { droppableId: "review", index: 0 },
+			mode: "SNAP",
+			reason: "DROP",
+			combine: null,
+		}, {
+			programmaticCardMoveInFlight: moveToReview,
+		});
+		expect(movedToReview.moveEvent).toMatchObject({
+			taskId: taskA,
+			fromColumnId: "in_progress",
+			toColumnId: "review",
+		});
+		expect(getTaskColumnId(movedToReview.board, taskA)).toBe("review");
+		const moveBackToInProgress: ProgrammaticCardMoveInFlight = {
+			taskId: taskA,
+			fromColumnId: "review",
+			toColumnId: "in_progress",
+		};
+
+		const movedBackToInProgress = applyDragResult(movedToReview.board, {
+			draggableId: taskA,
+			type: "CARD",
+			source: { droppableId: "review", index: 0 },
+			destination: { droppableId: "in_progress", index: 0 },
+			mode: "SNAP",
+			reason: "DROP",
+			combine: null,
+		}, {
+			programmaticCardMoveInFlight: moveBackToInProgress,
+		});
+		expect(movedBackToInProgress.moveEvent).toMatchObject({
+			taskId: taskA,
+			fromColumnId: "review",
+			toColumnId: "in_progress",
+		});
+		expect(getTaskColumnId(movedBackToInProgress.board, taskA)).toBe("in_progress");
 	});
 
 	it("removes dependencies when trash is cleared", () => {

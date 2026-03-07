@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import { isCardDropDisabled } from "@/kanban/state/drag-rules";
+import { isCardDropDisabled, type ProgrammaticCardMoveInFlight } from "@/kanban/state/drag-rules";
 import type {
 	BoardCard as BoardCardModel,
 	BoardColumnId,
@@ -31,7 +31,9 @@ export function BoardColumn({
 	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
 	onCardClick,
+	activeDragTaskId,
 	activeDragSourceColumnId,
+	programmaticCardMoveInFlight,
 	onDependencyPointerDown,
 	onDependencyPointerEnter,
 	dependencySourceTaskId,
@@ -54,7 +56,9 @@ export function BoardColumn({
 	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onCardClick?: (card: BoardCardModel) => void;
+	activeDragTaskId?: string | null;
 	activeDragSourceColumnId?: BoardColumnId | null;
+	programmaticCardMoveInFlight?: ProgrammaticCardMoveInFlight | null;
 	onDependencyPointerDown?: (taskId: string, event: ReactMouseEvent<HTMLElement>) => void;
 	onDependencyPointerEnter?: (taskId: string) => void;
 	dependencySourceTaskId?: string | null;
@@ -66,7 +70,10 @@ export function BoardColumn({
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
-	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null);
+	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
+		activeDragTaskId,
+		programmaticCardMoveInFlight,
+	});
 
 	return (
 		<section
