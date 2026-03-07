@@ -24,6 +24,7 @@
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
     "diff": "^8.0.3",
+    "fzf": "^0.5.2",
     "normalize.css": "^8.0.1",
     "posthog-js": "^1.357.1",
     "prismjs": "^1.30.0",

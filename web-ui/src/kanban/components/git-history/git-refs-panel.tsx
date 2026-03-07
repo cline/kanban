@@ -1,9 +1,65 @@
 import { Classes, Colors, Icon, InputGroup, NonIdealState, Tag } from "@blueprintjs/core";
+import { Fzf } from "fzf";
 import { useMemo, useState } from "react";
 
 import type { RuntimeGitRef } from "@/kanban/runtime/types";
 
 const ROW_HEIGHT = 30;
+const MATCHED_TEXT_STYLE = {
+	color: "var(--bp-typography-color-primary-rest)",
+	fontWeight: 600,
+} as const;
+
+function renderHighlightedText(value: string, positions: Set<number> | undefined): React.ReactNode {
+	if (!positions || positions.size === 0) {
+		return value;
+	}
+
+	const fragments: React.ReactNode[] = [];
+	let currentText = "";
+	let currentIsMatch: boolean | null = null;
+	for (let index = 0; index < value.length; index += 1) {
+		const character = value[index];
+		if (character == null) {
+			continue;
+		}
+		const isMatch = positions.has(index);
+		if (currentIsMatch === null) {
+			currentText = character;
+			currentIsMatch = isMatch;
+			continue;
+		}
+		if (currentIsMatch === isMatch) {
+			currentText += character;
+			continue;
+		}
+		fragments.push(
+			<span
+				key={`${index}:${currentIsMatch ? "match" : "plain"}`}
+				style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}
+			>
+				{currentText}
+			</span>,
+		);
+		currentText = character;
+		currentIsMatch = isMatch;
+	}
+
+	if (currentIsMatch === null) {
+		return value;
+	}
+
+	fragments.push(
+		<span
+			key="end"
+			style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}
+		>
+			{currentText}
+		</span>,
+	);
+
+	return fragments;
+}
 
 function AheadBehindIndicator({ ahead, behind }: { ahead?: number; behind?: number }): React.ReactElement | null {
 	if (!ahead && !behind) {
@@ -63,12 +119,27 @@ export function GitRefsPanel({
 	const branchRefs = refs.filter((r) => r.type === "branch");
 	const headBranch = branchRefs.find((r) => r.isHead);
 	const otherBranches = branchRefs.filter((r) => !r.isHead);
+	const branchFinder = useMemo(
+		() => new Fzf(otherBranches, { selector: (ref) => ref.name }),
+		[otherBranches],
+	);
 
+	const fuzzyBranchResults = useMemo(() => {
+		if (!searchQuery.trim()) {
+			return [] as ReturnType<Fzf<typeof otherBranches>["find"]>;
+		}
+		return branchFinder.find(searchQuery);
+	}, [branchFinder, searchQuery]);
 	const filteredOtherBranches = useMemo(() => {
-		const q = searchQuery.trim().toLowerCase();
-		if (!q) return otherBranches;
-		return otherBranches.filter((r) => r.name.toLowerCase().includes(q));
-	}, [otherBranches, searchQuery]);
+		if (!searchQuery.trim()) {
+			return otherBranches;
+		}
+		return fuzzyBranchResults.map((result) => result.item);
+	}, [fuzzyBranchResults, otherBranches, searchQuery]);
+	const fuzzyBranchResultsByName = useMemo(
+		() => new Map(fuzzyBranchResults.map((result) => [result.item.name, result])),
+		[fuzzyBranchResults],
+	);
 
 	const showSearch = otherBranches.length > 0;
 
@@ -170,7 +241,9 @@ export function GitRefsPanel({
 								onDoubleClick={onCheckoutRef ? () => onCheckoutRef(ref.name) : undefined}
 							>
 								<Icon icon="git-branch" size={12} />
-								<span className="kb-line-clamp-1" style={{ flex: 1 }}>{ref.name}</span>
+								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+									{renderHighlightedText(ref.name, fuzzyBranchResultsByName.get(ref.name)?.positions)}
+								</span>
 								<AheadBehindIndicator ahead={ref.ahead} behind={ref.behind} />
 							</RefRow>
 						))}
