@@ -633,10 +633,14 @@ export default function App(): ReactElement {
 	const inProgressCards = useMemo(() => {
 		return board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
 	}, [board.columns]);
+	const trashCards = useMemo(() => {
+		return board.columns.find((column) => column.id === "trash")?.cards ?? [];
+	}, [board.columns]);
 	const { workspaceSnapshots, resetWorkspaceSnapshots } = useTaskWorkspaceSnapshots({
 		currentProjectId,
 		reviewCards,
 		inProgressCards,
+		trashCards,
 		workspaceStatusRetrievedAt,
 		isDocumentVisible,
 		fetchReviewWorkspaceSnapshot,

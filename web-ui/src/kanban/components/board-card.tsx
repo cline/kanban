@@ -62,8 +62,8 @@ export function BoardCard({
 	const [titleContainerRef, titleRect] = useMeasure<HTMLDivElement>();
 	const titleRef = useRef<HTMLParagraphElement | null>(null);
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
-	const showPreview = columnId === "in_progress" || columnId === "review";
 	const isTrashCard = columnId === "trash";
+	const showPreview = columnId === "in_progress" || columnId === "review" || isTrashCard;
 	const isCardDraggable = !isTrashCard;
 	const isCardInteractive = !isTrashCard;
 	const displayPrompt = useMemo(() => {
@@ -109,7 +109,7 @@ export function BoardCard({
 		return null;
 	};
 	const statusMarker = renderStatusMarker();
-	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review";
+	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
 	const reviewWorkspacePath = reviewWorkspaceSnapshot ? formatPathForDisplay(reviewWorkspaceSnapshot.path) : null;
 	const reviewRefLabel = reviewWorkspaceSnapshot?.branch ?? reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "HEAD";
 	const reviewChangeSummary = reviewWorkspaceSnapshot
@@ -269,7 +269,10 @@ export function BoardCard({
 								</p>
 							) : null}
 							{showPreview && sessionSummary?.activityPreview ? (
-								<div className="kb-task-preview-pane">
+								<div
+									className="kb-task-preview-pane"
+									style={isTrashCard ? { opacity: 0.55 } : undefined}
+								>
 									<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-line-clamp-5 kb-task-preview-text`}>
 										{sessionSummary.activityPreview}
 									</p>
@@ -284,19 +287,26 @@ export function BoardCard({
 											lineHeight: 1.4,
 											whiteSpace: "normal",
 											overflowWrap: "anywhere",
+										color: isTrashCard ? Colors.GRAY2 : undefined,
+										textDecoration: isTrashCard ? "line-through" : undefined,
 										}}
 										>
 											<>
-												<span style={{ color: Colors.GRAY4 }}>{reviewWorkspacePath}</span>
-												<Icon icon="git-branch" size={10} color={Colors.GRAY4} style={{ margin: "0px 4px 2px" }} />
-												<span style={{ color: Colors.GRAY4 }}>{reviewRefLabel}</span>
+												<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY4 }}>{reviewWorkspacePath}</span>
+												<Icon
+													icon="git-branch"
+													size={10}
+													color={isTrashCard ? Colors.GRAY2 : Colors.GRAY4}
+													style={{ margin: "0px 4px 2px" }}
+												/>
+												<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY4 }}>{reviewRefLabel}</span>
 												{reviewChangeSummary ? (
 												<>
-													<span style={{ color: Colors.GRAY3 }}> (</span>
-													<span style={{ color: Colors.GRAY3 }}>{reviewChangeSummary.filesLabel}</span>
-													<span style={{ color: Colors.GREEN4 }}> +{reviewChangeSummary.additions}</span>
-													<span style={{ color: Colors.RED4 }}> -{reviewChangeSummary.deletions}</span>
-													<span style={{ color: Colors.GRAY3 }}>)</span>
+													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY3 }}> (</span>
+													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY3 }}>{reviewChangeSummary.filesLabel}</span>
+													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GREEN4 }}> +{reviewChangeSummary.additions}</span>
+													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.RED4 }}> -{reviewChangeSummary.deletions}</span>
+													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY3 }}>)</span>
 												</>
 											) : null}
 										</>

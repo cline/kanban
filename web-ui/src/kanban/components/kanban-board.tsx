@@ -328,7 +328,12 @@ export function KanbanBoard({
 						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 						openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
-						reviewWorkspaceSnapshots={column.id === "review" || column.id === "in_progress" ? reviewWorkspaceSnapshots : undefined}
+<<<<<<< HEAD
+						reviewWorkspaceSnapshots={
+							column.id === "review" || column.id === "in_progress" || column.id === "trash"
+								? reviewWorkspaceSnapshots
+								: undefined
+						}
 						activeDragTaskId={activeDragTaskId}
 						activeDragSourceColumnId={activeDragSourceColumnId}
 						programmaticCardMoveInFlight={programmaticCardMoveInFlight}

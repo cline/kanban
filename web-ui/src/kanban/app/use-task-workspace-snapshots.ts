@@ -6,6 +6,7 @@ interface UseTaskWorkspaceSnapshotsOptions {
 	currentProjectId: string | null;
 	reviewCards: BoardCard[];
 	inProgressCards: BoardCard[];
+	trashCards: BoardCard[];
 	workspaceStatusRetrievedAt: number;
 	isDocumentVisible: boolean;
 	fetchReviewWorkspaceSnapshot: (task: BoardCard) => Promise<ReviewTaskWorkspaceSnapshot | null>;
@@ -23,6 +24,7 @@ export function useTaskWorkspaceSnapshots(
 		currentProjectId,
 		reviewCards,
 		inProgressCards,
+		trashCards,
 		workspaceStatusRetrievedAt,
 		isDocumentVisible,
 		fetchReviewWorkspaceSnapshot,
@@ -49,8 +51,11 @@ export function useTaskWorkspaceSnapshots(
 		for (const card of inProgressCards) {
 			ids.add(card.id);
 		}
+		for (const card of trashCards) {
+			ids.add(card.id);
+		}
 		return ids;
-	}, [inProgressCards, reviewCards]);
+	}, [inProgressCards, reviewCards, trashCards]);
 
 	const upsertWorkspaceSnapshot = useCallback((taskId: string, snapshot: ReviewTaskWorkspaceSnapshot) => {
 		setWorkspaceSnapshots((current) => {
