@@ -323,7 +323,8 @@ export function applyDragResult(
 	}
 
 	const destinationCards = Array.from(destinationColumn.cards);
-	destinationCards.splice(destination.index, 0, updateTaskTimestamp(movedCard));
+	const destinationInsertIndex = options?.programmaticCardMoveInFlight?.insertAtTop ? 0 : destination.index;
+	destinationCards.splice(destinationInsertIndex, 0, updateTaskTimestamp(movedCard));
 
 	const columns = Array.from(board.columns);
 	columns[sourceColumnIndex] = {
@@ -348,10 +349,46 @@ export function moveTaskToColumn(
 	board: BoardData,
 	taskId: string,
 	targetColumnId: BoardColumnId,
+	options?: { insertAtTop?: boolean },
 ): { board: BoardData; moved: boolean } {
 	const moved = runtimeTaskState.moveTaskToColumn(board, taskId, targetColumnId);
+	if (!moved.moved || !options?.insertAtTop) {
+		return {
+			board: moved.moved ? moved.board : board,
+			moved: moved.moved,
+		};
+	}
+	const targetColumnIndex = moved.board.columns.findIndex((column) => column.id === targetColumnId);
+	const targetColumn = moved.board.columns[targetColumnIndex];
+	if (!targetColumn) {
+		return {
+			board: moved.board,
+			moved: moved.moved,
+		};
+	}
+	const movedTaskIndex = targetColumn.cards.findIndex((card) => card.id === taskId);
+	if (movedTaskIndex <= 0) {
+		return {
+			board: moved.board,
+			moved: moved.moved,
+		};
+	}
+	const targetCards = Array.from(targetColumn.cards);
+	const [movedTask] = targetCards.splice(movedTaskIndex, 1);
+	if (!movedTask) {
+		return {
+			board: moved.board,
+			moved: moved.moved,
+		};
+	}
+	targetCards.unshift(movedTask);
+	const columns = Array.from(moved.board.columns);
+	columns[targetColumnIndex] = {
+		...targetColumn,
+		cards: targetCards,
+	};
 	return {
-		board: moved.moved ? moved.board : board,
+		board: withUpdatedColumns(moved.board, columns),
 		moved: moved.moved,
 	};
 }

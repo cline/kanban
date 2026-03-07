@@ -4,6 +4,7 @@ export interface ProgrammaticCardMoveInFlight {
 	taskId: string;
 	fromColumnId: BoardColumnId;
 	toColumnId: BoardColumnId;
+	insertAtTop: boolean;
 }
 
 function isMatchingProgrammaticCardMove(

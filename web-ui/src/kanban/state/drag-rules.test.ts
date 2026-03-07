@@ -12,6 +12,7 @@ describe("drag rules", () => {
 			taskId: "task-1",
 			fromColumnId: "in_progress",
 			toColumnId: "review",
+			insertAtTop: true,
 		};
 
 		expect(
@@ -33,6 +34,7 @@ describe("drag rules", () => {
 			taskId: "task-1",
 			fromColumnId: "review",
 			toColumnId: "in_progress",
+			insertAtTop: true,
 		};
 
 		expect(

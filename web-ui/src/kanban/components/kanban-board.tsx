@@ -1,6 +1,7 @@
 import {
 	DragDropContext,
 	type BeforeCapture,
+	type FluidDragActions,
 	type DragStart,
 	type DropResult,
 	type Sensor,
@@ -88,6 +89,48 @@ export function KanbanBoard({
 		sensorApiRef.current = api;
 	}, []);
 
+	const getElementClientCenter = useCallback((element: HTMLElement): { x: number; y: number } => {
+		const rect = element.getBoundingClientRect();
+		return {
+			x: rect.left + rect.width / 2,
+			y: rect.top + rect.height / 2,
+		};
+	}, []);
+
+	const getProgrammaticTopTargetClientSelection = useCallback((
+		taskId: string,
+		targetColumnId: BoardColumnId,
+	): { x: number; y: number } | null => {
+		const boardElement = boardRef.current;
+		if (!boardElement) {
+			return null;
+		}
+		const sourceCardElement = boardElement.querySelector<HTMLElement>(`[data-task-id="${taskId}"]`);
+		const targetColumnElement = boardElement.querySelector<HTMLElement>(`[data-column-id="${targetColumnId}"]`);
+		const targetCardsElement = targetColumnElement?.querySelector<HTMLElement>(".kb-column-cards");
+		if (!sourceCardElement || !targetCardsElement) {
+			return null;
+		}
+
+		const sourceCardRect = sourceCardElement.getBoundingClientRect();
+		const firstTargetCardElement = targetCardsElement.querySelector<HTMLElement>("[data-task-id]");
+		if (firstTargetCardElement) {
+			const targetRect = firstTargetCardElement.getBoundingClientRect();
+			return {
+				x: targetRect.left + sourceCardRect.width / 2,
+				y: targetRect.top + sourceCardRect.height / 2,
+			};
+		}
+		const targetRect = targetCardsElement.getBoundingClientRect();
+		const targetCardsStyle = window.getComputedStyle(targetCardsElement);
+		const paddingTop = Number.parseFloat(targetCardsStyle.paddingTop) || 0;
+		const paddingLeft = Number.parseFloat(targetCardsStyle.paddingLeft) || 0;
+		return {
+			x: targetRect.left + paddingLeft + (sourceCardRect.width / 2),
+			y: targetRect.top + paddingTop + (sourceCardRect.height / 2),
+		};
+	}, []);
+
 	const clearProgrammaticCardMoveInFlight = useCallback((taskId?: string) => {
 		if (taskId && programmaticCardMoveInFlightRef.current?.taskId !== taskId) {
 			return;
@@ -124,6 +167,60 @@ export function KanbanBoard({
 			return false;
 		}
 
+		const sourceCardElement = boardRef.current?.querySelector<HTMLElement>(`[data-task-id="${taskId}"]`) ?? null;
+		const topTargetClientSelection = move.insertAtTop
+			? getProgrammaticTopTargetClientSelection(taskId, targetColumnId)
+			: null;
+		if (sourceCardElement && topTargetClientSelection) {
+			let dragActions: FluidDragActions;
+			try {
+				dragActions = preDrag.fluidLift(getElementClientCenter(sourceCardElement));
+			} catch {
+				clearProgrammaticCardMoveInFlight(taskId);
+				if (preDrag.isActive()) {
+					preDrag.abort();
+				}
+				return false;
+			}
+
+			const startClientSelection = getElementClientCenter(sourceCardElement);
+			const startTime = performance.now();
+			const deltaX = topTargetClientSelection.x - startClientSelection.x;
+			const deltaY = topTargetClientSelection.y - startClientSelection.y;
+			const travelDistance = Math.hypot(deltaX, deltaY);
+			const durationMs = Math.min(224, Math.max(133, 102 + (travelDistance * 0.126)));
+			const easeInOutCubic = (value: number) =>
+				value < 0.5
+					? 4 * (value ** 3)
+					: 1 - ((-2 * value + 2) ** 3) / 2;
+			const animate = (frameTime: number) => {
+				if (!dragActions.isActive()) {
+					return;
+				}
+				try {
+					const progress = Math.min((frameTime - startTime) / durationMs, 1);
+					const easedProgress = easeInOutCubic(progress);
+					dragActions.move({
+						x: startClientSelection.x + (deltaX * easedProgress),
+						y: startClientSelection.y + (deltaY * easedProgress),
+					});
+					if (progress >= 1) {
+						dragActions.drop();
+						return;
+					}
+					window.requestAnimationFrame(animate);
+				} catch {
+					clearProgrammaticCardMoveInFlight(taskId);
+					if (dragActions.isActive()) {
+						dragActions.cancel();
+					}
+				}
+			};
+
+			window.requestAnimationFrame(animate);
+			return true;
+		}
+
 		let dragActions: SnapDragActions;
 		try {
 			dragActions = preDrag.snapLift();
@@ -136,16 +233,9 @@ export function KanbanBoard({
 		}
 
 		const moveOneStep = horizontalSteps > 0 ? dragActions.moveRight : dragActions.moveLeft;
-		const targetColumn = board.columns.find((column) => column.id === targetColumnId);
-		const verticalToTopSteps = targetColumnId === "trash"
-			? (targetColumn?.cards.length ?? 0) + 1
-			: 0;
 		const moveSteps: Array<() => void> = [];
 		for (let step = 0; step < Math.abs(horizontalSteps); step += 1) {
 			moveSteps.push(moveOneStep);
-		}
-		for (let step = 0; step < verticalToTopSteps; step += 1) {
-			moveSteps.push(dragActions.moveUp);
 		}
 
 		const performStep = (stepIndex: number) => {
@@ -175,7 +265,7 @@ export function KanbanBoard({
 			});
 		});
 		return true;
-	}, [clearProgrammaticCardMoveInFlight]);
+	}, [clearProgrammaticCardMoveInFlight, getElementClientCenter, getProgrammaticTopTargetClientSelection]);
 
 	useEffect(() => {
 		onRequestProgrammaticCardMoveReady?.(requestProgrammaticCardMove);

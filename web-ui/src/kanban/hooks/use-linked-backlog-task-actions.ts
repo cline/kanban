@@ -172,7 +172,9 @@ export function useLinkedBacklogTaskActions({
 				setBoard((currentBoardState) => {
 					let nextBoardState = currentBoardState;
 					for (const readyTask of readyTasks) {
-						const moved = moveTaskToColumn(nextBoardState, readyTask.id, "in_progress");
+						const moved = moveTaskToColumn(nextBoardState, readyTask.id, "in_progress", {
+							insertAtTop: true,
+						});
 						if (moved.moved) {
 							nextBoardState = moved.board;
 						}

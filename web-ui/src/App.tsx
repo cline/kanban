@@ -884,6 +884,7 @@ export default function App(): ReactElement {
 		resolvePendingProgrammaticTrashMove,
 		resetProgrammaticCardMoves,
 		requestMoveTaskToTrashWithAnimation,
+		programmaticCardMoveCycle,
 	} = useProgrammaticCardMoves();
 
 	const searchableTasks = useMemo((): SearchableTask[] => {
@@ -905,6 +906,7 @@ export default function App(): ReactElement {
 		setBoard((currentBoard) => {
 			let nextBoard = currentBoard;
 			const previousSessions = previousSessionsRef.current;
+			const blockedInterruptedTaskIds = new Set<string>();
 			for (const summary of Object.values(sessions)) {
 				const previous = previousSessions[summary.taskId];
 				if (previous && previous.updatedAt > summary.updatedAt) {
@@ -915,11 +917,11 @@ export default function App(): ReactElement {
 					summary.state === "awaiting_review" &&
 					columnId === "in_progress"
 				) {
-					const startedProgrammaticMove = tryProgrammaticCardMove(summary.taskId, columnId, "review");
-					if (startedProgrammaticMove) {
+					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "review");
+					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 						continue;
 					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
+					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review", { insertAtTop: true });
 					if (moved.moved) {
 						nextBoard = moved.board;
 					}
@@ -929,13 +931,13 @@ export default function App(): ReactElement {
 					summary.state === "running" &&
 					columnId === "review"
 				) {
-					const startedProgrammaticMove = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
+					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
 						skipKickoff: true,
 					});
-					if (startedProgrammaticMove) {
+					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 						continue;
 					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress");
+					const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress", { insertAtTop: true });
 					if (moved.moved) {
 						nextBoard = moved.board;
 					}
@@ -948,16 +950,19 @@ export default function App(): ReactElement {
 					columnId !== "trash"
 				) {
 					const nextTaskId = getNextDetailTaskIdAfterTrashMove(nextBoard, summary.taskId);
-					const startedProgrammaticMove = tryProgrammaticCardMove(summary.taskId, columnId, "trash", {
+					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "trash", {
 						skipTrashWorkflow: true,
 					});
-					if (startedProgrammaticMove) {
+					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
+						if (programmaticMoveAttempt === "blocked") {
+							blockedInterruptedTaskIds.add(summary.taskId);
+						}
 						setSelectedTaskId((currentSelectedTaskId) =>
 							currentSelectedTaskId === summary.taskId ? nextTaskId : currentSelectedTaskId,
 						);
 						continue;
 					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
+					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash", { insertAtTop: true });
 					if (moved.moved) {
 						setSelectedTaskId((currentSelectedTaskId) =>
 							currentSelectedTaskId === summary.taskId
@@ -968,10 +973,19 @@ export default function App(): ReactElement {
 					}
 				}
 			}
+			const nextPreviousSessions = { ...sessions };
+			for (const taskId of blockedInterruptedTaskIds) {
+				const previousSession = previousSessions[taskId];
+				if (previousSession) {
+					nextPreviousSessions[taskId] = previousSession;
+					continue;
+				}
+				delete nextPreviousSessions[taskId];
+			}
+			previousSessionsRef.current = nextPreviousSessions;
 			return nextBoard;
 		});
-		previousSessionsRef.current = sessions;
-	}, [sessions, tryProgrammaticCardMove]);
+	}, [programmaticCardMoveCycle, sessions, tryProgrammaticCardMove]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -2127,16 +2141,16 @@ export default function App(): ReactElement {
 				}
 				return false;
 			}
-			if (!optimisticMove) {
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== fromColumnId) {
-						return currentBoard;
-					}
-					const moved = moveTaskToColumn(currentBoard, taskId, "in_progress");
-					return moved.moved ? moved.board : currentBoard;
-				});
-			}
+				if (!optimisticMove) {
+					setBoard((currentBoard) => {
+						const currentColumnId = getTaskColumnId(currentBoard, taskId);
+						if (currentColumnId !== fromColumnId) {
+							return currentBoard;
+						}
+						const moved = moveTaskToColumn(currentBoard, taskId, "in_progress", { insertAtTop: true });
+						return moved.moved ? moved.board : currentBoard;
+					});
+				}
 			setWorktreeError(null);
 			return true;
 		},
@@ -2257,11 +2271,11 @@ export default function App(): ReactElement {
 			if (!selection || selection.column.id !== "backlog") {
 				return;
 			}
-			const startedProgrammaticMove = tryProgrammaticCardMove(taskId, selection.column.id, "in_progress");
-			if (startedProgrammaticMove) {
+			const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, selection.column.id, "in_progress");
+			if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 				return;
 			}
-			const moved = moveTaskToColumn(board, taskId, "in_progress");
+			const moved = moveTaskToColumn(board, taskId, "in_progress", { insertAtTop: true });
 			if (!moved.moved) {
 				return;
 			}
@@ -2291,20 +2305,20 @@ export default function App(): ReactElement {
 		if (!selectedCard) {
 			return;
 		}
-		const startedProgrammaticMove = tryProgrammaticCardMove(
+		const programmaticMoveAttempt = tryProgrammaticCardMove(
 			selectedCard.card.id,
 			selectedCard.column.id,
 			"trash",
 		);
-		if (startedProgrammaticMove) {
+		if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 			return;
 		}
 		void requestMoveTaskToTrash(selectedCard.card.id, selectedCard.column.id);
 	}, [requestMoveTaskToTrash, selectedCard, tryProgrammaticCardMove]);
 	const handleMoveReviewCardToTrash = useCallback(
 		(taskId: string) => {
-			const startedProgrammaticMove = tryProgrammaticCardMove(taskId, "review", "trash");
-			if (startedProgrammaticMove) {
+			const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, "review", "trash");
+			if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 				return;
 			}
 			void requestMoveTaskToTrash(taskId, "review");
