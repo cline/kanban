@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Code, FormGroup, HTMLSelect, Icon } from "@blueprintjs/core";
 import type { ReactElement } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 import { BranchSelectDropdown, type BranchSelectOption } from "@/kanban/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/kanban/components/task-prompt-composer";
@@ -63,7 +64,26 @@ export function TaskInlineCreateCard({
 	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
+	const cancelLabel = mode === "create" ? "Cancel (esc)" : "Cancel";
 	const cardMarginBottom = mode === "create" ? 8 : 0;
+
+	useHotkeys(
+		"esc",
+		(event) => {
+			if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+				return;
+			}
+			onCancel();
+		},
+		{
+			enabled: mode === "create",
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			ignoreEventWhen: (event) => event.defaultPrevented,
+			preventDefault: true,
+		},
+		[mode, onCancel],
+	);
 
 	return (
 		<Card compact style={{ flexShrink: 0, marginBottom: cardMarginBottom }}>
@@ -132,7 +152,7 @@ export function TaskInlineCreateCard({
 			</FormGroup>
 
 			<div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
-				<Button text="Cancel" variant="outlined" onClick={onCancel} />
+				<Button text={cancelLabel} variant="outlined" onClick={onCancel} />
 				<Button
 					text={(
 						<span style={{ display: "inline-flex", alignItems: "center" }}>

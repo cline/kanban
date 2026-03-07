@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 export interface DependencyLinkDraft {
 	sourceTaskId: string;
@@ -147,6 +148,21 @@ export function useDependencyLinking({
 
 	const isLinking = draft !== null;
 
+	useHotkeys(
+		"esc",
+		() => {
+			draftRef.current = null;
+			setDraft(null);
+		},
+		{
+			enabled: isLinking,
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[isLinking],
+	);
+
 	useEffect(() => {
 		if (!isLinking) {
 			if (typeof document !== "undefined") {
@@ -203,12 +219,6 @@ export function useDependencyLinking({
 			});
 		};
 
-		const handleEscape = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				draftRef.current = null;
-				setDraft(null);
-			}
-		};
 		const handleModifierRelease = (event: KeyboardEvent) => {
 			if (event.metaKey || event.ctrlKey) {
 				return;
@@ -232,13 +242,11 @@ export function useDependencyLinking({
 
 		window.addEventListener("mousemove", handleMouseMove);
 		window.addEventListener("mouseup", handleMouseUp);
-		window.addEventListener("keydown", handleEscape);
 		window.addEventListener("keyup", handleModifierRelease);
 		return () => {
 			document.body.classList.remove("kb-dependency-link-mode");
 			window.removeEventListener("mousemove", handleMouseMove);
 			window.removeEventListener("mouseup", handleMouseUp);
-			window.removeEventListener("keydown", handleEscape);
 			window.removeEventListener("keyup", handleModifierRelease);
 		};
 	}, [completeDependencyLink, getValidTargetTaskId, isLinking]);

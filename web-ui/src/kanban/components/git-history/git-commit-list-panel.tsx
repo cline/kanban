@@ -1,6 +1,7 @@
-import { Button, Classes, Colors, Icon, Spinner, Tag } from "@blueprintjs/core";
+import { Button, Classes, Icon, Spinner, Tag } from "@blueprintjs/core";
+import { useHotkeys } from "react-hotkeys-hook";
 import { Virtuoso } from "react-virtuoso";
-import { useCallback, useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import type { RuntimeGitCommit, RuntimeGitRef } from "@/kanban/runtime/types";
 
@@ -226,17 +227,30 @@ export function GitCommitListPanel({
 		return Math.max(max, 1);
 	}, [graphRows]);
 
-	const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-		if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-		event.preventDefault();
+	const commitListRef = useRef<HTMLDivElement | null>(null);
+
+	useHotkeys("up,down", (event) => {
 		const currentIndex = commits.findIndex((c) => c.hash === selectedCommitHash);
-		if (currentIndex === -1) return;
+		if (currentIndex === -1) {
+			return;
+		}
 		const nextIndex = event.key === "ArrowUp"
 			? Math.max(0, currentIndex - 1)
 			: Math.min(commits.length - 1, currentIndex + 1);
 		const nextCommit = commits[nextIndex];
-		if (nextCommit) onSelectCommit(nextCommit);
-	}, [commits, selectedCommitHash, onSelectCommit]);
+		if (nextCommit) {
+			onSelectCommit(nextCommit);
+		}
+	}, {
+		ignoreEventWhen: (event) => {
+			const currentTarget = commitListRef.current;
+			if (!currentTarget || !(event.target instanceof Node)) {
+				return true;
+			}
+			return !currentTarget.contains(event.target);
+		},
+		preventDefault: true,
+	}, [commits, onSelectCommit, selectedCommitHash]);
 
 	return (
 		<div
@@ -267,7 +281,7 @@ export function GitCommitListPanel({
 			</div>
 
 			<div
-				onKeyDown={handleKeyDown}
+				ref={commitListRef}
 				tabIndex={0}
 				style={{
 					flex: "1 1 0",

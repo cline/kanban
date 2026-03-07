@@ -3,6 +3,7 @@ import { Omnibar } from "@blueprintjs/select";
 import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 import {
 	buildProjectPathname,
@@ -1545,20 +1546,26 @@ export default function App(): ReactElement {
 		void sendTaskSessionInput(terminalTaskId, agentCommand, { appendNewline: true });
 	}, [agentCommand, selectedCard, sendTaskSessionInput]);
 
-	const handleGlobalKeyDown = useCallback((event: KeyboardEvent) => {
-		const key = event.key.toLowerCase();
-		if ((event.metaKey || event.ctrlKey) && key === "j") {
-			event.preventDefault();
+	useHotkeys(
+		"mod+j",
+		() => {
 			if (selectedCard) {
 				detailTerminalToggleRef.current?.();
 				return;
 			}
 			homeTerminalToggleRef.current?.();
-			return;
-		}
+		},
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[selectedCard],
+	);
 
-		if ((event.metaKey || event.ctrlKey) && key === "m") {
-			event.preventDefault();
+	useHotkeys(
+		"mod+m",
+		() => {
 			if (selectedCard) {
 				if (isDetailTerminalOpen) {
 					handleToggleExpandDetailTerminal();
@@ -1568,31 +1575,39 @@ export default function App(): ReactElement {
 			if (isHomeTerminalOpen) {
 				handleToggleExpandHomeTerminal();
 			}
-			return;
-		}
+		},
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[
+			handleToggleExpandDetailTerminal,
+			handleToggleExpandHomeTerminal,
+			isDetailTerminalOpen,
+			isHomeTerminalOpen,
+			selectedCard,
+		],
+	);
 
-		const target = event.target as HTMLElement | null;
-		const isTypingTarget =
-			target?.tagName === "INPUT" ||
-			target?.tagName === "TEXTAREA" ||
-			target?.isContentEditable;
-		if (isTypingTarget) {
-			return;
-		}
-
-		if ((event.metaKey || event.ctrlKey) && key === "k") {
-			event.preventDefault();
+	useHotkeys(
+		"mod+k",
+		() => {
 			setIsCommandPaletteOpen((current) => !current);
-			return;
-		}
+		},
+		{ preventDefault: true },
+		[],
+	);
 
-		if (!event.metaKey && !event.ctrlKey && key === "c") {
-			event.preventDefault();
+	useHotkeys(
+		"c",
+		() => {
 			setEditingTaskId(null);
 			setIsInlineTaskCreateOpen(true);
-		}
-	}, [handleToggleExpandDetailTerminal, handleToggleExpandHomeTerminal, isDetailTerminalOpen, isHomeTerminalOpen, selectedCard]);
-	useWindowEvent("keydown", handleGlobalKeyDown);
+		},
+		{ preventDefault: true },
+		[],
+	);
 
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);
