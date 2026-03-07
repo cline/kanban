@@ -1,5 +1,5 @@
 import { Icon } from "@blueprintjs/core";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import type { DependencyLinkDraft } from "@/kanban/components/dependencies/use-dependency-linking";
@@ -23,9 +23,27 @@ interface DependencyLayout {
 
 interface RenderedDependency {
 	dependency: BoardDependency;
+	geometry: DependencyGeometry;
 	path: string;
 	midpointX: number;
 	midpointY: number;
+	startSide: AnchorSide;
+	endSide: AnchorSide;
+}
+
+interface DependencyGeometry {
+	startX: number;
+	startY: number;
+	controlPoint1X: number;
+	controlPoint1Y: number;
+	controlPoint2X: number;
+	controlPoint2Y: number;
+	endX: number;
+	endY: number;
+	midpointX: number;
+	midpointY: number;
+	startSide: AnchorSide;
+	endSide: AnchorSide;
 }
 
 type AnchorSide = "left" | "right" | "top" | "bottom";
@@ -81,6 +99,52 @@ function cubicPoint(
 			3 * inverseSquared * t * p1y +
 			3 * inverse * tSquared * p2y +
 			tCubed * p3y,
+	};
+}
+
+function buildPathFromGeometry(geometry: DependencyGeometry): string {
+	return `M ${geometry.startX} ${geometry.startY} C ${geometry.controlPoint1X} ${geometry.controlPoint1Y} ${geometry.controlPoint2X} ${geometry.controlPoint2Y} ${geometry.endX} ${geometry.endY}`;
+}
+
+function interpolateDependencyGeometry(
+	from: DependencyGeometry,
+	to: DependencyGeometry,
+	progress: number,
+): DependencyGeometry {
+	const interpolate = (fromValue: number, toValue: number) =>
+		fromValue + ((toValue - fromValue) * progress);
+	const startX = interpolate(from.startX, to.startX);
+	const startY = interpolate(from.startY, to.startY);
+	const controlPoint1X = interpolate(from.controlPoint1X, to.controlPoint1X);
+	const controlPoint1Y = interpolate(from.controlPoint1Y, to.controlPoint1Y);
+	const controlPoint2X = interpolate(from.controlPoint2X, to.controlPoint2X);
+	const controlPoint2Y = interpolate(from.controlPoint2Y, to.controlPoint2Y);
+	const endX = interpolate(from.endX, to.endX);
+	const endY = interpolate(from.endY, to.endY);
+	const midpoint = cubicPoint(
+		0.5,
+		startX,
+		startY,
+		controlPoint1X,
+		controlPoint1Y,
+		controlPoint2X,
+		controlPoint2Y,
+		endX,
+		endY,
+	);
+	return {
+		startX,
+		startY,
+		controlPoint1X,
+		controlPoint1Y,
+		controlPoint2X,
+		controlPoint2Y,
+		endX,
+		endY,
+		midpointX: midpoint.x,
+		midpointY: midpoint.y,
+		startSide: to.startSide,
+		endSide: to.endSide,
 	};
 }
 
@@ -259,7 +323,14 @@ function computePath(
 	firstLaneOffset: number,
 	secondLaneOffset: number,
 	bounds?: { width: number; height: number },
-): { path: string; midpointX: number; midpointY: number } {
+): {
+	geometry: DependencyGeometry;
+	path: string;
+	midpointX: number;
+	midpointY: number;
+	startSide: AnchorSide;
+	endSide: AnchorSide;
+} {
 	const sourcePadding = SOURCE_CONNECTOR_PADDING;
 	const targetPadding = TARGET_CONNECTOR_PADDING;
 	const connection = chooseConnection(
@@ -300,10 +371,27 @@ function computePath(
 		endY,
 	);
 
-	return {
-		path: `M ${startX} ${startY} C ${controlPoint1X} ${controlPoint1Y} ${controlPoint2X} ${controlPoint2Y} ${endX} ${endY}`,
+	const geometry: DependencyGeometry = {
+		startX,
+		startY,
+		controlPoint1X,
+		controlPoint1Y,
+		controlPoint2X,
+		controlPoint2Y,
+		endX,
+		endY,
 		midpointX: midpoint.x,
 		midpointY: midpoint.y,
+		startSide: connection.start.side,
+		endSide: connection.end.side,
+	};
+	return {
+		geometry,
+		path: buildPathFromGeometry(geometry),
+		midpointX: midpoint.x,
+		midpointY: midpoint.y,
+		startSide: connection.start.side,
+		endSide: connection.end.side,
 	};
 }
 
@@ -333,7 +421,8 @@ function areLayoutsEqual(a: DependencyLayout, b: DependencyLayout): boolean {
 			hasComparableValueDifference(aAnchor.left, bAnchor.left) ||
 			hasComparableValueDifference(aAnchor.right, bAnchor.right) ||
 			hasComparableValueDifference(aAnchor.top, bAnchor.top) ||
-			hasComparableValueDifference(aAnchor.bottom, bAnchor.bottom)
+			hasComparableValueDifference(aAnchor.bottom, bAnchor.bottom) ||
+			aAnchor.columnId !== bAnchor.columnId
 		) {
 			return false;
 		}
@@ -353,16 +442,32 @@ export function DependencyOverlay({
 	containerRef,
 	dependencies,
 	draft,
+	activeTaskId,
+	activeTaskEffectiveColumnId,
+	isMotionActive = false,
 	onDeleteDependency,
 }: {
 	containerRef: RefObject<HTMLElement>;
 	dependencies: BoardDependency[];
 	draft: DependencyLinkDraft | null;
+	activeTaskId?: string | null;
+	activeTaskEffectiveColumnId?: BoardColumnId | null;
+	isMotionActive?: boolean;
 	onDeleteDependency?: (dependencyId: string) => void;
 }): React.ReactElement | null {
 	const [layout, setLayout] = useState<DependencyLayout>(() => createEmptyLayout());
 	const [hoveredDependencyId, setHoveredDependencyId] = useState<string | null>(null);
 	const hoverClearTimeoutRef = useRef<number | null>(null);
+	const previousRenderedDependencyByIdRef = useRef<Record<string, Pick<RenderedDependency, "geometry" | "startSide" | "endSide">>>({});
+	const sideTransitionByDependencyIdRef = useRef<Record<string, {
+		from: DependencyGeometry;
+		startTime: number;
+		durationMs: number;
+		targetStartSide: AnchorSide;
+		targetEndSide: AnchorSide;
+	}>>({});
+	const animationFrameIdRef = useRef<number | null>(null);
+	const [, setAnimationFrameTick] = useState(0);
 
 	const refreshLayout = useCallback(() => {
 		const container = containerRef.current;
@@ -376,10 +481,10 @@ export function DependencyOverlay({
 
 		const containerRect = container.getBoundingClientRect();
 		const anchors: Record<string, TaskAnchor> = {};
-		for (const cardElement of container.querySelectorAll<HTMLElement>("[data-task-id]")) {
+		const setAnchorFromElement = (cardElement: HTMLElement) => {
 			const taskId = cardElement.dataset.taskId;
 			if (!taskId) {
-				continue;
+				return;
 			}
 			const rect = cardElement.getBoundingClientRect();
 			const left = rect.left - containerRect.left;
@@ -393,8 +498,26 @@ export function DependencyOverlay({
 				bottom,
 				centerX: (left + right) / 2,
 				centerY: (top + bottom) / 2,
-				columnId: normalizeColumnId(cardElement.closest<HTMLElement>("[data-column-id]")?.dataset.columnId),
+				columnId:
+					taskId === activeTaskId && activeTaskEffectiveColumnId
+						? activeTaskEffectiveColumnId
+						: normalizeColumnId(
+							cardElement.dataset.columnId ??
+								cardElement.closest<HTMLElement>("[data-column-id]")?.dataset.columnId,
+						),
 			};
+		};
+		for (const cardElement of container.querySelectorAll<HTMLElement>("[data-task-id]")) {
+			setAnchorFromElement(cardElement);
+		}
+		if (activeTaskId && typeof document !== "undefined") {
+			const activeCardElements = Array.from(document.querySelectorAll<HTMLElement>(`[data-task-id="${activeTaskId}"]`));
+			const liveActiveCardElement =
+				activeCardElements.find((element) => !container.contains(element)) ??
+				activeCardElements[0];
+			if (liveActiveCardElement) {
+				setAnchorFromElement(liveActiveCardElement);
+			}
 		}
 
 		const nextLayout: DependencyLayout = {
@@ -403,7 +526,7 @@ export function DependencyOverlay({
 			anchors,
 		};
 		setLayout((current) => (areLayoutsEqual(current, nextLayout) ? current : nextLayout));
-	}, [containerRef]);
+	}, [activeTaskEffectiveColumnId, activeTaskId, containerRef]);
 
 	useEffect(() => {
 		refreshLayout();
@@ -489,7 +612,7 @@ export function DependencyOverlay({
 
 	useEffect(() => {
 		let animationFrameId = 0;
-		if (!draft) {
+		if (!draft && !isMotionActive) {
 			return;
 		}
 		const tick = () => {
@@ -500,7 +623,7 @@ export function DependencyOverlay({
 		return () => {
 			window.cancelAnimationFrame(animationFrameId);
 		};
-	}, [draft, refreshLayout]);
+	}, [draft, isMotionActive, refreshLayout]);
 
 	const renderedDependencies = useMemo((): RenderedDependency[] => {
 		const candidates = dependencies
@@ -559,12 +682,100 @@ export function DependencyOverlay({
 			);
 			return {
 				dependency: candidate.dependency,
+				geometry: geometry.geometry,
 				path: geometry.path,
 				midpointX: geometry.midpointX,
 				midpointY: geometry.midpointY,
+				startSide: geometry.startSide,
+				endSide: geometry.endSide,
 			};
 		});
 	}, [dependencies, layout.anchors, layout.height, layout.width]);
+
+	useLayoutEffect(() => {
+		const now = performance.now();
+		const nextPreviousRenderedDependencyById: Record<string, Pick<RenderedDependency, "geometry" | "startSide" | "endSide">> = {};
+		const nextRenderedDependencyIds = new Set(renderedDependencies.map((rendered) => rendered.dependency.id));
+		for (const rendered of renderedDependencies) {
+			const existingTransition = sideTransitionByDependencyIdRef.current[rendered.dependency.id];
+			const previousRendered = previousRenderedDependencyByIdRef.current[rendered.dependency.id];
+			const transitionProgress = existingTransition
+				? Math.min((now - existingTransition.startTime) / existingTransition.durationMs, 1)
+				: 1;
+			const transitionFromGeometry = existingTransition
+				? interpolateDependencyGeometry(
+					existingTransition.from,
+					rendered.geometry,
+					transitionProgress,
+				)
+				: previousRendered?.geometry;
+			const shouldAnimateSideTransition = previousRendered != null &&
+				(previousRendered.startSide !== rendered.startSide || previousRendered.endSide !== rendered.endSide);
+			if (shouldAnimateSideTransition && transitionFromGeometry) {
+				sideTransitionByDependencyIdRef.current[rendered.dependency.id] = {
+					from: transitionFromGeometry,
+					startTime: now,
+					durationMs: 150,
+					targetStartSide: rendered.startSide,
+					targetEndSide: rendered.endSide,
+				};
+			} else if (
+				existingTransition &&
+				transitionProgress < 1 &&
+				existingTransition.targetStartSide === rendered.startSide &&
+				existingTransition.targetEndSide === rendered.endSide
+			) {
+				sideTransitionByDependencyIdRef.current[rendered.dependency.id] = existingTransition;
+			} else {
+				delete sideTransitionByDependencyIdRef.current[rendered.dependency.id];
+			}
+			nextPreviousRenderedDependencyById[rendered.dependency.id] = {
+				geometry: rendered.geometry,
+				startSide: rendered.startSide,
+				endSide: rendered.endSide,
+			};
+		}
+		for (const dependencyId of Object.keys(sideTransitionByDependencyIdRef.current)) {
+			if (!nextRenderedDependencyIds.has(dependencyId)) {
+				delete sideTransitionByDependencyIdRef.current[dependencyId];
+			}
+		}
+		previousRenderedDependencyByIdRef.current = nextPreviousRenderedDependencyById;
+	}, [renderedDependencies]);
+
+	useEffect(() => {
+		if (Object.keys(sideTransitionByDependencyIdRef.current).length === 0) {
+			if (animationFrameIdRef.current !== null) {
+				window.cancelAnimationFrame(animationFrameIdRef.current);
+				animationFrameIdRef.current = null;
+			}
+			return;
+		}
+		const tick = () => {
+			const now = performance.now();
+			let hasActiveTransition = false;
+			for (const [dependencyId, transition] of Object.entries(sideTransitionByDependencyIdRef.current)) {
+				if (now - transition.startTime >= transition.durationMs) {
+					delete sideTransitionByDependencyIdRef.current[dependencyId];
+					continue;
+				}
+				hasActiveTransition = true;
+			}
+			setAnimationFrameTick((current) => current + 1);
+			if (hasActiveTransition) {
+				animationFrameIdRef.current = window.requestAnimationFrame(tick);
+				return;
+			}
+			animationFrameIdRef.current = null;
+		};
+		animationFrameIdRef.current = window.requestAnimationFrame(tick);
+		return () => {
+			if (animationFrameIdRef.current !== null) {
+				window.cancelAnimationFrame(animationFrameIdRef.current);
+				animationFrameIdRef.current = null;
+			}
+		};
+	}, [renderedDependencies]);
 
 	const draftPath = useMemo(() => {
 		if (!draft) {
@@ -616,44 +827,55 @@ export function DependencyOverlay({
 				height={layout.height}
 				viewBox={`0 0 ${layout.width} ${layout.height}`}
 			>
-				{renderedDependencies.map((rendered) => (
-					<g key={rendered.dependency.id}>
-						<path
-							d={rendered.path}
-							className={`kb-dependency-path${hoveredDependencyId === rendered.dependency.id ? " kb-dependency-path-hover" : ""}`}
-						/>
-						{onDeleteDependency ? (
+				{renderedDependencies.map((rendered) => {
+					const sideTransition = sideTransitionByDependencyIdRef.current[rendered.dependency.id];
+					const displayedGeometry = sideTransition
+						? interpolateDependencyGeometry(
+							sideTransition.from,
+							rendered.geometry,
+							Math.min((performance.now() - sideTransition.startTime) / sideTransition.durationMs, 1),
+						)
+						: rendered.geometry;
+					const displayedPath = buildPathFromGeometry(displayedGeometry);
+					return (
+						<g key={rendered.dependency.id}>
 							<path
-								d={rendered.path}
-								className="kb-dependency-hit-path"
-								onMouseEnter={() => {
-									clearPendingHoverClear();
-									setHoveredDependencyId(rendered.dependency.id);
-								}}
-								onMouseMove={() => {
-									clearPendingHoverClear();
-									setHoveredDependencyId((current) =>
-										current === rendered.dependency.id ? current : rendered.dependency.id,
-									);
-								}}
-								onMouseLeave={() => {
-									scheduleHoverClear(rendered.dependency.id);
-								}}
-								onMouseDown={(event) => {
-									event.preventDefault();
-									event.stopPropagation();
-								}}
-								onClick={(event) => {
-									event.preventDefault();
-									event.stopPropagation();
-									onDeleteDependency(rendered.dependency.id);
-									clearPendingHoverClear();
-									setHoveredDependencyId(null);
-								}}
+								d={displayedPath}
+								className={`kb-dependency-path${hoveredDependencyId === rendered.dependency.id ? " kb-dependency-path-hover" : ""}`}
 							/>
-						) : null}
-					</g>
-				))}
+							{onDeleteDependency ? (
+								<path
+									d={displayedPath}
+									className="kb-dependency-hit-path"
+									onMouseEnter={() => {
+										clearPendingHoverClear();
+										setHoveredDependencyId(rendered.dependency.id);
+									}}
+									onMouseMove={() => {
+										clearPendingHoverClear();
+										setHoveredDependencyId((current) =>
+											current === rendered.dependency.id ? current : rendered.dependency.id,
+										);
+									}}
+									onMouseLeave={() => {
+										scheduleHoverClear(rendered.dependency.id);
+									}}
+									onMouseDown={(event) => {
+										event.preventDefault();
+										event.stopPropagation();
+									}}
+									onClick={(event) => {
+										event.preventDefault();
+										event.stopPropagation();
+										onDeleteDependency(rendered.dependency.id);
+										clearPendingHoverClear();
+										setHoveredDependencyId(null);
+									}}
+								/>
+							) : null}
+						</g>
+					);
+				})}
 			</svg>
 			{draftPath ? (
 				<svg

@@ -142,6 +142,7 @@ export function BoardCard({
 						{...provided.dragHandleProps}
 						className="kb-board-card-shell"
 						data-task-id={card.id}
+						data-column-id={columnId}
 						onMouseDownCapture={(event) => {
 							if (!isCardInteractive) {
 								return;

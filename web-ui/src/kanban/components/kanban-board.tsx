@@ -296,6 +296,13 @@ export function KanbanBoard({
 		[clearProgrammaticCardMoveInFlight, onDragEnd],
 	);
 
+	// Dependency links should reroute as soon as motion starts, not only after drop.
+	// Treat the active card as already belonging to its destination/effective column
+	// so the edge transition can animate alongside the move.
+	const activeTaskEffectiveColumnId =
+		programmaticCardMoveInFlight?.toColumnId ??
+		(activeDragTaskId !== null && activeDragSourceColumnId === "backlog" ? "in_progress" : null);
+
 	return (
 		<DragDropContext
 			onBeforeCapture={handleBeforeCapture}
@@ -341,6 +348,9 @@ export function KanbanBoard({
 					containerRef={boardRef}
 					dependencies={dependencies}
 					draft={dependencyLinking.draft}
+					activeTaskId={activeDragTaskId ?? programmaticCardMoveInFlight?.taskId ?? null}
+					activeTaskEffectiveColumnId={activeTaskEffectiveColumnId}
+					isMotionActive={activeDragTaskId !== null || programmaticCardMoveInFlight !== null}
 					onDeleteDependency={onDeleteDependency}
 				/>
 			</section>
