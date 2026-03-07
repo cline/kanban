@@ -7,6 +7,7 @@ import {
 	getTaskColumnId,
 	moveTaskToColumn,
 	trashTaskAndGetReadyLinkedTaskIds,
+	updateTask,
 	updateTaskDependencies,
 } from "../../../src/runtime/mcp/task-state.js";
 
@@ -31,6 +32,8 @@ describe("addTaskToColumn", () => {
 			"backlog",
 			{
 				prompt: "Implement MCP tools\nCreate and start task tools",
+				autoReviewEnabled: true,
+				autoReviewMode: "pr",
 				baseRef: "main",
 			},
 			() => "abcdef1234567890",
@@ -42,6 +45,8 @@ describe("addTaskToColumn", () => {
 			prompt: "Implement MCP tools\nCreate and start task tools",
 			baseRef: "main",
 			startInPlanMode: false,
+			autoReviewEnabled: true,
+			autoReviewMode: "pr",
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -61,6 +66,78 @@ describe("addTaskToColumn", () => {
 			50,
 		);
 		expect(result.board.columns[2]?.cards[0]?.id).toBe("revie");
+	});
+});
+
+describe("updateTask", () => {
+	it("updates task prompt and auto-review settings", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"backlog",
+			{
+				prompt: "Original task",
+				baseRef: "main",
+			},
+			() => "aaaaabbbbb",
+			100,
+		);
+
+		const updated = updateTask(
+			created.board,
+			created.task.id,
+			{
+				prompt: "Updated task",
+				startInPlanMode: true,
+				autoReviewEnabled: true,
+				autoReviewMode: "move_to_trash",
+				baseRef: "develop",
+			},
+			200,
+		);
+
+		expect(updated.updated).toBe(true);
+		expect(updated.task).toMatchObject({
+			id: created.task.id,
+			prompt: "Updated task",
+			startInPlanMode: true,
+			autoReviewEnabled: true,
+			autoReviewMode: "move_to_trash",
+			baseRef: "develop",
+			updatedAt: 200,
+		});
+		expect(updated.board.columns[0]?.cards[0]).toMatchObject({
+			id: created.task.id,
+			autoReviewEnabled: true,
+			autoReviewMode: "move_to_trash",
+		});
+	});
+
+	it("normalizes unknown auto-review mode back to commit", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"backlog",
+			{
+				prompt: "Original task",
+				baseRef: "main",
+			},
+			() => "aaaaabbbbb",
+			100,
+		);
+
+		const updated = updateTask(
+			created.board,
+			created.task.id,
+			{
+				prompt: "Updated task",
+				autoReviewEnabled: true,
+				autoReviewMode: "unexpected" as never,
+				baseRef: "main",
+			},
+			200,
+		);
+
+		expect(updated.updated).toBe(true);
+		expect(updated.task?.autoReviewMode).toBe("commit");
 	});
 });
 

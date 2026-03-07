@@ -11,7 +11,10 @@ export {
 	type RuntimeMoveTaskResult as McpMoveTaskResult,
 	type RuntimeRemoveTaskDependencyResult as McpRemoveTaskDependencyResult,
 	type RuntimeTrashTaskResult as McpTrashTaskResult,
+	type RuntimeUpdateTaskInput as McpUpdateTaskInput,
+	type RuntimeUpdateTaskResult as McpUpdateTaskResult,
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
+	updateTask,
 	updateTaskDependencies,
 } from "../task-board-mutations.js";

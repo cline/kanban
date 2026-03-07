@@ -15,6 +15,14 @@ export interface RuntimeCreateTaskInput {
 	baseRef: string;
 }
 
+export interface RuntimeUpdateTaskInput {
+	prompt: string;
+	startInPlanMode?: boolean;
+	autoReviewEnabled?: boolean;
+	autoReviewMode?: RuntimeTaskAutoReviewMode;
+	baseRef: string;
+}
+
 function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
 	if (value === "pr" || value === "move_to_trash") {
 		return value;
@@ -32,6 +40,12 @@ export interface RuntimeMoveTaskResult {
 	board: RuntimeBoardData;
 	task: RuntimeBoardCard | null;
 	fromColumnId: RuntimeBoardColumnId | null;
+}
+
+export interface RuntimeUpdateTaskResult {
+	board: RuntimeBoardData;
+	task: RuntimeBoardCard | null;
+	updated: boolean;
 }
 
 export interface RuntimeAddTaskDependencyResult {
@@ -466,5 +480,78 @@ export function moveTaskToColumn(
 		}),
 		task: movedTask,
 		fromColumnId: found.columnId,
+	};
+}
+
+export function updateTask(
+	board: RuntimeBoardData,
+	taskId: string,
+	input: RuntimeUpdateTaskInput,
+	now: number = Date.now(),
+): RuntimeUpdateTaskResult {
+	const normalizedTaskId = taskId.trim();
+	if (!normalizedTaskId) {
+		return {
+			board,
+			task: null,
+			updated: false,
+		};
+	}
+
+	const prompt = input.prompt.trim();
+	if (!prompt) {
+		return {
+			board,
+			task: null,
+			updated: false,
+		};
+	}
+
+	const baseRef = input.baseRef.trim();
+	if (!baseRef) {
+		return {
+			board,
+			task: null,
+			updated: false,
+		};
+	}
+
+	let updatedTask: RuntimeBoardCard | null = null;
+	const columns = board.columns.map((column) => {
+		let columnUpdated = false;
+		const cards = column.cards.map((card) => {
+			if (card.id !== normalizedTaskId) {
+				return card;
+			}
+			columnUpdated = true;
+			updatedTask = {
+				...card,
+				prompt,
+				startInPlanMode: Boolean(input.startInPlanMode),
+				autoReviewEnabled: Boolean(input.autoReviewEnabled),
+				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+				baseRef,
+				updatedAt: now,
+			};
+			return updatedTask;
+		});
+		return columnUpdated ? { ...column, cards } : column;
+	});
+
+	if (!updatedTask) {
+		return {
+			board,
+			task: null,
+			updated: false,
+		};
+	}
+
+	return {
+		board: {
+			...board,
+			columns,
+		},
+		task: updatedTask,
+		updated: true,
 	};
 }

@@ -38,7 +38,7 @@ Multiple agents run simultaneously without stepping on each other because each o
 
 ## The MCP server
 
-Kanbanana includes an MCP server that lets your agent manage the board directly. This is where things get interesting: an agent can create tasks, start them, and list what's on the board, turning a single agent into an orchestrator that delegates work to other agents.
+Kanbanana includes an MCP server that lets your agent manage the board directly. This is where things get interesting: an agent can create tasks, tune their automation settings, link dependent work together, start them, and inspect what's on the board, turning a single agent into an orchestrator that delegates work to other agents.
 
 To add the MCP server to your agent, point it at:
 
@@ -46,11 +46,18 @@ To add the MCP server to your agent, point it at:
 kanbanana mcp
 ```
 
-The MCP server exposes three tools:
+The MCP server exposes these tools:
 
-- `list_tasks` -- see what's on the board
-- `create_task` -- add a new task to backlog
+- `list_tasks` -- see what's on the board, including task links and auto-review settings
+- `create_task` -- add a new task to backlog, optionally with auto-review enabled
+- `update_task` -- change a task's prompt, base ref, plan mode, or auto-review settings
+- `link_tasks` -- link tasks so backlog work can wait on another task
+- `unlink_tasks` -- remove an existing task link
 - `start_task` -- kick off a task (creates the worktree, launches the agent)
+
+Task linking is useful both for parallelization and for dependencies. When a larger effort is easy to break into multiple tasks that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes. When one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task. When the linked task eventually reaches review and gets moved to trash, the waiting backlog task becomes ready to start automatically.
+
+Auto-review settings let a task automatically make a commit, open a PR, or move itself to trash after it reaches review.
 
 This means you can tell your agent something like "break this feature into subtasks on the kanban board, then start them all" and it will use the MCP tools to do exactly that. Each subtask runs in its own worktree with its own agent instance, all managed through the board.
 

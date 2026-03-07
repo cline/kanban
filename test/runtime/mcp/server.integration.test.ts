@@ -92,7 +92,7 @@ describe.sequential("mcp server integration", () => {
 
 				expect(result.isError).toBe(true);
 				expect(payload.ok).toBe(false);
-				expect(payload.error).toContain("Could not create task via Kanbanana runtime");
+				expect(payload.error).toContain('Tool "create_task"');
 				expect(payload.error).toContain("No git repository detected");
 			});
 		});
@@ -111,7 +111,7 @@ describe.sequential("mcp server integration", () => {
 
 				expect(result.isError).toBe(true);
 				expect(payload.ok).toBe(false);
-				expect(payload.error).toContain("Could not start task via Kanbanana runtime");
+				expect(payload.error).toContain('Tool "start_task"');
 				expect(payload.error).toContain("No git repository detected");
 			});
 		});
@@ -131,7 +131,41 @@ describe.sequential("mcp server integration", () => {
 
 				expect(result.isError).toBe(true);
 				expect(payload.ok).toBe(false);
-				expect(payload.error).toContain("Could not list tasks via Kanbanana runtime");
+				expect(payload.error).toContain('Tool "list_tasks"');
+			});
+		});
+	});
+
+	it("returns structured validation error for update_task when no fields are provided", async () => {
+		await withTemporaryHome(async (homePath) => {
+			await withConnectedMcpClient(homePath, async (client) => {
+				const { result, payload } = await callToolJson(client, "update_task", {
+					taskId: "task-123",
+				});
+
+				expect(result.isError).toBe(true);
+				expect(payload.ok).toBe(false);
+				expect(payload.error).toContain("update_task requires at least one field to change");
+			});
+		});
+	});
+
+	it("returns structured link_tasks error when workspace resolution fails", async () => {
+		await withTemporaryHome(async (homePath) => {
+			const nonGitPath = join(homePath, "non-git-project");
+			mkdirSync(nonGitPath, { recursive: true });
+
+			await withConnectedMcpClient(homePath, async (client) => {
+				const { result, payload } = await callToolJson(client, "link_tasks", {
+					taskId: "task-a",
+					linkedTaskId: "task-b",
+					projectPath: nonGitPath,
+				});
+
+				expect(result.isError).toBe(true);
+				expect(payload.ok).toBe(false);
+				expect(payload.error).toContain('Tool "link_tasks"');
+				expect(payload.error).toContain("No git repository detected");
 			});
 		});
 	});

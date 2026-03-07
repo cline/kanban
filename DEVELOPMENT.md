@@ -68,6 +68,8 @@ kanbanana
 
 After local code changes, run `npm run build` again before using the linked command.
 
+When switching between worktrees, re-run `npm link` from the worktree you want to test so the global `kanbanana` binary points at the right `dist/cli.js`. Without this, `kanbanana mcp` will serve a stale build from a different worktree.
+
 Remove the global link:
 
 ```bash
