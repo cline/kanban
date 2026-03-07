@@ -65,8 +65,18 @@ function createBoard(title: string): RuntimeBoardData {
 	};
 }
 
-function createReviewBoard(taskId: string, title: string): RuntimeBoardData {
+function createReviewBoard(taskId: string, title: string, existingTrashTaskId?: string): RuntimeBoardData {
 	const now = Date.now();
+	const trashCards = existingTrashTaskId
+		? [{
+			id: existingTrashTaskId,
+			prompt: "Already trashed task",
+			startInPlanMode: false,
+			baseRef: "main",
+			createdAt: now,
+			updatedAt: now,
+		}]
+		: [];
 	return {
 		columns: [
 			{ id: "backlog", title: "Backlog", cards: [] },
@@ -85,7 +95,7 @@ function createReviewBoard(taskId: string, title: string): RuntimeBoardData {
 					},
 				],
 			},
-			{ id: "trash", title: "Trash", cards: [] },
+			{ id: "trash", title: "Trash", cards: trashCards },
 		],
 		dependencies: [],
 	};
@@ -722,6 +732,7 @@ describe.sequential("runtime state stream integration", () => {
 
 		const taskId = "stale-review-task";
 		const taskTitle = "Stale Review Task";
+		const existingTrashTaskId = "existing-trash-task";
 		const now = Date.now();
 
 		const firstPort = await getAvailablePort();
@@ -750,7 +761,7 @@ describe.sequential("runtime state stream integration", () => {
 				type: "mutation",
 				workspaceId,
 				payload: {
-					board: createReviewBoard(taskId, taskTitle),
+					board: createReviewBoard(taskId, taskTitle, existingTrashTaskId),
 					sessions: {
 						[taskId]: {
 							taskId,
@@ -823,6 +834,8 @@ describe.sequential("runtime state stream integration", () => {
 			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
 			expect(reviewCards.some((card) => card.id === taskId)).toBe(false);
 			expect(trashCards.some((card) => card.id === taskId)).toBe(true);
+			expect(trashCards[0]?.id).toBe(taskId);
+			expect(trashCards.some((card) => card.id === existingTrashTaskId)).toBe(true);
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
 		} finally {

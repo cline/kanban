@@ -595,7 +595,7 @@ function moveTaskToTrash(
 	}
 	const trashColumn = columns[trashColumnIndex];
 	if (!trashColumn.cards.some((candidate) => candidate.id === taskId)) {
-		trashColumn.cards.push({
+		trashColumn.cards.unshift({
 			...removedCard,
 			updatedAt: Date.now(),
 		});
