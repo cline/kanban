@@ -1865,9 +1865,11 @@ export default function App(): ReactElement {
 	}, [defaultTaskBranchRef]);
 
 	const handleOpenEditTask = useCallback(
-		(task: BoardCard) => {
-			setSelectedTaskId(null);
-			setSelectedTaskWorkspaceInfo(null);
+		(task: BoardCard, options?: { preserveDetailSelection?: boolean }) => {
+			if (!options?.preserveDetailSelection) {
+				setSelectedTaskId(null);
+				setSelectedTaskWorkspaceInfo(null);
+			}
 			setIsInlineTaskCreateOpen(false);
 			setNewTaskPrompt("");
 			const taskPrompt = task.prompt.trim();
@@ -2778,7 +2780,9 @@ export default function App(): ReactElement {
 									inlineTaskCreator={inlineTaskCreator}
 									editingTaskId={editingTaskId}
 									inlineTaskEditor={inlineTaskEditor}
-									onEditTask={handleOpenEditTask}
+									onEditTask={(task) => {
+										handleOpenEditTask(task, { preserveDetailSelection: true });
+									}}
 									onCommitTask={handleCommitTask}
 									onOpenPrTask={handleOpenPrTask}
 									onAgentCommitTask={handleAgentCommitTask}
