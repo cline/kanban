@@ -249,6 +249,7 @@ export default function App(): ReactElement {
 		}
 		return parseProjectIdFromPathname(window.location.pathname);
 	});
+	const [pendingAddedProjectId, setPendingAddedProjectId] = useState<string | null>(null);
 	const [isWorkspaceStateRefreshing, setIsWorkspaceStateRefreshing] = useState(false);
 	const {
 		currentProjectId,
@@ -1438,7 +1439,21 @@ export default function App(): ReactElement {
 	useWindowEvent("popstate", handlePopState);
 
 	useEffect(() => {
+		if (!pendingAddedProjectId) {
+			return;
+		}
+		const projectExists = projects.some((project) => project.id === pendingAddedProjectId);
+		if (!projectExists && currentProjectId !== pendingAddedProjectId) {
+			return;
+		}
+		setPendingAddedProjectId(null);
+	}, [currentProjectId, pendingAddedProjectId, projects]);
+
+	useEffect(() => {
 		if (!requestedProjectId || !currentProjectId) {
+			return;
+		}
+		if (pendingAddedProjectId && requestedProjectId === pendingAddedProjectId) {
 			return;
 		}
 		const requestedStillExists = projects.some((project) => project.id === requestedProjectId);
@@ -1446,7 +1461,7 @@ export default function App(): ReactElement {
 			return;
 		}
 		setRequestedProjectId(currentProjectId);
-	}, [currentProjectId, projects, requestedProjectId]);
+	}, [currentProjectId, pendingAddedProjectId, projects, requestedProjectId]);
 
 	useEffect(() => {
 		if (isDocumentVisible) {
@@ -1641,13 +1656,8 @@ export default function App(): ReactElement {
 			if (!added.ok || !added.project) {
 				throw new Error(added.error ?? "Could not add project.");
 			}
-			if (!currentProjectId) {
-				setCanPersistWorkspaceState(false);
-				setRequestedProjectId(added.project.id);
-				setSelectedTaskId(null);
-				setIsInlineTaskCreateOpen(false);
-				setEditingTaskId(null);
-			}
+			setPendingAddedProjectId(added.project.id);
+			handleSelectProject(added.project.id);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			showAppToast({
@@ -1657,7 +1667,7 @@ export default function App(): ReactElement {
 				timeout: 7000,
 			});
 		}
-	}, [currentProjectId]);
+	}, [currentProjectId, handleSelectProject]);
 
 	const handleRemoveProject = useCallback(
 		async (projectId: string): Promise<boolean> => {
