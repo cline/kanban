@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { createMcpServer } from "../../../src/runtime/mcp/server.js";
 import { loadWorkspaceContext } from "../../../src/runtime/state/workspace-state.js";
+import { createGitTestEnv } from "../../utilities/git-env.js";
 
 function createTempDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -18,6 +19,7 @@ function initGitRepository(cwd: string): void {
 	const result = spawnSync("git", ["init"], {
 		cwd,
 		encoding: "utf8",
+		env: createGitTestEnv(),
 	});
 	if (result.status !== 0) {
 		throw new Error(result.stderr || result.stdout || "git init failed");
