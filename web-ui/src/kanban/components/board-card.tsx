@@ -206,7 +206,7 @@ export function BoardCard({
 							compact
 							className={`${isDependencySource ? "kb-board-card-dependency-source" : ""} ${isDependencyTarget ? "kb-board-card-dependency-target" : ""}`.trim()}
 						>
-							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+							<div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24 }}>
 								{statusMarker ? (
 									<div style={{ display: "inline-flex", alignItems: "center" }}>
 										{statusMarker}
