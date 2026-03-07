@@ -144,11 +144,10 @@ export function useLinkedBacklogTaskActions({
 			task: BoardCard,
 			currentBoard?: BoardData,
 		): Promise<void> => {
-			await stopTaskSession(task.id);
-
 			const boardBeforeTrash = currentBoard ?? boardRef.current;
 			const trashed = trashTaskAndGetReadyLinkedTaskIds(boardBeforeTrash, task.id);
 			if (!trashed.moved) {
+				await stopTaskSession(task.id);
 				await cleanupTaskWorkspace(task.id);
 				return;
 			}
@@ -190,6 +189,7 @@ export function useLinkedBacklogTaskActions({
 				);
 			}
 
+			await stopTaskSession(task.id);
 			await cleanupTaskWorkspace(task.id);
 		},
 		[
