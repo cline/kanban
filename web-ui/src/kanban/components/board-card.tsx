@@ -282,40 +282,50 @@ export function BoardCard({
 									</p>
 								</div>
 							) : null}
-								{showWorkspaceStatus && reviewWorkspaceSnapshot ? (
-									<p
-										className={Classes.MONOSPACE_TEXT}
-										style={{
-											margin: "6px 0 0",
-											fontSize: "var(--bp-typography-size-body-small)",
-											lineHeight: 1.4,
-											whiteSpace: "normal",
-											overflowWrap: "anywhere",
+							{showWorkspaceStatus && reviewWorkspaceSnapshot ? (
+								<p
+									className={Classes.MONOSPACE_TEXT}
+									style={{
+										margin: "6px 0 0",
+										fontSize: "var(--bp-typography-size-body-small)",
+										lineHeight: 1.4,
+										whiteSpace: "normal",
+										overflowWrap: "anywhere",
 										color: isTrashCard ? Colors.GRAY2 : undefined,
-										textDecoration: isTrashCard ? "line-through" : undefined,
 										}}
+								>
+									{isTrashCard ? (
+										<span
+											style={{
+												color: Colors.GRAY2,
+												textDecoration: "line-through",
+											}}
 										>
-											<>
-												<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY4 }}>{reviewWorkspacePath}</span>
-												<Icon
-													icon="git-branch"
-													size={10}
-													color={isTrashCard ? Colors.GRAY2 : Colors.GRAY4}
-													style={{ margin: "0px 4px 2px" }}
-												/>
-												<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY4 }}>{reviewRefLabel}</span>
-												{reviewChangeSummary ? (
+											{reviewWorkspacePath}
+										</span>
+									) : (
+										<>
+											<span style={{ color: Colors.GRAY4 }}>{reviewWorkspacePath}</span>
+											<Icon
+												icon="git-branch"
+												size={10}
+												color={Colors.GRAY4}
+												style={{ margin: "0px 4px 2px" }}
+											/>
+											<span style={{ color: Colors.GRAY4 }}>{reviewRefLabel}</span>
+											{reviewChangeSummary ? (
 												<>
-													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY3 }}> (</span>
-													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY3 }}>{reviewChangeSummary.filesLabel}</span>
-													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GREEN4 }}> +{reviewChangeSummary.additions}</span>
-													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.RED4 }}> -{reviewChangeSummary.deletions}</span>
-													<span style={{ color: isTrashCard ? Colors.GRAY2 : Colors.GRAY3 }}>)</span>
+													<span style={{ color: Colors.GRAY3 }}> (</span>
+													<span style={{ color: Colors.GRAY3 }}>{reviewChangeSummary.filesLabel}</span>
+													<span style={{ color: Colors.GREEN4 }}> +{reviewChangeSummary.additions}</span>
+													<span style={{ color: Colors.RED4 }}> -{reviewChangeSummary.deletions}</span>
+													<span style={{ color: Colors.GRAY3 }}>)</span>
 												</>
 											) : null}
 										</>
-									</p>
-								) : null}
+									)}
+								</p>
+							) : null}
 							{showReviewGitActions ? (
 								<div style={{ display: "flex", gap: 6, marginTop: 8 }}>
 									<Button
