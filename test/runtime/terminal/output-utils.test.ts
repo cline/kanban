@@ -39,6 +39,37 @@ describe("activity preview tracker", () => {
 		expect(preview).not.toContain("❯");
 	});
 
+	it("ignores newer claude composer chrome rows", () => {
+		const buffer = [
+			"Finished refactoring the preview renderer.",
+			"",
+			"──────────────────────────────────────────────────────── ▪▪▪ · ↯ ─",
+			"❯",
+		].join("\n");
+		const preview = extractPreviewFromBuffer(buffer, "claude");
+		expect(preview).toContain("Finished refactoring the preview renderer.");
+		expect(preview).not.toContain("▪▪▪");
+		expect(preview).not.toContain("❯");
+	});
+
+	it("ignores claude composer rows when footer status lines follow the prompt", () => {
+		const buffer = [
+			"⏺ Here's Panels.tsx - a tabbed panel component for a VS Code-style UI library.",
+			"  optional controlled activeTab prop, and renders Tab + View sub-components.",
+			"",
+			"──────────────────────────────────────────────────────── ▪▪▪ · ↯ ─",
+			"❯  ",
+			"──────────────────────────────────────────────────────────────────",
+			"  vscrui () | Opus 4.6 (1M context) ████████ (23154) | $0.7101",
+			"  ⏵⏵ bypass permissions on (shift+tab to cycle)",
+		].join("\n");
+		const preview = extractPreviewFromBuffer(buffer, "claude");
+		expect(preview).toContain("Here's Panels.tsx");
+		expect(preview).not.toContain("▪▪▪");
+		expect(preview).not.toContain("vscrui ()");
+		expect(preview).not.toContain("bypass permissions");
+	});
+
 	it("ignores gemini composer rows", () => {
 		const buffer = [
 			"help you with any specific",

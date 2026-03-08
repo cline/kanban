@@ -424,7 +424,8 @@ body.kb-dependency-link-mode {
 	margin: 0;
 	font-size: var(--bp-typography-size-code-small);
 	line-height: 1.35;
-	white-space: pre-line;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
 /* -- Read-only diff (no hover interactions) -- */

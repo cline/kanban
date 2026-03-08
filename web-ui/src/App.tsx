@@ -48,6 +48,7 @@ import {
 } from "@/kanban/git-actions/build-task-git-action-prompt";
 import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
 import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
+import { estimateTaskSessionGeometry } from "@/kanban/runtime/task-session-geometry";
 import { useTerminalConnectionReady } from "@/kanban/runtime/use-terminal-connection-ready";
 import { saveRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
 import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
@@ -433,11 +434,14 @@ export default function App(): ReactElement {
 		try {
 			const kickoffPrompt = task.prompt.trim();
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
+			const geometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
 			const payload = await trpcClient.runtime.startTaskSession.mutate({
 				taskId: task.id,
 				prompt: kickoffPrompt,
 				startInPlanMode: task.startInPlanMode,
 				baseRef: task.baseRef,
+				cols: geometry.cols,
+				rows: geometry.rows,
 			});
 			if (!payload.ok || !payload.summary) {
 				return {

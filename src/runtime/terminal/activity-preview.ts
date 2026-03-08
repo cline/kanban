@@ -383,6 +383,10 @@ function findCutoffFromMarkers(lines: string[], markers: RegExp[]): number {
 	return lines.length;
 }
 
+function isClaudeComposerBorder(line: string): boolean {
+	return /^[\s─━═↯▪•·]+$/u.test(stripAnsi(line));
+}
+
 function resolveAgentCutoff(agentId: RuntimeAgentId | null, lines: string[]): number {
 	if (agentId === "codex") {
 		return findCutoffFromMarkers(lines, [/^\s*[›>]\s/iu, /\bcontext left\b/iu, /\b\/model\b/iu]);
@@ -391,7 +395,7 @@ function resolveAgentCutoff(agentId: RuntimeAgentId | null, lines: string[]): nu
 		const promptIndex = findCutoffFromMarkers(lines, [/^\s*❯(?:\s|$)/iu]);
 		if (promptIndex < lines.length) {
 			for (let index = promptIndex; index >= 0; index -= 1) {
-				if (/^[\s─━═↯]+$/u.test(lines[index] ?? "")) {
+				if (isClaudeComposerBorder(lines[index] ?? "")) {
 					return index;
 				}
 			}

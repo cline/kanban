@@ -273,7 +273,7 @@ export function BoardCard({
 									className="kb-task-preview-pane"
 									style={isTrashCard ? { opacity: 0.55 } : undefined}
 								>
-									<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-line-clamp-5 kb-task-preview-text`}>
+									<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-task-preview-text`}>
 										{sessionSummary.activityPreview}
 									</p>
 								</div>
