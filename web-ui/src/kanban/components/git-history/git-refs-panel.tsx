@@ -176,8 +176,8 @@ export function GitRefsPanel({
 				<Tooltip
 					content={
 						<div style={{ maxWidth: 260, whiteSpace: "normal", lineHeight: 1.4 }}>
-							Click the branch button in the navbar to close this view. Select a branch to browse its
-							history. Double-click a branch to switch the workspace branch.
+							Click the branch button in the navbar to close this view. Double-click a branch to
+							switch the workspace branch.
 						</div>
 					}
 					placement="bottom"

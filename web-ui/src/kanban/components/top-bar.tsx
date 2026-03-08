@@ -34,7 +34,6 @@ export interface TopBarTaskGitSummary {
 }
 
 type SettingsSection = "shortcuts";
-const MAX_GIT_BRANCH_BUTTON_CHARS = 20;
 
 function getWorkspacePathSegments(path: string): string[] {
 	return path.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
@@ -47,13 +46,6 @@ function resolveShortcutIcon(icon: string | undefined): IconName {
 	}
 	const candidate = normalized as IconName;
 	return BLUEPRINT_ICON_NAMES.has(candidate) ? candidate : "console";
-}
-
-function truncateBranchButtonLabel(branchLabel: string): string {
-	if (branchLabel.length <= MAX_GIT_BRANCH_BUTTON_CHARS) {
-		return branchLabel;
-	}
-	return `${branchLabel.slice(0, MAX_GIT_BRANCH_BUTTON_CHARS - 3)}...`;
 }
 
 function GitBranchStatusControl({
@@ -72,26 +64,34 @@ function GitBranchStatusControl({
 	isGitHistoryOpen?: boolean;
 }): React.ReactElement {
 	if (onToggleGitHistory) {
-		const buttonBranchLabel = truncateBranchButtonLabel(branchLabel);
 		return (
-			<>
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					minWidth: 0,
+					overflow: "hidden",
+				}}
+			>
 				<Button
 					icon={<Icon icon="git-branch" size={12} />}
+					alignText="start"
+					ellipsizeText
 					size="small"
 					variant="outlined"
 					active={isGitHistoryOpen}
 					onClick={onToggleGitHistory}
 					className={Classes.MONOSPACE_TEXT}
+					textClassName={Classes.FILL}
 					style={{
 						fontSize: "var(--bp-typography-size-body-small)",
-						flexShrink: 0,
+						flexShrink: 1,
+						minWidth: 0,
+						maxWidth: "100%",
+						overflow: "hidden",
 					}}
 					title={branchLabel}
-					text={
-						<span style={{ whiteSpace: "nowrap" }}>
-							{buttonBranchLabel}
-						</span>
-					}
+					text={branchLabel}
 				/>
 				<span
 					className={Classes.MONOSPACE_TEXT}
@@ -99,6 +99,7 @@ function GitBranchStatusControl({
 						fontSize: "var(--bp-typography-size-body-small)",
 						color: Colors.GRAY3,
 						marginLeft: 6,
+						flexShrink: 0,
 						whiteSpace: "nowrap",
 					}}
 				>
@@ -107,7 +108,7 @@ function GitBranchStatusControl({
 					<span style={{ color: Colors.RED4 }}> -{deletions}</span>
 					)
 				</span>
-			</>
+			</div>
 		);
 	}
 
