@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { homedir } from "node:os";
-import { dirname, extname, join, normalize, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { WebSocket, WebSocketServer } from "ws";
 import packageJson from "../package.json" with { type: "json" };
@@ -32,12 +29,16 @@ import type {
 } from "./runtime/api-contract.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./runtime/config/runtime-config.js";
 import { createGitProcessEnv } from "./runtime/git-process-env.js";
+import { resolveProjectInputPath } from "./runtime/projects/project-path.js";
 import {
 	buildKanbananaRuntimeUrl,
 	KANBANANA_RUNTIME_HOST,
 	KANBANANA_RUNTIME_ORIGIN,
 	KANBANANA_RUNTIME_PORT,
 } from "./runtime/runtime-endpoint.js";
+import { getWebUiDir, normalizeRequestPath, readAsset } from "./runtime/server/assets.js";
+import { openInBrowser } from "./runtime/server/browser.js";
+import { resolveInteractiveShellCommand } from "./runtime/server/shell.js";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
@@ -65,21 +66,6 @@ interface CliOptions {
 	noOpen: boolean;
 	agent: RuntimeAgentId | null;
 }
-
-const MIME_TYPES: Record<string, string> = {
-	".html": "text/html; charset=utf-8",
-	".js": "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8",
-	".json": "application/json; charset=utf-8",
-	".svg": "image/svg+xml",
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".gif": "image/gif",
-	".ico": "image/x-icon",
-	".map": "application/json; charset=utf-8",
-	".txt": "text/plain; charset=utf-8",
-};
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
 const WORKSPACE_FILE_CHANGE_STREAM_BATCH_MS = 25;
@@ -142,16 +128,6 @@ function parseCliOptions(argv: string[]): CliOptions {
 	return { help, version, noOpen, agent };
 }
 
-function getWebUiDir(): string {
-	const here = dirname(fileURLToPath(import.meta.url));
-	const packagedPath = resolve(here, "web-ui");
-	const repoPath = resolve(here, "../web-ui/dist");
-	if (existsSync(join(packagedPath, "index.html"))) {
-		return packagedPath;
-	}
-	return repoPath;
-}
-
 function printHelp(): void {
 	console.log("kanbanana");
 	console.log("Local orchestration board for coding agents.");
@@ -173,15 +149,6 @@ async function persistCliAgentSelection(cwd: string, selectedAgentId: RuntimeAge
 	return true;
 }
 
-function shouldFallbackToIndexHtml(pathname: string): boolean {
-	return !extname(pathname);
-}
-
-function normalizeRequestPath(urlPathname: string): string {
-	const trimmed = urlPathname === "/" ? "/index.html" : urlPathname;
-	return decodeURIComponent(trimmed.split("?")[0] ?? trimmed);
-}
-
 function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
 	const headerValue = request.headers["x-kanbanana-workspace-id"];
 	const headerWorkspaceId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
@@ -201,32 +168,12 @@ function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): 
 	return null;
 }
 
-function resolveAssetPath(rootDir: string, urlPathname: string): string {
-	const normalizedRequest = normalize(urlPathname).replace(/^(\.\.(\/|\\|$))+/, "");
-	const absolutePath = resolve(rootDir, `.${normalizedRequest}`);
-	const normalizedRoot = rootDir.endsWith(sep) ? rootDir : `${rootDir}${sep}`;
-	if (!absolutePath.startsWith(normalizedRoot)) {
-		return resolve(rootDir, "index.html");
-	}
-	return absolutePath;
-}
-
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
 	response.writeHead(statusCode, {
 		"Content-Type": "application/json; charset=utf-8",
 		"Cache-Control": "no-store",
 	});
 	response.end(JSON.stringify(payload));
-}
-
-function resolveProjectInputPath(inputPath: string, cwd: string): string {
-	if (inputPath === "~") {
-		return homedir();
-	}
-	if (inputPath.startsWith("~/") || inputPath.startsWith("~\\")) {
-		return resolve(homedir(), inputPath.slice(2));
-	}
-	return resolve(cwd, inputPath);
 }
 
 async function assertPathIsDirectory(path: string): Promise<void> {
@@ -385,71 +332,6 @@ function pickDirectoryPathFromSystemDialog(): string | null {
 	return null;
 }
 
-function resolveInteractiveShellCommand(): { binary: string; args: string[] } {
-	if (process.platform === "win32") {
-		const command = process.env.COMSPEC?.trim();
-		if (command) {
-			return {
-				binary: command,
-				args: [],
-			};
-		}
-		return {
-			binary: "powershell.exe",
-			args: ["-NoLogo"],
-		};
-	}
-
-	const command = process.env.SHELL?.trim();
-	if (command) {
-		return {
-			binary: command,
-			args: ["-i"],
-		};
-	}
-	return {
-		binary: "bash",
-		args: ["-i"],
-	};
-}
-
-async function readAsset(rootDir: string, requestPathname: string): Promise<{ content: Buffer; contentType: string }> {
-	let resolvedPath = resolveAssetPath(rootDir, requestPathname);
-
-	try {
-		const content = await readFile(resolvedPath);
-		const extension = extname(resolvedPath).toLowerCase();
-		return {
-			content,
-			contentType: MIME_TYPES[extension] ?? "application/octet-stream",
-		};
-	} catch (error) {
-		if (!shouldFallbackToIndexHtml(requestPathname)) {
-			throw error;
-		}
-		resolvedPath = resolve(rootDir, "index.html");
-		const content = await readFile(resolvedPath);
-		return {
-			content,
-			contentType: MIME_TYPES[".html"],
-		};
-	}
-}
-
-function openInBrowser(url: string): void {
-	if (process.platform === "darwin") {
-		const child = spawn("open", [url], { detached: true, stdio: "ignore" });
-		child.unref();
-		return;
-	}
-	if (process.platform === "win32") {
-		const child = spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" });
-		child.unref();
-		return;
-	}
-	const child = spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
-	child.unref();
-}
 
 function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	return (

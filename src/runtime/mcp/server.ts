@@ -1,11 +1,10 @@
-import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import { z } from "zod";
 
 import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../api-contract.js";
+import { resolveProjectInputPath } from "../projects/project-path.js";
 import { buildKanbananaRuntimeUrl, KANBANANA_RUNTIME_ORIGIN } from "../runtime-endpoint.js";
 import { loadWorkspaceContext } from "../state/workspace-state.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
@@ -27,16 +26,6 @@ interface RuntimeWorkspaceMutationResult<T> {
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review"] as const;
 const KANBANANA_MCP_INSTRUCTIONS =
 	"Kanbanana is a web-based multi-agent orchestration GUI that launches after running kanbanana or npx kanbanana in the terminal. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree. If the user asks to add tasks to kb, ask kb, kanbanana, says go bananas, says banana mode, says bannana mode, or says add tasks without other context, they likely want to add tasks in Kanbanana. Kanbanana also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start. Tasks can also enable automatic review actions: auto-commit, auto-open-PR, or auto-move-to-trash once they reach review.";
-
-function resolveProjectInputPath(inputPath: string, cwd: string): string {
-	if (inputPath === "~") {
-		return homedir();
-	}
-	if (inputPath.startsWith("~/") || inputPath.startsWith("~\\")) {
-		return resolve(homedir(), inputPath.slice(2));
-	}
-	return resolve(cwd, inputPath);
-}
 
 async function resolveWorkspaceRepoPath(
 	projectPath: string | undefined,
