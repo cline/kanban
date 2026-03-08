@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
+import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/kanban/utils/react-use";
 import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/kanban/runtime/types";
 import { findCardSelection } from "@/kanban/state/board-state";
 import type { BoardData } from "@/kanban/types";

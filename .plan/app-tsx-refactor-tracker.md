@@ -276,14 +276,14 @@ web-ui/src/kanban/app/
 
 ### Phase 7: App shell slimming and cleanup
 - [ ] Reduce App to orchestration composition and layout rendering
-- [ ] Remove dead state and dead callbacks after extraction
-- [ ] Re-run full validation suite
-- [ ] Document final architecture summary in this tracker
+- [x] Remove dead state and dead callbacks after extraction
+- [x] Re-run full validation suite
+- [x] Document final architecture summary in this tracker
 
 ## Validation Checklist Per Phase
-- [ ] Lint passes
-- [ ] Typecheck passes
-- [ ] Tests pass
+- [x] Lint passes
+- [x] Typecheck passes
+- [x] Tests pass
 - [ ] Manual smoke check of core flows completed
 
 ## Behavior Parity Smoke Checklist
@@ -452,6 +452,233 @@ web-ui/src/kanban/app/
   - `web-ui/src/App.tsx` line count: 1265 (from 1358 before Session 11)
 - Next
   - Continue Phase 7 shell slimming and remove remaining workspace hydration/orchestration blocks from App
+
+### 2026-03-07 Session 12
+- Completed
+  - Added `web-ui/src/kanban/app/use-workspace-sync.ts` to own workspace snapshot apply/refresh orchestration, stale-revision protection, and workspace metadata pending signals
+  - Updated `App.tsx` to consume `useWorkspaceSync` outputs (`workspacePath`, `workspaceGit`, `workspaceRevision`, `workspaceHydrationNonce`, `refreshWorkspaceState`)
+  - Removed App-local workspace sync refs/effects/callbacks (`applyWorkspaceState`, refresh callback, stream-apply and visibility-refresh effects)
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1158 (from 1265 before Session 12)
+- Next
+  - Continue Phase 7 by extracting remaining App shell glue (`selected task workspace info` fetch orchestration and top-bar/view-model derivations)
+
+### 2026-03-07 Session 13
+- Completed
+  - Added `web-ui/src/kanban/app/use-selected-task-workspace-info.ts` to own selected-task workspace info state, staleness reset, and fetch effect orchestration
+  - Updated `App.tsx` to consume `useSelectedTaskWorkspaceInfo` outputs and removed in-file selected-task workspace info memo/effect logic
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1117 (from 1158 before Session 13)
+- Next
+  - Continue Phase 7 by extracting top-bar/view-model derivations and other remaining App shell glue
+
+### 2026-03-07 Session 14
+- Completed
+  - Added `web-ui/src/kanban/app/use-shell-view-model.ts` to own detail-shell/top-bar/trash-guidance derivations and related shell view-model state
+  - Added `web-ui/src/kanban/app/use-task-inline-cards.tsx` to own inline create/edit card JSX composition for App
+  - Updated `App.tsx` to consume both hooks and removed in-file derivation/inline-card composition blocks
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1058 (from 1117 before Session 14)
+- Next
+  - Continue Phase 7 by extracting remaining render-surface composition (home/detail sections) to reach shell-size target
+
+### 2026-03-07 Session 15
+- Completed
+  - Added `web-ui/src/kanban/app/use-shell-hotkeys.ts` to own global app hotkey registrations (`mod+j`, `mod+m`, `c`)
+  - Updated `App.tsx` to consume `useShellHotkeys` and removed inline `useHotkeys` registration blocks
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1015 (from 1058 before Session 15)
+- Next
+  - Continue Phase 7 by extracting remaining render-surface composition (home/detail view sections)
+
+### 2026-03-08 Session 16
+- Completed
+  - Added `web-ui/src/kanban/app/workspace-surfaces.tsx` to own home/detail render-surface composition previously in `App.tsx`
+  - Added `web-ui/src/kanban/app/use-top-bar-props.ts` to own top-bar prop mapping and git/terminal/git-history action wiring
+  - Added `web-ui/src/kanban/app/shell-dialogs.tsx` to own keyboard/settings/trash-warning/git-error dialog composition
+  - Updated `App.tsx` to consume these new shell modules and removed large in-file render blocks
+  - Kept hook contract style using explicit `Use...Input/Result` interfaces after in-session style alignment
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 813 (from 1015 before Session 16)
+- Next
+  - Continue Phase 7 by extracting remaining shell wiring and final dead-state cleanup to reach target size
+
+### 2026-03-08 Session 17
+- Completed
+  - Added `web-ui/src/kanban/app/use-project-shell-state.ts` to own shell-only project overlays and loading/path derivations
+  - Added `web-ui/src/kanban/app/use-task-branch-options.ts` to own task-branch option/default derivation logic
+  - Added `web-ui/src/kanban/app/runtime-disconnected-fallback.tsx` for disconnected runtime surface rendering
+  - Added `web-ui/src/kanban/app/shell-project-sidebar.tsx` for sidebar composition and project action wiring
+  - Added `web-ui/src/kanban/app/use-shell-lifecycle.ts` for shell lifecycle effects and settings/back handlers
+  - Updated `App.tsx` to consume extracted shell modules and keep only top-level composition wiring
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 698 (from 813 before Session 17)
+- Architecture summary
+  - `App.tsx` now composes focused domain and shell hooks/components (`useProjectNavigation`, `useWorkspaceSync`, `useTaskEditor`, `useBoardInteractions`, `useTopBarProps`, `WorkspaceSurfaces`, `ShellDialogs`) with minimal local glue state.
+  - Render surfaces, dialog tree, top-bar props, sidebar composition, runtime-disconnected fallback, and lifecycle side-effects now live outside `App.tsx`.
+  - `App.tsx` is now inside the target shell range and acts as a composition boundary rather than a feature-orchestration godfile.
+- Next
+  - Run manual behavior parity smoke checklist to close out Phase 7 completely.
+
+### 2026-03-08 Session 18
+- Completed
+  - Per user direction, inlined `ShellProjectSidebar` back into `App.tsx` and rendered `ProjectNavigationPanel` directly in App
+  - Per user direction, inlined `useTopBarProps` usage back into direct `TopBar` props in App
+  - Per user direction, inlined `WorkspaceSurfaces` render composition back into App (home board, detail view, git history, terminal panes)
+  - Per user direction, inlined `ShellDialogs` JSX back into App
+  - Removed now-unused abstraction files:
+    - `web-ui/src/kanban/app/shell-project-sidebar.tsx`
+    - `web-ui/src/kanban/app/use-top-bar-props.ts`
+    - `web-ui/src/kanban/app/workspace-surfaces.tsx`
+    - `web-ui/src/kanban/app/shell-dialogs.tsx`
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 910 (from 698 before Session 18)
+- Notes
+  - This intentionally trades file-size target for lower abstraction depth based on user preference.
+
+### 2026-03-08 Session 19
+- Completed
+  - Renamed shell-prefixed hooks to clearer app-layer names:
+    - `use-shell-hotkeys.ts` -> `use-app-hotkeys.ts`
+    - `use-shell-view-model.ts` -> `use-app-view-model.ts`
+    - `use-project-shell-state.ts` -> `use-project-ui-state.ts`
+  - Removed `use-shell-lifecycle.ts` and inlined its lifecycle effects and handlers directly in `App.tsx`
+  - Updated App naming from `detailShell*` to `detailTerminal*` for terminal-specific clarity
+  - Deleted obsolete shell-prefixed files after migration
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 959 (from 910 before Session 19)
+- Notes
+  - This aligns naming and abstraction depth with the architecture opinion to avoid vague, thin wrapper layers.
+
+### 2026-03-08 Session 20
+- Completed
+  - Restored conservative stream-error recovery semantics in `App.tsx` so clearing stream errors does not wipe unrelated `worktreeError` values
+  - Removed dead `useAppViewModel` API outputs (`runtimeHint`, `activeWorkspaceHint`) and kept them internal to derive navbar hints
+  - Inlined `useTaskInlineCards` JSX in `App.tsx` and deleted `web-ui/src/kanban/app/use-task-inline-cards.tsx` as a thin wrapper
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 973 (from 959 before Session 20)
+- Notes
+  - This addresses review feedback on subtle error-handling behavior and removes a wrapper that conflicted with the architecture opinion on avoiding low-value indirection.
+
+### 2026-03-08 Session 21
+- Completed
+  - Inlined `use-app-view-model` derivations back into `App.tsx` to keep derivations physically close to `TopBar` and `CardDetailView` consumers
+  - Extracted trash warning copy to a tiny pure helper: `web-ui/src/kanban/utils/trash-warning-guidance.ts`
+  - Removed obsolete `web-ui/src/kanban/app/use-app-view-model.ts`
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1013 (from 973 before Session 21)
+- Notes
+  - This intentionally prioritizes navigability and lower indirection over App.tsx size reduction.
+
+### 2026-03-08 Session 22
+- Completed
+  - Inlined `getTrashWarningGuidance` back into `App.tsx` as a local pure helper because it is single-use and part of local dialog presentation flow
+  - Removed now-unused `web-ui/src/kanban/utils/trash-warning-guidance.ts`
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1032 (from 1013 before Session 22)
+- Notes
+  - This follows the architecture preference to avoid single-use utility indirection.
+
+### 2026-03-08 Session 23
+- Completed
+  - Moved `web-ui/src/kanban/hooks/use-linked-backlog-task-actions.ts` to `web-ui/src/kanban/app/use-linked-backlog-task-actions.ts`
+  - Moved `web-ui/src/kanban/hooks/react-use.ts` to `web-ui/src/kanban/utils/react-use.ts`
+  - Updated all imports to new paths and removed now-empty `web-ui/src/kanban/hooks/` directory
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1032 (unchanged)
+- Notes
+  - This removes the confusing `hooks/` vs `app/` split while keeping `app/` as a flat, domain-oriented hook list.
+
+### 2026-03-08 Session 24
+- Completed
+  - Moved trash warning guidance ownership into `TaskTrashWarningDialog` and removed the guidance prop from App wiring
+  - Updated dialog warning view model to carry `workspaceInfo` so guidance/path rendering stay colocated with dialog presentation
+  - Removed single-use guidance helper from `App.tsx`
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1006 (from 1032 before Session 24)
+- Notes
+  - This keeps single-use UI copy logic at the UI boundary rather than in app-level orchestration.
+
+### 2026-03-08 Session 25
+- Completed
+  - Moved `getDetailTerminalTaskId` from `App.tsx` into `web-ui/src/kanban/terminal/task-ids.ts`
+  - Updated both `App.tsx` and `use-terminal-panels.ts` to import the helper directly from terminal module
+  - Removed `getDetailTerminalTaskId` plumbing from `useTerminalPanels` input contract
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1000 (from 1006 before Session 25)
+- Notes
+  - Terminal task-id protocol is now centralized at the terminal boundary instead of app composition layer.
+
+### 2026-03-08 Session 26
+- Completed
+  - Removed standalone `web-ui/src/kanban/terminal/task-ids.ts` and localized detail terminal task-id protocol inside `use-terminal-panels.ts`
+  - Updated `useTerminalPanels` to return `homeTerminalTaskId`, so App no longer declares home terminal id/row constants
+  - Moved removed-project stream error prefix ownership into `use-project-navigation.ts` via `parseRemovedProjectPathFromStreamError`
+  - Removed App-level constants for removed-project prefix and home terminal id/rows
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 993 (from 1000 before Session 26)
+- Notes
+  - `App.tsx` now keeps less protocol/constant ownership and more domain-owned boundaries.
 
 ## Behavior Map
 

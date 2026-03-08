@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { showAppToast } from "@/kanban/components/app-toaster";
-import { useWindowEvent } from "@/kanban/hooks/react-use";
+import { useWindowEvent } from "@/kanban/utils/react-use";
 import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
 import { buildProjectPathname, parseProjectIdFromPathname } from "@/kanban/app/app-utils";
+
+const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
+
+export function parseRemovedProjectPathFromStreamError(streamError: string | null): string | null {
+	if (!streamError || !streamError.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {
+		return null;
+	}
+	return streamError.slice(REMOVED_PROJECT_ERROR_PREFIX.length).trim();
+}
 
 interface UseProjectNavigationInput {
 	onProjectSwitchStart: () => void;

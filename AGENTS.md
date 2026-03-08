@@ -23,7 +23,12 @@ Code quality
 - Extract shared logic into hooks and utilities. 
 - Prioritize maintainability and clean architecture over speed. 
 - Follow DRY principles and maintain clean architecture with clear separation of concerns.
-- In `web-ui`, prefer `react-use` hooks (via `@/kanban/hooks/react-use`) whenever possible
+- In `web-ui`, prefer `react-use` hooks (via `@/kanban/utils/react-use`) whenever possible
+
+Architecture opinions
+- Avoid thin shell wrappers that only forward props or relocate JSX for a single call site.
+- Prefer extracting domain logic (state, effects, async orchestration) over presentation-only pass-through layers.
+- Do not optimize for line count alone. Optimize for codebase navigability and clarity.
 
 Git guardrails
 - NEVER commit unless user asks.

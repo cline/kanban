@@ -6,7 +6,7 @@ import { useProgrammaticCardMoves } from "@/kanban/app/use-programmatic-card-mov
 import { useReviewAutoActions } from "@/kanban/app/use-review-auto-actions";
 import type { UseTaskSessionsResult } from "@/kanban/app/use-task-sessions";
 import { showAppToast } from "@/kanban/components/app-toaster";
-import { useLinkedBacklogTaskActions, type PendingTrashWarningState } from "@/kanban/hooks/use-linked-backlog-task-actions";
+import { useLinkedBacklogTaskActions, type PendingTrashWarningState } from "@/kanban/app/use-linked-backlog-task-actions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/kanban/runtime/types";
 import {
 	applyDragResult,

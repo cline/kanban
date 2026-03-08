@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { showAppToast } from "@/kanban/components/app-toaster";
-import { useRawLocalStorageValue } from "@/kanban/hooks/react-use";
+import { useRawLocalStorageValue } from "@/kanban/utils/react-use";
 import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import {
 	buildOpenCommand,

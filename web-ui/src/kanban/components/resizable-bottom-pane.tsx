@@ -2,7 +2,7 @@ import { Colors } from "@blueprintjs/core";
 import type { ReactElement, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
+import { useUnmount, useWindowEvent } from "@/kanban/utils/react-use";
 
 const NAVBAR_HEIGHT_PX = 40;
 

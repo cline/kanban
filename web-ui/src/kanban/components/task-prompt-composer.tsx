@@ -3,7 +3,7 @@ import { Classes as SelectClasses } from "@blueprintjs/select";
 import type { KeyboardEvent, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useDebouncedEffect } from "@/kanban/hooks/react-use";
+import { useDebouncedEffect } from "@/kanban/utils/react-use";
 import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import type { RuntimeSlashCommandDescription } from "@/kanban/runtime/types";
 

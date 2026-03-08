@@ -4,6 +4,14 @@ import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard, CardSelection } from "@/kanban/types";
 
+const HOME_TERMINAL_TASK_ID = "__home_terminal__";
+const HOME_TERMINAL_ROWS = 16;
+const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
+
+function getDetailTerminalTaskId(card: BoardCard): string {
+	return `${DETAIL_TERMINAL_TASK_PREFIX}${card.id}`;
+}
+
 interface StartDetailTerminalOptions {
 	showLoading?: boolean;
 }
@@ -13,9 +21,6 @@ interface UseTerminalPanelsInput {
 	selectedCard: CardSelection | null;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
 	agentCommand: string | null;
-	homeTerminalTaskId: string;
-	homeTerminalRows: number;
-	getDetailTerminalTaskId: (card: BoardCard) => string;
 	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
 	sendTaskSessionInput: (
 		taskId: string,
@@ -36,11 +41,13 @@ interface PrepareTerminalForShortcutResult {
 }
 
 export interface UseTerminalPanelsResult {
+	homeTerminalTaskId: string;
 	isHomeTerminalOpen: boolean;
 	isHomeTerminalStarting: boolean;
 	homeTerminalShellBinary: string | null;
 	homeTerminalPaneHeight: number | undefined;
 	isDetailTerminalOpen: boolean;
+	detailTerminalTaskId: string | null;
 	isDetailTerminalStarting: boolean;
 	detailTerminalPaneHeight: number | undefined;
 	isHomeTerminalExpanded: boolean;
@@ -66,9 +73,6 @@ export function useTerminalPanels({
 	selectedCard,
 	workspaceGit,
 	agentCommand,
-	homeTerminalTaskId,
-	homeTerminalRows,
-	getDetailTerminalTaskId,
 	upsertSession,
 	sendTaskSessionInput,
 	onWorktreeError,
@@ -84,6 +88,7 @@ export function useTerminalPanels({
 	const [detailTerminalPaneHeight, setDetailTerminalPaneHeight] = useState<number | undefined>(undefined);
 	const [isHomeTerminalExpanded, setIsHomeTerminalExpanded] = useState(false);
 	const [isDetailTerminalExpanded, setIsDetailTerminalExpanded] = useState(false);
+	const detailTerminalTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card) : null;
 
 	const closeHomeTerminal = useCallback(() => {
 		setIsHomeTerminalOpen(false);
@@ -121,8 +126,8 @@ export function useTerminalPanels({
 		try {
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
 			const payload = await trpcClient.runtime.startShellSession.mutate({
-				taskId: homeTerminalTaskId,
-				rows: homeTerminalRows,
+				taskId: HOME_TERMINAL_TASK_ID,
+				rows: HOME_TERMINAL_ROWS,
 				baseRef: workspaceGit?.currentBranch ?? workspaceGit?.defaultBranch ?? "HEAD",
 			});
 			if (!payload.ok || !payload.summary) {
@@ -142,8 +147,6 @@ export function useTerminalPanels({
 		}
 	}, [
 		currentProjectId,
-		homeTerminalRows,
-		homeTerminalTaskId,
 		onWorktreeError,
 		upsertSession,
 		workspaceGit?.currentBranch,
@@ -177,7 +180,7 @@ export function useTerminalPanels({
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.runtime.startShellSession.mutate({
 					taskId: targetTaskId,
-					rows: homeTerminalRows,
+					rows: HOME_TERMINAL_ROWS,
 					workspaceTaskId: card.id,
 					baseRef: card.baseRef,
 				});
@@ -196,7 +199,7 @@ export function useTerminalPanels({
 				}
 			}
 		},
-		[currentProjectId, getDetailTerminalTaskId, homeTerminalRows, onWorktreeError, upsertSession],
+		[currentProjectId, onWorktreeError, upsertSession],
 	);
 
 	const handleToggleDetailTerminal = useCallback(() => {
@@ -252,8 +255,8 @@ export function useTerminalPanels({
 		if (!agentCommand) {
 			return;
 		}
-		void sendTaskSessionInput(homeTerminalTaskId, agentCommand, { appendNewline: true });
-	}, [agentCommand, homeTerminalTaskId, sendTaskSessionInput]);
+		void sendTaskSessionInput(HOME_TERMINAL_TASK_ID, agentCommand, { appendNewline: true });
+	}, [agentCommand, sendTaskSessionInput]);
 
 	const handleSendAgentCommandToDetailTerminal = useCallback(() => {
 		if (!agentCommand || !selectedCard) {
@@ -261,11 +264,11 @@ export function useTerminalPanels({
 		}
 		const terminalTaskId = getDetailTerminalTaskId(selectedCard.card);
 		void sendTaskSessionInput(terminalTaskId, agentCommand, { appendNewline: true });
-	}, [agentCommand, getDetailTerminalTaskId, selectedCard, sendTaskSessionInput]);
+	}, [agentCommand, selectedCard, sendTaskSessionInput]);
 
 	const prepareTerminalForShortcut = useCallback(
 		async ({ prepareWaitForTerminalConnectionReady }: PrepareTerminalForShortcutInput) => {
-			let targetTaskId = homeTerminalTaskId;
+			let targetTaskId = HOME_TERMINAL_TASK_ID;
 			let shouldWaitForConnection = false;
 			let waitForTerminalConnectionReady: (() => Promise<void>) | null = null;
 			const activeSelection = selectedCard;
@@ -295,7 +298,7 @@ export function useTerminalPanels({
 					isHomeTerminalOpen && homeTerminalProjectIdRef.current === currentProjectId;
 				shouldWaitForConnection = !homeWasAlreadyOpenForProject;
 				if (shouldWaitForConnection) {
-					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(homeTerminalTaskId);
+					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(HOME_TERMINAL_TASK_ID);
 				}
 				homeTerminalProjectIdRef.current = currentProjectId;
 				setIsHomeTerminalOpen(true);
@@ -321,8 +324,6 @@ export function useTerminalPanels({
 		[
 			closeHomeTerminal,
 			currentProjectId,
-			getDetailTerminalTaskId,
-			homeTerminalTaskId,
 			isDetailTerminalOpen,
 			isHomeTerminalOpen,
 			selectedCard,
@@ -340,11 +341,13 @@ export function useTerminalPanels({
 	}, [closeDetailTerminal, closeHomeTerminal]);
 
 	return {
+		homeTerminalTaskId: HOME_TERMINAL_TASK_ID,
 		isHomeTerminalOpen,
 		isHomeTerminalStarting,
 		homeTerminalShellBinary,
 		homeTerminalPaneHeight,
 		isDetailTerminalOpen,
+		detailTerminalTaskId,
 		isDetailTerminalStarting,
 		detailTerminalPaneHeight,
 		isHomeTerminalExpanded,

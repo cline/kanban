@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { useDocumentEvent } from "@/kanban/hooks/react-use";
+import { useDocumentEvent } from "@/kanban/utils/react-use";
 
 export function useDocumentVisibility(): boolean {
 	const [isDocumentVisible, setIsDocumentVisible] = useState<boolean>(() => {

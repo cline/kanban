@@ -4,7 +4,7 @@ import type { MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { useMeasure } from "@/kanban/hooks/react-use";
+import { useMeasure } from "@/kanban/utils/react-use";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import type { BoardCard as BoardCardModel, BoardColumnId, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 import { formatPathForDisplay } from "@/kanban/utils/path-display";

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGitHistoryData, type UseGitHistoryDataResult } from "@/kanban/components/git-history/use-git-history-data";
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/kanban/git-actions/build-task-git-action-prompt";
-import { useInterval } from "@/kanban/hooks/react-use";
+import { useInterval } from "@/kanban/utils/react-use";
 import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import type {
 	RuntimeConfigResponse,

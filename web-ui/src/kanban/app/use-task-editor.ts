@@ -7,7 +7,7 @@ import {
 	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 } from "@/kanban/app/app-utils";
-import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/kanban/hooks/react-use";
+import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/kanban/utils/react-use";
 import type { RuntimeAgentId, RuntimeTaskWorkspaceInfoResponse } from "@/kanban/runtime/types";
 import { addTaskToColumn, findCardSelection, updateTask } from "@/kanban/state/board-state";
 import { trackTaskCreated } from "@/kanban/telemetry/events";

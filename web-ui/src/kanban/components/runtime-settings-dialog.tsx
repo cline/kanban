@@ -22,7 +22,7 @@ import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { TASK_GIT_PROMPT_VARIABLES, type TaskGitAction } from "@/kanban/git-actions/build-task-git-action-prompt";
-import { useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
+import { useUnmount, useWindowEvent } from "@/kanban/utils/react-use";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
 import {
