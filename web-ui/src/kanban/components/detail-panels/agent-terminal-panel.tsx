@@ -8,12 +8,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { panelSeparatorColor } from "@/kanban/data/column-colors";
 import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
-import { decodeBase64ToText, encodeTextToBase64 } from "@/kanban/terminal/base64";
 import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTerminalWsClientMessage,
 	RuntimeTerminalWsServerMessage,
 } from "@/kanban/runtime/types";
+import { decodeBase64ToText, encodeTextToBase64 } from "@/kanban/terminal/base64";
 
 type TerminalWithViewportCore = Terminal & {
 	_core?: {
@@ -24,8 +24,8 @@ type TerminalWithViewportCore = Terminal & {
 };
 
 const SHIFT_ENTER_SEQUENCE = "\n";
-const isMacPlatform = typeof navigator !== "undefined" &&
-	/Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+const isMacPlatform =
+	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
 function getWebSocketUrl(taskId: string, workspaceId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -89,6 +89,8 @@ export function AgentTerminalPanel({
 	isCommitLoading = false,
 	isOpenPrLoading = false,
 	onMoveToTrash,
+	onCancelAutomaticAction,
+	cancelAutomaticActionLabel,
 	showReviewGitActions,
 	showMoveToTrash,
 	showSessionToolbar = true,
@@ -116,6 +118,8 @@ export function AgentTerminalPanel({
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	onMoveToTrash?: () => void;
+	onCancelAutomaticAction?: () => void;
+	cancelAutomaticActionLabel?: string | null;
 	showReviewGitActions?: boolean;
 	showMoveToTrash?: boolean;
 	showSessionToolbar?: boolean;
@@ -172,7 +176,8 @@ export function AgentTerminalPanel({
 		const terminal = new Terminal({
 			cursorBlink: true,
 			fontSize: 12,
-			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+			fontFamily:
+				'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
 			theme: {
 				background: terminalBackgroundColor,
 				foreground: Colors.LIGHT_GRAY5,
@@ -367,11 +372,23 @@ export function AgentTerminalPanel({
 		>
 			{showSessionToolbar ? (
 				<>
-					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px" }}>
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "space-between",
+							gap: 8,
+							padding: "8px 12px",
+						}}
+					>
 						<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-							<Tag intent={statusIntent} minimal>{statusLabel}</Tag>
+							<Tag intent={statusIntent} minimal>
+								{statusLabel}
+							</Tag>
 							{summary?.activityPreview ? (
-								<span className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}>{summary.activityPreview}</span>
+								<span className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}>
+									{summary.activityPreview}
+								</span>
 							) : null}
 						</div>
 						<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
@@ -380,18 +397,28 @@ export function AgentTerminalPanel({
 								text="Stop"
 								variant="outlined"
 								size="small"
-								onClick={() => { void handleStop(); }}
+								onClick={() => {
+									void handleStop();
+								}}
 								disabled={!canStop || isStopping}
 							/>
 						</div>
 					</div>
 					<Divider />
 				</>
-				) : onClose ? (
-					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 0 0 3px" }}>
-						<div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-							<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
-								{minimalHeaderTitle}
+			) : onClose ? (
+				<div
+					style={{
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "space-between",
+						gap: 8,
+						padding: "6px 0 0 3px",
+					}}
+				>
+					<div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+						<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
+							{minimalHeaderTitle}
 						</span>
 						{minimalHeaderSubtitle ? (
 							<span
@@ -418,16 +445,18 @@ export function AgentTerminalPanel({
 						{onToggleExpand ? (
 							<Tooltip
 								placement="top"
-								content={(
+								content={
 									<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
 										<span>{isExpanded ? "Collapse" : "Expand"}</span>
-										<span style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
+										<span
+											style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}
+										>
 											<span>(</span>
 											<Icon icon={isMacPlatform ? "key-command" : "key-control"} size={11} />
 											<span>+ M)</span>
 										</span>
 									</span>
-								)}
+								}
 							>
 								<Button
 									icon={<Icon icon={isExpanded ? "minimize" : "maximize"} size={12} />}
@@ -438,13 +467,7 @@ export function AgentTerminalPanel({
 								/>
 							</Tooltip>
 						) : null}
-						<Button
-							icon="cross"
-							variant="minimal"
-							size="small"
-							onClick={onClose}
-							aria-label="Close terminal"
-						/>
+						<Button icon="cross" variant="minimal" size="small" onClick={onClose} aria-label="Close terminal" />
 					</div>
 				</div>
 			) : null}
@@ -486,6 +509,14 @@ export function AgentTerminalPanel({
 									onClick={onOpenPr}
 								/>
 							</div>
+						) : null}
+						{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
+							<Button
+								text={`Cancel automatic ${cancelAutomaticActionLabel}`}
+								variant="outlined"
+								fill
+								onClick={onCancelAutomaticAction}
+							/>
 						) : null}
 						<Button intent="danger" text="Move Card To Trash" fill onClick={onMoveToTrash} />
 					</div>

@@ -1,7 +1,7 @@
 import { Alert, Button, Classes, Colors, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
 import type { DropResult } from "@hello-pangea/dnd";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import {
@@ -15,51 +15,28 @@ import {
 	normalizeStoredTaskAutoReviewMode,
 } from "@/kanban/app/app-utils";
 import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
+import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
 import { useProgrammaticCardMoves } from "@/kanban/app/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/kanban/app/use-review-auto-actions";
 import { useReviewReadyNotifications } from "@/kanban/app/use-review-ready-notifications";
 import { useTaskWorkspaceSnapshots } from "@/kanban/app/use-task-workspace-snapshots";
-import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { CardDetailView } from "@/kanban/components/card-detail-view";
 import { ClearTrashDialog } from "@/kanban/components/clear-trash-dialog";
-import { GitHistoryView } from "@/kanban/components/git-history-view";
-import { useGitHistoryData } from "@/kanban/components/git-history/use-git-history-data";
 import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
+import { useGitHistoryData } from "@/kanban/components/git-history/use-git-history-data";
+import { GitHistoryView } from "@/kanban/components/git-history-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
 import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
+import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/kanban/components/runtime-settings-dialog";
 import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
-import {
-	RuntimeSettingsDialog,
-	type RuntimeSettingsSection,
-} from "@/kanban/components/runtime-settings-dialog";
 import { TaskInlineCreateCard } from "@/kanban/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
 import { TopBar, type TopBarTaskGitSummary } from "@/kanban/components/top-bar";
 import { KeyboardShortcutsDialog } from "@/kanban/components/keyboard-shortcuts-dialog";
 import { createInitialBoardData } from "@/kanban/data/board-data";
-import {
-	buildTaskGitActionPrompt,
-	type TaskGitAction,
-} from "@/kanban/git-actions/build-task-git-action-prompt";
-import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
-import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
-import { estimateTaskSessionGeometry } from "@/kanban/runtime/task-session-geometry";
-import { useTerminalConnectionReady } from "@/kanban/runtime/use-terminal-connection-ready";
-import { saveRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
-import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
-import {
-	fetchWorkspaceState,
-	saveWorkspaceState,
-} from "@/kanban/runtime/workspace-state-query";
-import { useWorkspacePersistence } from "@/kanban/runtime/use-workspace-persistence";
-import {
-	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
-} from "@/kanban/utils/task-prompt";
-import {
-	trackTaskCreated,
-} from "@/kanban/telemetry/events";
+import { buildTaskGitActionPrompt, type TaskGitAction } from "@/kanban/git-actions/build-task-git-action-prompt";
 import {
 	useBooleanLocalStorageValue,
 	useInterval,
@@ -70,21 +47,24 @@ import {
 	type PendingTrashWarningState,
 	useLinkedBacklogTaskActions,
 } from "@/kanban/hooks/use-linked-backlog-task-actions";
-import {
-	getBrowserNotificationPermission,
-	hasPromptedForBrowserNotificationPermission,
-	requestBrowserNotificationPermission,
-} from "@/kanban/utils/notification-permission";
+import { saveRuntimeConfig } from "@/kanban/runtime/runtime-config-query";
+import { estimateTaskSessionGeometry } from "@/kanban/runtime/task-session-geometry";
+import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
 import type {
 	RuntimeGitRepositoryInfo,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncSummary,
-	RuntimeWorkspaceStateResponse,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoResponse,
+	RuntimeWorkspaceStateResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "@/kanban/runtime/types";
+import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
+import { useRuntimeStateStream } from "@/kanban/runtime/use-runtime-state-stream";
+import { useTerminalConnectionReady } from "@/kanban/runtime/use-terminal-connection-ready";
+import { useWorkspacePersistence } from "@/kanban/runtime/use-workspace-persistence";
+import { fetchWorkspaceState, saveWorkspaceState } from "@/kanban/runtime/workspace-state-query";
 import {
 	addTaskToColumn,
 	applyDragResult,
@@ -95,14 +75,21 @@ import {
 	normalizeBoardData,
 	updateTask,
 } from "@/kanban/state/board-state";
+import { trackTaskCreated } from "@/kanban/telemetry/events";
 import type {
 	BoardCard,
 	BoardColumnId,
 	BoardData,
-	TaskAutoReviewMode,
 	ReviewTaskWorkspaceSnapshot,
+	TaskAutoReviewMode,
 } from "@/kanban/types";
 import { resolveTaskAutoReviewMode } from "@/kanban/types";
+import {
+	getBrowserNotificationPermission,
+	hasPromptedForBrowserNotificationPermission,
+	requestBrowserNotificationPermission,
+} from "@/kanban/utils/notification-permission";
+import { DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS } from "@/kanban/utils/task-prompt";
 
 type TaskGitActionSource = "card" | "agent";
 
@@ -175,8 +162,9 @@ export default function App(): ReactElement {
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const notificationPermissionPromptInFlightRef = useRef(false);
 	const lastStreamErrorRef = useRef<string | null>(null);
-	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] =
-		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
+	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] = useState<RuntimeTaskWorkspaceInfoResponse | null>(
+		null,
+	);
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
@@ -198,12 +186,9 @@ export default function App(): ReactElement {
 	);
 	// If the chosen auto action is immediate move-to-trash, plan mode cannot work because
 	// review is auto-consumed; disable and force-off plan mode for new-task creation.
-	const isNewTaskStartInPlanModeDisabled =
-		newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
+	const isNewTaskStartInPlanModeDisabled = newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
-	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>(
-		{},
-	);
+	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
@@ -213,8 +198,9 @@ export default function App(): ReactElement {
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [gitSummary, setGitSummary] = useState<RuntimeGitSyncSummary | null>(null);
 	const [runningGitAction, setRunningGitAction] = useState<RuntimeGitSyncAction | null>(null);
-	const [taskGitActionLoadingByTaskId, setTaskGitActionLoadingByTaskId] =
-		useState<Record<string, TaskGitActionLoadingState>>({});
+	const [taskGitActionLoadingByTaskId, setTaskGitActionLoadingByTaskId] = useState<
+		Record<string, TaskGitActionLoadingState>
+	>({});
 	const [isSwitchingHomeBranch, setIsSwitchingHomeBranch] = useState(false);
 	const [isDiscardingHomeWorkingChanges, setIsDiscardingHomeWorkingChanges] = useState(false);
 	const [gitActionError, setGitActionError] = useState<{
@@ -230,14 +216,10 @@ export default function App(): ReactElement {
 	const [isHomeTerminalOpen, setIsHomeTerminalOpen] = useState(false);
 	const [isHomeTerminalStarting, setIsHomeTerminalStarting] = useState(false);
 	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
-	const [homeTerminalPaneHeight, setHomeTerminalPaneHeight] = useState<number | undefined>(
-		undefined,
-	);
+	const [homeTerminalPaneHeight, setHomeTerminalPaneHeight] = useState<number | undefined>(undefined);
 	const [isDetailTerminalOpen, setIsDetailTerminalOpen] = useState(false);
 	const [isDetailTerminalStarting, setIsDetailTerminalStarting] = useState(false);
-	const [detailTerminalPaneHeight, setDetailTerminalPaneHeight] = useState<number | undefined>(
-		undefined,
-	);
+	const [detailTerminalPaneHeight, setDetailTerminalPaneHeight] = useState<number | undefined>(undefined);
 	const [isHomeTerminalExpanded, setIsHomeTerminalExpanded] = useState(false);
 	const [isDetailTerminalExpanded, setIsDetailTerminalExpanded] = useState(false);
 	const [requestedProjectId, setRequestedProjectId] = useState<string | null>(() => {
@@ -262,15 +244,11 @@ export default function App(): ReactElement {
 	const activeNotificationWorkspaceId = navigationCurrentProjectId;
 	const isDocumentVisible = useDocumentVisibility();
 	const hasNoProjects = hasReceivedSnapshot && projects.length === 0 && currentProjectId === null;
-	const isProjectSwitching =
-		requestedProjectId !== null &&
-		requestedProjectId !== currentProjectId &&
-		!hasNoProjects;
-	const isInitialRuntimeLoad = !hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
+	const isProjectSwitching = requestedProjectId !== null && requestedProjectId !== currentProjectId && !hasNoProjects;
+	const isInitialRuntimeLoad =
+		!hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
-	const isWorkspaceMetadataPending =
-		currentProjectId !== null &&
-		appliedWorkspaceProjectId !== currentProjectId;
+	const isWorkspaceMetadataPending = currentProjectId !== null && appliedWorkspaceProjectId !== currentProjectId;
 	const navigationProjectPath = useMemo(() => {
 		if (!navigationCurrentProjectId) {
 			return null;
@@ -282,14 +260,14 @@ export default function App(): ReactElement {
 		!streamError &&
 		(isProjectSwitching || isInitialRuntimeLoad || isAwaitingWorkspaceSnapshot);
 	const isProjectListLoading = !hasReceivedSnapshot && !streamError;
-	const shouldUseNavigationPath =
-		isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
+	const shouldUseNavigationPath = isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending;
 	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } =
 		useRuntimeProjectConfig(currentProjectId);
-	const { markConnectionReady: markTerminalConnectionReady, prepareWaitForConnection: prepareWaitForTerminalConnectionReady } =
-		useTerminalConnectionReady();
-	const readyForReviewNotificationsEnabled =
-		runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
+	const {
+		markConnectionReady: markTerminalConnectionReady,
+		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
+	} = useTerminalConnectionReady();
+	const readyForReviewNotificationsEnabled = runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
 	useReviewReadyNotifications({
 		activeWorkspaceId: activeNotificationWorkspaceId,
 		board,
@@ -357,19 +335,13 @@ export default function App(): ReactElement {
 			const currentVersion = workspaceVersionRef.current;
 			const isSameProject = currentVersion.projectId === currentProjectId;
 			const currentRevision = isSameProject ? currentVersion.revision : null;
-			if (
-				isSameProject &&
-				currentRevision !== null &&
-				nextWorkspaceState.revision < currentRevision
-			) {
+			if (isSameProject && currentRevision !== null && nextWorkspaceState.revision < currentRevision) {
 				return;
 			}
 			setWorkspacePath(nextWorkspaceState.repoPath);
 			setWorkspaceGit(nextWorkspaceState.git);
 			setSessions(nextWorkspaceState.sessions ?? {});
-			const shouldHydrateBoard =
-				!isSameProject ||
-				currentRevision !== nextWorkspaceState.revision;
+			const shouldHydrateBoard = !isSameProject || currentRevision !== nextWorkspaceState.revision;
 			if (shouldHydrateBoard) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
 				setBoard(normalized);
@@ -396,127 +368,142 @@ export default function App(): ReactElement {
 		}));
 	}, []);
 
-	const ensureTaskWorkspace = useCallback(async (task: BoardCard): Promise<{
-		ok: boolean;
-		message?: string;
-		response?: Extract<RuntimeWorktreeEnsureResponse, { ok: true }>;
-	}> => {
-		if (!currentProjectId) {
-			return { ok: false, message: "No project selected." };
-		}
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const payload = await trpcClient.workspace.ensureWorktree.mutate({
-				taskId: task.id,
-				baseRef: task.baseRef,
-			});
-			if (!payload.ok) {
-				return {
-					ok: false,
-					message: payload.error ?? "Worktree setup failed.",
-				};
+	const ensureTaskWorkspace = useCallback(
+		async (
+			task: BoardCard,
+		): Promise<{
+			ok: boolean;
+			message?: string;
+			response?: Extract<RuntimeWorktreeEnsureResponse, { ok: true }>;
+		}> => {
+			if (!currentProjectId) {
+				return { ok: false, message: "No project selected." };
 			}
-			return { ok: true, response: payload };
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return { ok: false, message };
-		}
-	}, [currentProjectId]);
-
-	const startTaskSession = useCallback(async (task: BoardCard): Promise<{ ok: boolean; message?: string }> => {
-		if (!currentProjectId) {
-			return { ok: false, message: "No project selected." };
-		}
-		try {
-			const kickoffPrompt = task.prompt.trim();
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const geometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
-			const payload = await trpcClient.runtime.startTaskSession.mutate({
-				taskId: task.id,
-				prompt: kickoffPrompt,
-				startInPlanMode: task.startInPlanMode,
-				baseRef: task.baseRef,
-				cols: geometry.cols,
-				rows: geometry.rows,
-			});
-			if (!payload.ok || !payload.summary) {
-				return {
-					ok: false,
-					message: payload.error ?? "Task session start failed.",
-				};
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.workspace.ensureWorktree.mutate({
+					taskId: task.id,
+					baseRef: task.baseRef,
+				});
+				if (!payload.ok) {
+					return {
+						ok: false,
+						message: payload.error ?? "Worktree setup failed.",
+					};
+				}
+				return { ok: true, response: payload };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, message };
 			}
-			upsertSession(payload.summary);
-			return { ok: true };
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return { ok: false, message };
-		}
-	}, [currentProjectId, upsertSession]);
-
-	const stopTaskSession = useCallback(async (taskId: string): Promise<void> => {
-		if (!currentProjectId) {
-			return;
-		}
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			await trpcClient.runtime.stopTaskSession.mutate({ taskId });
-		} catch {
-			// Ignore stop errors during cleanup.
-		}
-	}, [currentProjectId]);
-
-	const sendTaskSessionInput = useCallback(async (
-		taskId: string,
-		text: string,
-		options?: {
-			appendNewline?: boolean;
 		},
-	): Promise<{ ok: boolean; message?: string }> => {
-		if (!currentProjectId) {
-			return { ok: false, message: "No project selected." };
-		}
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const payload = await trpcClient.runtime.sendTaskSessionInput.mutate({
-				taskId,
-				text,
-				appendNewline: options?.appendNewline ?? true,
-			});
-			if (!payload.ok) {
-				const errorMessage = payload.error || "Task session input failed.";
-				return { ok: false, message: errorMessage };
-			}
-			if (payload.summary) {
-				upsertSession(payload.summary);
-			}
-			return { ok: true };
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return { ok: false, message };
-		}
-	}, [currentProjectId, upsertSession]);
+		[currentProjectId],
+	);
 
-	const cleanupTaskWorkspace = useCallback(async (
-		taskId: string,
-	): Promise<RuntimeWorktreeDeleteResponse | null> => {
-		if (!currentProjectId) {
-			return null;
-		}
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const payload = await trpcClient.workspace.deleteWorktree.mutate({ taskId });
-			if (!payload.ok) {
-				const message = payload.error ?? "Could not clean up task workspace.";
+	const startTaskSession = useCallback(
+		async (task: BoardCard): Promise<{ ok: boolean; message?: string }> => {
+			if (!currentProjectId) {
+				return { ok: false, message: "No project selected." };
+			}
+			try {
+				const kickoffPrompt = task.prompt.trim();
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const geometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
+				const payload = await trpcClient.runtime.startTaskSession.mutate({
+					taskId: task.id,
+					prompt: kickoffPrompt,
+					startInPlanMode: task.startInPlanMode,
+					baseRef: task.baseRef,
+					cols: geometry.cols,
+					rows: geometry.rows,
+				});
+				if (!payload.ok || !payload.summary) {
+					return {
+						ok: false,
+						message: payload.error ?? "Task session start failed.",
+					};
+				}
+				upsertSession(payload.summary);
+				return { ok: true };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, message };
+			}
+		},
+		[currentProjectId, upsertSession],
+	);
+
+	const stopTaskSession = useCallback(
+		async (taskId: string): Promise<void> => {
+			if (!currentProjectId) {
+				return;
+			}
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				await trpcClient.runtime.stopTaskSession.mutate({ taskId });
+			} catch {
+				// Ignore stop errors during cleanup.
+			}
+		},
+		[currentProjectId],
+	);
+
+	const sendTaskSessionInput = useCallback(
+		async (
+			taskId: string,
+			text: string,
+			options?: {
+				appendNewline?: boolean;
+			},
+		): Promise<{ ok: boolean; message?: string }> => {
+			if (!currentProjectId) {
+				return { ok: false, message: "No project selected." };
+			}
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.runtime.sendTaskSessionInput.mutate({
+					taskId,
+					text,
+					appendNewline: options?.appendNewline ?? true,
+				});
+				if (!payload.ok) {
+					const errorMessage = payload.error || "Task session input failed.";
+					return { ok: false, message: errorMessage };
+				}
+				if (payload.summary) {
+					upsertSession(payload.summary);
+				}
+				return { ok: true };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { ok: false, message };
+			}
+		},
+		[currentProjectId, upsertSession],
+	);
+
+	const cleanupTaskWorkspace = useCallback(
+		async (taskId: string): Promise<RuntimeWorktreeDeleteResponse | null> => {
+			if (!currentProjectId) {
+				return null;
+			}
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.workspace.deleteWorktree.mutate({ taskId });
+				if (!payload.ok) {
+					const message = payload.error ?? "Could not clean up task workspace.";
+					console.error(`[cleanupTaskWorkspace] ${message}`);
+					return null;
+				}
+				return payload;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
 				console.error(`[cleanupTaskWorkspace] ${message}`);
 				return null;
 			}
-			return payload;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			console.error(`[cleanupTaskWorkspace] ${message}`);
-			return null;
-		}
-	}, [currentProjectId]);
+		},
+		[currentProjectId],
+	);
 
 	const fetchTaskWorkspaceInfo = useCallback(
 		async (task: BoardCard): Promise<RuntimeTaskWorkspaceInfoResponse | null> => {
@@ -538,29 +525,30 @@ export default function App(): ReactElement {
 		[currentProjectId],
 	);
 
-	const fetchTaskWorkingChangeCount = useCallback(async (
-		task: BoardCard,
-	): Promise<number | null> => {
-		if (!currentProjectId) {
-			return null;
-		}
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const payload = await trpcClient.workspace.getGitSummary.query({
-				taskId: task.id,
-				baseRef: task.baseRef,
-			});
-			if (!payload.ok) {
-				console.error(`[fetchTaskWorkingChangeCount] ${payload.error ?? "Workspace summary request failed."}`)
+	const fetchTaskWorkingChangeCount = useCallback(
+		async (task: BoardCard): Promise<number | null> => {
+			if (!currentProjectId) {
 				return null;
 			}
-			return payload.summary.changedFiles;
-		} catch (error) {	
-			const message = error instanceof Error ? error.message : String(error);
-			console.error(`[fetchTaskWorkingChangeCount] ${message}`);
-			return null;
-		}
-	}, [currentProjectId]);	
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.workspace.getGitSummary.query({
+					taskId: task.id,
+					baseRef: task.baseRef,
+				});
+				if (!payload.ok) {
+					console.error(`[fetchTaskWorkingChangeCount] ${payload.error ?? "Workspace summary request failed."}`);
+					return null;
+				}
+				return payload.summary.changedFiles;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error(`[fetchTaskWorkingChangeCount] ${message}`);
+				return null;
+			}
+		},
+		[currentProjectId],
+	);
 	const fetchReviewWorkspaceSnapshot = useCallback(
 		async (task: BoardCard): Promise<ReviewTaskWorkspaceSnapshot | null> => {
 			if (!currentProjectId) {
@@ -667,31 +655,30 @@ export default function App(): ReactElement {
 		enabled: isGitHistoryOpen,
 	});
 	const refreshGitHistory = gitHistory.refresh;
-	const setTaskGitActionLoading = useCallback((
-		taskId: string,
-		action: TaskGitAction,
-		source: TaskGitActionSource | null,
-	) => {
-		setTaskGitActionLoadingByTaskId((current) => {
-			const existing = current[taskId] ?? { commitSource: null, prSource: null };
-			const key = action === "commit" ? "commitSource" : "prSource";
-			if (existing[key] === source) {
-				return current;
-			}
-			const nextEntry: TaskGitActionLoadingState = {
-				...existing,
-				[key]: source,
-			};
-			if (nextEntry.commitSource === null && nextEntry.prSource === null) {
-				const { [taskId]: _removed, ...rest } = current;
-				return rest;
-			}
-			return {
-				...current,
-				[taskId]: nextEntry,
-			};
-		});
-	}, []);
+	const setTaskGitActionLoading = useCallback(
+		(taskId: string, action: TaskGitAction, source: TaskGitActionSource | null) => {
+			setTaskGitActionLoadingByTaskId((current) => {
+				const existing = current[taskId] ?? { commitSource: null, prSource: null };
+				const key = action === "commit" ? "commitSource" : "prSource";
+				if (existing[key] === source) {
+					return current;
+				}
+				const nextEntry: TaskGitActionLoadingState = {
+					...existing,
+					[key]: source,
+				};
+				if (nextEntry.commitSource === null && nextEntry.prSource === null) {
+					const { [taskId]: _removed, ...rest } = current;
+					return rest;
+				}
+				return {
+					...current,
+					[taskId]: nextEntry,
+				};
+			});
+		},
+		[],
+	);
 	const commitTaskLoadingById = useMemo(() => {
 		const next: Record<string, boolean> = {};
 		for (const [taskId, loading] of Object.entries(taskGitActionLoadingByTaskId)) {
@@ -731,9 +718,7 @@ export default function App(): ReactElement {
 	const runTaskGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {
 			const taskLoadingState = taskGitActionLoadingByTaskId[taskId];
-			const actionInFlightSource = action === "commit"
-				? taskLoadingState?.commitSource
-				: taskLoadingState?.prSource;
+			const actionInFlightSource = action === "commit" ? taskLoadingState?.commitSource : taskLoadingState?.prSource;
 			if (actionInFlightSource !== null && actionInFlightSource !== undefined) {
 				return false;
 			}
@@ -772,7 +757,7 @@ export default function App(): ReactElement {
 					: null;
 				const workspaceInfo = matchesWorkspaceInfoSelection(selectedTaskWorkspaceInfo, selection.card)
 					? selectedTaskWorkspaceInfo
-					: snapshotWorkspaceInfo ?? await fetchTaskWorkspaceInfo(selection.card);
+					: (snapshotWorkspaceInfo ?? (await fetchTaskWorkspaceInfo(selection.card)));
 				if (!workspaceInfo) {
 					showAppToast({
 						intent: "danger",
@@ -834,53 +819,71 @@ export default function App(): ReactElement {
 			workspaceSnapshots,
 		],
 	);
-	const handleCommitTask = useCallback((taskId: string) => {
-		void runTaskGitAction(taskId, "commit", "card");
-	}, [runTaskGitAction]);
-	const handleOpenPrTask = useCallback((taskId: string) => {
-		void runTaskGitAction(taskId, "pr", "card");
-	}, [runTaskGitAction]);
-	const handleAgentCommitTask = useCallback((taskId: string) => {
-		void runTaskGitAction(taskId, "commit", "agent");
-	}, [runTaskGitAction]);
-	const handleAgentOpenPrTask = useCallback((taskId: string) => {
-		void runTaskGitAction(taskId, "pr", "agent");
-	}, [runTaskGitAction]);
-	const handleAddReviewComments = useCallback(async (taskId: string, text: string) => {
-		const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false });
-		if (!typed.ok) {
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message: typed.message ?? "Could not add review comments to the task session.",
-				timeout: 7000,
+	const handleCommitTask = useCallback(
+		(taskId: string) => {
+			void runTaskGitAction(taskId, "commit", "card");
+		},
+		[runTaskGitAction],
+	);
+	const handleOpenPrTask = useCallback(
+		(taskId: string) => {
+			void runTaskGitAction(taskId, "pr", "card");
+		},
+		[runTaskGitAction],
+	);
+	const handleAgentCommitTask = useCallback(
+		(taskId: string) => {
+			void runTaskGitAction(taskId, "commit", "agent");
+		},
+		[runTaskGitAction],
+	);
+	const handleAgentOpenPrTask = useCallback(
+		(taskId: string) => {
+			void runTaskGitAction(taskId, "pr", "agent");
+		},
+		[runTaskGitAction],
+	);
+	const handleAddReviewComments = useCallback(
+		async (taskId: string, text: string) => {
+			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false });
+			if (!typed.ok) {
+				showAppToast({
+					intent: "danger",
+					icon: "warning-sign",
+					message: typed.message ?? "Could not add review comments to the task session.",
+					timeout: 7000,
+				});
+			}
+		},
+		[sendTaskSessionInput],
+	);
+	const handleSendReviewComments = useCallback(
+		async (taskId: string, text: string) => {
+			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false });
+			if (!typed.ok) {
+				showAppToast({
+					intent: "danger",
+					icon: "warning-sign",
+					message: typed.message ?? "Could not send review comments to the task session.",
+					timeout: 7000,
+				});
+				return;
+			}
+			await new Promise<void>((resolve) => {
+				setTimeout(resolve, 200);
 			});
-		}
-	}, [sendTaskSessionInput]);
-	const handleSendReviewComments = useCallback(async (taskId: string, text: string) => {
-		const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false });
-		if (!typed.ok) {
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message: typed.message ?? "Could not send review comments to the task session.",
-				timeout: 7000,
-			});
-			return;
-		}
-		await new Promise<void>((resolve) => {
-			setTimeout(resolve, 200);
-		});
-		const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
-		if (!submitted.ok) {
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message: submitted.message ?? "Could not submit review comments to the task session.",
-				timeout: 7000,
-			});
-		}
-	}, [sendTaskSessionInput]);
+			const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
+			if (!submitted.ok) {
+				showAppToast({
+					intent: "danger",
+					icon: "warning-sign",
+					message: submitted.message ?? "Could not submit review comments to the task session.",
+					timeout: 7000,
+				});
+			}
+		},
+		[sendTaskSessionInput],
+	);
 
 	const {
 		handleProgrammaticCardMoveReady,
@@ -910,10 +913,7 @@ export default function App(): ReactElement {
 					continue;
 				}
 				const columnId = getTaskColumnId(nextBoard, summary.taskId);
-				if (
-					summary.state === "awaiting_review" &&
-					columnId === "in_progress"
-				) {
+				if (summary.state === "awaiting_review" && columnId === "in_progress") {
 					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "review");
 					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 						continue;
@@ -924,10 +924,7 @@ export default function App(): ReactElement {
 					}
 					continue;
 				}
-				if (
-					summary.state === "running" &&
-					columnId === "review"
-				) {
+				if (summary.state === "running" && columnId === "review") {
 					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
 						skipKickoff: true,
 					});
@@ -962,9 +959,7 @@ export default function App(): ReactElement {
 					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash", { insertAtTop: true });
 					if (moved.moved) {
 						setSelectedTaskId((currentSelectedTaskId) =>
-							currentSelectedTaskId === summary.taskId
-								? nextTaskId
-								: currentSelectedTaskId,
+							currentSelectedTaskId === summary.taskId ? nextTaskId : currentSelectedTaskId,
 						);
 						nextBoard = moved.board;
 					}
@@ -1010,7 +1005,7 @@ export default function App(): ReactElement {
 		fetchTaskWorkspaceInfo,
 		selectedCard?.card.baseRef,
 		selectedCard?.card.id,
-		selectedCard ? sessions[selectedCard.card.id]?.updatedAt ?? 0 : 0,
+		selectedCard ? (sessions[selectedCard.card.id]?.updatedAt ?? 0) : 0,
 		workspaceStatusRetrievedAt,
 	]);
 
@@ -1117,12 +1112,12 @@ export default function App(): ReactElement {
 	useInterval(
 		() => {
 			if (
-				!isGitHistoryOpen
-				|| !currentProjectId
-				|| !isDocumentVisible
-				|| runningGitAction !== null
-				|| isSwitchingHomeBranch
-				|| isDiscardingHomeWorkingChanges
+				!isGitHistoryOpen ||
+				!currentProjectId ||
+				!isDocumentVisible ||
+				runningGitAction !== null ||
+				isSwitchingHomeBranch ||
+				isDiscardingHomeWorkingChanges
 			) {
 				return;
 			}
@@ -1134,88 +1129,89 @@ export default function App(): ReactElement {
 		isGitHistoryOpen && currentProjectId && isDocumentVisible ? GIT_HISTORY_POLL_INTERVAL_MS : null,
 	);
 
-	const runGitAction = useCallback(async (action: RuntimeGitSyncAction) => {
-		if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
-			return;
-		}
-		setRunningGitAction(action);
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const payload = await trpcClient.workspace.runGitSyncAction.mutate({ action });
-			if (!payload.ok || !payload.summary) {
-				const errorMessage = payload.error ?? `${action} failed.`;
-				const output = payload.output ?? "";
-				const fallbackSummary = payload.summary ?? null;
-				if (fallbackSummary) {
-					setGitSummary(fallbackSummary);
-				}
-				setGitActionError({
-					action,
-					message: errorMessage,
-					output,
-				});
+	const runGitAction = useCallback(
+		async (action: RuntimeGitSyncAction) => {
+			if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
 				return;
 			}
-			setGitSummary(payload.summary);
-			refreshGitHistory();
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			setGitActionError({
-				action,
-				message,
-				output: "",
-			});
-		} finally {
-			setRunningGitAction(null);
-		}
-	}, [currentProjectId, isSwitchingHomeBranch, refreshGitHistory, runningGitAction]);
-
-	const switchHomeBranch = useCallback(async (branch: string) => {
-		const normalizedBranch = branch.trim();
-		const currentBranch = gitSummary?.currentBranch ?? null;
-		if (
-			!currentProjectId ||
-			isSwitchingHomeBranch ||
-			!normalizedBranch ||
-			normalizedBranch === currentBranch
-		) {
-			return;
-		}
-		setIsSwitchingHomeBranch(true);
-		try {
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			const payload = await trpcClient.workspace.checkoutGitBranch.mutate({
-				branch: normalizedBranch,
-			});
-			if (!payload.ok || !payload.summary) {
-				const errorMessage = payload.error ?? "Switch branch failed.";
-				const fallbackSummary = payload.summary ?? null;
-				if (fallbackSummary) {
-					setGitSummary(fallbackSummary);
+			setRunningGitAction(action);
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.workspace.runGitSyncAction.mutate({ action });
+				if (!payload.ok || !payload.summary) {
+					const errorMessage = payload.error ?? `${action} failed.`;
+					const output = payload.output ?? "";
+					const fallbackSummary = payload.summary ?? null;
+					if (fallbackSummary) {
+						setGitSummary(fallbackSummary);
+					}
+					setGitActionError({
+						action,
+						message: errorMessage,
+						output,
+					});
+					return;
 				}
+				setGitSummary(payload.summary);
+				refreshGitHistory();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				setGitActionError({
+					action,
+					message,
+					output: "",
+				});
+			} finally {
+				setRunningGitAction(null);
+			}
+		},
+		[currentProjectId, isSwitchingHomeBranch, refreshGitHistory, runningGitAction],
+	);
+
+	const switchHomeBranch = useCallback(
+		async (branch: string) => {
+			const normalizedBranch = branch.trim();
+			const currentBranch = gitSummary?.currentBranch ?? null;
+			if (!currentProjectId || isSwitchingHomeBranch || !normalizedBranch || normalizedBranch === currentBranch) {
+				return;
+			}
+			setIsSwitchingHomeBranch(true);
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const payload = await trpcClient.workspace.checkoutGitBranch.mutate({
+					branch: normalizedBranch,
+				});
+				if (!payload.ok || !payload.summary) {
+					const errorMessage = payload.error ?? "Switch branch failed.";
+					const fallbackSummary = payload.summary ?? null;
+					if (fallbackSummary) {
+						setGitSummary(fallbackSummary);
+					}
+					showAppToast({
+						intent: "danger",
+						icon: "warning-sign",
+						message: `Could not switch to ${normalizedBranch}. ${errorMessage}`,
+						timeout: 7000,
+					});
+					return;
+				}
+				setGitSummary(payload.summary);
+				refreshGitHistory();
+				await refreshWorkspaceState();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
 				showAppToast({
 					intent: "danger",
 					icon: "warning-sign",
-					message: `Could not switch to ${normalizedBranch}. ${errorMessage}`,
+					message: `Could not switch to ${normalizedBranch}. ${message}`,
 					timeout: 7000,
 				});
-				return;
+			} finally {
+				setIsSwitchingHomeBranch(false);
 			}
-			setGitSummary(payload.summary);
-			refreshGitHistory();
-			await refreshWorkspaceState();
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			showAppToast({
-				intent: "danger",
-				icon: "warning-sign",
-				message: `Could not switch to ${normalizedBranch}. ${message}`,
-				timeout: 7000,
-			});
-		} finally {
-			setIsSwitchingHomeBranch(false);
-		}
-	}, [currentProjectId, gitSummary?.currentBranch, isSwitchingHomeBranch, refreshGitHistory, refreshWorkspaceState]);
+		},
+		[currentProjectId, gitSummary?.currentBranch, isSwitchingHomeBranch, refreshGitHistory, refreshWorkspaceState],
+	);
 
 	const discardHomeWorkingChanges = useCallback(async () => {
 		if (!currentProjectId || isDiscardingHomeWorkingChanges) {
@@ -1259,10 +1255,8 @@ export default function App(): ReactElement {
 	}, [currentProjectId, isDiscardingHomeWorkingChanges, refreshGitHistory]);
 
 	const persistWorkspaceStateAsync = useCallback(
-		async (input: {
-			workspaceId: string;
-			payload: Parameters<typeof saveWorkspaceState>[1];
-		}) => await saveWorkspaceState(input.workspaceId, input.payload),
+		async (input: { workspaceId: string; payload: Parameters<typeof saveWorkspaceState>[1] }) =>
+			await saveWorkspaceState(input.workspaceId, input.payload),
 		[],
 	);
 	const handleWorkspaceStateConflict = useCallback(() => {
@@ -1497,12 +1491,7 @@ export default function App(): ReactElement {
 			return;
 		}
 		setEditTaskBranchRef(defaultTaskBranchRef);
-	}, [
-		createTaskBranchOptions,
-		defaultTaskBranchRef,
-		editTaskBranchRef,
-		editingTaskId,
-	]);
+	}, [createTaskBranchOptions, defaultTaskBranchRef, editTaskBranchRef, editingTaskId]);
 
 	useEffect(() => {
 		if (selectedTaskId && !selectedCard) {
@@ -1615,17 +1604,20 @@ export default function App(): ReactElement {
 		setIsGitHistoryOpen(false);
 	}, []);
 
-	const handleSelectProject = useCallback((projectId: string) => {
-		if (!projectId || projectId === currentProjectId) {
-			return;
-		}
-		setCanPersistWorkspaceState(false);
-		setRequestedProjectId(projectId);
-		setSelectedTaskId(null);
-		setIsGitHistoryOpen(false);
-		setIsInlineTaskCreateOpen(false);
-		setEditingTaskId(null);
-	}, [currentProjectId]);
+	const handleSelectProject = useCallback(
+		(projectId: string) => {
+			if (!projectId || projectId === currentProjectId) {
+				return;
+			}
+			setCanPersistWorkspaceState(false);
+			setRequestedProjectId(projectId);
+			setSelectedTaskId(null);
+			setIsGitHistoryOpen(false);
+			setIsInlineTaskCreateOpen(false);
+			setEditingTaskId(null);
+		},
+		[currentProjectId],
+	);
 
 	const handleAddProject = useCallback(async () => {
 		try {
@@ -1803,12 +1795,7 @@ export default function App(): ReactElement {
 		}
 		detailTerminalSelectionKeyRef.current = selectionKey;
 		void startDetailTerminalForCard(selectedCard.card);
-	}, [
-		isDetailTerminalOpen,
-		selectedCard?.card.baseRef,
-		selectedCard?.card.id,
-		startDetailTerminalForCard,
-	]);
+	}, [isDetailTerminalOpen, selectedCard?.card.baseRef, selectedCard?.card.id, startDetailTerminalForCard]);
 
 	useEffect(() => {
 		homeTerminalToggleRef.current = handleToggleHomeTerminal;
@@ -2051,8 +2038,7 @@ export default function App(): ReactElement {
 						isHomeTerminalOpen && homeTerminalProjectIdRef.current === currentProjectId;
 					shouldWaitForConnection = !homeWasAlreadyOpenForProject;
 					if (shouldWaitForConnection) {
-						waitForTerminalConnectionReady =
-							prepareWaitForTerminalConnectionReady(HOME_TERMINAL_TASK_ID);
+						waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(HOME_TERMINAL_TASK_ID);
 					}
 					homeTerminalProjectIdRef.current = currentProjectId;
 					setIsHomeTerminalOpen(true);
@@ -2156,16 +2142,16 @@ export default function App(): ReactElement {
 				}
 				return false;
 			}
-				if (!optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== fromColumnId) {
-							return currentBoard;
-						}
-						const moved = moveTaskToColumn(currentBoard, taskId, "in_progress", { insertAtTop: true });
-						return moved.moved ? moved.board : currentBoard;
-					});
-				}
+			if (!optimisticMove) {
+				setBoard((currentBoard) => {
+					const currentColumnId = getTaskColumnId(currentBoard, taskId);
+					if (currentColumnId !== fromColumnId) {
+						return currentBoard;
+					}
+					const moved = moveTaskToColumn(currentBoard, taskId, "in_progress", { insertAtTop: true });
+					return moved.moved ? moved.board : currentBoard;
+				});
+			}
 			setWorktreeError(null);
 			return true;
 		},
@@ -2187,28 +2173,27 @@ export default function App(): ReactElement {
 		});
 	}, [readyForReviewNotificationsEnabled]);
 
-	const {
-		confirmMoveTaskToTrash,
-		handleCreateDependency,
-		handleDeleteDependency,
-		requestMoveTaskToTrash,
-	} = useLinkedBacklogTaskActions({
-		board,
-		setBoard,
-		selectedTaskWorkspaceInfo,
-		setSelectedTaskId,
-		setPendingTrashWarning,
-		stopTaskSession,
-		cleanupTaskWorkspace,
-		fetchTaskWorkingChangeCount,
-		fetchTaskWorkspaceInfo,
-		maybeRequestNotificationPermissionForTaskStart,
-		kickoffTaskInProgress,
-	});
+	const { confirmMoveTaskToTrash, handleCreateDependency, handleDeleteDependency, requestMoveTaskToTrash } =
+		useLinkedBacklogTaskActions({
+			board,
+			setBoard,
+			selectedTaskWorkspaceInfo,
+			setSelectedTaskId,
+			setPendingTrashWarning,
+			stopTaskSession,
+			cleanupTaskWorkspace,
+			fetchTaskWorkingChangeCount,
+			fetchTaskWorkspaceInfo,
+			maybeRequestNotificationPermissionForTaskStart,
+			kickoffTaskInProgress,
+		});
 
-	const runAutoReviewGitAction = useCallback(async (taskId: string, action: TaskGitAction) => {
-		return await runTaskGitAction(taskId, action, "card");
-	}, [runTaskGitAction]);
+	const runAutoReviewGitAction = useCallback(
+		async (taskId: string, action: TaskGitAction) => {
+			return await runTaskGitAction(taskId, action, "card");
+		},
+		[runTaskGitAction],
+	);
 
 	useEffect(() => {
 		setRequestMoveTaskToTrashHandler(requestMoveTaskToTrash);
@@ -2304,7 +2289,6 @@ export default function App(): ReactElement {
 		[board, kickoffTaskInProgress, maybeRequestNotificationPermissionForTaskStart, tryProgrammaticCardMove],
 	);
 
-
 	const handleDetailTaskDragEnd = useCallback(
 		(result: DropResult) => {
 			handleDragEnd(result);
@@ -2321,11 +2305,7 @@ export default function App(): ReactElement {
 		if (!selectedCard) {
 			return;
 		}
-		const programmaticMoveAttempt = tryProgrammaticCardMove(
-			selectedCard.card.id,
-			selectedCard.column.id,
-			"trash",
-		);
+		const programmaticMoveAttempt = tryProgrammaticCardMove(selectedCard.card.id, selectedCard.column.id, "trash");
 		if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 			return;
 		}
@@ -2341,6 +2321,22 @@ export default function App(): ReactElement {
 		},
 		[requestMoveTaskToTrash, tryProgrammaticCardMove],
 	);
+	const handleCancelAutomaticTaskAction = useCallback((taskId: string) => {
+		setBoard((currentBoard) => {
+			const selection = findCardSelection(currentBoard, taskId);
+			if (!selection || selection.card.autoReviewEnabled !== true) {
+				return currentBoard;
+			}
+			const updated = updateTask(currentBoard, taskId, {
+				prompt: selection.card.prompt,
+				startInPlanMode: selection.card.startInPlanMode,
+				autoReviewEnabled: false,
+				autoReviewMode: resolveTaskAutoReviewMode(selection.card.autoReviewMode),
+				baseRef: selection.card.baseRef,
+			});
+			return updated.updated ? updated.board : currentBoard;
+		});
+	}, []);
 	const handleOpenClearTrash = useCallback(() => {
 		if (trashTaskCount === 0) {
 			return;
@@ -2380,9 +2376,11 @@ export default function App(): ReactElement {
 		})();
 	}, [cleanupTaskWorkspace, selectedTaskId, stopTaskSession, trashTaskIds]);
 
-	const detailSession = selectedCard ? sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id) : null;
+	const detailSession = selectedCard
+		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
+		: null;
 	const detailShellTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card) : null;
-	const detailShellSummary = detailShellTaskId ? sessions[detailShellTaskId] ?? null : null;
+	const detailShellSummary = detailShellTaskId ? (sessions[detailShellTaskId] ?? null) : null;
 	const detailShellSubtitle = useMemo(() => {
 		if (!selectedCard) {
 			return null;
@@ -2402,12 +2400,11 @@ export default function App(): ReactElement {
 		}
 		return "No agent configured";
 	}, [runtimeProjectConfig, shouldUseNavigationPath]);
-	const activeWorkspacePath =
-		selectedCard
-			? activeSelectedTaskWorkspaceInfo?.path ?? selectedCardWorkspaceSnapshot?.path ?? workspacePath ?? undefined
-			: shouldUseNavigationPath
-				? navigationProjectPath ?? undefined
-				: workspacePath ?? undefined;
+	const activeWorkspacePath = selectedCard
+		? (activeSelectedTaskWorkspaceInfo?.path ?? selectedCardWorkspaceSnapshot?.path ?? workspacePath ?? undefined)
+		: shouldUseNavigationPath
+			? (navigationProjectPath ?? undefined)
+			: (workspacePath ?? undefined);
 	const {
 		openTargetOptions,
 		selectedOpenTargetId,
@@ -2433,8 +2430,7 @@ export default function App(): ReactElement {
 	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
 	const navbarGitSummary = hasNoProjects || selectedCard ? null : gitSummary;
 	const shouldHideProjectDependentTopBarActions =
-		!selectedCard &&
-		(isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
+		!selectedCard && (isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
 	const navbarTaskGitSummary = useMemo((): TopBarTaskGitSummary | null => {
 		if (hasNoProjects || !selectedCard) {
 			return null;
@@ -2549,22 +2545,25 @@ export default function App(): ReactElement {
 	}
 
 	return (
-		<div className={Classes.DARK} style={{ display: "flex", flexDirection: "row", height: "100svh", minWidth: 0, overflow: "hidden" }}>
-				{!selectedCard ? (
-					<ProjectNavigationPanel
-						projects={displayedProjects}
-						isLoadingProjects={isProjectListLoading}
-						currentProjectId={navigationCurrentProjectId}
-						removingProjectId={removingProjectId}
-						onSelectProject={(projectId) => {
-							void handleSelectProject(projectId);
-						}}
-						onRemoveProject={handleRemoveProject}
-						onAddProject={() => {
-							void handleAddProject();
-						}}
-					/>
-				) : null}
+		<div
+			className={Classes.DARK}
+			style={{ display: "flex", flexDirection: "row", height: "100svh", minWidth: 0, overflow: "hidden" }}
+		>
+			{!selectedCard ? (
+				<ProjectNavigationPanel
+					projects={displayedProjects}
+					isLoadingProjects={isProjectListLoading}
+					currentProjectId={navigationCurrentProjectId}
+					removingProjectId={removingProjectId}
+					onSelectProject={(projectId) => {
+						void handleSelectProject(projectId);
+					}}
+					onRemoveProject={handleRemoveProject}
+					onAddProject={() => {
+						void handleAddProject();
+					}}
+				/>
+			) : null}
 			<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
 				<TopBar
 					onBack={selectedCard ? handleBack : undefined}
@@ -2596,7 +2595,9 @@ export default function App(): ReactElement {
 									void runGitAction("push");
 								}
 					}
-						onToggleTerminal={hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal}
+					onToggleTerminal={
+						hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
+					}
 					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
 					onOpenSettings={handleOpenSettings}
@@ -2616,230 +2617,239 @@ export default function App(): ReactElement {
 					isGitHistoryOpen={isGitHistoryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
-					<RuntimeStatusBanners
-						worktreeError={worktreeError}
-						onDismissWorktreeError={() => setWorktreeError(null)}
-					/>
-					<div style={{ position: "relative", display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-						<div
-							className="kb-home-layout"
-							aria-hidden={selectedCard ? true : undefined}
-							style={
-								selectedCard
-									? {
-											visibility: "hidden",
-									  }
-									: undefined
-							}
-						>
-							{shouldShowProjectLoadingState ? (
-								<div
-									style={{
-										display: "flex",
-										flex: "1 1 0",
-										minHeight: 0,
-										alignItems: "center",
-										justifyContent: "center",
-										background: Colors.DARK_GRAY1,
-									}}
-								>
-									<Spinner size={30} />
-								</div>
-							) : (
-								hasNoProjects ? (
-									<div
-										style={{
-											display: "flex",
-											flex: "1 1 0",
-											minHeight: 0,
-											alignItems: "center",
-											justifyContent: "center",
-											background: Colors.DARK_GRAY1,
-											padding: "calc(var(--bp-surface-spacing) * 6)",
-										}}
-									>
-										<NonIdealState
-											icon="folder-open"
-											title="No projects yet"
-											description="Add a git repository to start using Kanbanana."
-											action={
-												<Button
-													intent="primary"
-													text="Add project"
-													onClick={() => {
-														void handleAddProject();
-													}}
-												/>
-											}
-										/>
-									</div>
-								) : (
-								<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
-									<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0 }}>
-										{isGitHistoryOpen ? (
-											<GitHistoryView
-												workspaceId={currentProjectId}
-												gitHistory={gitHistory}
-												onCheckoutBranch={(branch) => { void switchHomeBranch(branch); }}
-												onDiscardWorkingChanges={() => {
-													void discardHomeWorkingChanges();
-												}}
-												isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
-											/>
-										) : (
-											<KanbanBoard
-												data={board}
-												taskSessions={sessions}
-												onCardSelect={handleCardSelect}
-												onCreateTask={handleOpenCreateTask}
-												onStartTask={handleStartTask}
-												onClearTrash={handleOpenClearTrash}
-												inlineTaskCreator={inlineTaskCreator}
-												editingTaskId={editingTaskId}
-												inlineTaskEditor={inlineTaskEditor}
-												onEditTask={handleOpenEditTask}
-												onCommitTask={handleCommitTask}
-												onOpenPrTask={handleOpenPrTask}
-												commitTaskLoadingById={commitTaskLoadingById}
-												openPrTaskLoadingById={openPrTaskLoadingById}
-												onMoveToTrashTask={handleMoveReviewCardToTrash}
-												reviewWorkspaceSnapshots={workspaceSnapshots}
-												dependencies={board.dependencies}
-												onCreateDependency={handleCreateDependency}
-												onDeleteDependency={handleDeleteDependency}
-												onRequestProgrammaticCardMoveReady={selectedCard ? undefined : handleProgrammaticCardMoveReady}
-												onDragEnd={handleDragEnd}
-											/>
-										)}
-									</div>
-									{isHomeTerminalOpen ? (
-										<ResizableBottomPane
-											initialHeight={homeTerminalPaneHeight}
-											onHeightChange={setHomeTerminalPaneHeight}
-										>
-											<div
-												style={{
-													display: "flex",
-													flex: "1 1 0",
-													minWidth: 0,
-													paddingLeft: "calc(var(--bp-surface-spacing) * 3)",
-													paddingRight: "calc(var(--bp-surface-spacing) * 3)",
-												}}
-											>
-												<AgentTerminalPanel
-													key={`${currentProjectId ?? "none"}:${HOME_TERMINAL_TASK_ID}`}
-													taskId={HOME_TERMINAL_TASK_ID}
-													workspaceId={currentProjectId}
-													summary={homeTerminalSummary}
-													onSummary={upsertSession}
-													showSessionToolbar={false}
-													onClose={() => {
-														setIsHomeTerminalOpen(false);
-														setIsHomeTerminalExpanded(false);
-														setHomeTerminalPaneHeight(undefined);
-													}}
-													autoFocus
-													minimalHeaderTitle="Terminal"
-													minimalHeaderSubtitle={homeTerminalShellBinary}
-													panelBackgroundColor={Colors.DARK_GRAY2}
-													terminalBackgroundColor={Colors.DARK_GRAY2}
-													cursorColor={Colors.LIGHT_GRAY5}
-													showRightBorder={false}
-													isVisible={!selectedCard}
-													onConnectionReady={markTerminalConnectionReady}
-													agentCommand={agentCommand}
-													onSendAgentCommand={handleSendAgentCommandToHomeTerminal}
-													isExpanded={isHomeTerminalExpanded}
-													onToggleExpand={handleToggleExpandHomeTerminal}
-												/>
-											</div>
-										</ResizableBottomPane>
-									) : null}
-								</div>
-								)
-							)}
-						</div>
-						{selectedCard && detailSession ? (
-							<div style={{ position: "absolute", inset: 0, display: "flex", minHeight: 0, minWidth: 0 }}>
-								<CardDetailView
-									selection={selectedCard}
-									currentProjectId={currentProjectId}
-									sessionSummary={detailSession}
-									taskSessions={sessions}
-									workspaceStatusRetrievedAt={workspaceStatusRetrievedAt}
-									onSessionSummary={upsertSession}
-									onBack={handleBack}
-									onCardSelect={handleCardSelect}
-									onTaskDragEnd={handleDetailTaskDragEnd}
-									onCreateTask={handleOpenCreateTask}
-									onStartTask={handleStartTask}
-									onClearTrash={handleOpenClearTrash}
-									inlineTaskCreator={inlineTaskCreator}
-									editingTaskId={editingTaskId}
-									inlineTaskEditor={inlineTaskEditor}
-									onEditTask={(task) => {
-										handleOpenEditTask(task, { preserveDetailSelection: true });
-									}}
-									onCommitTask={handleCommitTask}
-									onOpenPrTask={handleOpenPrTask}
-									onAgentCommitTask={handleAgentCommitTask}
-									onAgentOpenPrTask={handleAgentOpenPrTask}
-									commitTaskLoadingById={commitTaskLoadingById}
-									openPrTaskLoadingById={openPrTaskLoadingById}
-									agentCommitTaskLoadingById={agentCommitTaskLoadingById}
-									agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
-									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
-									reviewWorkspaceSnapshots={workspaceSnapshots}
-									onAddReviewComments={(taskId: string, text: string) => { void handleAddReviewComments(taskId, text); }}
-									onSendReviewComments={(taskId: string, text: string) => { void handleSendReviewComments(taskId, text); }}
-									onMoveToTrash={handleMoveToTrash}
-									gitHistoryPanel={
-										isGitHistoryOpen ? (
-											<GitHistoryView
-												workspaceId={currentProjectId}
-												gitHistory={gitHistory}
-											/>
-										) : undefined
+				<RuntimeStatusBanners worktreeError={worktreeError} onDismissWorktreeError={() => setWorktreeError(null)} />
+				<div
+					style={{
+						position: "relative",
+						display: "flex",
+						flex: "1 1 0",
+						minHeight: 0,
+						minWidth: 0,
+						overflow: "hidden",
+					}}
+				>
+					<div
+						className="kb-home-layout"
+						aria-hidden={selectedCard ? true : undefined}
+						style={
+							selectedCard
+								? {
+										visibility: "hidden",
 									}
-									bottomTerminalOpen={isDetailTerminalOpen}
-									bottomTerminalTaskId={detailShellTaskId}
-									bottomTerminalSummary={detailShellSummary}
-									bottomTerminalSubtitle={detailShellSubtitle}
-									onBottomTerminalClose={() => {
-										setIsDetailTerminalOpen(false);
-										setIsDetailTerminalExpanded(false);
-										setDetailTerminalPaneHeight(undefined);
-									}}
-									bottomTerminalPaneHeight={detailTerminalPaneHeight}
-									onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
-									onBottomTerminalConnectionReady={markTerminalConnectionReady}
-									bottomTerminalAgentCommand={agentCommand}
-									onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
-									isBottomTerminalExpanded={isDetailTerminalExpanded}
-									onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
+								: undefined
+						}
+					>
+						{shouldShowProjectLoadingState ? (
+							<div
+								style={{
+									display: "flex",
+									flex: "1 1 0",
+									minHeight: 0,
+									alignItems: "center",
+									justifyContent: "center",
+									background: Colors.DARK_GRAY1,
+								}}
+							>
+								<Spinner size={30} />
+							</div>
+						) : hasNoProjects ? (
+							<div
+								style={{
+									display: "flex",
+									flex: "1 1 0",
+									minHeight: 0,
+									alignItems: "center",
+									justifyContent: "center",
+									background: Colors.DARK_GRAY1,
+									padding: "calc(var(--bp-surface-spacing) * 6)",
+								}}
+							>
+								<NonIdealState
+									icon="folder-open"
+									title="No projects yet"
+									description="Add a git repository to start using Kanbanana."
+									action={
+										<Button
+											intent="primary"
+											text="Add project"
+											onClick={() => {
+												void handleAddProject();
+											}}
+										/>
+									}
 								/>
 							</div>
-						) : null}
+						) : (
+							<div
+								style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minHeight: 0, minWidth: 0 }}
+							>
+								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0 }}>
+									{isGitHistoryOpen ? (
+										<GitHistoryView
+											workspaceId={currentProjectId}
+											gitHistory={gitHistory}
+											onCheckoutBranch={(branch) => {
+												void switchHomeBranch(branch);
+											}}
+											onDiscardWorkingChanges={() => {
+												void discardHomeWorkingChanges();
+											}}
+											isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
+										/>
+									) : (
+										<KanbanBoard
+											data={board}
+											taskSessions={sessions}
+											onCardSelect={handleCardSelect}
+											onCreateTask={handleOpenCreateTask}
+											onStartTask={handleStartTask}
+											onClearTrash={handleOpenClearTrash}
+											inlineTaskCreator={inlineTaskCreator}
+											editingTaskId={editingTaskId}
+											inlineTaskEditor={inlineTaskEditor}
+											onEditTask={handleOpenEditTask}
+											onCommitTask={handleCommitTask}
+											onOpenPrTask={handleOpenPrTask}
+											commitTaskLoadingById={commitTaskLoadingById}
+											openPrTaskLoadingById={openPrTaskLoadingById}
+											onMoveToTrashTask={handleMoveReviewCardToTrash}
+											reviewWorkspaceSnapshots={workspaceSnapshots}
+											dependencies={board.dependencies}
+											onCreateDependency={handleCreateDependency}
+											onDeleteDependency={handleDeleteDependency}
+											onRequestProgrammaticCardMoveReady={
+												selectedCard ? undefined : handleProgrammaticCardMoveReady
+											}
+											onDragEnd={handleDragEnd}
+										/>
+									)}
+								</div>
+								{isHomeTerminalOpen ? (
+									<ResizableBottomPane
+										initialHeight={homeTerminalPaneHeight}
+										onHeightChange={setHomeTerminalPaneHeight}
+									>
+										<div
+											style={{
+												display: "flex",
+												flex: "1 1 0",
+												minWidth: 0,
+												paddingLeft: "calc(var(--bp-surface-spacing) * 3)",
+												paddingRight: "calc(var(--bp-surface-spacing) * 3)",
+											}}
+										>
+											<AgentTerminalPanel
+												key={`${currentProjectId ?? "none"}:${HOME_TERMINAL_TASK_ID}`}
+												taskId={HOME_TERMINAL_TASK_ID}
+												workspaceId={currentProjectId}
+												summary={homeTerminalSummary}
+												onSummary={upsertSession}
+												showSessionToolbar={false}
+												onClose={() => {
+													setIsHomeTerminalOpen(false);
+													setIsHomeTerminalExpanded(false);
+													setHomeTerminalPaneHeight(undefined);
+												}}
+												autoFocus
+												minimalHeaderTitle="Terminal"
+												minimalHeaderSubtitle={homeTerminalShellBinary}
+												panelBackgroundColor={Colors.DARK_GRAY2}
+												terminalBackgroundColor={Colors.DARK_GRAY2}
+												cursorColor={Colors.LIGHT_GRAY5}
+												showRightBorder={false}
+												isVisible={!selectedCard}
+												onConnectionReady={markTerminalConnectionReady}
+												agentCommand={agentCommand}
+												onSendAgentCommand={handleSendAgentCommandToHomeTerminal}
+												isExpanded={isHomeTerminalExpanded}
+												onToggleExpand={handleToggleExpandHomeTerminal}
+											/>
+										</div>
+									</ResizableBottomPane>
+								) : null}
+							</div>
+						)}
 					</div>
+					{selectedCard && detailSession ? (
+						<div style={{ position: "absolute", inset: 0, display: "flex", minHeight: 0, minWidth: 0 }}>
+							<CardDetailView
+								selection={selectedCard}
+								currentProjectId={currentProjectId}
+								sessionSummary={detailSession}
+								taskSessions={sessions}
+								workspaceStatusRetrievedAt={workspaceStatusRetrievedAt}
+								onSessionSummary={upsertSession}
+								onBack={handleBack}
+								onCardSelect={handleCardSelect}
+								onTaskDragEnd={handleDetailTaskDragEnd}
+								onCreateTask={handleOpenCreateTask}
+								onStartTask={handleStartTask}
+								onClearTrash={handleOpenClearTrash}
+								inlineTaskCreator={inlineTaskCreator}
+								editingTaskId={editingTaskId}
+								inlineTaskEditor={inlineTaskEditor}
+								onEditTask={(task) => {
+									handleOpenEditTask(task, { preserveDetailSelection: true });
+								}}
+								onCommitTask={handleCommitTask}
+								onOpenPrTask={handleOpenPrTask}
+								onAgentCommitTask={handleAgentCommitTask}
+								onAgentOpenPrTask={handleAgentOpenPrTask}
+								commitTaskLoadingById={commitTaskLoadingById}
+								openPrTaskLoadingById={openPrTaskLoadingById}
+								agentCommitTaskLoadingById={agentCommitTaskLoadingById}
+								agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
+								onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
+								onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
+								reviewWorkspaceSnapshots={workspaceSnapshots}
+								onAddReviewComments={(taskId: string, text: string) => {
+									void handleAddReviewComments(taskId, text);
+								}}
+								onSendReviewComments={(taskId: string, text: string) => {
+									void handleSendReviewComments(taskId, text);
+								}}
+								onMoveToTrash={handleMoveToTrash}
+								gitHistoryPanel={
+									isGitHistoryOpen ? (
+										<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
+									) : undefined
+								}
+								bottomTerminalOpen={isDetailTerminalOpen}
+								bottomTerminalTaskId={detailShellTaskId}
+								bottomTerminalSummary={detailShellSummary}
+								bottomTerminalSubtitle={detailShellSubtitle}
+								onBottomTerminalClose={() => {
+									setIsDetailTerminalOpen(false);
+									setIsDetailTerminalExpanded(false);
+									setDetailTerminalPaneHeight(undefined);
+								}}
+								bottomTerminalPaneHeight={detailTerminalPaneHeight}
+								onBottomTerminalPaneHeightChange={setDetailTerminalPaneHeight}
+								onBottomTerminalConnectionReady={markTerminalConnectionReady}
+								bottomTerminalAgentCommand={agentCommand}
+								onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
+								isBottomTerminalExpanded={isDetailTerminalExpanded}
+								onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
+							/>
+						</div>
+					) : null}
+				</div>
 			</div>
-					<KeyboardShortcutsDialog
-						isOpen={isKeyboardShortcutsOpen}
-						onClose={() => setIsKeyboardShortcutsOpen(false)}
-					/>
-					<RuntimeSettingsDialog
-						open={isSettingsOpen}
-						workspaceId={currentProjectId}
-					initialSection={settingsInitialSection}
-					onOpenChange={(nextOpen) => {
-						setIsSettingsOpen(nextOpen);
-						if (!nextOpen) {
-							setSettingsInitialSection(null);
-						}
-					}}
-						onSaved={() => {
-							refreshRuntimeProjectConfig();
-						}}
-					/>
+			<KeyboardShortcutsDialog isOpen={isKeyboardShortcutsOpen} onClose={() => setIsKeyboardShortcutsOpen(false)} />
+			<RuntimeSettingsDialog
+				open={isSettingsOpen}
+				workspaceId={currentProjectId}
+				initialSection={settingsInitialSection}
+				onOpenChange={(nextOpen) => {
+					setIsSettingsOpen(nextOpen);
+					if (!nextOpen) {
+						setSettingsInitialSection(null);
+					}
+				}}
+				onSaved={() => {
+					refreshRuntimeProjectConfig();
+				}}
+			/>
 			<ClearTrashDialog
 				open={isClearTrashDialogOpen}
 				taskCount={trashTaskCount}
@@ -2884,9 +2894,7 @@ export default function App(): ReactElement {
 				<p>{gitActionErrorTitle}</p>
 				<p>{gitActionError?.message}</p>
 				{gitActionError?.output ? (
-					<Pre style={{ maxHeight: 220, overflow: "auto" }}>
-						{gitActionError.output}
-					</Pre>
+					<Pre style={{ maxHeight: 220, overflow: "auto" }}>{gitActionError.output}</Pre>
 				) : null}
 			</Alert>
 		</div>

@@ -13,6 +13,17 @@ export function resolveTaskAutoReviewMode(mode: TaskAutoReviewMode | null | unde
 	return DEFAULT_TASK_AUTO_REVIEW_MODE;
 }
 
+export function getTaskAutoReviewActionLabel(mode: TaskAutoReviewMode | null | undefined): string {
+	const resolvedMode = resolveTaskAutoReviewMode(mode);
+	if (resolvedMode === "pr") {
+		return "PR";
+	}
+	if (resolvedMode === "move_to_trash") {
+		return "move to trash";
+	}
+	return "commit";
+}
+
 export interface BoardCard {
 	id: string;
 	prompt: string;
