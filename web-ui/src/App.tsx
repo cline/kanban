@@ -269,6 +269,13 @@ export default function App(): ReactElement {
 		if (!isProjectSwitching) {
 			return;
 		}
+		resetWorkspaceSyncState();
+	}, [isProjectSwitching, resetWorkspaceSyncState]);
+
+	useEffect(() => {
+		if (!isProjectSwitching) {
+			return;
+		}
 		resetTaskEditorState();
 	}, [isProjectSwitching, resetTaskEditorState]);
 
@@ -422,7 +429,6 @@ export default function App(): ReactElement {
 	}, [isRuntimeDisconnected, streamError]);
 
 	useEffect(() => {
-		resetWorkspaceSyncState();
 		setWorktreeError(null);
 		setSelectedTaskId(null);
 		setSelectedTaskWorkspaceInfo(null);
@@ -438,7 +444,6 @@ export default function App(): ReactElement {
 		resetProjectNavigationState,
 		resetTaskEditorState,
 		resetTerminalPanelsState,
-		resetWorkspaceSyncState,
 		resetWorkspaceSnapshots,
 	]);
 
