@@ -126,7 +126,12 @@ export function BoardColumn({
 								for (const card of column.cards) {
 									if (column.id === "backlog" && editingTaskId === card.id) {
 										items.push(
-											<div key={card.id} style={{ marginBottom: 8 }}>
+											<div
+												key={card.id}
+												data-task-id={card.id}
+												data-column-id={column.id}
+												style={{ marginBottom: 8 }}
+											>
 												{inlineTaskEditor}
 											</div>,
 										);
