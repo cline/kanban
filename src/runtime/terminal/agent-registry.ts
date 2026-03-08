@@ -15,7 +15,8 @@ interface AgentTemplate {
 	id: RuntimeAgentId;
 	label: string;
 	binary: string;
-	defaultArgs: string[];
+	baseArgs: string[];
+	autonomousArgs: string[];
 }
 
 const AGENT_TEMPLATES: AgentTemplate[] = [
@@ -23,33 +24,44 @@ const AGENT_TEMPLATES: AgentTemplate[] = [
 		id: "claude",
 		label: "Claude Code",
 		binary: "claude",
-		defaultArgs: ["--dangerously-skip-permissions"],
+		baseArgs: [],
+		autonomousArgs: ["--dangerously-skip-permissions"],
 	},
 	{
 		id: "codex",
 		label: "OpenAI Codex",
 		binary: "codex",
-		defaultArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+		baseArgs: [],
+		autonomousArgs: ["--dangerously-bypass-approvals-and-sandbox"],
 	},
 	{
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
-		defaultArgs: ["--yolo"],
+		baseArgs: [],
+		autonomousArgs: ["--yolo"],
 	},
 	{
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
-		defaultArgs: [],
+		baseArgs: [],
+		autonomousArgs: [],
 	},
 	{
 		id: "cline",
 		label: "Cline CLI",
 		binary: "cline",
-		defaultArgs: ["--auto-approve-all"],
+		baseArgs: [],
+		autonomousArgs: ["--auto-approve-all"],
 	},
 ];
+
+function getDefaultArgs(template: AgentTemplate, runtimeConfig: RuntimeConfigState): string[] {
+	return runtimeConfig.agentAutonomousModeEnabled
+		? [...template.baseArgs, ...template.autonomousArgs]
+		: [...template.baseArgs];
+}
 
 function isBinaryAvailableOnPath(binary: string): boolean {
 	const trimmed = binary.trim();
@@ -151,13 +163,14 @@ export function detectInstalledCommands(): string[] {
 function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: string[]): RuntimeAgentDefinition[] {
 	const detectedSet = new Set(detected);
 	return AGENT_TEMPLATES.map((template) => {
-		const command = joinCommand(template.binary, template.defaultArgs);
+		const defaultArgs = getDefaultArgs(template, runtimeConfig);
+		const command = joinCommand(template.binary, defaultArgs);
 		return {
 			id: template.id,
 			label: template.label,
 			binary: template.binary,
 			command,
-			defaultArgs: template.defaultArgs,
+			defaultArgs,
 			installed: detectedSet.has(template.binary),
 			configured: runtimeConfig.selectedAgentId === template.id,
 		};
@@ -169,14 +182,15 @@ export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Resolved
 	if (!selected) {
 		return null;
 	}
-	const command = joinCommand(selected.binary, selected.defaultArgs);
+	const defaultArgs = getDefaultArgs(selected, runtimeConfig);
+	const command = joinCommand(selected.binary, defaultArgs);
 	if (isBinaryAvailableOnPath(selected.binary)) {
 		return {
 			agentId: selected.id,
 			label: selected.label,
 			command,
 			binary: selected.binary,
-			args: [...selected.defaultArgs],
+			args: defaultArgs,
 		};
 	}
 	if (isBinaryResolvableInShell(selected.binary)) {
@@ -204,6 +218,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 	return {
 		selectedAgentId: runtimeConfig.selectedAgentId,
 		selectedShortcutId: runtimeConfig.selectedShortcutId,
+		agentAutonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
 		effectiveCommand,
 		globalConfigPath: runtimeConfig.globalConfigPath,
 		projectConfigPath: runtimeConfig.projectConfigPath,

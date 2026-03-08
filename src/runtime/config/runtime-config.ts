@@ -9,6 +9,7 @@ import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils.js";
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
 	selectedShortcutId?: string;
+	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
 	commitPromptTemplate?: string;
 	openPrPromptTemplate?: string;
@@ -23,6 +24,7 @@ export interface RuntimeConfigState {
 	projectConfigPath: string;
 	selectedAgentId: RuntimeAgentId;
 	selectedShortcutId: string | null;
+	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
 	commitPromptTemplate: string;
@@ -34,6 +36,7 @@ export interface RuntimeConfigState {
 export interface RuntimeConfigUpdateInput {
 	selectedAgentId?: RuntimeAgentId;
 	selectedShortcutId?: string | null;
+	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
 	shortcuts?: RuntimeProjectShortcut[];
 	commitPromptTemplate?: string;
@@ -46,6 +49,7 @@ const PROJECT_CONFIG_DIR = ".kanbanana";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: RuntimeAgentId[] = ["claude", "codex", "opencode", "gemini", "cline"];
+const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree on a detached HEAD. When you are finished with the task, commit the working changes onto {{base_ref}}.
 
@@ -210,6 +214,10 @@ function toRuntimeConfigState({
 		projectConfigPath,
 		selectedAgentId: normalizeAgentId(globalConfig?.selectedAgentId),
 		selectedShortcutId: normalizeShortcutId(globalConfig?.selectedShortcutId),
+		agentAutonomousModeEnabled: normalizeBoolean(
+			globalConfig?.agentAutonomousModeEnabled,
+			DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED,
+		),
 		readyForReviewNotificationsEnabled: normalizeBoolean(
 			globalConfig?.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
@@ -239,6 +247,7 @@ async function writeRuntimeGlobalConfigFile(
 	config: {
 		selectedAgentId?: RuntimeAgentId;
 		selectedShortcutId?: string | null;
+		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
@@ -254,6 +263,10 @@ async function writeRuntimeGlobalConfigFile(
 	const existingSelectedShortcutId = hasOwnKey(existing, "selectedShortcutId")
 		? normalizeShortcutId(existing?.selectedShortcutId)
 		: undefined;
+	const agentAutonomousModeEnabled =
+		config.agentAutonomousModeEnabled === undefined
+			? DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED
+			: normalizeBoolean(config.agentAutonomousModeEnabled, DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED);
 	const readyForReviewNotificationsEnabled =
 		config.readyForReviewNotificationsEnabled === undefined
 			? DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED
@@ -281,6 +294,12 @@ async function writeRuntimeGlobalConfigFile(
 		}
 	} else if (existingSelectedShortcutId) {
 		payload.selectedShortcutId = existingSelectedShortcutId;
+	}
+	if (
+		hasOwnKey(existing, "agentAutonomousModeEnabled") ||
+		agentAutonomousModeEnabled !== DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED
+	) {
+		payload.agentAutonomousModeEnabled = agentAutonomousModeEnabled;
 	}
 	if (
 		hasOwnKey(existing, "readyForReviewNotificationsEnabled") ||
@@ -343,6 +362,7 @@ export async function saveRuntimeConfig(
 	config: {
 		selectedAgentId: RuntimeAgentId;
 		selectedShortcutId: string | null;
+		agentAutonomousModeEnabled: boolean;
 		readyForReviewNotificationsEnabled: boolean;
 		shortcuts: RuntimeProjectShortcut[];
 		commitPromptTemplate: string;
@@ -354,6 +374,7 @@ export async function saveRuntimeConfig(
 	await writeRuntimeGlobalConfigFile(globalConfigPath, {
 		selectedAgentId: config.selectedAgentId,
 		selectedShortcutId: config.selectedShortcutId,
+		agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
 		commitPromptTemplate: config.commitPromptTemplate,
 		openPrPromptTemplate: config.openPrPromptTemplate,
@@ -364,6 +385,10 @@ export async function saveRuntimeConfig(
 		projectConfigPath,
 		selectedAgentId: normalizeAgentId(config.selectedAgentId),
 		selectedShortcutId: normalizeShortcutId(config.selectedShortcutId),
+		agentAutonomousModeEnabled: normalizeBoolean(
+			config.agentAutonomousModeEnabled,
+			DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED,
+		),
 		readyForReviewNotificationsEnabled: normalizeBoolean(
 			config.readyForReviewNotificationsEnabled,
 			DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED,
@@ -382,6 +407,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 		selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
 		selectedShortcutId:
 			updates.selectedShortcutId === undefined ? current.selectedShortcutId : updates.selectedShortcutId,
+		agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled:
 			updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
 		shortcuts: updates.shortcuts ?? current.shortcuts,
@@ -392,6 +418,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 	const hasChanges =
 		nextConfig.selectedAgentId !== current.selectedAgentId ||
 		nextConfig.selectedShortcutId !== current.selectedShortcutId ||
+		nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 		nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
 		nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||
 		nextConfig.openPrPromptTemplate !== current.openPrPromptTemplate ||

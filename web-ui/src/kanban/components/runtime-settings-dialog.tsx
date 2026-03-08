@@ -2,6 +2,7 @@ import {
 	AnchorButton,
 	Button,
 	Callout,
+	Checkbox,
 	Classes,
 	Dialog,
 	DialogBody,
@@ -15,19 +16,19 @@ import {
 	TextArea,
 } from "@blueprintjs/core";
 import type { IconName } from "@blueprintjs/icons";
-import { Select } from "@blueprintjs/select";
 import type { ItemRenderer } from "@blueprintjs/select";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Select } from "@blueprintjs/select";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { TASK_GIT_PROMPT_VARIABLES } from "@/kanban/git-actions/build-task-git-action-prompt";
 import { useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
-import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeProjectShortcut } from "@/kanban/runtime/types";
+import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
 import {
+	type BrowserNotificationPermission,
 	getBrowserNotificationPermission,
 	requestBrowserNotificationPermission,
-	type BrowserNotificationPermission,
 } from "@/kanban/utils/notification-permission";
 
 const AGENT_INSTALL_URLS: Partial<Record<RuntimeAgentId, string>> = {
@@ -37,6 +38,25 @@ const AGENT_INSTALL_URLS: Partial<Record<RuntimeAgentId, string>> = {
 	opencode: "https://github.com/sst/opencode",
 	cline: "https://www.npmjs.com/package/cline",
 };
+const AGENT_AUTONOMOUS_ARGS: Record<RuntimeAgentId, string[]> = {
+	claude: ["--dangerously-skip-permissions"],
+	codex: ["--dangerously-bypass-approvals-and-sandbox"],
+	gemini: ["--yolo"],
+	opencode: [],
+	cline: ["--auto-approve-all"],
+};
+
+function quoteCommandPartForDisplay(part: string): string {
+	if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(part)) {
+		return part;
+	}
+	return JSON.stringify(part);
+}
+
+function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, autonomousModeEnabled: boolean): string {
+	const args = autonomousModeEnabled ? (AGENT_AUTONOMOUS_ARGS[agentId] ?? []) : [];
+	return [binary, ...args.map(quoteCommandPartForDisplay)].join(" ");
+}
 
 function normalizeTemplateForComparison(value: string): string {
 	return value.replaceAll("\r\n", "\n").trim();
@@ -118,21 +138,45 @@ function AgentRow({
 		<div
 			role="button"
 			tabIndex={0}
-			onClick={() => { if (agent.installed && !disabled) { onSelect(); } }}
-			onKeyDown={(event) => { if (event.key === "Enter" && agent.installed && !disabled) { onSelect(); } }}
-			style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "5px 0", cursor: agent.installed ? "pointer" : "default" }}
+			onClick={() => {
+				if (agent.installed && !disabled) {
+					onSelect();
+				}
+			}}
+			onKeyDown={(event) => {
+				if (event.key === "Enter" && agent.installed && !disabled) {
+					onSelect();
+				}
+			}}
+			style={{
+				display: "flex",
+				alignItems: "center",
+				justifyContent: "space-between",
+				gap: 12,
+				padding: "5px 0",
+				cursor: agent.installed ? "pointer" : "default",
+			}}
 		>
 			<div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0 }}>
-				<Icon icon={isSelected ? "selection" : "circle"} intent={isSelected ? "primary" : undefined} className={!agent.installed ? Classes.TEXT_DISABLED : undefined} style={{ marginTop: 2 }} />
+				<Icon
+					icon={isSelected ? "selection" : "circle"}
+					intent={isSelected ? "primary" : undefined}
+					className={!agent.installed ? Classes.TEXT_DISABLED : undefined}
+					style={{ marginTop: 2 }}
+				/>
 				<div style={{ minWidth: 0 }}>
 					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 						<span>{agent.label}</span>
-						{agent.installed ? <Tag minimal intent="success">Installed</Tag> : null}
+						{agent.installed ? (
+							<Tag minimal intent="success">
+								Installed
+							</Tag>
+						) : null}
 					</div>
 					{agent.command ? (
 						<p
 							className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
-							style={{ margin: "1px 0 0", fontSize: "var(--bp-typography-size-body-x-small)" }}
+							style={{ margin: "1px 0 0", fontSize: "var(--bp-typography-size-body-small)" }}
 						>
 							{agent.command}
 						</p>
@@ -182,9 +226,9 @@ function InlineUtilityButton({
 				verticalAlign: "middle",
 				...(typeof widthCh === "number"
 					? {
-						width: `${widthCh}ch`,
-						justifyContent: "center",
-					}
+							width: `${widthCh}ch`,
+							justifyContent: "center",
+						}
 					: {}),
 			}}
 		/>
@@ -206,10 +250,9 @@ export function RuntimeSettingsDialog({
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId);
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
+	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
-	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>(
-		"unsupported",
-	);
+	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>("unsupported");
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
 	const [openPrPromptTemplate, setOpenPrPromptTemplate] = useState("");
@@ -228,34 +271,33 @@ export function RuntimeSettingsDialog({
 	const isOpenPrPromptAtDefault =
 		normalizeTemplateForComparison(openPrPromptTemplate) ===
 		normalizeTemplateForComparison(openPrPromptTemplateDefault);
-	const selectedPromptValue =
-		selectedPromptVariant === "commit"
-				? commitPromptTemplate
-				: openPrPromptTemplate;
+	const selectedPromptValue = selectedPromptVariant === "commit" ? commitPromptTemplate : openPrPromptTemplate;
 	const selectedPromptDefaultValue =
-		selectedPromptVariant === "commit"
-				? commitPromptTemplateDefault
-				: openPrPromptTemplateDefault;
+		selectedPromptVariant === "commit" ? commitPromptTemplateDefault : openPrPromptTemplateDefault;
 	const isSelectedPromptAtDefault =
-		selectedPromptVariant === "commit"
-				? isCommitPromptAtDefault
-				: isOpenPrPromptAtDefault;
+		selectedPromptVariant === "commit" ? isCommitPromptAtDefault : isOpenPrPromptAtDefault;
 	const selectedPromptPlaceholder =
-		selectedPromptVariant === "commit"
-				? "Commit prompt template"
-				: "PR prompt template";
+		selectedPromptVariant === "commit" ? "Commit prompt template" : "PR prompt template";
 	const baseRefVariable = TASK_GIT_PROMPT_VARIABLES[0];
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
 	}, []);
 
 	const supportedAgents = useMemo(() => config?.agents ?? [], [config?.agents]);
+	const displayedAgents = useMemo(
+		() =>
+			supportedAgents.map((agent) => ({
+				...agent,
+				command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
+			})),
+		[agentAutonomousModeEnabled, supportedAgents],
+	);
 	const configuredAgentId = config?.selectedAgentId ?? null;
-	const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
-	const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
+	const firstInstalledAgentId = displayedAgents.find((agent) => agent.installed)?.id;
+	const fallbackAgentId = firstInstalledAgentId ?? displayedAgents[0]?.id ?? "claude";
 	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
-	const initialReadyForReviewNotificationsEnabled =
-		config?.readyForReviewNotificationsEnabled ?? true;
+	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
+	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
 	const initialShortcuts = config?.shortcuts ?? [];
 	const initialCommitPromptTemplate = config?.commitPromptTemplate ?? "";
 	const initialOpenPrPromptTemplate = config?.openPrPromptTemplate ?? "";
@@ -264,6 +306,9 @@ export function RuntimeSettingsDialog({
 			return false;
 		}
 		if (selectedAgentId !== initialSelectedAgentId) {
+			return true;
+		}
+		if (agentAutonomousModeEnabled !== initialAgentAutonomousModeEnabled) {
 			return true;
 		}
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
@@ -283,8 +328,10 @@ export function RuntimeSettingsDialog({
 			normalizeTemplateForComparison(initialOpenPrPromptTemplate)
 		);
 	}, [
+		agentAutonomousModeEnabled,
 		commitPromptTemplate,
 		config,
+		initialAgentAutonomousModeEnabled,
 		initialCommitPromptTemplate,
 		initialOpenPrPromptTemplate,
 		initialReadyForReviewNotificationsEnabled,
@@ -301,14 +348,14 @@ export function RuntimeSettingsDialog({
 			return;
 		}
 		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
-		setReadyForReviewNotificationsEnabled(
-			config?.readyForReviewNotificationsEnabled ?? true,
-		);
+		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? true);
+		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
 		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
 		setSaveError(null);
 	}, [
+		config?.agentAutonomousModeEnabled,
 		config?.commitPromptTemplate,
 		config?.openPrPromptTemplate,
 		config?.readyForReviewNotificationsEnabled,
@@ -395,7 +442,7 @@ export function RuntimeSettingsDialog({
 
 	const handleSave = async () => {
 		setSaveError(null);
-		const selectedAgent = supportedAgents.find((agent) => agent.id === selectedAgentId);
+		const selectedAgent = displayedAgents.find((agent) => agent.id === selectedAgentId);
 		if (!selectedAgent || !selectedAgent.installed) {
 			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
 			return;
@@ -410,6 +457,7 @@ export function RuntimeSettingsDialog({
 		}
 		const saved = await save({
 			selectedAgentId,
+			agentAutonomousModeEnabled,
 			readyForReviewNotificationsEnabled,
 			shortcuts,
 			commitPromptTemplate,
@@ -431,25 +479,30 @@ export function RuntimeSettingsDialog({
 	};
 
 	return (
-		<Dialog
-			isOpen={open}
-			onClose={() => onOpenChange(false)}
-			title="Settings"
-			icon="cog"
-		>
+		<Dialog isOpen={open} onClose={() => onOpenChange(false)} title="Settings" icon="cog">
 			<DialogBody>
-				<h5 className={Classes.HEADING} style={{ margin: 0 }}>Global</h5>
+				<h5 className={Classes.HEADING} style={{ margin: 0 }}>
+					Global
+				</h5>
 				<p
 					className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
 					style={{ margin: 0, wordBreak: "break-all", cursor: config?.globalConfigPath ? "pointer" : undefined }}
-					onClick={() => { if (config?.globalConfigPath) { window.open(`file://${config.globalConfigPath}`); } }}
+					onClick={() => {
+						if (config?.globalConfigPath) {
+							window.open(`file://${config.globalConfigPath}`);
+						}
+					}}
 				>
 					{config?.globalConfigPath ?? "~/.kanbanana/config.json"}
-					{config?.globalConfigPath ? <Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} /> : null}
+					{config?.globalConfigPath ? (
+						<Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} />
+					) : null}
 				</p>
 
-				<h6 className={Classes.HEADING} style={{ margin: "12px 0 0" }}>Agent runtime</h6>
-				{supportedAgents.map((agent) => (
+				<h6 className={Classes.HEADING} style={{ margin: "12px 0 0" }}>
+					Agent runtime
+				</h6>
+				{displayedAgents.map((agent) => (
 					<AgentRow
 						key={agent.id}
 						agent={agent}
@@ -458,17 +511,43 @@ export function RuntimeSettingsDialog({
 						disabled={isLoading || isSaving}
 					/>
 				))}
-				{supportedAgents.length === 0 ? (
-					<p className={Classes.TEXT_MUTED} style={{ padding: "8px 0" }}>No supported agents discovered.</p>
+				{displayedAgents.length === 0 ? (
+					<p className={Classes.TEXT_MUTED} style={{ padding: "8px 0" }}>
+						No supported agents discovered.
+					</p>
 				) : null}
+				<Checkbox
+					checked={agentAutonomousModeEnabled}
+					disabled={isLoading || isSaving}
+					label="Enable bypass permissions flag"
+					onChange={(event) => {
+						setAgentAutonomousModeEnabled(event.currentTarget.checked);
+					}}
+					style={{ marginTop: 8 }}
+				/>
+				<p className={Classes.TEXT_MUTED} style={{ margin: "0 0 0 24px" }}>
+					Allows agents to use tools without stopping for permission. Use at your own risk.
+				</p>
 
-				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 4px" }}>
-					<h6 className={Classes.HEADING} style={{ margin: 0 }}>Git button prompts</h6>
+				<div
+					style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 4px" }}
+				>
+					<h6 className={Classes.HEADING} style={{ margin: 0 }}>
+						Git button prompts
+					</h6>
 				</div>
 				<p className={Classes.TEXT_MUTED} style={{ margin: "0 0 8px" }}>
 					Modify the prompts sent to the agent when using Commit or Make PR on tasks in Review.
 				</p>
-				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+				<div
+					style={{
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "space-between",
+						gap: 8,
+						marginBottom: 8,
+					}}
+				>
 					<HTMLSelect
 						value={selectedPromptVariant}
 						onChange={(event) => setSelectedPromptVariant(event.target.value as GitPromptVariant)}
@@ -507,7 +586,9 @@ export function RuntimeSettingsDialog({
 					/>{" "}
 					to reference {baseRefVariable.description}
 				</p>
-				<h6 className={Classes.HEADING} style={{ margin: "18px 0 8px" }}>Notifications</h6>
+				<h6 className={Classes.HEADING} style={{ margin: "18px 0 8px" }}>
+					Notifications
+				</h6>
 				<Switch
 					checked={readyForReviewNotificationsEnabled}
 					disabled={isLoading || isSaving}
@@ -529,18 +610,30 @@ export function RuntimeSettingsDialog({
 					) : null}
 				</div>
 
-				<h5 className={Classes.HEADING} style={{ margin: "18px 0 0" }}>Project</h5>
+				<h5 className={Classes.HEADING} style={{ margin: "18px 0 0" }}>
+					Project
+				</h5>
 				<p
 					className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
 					style={{ margin: 0, wordBreak: "break-all", cursor: config?.projectConfigPath ? "pointer" : undefined }}
-					onClick={() => { if (config?.projectConfigPath) { window.open(`file://${config.projectConfigPath}`); } }}
+					onClick={() => {
+						if (config?.projectConfigPath) {
+							window.open(`file://${config.projectConfigPath}`);
+						}
+					}}
 				>
 					{config?.projectConfigPath ?? "<project>/.kanbanana/config.json"}
-					{config?.projectConfigPath ? <Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} /> : null}
+					{config?.projectConfigPath ? (
+						<Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} />
+					) : null}
 				</p>
 
-				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "12px 0 8px" }}>
-					<h6 ref={shortcutsSectionRef} className={Classes.HEADING} style={{ margin: 0 }}>Script shortcuts</h6>
+				<div
+					style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "12px 0 8px" }}
+				>
+					<h6 ref={shortcutsSectionRef} className={Classes.HEADING} style={{ margin: 0 }}>
+						Script shortcuts
+					</h6>
 					<Button
 						icon="plus"
 						text="Add"
@@ -577,11 +670,7 @@ export function RuntimeSettingsDialog({
 							popoverProps={{ matchTargetWidth: false }}
 							onItemSelect={(option) =>
 								setShortcuts((current) =>
-									current.map((item) =>
-										item.id === shortcut.id
-											? { ...item, icon: option.value }
-											: item,
-									),
+									current.map((item) => (item.id === shortcut.id ? { ...item, icon: option.value } : item)),
 								)
 							}
 						>
@@ -599,9 +688,7 @@ export function RuntimeSettingsDialog({
 							onChange={(event) =>
 								setShortcuts((current) =>
 									current.map((item) =>
-										item.id === shortcut.id
-											? { ...item, label: event.target.value }
-											: item,
+										item.id === shortcut.id ? { ...item, label: event.target.value } : item,
 									),
 								)
 							}
@@ -613,9 +700,7 @@ export function RuntimeSettingsDialog({
 							onChange={(event) =>
 								setShortcuts((current) =>
 									current.map((item) =>
-										item.id === shortcut.id
-											? { ...item, command: event.target.value }
-											: item,
+										item.id === shortcut.id ? { ...item, command: event.target.value } : item,
 									),
 								)
 							}
@@ -630,9 +715,7 @@ export function RuntimeSettingsDialog({
 						/>
 					</div>
 				))}
-				{shortcuts.length === 0 ? (
-					<p className={Classes.TEXT_MUTED}>No shortcuts configured.</p>
-				) : null}
+				{shortcuts.length === 0 ? <p className={Classes.TEXT_MUTED}>No shortcuts configured.</p> : null}
 
 				{saveError ? (
 					<Callout intent="danger" compact style={{ marginTop: 12 }}>
@@ -641,7 +724,7 @@ export function RuntimeSettingsDialog({
 				) : null}
 			</DialogBody>
 			<DialogFooter
-			actions={
+				actions={
 					<>
 						<Button text="Cancel" variant="outlined" onClick={() => onOpenChange(false)} disabled={isSaving} />
 						<Button

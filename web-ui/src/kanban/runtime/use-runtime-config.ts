@@ -11,6 +11,7 @@ export interface UseRuntimeConfigResult {
 	save: (nextConfig: {
 		selectedAgentId?: RuntimeAgentId;
 		selectedShortcutId?: string | null;
+		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
 		commitPromptTemplate?: string;
@@ -46,6 +47,7 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 		async (nextConfig: {
 			selectedAgentId?: RuntimeAgentId;
 			selectedShortcutId?: string | null;
+			agentAutonomousModeEnabled?: boolean;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;
 			commitPromptTemplate?: string;

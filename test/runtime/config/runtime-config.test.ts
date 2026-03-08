@@ -95,11 +95,13 @@ describe.sequential("runtime-config auto agent selection", () => {
 					expect(state.selectedAgentId).toBe("codex");
 					const persisted = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
 						selectedAgentId?: string;
+						agentAutonomousModeEnabled?: boolean;
 						readyForReviewNotificationsEnabled?: boolean;
 						commitPromptTemplate?: string;
 						openPrPromptTemplate?: string;
 					};
 					expect(persisted.selectedAgentId).toBe("codex");
+					expect(persisted.agentAutonomousModeEnabled).toBeUndefined();
 					expect(persisted.readyForReviewNotificationsEnabled).toBeUndefined();
 					expect(persisted.commitPromptTemplate).toBeUndefined();
 					expect(persisted.openPrPromptTemplate).toBeUndefined();
@@ -237,6 +239,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				await saveRuntimeConfig(tempProject, {
 					selectedAgentId: "claude",
 					selectedShortcutId: null,
+					agentAutonomousModeEnabled: true,
 					readyForReviewNotificationsEnabled: true,
 					shortcuts: [],
 					commitPromptTemplate: current.commitPromptTemplateDefault,
@@ -245,11 +248,13 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
+					agentAutonomousModeEnabled?: boolean;
 					readyForReviewNotificationsEnabled?: boolean;
 					commitPromptTemplate?: string;
 					openPrPromptTemplate?: string;
 				};
 				expect(globalPayload.selectedAgentId).toBeUndefined();
+				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
 				expect(globalPayload.commitPromptTemplate).toBeUndefined();
 				expect(globalPayload.openPrPromptTemplate).toBeUndefined();
@@ -282,11 +287,42 @@ describe.sequential("runtime-config auto agent selection", () => {
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
 					selectedShortcutId?: string;
+					agentAutonomousModeEnabled?: boolean;
 					readyForReviewNotificationsEnabled?: boolean;
 				};
 				expect(globalPayload.selectedAgentId).toBe("cline");
 				expect(globalPayload.selectedShortcutId).toBeUndefined();
+				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("persists autonomous mode when disabled", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
+			"kanbanana-home-runtime-config-autonomous-disabled-",
+		);
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanbanana-project-runtime-config-autonomous-disabled-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const updated = await updateRuntimeConfig(tempProject, {
+					agentAutonomousModeEnabled: false,
+				});
+				expect(updated.agentAutonomousModeEnabled).toBe(false);
+
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
+					agentAutonomousModeEnabled?: boolean;
+				};
+				expect(globalPayload.agentAutonomousModeEnabled).toBe(false);
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.agentAutonomousModeEnabled).toBe(false);
 			});
 		} finally {
 			cleanupProject();
