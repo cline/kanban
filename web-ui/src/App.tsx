@@ -46,20 +46,12 @@ import { useWorkspacePersistence } from "@/kanban/runtime/use-workspace-persiste
 import { fetchWorkspaceState, saveWorkspaceState } from "@/kanban/runtime/workspace-state-query";
 import {
 	findCardSelection,
-	getTaskColumnId,
-	moveTaskToColumn,
 	normalizeBoardData,
 } from "@/kanban/state/board-state";
 import type {
 	BoardCard,
-	BoardColumnId,
 	BoardData,
 } from "@/kanban/types";
-import {
-	getBrowserNotificationPermission,
-	hasPromptedForBrowserNotificationPermission,
-	requestBrowserNotificationPermission,
-} from "@/kanban/utils/notification-permission";
 import { DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS } from "@/kanban/utils/task-prompt";
 
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
@@ -95,7 +87,6 @@ export default function App(): ReactElement {
 		revision: null,
 	});
 	const workspaceRefreshRequestIdRef = useRef(0);
-	const notificationPermissionPromptInFlightRef = useRef(false);
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] = useState<RuntimeTaskWorkspaceInfoResponse | null>(
 		null,
@@ -723,92 +714,6 @@ export default function App(): ReactElement {
 		setIsSettingsOpen(true);
 	}, []);
 
-	const kickoffTaskInProgress = useCallback(
-		async (
-			task: BoardCard,
-			taskId: string,
-			fromColumnId: BoardColumnId,
-			options?: { optimisticMove?: boolean },
-		): Promise<boolean> => {
-			const optimisticMove = options?.optimisticMove ?? true;
-			const ensured = await ensureTaskWorkspace(task);
-			if (!ensured.ok) {
-				setWorktreeError(ensured.message ?? "Could not set up task workspace.");
-				if (optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "in_progress") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
-					});
-				}
-				return false;
-			}
-			if (selectedTaskId === taskId) {
-				if (ensured.response) {
-					setSelectedTaskWorkspaceInfo({
-						taskId,
-						path: ensured.response.path,
-						exists: true,
-						baseRef: ensured.response.baseRef,
-						branch: null,
-						isDetached: true,
-						headCommit: ensured.response.baseCommit,
-					});
-				}
-				const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
-				if (infoAfterEnsure) {
-					setSelectedTaskWorkspaceInfo(infoAfterEnsure);
-				}
-			}
-			const started = await startTaskSession(task);
-			if (!started.ok) {
-				setWorktreeError(started.message ?? "Could not start task session.");
-				if (optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "in_progress") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
-					});
-				}
-				return false;
-			}
-			if (!optimisticMove) {
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== fromColumnId) {
-						return currentBoard;
-					}
-					const moved = moveTaskToColumn(currentBoard, taskId, "in_progress", { insertAtTop: true });
-					return moved.moved ? moved.board : currentBoard;
-				});
-			}
-			setWorktreeError(null);
-			return true;
-		},
-		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, startTaskSession],
-	);
-
-	const maybeRequestNotificationPermissionForTaskStart = useCallback(() => {
-		const shouldPromptForNotificationPermission =
-			readyForReviewNotificationsEnabled &&
-			getBrowserNotificationPermission() === "default" &&
-			!hasPromptedForBrowserNotificationPermission() &&
-			!notificationPermissionPromptInFlightRef.current;
-		if (!shouldPromptForNotificationPermission) {
-			return;
-		}
-		notificationPermissionPromptInFlightRef.current = true;
-		void requestBrowserNotificationPermission().finally(() => {
-			notificationPermissionPromptInFlightRef.current = false;
-		});
-	}, [readyForReviewNotificationsEnabled]);
-
 	const {
 		handleProgrammaticCardMoveReady,
 		confirmMoveTaskToTrash,
@@ -843,11 +748,13 @@ export default function App(): ReactElement {
 		setIsGitHistoryOpen,
 		stopTaskSession,
 		cleanupTaskWorkspace,
+		ensureTaskWorkspace,
+		startTaskSession,
 		fetchTaskWorkingChangeCount,
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
-		maybeRequestNotificationPermissionForTaskStart,
-		kickoffTaskInProgress,
+		onWorktreeError: setWorktreeError,
+		readyForReviewNotificationsEnabled,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
 	});

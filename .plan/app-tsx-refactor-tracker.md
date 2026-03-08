@@ -439,6 +439,20 @@ web-ui/src/kanban/app/
 - Next
   - Continue Phase 7 shell slimming and remove remaining App-only orchestration where practical
 
+### 2026-03-07 Session 11
+- Completed
+  - Moved task kickoff and notification-permission orchestration from `App.tsx` into `useBoardInteractions`
+  - Updated `useBoardInteractions` inputs to consume task-session APIs (`ensureTaskWorkspace`, `startTaskSession`) and own kickoff error/revert behavior
+  - Removed App-local kickoff and notification callbacks plus related permission refs/imports
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1265 (from 1358 before Session 11)
+- Next
+  - Continue Phase 7 shell slimming and remove remaining workspace hydration/orchestration blocks from App
+
 ## Behavior Map
 
 ### Project navigation flow

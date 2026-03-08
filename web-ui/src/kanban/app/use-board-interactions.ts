@@ -4,6 +4,7 @@ import type { DropResult } from "@hello-pangea/dnd";
 
 import { useProgrammaticCardMoves } from "@/kanban/app/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/kanban/app/use-review-auto-actions";
+import type { UseTaskSessionsResult } from "@/kanban/app/use-task-sessions";
 import { showAppToast } from "@/kanban/components/app-toaster";
 import { useLinkedBacklogTaskActions, type PendingTrashWarningState } from "@/kanban/hooks/use-linked-backlog-task-actions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/kanban/runtime/types";
@@ -15,6 +16,11 @@ import {
 	moveTaskToColumn,
 	updateTask,
 } from "@/kanban/state/board-state";
+import {
+	getBrowserNotificationPermission,
+	hasPromptedForBrowserNotificationPermission,
+	requestBrowserNotificationPermission,
+} from "@/kanban/utils/notification-permission";
 import type {
 	BoardCard,
 	BoardColumnId,
@@ -54,6 +60,8 @@ interface UseBoardInteractionsInput {
 	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
 	stopTaskSession: (taskId: string) => Promise<void>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
+	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
+	startTaskSession: UseTaskSessionsResult["startTaskSession"];
 	fetchTaskWorkingChangeCount: (task: BoardCard) => Promise<number | null>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	sendTaskSessionInput: (
@@ -61,13 +69,8 @@ interface UseBoardInteractionsInput {
 		input: string,
 		options?: { appendNewline?: boolean },
 	) => Promise<{ ok: boolean; message?: string }>;
-	maybeRequestNotificationPermissionForTaskStart: () => void;
-	kickoffTaskInProgress: (
-		task: BoardCard,
-		taskId: string,
-		fromColumnId: BoardColumnId,
-		options?: { optimisticMove?: boolean },
-	) => Promise<boolean>;
+	onWorktreeError: (message: string | null) => void;
+	readyForReviewNotificationsEnabled: boolean;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 }
@@ -111,15 +114,18 @@ export function useBoardInteractions({
 	setIsGitHistoryOpen,
 	stopTaskSession,
 	cleanupTaskWorkspace,
+	ensureTaskWorkspace,
+	startTaskSession,
 	fetchTaskWorkingChangeCount,
 	fetchTaskWorkspaceInfo,
 	sendTaskSessionInput,
-	maybeRequestNotificationPermissionForTaskStart,
-	kickoffTaskInProgress,
+	onWorktreeError,
+	readyForReviewNotificationsEnabled,
 	taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
+	const notificationPermissionPromptInFlightRef = useRef(false);
 	const {
 		handleProgrammaticCardMoveReady,
 		setRequestMoveTaskToTrashHandler,
@@ -179,6 +185,100 @@ export function useBoardInteractions({
 		return trashColumn ? trashColumn.cards.map((card) => card.id) : [];
 	}, [board.columns]);
 	const trashTaskCount = trashTaskIds.length;
+
+	const maybeRequestNotificationPermissionForTaskStart = useCallback(() => {
+		const shouldPromptForNotificationPermission =
+			readyForReviewNotificationsEnabled &&
+			getBrowserNotificationPermission() === "default" &&
+			!hasPromptedForBrowserNotificationPermission() &&
+			!notificationPermissionPromptInFlightRef.current;
+		if (!shouldPromptForNotificationPermission) {
+			return;
+		}
+		notificationPermissionPromptInFlightRef.current = true;
+		void requestBrowserNotificationPermission().finally(() => {
+			notificationPermissionPromptInFlightRef.current = false;
+		});
+	}, [readyForReviewNotificationsEnabled]);
+
+	const kickoffTaskInProgress = useCallback(
+		async (
+			task: BoardCard,
+			taskId: string,
+			fromColumnId: BoardColumnId,
+			options?: { optimisticMove?: boolean },
+		): Promise<boolean> => {
+			const optimisticMove = options?.optimisticMove ?? true;
+			const ensured = await ensureTaskWorkspace(task);
+			if (!ensured.ok) {
+				onWorktreeError(ensured.message ?? "Could not set up task workspace.");
+				if (optimisticMove) {
+					setBoard((currentBoard) => {
+						const currentColumnId = getTaskColumnId(currentBoard, taskId);
+						if (currentColumnId !== "in_progress") {
+							return currentBoard;
+						}
+						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+						return reverted.moved ? reverted.board : currentBoard;
+					});
+				}
+				return false;
+			}
+			if (selectedTaskId === taskId) {
+				if (ensured.response) {
+					setSelectedTaskWorkspaceInfo({
+						taskId,
+						path: ensured.response.path,
+						exists: true,
+						baseRef: ensured.response.baseRef,
+						branch: null,
+						isDetached: true,
+						headCommit: ensured.response.baseCommit,
+					});
+				}
+				const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
+				if (infoAfterEnsure) {
+					setSelectedTaskWorkspaceInfo(infoAfterEnsure);
+				}
+			}
+			const started = await startTaskSession(task);
+			if (!started.ok) {
+				onWorktreeError(started.message ?? "Could not start task session.");
+				if (optimisticMove) {
+					setBoard((currentBoard) => {
+						const currentColumnId = getTaskColumnId(currentBoard, taskId);
+						if (currentColumnId !== "in_progress") {
+							return currentBoard;
+						}
+						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
+						return reverted.moved ? reverted.board : currentBoard;
+					});
+				}
+				return false;
+			}
+			if (!optimisticMove) {
+				setBoard((currentBoard) => {
+					const currentColumnId = getTaskColumnId(currentBoard, taskId);
+					if (currentColumnId !== fromColumnId) {
+						return currentBoard;
+					}
+					const moved = moveTaskToColumn(currentBoard, taskId, "in_progress", { insertAtTop: true });
+					return moved.moved ? moved.board : currentBoard;
+				});
+			}
+			onWorktreeError(null);
+			return true;
+		},
+		[
+			ensureTaskWorkspace,
+			fetchTaskWorkspaceInfo,
+			onWorktreeError,
+			selectedTaskId,
+			setBoard,
+			setSelectedTaskWorkspaceInfo,
+			startTaskSession,
+		],
+	);
 
 	useEffect(() => {
 		setBoard((currentBoard) => {
