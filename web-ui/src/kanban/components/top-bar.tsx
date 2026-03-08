@@ -237,7 +237,7 @@ export function TopBar({
 				height: 40,
 				minHeight: 40,
 				minWidth: 0,
-				paddingLeft: 12,
+				paddingLeft: onBack ? 6 : 12,
 				paddingRight: 8,
 				background: Colors.DARK_GRAY3,
 				boxShadow: "none",
@@ -257,11 +257,11 @@ export function TopBar({
 				}}
 			>
 				{onBack ? (
-					<>
-						<Button icon="arrow-left" variant="minimal" onClick={onBack} aria-label="Back to board" style={{ marginLeft: -8, marginRight: 4 }} />
+					<div style={{ display: "flex", alignItems: "center", flexShrink: 0, overflow: "visible" }}>
+						<Button icon="arrow-left" variant="minimal" onClick={onBack} aria-label="Back to board" style={{ marginRight: 4, flexShrink: 0 }} />
 						<span role="img" aria-label="banana" style={{ marginRight: 4 }}>🍌</span>
 						<NavbarDivider />
-					</>
+					</div>
 				) : null}
 				{isWorkspacePathLoading ? (
 					<span
