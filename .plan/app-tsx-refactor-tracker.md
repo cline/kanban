@@ -265,14 +265,14 @@ web-ui/src/kanban/app/
 - [x] Update App wiring to new hook output
 
 ### Phase 5: project navigation and URL sync extraction
-- [ ] Extract project selection, URL sync, and popstate flows into `useProjectNavigation`
-- [ ] Extract add/remove project orchestration into the navigation domain
-- [ ] Ensure loading-state behavior parity during project switches
+- [x] Extract project selection, URL sync, and popstate flows into `useProjectNavigation`
+- [x] Extract add/remove project orchestration into the navigation domain
+- [x] Ensure loading-state behavior parity during project switches
 
 ### Phase 6: task editor and board interaction extraction
-- [ ] Extract create/edit form state and handlers into `useTaskEditor`
-- [ ] Extract drag/start/trash/review-comment orchestration into `useBoardInteractions`
-- [ ] Keep programmatic card move integration behavior unchanged
+- [x] Extract create/edit form state and handlers into `useTaskEditor`
+- [x] Extract drag/start/trash/review-comment orchestration into `useBoardInteractions`
+- [x] Keep programmatic card move integration behavior unchanged
 
 ### Phase 7: App shell slimming and cleanup
 - [ ] Reduce App to orchestration composition and layout rendering
@@ -384,6 +384,60 @@ web-ui/src/kanban/app/
   - Start Phase 5 project navigation extraction into `useProjectNavigation`
 - Risks noted
   - Project navigation extraction touches URL effects and project add/remove flows that currently reset multiple app state slices
+
+### 2026-03-07 Session 7
+- Completed
+  - Added `web-ui/src/kanban/app/use-project-navigation.ts` to own requested project state, URL synchronization, popstate handling, and project add/remove/select orchestration
+  - Moved runtime stream composition (`useRuntimeStateStream`) into `useProjectNavigation` to eliminate requested-project state circularity in App
+  - Updated `App.tsx` to consume `useProjectNavigation` outputs and removed in-file project navigation effects/handlers
+  - Kept project-switch reset behavior parity by wiring `onProjectSwitchStart` and `resetProjectNavigationState`
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Next
+  - Start Phase 6 task editor and board interaction extraction into `useTaskEditor` and `useBoardInteractions`
+- Risks noted
+  - Phase 6 will touch high-churn drag/trash/start flows and should be split carefully to preserve transition ordering
+
+### 2026-03-07 Session 8
+- Completed
+  - Added `web-ui/src/kanban/app/use-task-editor.ts` to own create/edit form state, branch resolution, and create/edit handlers
+  - Updated `App.tsx` to consume `useTaskEditor` outputs and removed in-file editor effects/handlers
+  - Wired project-switch behavior to reset task editor state while preserving existing switch UX
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Next
+  - Continue Phase 6 by extracting drag/start/trash/review-comment orchestration into `useBoardInteractions`
+
+### 2026-03-07 Session 9
+- Completed
+  - Added `web-ui/src/kanban/app/use-board-interactions.ts` to own drag/start/trash/review-comment orchestration and programmatic card move wiring
+  - Moved `useProgrammaticCardMoves`, `useLinkedBacklogTaskActions`, and `useReviewAutoActions` composition from `App.tsx` into `useBoardInteractions`
+  - Updated `App.tsx` to consume `useBoardInteractions` outputs and replaced direct programmatic reset wiring with hook-owned project-reset behavior
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1433 (from 1737 before Session 9)
+- Next
+  - Start Phase 7 shell slimming and dead-state/callback cleanup
+
+### 2026-03-07 Session 10
+- Completed
+  - Added `web-ui/src/kanban/app/use-shortcut-actions.ts` to own shortcut preference persistence and shortcut command execution orchestration
+  - Updated `App.tsx` to consume `useShortcutActions` outputs and removed inline shortcut handlers/state
+- Validation
+  - `npm run lint`
+  - `npm run web:typecheck`
+  - `npm run web:test`
+- Metrics
+  - `web-ui/src/App.tsx` line count: 1358 (from 1433 before Session 10)
+- Next
+  - Continue Phase 7 shell slimming and remove remaining App-only orchestration where practical
 
 ## Behavior Map
 
