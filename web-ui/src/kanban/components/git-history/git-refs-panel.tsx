@@ -1,4 +1,4 @@
-import { Classes, Colors, Icon, InputGroup, NonIdealState, Tag } from "@blueprintjs/core";
+import { Button, Classes, Colors, Icon, InputGroup, NonIdealState, Tag, Tooltip } from "@blueprintjs/core";
 import { Fzf } from "fzf";
 import { useMemo, useState } from "react";
 
@@ -155,6 +155,41 @@ export function GitRefsPanel({
 				background: Colors.DARK_GRAY2,
 			}}
 		>
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					gap: 6,
+					padding: "8px 8px 8px 12px",
+				}}
+			>
+				<span
+					style={{
+						flex: 1,
+						fontSize: "var(--bp-typography-size-body-medium)",
+						fontWeight: 600,
+						color: "var(--bp-palette-light-gray-5)",
+					}}
+				>
+					Git History
+				</span>
+				<Tooltip
+					content={
+						<div style={{ maxWidth: 260, whiteSpace: "normal", lineHeight: 1.4 }}>
+							Click the branch button in the navbar to close this view. Select a branch to browse its
+							history. Double-click a branch to switch the workspace branch.
+						</div>
+					}
+					placement="bottom"
+				>
+					<Button
+						icon="info-sign"
+						variant="minimal"
+						size="small"
+						aria-label="Git history help"
+					/>
+				</Tooltip>
+			</div>
 			<div style={{ overflowY: "auto", overscrollBehavior: "contain", padding: "8px 6px" }}>
 				{isLoading ? (
 					<div style={{ padding: "4px 6px" }}>
@@ -172,16 +207,6 @@ export function GitRefsPanel({
 					</div>
 				) : (
 					<>
-						<div
-							style={{
-								padding: "2px 6px 8px",
-								fontSize: "var(--bp-typography-size-body-x-small)",
-								color: "var(--bp-palette-gray-3)",
-								lineHeight: 1.4,
-							}}
-						>
-							Select a branch to browse its history. Double-click a branch to switch the workspace branch.
-						</div>
 						{workingCopyChanges !== null && onSelectWorkingCopy ? (
 							<RefRow
 								isSelected={isWorkingCopySelected ?? false}
