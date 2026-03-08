@@ -1,8 +1,4 @@
-import {
-	LocalStorageKey,
-	readLocalStorageItem,
-	writeLocalStorageItem,
-} from "@/kanban/storage/local-storage-store";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/kanban/storage/local-storage-store";
 
 export type BrowserNotificationPermission = NotificationPermission | "unsupported";
 

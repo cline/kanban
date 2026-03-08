@@ -1,11 +1,4 @@
-export const DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS = [
-	"help",
-	"compact",
-	"init",
-	"status",
-	"plan",
-	"mcp",
-] as const;
+export const DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS = ["help", "compact", "init", "status", "plan", "mcp"] as const;
 
 export interface TaskPromptSplit {
 	title: string;
@@ -23,10 +16,7 @@ function normalizePromptForDisplay(prompt: string): string {
 	return prompt.replaceAll(/\s+/g, " ").trim();
 }
 
-function splitTextByWidth(
-	text: string,
-	options: TaskPromptWidthSplitOptions,
-): { title: string; overflow: string } {
+function splitTextByWidth(text: string, options: TaskPromptWidthSplitOptions): { title: string; overflow: string } {
 	const normalizedText = normalizePromptForDisplay(text);
 	if (!normalizedText) {
 		return { title: "", overflow: "" };

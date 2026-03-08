@@ -1,5 +1,5 @@
-import { useCallback } from "react";
 import type { DependencyList, Dispatch, SetStateAction } from "react";
+import { useCallback } from "react";
 import {
 	useDebounce as useReactUseDebounce,
 	useEvent as useReactUseEvent,
@@ -32,12 +32,7 @@ export function useWindowEvent<K extends keyof WindowEventMap>(
 	handler: ((event: WindowEventMap[K]) => void) | null,
 	options?: DomEventOptions,
 ): void {
-	useReactUseEvent(
-		name,
-		handler as ((event?: Event) => void) | null,
-		getWindowTarget(),
-		options,
-	);
+	useReactUseEvent(name, handler as ((event?: Event) => void) | null, getWindowTarget(), options);
 }
 
 export function useDocumentEvent<K extends keyof DocumentEventMap>(
@@ -45,40 +40,25 @@ export function useDocumentEvent<K extends keyof DocumentEventMap>(
 	handler: ((event: DocumentEventMap[K]) => void) | null,
 	options?: DomEventOptions,
 ): void {
-	useReactUseEvent(
-		name,
-		handler as ((event?: Event) => void) | null,
-		getDocumentTarget(),
-		options,
-	);
+	useReactUseEvent(name, handler as ((event?: Event) => void) | null, getDocumentTarget(), options);
 }
 
 export function useInterval(callback: () => void, delayMs: number | null): void {
 	useReactUseInterval(callback, delayMs);
 }
 
-export function useDebouncedEffect(
-	effect: () => void,
-	delayMs: number,
-	deps: DependencyList,
-): void {
+export function useDebouncedEffect(effect: () => void, delayMs: number, deps: DependencyList): void {
 	useReactUseDebounce(effect, delayMs, deps);
 }
 
-function resolveNextValue<T>(
-	nextValue: SetStateAction<T>,
-	currentValue: T,
-): T {
+function resolveNextValue<T>(nextValue: SetStateAction<T>, currentValue: T): T {
 	if (typeof nextValue === "function") {
 		return (nextValue as (previousValue: T) => T)(currentValue);
 	}
 	return nextValue;
 }
 
-export function useBooleanLocalStorageValue(
-	key: string,
-	initialValue: boolean,
-): [boolean, StateSetter<boolean>] {
+export function useBooleanLocalStorageValue(key: string, initialValue: boolean): [boolean, StateSetter<boolean>] {
 	const [storedValue, setStoredValue] = useReactUseLocalStorage<boolean>(key, initialValue, {
 		raw: false,
 		serializer: (value) => String(value),
@@ -105,11 +85,11 @@ export function useRawLocalStorageValue<T extends string>(
 	const [storedValue, setStoredValue] = useReactUseLocalStorage<string>(key, initialValue, {
 		raw: true,
 	});
-	const value = storedValue ? normalize(storedValue) ?? initialValue : initialValue;
+	const value = storedValue ? (normalize(storedValue) ?? initialValue) : initialValue;
 	const setValue: StateSetter<T> = useCallback(
 		(nextValue) => {
 			setStoredValue((currentValue) => {
-				const resolvedCurrent = currentValue ? normalize(currentValue) ?? initialValue : initialValue;
+				const resolvedCurrent = currentValue ? (normalize(currentValue) ?? initialValue) : initialValue;
 				return resolveNextValue(nextValue, resolvedCurrent);
 			});
 		},

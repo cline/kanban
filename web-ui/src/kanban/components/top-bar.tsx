@@ -6,8 +6,8 @@ import {
 	Colors,
 	Icon,
 	Menu,
-	MenuItem,
 	MenuDivider,
+	MenuItem,
 	Navbar,
 	NavbarDivider,
 	NavbarGroup,
@@ -16,7 +16,7 @@ import {
 	Tag,
 	Tooltip,
 } from "@blueprintjs/core";
-import { IconNames, type IconName } from "@blueprintjs/icons";
+import { type IconName, IconNames } from "@blueprintjs/icons";
 
 import { OpenWorkspaceButton } from "@/kanban/components/open-workspace-button";
 import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/kanban/runtime/types";
@@ -36,7 +36,10 @@ export interface TopBarTaskGitSummary {
 type SettingsSection = "shortcuts";
 
 function getWorkspacePathSegments(path: string): string[] {
-	return path.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
+	return path
+		.replaceAll("\\", "/")
+		.split("/")
+		.filter((segment) => segment.length > 0);
 }
 
 function resolveShortcutIcon(icon: string | undefined): IconName {
@@ -105,8 +108,7 @@ function GitBranchStatusControl({
 				>
 					({changedFiles} {changedFiles === 1 ? "file" : "files"}
 					<span style={{ color: Colors.GREEN4 }}> +{additions}</span>
-					<span style={{ color: Colors.RED4 }}> -{deletions}</span>
-					)
+					<span style={{ color: Colors.RED4 }}> -{deletions}</span>)
 				</span>
 			</div>
 		);
@@ -125,7 +127,9 @@ function GitBranchStatusControl({
 			<Icon icon="git-branch" size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
 			<span style={{ color: Colors.LIGHT_GRAY5 }}>{branchLabel}</span>
 			<span style={{ marginLeft: 6 }}>
-				<span style={{ color: Colors.GRAY3 }}>({changedFiles} {changedFiles === 1 ? "file" : "files"}</span>
+				<span style={{ color: Colors.GRAY3 }}>
+					({changedFiles} {changedFiles === 1 ? "file" : "files"}
+				</span>
 				<span style={{ color: Colors.GREEN4 }}> +{additions}</span>
 				<span style={{ color: Colors.RED4 }}> -{deletions}</span>
 				<span style={{ color: Colors.GRAY3 }}>)</span>
@@ -205,29 +209,26 @@ export function TopBar({
 	const pullCount = gitSummary?.behindCount ?? 0;
 	const pushCount = gitSummary?.aheadCount ?? 0;
 	const hasTaskGitSummary = Boolean(taskGitSummary);
-	const taskBranchLabel =
-		taskGitSummary?.branch ??
-		taskGitSummary?.headCommit?.slice(0, 8) ??
-		"initializing";
+	const taskBranchLabel = taskGitSummary?.branch ?? taskGitSummary?.headCommit?.slice(0, 8) ?? "initializing";
 	const taskChangedFiles = taskGitSummary?.changedFiles ?? 0;
 	const taskAdditions = taskGitSummary?.additions ?? 0;
 	const taskDeletions = taskGitSummary?.deletions ?? 0;
-	const pullTooltip = pullCount > 0
-		? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
-		: "Pull from upstream. Branch is already up to date.";
-	const pushTooltip = pushCount > 0
-		? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
-		: "Push local commits to upstream. No local commits are pending.";
-	const isMacPlatform = typeof navigator !== "undefined" &&
-		/Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+	const pullTooltip =
+		pullCount > 0
+			? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
+			: "Pull from upstream. Branch is already up to date.";
+	const pushTooltip =
+		pushCount > 0
+			? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
+			: "Push local commits to upstream. No local commits are pending.";
+	const isMacPlatform =
+		typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 	const terminalShortcutIcon = isMacPlatform ? "key-command" : "key-control";
 	const handleAddShortcut = () => {
 		onOpenSettings?.("shortcuts");
 	};
 	const selectedShortcut =
-		(shortcuts ?? []).find((shortcut) => shortcut.id === selectedShortcutId) ??
-		(shortcuts ?? [])[0] ??
-		null;
+		(shortcuts ?? []).find((shortcut) => shortcut.id === selectedShortcutId) ?? (shortcuts ?? [])[0] ?? null;
 
 	return (
 		<Navbar
@@ -260,8 +261,16 @@ export function TopBar({
 			>
 				{onBack ? (
 					<div style={{ display: "flex", alignItems: "center", flexShrink: 0, overflow: "visible" }}>
-						<Button icon="arrow-left" variant="minimal" onClick={onBack} aria-label="Back to board" style={{ marginRight: 4, flexShrink: 0 }} />
-						<span role="img" aria-label="banana" style={{ marginRight: 4 }}>🍌</span>
+						<Button
+							icon="arrow-left"
+							variant="minimal"
+							onClick={onBack}
+							aria-label="Back to board"
+							style={{ marginRight: 4, flexShrink: 0 }}
+						/>
+						<span role="img" aria-label="banana" style={{ marginRight: 4 }}>
+							🍌
+						</span>
 						<NavbarDivider />
 					</div>
 				) : null}
@@ -277,7 +286,14 @@ export function TopBar({
 					<div style={{ flex: "0 1 auto", minWidth: 0, maxWidth: 640, overflow: "hidden" }}>
 						<span
 							className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
-							style={{ display: "block", width: "100%", minWidth: 0, fontSize: 12, maxWidth: "100%", color: Colors.GRAY4 }}
+							style={{
+								display: "block",
+								width: "100%",
+								minWidth: 0,
+								fontSize: 12,
+								maxWidth: "100%",
+								color: Colors.GRAY4,
+							}}
 							title={workspacePath}
 							data-testid="workspace-path"
 						>
@@ -307,10 +323,14 @@ export function TopBar({
 					</div>
 				) : null}
 				{!hideProjectDependentActions && workspaceHint ? (
-					<Tag minimal className="kb-navbar-tag">{workspaceHint}</Tag>
+					<Tag minimal className="kb-navbar-tag">
+						{workspaceHint}
+					</Tag>
 				) : null}
 				{!hideProjectDependentActions && runtimeHint ? (
-					<Tag minimal intent="warning" className="kb-navbar-tag">{runtimeHint}</Tag>
+					<Tag minimal intent="warning" className="kb-navbar-tag">
+						{runtimeHint}
+					</Tag>
 				) : null}
 				{!hideProjectDependentActions && hasHomeGitSummary ? (
 					<>
@@ -324,7 +344,10 @@ export function TopBar({
 							isGitHistoryOpen={isGitHistoryOpen}
 						/>
 						<ButtonGroup style={{ marginLeft: 6 }}>
-							<Tooltip placement="bottom" content="Fetch latest refs from upstream without changing your local branch or files.">
+							<Tooltip
+								placement="bottom"
+								content="Fetch latest refs from upstream without changing your local branch or files."
+							>
 								<Button
 									icon={<Icon icon="circle-arrow-down" size={18} />}
 									size="small"
@@ -374,7 +397,14 @@ export function TopBar({
 			</NavbarGroup>
 			<NavbarGroup
 				align={Alignment.RIGHT}
-				style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", height: 40, paddingRight: 2, flexShrink: 0 }}
+				style={{
+					display: "flex",
+					flexWrap: "nowrap",
+					alignItems: "center",
+					height: 40,
+					paddingRight: 2,
+					flexShrink: 0,
+				}}
 			>
 				{!hideProjectDependentActions && selectedShortcut && onRunShortcut ? (
 					<ButtonGroup>
@@ -391,7 +421,7 @@ export function TopBar({
 						<Popover
 							interactionKind={PopoverInteractionKind.CLICK}
 							placement="bottom-end"
-							content={(
+							content={
 								<Menu>
 									{(shortcuts ?? []).map((shortcut) => (
 										<MenuItem
@@ -401,20 +431,14 @@ export function TopBar({
 											active={shortcut.id === selectedShortcut.id}
 											onClick={() => onSelectShortcutId?.(shortcut.id)}
 											labelElement={
-												shortcut.id === selectedShortcut.id
-													? <Icon icon="small-tick" />
-													: undefined
+												shortcut.id === selectedShortcut.id ? <Icon icon="small-tick" /> : undefined
 											}
 										/>
 									))}
 									<MenuDivider />
-									<MenuItem
-										icon="plus"
-										text="Add shortcut"
-										onClick={handleAddShortcut}
-									/>
+									<MenuItem icon="plus" text="Add shortcut" onClick={handleAddShortcut} />
 								</Menu>
-							)}
+							}
 						>
 							<Button
 								size="small"
@@ -429,7 +453,7 @@ export function TopBar({
 				{onToggleTerminal ? (
 					<Tooltip
 						placement="bottom"
-						content={(
+						content={
 							<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
 								<span>Toggle terminal</span>
 								<span style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
@@ -438,7 +462,7 @@ export function TopBar({
 									<span>+ J)</span>
 								</span>
 							</span>
-						)}
+						}
 					>
 						<Button
 							icon="console"

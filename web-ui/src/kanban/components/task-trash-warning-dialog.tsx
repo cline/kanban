@@ -44,7 +44,9 @@ export function TaskTrashWarningDialog({
 				<Pre style={{ margin: "8px 0" }}>{formatPathForDisplay(warning.workspacePath)}</Pre>
 			) : null}
 			{guidance.map((line) => (
-				<p key={line} className={Classes.TEXT_MUTED}>{line}</p>
+				<p key={line} className={Classes.TEXT_MUTED}>
+					{line}
+				</p>
 			))}
 		</Alert>
 	);

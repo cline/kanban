@@ -1,6 +1,6 @@
 import { Colors } from "@blueprintjs/core";
+import type { ReactElement, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent, ReactElement, ReactNode } from "react";
 
 import { useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
 
@@ -75,18 +75,21 @@ export function ResizableBottomPane({
 		onHeightChange?.(height);
 	}, [height, onHeightChange]);
 
-	const handleMouseMove = useCallback((event: MouseEvent) => {
-		if (!isDragging) {
-			return;
-		}
-		const dragState = dragStateRef.current;
-		if (!dragState) {
-			return;
-		}
-		const deltaY = event.clientY - dragState.startY;
-		const nextHeight = clampHeight(dragState.startHeight - deltaY, minHeight);
-		setHeight(nextHeight);
-	}, [isDragging, minHeight]);
+	const handleMouseMove = useCallback(
+		(event: MouseEvent) => {
+			if (!isDragging) {
+				return;
+			}
+			const dragState = dragStateRef.current;
+			if (!dragState) {
+				return;
+			}
+			const deltaY = event.clientY - dragState.startY;
+			const nextHeight = clampHeight(dragState.startHeight - deltaY, minHeight);
+			setHeight(nextHeight);
+		},
+		[isDragging, minHeight],
+	);
 
 	const handleMouseUp = useCallback(() => {
 		if (!isDragging) {
@@ -146,9 +149,7 @@ export function ResizableBottomPane({
 					zIndex: 2,
 				}}
 			/>
-			<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
-				{children}
-			</div>
+			<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>{children}</div>
 		</div>
 	);
 }

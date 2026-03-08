@@ -50,10 +50,7 @@ function renderHighlightedText(value: string, positions: Set<number> | undefined
 	}
 
 	fragments.push(
-		<span
-			key="end"
-			style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}
-		>
+		<span key="end" style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}>
 			{currentText}
 		</span>,
 	);
@@ -119,10 +116,7 @@ export function GitRefsPanel({
 	const branchRefs = refs.filter((r) => r.type === "branch");
 	const headBranch = branchRefs.find((r) => r.isHead);
 	const otherBranches = branchRefs.filter((r) => !r.isHead);
-	const branchFinder = useMemo(
-		() => new Fzf(otherBranches, { selector: (ref) => ref.name }),
-		[otherBranches],
-	);
+	const branchFinder = useMemo(() => new Fzf(otherBranches, { selector: (ref) => ref.name }), [otherBranches]);
 
 	const fuzzyBranchResults = useMemo(() => {
 		if (!searchQuery.trim()) {
@@ -176,34 +170,34 @@ export function GitRefsPanel({
 				<Tooltip
 					content={
 						<div style={{ maxWidth: 260, whiteSpace: "normal", lineHeight: 1.4 }}>
-							Click the branch button in the navbar to close this view. Double-click a branch to
-							switch the workspace branch.
+							Click the branch button in the navbar to close this view. Double-click a branch to switch the
+							workspace branch.
 						</div>
 					}
 					placement="bottom"
 				>
-					<Button
-						icon="info-sign"
-						variant="minimal"
-						size="small"
-						aria-label="Git history help"
-					/>
+					<Button icon="info-sign" variant="minimal" size="small" aria-label="Git history help" />
 				</Tooltip>
 			</div>
 			<div style={{ overflowY: "auto", overscrollBehavior: "contain", padding: "8px 6px" }}>
 				{isLoading ? (
 					<div style={{ padding: "4px 6px" }}>
-						<div className={Classes.SKELETON} style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3, marginBottom: 4 }} />
-						<div className={Classes.SKELETON} style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3, marginBottom: 4 }} />
-						<div className={Classes.SKELETON} style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3 }} />
+						<div
+							className={Classes.SKELETON}
+							style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3, marginBottom: 4 }}
+						/>
+						<div
+							className={Classes.SKELETON}
+							style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3, marginBottom: 4 }}
+						/>
+						<div
+							className={Classes.SKELETON}
+							style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3 }}
+						/>
 					</div>
 				) : errorMessage ? (
 					<div className="kb-empty-state-center" style={{ minHeight: 180, padding: 12 }}>
-						<NonIdealState
-							icon="error"
-							title="Could not load refs"
-							description={errorMessage}
-						/>
+						<NonIdealState icon="error" title="Could not load refs" description={errorMessage} />
 					</div>
 				) : (
 					<>
@@ -227,19 +221,31 @@ export function GitRefsPanel({
 								onSelect={() => onSelectRef(detachedRef)}
 							>
 								<Icon icon="locate" size={12} />
-								<span className="kb-line-clamp-1" style={{ flex: 1 }}>HEAD ({detachedRef.name})</span>
+								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+									HEAD ({detachedRef.name})
+								</span>
 							</RefRow>
 						) : null}
 
 						{headBranch ? (
 							<RefRow
-								isSelected={!isWorkingCopySelected && (selectedRefName === headBranch.name || (selectedRefName === null && headBranch.isHead))}
+								isSelected={
+									!isWorkingCopySelected &&
+									(selectedRefName === headBranch.name || (selectedRefName === null && headBranch.isHead))
+								}
 								onSelect={() => onSelectRef(headBranch)}
 							>
 								<Icon icon="git-branch" size={12} />
-								<span className="kb-line-clamp-1" style={{ flex: 1 }}>{headBranch.name}</span>
+								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+									{headBranch.name}
+								</span>
 								<AheadBehindIndicator ahead={headBranch.ahead} behind={headBranch.behind} />
-								<Tag minimal round intent="primary" style={{ fontSize: "var(--bp-typography-size-body-x-small)" }}>
+								<Tag
+									minimal
+									round
+									intent="primary"
+									style={{ fontSize: "var(--bp-typography-size-body-x-small)" }}
+								>
 									HEAD
 								</Tag>
 							</RefRow>

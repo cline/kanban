@@ -1,7 +1,7 @@
 import { Button, Classes, Collapse, Colors, Icon } from "@blueprintjs/core";
-import { DragDropContext, Droppable, type BeforeCapture, type DropResult } from "@hello-pangea/dnd";
-import { useCallback, useState } from "react";
+import { type BeforeCapture, DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
 import type { ReactNode } from "react";
+import { useCallback, useState } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
@@ -9,8 +9,8 @@ import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
 import { findCardColumnId, isCardDropDisabled } from "@/kanban/state/drag-rules";
 import type {
 	BoardCard as BoardCardModel,
-	BoardColumnId,
 	BoardColumn,
+	BoardColumnId,
 	CardSelection,
 	ReviewTaskWorkspaceSnapshot,
 } from "@/kanban/types";
@@ -95,7 +95,7 @@ function ColumnSection({
 				) : null}
 			</div>
 			<Collapse isOpen={open}>
-			<Droppable droppableId={column.id} type={cardDropType} isDropDisabled={isDropDisabled}>
+				<Droppable droppableId={column.id} type={cardDropType} isDropDisabled={isDropDisabled}>
 					{(provided) => {
 						return (
 							<div
@@ -139,12 +139,12 @@ function ColumnSection({
 												selected={card.id === selectedCardId}
 												onStart={onStartTask}
 												onMoveToTrash={onMoveToTrashTask}
-											reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
-											onCommit={onCommitTask}
-											onOpenPr={onOpenPrTask}
-											isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
-											isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
-											onClick={() => {
+												reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
+												onCommit={onCommitTask}
+												onOpenPr={onOpenPrTask}
+												isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
+												isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
+												onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);
 														return;
@@ -158,9 +158,7 @@ function ColumnSection({
 									return items;
 								})()}
 								{provided.placeholder}
-								{column.cards.length === 0 ? (
-									<p className={Classes.TEXT_MUTED}>No cards</p>
-								) : null}
+								{column.cards.length === 0 ? <p className={Classes.TEXT_MUTED}>No cards</p> : null}
 							</div>
 						);
 					}}
@@ -209,9 +207,12 @@ export function ColumnContextPanel({
 }): React.ReactElement {
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 
-	const handleBeforeCapture = useCallback((start: BeforeCapture) => {
-		setActiveDragSourceColumnId(findCardColumnId(selection.allColumns, start.draggableId));
-	}, [selection.allColumns]);
+	const handleBeforeCapture = useCallback(
+		(start: BeforeCapture) => {
+			setActiveDragSourceColumnId(findCardColumnId(selection.allColumns, start.draggableId));
+		},
+		[selection.allColumns],
+	);
 
 	const handleDragEnd = useCallback(
 		(result: DropResult) => {

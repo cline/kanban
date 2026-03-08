@@ -9,11 +9,7 @@ import warpIcon from "@/kanban/assets/open-targets/warp.svg";
 import windsurfIcon from "@/kanban/assets/open-targets/windsurf.svg";
 import xcodeIcon from "@/kanban/assets/open-targets/xcode.svg";
 import zedIcon from "@/kanban/assets/open-targets/zed.svg";
-import {
-	LocalStorageKey,
-	readLocalStorageItem,
-	writeLocalStorageItem,
-} from "@/kanban/storage/local-storage-store";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/kanban/storage/local-storage-store";
 
 export const PREFERRED_OPEN_TARGET_STORAGE_KEY = LocalStorageKey.PreferredOpenTarget;
 
@@ -132,9 +128,7 @@ function buildOpenAppCommand(path: string, ...appNames: string[]): string {
 	if (appNames.length === 0) {
 		return `open ${quotedPath}`;
 	}
-	const openAttempts = appNames.map((appName) =>
-		`open -a ${quoteShellArgument(appName)} ${quotedPath}`
-	);
+	const openAttempts = appNames.map((appName) => `open -a ${quoteShellArgument(appName)} ${quotedPath}`);
 	if (openAttempts.length === 1) {
 		const command = openAttempts[0];
 		return command ?? `open ${quotedPath}`;

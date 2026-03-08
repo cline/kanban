@@ -10,10 +10,7 @@ export interface DependencyLinkDraft {
 
 const CARD_GAP_CAPTURE_PX = 16;
 
-function getNearestCardTaskIdInColumn(
-	columnElement: HTMLElement,
-	clientY: number,
-): string | null {
+function getNearestCardTaskIdInColumn(columnElement: HTMLElement, clientY: number): string | null {
 	const cards = Array.from(columnElement.querySelectorAll<HTMLElement>("[data-task-id]"));
 	if (cards.length === 0) {
 		return null;
@@ -212,11 +209,10 @@ export function useDependencyLinking({
 			if (!current) {
 				return;
 			}
-			const resolvedTargetTaskId =
-				getValidTargetTaskId(
-					current.sourceTaskId,
-					current.targetTaskId ?? getTaskIdFromPoint(current.pointerClientX, current.pointerClientY),
-				);
+			const resolvedTargetTaskId = getValidTargetTaskId(
+				current.sourceTaskId,
+				current.targetTaskId ?? getTaskIdFromPoint(current.pointerClientX, current.pointerClientY),
+			);
 			if (completeDependencyLink(resolvedTargetTaskId)) {
 				return;
 			}
@@ -253,19 +249,22 @@ export function useDependencyLinking({
 		});
 	}, []);
 
-	const handleDependencyPointerEnter = useCallback((taskId: string) => {
-		setDraft((current) => {
-			if (!current) {
-				return current;
-			}
-			const nextDraft = {
-				...current,
-				targetTaskId: getValidTargetTaskId(current.sourceTaskId, taskId),
-			};
-			draftRef.current = nextDraft;
-			return nextDraft;
-		});
-	}, [getValidTargetTaskId]);
+	const handleDependencyPointerEnter = useCallback(
+		(taskId: string) => {
+			setDraft((current) => {
+				if (!current) {
+					return current;
+				}
+				const nextDraft = {
+					...current,
+					targetTaskId: getValidTargetTaskId(current.sourceTaskId, taskId),
+				};
+				draftRef.current = nextDraft;
+				return nextDraft;
+			});
+		},
+		[getValidTargetTaskId],
+	);
 
 	return {
 		draft,

@@ -1,4 +1,4 @@
-import { OverlayToaster, Position, type ToastProps, type Toaster } from "@blueprintjs/core";
+import { OverlayToaster, Position, type Toaster, type ToastProps } from "@blueprintjs/core";
 
 let toasterPromise: Promise<Toaster> | null = null;
 

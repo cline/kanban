@@ -83,12 +83,10 @@ export function isCardDropDisabled(
 		if (activeDragSourceColumnId === "backlog" || activeDragSourceColumnId === "in_progress") {
 			return false;
 		}
-		return (
-			!isAllowedCrossColumnCardMove(activeDragSourceColumnId, columnId, {
-				taskId: options?.activeDragTaskId,
-				programmaticCardMoveInFlight: options?.programmaticCardMoveInFlight,
-			})
-		);
+		return !isAllowedCrossColumnCardMove(activeDragSourceColumnId, columnId, {
+			taskId: options?.activeDragTaskId,
+			programmaticCardMoveInFlight: options?.programmaticCardMoveInFlight,
+		});
 	}
 	if (columnId === "trash") {
 		return activeDragSourceColumnId === "trash";

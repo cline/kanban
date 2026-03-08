@@ -68,14 +68,16 @@ function createBoard(title: string): RuntimeBoardData {
 function createReviewBoard(taskId: string, title: string, existingTrashTaskId?: string): RuntimeBoardData {
 	const now = Date.now();
 	const trashCards = existingTrashTaskId
-		? [{
-			id: existingTrashTaskId,
-			prompt: "Already trashed task",
-			startInPlanMode: false,
-			baseRef: "main",
-			createdAt: now,
-			updatedAt: now,
-		}]
+		? [
+				{
+					id: existingTrashTaskId,
+					prompt: "Already trashed task",
+					startInPlanMode: false,
+					baseRef: "main",
+					createdAt: now,
+					updatedAt: now,
+				},
+			]
 		: [];
 	return {
 		columns: [

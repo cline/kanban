@@ -243,22 +243,26 @@ describe("board dependency state", () => {
 		const movedC = moveTaskToColumn(movedB.board, taskC, "in_progress");
 		expect(movedC.moved).toBe(true);
 
-		const movedA = applyDragResult(movedC.board, {
-			draggableId: taskA,
-			type: "CARD",
-			source: { droppableId: "backlog", index: 0 },
-			destination: { droppableId: "in_progress", index: 2 },
-			mode: "SNAP",
-			reason: "DROP",
-			combine: null,
-		}, {
-			programmaticCardMoveInFlight: {
-				taskId: taskA,
-				fromColumnId: "backlog",
-				toColumnId: "in_progress",
-				insertAtTop: true,
+		const movedA = applyDragResult(
+			movedC.board,
+			{
+				draggableId: taskA,
+				type: "CARD",
+				source: { droppableId: "backlog", index: 0 },
+				destination: { droppableId: "in_progress", index: 2 },
+				mode: "SNAP",
+				reason: "DROP",
+				combine: null,
 			},
-		});
+			{
+				programmaticCardMoveInFlight: {
+					taskId: taskA,
+					fromColumnId: "backlog",
+					toColumnId: "in_progress",
+					insertAtTop: true,
+				},
+			},
+		);
 		expect(movedA.moveEvent).toMatchObject({
 			taskId: taskA,
 			fromColumnId: "backlog",
@@ -286,17 +290,21 @@ describe("board dependency state", () => {
 			insertAtTop: true,
 		};
 
-		const movedToReview = applyDragResult(movedCToInProgress.board, {
-			draggableId: taskA,
-			type: "CARD",
-			source: { droppableId: "in_progress", index: 0 },
-			destination: { droppableId: "review", index: 1 },
-			mode: "SNAP",
-			reason: "DROP",
-			combine: null,
-		}, {
-			programmaticCardMoveInFlight: moveToReview,
-		});
+		const movedToReview = applyDragResult(
+			movedCToInProgress.board,
+			{
+				draggableId: taskA,
+				type: "CARD",
+				source: { droppableId: "in_progress", index: 0 },
+				destination: { droppableId: "review", index: 1 },
+				mode: "SNAP",
+				reason: "DROP",
+				combine: null,
+			},
+			{
+				programmaticCardMoveInFlight: moveToReview,
+			},
+		);
 		expect(movedToReview.moveEvent).toMatchObject({
 			taskId: taskA,
 			fromColumnId: "in_progress",
@@ -312,17 +320,21 @@ describe("board dependency state", () => {
 			insertAtTop: true,
 		};
 
-		const movedBackToInProgress = applyDragResult(movedToReview.board, {
-			draggableId: taskA,
-			type: "CARD",
-			source: { droppableId: "review", index: 0 },
-			destination: { droppableId: "in_progress", index: 2 },
-			mode: "SNAP",
-			reason: "DROP",
-			combine: null,
-		}, {
-			programmaticCardMoveInFlight: moveBackToInProgress,
-		});
+		const movedBackToInProgress = applyDragResult(
+			movedToReview.board,
+			{
+				draggableId: taskA,
+				type: "CARD",
+				source: { droppableId: "review", index: 0 },
+				destination: { droppableId: "in_progress", index: 2 },
+				mode: "SNAP",
+				reason: "DROP",
+				combine: null,
+			},
+			{
+				programmaticCardMoveInFlight: moveBackToInProgress,
+			},
+		);
 		expect(movedBackToInProgress.moveEvent).toMatchObject({
 			taskId: taskA,
 			fromColumnId: "review",
@@ -377,22 +389,26 @@ describe("board dependency state", () => {
 		const movedCToReview = moveTaskToColumn(movedBToTrash.board, taskC, "review");
 		expect(movedCToReview.moved).toBe(true);
 
-		const movedToTrash = applyDragResult(movedCToReview.board, {
-			draggableId: taskC,
-			type: "CARD",
-			source: { droppableId: "review", index: 0 },
-			destination: { droppableId: "trash", index: 2 },
-			mode: "SNAP",
-			reason: "DROP",
-			combine: null,
-		}, {
-			programmaticCardMoveInFlight: {
-				taskId: taskC,
-				fromColumnId: "review",
-				toColumnId: "trash",
-				insertAtTop: true,
+		const movedToTrash = applyDragResult(
+			movedCToReview.board,
+			{
+				draggableId: taskC,
+				type: "CARD",
+				source: { droppableId: "review", index: 0 },
+				destination: { droppableId: "trash", index: 2 },
+				mode: "SNAP",
+				reason: "DROP",
+				combine: null,
 			},
-		});
+			{
+				programmaticCardMoveInFlight: {
+					taskId: taskC,
+					fromColumnId: "review",
+					toColumnId: "trash",
+					insertAtTop: true,
+				},
+			},
+		);
 		expect(movedToTrash.moveEvent).toMatchObject({
 			taskId: taskC,
 			fromColumnId: "review",

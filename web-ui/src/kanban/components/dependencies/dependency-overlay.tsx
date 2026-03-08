@@ -1,6 +1,6 @@
 import { Icon } from "@blueprintjs/core";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { DependencyLinkDraft } from "@/kanban/components/dependencies/use-dependency-linking";
 import type { BoardColumnId, BoardDependency } from "@/kanban/types";
@@ -89,16 +89,8 @@ function cubicPoint(
 	const tSquared = t * t;
 	const tCubed = tSquared * t;
 	return {
-		x:
-			inverseCubed * p0x +
-			3 * inverseSquared * t * p1x +
-			3 * inverse * tSquared * p2x +
-			tCubed * p3x,
-		y:
-			inverseCubed * p0y +
-			3 * inverseSquared * t * p1y +
-			3 * inverse * tSquared * p2y +
-			tCubed * p3y,
+		x: inverseCubed * p0x + 3 * inverseSquared * t * p1x + 3 * inverse * tSquared * p2x + tCubed * p3x,
+		y: inverseCubed * p0y + 3 * inverseSquared * t * p1y + 3 * inverse * tSquared * p2y + tCubed * p3y,
 	};
 }
 
@@ -111,8 +103,7 @@ function interpolateDependencyGeometry(
 	to: DependencyGeometry,
 	progress: number,
 ): DependencyGeometry {
-	const interpolate = (fromValue: number, toValue: number) =>
-		fromValue + ((toValue - fromValue) * progress);
+	const interpolate = (fromValue: number, toValue: number) => fromValue + (toValue - fromValue) * progress;
 	const startX = interpolate(from.startX, to.startX);
 	const startY = interpolate(from.startY, to.startY);
 	const controlPoint1X = interpolate(from.controlPoint1X, to.controlPoint1X);
@@ -163,12 +154,7 @@ function dot(a: { x: number; y: number }, b: { x: number; y: number }): number {
 	return a.x * b.x + a.y * b.y;
 }
 
-function getAnchorPoint(
-	anchor: TaskAnchor,
-	side: AnchorSide,
-	laneOffset: number,
-	padding: number,
-): AnchorPoint {
+function getAnchorPoint(anchor: TaskAnchor, side: AnchorSide, laneOffset: number, padding: number): AnchorPoint {
 	if (side === "left") {
 		return {
 			x: anchor.left - padding,
@@ -275,13 +261,11 @@ function chooseConnection(
 
 	const firstSides: AnchorSide[] = ["left", "right", "top", "bottom"];
 	const secondSides: AnchorSide[] = ["left", "right", "top", "bottom"];
-	let best:
-		| {
-				cost: number;
-				start: AnchorPoint;
-				end: AnchorPoint;
-		  }
-		| null = null;
+	let best: {
+		cost: number;
+		start: AnchorPoint;
+		end: AnchorPoint;
+	} | null = null;
 
 	for (const firstSide of firstSides) {
 		for (const secondSide of secondSides) {
@@ -400,10 +384,7 @@ function hasComparableValueDifference(a: number, b: number): boolean {
 }
 
 function areLayoutsEqual(a: DependencyLayout, b: DependencyLayout): boolean {
-	if (
-		hasComparableValueDifference(a.width, b.width) ||
-		hasComparableValueDifference(a.height, b.height)
-	) {
+	if (hasComparableValueDifference(a.width, b.width) || hasComparableValueDifference(a.height, b.height)) {
 		return false;
 	}
 	const aKeys = Object.keys(a.anchors);
@@ -458,14 +439,21 @@ export function DependencyOverlay({
 	const [layout, setLayout] = useState<DependencyLayout>(() => createEmptyLayout());
 	const [hoveredDependencyId, setHoveredDependencyId] = useState<string | null>(null);
 	const hoverClearTimeoutRef = useRef<number | null>(null);
-	const previousRenderedDependencyByIdRef = useRef<Record<string, Pick<RenderedDependency, "geometry" | "startSide" | "endSide">>>({});
-	const sideTransitionByDependencyIdRef = useRef<Record<string, {
-		from: DependencyGeometry;
-		startTime: number;
-		durationMs: number;
-		targetStartSide: AnchorSide;
-		targetEndSide: AnchorSide;
-	}>>({});
+	const previousRenderedDependencyByIdRef = useRef<
+		Record<string, Pick<RenderedDependency, "geometry" | "startSide" | "endSide">>
+	>({});
+	const sideTransitionByDependencyIdRef = useRef<
+		Record<
+			string,
+			{
+				from: DependencyGeometry;
+				startTime: number;
+				durationMs: number;
+				targetStartSide: AnchorSide;
+				targetEndSide: AnchorSide;
+			}
+		>
+	>({});
 	const animationFrameIdRef = useRef<number | null>(null);
 	const [, setAnimationFrameTick] = useState(0);
 
@@ -502,19 +490,20 @@ export function DependencyOverlay({
 					taskId === activeTaskId && activeTaskEffectiveColumnId
 						? activeTaskEffectiveColumnId
 						: normalizeColumnId(
-							cardElement.dataset.columnId ??
-								cardElement.closest<HTMLElement>("[data-column-id]")?.dataset.columnId,
-						),
+								cardElement.dataset.columnId ??
+									cardElement.closest<HTMLElement>("[data-column-id]")?.dataset.columnId,
+							),
 			};
 		};
 		for (const cardElement of container.querySelectorAll<HTMLElement>("[data-task-id]")) {
 			setAnchorFromElement(cardElement);
 		}
 		if (activeTaskId && typeof document !== "undefined") {
-			const activeCardElements = Array.from(document.querySelectorAll<HTMLElement>(`[data-task-id="${activeTaskId}"]`));
+			const activeCardElements = Array.from(
+				document.querySelectorAll<HTMLElement>(`[data-task-id="${activeTaskId}"]`),
+			);
 			const liveActiveCardElement =
-				activeCardElements.find((element) => !container.contains(element)) ??
-				activeCardElements[0];
+				activeCardElements.find((element) => !container.contains(element)) ?? activeCardElements[0];
 			if (liveActiveCardElement) {
 				setAnchorFromElement(liveActiveCardElement);
 			}
@@ -537,9 +526,7 @@ export function DependencyOverlay({
 			if (!current) {
 				return null;
 			}
-			return dependencies.some((dependency) => dependency.id === current)
-				? current
-				: null;
+			return dependencies.some((dependency) => dependency.id === current) ? current : null;
 		});
 	}, [dependencies]);
 
@@ -587,8 +574,8 @@ export function DependencyOverlay({
 		const resizeObserver =
 			typeof ResizeObserver !== "undefined"
 				? new ResizeObserver(() => {
-					scheduleRefresh();
-				})
+						scheduleRefresh();
+					})
 				: null;
 		if (resizeObserver) {
 			resizeObserver.observe(container);
@@ -643,7 +630,12 @@ export function DependencyOverlay({
 					targetAnchor,
 				};
 			})
-			.filter((candidate): candidate is { dependency: BoardDependency; sourceAnchor: TaskAnchor; targetAnchor: TaskAnchor } => candidate !== null);
+			.filter(
+				(
+					candidate,
+				): candidate is { dependency: BoardDependency; sourceAnchor: TaskAnchor; targetAnchor: TaskAnchor } =>
+					candidate !== null,
+			);
 
 		const laneOrderByTaskId = new Map<string, Array<{ dependencyId: string; oppositeCenterY: number }>>();
 		for (const candidate of candidates) {
@@ -667,8 +659,12 @@ export function DependencyOverlay({
 		}
 
 		return candidates.map((candidate) => {
-			const sourceLanes = laneOrderByTaskId.get(candidate.dependency.fromTaskId) ?? [{ dependencyId: candidate.dependency.id, oppositeCenterY: candidate.targetAnchor.centerY }];
-			const targetLanes = laneOrderByTaskId.get(candidate.dependency.toTaskId) ?? [{ dependencyId: candidate.dependency.id, oppositeCenterY: candidate.sourceAnchor.centerY }];
+			const sourceLanes = laneOrderByTaskId.get(candidate.dependency.fromTaskId) ?? [
+				{ dependencyId: candidate.dependency.id, oppositeCenterY: candidate.targetAnchor.centerY },
+			];
+			const targetLanes = laneOrderByTaskId.get(candidate.dependency.toTaskId) ?? [
+				{ dependencyId: candidate.dependency.id, oppositeCenterY: candidate.sourceAnchor.centerY },
+			];
 			const sourceLaneIndex = sourceLanes.findIndex((lane) => lane.dependencyId === candidate.dependency.id);
 			const targetLaneIndex = targetLanes.findIndex((lane) => lane.dependencyId === candidate.dependency.id);
 			const sourceLaneOffset = ((sourceLaneIndex === -1 ? 0 : sourceLaneIndex) - (sourceLanes.length - 1) / 2) * 9;
@@ -694,7 +690,10 @@ export function DependencyOverlay({
 
 	useLayoutEffect(() => {
 		const now = performance.now();
-		const nextPreviousRenderedDependencyById: Record<string, Pick<RenderedDependency, "geometry" | "startSide" | "endSide">> = {};
+		const nextPreviousRenderedDependencyById: Record<
+			string,
+			Pick<RenderedDependency, "geometry" | "startSide" | "endSide">
+		> = {};
 		const nextRenderedDependencyIds = new Set(renderedDependencies.map((rendered) => rendered.dependency.id));
 		for (const rendered of renderedDependencies) {
 			const existingTransition = sideTransitionByDependencyIdRef.current[rendered.dependency.id];
@@ -703,13 +702,10 @@ export function DependencyOverlay({
 				? Math.min((now - existingTransition.startTime) / existingTransition.durationMs, 1)
 				: 1;
 			const transitionFromGeometry = existingTransition
-				? interpolateDependencyGeometry(
-					existingTransition.from,
-					rendered.geometry,
-					transitionProgress,
-				)
+				? interpolateDependencyGeometry(existingTransition.from, rendered.geometry, transitionProgress)
 				: previousRendered?.geometry;
-			const shouldAnimateSideTransition = previousRendered != null &&
+			const shouldAnimateSideTransition =
+				previousRendered != null &&
 				(previousRendered.startSide !== rendered.startSide || previousRendered.endSide !== rendered.endSide);
 			if (shouldAnimateSideTransition && transitionFromGeometry) {
 				sideTransitionByDependencyIdRef.current[rendered.dependency.id] = {
@@ -810,7 +806,7 @@ export function DependencyOverlay({
 	const hoveredDependency = useMemo(
 		() =>
 			hoveredDependencyId
-				? renderedDependencies.find((rendered) => rendered.dependency.id === hoveredDependencyId) ?? null
+				? (renderedDependencies.find((rendered) => rendered.dependency.id === hoveredDependencyId) ?? null)
 				: null,
 		[hoveredDependencyId, renderedDependencies],
 	);
@@ -831,10 +827,10 @@ export function DependencyOverlay({
 					const sideTransition = sideTransitionByDependencyIdRef.current[rendered.dependency.id];
 					const displayedGeometry = sideTransition
 						? interpolateDependencyGeometry(
-							sideTransition.from,
-							rendered.geometry,
-							Math.min((performance.now() - sideTransition.startTime) / sideTransition.durationMs, 1),
-						)
+								sideTransition.from,
+								rendered.geometry,
+								Math.min((performance.now() - sideTransition.startTime) / sideTransition.durationMs, 1),
+							)
 						: rendered.geometry;
 					const displayedPath = buildPathFromGeometry(displayedGeometry);
 					return (
@@ -884,10 +880,7 @@ export function DependencyOverlay({
 					height={layout.height}
 					viewBox={`0 0 ${layout.width} ${layout.height}`}
 				>
-					<path
-						d={draftPath}
-						className="kb-dependency-draft-path"
-					/>
+					<path d={draftPath} className="kb-dependency-draft-path" />
 				</svg>
 			) : null}
 			{onDeleteDependency && hoveredDependency ? (
@@ -896,11 +889,7 @@ export function DependencyOverlay({
 					className="kb-dependency-delete-control"
 					style={{ left: hoveredDependency.midpointX, top: hoveredDependency.midpointY }}
 				>
-					<Icon
-						icon="cross"
-						size={10}
-						color="var(--bp-palette-light-gray-5)"
-					/>
+					<Icon icon="cross" size={10} color="var(--bp-palette-light-gray-5)" />
 				</div>
 			) : null}
 		</>

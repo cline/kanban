@@ -2,10 +2,10 @@ import { useEffect, useReducer } from "react";
 
 import type {
 	RuntimeProjectSummary,
+	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
-	RuntimeStateStreamMessage,
 	RuntimeStateStreamWorkspaceRetrieveStatusMessage,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
@@ -153,10 +153,7 @@ function runtimeStateStreamReducer(
 	if (action.type === "workspace_retrieve_status") {
 		return {
 			...state,
-			workspaceStatusRetrievedAt: Math.max(
-				state.workspaceStatusRetrievedAt,
-				action.payload.retrievedAt,
-			),
+			workspaceStatusRetrievedAt: Math.max(state.workspaceStatusRetrievedAt, action.payload.retrievedAt),
 		};
 	}
 	if (action.type === "workspace_state_updated") {
@@ -194,9 +191,7 @@ function runtimeStateStreamReducer(
 	return state;
 }
 
-export function useRuntimeStateStream(
-	requestedWorkspaceId: string | null,
-): UseRuntimeStateStreamResult {
+export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseRuntimeStateStreamResult {
 	const [state, dispatch] = useReducer(
 		runtimeStateStreamReducer,
 		requestedWorkspaceId,
@@ -230,10 +225,7 @@ export function useRuntimeStateStream(
 			if (reconnectTimer !== null) {
 				return;
 			}
-			const delay = Math.min(
-				STREAM_RECONNECT_MAX_DELAY_MS,
-				STREAM_RECONNECT_BASE_DELAY_MS * (2 ** reconnectAttempt),
-			);
+			const delay = Math.min(STREAM_RECONNECT_MAX_DELAY_MS, STREAM_RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempt);
 			reconnectAttempt += 1;
 			reconnectTimer = window.setTimeout(() => {
 				connect();

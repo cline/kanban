@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { RequestProgrammaticCardMove } from "@/kanban/components/kanban-board";
 import type { ProgrammaticCardMoveInFlight } from "@/kanban/state/drag-rules";
@@ -58,8 +57,9 @@ export function useProgrammaticCardMoves(): {
 	const requestProgrammaticCardMoveRef = useRef<RequestProgrammaticCardMove | null>(null);
 	const programmaticCardMoveInFlightRef = useRef<ProgrammaticCardMoveInFlight | null>(null);
 	const programmaticCardMoveBehaviorByTaskIdRef = useRef<Record<string, ProgrammaticCardMoveBehavior>>({});
-	const pendingProgrammaticTrashMoveCompletionByTaskIdRef =
-		useRef<Record<string, PendingProgrammaticTrashMoveCompletion>>({});
+	const pendingProgrammaticTrashMoveCompletionByTaskIdRef = useRef<
+		Record<string, PendingProgrammaticTrashMoveCompletion>
+	>({});
 	const requestMoveTaskToTrashRef = useRef<RequestMoveTaskToTrash | null>(null);
 	const pendingProgrammaticCardMoveAvailabilityRef = useRef<PendingProgrammaticCardMoveAvailability[]>([]);
 	const [programmaticCardMoveCycle, setProgrammaticCardMoveCycle] = useState(0);
@@ -88,52 +88,59 @@ export function useProgrammaticCardMoves(): {
 		}
 	}, []);
 
-	const tryProgrammaticCardMove = useCallback((
-		taskId: string,
-		fromColumnId: BoardColumnId,
-		targetColumnId: BoardColumnId,
-		behavior?: ProgrammaticCardMoveBehavior,
-	): ProgrammaticCardMoveAttemptResult => {
-		const requestMove = requestProgrammaticCardMoveRef.current;
-		if (!requestMove) {
-			return "unavailable";
-		}
-		if (programmaticCardMoveInFlightRef.current) {
-			return "blocked";
-		}
-		const programmaticCardMoveInFlight: ProgrammaticCardMoveInFlight = {
-			taskId,
-			fromColumnId,
-			toColumnId: targetColumnId,
-			insertAtTop: behavior?.insertAtTop ?? true,
-		};
-		if (behavior) {
-			programmaticCardMoveBehaviorByTaskIdRef.current[taskId] = behavior;
-		} else {
-			delete programmaticCardMoveBehaviorByTaskIdRef.current[taskId];
-		}
-		programmaticCardMoveInFlightRef.current = programmaticCardMoveInFlight;
-		const started = requestMove(programmaticCardMoveInFlight);
-		if (!started) {
-			clearProgrammaticCardMoveInFlight(taskId);
-			delete programmaticCardMoveBehaviorByTaskIdRef.current[taskId];
-			return "unavailable";
-		}
-		return "started";
-	}, [clearProgrammaticCardMoveInFlight]);
+	const tryProgrammaticCardMove = useCallback(
+		(
+			taskId: string,
+			fromColumnId: BoardColumnId,
+			targetColumnId: BoardColumnId,
+			behavior?: ProgrammaticCardMoveBehavior,
+		): ProgrammaticCardMoveAttemptResult => {
+			const requestMove = requestProgrammaticCardMoveRef.current;
+			if (!requestMove) {
+				return "unavailable";
+			}
+			if (programmaticCardMoveInFlightRef.current) {
+				return "blocked";
+			}
+			const programmaticCardMoveInFlight: ProgrammaticCardMoveInFlight = {
+				taskId,
+				fromColumnId,
+				toColumnId: targetColumnId,
+				insertAtTop: behavior?.insertAtTop ?? true,
+			};
+			if (behavior) {
+				programmaticCardMoveBehaviorByTaskIdRef.current[taskId] = behavior;
+			} else {
+				delete programmaticCardMoveBehaviorByTaskIdRef.current[taskId];
+			}
+			programmaticCardMoveInFlightRef.current = programmaticCardMoveInFlight;
+			const started = requestMove(programmaticCardMoveInFlight);
+			if (!started) {
+				clearProgrammaticCardMoveInFlight(taskId);
+				delete programmaticCardMoveBehaviorByTaskIdRef.current[taskId];
+				return "unavailable";
+			}
+			return "started";
+		},
+		[clearProgrammaticCardMoveInFlight],
+	);
 
-	const consumeProgrammaticCardMove = useCallback((taskId: string): ConsumedProgrammaticCardMove => {
-		const behavior = programmaticCardMoveBehaviorByTaskIdRef.current[taskId];
-		delete programmaticCardMoveBehaviorByTaskIdRef.current[taskId];
-		const programmaticCardMoveInFlight = programmaticCardMoveInFlightRef.current?.taskId === taskId
-			? programmaticCardMoveInFlightRef.current
-			: undefined;
-		clearProgrammaticCardMoveInFlight(taskId);
-		return {
-			behavior,
-			programmaticCardMoveInFlight,
-		};
-	}, [clearProgrammaticCardMoveInFlight]);
+	const consumeProgrammaticCardMove = useCallback(
+		(taskId: string): ConsumedProgrammaticCardMove => {
+			const behavior = programmaticCardMoveBehaviorByTaskIdRef.current[taskId];
+			delete programmaticCardMoveBehaviorByTaskIdRef.current[taskId];
+			const programmaticCardMoveInFlight =
+				programmaticCardMoveInFlightRef.current?.taskId === taskId
+					? programmaticCardMoveInFlightRef.current
+					: undefined;
+			clearProgrammaticCardMoveInFlight(taskId);
+			return {
+				behavior,
+				programmaticCardMoveInFlight,
+			};
+		},
+		[clearProgrammaticCardMoveInFlight],
+	);
 
 	const resolvePendingProgrammaticTrashMove = useCallback((taskId: string) => {
 		const pending = pendingProgrammaticTrashMoveCompletionByTaskIdRef.current[taskId];
@@ -181,54 +188,53 @@ export function useProgrammaticCardMoves(): {
 		};
 	}, [resetProgrammaticCardMoves]);
 
-	const requestMoveTaskToTrashWithAnimation = useCallback<RequestMoveTaskToTrash>(async (
-		taskId,
-		fromColumnId,
-		options,
-	) => {
-		const requestMoveTaskToTrash = requestMoveTaskToTrashRef.current;
-		if (!requestMoveTaskToTrash) {
-			return;
-		}
-		if (fromColumnId !== "review") {
-			await requestMoveTaskToTrash(taskId, fromColumnId, options);
-			return;
-		}
+	const requestMoveTaskToTrashWithAnimation = useCallback<RequestMoveTaskToTrash>(
+		async (taskId, fromColumnId, options) => {
+			const requestMoveTaskToTrash = requestMoveTaskToTrashRef.current;
+			if (!requestMoveTaskToTrash) {
+				return;
+			}
+			if (fromColumnId !== "review") {
+				await requestMoveTaskToTrash(taskId, fromColumnId, options);
+				return;
+			}
 
-		resolvePendingProgrammaticTrashMove(taskId);
-
-		let resolveCompletion: (() => void) | null = null;
-		const completionPromise = new Promise<void>((resolve) => {
-			resolveCompletion = resolve;
-		});
-		const timeoutId = window.setTimeout(() => {
 			resolvePendingProgrammaticTrashMove(taskId);
-		}, 5000);
-		pendingProgrammaticTrashMoveCompletionByTaskIdRef.current[taskId] = {
-			resolve: () => {
-				resolveCompletion?.();
-				resolveCompletion = null;
-			},
-			timeoutId,
-		};
 
-		const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, fromColumnId, "trash", {
-			skipWorkingChangeWarning: options?.skipWorkingChangeWarning,
-		});
-		if (programmaticMoveAttempt === "blocked") {
-			resolvePendingProgrammaticTrashMove(taskId);
-			await waitForProgrammaticCardMoveAvailability();
-			await requestMoveTaskToTrashWithAnimation(taskId, fromColumnId, options);
-			return;
-		}
-		if (programmaticMoveAttempt === "unavailable") {
-			resolvePendingProgrammaticTrashMove(taskId);
-			await requestMoveTaskToTrash(taskId, fromColumnId, options);
-			return;
-		}
+			let resolveCompletion: (() => void) | null = null;
+			const completionPromise = new Promise<void>((resolve) => {
+				resolveCompletion = resolve;
+			});
+			const timeoutId = window.setTimeout(() => {
+				resolvePendingProgrammaticTrashMove(taskId);
+			}, 5000);
+			pendingProgrammaticTrashMoveCompletionByTaskIdRef.current[taskId] = {
+				resolve: () => {
+					resolveCompletion?.();
+					resolveCompletion = null;
+				},
+				timeoutId,
+			};
 
-		await completionPromise;
-	}, [resolvePendingProgrammaticTrashMove, tryProgrammaticCardMove, waitForProgrammaticCardMoveAvailability]);
+			const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, fromColumnId, "trash", {
+				skipWorkingChangeWarning: options?.skipWorkingChangeWarning,
+			});
+			if (programmaticMoveAttempt === "blocked") {
+				resolvePendingProgrammaticTrashMove(taskId);
+				await waitForProgrammaticCardMoveAvailability();
+				await requestMoveTaskToTrashWithAnimation(taskId, fromColumnId, options);
+				return;
+			}
+			if (programmaticMoveAttempt === "unavailable") {
+				resolvePendingProgrammaticTrashMove(taskId);
+				await requestMoveTaskToTrash(taskId, fromColumnId, options);
+				return;
+			}
+
+			await completionPromise;
+		},
+		[resolvePendingProgrammaticTrashMove, tryProgrammaticCardMove, waitForProgrammaticCardMoveAvailability],
+	);
 
 	return {
 		handleProgrammaticCardMoveReady,

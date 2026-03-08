@@ -17,12 +17,10 @@ function parseNotificationBadgeClearEvent(raw: string | null): NotificationBadge
 		if (!parsed || typeof parsed !== "object") {
 			return null;
 		}
-		const sourceId =
-			"sourceId" in parsed && typeof parsed.sourceId === "string" ? parsed.sourceId.trim() : "";
+		const sourceId = "sourceId" in parsed && typeof parsed.sourceId === "string" ? parsed.sourceId.trim() : "";
 		const workspaceId =
 			"workspaceId" in parsed && typeof parsed.workspaceId === "string" ? parsed.workspaceId.trim() : "";
-		const triggeredAt =
-			"triggeredAt" in parsed && typeof parsed.triggeredAt === "number" ? parsed.triggeredAt : 0;
+		const triggeredAt = "triggeredAt" in parsed && typeof parsed.triggeredAt === "number" ? parsed.triggeredAt : 0;
 		if (!sourceId || !workspaceId || !Number.isFinite(triggeredAt)) {
 			return null;
 		}
@@ -43,10 +41,7 @@ export function createNotificationBadgeSyncSourceId(): string {
 	return `badge-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function broadcastNotificationBadgeClear(
-	sourceId: string,
-	workspaceId: string | null | undefined,
-): void {
+export function broadcastNotificationBadgeClear(sourceId: string, workspaceId: string | null | undefined): void {
 	const normalizedWorkspaceId = workspaceId?.trim();
 	if (!sourceId || !normalizedWorkspaceId || typeof window === "undefined") {
 		return;

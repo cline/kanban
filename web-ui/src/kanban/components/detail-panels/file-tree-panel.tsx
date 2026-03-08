@@ -1,11 +1,7 @@
 import { Classes, Colors, Icon, NonIdealState } from "@blueprintjs/core";
 import { useMemo } from "react";
-
-import {
-	buildFileTree,
-	type FileTreeNode,
-} from "@/kanban/utils/file-tree";
 import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
+import { buildFileTree, type FileTreeNode } from "@/kanban/utils/file-tree";
 
 interface FileDiffStats {
 	added: number;
@@ -45,7 +41,10 @@ function FileTreeRow({
 				<Icon icon={isDirectory ? "folder-close" : "document"} size={14} />
 				<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>{node.name}</span>
 				{fileStats ? (
-					<span className={Classes.MONOSPACE_TEXT} style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4 }}>
+					<span
+						className={Classes.MONOSPACE_TEXT}
+						style={{ marginLeft: "auto", fontSize: 10, display: "flex", gap: 4 }}
+					>
 						{fileStats.added > 0 ? <span style={{ color: Colors.GREEN5 }}>+{fileStats.added}</span> : null}
 						{fileStats.removed > 0 ? <span style={{ color: Colors.RED5 }}>-{fileStats.removed}</span> : null}
 					</span>
@@ -94,7 +93,16 @@ export function FileTreePanel({
 	}, [workspaceFiles]);
 
 	return (
-		<div style={{ display: "flex", flex: "0.6 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
+		<div
+			style={{
+				display: "flex",
+				flex: "0.6 1 0",
+				flexDirection: "column",
+				minWidth: 0,
+				minHeight: 0,
+				background: Colors.DARK_GRAY1,
+			}}
+		>
 			<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 8 }}>
 				{tree.length === 0 ? (
 					<div className="kb-empty-state-center">

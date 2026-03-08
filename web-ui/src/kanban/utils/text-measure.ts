@@ -28,8 +28,9 @@ export function readElementFontShorthand(element: Element | null, fallbackFont =
 		return fallbackFont;
 	}
 	const computed = window.getComputedStyle(element);
-	const font = `${computed.fontStyle} ${computed.fontVariant} ${computed.fontWeight} ${computed.fontSize} ${computed.fontFamily}`
-		.replace(/\s+/g, " ")
-		.trim();
+	const font =
+		`${computed.fontStyle} ${computed.fontVariant} ${computed.fontWeight} ${computed.fontSize} ${computed.fontFamily}`
+			.replace(/\s+/g, " ")
+			.trim();
 	return font || fallbackFont;
 }

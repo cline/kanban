@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import {
-	hasVisibleKanbananaTabForWorkspace,
-	markTabVisible,
-} from "@/kanban/utils/tab-visibility-presence";
+import { hasVisibleKanbananaTabForWorkspace, markTabVisible } from "@/kanban/utils/tab-visibility-presence";
 
 describe("tab visibility presence", () => {
 	beforeEach(() => {

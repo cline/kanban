@@ -1,13 +1,11 @@
 import { Classes, Menu, MenuItem, Popover, PopoverInteractionKind, TextArea } from "@blueprintjs/core";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, ReactElement } from "react";
 import { Classes as SelectClasses } from "@blueprintjs/select";
+import type { KeyboardEvent, ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDebouncedEffect } from "@/kanban/hooks/react-use";
 import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
-import type {
-	RuntimeSlashCommandDescription,
-} from "@/kanban/runtime/types";
+import type { RuntimeSlashCommandDescription } from "@/kanban/runtime/types";
 
 const FILE_MENTION_LIMIT = 8;
 const MENTION_QUERY_DEBOUNCE_MS = 120;
@@ -76,7 +74,11 @@ function detectActivePromptToken(value: string, cursorIndex: number): ActiveProm
 	return null;
 }
 
-function applyTokenReplacement(value: string, token: ActivePromptToken, replacement: string): { value: string; cursor: number } {
+function applyTokenReplacement(
+	value: string,
+	token: ActivePromptToken,
+	replacement: string,
+): { value: string; cursor: number } {
 	const before = value.slice(0, token.start);
 	const after = value.slice(token.end);
 	const shouldAppendSpace = after.length === 0 || !/^\s/.test(after);
@@ -89,10 +91,7 @@ function applyTokenReplacement(value: string, token: ActivePromptToken, replacem
 	};
 }
 
-function sortSlashSuggestions(
-	query: string,
-	commands: RuntimeSlashCommandDescription[],
-): PromptSuggestion[] {
+function sortSlashSuggestions(query: string, commands: RuntimeSlashCommandDescription[]): PromptSuggestion[] {
 	const normalizedQuery = query.trim().toLowerCase();
 	const filtered = commands.filter((entry) => {
 		const normalizedName = entry.name.startsWith("/") ? entry.name.slice(1) : entry.name;
@@ -163,9 +162,10 @@ export function TaskPromptComposer({
 				if (cancelled) {
 					return;
 				}
-				const resolvedCommands = Array.isArray(payload.commands) && payload.commands.length > 0
-					? payload.commands
-					: DEFAULT_SLASH_COMMANDS;
+				const resolvedCommands =
+					Array.isArray(payload.commands) && payload.commands.length > 0
+						? payload.commands
+						: DEFAULT_SLASH_COMMANDS;
 				const allowedCommands = resolvedCommands.filter((command) => {
 					const normalizedName = command.name.replace(/^\//, "").trim().toLowerCase();
 					return normalizedName && !disallowedSlashCommandSet.has(normalizedName);
@@ -204,46 +204,50 @@ export function TaskPromptComposer({
 		mentionSearchRequestIdRef.current += 1;
 	}, [activeToken, workspaceId]);
 
-	useDebouncedEffect(() => {
-		if (!activeToken || activeToken.kind !== "mention") {
-			return;
-		}
-		const requestId = mentionSearchRequestIdRef.current;
-		setIsMentionSearchLoading(true);
-		void (async () => {
-			try {
-				if (!workspaceId) {
-					throw new Error("No workspace selected.");
-				}
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				const payload = await trpcClient.workspace.searchFiles.query({
-					query: activeToken.query,
-					limit: FILE_MENTION_LIMIT,
-				});
-				if (requestId !== mentionSearchRequestIdRef.current) {
-					return;
-				}
-				setMentionSuggestions(
-					Array.isArray(payload.files)
-						? payload.files.map((file) => ({
-								id: file.path,
-								kind: "mention",
-								text: file.path,
-								insertText: `@${file.path}`,
-							}))
-						: [],
-				);
-			} catch {
-				if (requestId === mentionSearchRequestIdRef.current) {
-					setMentionSuggestions([]);
-				}
-			} finally {
-				if (requestId === mentionSearchRequestIdRef.current) {
-					setIsMentionSearchLoading(false);
-				}
+	useDebouncedEffect(
+		() => {
+			if (!activeToken || activeToken.kind !== "mention") {
+				return;
 			}
-		})();
-	}, MENTION_QUERY_DEBOUNCE_MS, [activeToken, workspaceId]);
+			const requestId = mentionSearchRequestIdRef.current;
+			setIsMentionSearchLoading(true);
+			void (async () => {
+				try {
+					if (!workspaceId) {
+						throw new Error("No workspace selected.");
+					}
+					const trpcClient = getRuntimeTrpcClient(workspaceId);
+					const payload = await trpcClient.workspace.searchFiles.query({
+						query: activeToken.query,
+						limit: FILE_MENTION_LIMIT,
+					});
+					if (requestId !== mentionSearchRequestIdRef.current) {
+						return;
+					}
+					setMentionSuggestions(
+						Array.isArray(payload.files)
+							? payload.files.map((file) => ({
+									id: file.path,
+									kind: "mention",
+									text: file.path,
+									insertText: `@${file.path}`,
+								}))
+							: [],
+					);
+				} catch {
+					if (requestId === mentionSearchRequestIdRef.current) {
+						setMentionSuggestions([]);
+					}
+				} finally {
+					if (requestId === mentionSearchRequestIdRef.current) {
+						setIsMentionSearchLoading(false);
+					}
+				}
+			})();
+		},
+		MENTION_QUERY_DEBOUNCE_MS,
+		[activeToken, workspaceId],
+	);
 
 	const slashSuggestions = useMemo<PromptSuggestion[]>(() => {
 		if (!activeToken || activeToken.kind !== "slash") {
@@ -440,37 +444,35 @@ export function TaskPromptComposer({
 												}
 											: undefined
 									}
-									text={(
-										suggestion.kind === "mention"
-											? (
+									text={
+										suggestion.kind === "mention" ? (
+											<span
+												style={{
+													display: "block",
+													fontSize: "var(--bp-typography-size-body-small)",
+													lineHeight: 1.15,
+													maxWidth: "100%",
+													overflowWrap: "anywhere",
+													wordBreak: "break-word",
+													whiteSpace: "normal",
+												}}
+											>
+												{suggestion.text}
+											</span>
+										) : (
+											<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+												<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>{suggestion.text}</span>
+												{suggestion.detail ? (
 													<span
-														style={{
-															display: "block",
-															fontSize: "var(--bp-typography-size-body-small)",
-															lineHeight: 1.15,
-															maxWidth: "100%",
-															overflowWrap: "anywhere",
-															wordBreak: "break-word",
-															whiteSpace: "normal",
-														}}
+														className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
+														style={{ fontSize: "var(--bp-typography-size-body-small)" }}
 													>
-														{suggestion.text}
+														{suggestion.detail}
 													</span>
-												)
-											: (
-													<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-														<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>{suggestion.text}</span>
-														{suggestion.detail ? (
-															<span
-																className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
-																style={{ fontSize: "var(--bp-typography-size-body-small)" }}
-															>
-																{suggestion.detail}
-															</span>
-														) : null}
-													</div>
-												)
-									)}
+												) : null}
+											</div>
+										)
+									}
 									onMouseDown={(event) => {
 										event.preventDefault();
 										applySuggestion(suggestion);

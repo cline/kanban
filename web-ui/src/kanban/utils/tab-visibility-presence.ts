@@ -1,8 +1,4 @@
-import {
-	LocalStorageKey,
-	readLocalStorageItem,
-	writeLocalStorageItem,
-} from "@/kanban/storage/local-storage-store";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/kanban/storage/local-storage-store";
 
 const TAB_VISIBILITY_PRESENCE_STORAGE_KEY = LocalStorageKey.TabVisibilityPresence;
 const TAB_VISIBILITY_STALE_MS = 15000;
@@ -31,13 +27,8 @@ function readPresence(): Record<string, TabVisibilityPresenceEntry> {
 				continue;
 			}
 			const workspaceId =
-				"workspaceId" in value && typeof value.workspaceId === "string"
-					? value.workspaceId.trim()
-					: "";
-			const timestamp =
-				"timestamp" in value && typeof value.timestamp === "number"
-					? value.timestamp
-					: 0;
+				"workspaceId" in value && typeof value.workspaceId === "string" ? value.workspaceId.trim() : "";
+			const timestamp = "timestamp" in value && typeof value.timestamp === "number" ? value.timestamp : 0;
 			if (workspaceId.length > 0 && Number.isFinite(timestamp)) {
 				result[key] = {
 					workspaceId,
@@ -119,8 +110,6 @@ export function hasVisibleKanbananaTabForWorkspace(
 		return false;
 	}
 	return Object.entries(next).some(
-		([tabId, entry]) =>
-			tabId !== normalizedExcludeTabId &&
-			entry.workspaceId === normalizedWorkspaceId,
+		([tabId, entry]) => tabId !== normalizedExcludeTabId && entry.workspaceId === normalizedWorkspaceId,
 	);
 }

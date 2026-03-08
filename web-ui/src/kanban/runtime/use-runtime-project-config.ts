@@ -9,9 +9,7 @@ export interface UseRuntimeProjectConfigResult {
 	refresh: () => void;
 }
 
-export function useRuntimeProjectConfig(
-	workspaceId: string | null,
-): UseRuntimeProjectConfigResult {
+export function useRuntimeProjectConfig(workspaceId: string | null): UseRuntimeProjectConfigResult {
 	const queryFn = useCallback(async () => {
 		if (!workspaceId) {
 			throw new Error("No workspace selected.");

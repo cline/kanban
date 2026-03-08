@@ -84,10 +84,7 @@ function parseVersion(version: string): ParsedVersion {
 	};
 }
 
-function comparePrereleaseParts(
-	left: Array<number | string> | null,
-	right: Array<number | string> | null,
-): number {
+function comparePrereleaseParts(left: Array<number | string> | null, right: Array<number | string> | null): number {
 	if (!left && !right) {
 		return 0;
 	}

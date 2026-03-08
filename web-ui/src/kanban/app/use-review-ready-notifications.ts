@@ -1,19 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
+import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/kanban/runtime/types";
+import { findCardSelection } from "@/kanban/state/board-state";
+import type { BoardData } from "@/kanban/types";
 import {
 	broadcastNotificationBadgeClear,
 	createNotificationBadgeSyncSourceId,
 	subscribeToNotificationBadgeClear,
 } from "@/kanban/utils/notification-badge-sync";
-import {
-	useDocumentTitle,
-	useInterval,
-	useUnmount,
-	useWindowEvent,
-} from "@/kanban/hooks/react-use";
-import {
-	getBrowserNotificationPermission,
-} from "@/kanban/utils/notification-permission";
+import { getBrowserNotificationPermission } from "@/kanban/utils/notification-permission";
 import {
 	createTabPresenceId,
 	hasVisibleKanbananaTabForWorkspace,
@@ -21,9 +16,6 @@ import {
 	markTabVisible,
 } from "@/kanban/utils/tab-visibility-presence";
 import { truncateTaskPromptLabel } from "@/kanban/utils/task-prompt";
-import { findCardSelection } from "@/kanban/state/board-state";
-import type { BoardData } from "@/kanban/types";
-import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/kanban/runtime/types";
 
 interface UseReviewReadyNotificationsOptions {
 	activeWorkspaceId: string | null;
@@ -91,7 +83,10 @@ export function useReviewReadyNotifications({
 		if (!workspacePath) {
 			return null;
 		}
-		const segments = workspacePath.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
+		const segments = workspacePath
+			.replaceAll("\\", "/")
+			.split("/")
+			.filter((segment) => segment.length > 0);
 		if (segments.length === 0) {
 			return workspacePath;
 		}
@@ -173,12 +168,10 @@ export function useReviewReadyNotifications({
 		}
 		const selection = findCardSelection(board, latestTaskReadyForReview.taskId);
 		const taskTitle = selection
-			? (truncateTaskPromptLabel(selection.card.prompt) || `Task ${latestTaskReadyForReview.taskId}`)
+			? truncateTaskPromptLabel(selection.card.prompt) || `Task ${latestTaskReadyForReview.taskId}`
 			: `Task ${latestTaskReadyForReview.taskId}`;
 		setPendingReviewReadyNotificationCount((current) => current + 1);
-		const notificationTitle = workspaceTitle
-			? `🍌 ${workspaceTitle} ready for review`
-			: "🍌 Ready for review";
+		const notificationTitle = workspaceTitle ? `🍌 ${workspaceTitle} ready for review` : "🍌 Ready for review";
 		showReadyForReviewNotification(latestTaskReadyForReview.taskId, notificationTitle, taskTitle);
 	}, [
 		activeWorkspaceId,
@@ -210,10 +203,7 @@ export function useReviewReadyNotifications({
 	useEffect(() => {
 		if (!readyForReviewNotificationsEnabled) {
 			setPendingReviewReadyNotificationCount(0);
-			broadcastNotificationBadgeClear(
-				notificationBadgeSyncSourceIdRef.current,
-				activeWorkspaceId,
-			);
+			broadcastNotificationBadgeClear(notificationBadgeSyncSourceIdRef.current, activeWorkspaceId);
 		}
 	}, [activeWorkspaceId, readyForReviewNotificationsEnabled]);
 
@@ -224,8 +214,7 @@ export function useReviewReadyNotifications({
 	}, [activeWorkspaceId]);
 
 	const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanbanana` : "Kanbanana";
-	const documentTitle = pendingReviewReadyNotificationCount > 0
-		? `(${pendingReviewReadyNotificationCount}) ${baseTitle}`
-		: baseTitle;
+	const documentTitle =
+		pendingReviewReadyNotificationCount > 0 ? `(${pendingReviewReadyNotificationCount}) ${baseTitle}` : baseTitle;
 	useDocumentTitle(documentTitle);
 }

@@ -44,9 +44,7 @@ function CommitDiffHeader({ commit }: { commit: RuntimeGitCommit }): React.React
 						day: "numeric",
 					})}
 				</span>
-				<code style={{ fontFamily: "var(--bp-font-family-monospace)" }}>
-					{commit.shortHash}
-				</code>
+				<code style={{ fontFamily: "var(--bp-font-family-monospace)" }}>{commit.shortHash}</code>
 			</div>
 		</div>
 	);
@@ -81,7 +79,7 @@ export function GitHistoryView({
 		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: Colors.DARK_GRAY1 }}>
 			<GitRefsPanel
 				refs={gitHistory.refs}
-				selectedRefName={gitHistory.viewMode === "working-copy" ? null : gitHistory.activeRef?.name ?? null}
+				selectedRefName={gitHistory.viewMode === "working-copy" ? null : (gitHistory.activeRef?.name ?? null)}
 				isLoading={gitHistory.isRefsLoading}
 				errorMessage={gitHistory.refsErrorMessage}
 				workingCopyChanges={gitHistory.hasWorkingCopy ? gitHistory.workingCopyFileCount : null}

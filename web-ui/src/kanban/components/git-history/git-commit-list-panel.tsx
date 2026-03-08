@@ -1,7 +1,7 @@
 import { Button, Classes, Icon, Spinner, Tag } from "@blueprintjs/core";
+import { useMemo, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Virtuoso } from "react-virtuoso";
-import { useMemo, useRef } from "react";
 
 import type { RuntimeGitCommit, RuntimeGitRef } from "@/kanban/runtime/types";
 
@@ -142,25 +142,13 @@ function GraphSvg({ row, maxLanes }: { row: GraphRow; maxLanes: number }): React
 	const commitColor = row.lanes[row.commitLane]?.color ?? GRAPH_LANE_COLORS[0]!;
 
 	return (
-		<svg
-			width={width}
-			height={ROW_HEIGHT}
-			style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
-		>
+		<svg width={width} height={ROW_HEIGHT} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}>
 			{row.lanes.map((lane, i) => {
 				const x = laneX(i);
 				const isCommitLane = i === row.commitLane;
 				const y1 = isCommitLane && row.isFirst ? centerY : 0;
 				return (
-					<line
-						key={`pass-${i}`}
-						x1={x}
-						y1={y1}
-						x2={x}
-						y2={ROW_HEIGHT}
-						stroke={lane.color}
-						strokeWidth={2.5}
-					/>
+					<line key={`pass-${i}`} x1={x} y1={y1} x2={x} y2={ROW_HEIGHT} stroke={lane.color} strokeWidth={2.5} />
 				);
 			})}
 			{row.mergeFromLanes.map((fromLane) => (
@@ -172,12 +160,7 @@ function GraphSvg({ row, maxLanes }: { row: GraphRow; maxLanes: number }): React
 					strokeWidth={2.5}
 				/>
 			))}
-			<circle
-				cx={commitX}
-				cy={centerY}
-				r={NODE_RADIUS}
-				fill={commitColor}
-			/>
+			<circle cx={commitX} cy={centerY} r={NODE_RADIUS} fill={commitColor} />
 		</svg>
 	);
 }
@@ -229,28 +212,32 @@ export function GitCommitListPanel({
 
 	const commitListRef = useRef<HTMLDivElement | null>(null);
 
-	useHotkeys("up,down", (event) => {
-		const currentIndex = commits.findIndex((c) => c.hash === selectedCommitHash);
-		if (currentIndex === -1) {
-			return;
-		}
-		const nextIndex = event.key === "ArrowUp"
-			? Math.max(0, currentIndex - 1)
-			: Math.min(commits.length - 1, currentIndex + 1);
-		const nextCommit = commits[nextIndex];
-		if (nextCommit) {
-			onSelectCommit(nextCommit);
-		}
-	}, {
-		ignoreEventWhen: (event) => {
-			const currentTarget = commitListRef.current;
-			if (!currentTarget || !(event.target instanceof Node)) {
-				return true;
+	useHotkeys(
+		"up,down",
+		(event) => {
+			const currentIndex = commits.findIndex((c) => c.hash === selectedCommitHash);
+			if (currentIndex === -1) {
+				return;
 			}
-			return !currentTarget.contains(event.target);
+			const nextIndex =
+				event.key === "ArrowUp" ? Math.max(0, currentIndex - 1) : Math.min(commits.length - 1, currentIndex + 1);
+			const nextCommit = commits[nextIndex];
+			if (nextCommit) {
+				onSelectCommit(nextCommit);
+			}
 		},
-		preventDefault: true,
-	}, [commits, onSelectCommit, selectedCommitHash]);
+		{
+			ignoreEventWhen: (event) => {
+				const currentTarget = commitListRef.current;
+				if (!currentTarget || !(event.target instanceof Node)) {
+					return true;
+				}
+				return !currentTarget.contains(event.target);
+			},
+			preventDefault: true,
+		},
+		[commits, onSelectCommit, selectedCommitHash],
+	);
 
 	return (
 		<div
@@ -275,7 +262,8 @@ export function GitCommitListPanel({
 				Commits
 				{totalCount > 0 ? (
 					<span style={{ fontWeight: 400, marginLeft: 6, textTransform: "none", letterSpacing: 0 }}>
-						({commits.length}{totalCount > commits.length ? ` of ${totalCount}` : ""})
+						({commits.length}
+						{totalCount > commits.length ? ` of ${totalCount}` : ""})
 					</span>
 				) : null}
 			</div>
@@ -296,7 +284,10 @@ export function GitCommitListPanel({
 							<div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
 								<div className={Classes.SKELETON} style={{ width: 28, height: 28, borderRadius: "50%" }} />
 								<div style={{ flex: 1 }}>
-									<div className={Classes.SKELETON} style={{ height: 13, width: `${65 + (i % 3) * 10}%`, borderRadius: 3, marginBottom: 4 }} />
+									<div
+										className={Classes.SKELETON}
+										style={{ height: 13, width: `${65 + (i % 3) * 10}%`, borderRadius: 3, marginBottom: 4 }}
+									/>
 									<div className={Classes.SKELETON} style={{ height: 11, width: "40%", borderRadius: 3 }} />
 								</div>
 							</div>
@@ -312,7 +303,13 @@ export function GitCommitListPanel({
 							padding: 16,
 						}}
 					>
-						<div style={{ textAlign: "center", color: "var(--bp-palette-gray-3)", fontSize: "var(--bp-typography-size-body-small)" }}>
+						<div
+							style={{
+								textAlign: "center",
+								color: "var(--bp-palette-gray-3)",
+								fontSize: "var(--bp-typography-size-body-small)",
+							}}
+						>
 							<div style={{ color: "var(--bp-palette-red-4)", marginBottom: 6 }}>Could not load commits</div>
 							<div>{errorMessage}</div>
 						</div>
@@ -387,28 +384,51 @@ export function GitCommitListPanel({
 									>
 										{getInitials(commit.authorName)}
 									</div>
-									<div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", paddingLeft: 6, paddingRight: 10, gap: 2 }}>
-										<div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--bp-typography-size-body-small)" }}>
+									<div
+										style={{
+											flex: 1,
+											minWidth: 0,
+											display: "flex",
+											flexDirection: "column",
+											justifyContent: "center",
+											paddingLeft: 6,
+											paddingRight: 10,
+											gap: 2,
+										}}
+									>
+										<div
+											style={{
+												display: "flex",
+												alignItems: "center",
+												gap: 6,
+												fontSize: "var(--bp-typography-size-body-small)",
+											}}
+										>
 											<span
 												className="kb-line-clamp-1 kb-git-commit-row-meta"
 												style={{ color: "var(--bp-palette-gray-3)" }}
 											>
 												{commit.authorName}
 											</span>
-											{commitRefs && commitRefs.length > 0 ? (
-												commitRefs.map((ref) => (
-													<Tag
-														key={ref.name}
-														minimal
-														round
-														intent={ref.isHead ? "primary" : "none"}
-														icon={<Icon icon={ref.type === "detached" ? "locate" : "git-branch"} size={10} />}
-														style={{ fontSize: 9, flexShrink: 0 }}
-													>
-														{ref.type === "detached" ? "HEAD" : ref.name}
-													</Tag>
-												))
-											) : null}
+											{commitRefs && commitRefs.length > 0
+												? commitRefs.map((ref) => (
+														<Tag
+															key={ref.name}
+															minimal
+															round
+															intent={ref.isHead ? "primary" : "none"}
+															icon={
+																<Icon
+																	icon={ref.type === "detached" ? "locate" : "git-branch"}
+																	size={10}
+																/>
+															}
+															style={{ fontSize: 9, flexShrink: 0 }}
+														>
+															{ref.type === "detached" ? "HEAD" : ref.name}
+														</Tag>
+													))
+												: null}
 											<span
 												className="kb-git-commit-row-meta"
 												style={{
@@ -457,16 +477,41 @@ export function GitCommitListPanel({
 							Footer: () => {
 								if (isLoadingMore) {
 									return (
-										<div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 12px", color: "var(--bp-palette-gray-3)" }}>
+										<div
+											style={{
+												display: "flex",
+												alignItems: "center",
+												justifyContent: "center",
+												gap: 8,
+												padding: "10px 12px",
+												color: "var(--bp-palette-gray-3)",
+											}}
+										>
 											<Spinner size={16} />
-											<span style={{ fontSize: "var(--bp-typography-size-body-small)" }}>Loading more commits...</span>
+											<span style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
+												Loading more commits...
+											</span>
 										</div>
 									);
 								}
 								if (errorMessage && commits.length > 0) {
 									return (
-										<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 12px", color: "var(--bp-palette-gray-3)" }}>
-											<span style={{ fontSize: "var(--bp-typography-size-body-small)", color: "var(--bp-palette-red-4)" }}>
+										<div
+											style={{
+												display: "flex",
+												alignItems: "center",
+												justifyContent: "space-between",
+												gap: 8,
+												padding: "10px 12px",
+												color: "var(--bp-palette-gray-3)",
+											}}
+										>
+											<span
+												style={{
+													fontSize: "var(--bp-typography-size-body-small)",
+													color: "var(--bp-palette-red-4)",
+												}}
+											>
 												{errorMessage}
 											</span>
 											{canLoadMore ? (
@@ -482,7 +527,14 @@ export function GitCommitListPanel({
 								}
 								if (!canLoadMore) {
 									return (
-										<div style={{ padding: "10px 12px", textAlign: "center", color: "var(--bp-palette-gray-3)", fontSize: "var(--bp-typography-size-body-small)" }}>
+										<div
+											style={{
+												padding: "10px 12px",
+												textAlign: "center",
+												color: "var(--bp-palette-gray-3)",
+												fontSize: "var(--bp-typography-size-body-small)",
+											}}
+										>
 											End of history
 										</div>
 									);

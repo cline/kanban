@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	truncateTaskPromptLabel,
 	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
 	splitPromptToTitleDescriptionByWidth,
+	truncateTaskPromptLabel,
 } from "@/kanban/utils/task-prompt";
 
 describe("truncateTaskPromptLabel", () => {

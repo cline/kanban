@@ -1,21 +1,20 @@
 import { Button, Card, Classes, Colors, Icon, NonIdealState, TextArea } from "@blueprintjs/core";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import { panelSeparatorColor } from "@/kanban/data/column-colors";
-import { buildFileTree } from "@/kanban/utils/file-tree";
-import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
 import {
-	type UnifiedDiffRow,
-	buildUnifiedDiffRows,
 	buildDisplayItems,
 	buildHighlightedLineMap,
+	buildUnifiedDiffRows,
 	countAddedRemoved,
 	DiffRowText,
-	resolvePrismLanguage,
 	resolvePrismGrammar,
+	resolvePrismLanguage,
 	truncatePathMiddle,
+	type UnifiedDiffRow,
 } from "@/kanban/components/shared/diff-renderer";
+import { panelSeparatorColor } from "@/kanban/data/column-colors";
+import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
+import { buildFileTree } from "@/kanban/utils/file-tree";
 
 interface FileDiffGroup {
 	path: string;
@@ -162,12 +161,15 @@ function UnifiedDiff({
 			row.lineNumber == null
 				? null
 				: row.variant === "removed"
-					? highlightedOldByLine.get(row.lineNumber) ?? null
-					: highlightedNewByLine.get(row.lineNumber) ?? null;
+					? (highlightedOldByLine.get(row.lineNumber) ?? null)
+					: (highlightedNewByLine.get(row.lineNumber) ?? null);
 
-		const handleRowClick = row.lineNumber != null && !hasComment ? () => {
-			onAddComment(row.lineNumber!, row.text, row.variant);
-		} : undefined;
+		const handleRowClick =
+			row.lineNumber != null && !hasComment
+				? () => {
+						onAddComment(row.lineNumber!, row.text, row.variant);
+					}
+				: undefined;
 
 		return (
 			<div key={row.key}>
@@ -177,11 +179,22 @@ function UnifiedDiff({
 						{row.lineNumber != null ? (
 							<span
 								className="kb-diff-comment-gutter"
-								onClick={hasComment ? (event) => { event.stopPropagation(); onDeleteComment(row.lineNumber!, row.variant); } : undefined}
+								onClick={
+									hasComment
+										? (event) => {
+												event.stopPropagation();
+												onDeleteComment(row.lineNumber!, row.variant);
+											}
+										: undefined
+								}
 								style={hasComment ? { cursor: "pointer" } : undefined}
 							>
-								<span className="kb-diff-gutter-icon-comment"><Icon icon="comment" size={12} /></span>
-								<span className="kb-diff-gutter-icon-delete"><Icon icon="cross" size={12} color={Colors.RED5} /></span>
+								<span className="kb-diff-gutter-icon-comment">
+									<Icon icon="comment" size={12} />
+								</span>
+								<span className="kb-diff-gutter-icon-delete">
+									<Icon icon="cross" size={12} color={Colors.RED5} />
+								</span>
 							</span>
 						) : null}
 					</span>
@@ -379,11 +392,7 @@ export function DiffViewerPanel({
 		}
 
 		const syncSelection = scrollSyncSelectionRef.current;
-		if (
-			syncSelection &&
-			syncSelection.path === selectedPath &&
-			Date.now() - syncSelection.at < 150
-		) {
+		if (syncSelection && syncSelection.path === selectedPath && Date.now() - syncSelection.at < 150) {
 			scrollSyncSelectionRef.current = null;
 			return;
 		}
@@ -391,38 +400,47 @@ export function DiffViewerPanel({
 		scrollToPath(selectedPath);
 	}, [scrollToPath, selectedPath]);
 
-	const handleAddComment = useCallback((filePath: string, lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => {
-		const key = commentKey(filePath, lineNumber, variant);
-		if (comments.has(key)) {
-			return;
-		}
-		const next = new Map(comments);
-		next.set(key, {
-			filePath,
-			lineNumber,
-			lineText,
-			variant,
-			comment: "",
-		});
-		onCommentsChange(next);
-	}, [comments, onCommentsChange]);
+	const handleAddComment = useCallback(
+		(filePath: string, lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => {
+			const key = commentKey(filePath, lineNumber, variant);
+			if (comments.has(key)) {
+				return;
+			}
+			const next = new Map(comments);
+			next.set(key, {
+				filePath,
+				lineNumber,
+				lineText,
+				variant,
+				comment: "",
+			});
+			onCommentsChange(next);
+		},
+		[comments, onCommentsChange],
+	);
 
-	const handleUpdateComment = useCallback((filePath: string, lineNumber: number, variant: "added" | "removed" | "context", text: string) => {
-		const key = commentKey(filePath, lineNumber, variant);
-		const existing = comments.get(key);
-		if (!existing) {
-			return;
-		}
-		const next = new Map(comments);
-		next.set(key, { ...existing, comment: text });
-		onCommentsChange(next);
-	}, [comments, onCommentsChange]);
+	const handleUpdateComment = useCallback(
+		(filePath: string, lineNumber: number, variant: "added" | "removed" | "context", text: string) => {
+			const key = commentKey(filePath, lineNumber, variant);
+			const existing = comments.get(key);
+			if (!existing) {
+				return;
+			}
+			const next = new Map(comments);
+			next.set(key, { ...existing, comment: text });
+			onCommentsChange(next);
+		},
+		[comments, onCommentsChange],
+	);
 
-	const handleDeleteComment = useCallback((filePath: string, lineNumber: number, variant: "added" | "removed" | "context") => {
-		const next = new Map(comments);
-		next.delete(commentKey(filePath, lineNumber, variant));
-		onCommentsChange(next);
-	}, [comments, onCommentsChange]);
+	const handleDeleteComment = useCallback(
+		(filePath: string, lineNumber: number, variant: "added" | "removed" | "context") => {
+			const next = new Map(comments);
+			next.delete(commentKey(filePath, lineNumber, variant));
+			onCommentsChange(next);
+		},
+		[comments, onCommentsChange],
+	);
 
 	const nonEmptyComments = useMemo(() => {
 		return Array.from(comments.values()).filter((c) => c.comment.trim().length > 0);
@@ -468,7 +486,17 @@ export function DiffViewerPanel({
 	const nonEmptyCount = nonEmptyComments.length;
 
 	return (
-		<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}>
+		<div
+			style={{
+				display: "flex",
+				flex: "1 1 0",
+				flexDirection: "column",
+				minWidth: 0,
+				minHeight: 0,
+				background: Colors.DARK_GRAY1,
+				borderRight: `1px solid ${panelSeparatorColor}`,
+			}}
+		>
 			{groupedByPath.length === 0 ? (
 				<div className="kb-empty-state-center" style={{ flex: 1 }}>
 					<NonIdealState icon="comparison" />
@@ -524,8 +552,7 @@ export function DiffViewerPanel({
 											}
 											endIcon={
 												<span>
-													<span style={{ color: Colors.GREEN5 }}>+{group.added}</span>
-													{" "}
+													<span style={{ color: Colors.GREEN5 }}>+{group.added}</span>{" "}
 													<span style={{ color: Colors.RED5 }}>-{group.removed}</span>
 												</span>
 											}
@@ -533,21 +560,22 @@ export function DiffViewerPanel({
 										{isExpanded ? (
 											<div>
 												{group.entries.map((entry) => (
-													<div
-														key={entry.id}
-														className="kb-diff-entry"
-													>
-															<UnifiedDiff
-																path={group.path}
-																oldText={entry.oldText}
-																newText={entry.newText}
-																comments={comments}
-																onAddComment={(lineNumber, lineText, variant) =>
-																	handleAddComment(group.path, lineNumber, lineText, variant)
-																}
-																onUpdateComment={(lineNumber, variant, text) => handleUpdateComment(group.path, lineNumber, variant, text)}
-																onDeleteComment={(lineNumber, variant) => handleDeleteComment(group.path, lineNumber, variant)}
-															/>
+													<div key={entry.id} className="kb-diff-entry">
+														<UnifiedDiff
+															path={group.path}
+															oldText={entry.oldText}
+															newText={entry.newText}
+															comments={comments}
+															onAddComment={(lineNumber, lineText, variant) =>
+																handleAddComment(group.path, lineNumber, lineText, variant)
+															}
+															onUpdateComment={(lineNumber, variant, text) =>
+																handleUpdateComment(group.path, lineNumber, variant, text)
+															}
+															onDeleteComment={(lineNumber, variant) =>
+																handleDeleteComment(group.path, lineNumber, variant)
+															}
+														/>
 													</div>
 												))}
 											</div>
@@ -560,12 +588,37 @@ export function DiffViewerPanel({
 					{hasAnyComments && (onAddToTerminal || onSendToTerminal) ? (
 						<div className="kb-diff-comments-footer">
 							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-								<span className={Classes.TEXT_MUTED}>{nonEmptyCount} {nonEmptyCount === 1 ? "comment" : "comments"}</span>
-								<Button text="Clear All" variant="minimal" size="small" intent="danger" onClick={handleClearAllComments} />
+								<span className={Classes.TEXT_MUTED}>
+									{nonEmptyCount} {nonEmptyCount === 1 ? "comment" : "comments"}
+								</span>
+								<Button
+									text="Clear All"
+									variant="minimal"
+									size="small"
+									intent="danger"
+									onClick={handleClearAllComments}
+								/>
 							</div>
 							<div style={{ display: "flex", gap: 4 }}>
-								{onAddToTerminal ? <Button text="Add" variant="outlined" size="small" disabled={nonEmptyCount === 0} onClick={handleAddComments} /> : null}
-								{onSendToTerminal ? <Button text="Send" intent="primary" variant="solid" size="small" disabled={nonEmptyCount === 0} onClick={handleSendComments} /> : null}
+								{onAddToTerminal ? (
+									<Button
+										text="Add"
+										variant="outlined"
+										size="small"
+										disabled={nonEmptyCount === 0}
+										onClick={handleAddComments}
+									/>
+								) : null}
+								{onSendToTerminal ? (
+									<Button
+										text="Send"
+										intent="primary"
+										variant="solid"
+										size="small"
+										disabled={nonEmptyCount === 0}
+										onClick={handleSendComments}
+									/>
+								) : null}
 							</div>
 						</div>
 					) : null}

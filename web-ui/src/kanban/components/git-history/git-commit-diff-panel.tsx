@@ -1,19 +1,15 @@
 import { Button, Card, Classes, Colors, Icon, NonIdealState } from "@blueprintjs/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import {
-	type UnifiedDiffRow,
-	ReadOnlyUnifiedDiff,
-	parsePatchToRows,
-	buildUnifiedDiffRows,
-	truncatePathMiddle,
-} from "@/kanban/components/shared/diff-renderer";
 import { FileTreePanel } from "@/kanban/components/detail-panels/file-tree-panel";
+import {
+	buildUnifiedDiffRows,
+	parsePatchToRows,
+	ReadOnlyUnifiedDiff,
+	truncatePathMiddle,
+	type UnifiedDiffRow,
+} from "@/kanban/components/shared/diff-renderer";
 import { panelSeparatorColor } from "@/kanban/data/column-colors";
-import type {
-	RuntimeGitCommitDiffFile,
-	RuntimeWorkspaceFileChange,
-} from "@/kanban/runtime/types";
+import type { RuntimeGitCommitDiffFile, RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
 
 export type GitCommitDiffSource =
 	| { type: "commit"; files: RuntimeGitCommitDiffFile[] }
@@ -92,9 +88,7 @@ export function GitCommitDiffPanel({
 		if (!diffSource) {
 			return [];
 		}
-		return diffSource.type === "commit"
-			? diffSource.files.map((f) => f.path)
-			: diffSource.files.map((f) => f.path);
+		return diffSource.type === "commit" ? diffSource.files.map((f) => f.path) : diffSource.files.map((f) => f.path);
 	}, [diffSource]);
 
 	const workspaceFilesForTree = useMemo(() => {
@@ -194,12 +188,25 @@ export function GitCommitDiffPanel({
 	if (isLoading) {
 		return (
 			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
-				<div style={{ display: "flex", flex: "1 1 0", flexDirection: "column", borderRight: `1px solid ${panelSeparatorColor}` }}>
+				<div
+					style={{
+						display: "flex",
+						flex: "1 1 0",
+						flexDirection: "column",
+						borderRight: `1px solid ${panelSeparatorColor}`,
+					}}
+				>
 					<div style={{ padding: "10px 10px 6px" }}>
 						{Array.from({ length: 4 }, (_, i) => (
 							<div key={i} style={{ marginBottom: 10 }}>
-								<div className={Classes.SKELETON} style={{ height: 14, width: `${50 + (i % 3) * 15}%`, borderRadius: 3, marginBottom: 6 }} />
-								<div className={Classes.SKELETON} style={{ height: 11, width: "90%", borderRadius: 3, marginBottom: 3 }} />
+								<div
+									className={Classes.SKELETON}
+									style={{ height: 14, width: `${50 + (i % 3) * 15}%`, borderRadius: 3, marginBottom: 6 }}
+								/>
+								<div
+									className={Classes.SKELETON}
+									style={{ height: 11, width: "90%", borderRadius: 3, marginBottom: 3 }}
+								/>
 								<div className={Classes.SKELETON} style={{ height: 11, width: "80%", borderRadius: 3 }} />
 							</div>
 						))}
@@ -207,9 +214,15 @@ export function GitCommitDiffPanel({
 				</div>
 				<div style={{ display: "flex", flex: "0.6 1 0", flexDirection: "column", padding: "10px 8px" }}>
 					{Array.from({ length: 3 }, (_, i) => (
-						<div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
+						<div
+							key={i}
+							style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}
+						>
 							<div className={Classes.SKELETON} style={{ height: 12, width: 12, borderRadius: 2 }} />
-							<div className={Classes.SKELETON} style={{ height: 13, width: `${55 + (i % 3) * 8}%`, borderRadius: 3 }} />
+							<div
+								className={Classes.SKELETON}
+								style={{ height: 13, width: `${55 + (i % 3) * 8}%`, borderRadius: 3 }}
+							/>
 						</div>
 					))}
 				</div>
@@ -254,7 +267,9 @@ export function GitCommitDiffPanel({
 						return (
 							<section
 								key={path}
-								ref={(node) => { sectionElementsRef.current[path] = node; }}
+								ref={(node) => {
+									sectionElementsRef.current[path] = node;
+								}}
 								style={{ marginBottom: 12 }}
 							>
 								<Card compact interactive={false} style={{ overflow: "hidden", padding: 0 }}>
@@ -288,9 +303,13 @@ export function GitCommitDiffPanel({
 										}
 										endIcon={
 											<span>
-												{stats.additions > 0 ? <span style={{ color: Colors.GREEN5 }}>+{stats.additions}</span> : null}
+												{stats.additions > 0 ? (
+													<span style={{ color: Colors.GREEN5 }}>+{stats.additions}</span>
+												) : null}
 												{stats.additions > 0 && stats.deletions > 0 ? " " : null}
-												{stats.deletions > 0 ? <span style={{ color: Colors.RED5 }}>-{stats.deletions}</span> : null}
+												{stats.deletions > 0 ? (
+													<span style={{ color: Colors.RED5 }}>-{stats.deletions}</span>
+												) : null}
 											</span>
 										}
 									/>
@@ -304,14 +323,14 @@ export function GitCommitDiffPanel({
 														color: "var(--bp-palette-gray-3)",
 													}}
 												>
-													Renamed from <code style={{ fontFamily: "var(--bp-font-family-monospace)" }}>{commitFile.previousPath}</code>
+													Renamed from{" "}
+													<code style={{ fontFamily: "var(--bp-font-family-monospace)" }}>
+														{commitFile.previousPath}
+													</code>
 												</div>
 											) : null}
 											{rows.length > 0 ? (
-												<ReadOnlyUnifiedDiff
-													rows={rows}
-													path={path}
-												/>
+												<ReadOnlyUnifiedDiff rows={rows} path={path} />
 											) : (
 												<div
 													style={{

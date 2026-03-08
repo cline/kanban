@@ -89,7 +89,9 @@ export function TaskInlineCreateCard({
 		<Card compact style={{ flexShrink: 0, marginBottom: cardMarginBottom }}>
 			<FormGroup
 				helperText={
-					<span>Use <Code>@file</Code> to reference files.</span>
+					<span>
+						Use <Code>@file</Code> to reference files.
+					</span>
 				}
 			>
 				<TaskPromptComposer
@@ -154,7 +156,7 @@ export function TaskInlineCreateCard({
 			<div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
 				<Button text={cancelLabel} variant="outlined" onClick={onCancel} />
 				<Button
-					text={(
+					text={
 						<span style={{ display: "inline-flex", alignItems: "center" }}>
 							<span>{actionLabel}</span>
 							<span
@@ -170,7 +172,7 @@ export function TaskInlineCreateCard({
 								<Icon icon="key-enter" size={12} />
 							</span>
 						</span>
-					)}
+					}
 					intent="primary"
 					onClick={onCreate}
 					disabled={!prompt.trim() || !branchRef}

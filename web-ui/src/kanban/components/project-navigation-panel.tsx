@@ -34,8 +34,7 @@ export function ProjectNavigationPanel({
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
-	const isProjectRemovalPending =
-		pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
+	const isProjectRemovalPending = pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
 	const pendingProjectTaskCount = pendingProjectRemoval
 		? pendingProjectRemoval.taskCounts.backlog +
 			pendingProjectRemoval.taskCounts.in_progress +
@@ -60,9 +59,23 @@ export function ProjectNavigationPanel({
 					<Icon icon="alignment-top" size={20} color="#AAB0B7" style={{ marginTop: 4.5 }} />
 					<div>
 						<div style={{ fontWeight: 600, fontSize: "var(--bp-typography-size-body-large)" }}>
-							kanban <span className={Classes.TEXT_MUTED} style={{ fontWeight: 400, fontSize: "var(--bp-typography-size-body-small)" }}>v{__APP_VERSION__}</span>
+							kanban{" "}
+							<span
+								className={Classes.TEXT_MUTED}
+								style={{ fontWeight: 400, fontSize: "var(--bp-typography-size-body-small)" }}
+							>
+								v{__APP_VERSION__}
+							</span>
 						</div>
-						<AnchorButton href={GITHUB_URL} target="_blank" rel="noopener noreferrer" variant="minimal" intent="primary" size="small" style={{ padding: 0, minHeight: 0, fontSize: "var(--bp-typography-size-body-small)" }}>
+						<AnchorButton
+							href={GITHUB_URL}
+							target="_blank"
+							rel="noopener noreferrer"
+							variant="minimal"
+							intent="primary"
+							size="small"
+							style={{ padding: 0, minHeight: 0, fontSize: "var(--bp-typography-size-body-small)" }}
+						>
 							View on GitHub
 						</AnchorButton>
 					</div>
@@ -70,7 +83,9 @@ export function ProjectNavigationPanel({
 			</div>
 
 			<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 12px" }}>
-				<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-medium)" }}>Projects</span>
+				<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-medium)" }}>
+					Projects
+				</span>
 				<Button
 					icon="plus"
 					size="small"
@@ -81,7 +96,9 @@ export function ProjectNavigationPanel({
 				/>
 			</div>
 
-			<div style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "4px 0" }}>
+			<div
+				style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "4px 0" }}
+			>
 				{sortedProjects.length === 0 ? (
 					isLoadingProjects ? (
 						<div style={{ padding: "4px 0" }}>
@@ -113,7 +130,10 @@ export function ProjectNavigationPanel({
 					/>
 				))}
 			</div>
-			<div className={Classes.TEXT_MUTED} style={{ padding: "8px 12px", fontSize: "var(--bp-typography-size-body-x-small)", textAlign: "center" }}>
+			<div
+				className={Classes.TEXT_MUTED}
+				style={{ padding: "8px 12px", fontSize: "var(--bp-typography-size-body-x-small)", textAlign: "center" }}
+			>
 				Made with <Icon icon="heart" size={10} /> by Cline
 			</div>
 			<Alert
@@ -146,8 +166,8 @@ export function ProjectNavigationPanel({
 					{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}
 				</p>
 				<p>
-					This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces/worktrees,
-					and stop any running processes for this project.
+					This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces/worktrees, and
+					stop any running processes for this project.
 				</p>
 				<p>This action cannot be undone.</p>
 			</Alert>
@@ -190,9 +210,15 @@ function ProjectRowSkeleton(): React.ReactElement {
 					.
 				</div>
 				<div style={{ display: "flex", gap: 4 }}>
-					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>.</div>
-					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>.</div>
-					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>.</div>
+					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>
+						.
+					</div>
+					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>
+						.
+					</div>
+					<div className={Classes.SKELETON} style={{ height: 18, width: 30, borderRadius: 999 }}>
+						.
+					</div>
 				</div>
 			</div>
 		</div>
@@ -268,10 +294,26 @@ function ProjectRow({
 			}}
 		>
 			<div style={{ flex: "1 1 0", minWidth: 0 }}>
-				<div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: "var(--bp-typography-size-body-medium)" }}>
+				<div
+					style={{
+						fontWeight: 500,
+						whiteSpace: "nowrap",
+						overflow: "hidden",
+						textOverflow: "ellipsis",
+						fontSize: "var(--bp-typography-size-body-medium)",
+					}}
+				>
 					{project.name}
 				</div>
-				<div className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`} style={{ fontSize: "var(--bp-typography-size-body-x-small)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+				<div
+					className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
+					style={{
+						fontSize: "var(--bp-typography-size-body-x-small)",
+						whiteSpace: "nowrap",
+						overflow: "hidden",
+						textOverflow: "ellipsis",
+					}}
+				>
 					{displayPath}
 				</div>
 				{taskCountBadges.length > 0 ? (

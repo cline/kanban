@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { showAppToast } from "@/kanban/components/app-toaster";
+import type { RuntimeTaskWorkspaceInfoResponse } from "@/kanban/runtime/types";
 import {
 	addTaskDependency,
 	findCardSelection,
@@ -10,12 +11,7 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/kanban/state/board-state";
-import type {
-	BoardCard,
-	BoardColumnId,
-	BoardData,
-} from "@/kanban/types";
-import type { RuntimeTaskWorkspaceInfoResponse } from "@/kanban/runtime/types";
+import type { BoardCard, BoardColumnId, BoardData } from "@/kanban/types";
 import { truncateTaskPromptLabel } from "@/kanban/utils/task-prompt";
 
 export interface PendingTrashWarningState {
@@ -140,10 +136,7 @@ export function useLinkedBacklogTaskActions({
 	);
 
 	const performMoveTaskToTrash = useCallback(
-		async (
-			task: BoardCard,
-			currentBoard?: BoardData,
-		): Promise<void> => {
+		async (task: BoardCard, currentBoard?: BoardData): Promise<void> => {
 			const boardBeforeTrash = currentBoard ?? boardRef.current;
 			const trashed = trashTaskAndGetReadyLinkedTaskIds(boardBeforeTrash, task.id);
 			if (!trashed.moved) {
@@ -203,11 +196,7 @@ export function useLinkedBacklogTaskActions({
 	);
 
 	const requestMoveTaskToTrash = useCallback(
-		async (
-			taskId: string,
-			fromColumnId: BoardColumnId,
-			options?: RequestMoveTaskToTrashOptions,
-		): Promise<void> => {
+		async (taskId: string, fromColumnId: BoardColumnId, options?: RequestMoveTaskToTrashOptions): Promise<void> => {
 			const boardSnapshot = boardRef.current;
 			const selection = findCardSelection(boardSnapshot, taskId);
 			if (!selection) {

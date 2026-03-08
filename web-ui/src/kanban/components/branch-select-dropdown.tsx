@@ -1,10 +1,10 @@
-import { Button, Icon, MenuItem } from "@blueprintjs/core";
 import type { ButtonProps } from "@blueprintjs/core";
-import { Select } from "@blueprintjs/select";
+import { Button, Icon, MenuItem } from "@blueprintjs/core";
 import type { ItemListPredicate, ItemRenderer } from "@blueprintjs/select";
+import { Select } from "@blueprintjs/select";
 import { Fzf } from "fzf";
-import { useMemo, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import { useMemo, useState } from "react";
 
 export interface BranchSelectOption {
 	value: string;
@@ -57,10 +57,7 @@ function renderHighlightedText(value: string, positions: Set<number> | undefined
 	}
 
 	fragments.push(
-		<span
-			key="end"
-			style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}
-		>
+		<span key="end" style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}>
 			{currentText}
 		</span>,
 	);
@@ -168,9 +165,7 @@ export function BranchSelectDropdown({
 					roleStructure="listoption"
 					style={{ paddingLeft: 8, paddingRight: 8 }}
 					labelElement={
-						showSelectedIndicator && option.value === selectedValue
-							? <Icon icon="small-tick" />
-							: undefined
+						showSelectedIndicator && option.value === selectedValue ? <Icon icon="small-tick" /> : undefined
 					}
 				/>
 			);

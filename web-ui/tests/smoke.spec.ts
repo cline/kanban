@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 async function createTaskFromBacklog(page: Page, title: string) {
 	await page.getByRole("button", { name: "Create task" }).click();

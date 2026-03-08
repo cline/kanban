@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-
-import { WorkspaceStateConflictError } from "@/kanban/runtime/workspace-state-query";
 import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
 } from "@/kanban/runtime/types";
+import { WorkspaceStateConflictError } from "@/kanban/runtime/workspace-state-query";
 import type { BoardData } from "@/kanban/types";
 
 const WORKSPACE_STATE_PERSIST_DEBOUNCE_MS = 120;
@@ -76,12 +75,7 @@ export function useWorkspacePersistence({
 	}, [board, currentProjectId, hydrationNonce]);
 
 	useEffect(() => {
-		if (
-			!canPersistWorkspaceState ||
-			!isDocumentVisible ||
-			isWorkspaceStateRefreshing ||
-			workspaceRevision == null
-		) {
+		if (!canPersistWorkspaceState || !isDocumentVisible || isWorkspaceStateRefreshing || workspaceRevision == null) {
 			return;
 		}
 		if (persistInFlightRef.current) {
@@ -127,25 +121,25 @@ export function useWorkspacePersistence({
 					lastPersistedWorkspaceIdRef.current = persistWorkspaceId;
 					lastPersistedBoardRef.current = board;
 					onWorkspaceRevisionChange(saved.revision);
-					} catch (error) {
-						if (error instanceof WorkspaceStateConflictError) {
-							if (
-								requestId === latestPersistRequestIdRef.current &&
-								currentProjectIdRef.current === persistWorkspaceId
-							) {
-								onWorkspaceRevisionChange(error.currentRevision);
-								onWorkspaceStateConflict?.({
-									workspaceId: persistWorkspaceId,
-									currentRevision: error.currentRevision,
-								});
-							}
-							if (currentProjectIdRef.current !== persistWorkspaceId) {
-								return;
-							}
-							await refetchWorkspaceState();
+				} catch (error) {
+					if (error instanceof WorkspaceStateConflictError) {
+						if (
+							requestId === latestPersistRequestIdRef.current &&
+							currentProjectIdRef.current === persistWorkspaceId
+						) {
+							onWorkspaceRevisionChange(error.currentRevision);
+							onWorkspaceStateConflict?.({
+								workspaceId: persistWorkspaceId,
+								currentRevision: error.currentRevision,
+							});
+						}
+						if (currentProjectIdRef.current !== persistWorkspaceId) {
 							return;
 						}
-						// Keep the UI usable even if persistence is temporarily unavailable.
+						await refetchWorkspaceState();
+						return;
+					}
+					// Keep the UI usable even if persistence is temporarily unavailable.
 				} finally {
 					persistInFlightRef.current = false;
 					if (persistQueuedRef.current) {
@@ -164,11 +158,11 @@ export function useWorkspacePersistence({
 		currentProjectId,
 		isDocumentVisible,
 		isWorkspaceStateRefreshing,
-			onWorkspaceRevisionChange,
-			persistCycle,
-			persistWorkspaceState,
-			refetchWorkspaceState,
-			onWorkspaceStateConflict,
-			workspaceRevision,
-		]);
+		onWorkspaceRevisionChange,
+		persistCycle,
+		persistWorkspaceState,
+		refetchWorkspaceState,
+		onWorkspaceStateConflict,
+		workspaceRevision,
+	]);
 }

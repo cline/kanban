@@ -14,11 +14,7 @@ export function useTerminalConnectionReady(): UseTerminalConnectionReadyResult {
 	}, []);
 
 	const waitForConnectionSince = useCallback(
-		async (
-			taskId: string,
-			previousToken: number,
-			timeoutMs = 2500,
-		): Promise<void> => {
+		async (taskId: string, previousToken: number, timeoutMs = 2500): Promise<void> => {
 			if (typeof window === "undefined") {
 				return;
 			}

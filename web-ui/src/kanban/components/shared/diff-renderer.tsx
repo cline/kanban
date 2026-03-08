@@ -155,7 +155,10 @@ export function buildHighlightedLineMap(
 	return highlightedByLine;
 }
 
-function buildModifiedSegments(oldText: string, newText: string): {
+function buildModifiedSegments(
+	oldText: string,
+	newText: string,
+): {
 	oldSegments: InlineDiffSegment[];
 	newSegments: InlineDiffSegment[];
 } {
@@ -206,8 +209,20 @@ export function buildUnifiedDiffRows(oldText: string | null | undefined, newText
 
 				if (removedLine != null && addedLine != null) {
 					const { oldSegments, newSegments } = buildModifiedSegments(removedLine, addedLine);
-					rows.push({ key: `m-old-${oldLine}-${newLine}`, lineNumber: oldLine, variant: "removed", text: removedLine, segments: oldSegments });
-					rows.push({ key: `m-new-${oldLine}-${newLine}`, lineNumber: newLine, variant: "added", text: addedLine, segments: newSegments });
+					rows.push({
+						key: `m-old-${oldLine}-${newLine}`,
+						lineNumber: oldLine,
+						variant: "removed",
+						text: removedLine,
+						segments: oldSegments,
+					});
+					rows.push({
+						key: `m-new-${oldLine}-${newLine}`,
+						lineNumber: newLine,
+						variant: "added",
+						text: addedLine,
+						segments: newSegments,
+					});
 					oldLine += 1;
 					newLine += 1;
 					continue;
@@ -348,7 +363,10 @@ export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Record
 	return items;
 }
 
-export function countAddedRemoved(oldText: string | null | undefined, newText: string): { added: number; removed: number } {
+export function countAddedRemoved(
+	oldText: string | null | undefined,
+	newText: string,
+): { added: number; removed: number } {
 	let added = 0;
 	let removed = 0;
 	const changes = diffLines(oldText ?? "", newText, { ignoreWhitespace: false });
@@ -431,13 +449,7 @@ export function DiffRowText({
 	);
 }
 
-export function ReadOnlyUnifiedDiff({
-	rows,
-	path,
-}: {
-	rows: UnifiedDiffRow[];
-	path: string;
-}): React.ReactElement {
+export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; path: string }): React.ReactElement {
 	const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);

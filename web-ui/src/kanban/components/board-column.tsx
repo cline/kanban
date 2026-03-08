@@ -1,7 +1,6 @@
 import { Button, Colors } from "@blueprintjs/core";
 import { Droppable } from "@hello-pangea/dnd";
-import type { MouseEvent as ReactMouseEvent } from "react";
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 import { BoardCard } from "@/kanban/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/kanban/data/column-colors";
@@ -78,11 +77,27 @@ export function BoardColumn({
 	return (
 		<section
 			data-column-id={column.id}
-			style={{ display: "flex", flex: "1 1 0", flexDirection: "column", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1, borderRight: `1px solid ${panelSeparatorColor}` }}
+			style={{
+				display: "flex",
+				flex: "1 1 0",
+				flexDirection: "column",
+				minWidth: 0,
+				minHeight: 0,
+				background: Colors.DARK_GRAY1,
+				borderRight: `1px solid ${panelSeparatorColor}`,
+			}}
 		>
 			<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minHeight: 0 }}>
 				<div
-					style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 40, padding: "0 12px", background: accentColor, borderBottom: `1px solid ${Colors.DARK_GRAY5}` }}
+					style={{
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "space-between",
+						height: 40,
+						padding: "0 12px",
+						background: accentColor,
+						borderBottom: `1px solid ${Colors.DARK_GRAY5}`,
+					}}
 				>
 					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 						<span style={{ fontWeight: 600 }}>{column.title}</span>
@@ -104,11 +119,7 @@ export function BoardColumn({
 
 				<Droppable droppableId={column.id} type={cardDropType} isDropDisabled={isDropDisabled}>
 					{(cardProvided) => (
-						<div
-							ref={cardProvided.innerRef}
-							{...cardProvided.droppableProps}
-							className="kb-column-cards"
-						>
+						<div ref={cardProvided.innerRef} {...cardProvided.droppableProps} className="kb-column-cards">
 							{canCreate && !inlineTaskCreator ? (
 								<Button
 									icon="plus"

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { GitCommitDiffSource } from "@/kanban/components/git-history/git-commit-diff-panel";
 import { getRuntimeTrpcClient } from "@/kanban/runtime/trpc-client";
-import { useTrpcQuery } from "@/kanban/runtime/use-trpc-query";
 import type {
 	RuntimeGitCommit,
 	RuntimeGitCommitDiffResponse,
@@ -11,6 +10,7 @@ import type {
 	RuntimeGitSyncSummary,
 	RuntimeWorkspaceChangesResponse,
 } from "@/kanban/runtime/types";
+import { useTrpcQuery } from "@/kanban/runtime/use-trpc-query";
 
 export type GitHistoryViewMode = "working-copy" | "commit";
 
@@ -138,9 +138,8 @@ export function useGitHistoryData({
 	}, [enabled, gitSummary?.currentBranch, refsQuery.refetch]);
 
 	const refs = refsQuery.data?.refs ?? [];
-	const refsErrorMessage = refsQuery.isError && refs.length === 0
-		? refsQuery.error?.message ?? "Could not load git refs."
-		: null;
+	const refsErrorMessage =
+		refsQuery.isError && refs.length === 0 ? (refsQuery.error?.message ?? "Could not load git refs.") : null;
 	const headRef = refs.find((ref) => ref.isHead);
 
 	const activeRef = useMemo(() => {
@@ -150,100 +149,101 @@ export function useGitHistoryData({
 		return headRef ?? null;
 	}, [headRef, refs, selectedRefName]);
 
-	const logRef = activeRef?.type === "detached" ? activeRef.hash : activeRef?.name ?? null;
+	const logRef = activeRef?.type === "detached" ? activeRef.hash : (activeRef?.name ?? null);
 
-	const loadCommits = useCallback(async (options: {
-		skip: number;
-		maxCount: number;
-		append: boolean;
-		silent?: boolean;
-	}) => {
-		if (!enabled || !workspaceId || !logRef) {
-			abortInFlightLogRequest();
-			setCommits([]);
-			setTotalCommitCount(0);
-			setLogErrorMessage(null);
-			setIsLogLoading(false);
-			setIsLoadingMoreCommits(false);
-			return;
-		}
-
-		abortInFlightLogRequest();
-		const abortController = new AbortController();
-		logAbortControllerRef.current = abortController;
-		if (options.append) {
-			setIsLoadingMoreCommits(true);
-		} else {
-			if (!options.silent) {
-				setIsLogLoading(true);
-				setLogErrorMessage(null);
-			} else {
-				setIsLogLoading(false);
-			}
-		}
-
-		try {
-			const trpc = getRuntimeTrpcClient(workspaceId);
-			const payload = await trpc.workspace.getGitLog.query({
-				ref: logRef,
-				maxCount: options.maxCount,
-				skip: options.skip,
-				taskScope: taskScope ?? null,
-			}, {
-				signal: abortController.signal,
-			});
-			if (abortController.signal.aborted || logAbortControllerRef.current !== abortController) {
-				return;
-			}
-			if (!payload.ok) {
-				if (options.silent) {
-					return;
-				}
-				if (!options.append) {
-					setCommits([]);
-					setTotalCommitCount(0);
-				}
-				setLogErrorMessage(payload.error ?? "Could not load commits.");
-				return;
-			}
-
-			setLogErrorMessage(null);
-			setTotalCommitCount(payload.totalCount);
-			setCommits((current) => {
-				if (!options.append) {
-					return payload.commits;
-				}
-				const existingHashes = new Set(current.map((commit) => commit.hash));
-				const nextCommits = payload.commits.filter((commit) => !existingHashes.has(commit.hash));
-				return [...current, ...nextCommits];
-			});
-		} catch (error) {
-			if (abortController.signal.aborted || logAbortControllerRef.current !== abortController) {
-				return;
-			}
-			if (isAbortError(error)) {
-				return;
-			}
-			if (options.silent) {
-				return;
-			}
-			const message = error instanceof Error ? error.message : String(error);
-			if (!options.append) {
+	const loadCommits = useCallback(
+		async (options: { skip: number; maxCount: number; append: boolean; silent?: boolean }) => {
+			if (!enabled || !workspaceId || !logRef) {
+				abortInFlightLogRequest();
 				setCommits([]);
 				setTotalCommitCount(0);
+				setLogErrorMessage(null);
+				setIsLogLoading(false);
+				setIsLoadingMoreCommits(false);
+				return;
 			}
-			setLogErrorMessage(message || "Could not load commits.");
-		} finally {
-			if (logAbortControllerRef.current === abortController) {
-				logAbortControllerRef.current = null;
-				if (options.append) {
-					setIsLoadingMoreCommits(false);
+
+			abortInFlightLogRequest();
+			const abortController = new AbortController();
+			logAbortControllerRef.current = abortController;
+			if (options.append) {
+				setIsLoadingMoreCommits(true);
+			} else {
+				if (!options.silent) {
+					setIsLogLoading(true);
+					setLogErrorMessage(null);
 				} else {
 					setIsLogLoading(false);
 				}
 			}
-		}
-	}, [abortInFlightLogRequest, enabled, isAbortError, logRef, taskScope, workspaceId]);
+
+			try {
+				const trpc = getRuntimeTrpcClient(workspaceId);
+				const payload = await trpc.workspace.getGitLog.query(
+					{
+						ref: logRef,
+						maxCount: options.maxCount,
+						skip: options.skip,
+						taskScope: taskScope ?? null,
+					},
+					{
+						signal: abortController.signal,
+					},
+				);
+				if (abortController.signal.aborted || logAbortControllerRef.current !== abortController) {
+					return;
+				}
+				if (!payload.ok) {
+					if (options.silent) {
+						return;
+					}
+					if (!options.append) {
+						setCommits([]);
+						setTotalCommitCount(0);
+					}
+					setLogErrorMessage(payload.error ?? "Could not load commits.");
+					return;
+				}
+
+				setLogErrorMessage(null);
+				setTotalCommitCount(payload.totalCount);
+				setCommits((current) => {
+					if (!options.append) {
+						return payload.commits;
+					}
+					const existingHashes = new Set(current.map((commit) => commit.hash));
+					const nextCommits = payload.commits.filter((commit) => !existingHashes.has(commit.hash));
+					return [...current, ...nextCommits];
+				});
+			} catch (error) {
+				if (abortController.signal.aborted || logAbortControllerRef.current !== abortController) {
+					return;
+				}
+				if (isAbortError(error)) {
+					return;
+				}
+				if (options.silent) {
+					return;
+				}
+				const message = error instanceof Error ? error.message : String(error);
+				if (!options.append) {
+					setCommits([]);
+					setTotalCommitCount(0);
+				}
+				setLogErrorMessage(message || "Could not load commits.");
+			} finally {
+				if (logAbortControllerRef.current === abortController) {
+					logAbortControllerRef.current = null;
+					if (options.append) {
+						setIsLoadingMoreCommits(false);
+					} else {
+						setIsLogLoading(false);
+					}
+				}
+			}
+		},
+		[abortInFlightLogRequest, enabled, isAbortError, logRef, taskScope, workspaceId],
+	);
 
 	useEffect(() => {
 		abortInFlightLogRequest();
@@ -280,19 +280,31 @@ export function useGitHistoryData({
 			maxCount: COMMIT_PAGE_SIZE,
 			append: true,
 		});
-	}, [commits.length, enabled, isLoadingMoreCommits, isLogLoading, loadCommits, logRef, totalCommitCount, workspaceId]);
+	}, [
+		commits.length,
+		enabled,
+		isLoadingMoreCommits,
+		isLogLoading,
+		loadCommits,
+		logRef,
+		totalCommitCount,
+		workspaceId,
+	]);
 
-	const refreshCommits = useCallback((options?: { silent?: boolean }) => {
-		if (!enabled || !workspaceId || !logRef) {
-			return;
-		}
-		void loadCommits({
-			skip: 0,
-			maxCount: Math.max(commits.length, INITIAL_COMMIT_PAGE_SIZE),
-			append: false,
-			silent: options?.silent ?? false,
-		});
-	}, [commits.length, enabled, loadCommits, logRef, workspaceId]);
+	const refreshCommits = useCallback(
+		(options?: { silent?: boolean }) => {
+			if (!enabled || !workspaceId || !logRef) {
+				return;
+			}
+			void loadCommits({
+				skip: 0,
+				maxCount: Math.max(commits.length, INITIAL_COMMIT_PAGE_SIZE),
+				append: false,
+				silent: options?.silent ?? false,
+			});
+		},
+		[commits.length, enabled, loadCommits, logRef, workspaceId],
+	);
 
 	const resolvedLogErrorMessage = refsErrorMessage ?? logErrorMessage;
 
@@ -380,19 +392,21 @@ export function useGitHistoryData({
 	}, [diffQuery.data?.files, viewMode, workingCopyQuery.data?.files]);
 
 	const selectedCommit = commits.find((commit) => commit.hash === selectedCommitHash) ?? null;
-	const isDiffLoading = viewMode === "commit"
-		? isLogLoading || diffQuery.isLoading
-		: workingCopyQuery.isLoading && !workingCopyQuery.data;
-	const diffErrorMessage = viewMode === "commit"
-		? resolvedLogErrorMessage
-			?? (diffQuery.isError
-				? diffQuery.error?.message ?? "Could not load diff."
-				: diffQuery.data && !diffQuery.data.ok
-					? diffQuery.data.error ?? "Could not load diff."
-					: null)
-		: workingCopyQuery.isError && !workingCopyQuery.data
-			? workingCopyQuery.error?.message ?? "Could not load working copy changes."
-			: null;
+	const isDiffLoading =
+		viewMode === "commit"
+			? isLogLoading || diffQuery.isLoading
+			: workingCopyQuery.isLoading && !workingCopyQuery.data;
+	const diffErrorMessage =
+		viewMode === "commit"
+			? (resolvedLogErrorMessage ??
+				(diffQuery.isError
+					? (diffQuery.error?.message ?? "Could not load diff.")
+					: diffQuery.data && !diffQuery.data.ok
+						? (diffQuery.data.error ?? "Could not load diff.")
+						: null))
+			: workingCopyQuery.isError && !workingCopyQuery.data
+				? (workingCopyQuery.error?.message ?? "Could not load working copy changes.")
+				: null;
 
 	useEffect(() => {
 		if (!hasWorkingCopy && viewMode === "working-copy") {
@@ -401,44 +415,47 @@ export function useGitHistoryData({
 		}
 	}, [hasWorkingCopy, viewMode]);
 
-	const refresh = useCallback((options?: GitHistoryRefreshOptions) => {
-		if (!enabled) {
-			return;
-		}
-		const isBackgroundRefresh = options?.background === true;
-		if (isBackgroundRefresh) {
-			if (!refsQuery.isLoading) {
-				void refsQuery.refetch();
+	const refresh = useCallback(
+		(options?: GitHistoryRefreshOptions) => {
+			if (!enabled) {
+				return;
 			}
-			if (!isLogLoading && !isLoadingMoreCommits) {
-				refreshCommits({
-					silent: true,
-				});
+			const isBackgroundRefresh = options?.background === true;
+			if (isBackgroundRefresh) {
+				if (!refsQuery.isLoading) {
+					void refsQuery.refetch();
+				}
+				if (!isLogLoading && !isLoadingMoreCommits) {
+					refreshCommits({
+						silent: true,
+					});
+				}
+				if (hasWorkingCopy && !workingCopyQuery.isLoading) {
+					void workingCopyQuery.refetch();
+				}
+				return;
 			}
-			if (hasWorkingCopy && !workingCopyQuery.isLoading) {
+
+			void refsQuery.refetch();
+			refreshCommits({
+				silent: false,
+			});
+			if (hasWorkingCopy) {
 				void workingCopyQuery.refetch();
 			}
-			return;
-		}
-
-		void refsQuery.refetch();
-		refreshCommits({
-			silent: false,
-		});
-		if (hasWorkingCopy) {
-			void workingCopyQuery.refetch();
-		}
-	}, [
-		enabled,
-		hasWorkingCopy,
-		isLoadingMoreCommits,
-		isLogLoading,
-		refsQuery,
-		refsQueryFn,
-		refreshCommits,
-		workingCopyQuery,
-		workingCopyQueryFn,
-	]);
+		},
+		[
+			enabled,
+			hasWorkingCopy,
+			isLoadingMoreCommits,
+			isLogLoading,
+			refsQuery,
+			refsQueryFn,
+			refreshCommits,
+			workingCopyQuery,
+			workingCopyQueryFn,
+		],
+	);
 
 	return {
 		viewMode,

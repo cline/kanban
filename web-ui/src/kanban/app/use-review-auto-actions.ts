@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef } from "react";
 
 import type { TaskGitAction } from "@/kanban/git-actions/build-task-git-action-prompt";
 import { findCardSelection } from "@/kanban/state/board-state";
-import type { BoardCard, BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot, TaskAutoReviewMode } from "@/kanban/types";
+import type {
+	BoardCard,
+	BoardColumnId,
+	BoardData,
+	ReviewTaskWorkspaceSnapshot,
+	TaskAutoReviewMode,
+} from "@/kanban/types";
 import { resolveTaskAutoReviewMode } from "@/kanban/types";
 
 const AUTO_REVIEW_ACTION_DELAY_MS = 500;
@@ -80,11 +86,7 @@ export function useReviewAutoActions({
 		moveToTrashInFlightTaskIdsRef.current.clear();
 	}, []);
 
-	const scheduleAutoReviewAction = useCallback((
-		taskId: string,
-		action: TaskAutoReviewMode,
-		execute: () => void,
-	) => {
+	const scheduleAutoReviewAction = useCallback((taskId: string, action: TaskAutoReviewMode, execute: () => void) => {
 		const existingTimer = timerByTaskIdRef.current[taskId];
 		const existingAction = scheduledActionByTaskIdRef.current[taskId];
 		if (typeof existingTimer === "number" && existingAction === action) {
@@ -155,11 +157,12 @@ export function useReviewAutoActions({
 
 			const autoReviewMode = resolveTaskAutoReviewMode(reviewTask.autoReviewMode);
 			const loadingState = taskGitActionLoadingByTaskId[reviewTask.id];
-			const isGitActionInFlight = autoReviewMode === "commit"
-				? loadingState?.commitSource !== null && loadingState?.commitSource !== undefined
-				: autoReviewMode === "pr"
-					? loadingState?.prSource !== null && loadingState?.prSource !== undefined
-					: false;
+			const isGitActionInFlight =
+				autoReviewMode === "commit"
+					? loadingState?.commitSource !== null && loadingState?.commitSource !== undefined
+					: autoReviewMode === "pr"
+						? loadingState?.prSource !== null && loadingState?.prSource !== undefined
+						: false;
 
 			if (autoReviewMode === "move_to_trash") {
 				if (moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)) {
@@ -178,11 +181,13 @@ export function useReviewAutoActions({
 					}
 					delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
 					moveToTrashInFlightTaskIdsRef.current.add(reviewTask.id);
-					void requestMoveTaskToTrashRef.current(reviewTask.id, "review", {
-						skipWorkingChangeWarning: true,
-					}).finally(() => {
-						moveToTrashInFlightTaskIdsRef.current.delete(reviewTask.id);
-					});
+					void requestMoveTaskToTrashRef
+						.current(reviewTask.id, "review", {
+							skipWorkingChangeWarning: true,
+						})
+						.finally(() => {
+							moveToTrashInFlightTaskIdsRef.current.delete(reviewTask.id);
+						});
 				});
 				continue;
 			}
@@ -194,7 +199,11 @@ export function useReviewAutoActions({
 			const changedFiles = workspaceSnapshots[reviewTask.id]?.changedFiles;
 			const awaitingAction = awaitingCleanActionByTaskIdRef.current[reviewTask.id] ?? null;
 			if (awaitingAction) {
-				if (changedFiles === 0 && !isGitActionInFlight && !moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)) {
+				if (
+					changedFiles === 0 &&
+					!isGitActionInFlight &&
+					!moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)
+				) {
 					scheduleAutoReviewAction(reviewTask.id, "move_to_trash", () => {
 						const latestSelection = findCardSelection(boardRef.current, reviewTask.id);
 						if (!latestSelection || latestSelection.column.id !== "review") {
@@ -208,12 +217,14 @@ export function useReviewAutoActions({
 							return;
 						}
 						moveToTrashInFlightTaskIdsRef.current.add(reviewTask.id);
-						void requestMoveTaskToTrashRef.current(reviewTask.id, "review", {
-							skipWorkingChangeWarning: true,
-						}).finally(() => {
-							delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
-							moveToTrashInFlightTaskIdsRef.current.delete(reviewTask.id);
-						});
+						void requestMoveTaskToTrashRef
+							.current(reviewTask.id, "review", {
+								skipWorkingChangeWarning: true,
+							})
+							.finally(() => {
+								delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+								moveToTrashInFlightTaskIdsRef.current.delete(reviewTask.id);
+							});
 					});
 				} else {
 					clearAutoReviewTimer(reviewTask.id);
@@ -246,11 +257,5 @@ export function useReviewAutoActions({
 				});
 			});
 		}
-	}, [
-		board,
-		clearAutoReviewTimer,
-		scheduleAutoReviewAction,
-		taskGitActionLoadingByTaskId,
-		workspaceSnapshots,
-	]);
+	}, [board, clearAutoReviewTimer, scheduleAutoReviewAction, taskGitActionLoadingByTaskId, workspaceSnapshots]);
 }

@@ -8,11 +8,11 @@ import {
 	buildProjectPathname,
 	countTasksByColumn,
 	createIdleTaskSession,
+	normalizeStoredTaskAutoReviewMode,
 	parseProjectIdFromPathname,
 	TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
 	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
-	normalizeStoredTaskAutoReviewMode,
 } from "@/kanban/app/app-utils";
 import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
 import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
@@ -27,6 +27,7 @@ import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-term
 import { useGitHistoryData } from "@/kanban/components/git-history/use-git-history-data";
 import { GitHistoryView } from "@/kanban/components/git-history-view";
 import { KanbanBoard } from "@/kanban/components/kanban-board";
+import { KeyboardShortcutsDialog } from "@/kanban/components/keyboard-shortcuts-dialog";
 import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/kanban/components/runtime-settings-dialog";
@@ -34,7 +35,6 @@ import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners
 import { TaskInlineCreateCard } from "@/kanban/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
 import { TopBar, type TopBarTaskGitSummary } from "@/kanban/components/top-bar";
-import { KeyboardShortcutsDialog } from "@/kanban/components/keyboard-shortcuts-dialog";
 import { createInitialBoardData } from "@/kanban/data/board-data";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/kanban/git-actions/build-task-git-action-prompt";
 import {

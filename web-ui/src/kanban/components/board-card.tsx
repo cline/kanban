@@ -6,18 +6,10 @@ import { createPortal } from "react-dom";
 
 import { useMeasure } from "@/kanban/hooks/react-use";
 import type { RuntimeTaskSessionSummary } from "@/kanban/runtime/types";
-import type {
-	BoardCard as BoardCardModel,
-	BoardColumnId,
-	ReviewTaskWorkspaceSnapshot,
-} from "@/kanban/types";
+import type { BoardCard as BoardCardModel, BoardColumnId, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 import { formatPathForDisplay } from "@/kanban/utils/path-display";
 import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/kanban/utils/task-prompt";
-import {
-	DEFAULT_TEXT_MEASURE_FONT,
-	measureTextWidth,
-	readElementFontShorthand,
-} from "@/kanban/utils/text-measure";
+import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/kanban/utils/text-measure";
 
 export function BoardCard({
 	card,
@@ -121,9 +113,7 @@ export function BoardCard({
 					deletions: reviewWorkspaceSnapshot.deletions ?? 0,
 				}
 		: null;
-	const showReviewGitActions =
-		columnId === "review" &&
-		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
+	const showReviewGitActions = columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 
 	return (
@@ -156,11 +146,7 @@ export function BoardCard({
 								return;
 							}
 							const target = event.target as HTMLElement | null;
-							if (
-								target?.closest(
-									"button, a, input, textarea, [contenteditable='true']",
-								)
-							) {
+							if (target?.closest("button, a, input, textarea, [contenteditable='true']")) {
 								return;
 							}
 							event.preventDefault();
@@ -209,9 +195,7 @@ export function BoardCard({
 						>
 							<div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24 }}>
 								{statusMarker ? (
-									<div style={{ display: "inline-flex", alignItems: "center" }}>
-										{statusMarker}
-									</div>
+									<div style={{ display: "inline-flex", alignItems: "center" }}>{statusMarker}</div>
 								) : null}
 								<div ref={titleContainerRef} style={{ flex: "1 1 auto", minWidth: 0 }}>
 									<p
@@ -273,10 +257,7 @@ export function BoardCard({
 								</p>
 							) : null}
 							{showPreview && sessionSummary?.activityPreview ? (
-								<div
-									className="kb-task-preview-pane"
-									style={isTrashCard ? { opacity: 0.55 } : undefined}
-								>
+								<div className="kb-task-preview-pane" style={isTrashCard ? { opacity: 0.55 } : undefined}>
 									<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-task-preview-text`}>
 										{sessionSummary.activityPreview}
 									</p>
@@ -292,7 +273,7 @@ export function BoardCard({
 										whiteSpace: "normal",
 										overflowWrap: "anywhere",
 										color: isTrashCard ? Colors.GRAY2 : undefined,
-										}}
+									}}
 								>
 									{isTrashCard ? (
 										<span

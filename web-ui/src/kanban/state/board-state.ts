@@ -5,13 +5,13 @@ import * as runtimeTaskState from "@runtime-task-state";
 import { createInitialBoardData } from "@/kanban/data/board-data";
 import { isAllowedCrossColumnCardMove, type ProgrammaticCardMoveInFlight } from "@/kanban/state/drag-rules";
 import {
-	DEFAULT_TASK_AUTO_REVIEW_MODE,
 	type BoardCard,
 	type BoardColumn,
 	type BoardColumnId,
 	type BoardData,
 	type BoardDependency,
 	type CardSelection,
+	DEFAULT_TASK_AUTO_REVIEW_MODE,
 	resolveTaskAutoReviewMode,
 	type TaskAutoReviewMode,
 } from "@/kanban/types";
@@ -216,13 +216,18 @@ export function normalizeBoardData(rawBoard: unknown): BoardData | null {
 export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft: TaskDraft): BoardData {
 	const prompt = draft.prompt.trim();
 	if (!prompt) return board;
-	const result = runtimeTaskState.addTaskToColumn(board, columnId, {
-		prompt,
-		startInPlanMode: draft.startInPlanMode,
-		autoReviewEnabled: draft.autoReviewEnabled,
-		autoReviewMode: draft.autoReviewMode,
-		baseRef: draft.baseRef,
-	}, () => crypto.randomUUID());
+	const result = runtimeTaskState.addTaskToColumn(
+		board,
+		columnId,
+		{
+			prompt,
+			startInPlanMode: draft.startInPlanMode,
+			autoReviewEnabled: draft.autoReviewEnabled,
+			autoReviewMode: draft.autoReviewMode,
+			baseRef: draft.baseRef,
+		},
+		() => crypto.randomUUID(),
+	);
 	return result.board;
 }
 
@@ -233,33 +238,19 @@ export interface AddTaskDependencyResult {
 	dependency?: BoardDependency;
 }
 
-export function addTaskDependency(
-	board: BoardData,
-	fromTaskId: string,
-	toTaskId: string,
-): AddTaskDependencyResult {
+export function addTaskDependency(board: BoardData, fromTaskId: string, toTaskId: string): AddTaskDependencyResult {
 	return runtimeTaskState.addTaskDependency(board, fromTaskId, toTaskId);
 }
 
-export function canCreateTaskDependency(
-	board: BoardData,
-	fromTaskId: string,
-	toTaskId: string,
-): boolean {
+export function canCreateTaskDependency(board: BoardData, fromTaskId: string, toTaskId: string): boolean {
 	return runtimeTaskState.canAddTaskDependency(board, fromTaskId, toTaskId);
 }
 
-export function removeTaskDependency(
-	board: BoardData,
-	dependencyId: string,
-): { board: BoardData; removed: boolean } {
+export function removeTaskDependency(board: BoardData, dependencyId: string): { board: BoardData; removed: boolean } {
 	return runtimeTaskState.removeTaskDependency(board, dependencyId);
 }
 
-export function getReadyLinkedTaskIdsForTaskInTrash(
-	board: BoardData,
-	taskId: string,
-): string[] {
+export function getReadyLinkedTaskIdsForTaskInTrash(board: BoardData, taskId: string): string[] {
 	return runtimeTaskState.getReadyLinkedTaskIdsForTaskInTrash(board, taskId);
 }
 
@@ -393,11 +384,7 @@ export function moveTaskToColumn(
 	};
 }
 
-export function updateTask(
-	board: BoardData,
-	taskId: string,
-	draft: TaskDraft,
-): { board: BoardData; updated: boolean } {
+export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): { board: BoardData; updated: boolean } {
 	const prompt = draft.prompt.trim();
 	if (!prompt) {
 		return { board, updated: false };
@@ -426,9 +413,7 @@ export function updateTask(
 				updatedAt: Date.now(),
 			};
 		});
-		return columnUpdated
-			? { ...column, cards }
-			: column;
+		return columnUpdated ? { ...column, cards } : column;
 	});
 
 	if (!updated) {
@@ -437,10 +422,7 @@ export function updateTask(
 	return { board: withUpdatedColumns(board, columns), updated: true };
 }
 
-export function removeTask(
-	board: BoardData,
-	taskId: string,
-): { board: BoardData; removed: boolean } {
+export function removeTask(board: BoardData, taskId: string): { board: BoardData; removed: boolean } {
 	let removed = false;
 	const columns = board.columns.map((column) => {
 		const nextCards = column.cards.filter((card) => card.id !== taskId);
@@ -470,11 +452,7 @@ export function clearColumnTasks(
 	}
 
 	const clearedTaskIds = targetColumn.cards.map((card) => card.id);
-	const columns = board.columns.map((column) =>
-		column.id === columnId
-			? { ...column, cards: [] }
-			: column,
-	);
+	const columns = board.columns.map((column) => (column.id === columnId ? { ...column, cards: [] } : column));
 	const boardWithUpdatedColumns = withUpdatedColumns(board, columns);
 
 	return {

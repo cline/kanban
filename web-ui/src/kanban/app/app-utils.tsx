@@ -92,8 +92,9 @@ export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary
 
 export const filterTask = (query: string, task: SearchableTask): boolean => {
 	const normalizedQuery = query.toLowerCase();
-	return task.title.toLowerCase().includes(normalizedQuery) ||
-		task.columnTitle.toLowerCase().includes(normalizedQuery);
+	return (
+		task.title.toLowerCase().includes(normalizedQuery) || task.columnTitle.toLowerCase().includes(normalizedQuery)
+	);
 };
 
 export const renderTask: ItemRenderer<SearchableTask> = (task, { handleClick, handleFocus, modifiers }) => {

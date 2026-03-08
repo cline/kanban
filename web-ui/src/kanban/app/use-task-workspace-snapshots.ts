@@ -17,9 +17,7 @@ interface UseTaskWorkspaceSnapshotsResult {
 	resetWorkspaceSnapshots: () => void;
 }
 
-export function useTaskWorkspaceSnapshots(
-	options: UseTaskWorkspaceSnapshotsOptions,
-): UseTaskWorkspaceSnapshotsResult {
+export function useTaskWorkspaceSnapshots(options: UseTaskWorkspaceSnapshotsOptions): UseTaskWorkspaceSnapshotsResult {
 	const {
 		currentProjectId,
 		reviewCards,

@@ -22,10 +22,7 @@ interface BuildTaskGitActionPromptInput {
 	templates?: TaskGitPromptTemplates | null;
 }
 
-function resolveTemplate(
-	action: TaskGitAction,
-	templates?: TaskGitPromptTemplates | null,
-): string {
+function resolveTemplate(action: TaskGitAction, templates?: TaskGitPromptTemplates | null): string {
 	if (action === "commit") {
 		const template = templates?.commitPromptTemplate?.trim();
 		if (template) {

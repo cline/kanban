@@ -1,12 +1,4 @@
-import {
-	Button,
-	ButtonGroup,
-	Icon,
-	Menu,
-	MenuItem,
-	Popover,
-	PopoverInteractionKind,
-} from "@blueprintjs/core";
+import { Button, ButtonGroup, Icon, Menu, MenuItem, Popover, PopoverInteractionKind } from "@blueprintjs/core";
 
 import type { OpenTargetId, OpenTargetOption } from "@/kanban/utils/open-targets";
 
@@ -65,7 +57,7 @@ export function OpenWorkspaceButton({
 			<Popover
 				interactionKind={PopoverInteractionKind.CLICK}
 				placement="bottom-end"
-				content={(
+				content={
 					<Menu>
 						{options.map((option) => (
 							<MenuItem
@@ -78,7 +70,7 @@ export function OpenWorkspaceButton({
 							/>
 						))}
 					</Menu>
-				)}
+				}
 			>
 				<Button
 					size="small"

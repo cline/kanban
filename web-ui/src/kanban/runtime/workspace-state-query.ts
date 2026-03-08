@@ -1,10 +1,6 @@
 import { TRPCClientError } from "@trpc/client";
-
-import type {
-	RuntimeWorkspaceStateResponse,
-	RuntimeWorkspaceStateSaveRequest,
-} from "@/kanban/runtime/types";
 import { createWorkspaceTrpcClient, readTrpcConflictRevision } from "@/kanban/runtime/trpc-client";
+import type { RuntimeWorkspaceStateResponse, RuntimeWorkspaceStateSaveRequest } from "@/kanban/runtime/types";
 
 export class WorkspaceStateConflictError extends Error {
 	readonly currentRevision: number;

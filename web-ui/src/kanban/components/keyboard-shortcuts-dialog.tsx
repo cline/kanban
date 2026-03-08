@@ -1,10 +1,4 @@
-import {
-	Classes,
-	Colors,
-	Dialog,
-	DialogBody,
-	KeyComboTag,
-} from "@blueprintjs/core";
+import { Classes, Colors, Dialog, DialogBody, KeyComboTag } from "@blueprintjs/core";
 
 interface ShortcutEntry {
 	combo: string;
@@ -19,9 +13,7 @@ interface ShortcutGroup {
 const SHORTCUT_GROUPS: ShortcutGroup[] = [
 	{
 		title: "General",
-		shortcuts: [
-			{ combo: "C", description: "Create new task" },
-		],
+		shortcuts: [{ combo: "C", description: "Create new task" }],
 	},
 	{
 		title: "Terminal",
@@ -40,9 +32,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 	},
 	{
 		title: "Task prompt",
-		shortcuts: [
-			{ combo: "mod+enter", description: "Submit prompt" },
-		],
+		shortcuts: [{ combo: "mod+enter", description: "Submit prompt" }],
 	},
 	{
 		title: "Git history",
@@ -53,9 +43,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 	},
 	{
 		title: "Dependencies",
-		shortcuts: [
-			{ combo: "mod", description: "Hold to enter linking mode" },
-		],
+		shortcuts: [{ combo: "mod", description: "Hold to enter linking mode" }],
 	},
 ];
 
@@ -67,13 +55,7 @@ export function KeyboardShortcutsDialog({
 	onClose: () => void;
 }): React.ReactElement {
 	return (
-		<Dialog
-			isOpen={isOpen}
-			onClose={onClose}
-			title="Keyboard shortcuts"
-			icon="key"
-			style={{ width: 480 }}
-		>
+		<Dialog isOpen={isOpen} onClose={onClose} title="Keyboard shortcuts" icon="key" style={{ width: 480 }}>
 			<DialogBody>
 				{SHORTCUT_GROUPS.map((group) => (
 					<div key={group.title} style={{ marginBottom: 16 }}>

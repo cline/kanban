@@ -39,7 +39,7 @@
 	"plugins": ["grit/no-process-env-destructure.grit"],
 	"overrides": [
 		{
-			"includes": ["src/**/*.ts", "!!src/cli.ts"],
+			"includes": ["src/**/*.ts", "src/**/*.tsx", "!src/cli.ts"],
 			"plugins": ["grit/no-console.grit", "grit/no-process-exit.grit"]
 		},
 		{
