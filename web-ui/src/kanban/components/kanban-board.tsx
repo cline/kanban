@@ -188,7 +188,7 @@ export function KanbanBoard({
 			const deltaX = topTargetClientSelection.x - startClientSelection.x;
 			const deltaY = topTargetClientSelection.y - startClientSelection.y;
 			const travelDistance = Math.hypot(deltaX, deltaY);
-			const durationMs = Math.min(224, Math.max(133, 102 + (travelDistance * 0.126)));
+			const durationMs = Math.min(224, Math.max(133, 102 + (travelDistance * 0.126))) * 0.5;
 			const easeInOutCubic = (value: number) =>
 				value < 0.5
 					? 4 * (value ** 3)

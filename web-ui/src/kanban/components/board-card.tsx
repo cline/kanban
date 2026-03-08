@@ -257,11 +257,15 @@ export function BoardCard({
 							</div>
 							{displayPromptSplit.description ? (
 								<p
-									className={`${isTrashCard ? "" : Classes.TEXT_MUTED} kb-line-clamp-5`}
+									className={isTrashCard ? undefined : Classes.TEXT_MUTED}
 									style={{
 										margin: "4px 0 0",
 										fontSize: "var(--bp-typography-size-body-small)",
 										lineHeight: 1.4,
+										display: "-webkit-box",
+										WebkitLineClamp: 3,
+										WebkitBoxOrient: "vertical",
+										overflow: "hidden",
 										color: isTrashCard ? Colors.GRAY1 : undefined,
 									}}
 								>
