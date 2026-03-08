@@ -234,7 +234,7 @@ export function addTaskToColumn(board: BoardData, columnId: BoardColumnId, draft
 export interface AddTaskDependencyResult {
 	board: BoardData;
 	added: boolean;
-	reason?: "missing_task" | "same_task" | "duplicate" | "trash_task" | "non_backlog";
+	reason?: NonNullable<runtimeTaskState.RuntimeAddTaskDependencyResult["reason"]>;
 	dependency?: BoardDependency;
 }
 

@@ -1,6 +1,6 @@
-import type { RuntimeTaskWorkspaceInfoResponse } from "@/kanban/runtime/types";
+import type { RuntimeTaskAutoReviewMode, RuntimeTaskWorkspaceInfoResponse } from "@/kanban/runtime/types";
 
-export type TaskGitAction = "commit" | "pr";
+export type TaskGitAction = Extract<RuntimeTaskAutoReviewMode, "commit" | "pr">;
 
 export const TASK_GIT_PROMPT_VARIABLES = [
 	{

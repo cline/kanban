@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useReviewAutoActions } from "@/kanban/app/use-review-auto-actions";
+import type { TaskGitAction } from "@/kanban/git-actions/build-task-git-action-prompt";
 import type { BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/kanban/types";
 
 function createBoard(autoReviewEnabled: boolean): BoardData {
@@ -51,7 +52,7 @@ function HookHarness({
 	requestMoveTaskToTrash,
 }: {
 	board: BoardData;
-	runAutoReviewGitAction: (taskId: string, action: "commit" | "pr") => Promise<boolean>;
+	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
 }): null {
 	useReviewAutoActions({

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { RuntimeAgentId, RuntimeTaskSessionSummary } from "../api-contract.js";
+import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskSessionSummary } from "../api-contract.js";
 import { buildKanbananaCommandParts } from "../kanbanana-command.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 import { createHookRuntimeEnv } from "./hook-runtime-context.js";
@@ -71,7 +71,7 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 	};
 }
 
-function buildHookCommand(event: "to_review" | "to_in_progress"): string {
+function buildHookCommand(event: RuntimeHookEvent): string {
 	const parts = buildHooksCommandParts(["ingest", "--event", event]);
 	return parts.map(shellQuote).join(" ");
 }
@@ -104,7 +104,7 @@ function getClineHookScriptPath(
 	return join(hooksDir, hookName);
 }
 
-function buildClineHookScriptContent(event: "to_review" | "to_in_progress"): string {
+function buildClineHookScriptContent(event: RuntimeHookEvent): string {
 	const commandParts = buildHooksCommandParts(["notify", "--event", event]);
 	if (process.platform === "win32") {
 		const command = commandParts.map(powerShellQuote).join(" ");

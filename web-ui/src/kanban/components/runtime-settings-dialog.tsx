@@ -21,7 +21,7 @@ import { Select } from "@blueprintjs/select";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { TASK_GIT_PROMPT_VARIABLES } from "@/kanban/git-actions/build-task-git-action-prompt";
+import { TASK_GIT_PROMPT_VARIABLES, type TaskGitAction } from "@/kanban/git-actions/build-task-git-action-prompt";
 import { useUnmount, useWindowEvent } from "@/kanban/hooks/react-use";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeProjectShortcut } from "@/kanban/runtime/types";
 import { useRuntimeConfig } from "@/kanban/runtime/use-runtime-config";
@@ -62,9 +62,7 @@ function normalizeTemplateForComparison(value: string): string {
 	return value.replaceAll("\r\n", "\n").trim();
 }
 
-type GitPromptVariant = "commit" | "pr";
-
-const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: GitPromptVariant; label: string }> = [
+const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }> = [
 	{ value: "commit", label: "Commit" },
 	{ value: "pr", label: "Make PR" },
 ];
@@ -256,7 +254,7 @@ export function RuntimeSettingsDialog({
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
 	const [openPrPromptTemplate, setOpenPrPromptTemplate] = useState("");
-	const [selectedPromptVariant, setSelectedPromptVariant] = useState<GitPromptVariant>("commit");
+	const [selectedPromptVariant, setSelectedPromptVariant] = useState<TaskGitAction>("commit");
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollId, setPendingShortcutScrollId] = useState<string | null>(null);
@@ -550,7 +548,7 @@ export function RuntimeSettingsDialog({
 				>
 					<HTMLSelect
 						value={selectedPromptVariant}
-						onChange={(event) => setSelectedPromptVariant(event.target.value as GitPromptVariant)}
+						onChange={(event) => setSelectedPromptVariant(event.target.value as TaskGitAction)}
 						options={GIT_PROMPT_VARIANT_OPTIONS}
 						disabled={isLoading || isSaving}
 						style={{ minWidth: 220 }}

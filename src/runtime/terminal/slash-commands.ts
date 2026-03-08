@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { basename } from "node:path";
 import { promisify } from "node:util";
 
-import type { RuntimeSlashCommandDescription } from "../api-contract.js";
+import type { RuntimeAgentId, RuntimeSlashCommandDescription } from "../api-contract.js";
 import type { ResolvedAgentCommand } from "./agent-registry.js";
 
 const execFileAsync = promisify(execFile);
@@ -10,7 +10,7 @@ const DISCOVERY_CACHE_TTL_MS = 60_000;
 const DISCOVERY_TIMEOUT_MS = 20_000;
 const DISCOVERY_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 
-type CommandFamily = "claude" | "codex" | "gemini" | "opencode" | "cline" | "unknown";
+type CommandFamily = RuntimeAgentId | "unknown";
 
 interface SlashCommandCacheEntry {
 	expiresAt: number;

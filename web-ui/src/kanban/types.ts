@@ -1,6 +1,6 @@
-import type { RuntimeTaskAutoReviewMode } from "@/kanban/runtime/types";
+import type { RuntimeBoardColumnId, RuntimeTaskAutoReviewMode } from "@/kanban/runtime/types";
 
-export type BoardColumnId = "backlog" | "in_progress" | "review" | "trash";
+export type BoardColumnId = RuntimeBoardColumnId;
 
 export type TaskAutoReviewMode = RuntimeTaskAutoReviewMode;
 

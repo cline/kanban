@@ -13,6 +13,7 @@ import {
 	addTaskDependency,
 	addTaskToColumn,
 	getTaskColumnId,
+	type McpAddTaskDependencyResult,
 	moveTaskToColumn,
 	removeTaskDependency,
 	updateTask,
@@ -161,9 +162,7 @@ function formatDependencyRecord(state: RuntimeWorkspaceStateResponse, dependency
 	};
 }
 
-function getLinkFailureMessage(
-	reason: "missing_task" | "same_task" | "duplicate" | "trash_task" | "non_backlog" | undefined,
-): string {
+function getLinkFailureMessage(reason: McpAddTaskDependencyResult["reason"]): string {
 	if (reason === "same_task") {
 		return "A task cannot be linked to itself.";
 	}
