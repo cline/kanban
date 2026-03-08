@@ -81,6 +81,12 @@ export function useReviewReadyNotifications({
 	const handledReadyForReviewEventKeysRef = useRef<Set<string>>(new Set());
 	const handledReadyForReviewEventKeyQueueRef = useRef<string[]>([]);
 	const [pendingReviewReadyNotificationCount, setPendingReviewReadyNotificationCount] = useState(0);
+	const [isWindowFocused, setIsWindowFocused] = useState(() => {
+		if (typeof document === "undefined") {
+			return true;
+		}
+		return document.hasFocus();
+	});
 	const workspaceTitle = useMemo(() => {
 		if (!workspacePath) {
 			return null;
@@ -91,12 +97,20 @@ export function useReviewReadyNotifications({
 		}
 		return segments[segments.length - 1] ?? workspacePath;
 	}, [workspacePath]);
+	const isAppActive = isDocumentVisible && isWindowFocused;
+
+	useWindowEvent("focus", () => {
+		setIsWindowFocused(true);
+	});
+	useWindowEvent("blur", () => {
+		setIsWindowFocused(false);
+	});
 
 	useEffect(() => {
 		const tabId = notificationPresenceTabIdRef.current;
 		const syncSourceId = notificationBadgeSyncSourceIdRef.current;
 		const presenceWorkspaceId = activeWorkspaceId;
-		if (isDocumentVisible) {
+		if (isAppActive) {
 			if (presenceWorkspaceId) {
 				markTabVisible(tabId, presenceWorkspaceId);
 			} else {
@@ -107,22 +121,22 @@ export function useReviewReadyNotifications({
 		} else {
 			markTabHidden(tabId);
 		}
-	}, [activeWorkspaceId, isDocumentVisible]);
+	}, [activeWorkspaceId, isAppActive]);
 
 	useEffect(() => {
-		if (activeWorkspaceId && isDocumentVisible) {
+		if (activeWorkspaceId && isAppActive) {
 			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
 		}
-	}, [activeWorkspaceId, isDocumentVisible]);
+	}, [activeWorkspaceId, isAppActive]);
 
 	useInterval(
 		() => {
-			if (!activeWorkspaceId || !isDocumentVisible) {
+			if (!activeWorkspaceId || !isAppActive) {
 				return;
 			}
 			markTabVisible(notificationPresenceTabIdRef.current, activeWorkspaceId);
 		},
-		activeWorkspaceId && isDocumentVisible ? TAB_VISIBILITY_HEARTBEAT_INTERVAL_MS : null,
+		activeWorkspaceId && isAppActive ? TAB_VISIBILITY_HEARTBEAT_INTERVAL_MS : null,
 	);
 
 	useEffect(() => {
@@ -145,13 +159,14 @@ export function useReviewReadyNotifications({
 			}
 		}
 		const isVisibleNow = isDocumentCurrentlyVisible(isDocumentVisible);
+		const isWindowFocusedNow = typeof document === "undefined" ? isWindowFocused : document.hasFocus();
 		const hasVisiblePeerTabForWorkspace = hasVisibleKanbananaTabForWorkspace(
 			latestTaskReadyForReview.workspaceId,
 			notificationPresenceTabIdRef.current,
 		);
 		if (
 			!readyForReviewNotificationsEnabled ||
-			isVisibleNow ||
+			(isVisibleNow && isWindowFocusedNow) ||
 			hasVisiblePeerTabForWorkspace
 		) {
 			return;
@@ -169,6 +184,7 @@ export function useReviewReadyNotifications({
 		activeWorkspaceId,
 		board,
 		isDocumentVisible,
+		isWindowFocused,
 		latestTaskReadyForReview,
 		readyForReviewNotificationsEnabled,
 		workspaceTitle,
