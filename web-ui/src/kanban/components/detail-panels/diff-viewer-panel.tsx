@@ -7,13 +7,11 @@ import { buildFileTree } from "@/kanban/utils/file-tree";
 import type { RuntimeWorkspaceFileChange } from "@/kanban/runtime/types";
 import {
 	type UnifiedDiffRow,
-	type DiffDisplayItem,
 	buildUnifiedDiffRows,
 	buildDisplayItems,
 	buildHighlightedLineMap,
 	countAddedRemoved,
 	DiffRowText,
-	getHighlightedLineHtml,
 	resolvePrismLanguage,
 	resolvePrismGrammar,
 	truncatePathMiddle,
