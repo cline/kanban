@@ -1,5 +1,4 @@
-import { Alert, Button, Classes, Colors, MenuItem, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
-import { Omnibar } from "@blueprintjs/select";
+import { Alert, Button, Classes, Colors, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
 import type { DropResult } from "@hello-pangea/dnd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -9,14 +8,11 @@ import {
 	buildProjectPathname,
 	countTasksByColumn,
 	createIdleTaskSession,
-	filterTask,
 	parseProjectIdFromPathname,
-	renderTask,
 	TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY,
 	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 	normalizeStoredTaskAutoReviewMode,
-	type SearchableTask,
 } from "@/kanban/app/app-utils";
 import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
 import { useProgrammaticCardMoves } from "@/kanban/app/use-programmatic-card-moves";
@@ -41,6 +37,7 @@ import {
 import { TaskInlineCreateCard } from "@/kanban/components/task-inline-create-card";
 import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
 import { TopBar, type TopBarTaskGitSummary } from "@/kanban/components/top-bar";
+import { KeyboardShortcutsDialog } from "@/kanban/components/keyboard-shortcuts-dialog";
 import { createInitialBoardData } from "@/kanban/data/board-data";
 import {
 	buildTaskGitActionPrompt,
@@ -59,7 +56,6 @@ import {
 import { useWorkspacePersistence } from "@/kanban/runtime/use-workspace-persistence";
 import {
 	DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS,
-	truncateTaskPromptLabel,
 } from "@/kanban/utils/task-prompt";
 import {
 	trackTaskCreated,
@@ -183,8 +179,8 @@ export default function App(): ReactElement {
 		useState<RuntimeTaskWorkspaceInfoResponse | null>(null);
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
-	const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskStartInPlanMode, setNewTaskStartInPlanMode] = useBooleanLocalStorageValue(
@@ -897,15 +893,6 @@ export default function App(): ReactElement {
 		programmaticCardMoveCycle,
 	} = useProgrammaticCardMoves();
 
-	const searchableTasks = useMemo((): SearchableTask[] => {
-		return board.columns.flatMap((column) =>
-			column.cards.map((card) => ({
-				id: card.id,
-				title: truncateTaskPromptLabel(card.prompt) || `Task ${card.id}`,
-				columnTitle: column.title,
-			})),
-		);
-	}, [board.columns]);
 	const trashTaskIds = useMemo(() => {
 		const trashColumn = board.columns.find((column) => column.id === "trash");
 		return trashColumn ? trashColumn.cards.map((card) => card.id) : [];
@@ -1611,15 +1598,6 @@ export default function App(): ReactElement {
 			isHomeTerminalOpen,
 			selectedCard,
 		],
-	);
-
-	useHotkeys(
-		"mod+k",
-		() => {
-			setIsCommandPaletteOpen((current) => !current);
-		},
-		{ preventDefault: true },
-		[],
 	);
 
 	useHotkeys(
@@ -2622,6 +2600,7 @@ export default function App(): ReactElement {
 					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
 					onOpenSettings={handleOpenSettings}
+					onOpenKeyboardShortcuts={() => setIsKeyboardShortcutsOpen(true)}
 					shortcuts={shortcuts}
 					selectedShortcutId={selectedShortcutId}
 					onSelectShortcutId={handleSelectShortcutId}
@@ -2843,6 +2822,10 @@ export default function App(): ReactElement {
 						) : null}
 					</div>
 			</div>
+					<KeyboardShortcutsDialog
+						isOpen={isKeyboardShortcutsOpen}
+						onClose={() => setIsKeyboardShortcutsOpen(false)}
+					/>
 					<RuntimeSettingsDialog
 						open={isSettingsOpen}
 						workspaceId={currentProjectId}
@@ -2857,19 +2840,6 @@ export default function App(): ReactElement {
 							refreshRuntimeProjectConfig();
 						}}
 					/>
-			<Omnibar<SearchableTask>
-				isOpen={isCommandPaletteOpen}
-				onClose={() => setIsCommandPaletteOpen(false)}
-				items={searchableTasks}
-				itemPredicate={filterTask}
-				itemRenderer={renderTask}
-				onItemSelect={(task) => {
-					setSelectedTaskId(task.id);
-					setIsCommandPaletteOpen(false);
-				}}
-				noResults={<MenuItem disabled text="No tasks found." roleStructure="listoption" />}
-				resetOnSelect
-			/>
 			<ClearTrashDialog
 				open={isClearTrashDialogOpen}
 				taskCount={trashTaskCount}

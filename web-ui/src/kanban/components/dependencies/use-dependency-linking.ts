@@ -1,6 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useHotkeys } from "react-hotkeys-hook";
 
 export interface DependencyLinkDraft {
 	sourceTaskId: string;
@@ -147,21 +146,6 @@ export function useDependencyLinking({
 	}, []);
 
 	const isLinking = draft !== null;
-
-	useHotkeys(
-		"esc",
-		() => {
-			draftRef.current = null;
-			setDraft(null);
-		},
-		{
-			enabled: isLinking,
-			enableOnFormTags: true,
-			enableOnContentEditable: true,
-			preventDefault: true,
-		},
-		[isLinking],
-	);
 
 	useEffect(() => {
 		if (!isLinking) {

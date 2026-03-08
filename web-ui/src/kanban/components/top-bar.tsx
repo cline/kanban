@@ -152,6 +152,7 @@ export function TopBar({
 	onToggleGitHistory,
 	isGitHistoryOpen,
 	onOpenSettings,
+	onOpenKeyboardShortcuts,
 	shortcuts,
 	selectedShortcutId,
 	onSelectShortcutId,
@@ -182,6 +183,7 @@ export function TopBar({
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
+	onOpenKeyboardShortcuts?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
 	selectedShortcutId?: string | null;
 	onSelectShortcutId?: (shortcutId: string) => void;
@@ -449,6 +451,16 @@ export function TopBar({
 						/>
 					</Tooltip>
 				) : null}
+				<Tooltip placement="bottom" content="Keyboard shortcuts">
+					<Button
+						icon="key-command"
+						size="small"
+						variant="minimal"
+						onClick={onOpenKeyboardShortcuts}
+						aria-label="Keyboard shortcuts"
+						style={{ marginLeft: 5 }}
+					/>
+				</Tooltip>
 				<Button
 					icon="cog"
 					size="small"
@@ -456,7 +468,7 @@ export function TopBar({
 					onClick={() => onOpenSettings?.()}
 					aria-label="Settings"
 					data-testid="open-settings-button"
-					style={{ marginLeft: 5, marginRight: 2 }}
+					style={{ marginLeft: 2, marginRight: 2 }}
 				/>
 			</NavbarGroup>
 		</Navbar>
