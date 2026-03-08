@@ -12,6 +12,7 @@ import {
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/kanban/state/board-state";
 import type { BoardCard, BoardColumnId, BoardData } from "@/kanban/types";
+import { getNextDetailTaskIdAfterTrashMove } from "@/kanban/utils/detail-view-task-order";
 import { truncateTaskPromptLabel } from "@/kanban/utils/task-prompt";
 
 export interface PendingTrashWarningState {
@@ -24,29 +25,6 @@ export interface PendingTrashWarningState {
 interface RequestMoveTaskToTrashOptions {
 	optimisticMoveApplied?: boolean;
 	skipWorkingChangeWarning?: boolean;
-}
-
-function isDetailViewColumnId(columnId: BoardColumnId): boolean {
-	return columnId === "in_progress" || columnId === "review";
-}
-
-function getNextDetailTaskIdAfterTrashMove(board: BoardData, taskId: string): string | null {
-	const detailTaskIds: string[] = [];
-	for (const column of board.columns) {
-		if (!isDetailViewColumnId(column.id)) {
-			continue;
-		}
-		for (const card of column.cards) {
-			detailTaskIds.push(card.id);
-		}
-	}
-
-	const currentIndex = detailTaskIds.indexOf(taskId);
-	if (currentIndex === -1) {
-		return detailTaskIds[0] ?? null;
-	}
-
-	return detailTaskIds[currentIndex + 1] ?? detailTaskIds[currentIndex - 1] ?? null;
 }
 
 export function useLinkedBacklogTaskActions({
