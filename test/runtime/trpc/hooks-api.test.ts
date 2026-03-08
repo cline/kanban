@@ -30,11 +30,10 @@ describe("createHooksApi", () => {
 		} as unknown as TerminalSessionManager;
 
 		const api = createHooksApi({
-			workspacePathsById: new Map([["workspace-1", "/tmp/repo"]]),
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
 			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
 			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
-			runtimeStateClientsByWorkspaceId: new Map(),
-			sendRuntimeStateMessage: vi.fn(),
+			broadcastTaskReadyForReview: vi.fn(),
 		});
 
 		const response = await api.ingest({

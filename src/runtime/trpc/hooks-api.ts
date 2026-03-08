@@ -1,9 +1,6 @@
-import type { WebSocket } from "ws";
 import type {
 	RuntimeHookEvent,
 	RuntimeHookIngestResponse,
-	RuntimeStateStreamMessage,
-	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeTaskSessionSummary,
 } from "../api-contract.js";
 import { parseHookIngestRequest } from "../api-validation.js";
@@ -11,14 +8,11 @@ import { loadWorkspaceContextById } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import type { RuntimeTrpcContext } from "./app-router.js";
 
-interface RuntimeHookClientsByWorkspaceId extends Map<string, Set<WebSocket>> {}
-
 export interface CreateHooksApiDependencies {
-	workspacePathsById: Map<string, string>;
+	getWorkspacePathById: (workspaceId: string) => string | null;
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
-	runtimeStateClientsByWorkspaceId: RuntimeHookClientsByWorkspaceId;
-	sendRuntimeStateMessage: (client: WebSocket, payload: RuntimeStateStreamMessage) => void;
+	broadcastTaskReadyForReview: (workspaceId: string, taskId: string) => void;
 }
 
 function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: RuntimeHookEvent): boolean {
@@ -38,7 +32,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const taskId = body.taskId;
 				const workspaceId = body.workspaceId;
 				const event = body.event;
-				const knownWorkspacePath = deps.workspacePathsById.get(workspaceId);
+				const knownWorkspacePath = deps.getWorkspacePathById(workspaceId);
 				const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
 				const workspacePath = knownWorkspacePath ?? workspaceContext?.repoPath ?? null;
 				if (!workspacePath) {
@@ -74,18 +68,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
 				if (event === "to_review") {
-					const runtimeClients = deps.runtimeStateClientsByWorkspaceId.get(workspaceId);
-					if (runtimeClients && runtimeClients.size > 0) {
-						const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
-							type: "task_ready_for_review",
-							workspaceId,
-							taskId,
-							triggeredAt: Date.now(),
-						};
-						for (const client of runtimeClients) {
-							deps.sendRuntimeStateMessage(client, payload);
-						}
-					}
+					deps.broadcastTaskReadyForReview(workspaceId, taskId);
 				}
 
 				return { ok: true } satisfies RuntimeHookIngestResponse;

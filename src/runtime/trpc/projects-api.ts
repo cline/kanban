@@ -17,30 +17,31 @@ import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { deleteTaskWorktree } from "../workspace/task-worktree.js";
 import type { RuntimeTrpcContext } from "./app-router.js";
 
-interface DisposeWorkspaceRuntimeResourcesOptions {
+interface DisposeWorkspaceOptions {
 	stopTerminalSessions?: boolean;
-	disconnectClients?: boolean;
-	closeClientErrorMessage?: string;
 }
 
 export interface CreateProjectsApiDependencies {
-	workspacePathsById: Map<string, string>;
 	getActiveWorkspacePath: () => string | null;
 	getActiveWorkspaceId: () => string | null;
+	rememberWorkspace: (workspaceId: string, repoPath: string) => void;
 	setActiveWorkspace: (workspaceId: string, repoPath: string) => Promise<void>;
 	clearActiveWorkspace: () => void;
 	resolveProjectInputPath: (inputPath: string, cwd: string) => string;
 	assertPathIsDirectory: (path: string) => Promise<void>;
 	hasGitRepository: (path: string) => boolean;
 	summarizeProjectTaskCounts: (workspaceId: string, repoPath: string) => Promise<RuntimeProjectTaskCounts>;
-	toProjectSummary: (project: {
+	createProjectSummary: (project: {
 		workspaceId: string;
 		repoPath: string;
 		taskCounts: RuntimeProjectTaskCounts;
 	}) => RuntimeProjectSummary;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void> | void;
 	getTerminalManagerForWorkspace: (workspaceId: string) => TerminalSessionManager | null;
-	disposeWorkspaceRuntimeResources: (workspaceId: string, options?: DisposeWorkspaceRuntimeResourcesOptions) => void;
+	disposeWorkspace: (
+		workspaceId: string,
+		options?: DisposeWorkspaceOptions,
+	) => { terminalManager: TerminalSessionManager | null; workspacePath: string | null };
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeBoardData) => Set<string>;
 	warn: (message: string) => void;
 	buildProjectsPayload: (preferredCurrentProjectId: string | null) => Promise<{
@@ -76,7 +77,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					} satisfies RuntimeProjectAddResponse;
 				}
 				const context = await loadWorkspaceContext(projectPath);
-				deps.workspacePathsById.set(context.workspaceId, context.repoPath);
+				deps.rememberWorkspace(context.workspaceId, context.repoPath);
 				const projectsAfterAdd = await listWorkspaceIndexEntries();
 				const activeWorkspaceId = deps.getActiveWorkspaceId();
 				const hasActiveWorkspace = activeWorkspaceId
@@ -89,7 +90,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				void deps.broadcastRuntimeProjectsUpdated(context.workspaceId);
 				return {
 					ok: true,
-					project: deps.toProjectSummary({
+					project: deps.createProjectSummary({
 						workspaceId: context.workspaceId,
 						repoPath: context.repoPath,
 						taskCounts,
@@ -136,7 +137,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					throw new Error(`Could not remove project index entry for "${body.projectId}".`);
 				}
 				await removeWorkspaceStateFiles(body.projectId);
-				deps.disposeWorkspaceRuntimeResources(body.projectId, {
+				deps.disposeWorkspace(body.projectId, {
 					stopTerminalSessions: false,
 				});
 

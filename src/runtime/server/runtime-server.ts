@@ -1,0 +1,257 @@
+import { readFile } from "node:fs/promises";
+import { createServer, type IncomingMessage } from "node:http";
+import { join } from "node:path";
+
+import { createHTTPHandler } from "@trpc/server/adapters/standalone";
+
+import type { RuntimeShortcutRunResponse, RuntimeWorkspaceStateResponse } from "../api-contract.js";
+import {
+	buildKanbananaRuntimeUrl,
+	KANBANANA_RUNTIME_HOST,
+	KANBANANA_RUNTIME_ORIGIN,
+	KANBANANA_RUNTIME_PORT,
+} from "../runtime-endpoint.js";
+import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
+import type { RuntimeStateHub } from "./runtime-state-hub.js";
+import type { WorkspaceRegistry } from "./workspace-registry.js";
+import { createTerminalWebSocketBridge } from "../terminal/ws-server.js";
+import type { TerminalSessionManager } from "../terminal/session-manager.js";
+import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router.js";
+import { createHooksApi } from "../trpc/hooks-api.js";
+import { createProjectsApi } from "../trpc/projects-api.js";
+import { createRuntimeApi } from "../trpc/runtime-api.js";
+import { createWorkspaceApi } from "../trpc/workspace-api.js";
+import { loadWorkspaceContextById } from "../state/workspace-state.js";
+
+interface DisposeTrackedWorkspaceResult {
+	terminalManager: TerminalSessionManager | null;
+	workspacePath: string | null;
+}
+
+export interface CreateRuntimeServerDependencies {
+	workspaceRegistry: WorkspaceRegistry;
+	runtimeStateHub: RuntimeStateHub;
+	warn: (message: string) => void;
+	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
+	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
+	runShortcutCommand: (command: string, cwd: string) => Promise<RuntimeShortcutRunResponse>;
+	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
+	assertPathIsDirectory: (targetPath: string) => Promise<void>;
+	hasGitRepository: (path: string) => boolean;
+	disposeWorkspace: (
+		workspaceId: string,
+		options?: {
+			stopTerminalSessions?: boolean;
+		},
+	) => DisposeTrackedWorkspaceResult;
+	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
+	pickDirectoryPathFromSystemDialog: () => string | null;
+}
+
+export interface RuntimeServer {
+	url: string;
+	close: () => Promise<void>;
+}
+
+function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
+	const headerValue = request.headers["x-kanbanana-workspace-id"];
+	const headerWorkspaceId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+	if (typeof headerWorkspaceId === "string") {
+		const normalized = headerWorkspaceId.trim();
+		if (normalized) {
+			return normalized;
+		}
+	}
+	const queryWorkspaceId = requestUrl.searchParams.get("workspaceId");
+	if (typeof queryWorkspaceId === "string") {
+		const normalized = queryWorkspaceId.trim();
+		if (normalized) {
+			return normalized;
+		}
+	}
+	return null;
+}
+
+export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
+	const webUiDir = getWebUiDir();
+
+	try {
+		await readFile(join(webUiDir, "index.html"));
+	} catch {
+		throw new Error("Could not find web UI assets. Run `npm run build` to generate and package the web UI.");
+	}
+
+	const resolveWorkspaceScopeFromRequest = async (
+		request: IncomingMessage,
+		requestUrl: URL,
+	): Promise<{
+		requestedWorkspaceId: string | null;
+		workspaceScope: RuntimeTrpcWorkspaceScope | null;
+	}> => {
+		const requestedWorkspaceId = readWorkspaceIdFromRequest(request, requestUrl);
+		if (!requestedWorkspaceId) {
+			return {
+				requestedWorkspaceId: null,
+				workspaceScope: null,
+			};
+		}
+		const requestedWorkspaceContext = await loadWorkspaceContextById(requestedWorkspaceId);
+		if (!requestedWorkspaceContext) {
+			return {
+				requestedWorkspaceId,
+				workspaceScope: null,
+			};
+		}
+		return {
+			requestedWorkspaceId,
+			workspaceScope: {
+				workspaceId: requestedWorkspaceContext.workspaceId,
+				workspacePath: requestedWorkspaceContext.repoPath,
+			},
+		};
+	};
+
+	const getScopedTerminalManager = async (scope: RuntimeTrpcWorkspaceScope): Promise<TerminalSessionManager> =>
+		await deps.ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
+
+	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
+		const requestUrl = new URL(req.url ?? "/", "http://localhost");
+		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
+		return {
+			requestedWorkspaceId: scope.requestedWorkspaceId,
+			workspaceScope: scope.workspaceScope,
+			runtimeApi: createRuntimeApi({
+				getActiveWorkspaceId: deps.workspaceRegistry.getActiveWorkspaceId,
+				loadScopedRuntimeConfig: deps.workspaceRegistry.loadScopedRuntimeConfig,
+				setActiveRuntimeConfig: deps.workspaceRegistry.setActiveRuntimeConfig,
+				getScopedTerminalManager,
+				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
+				runShortcutCommand: deps.runShortcutCommand,
+			}),
+			workspaceApi: createWorkspaceApi({
+				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
+				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
+				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
+				buildWorkspaceStateSnapshot: deps.workspaceRegistry.buildWorkspaceStateSnapshot,
+			}),
+			projectsApi: createProjectsApi({
+				getActiveWorkspacePath: deps.workspaceRegistry.getActiveWorkspacePath,
+				getActiveWorkspaceId: deps.workspaceRegistry.getActiveWorkspaceId,
+				rememberWorkspace: deps.workspaceRegistry.rememberWorkspace,
+				setActiveWorkspace: deps.workspaceRegistry.setActiveWorkspace,
+				clearActiveWorkspace: deps.workspaceRegistry.clearActiveWorkspace,
+				resolveProjectInputPath: deps.resolveProjectInputPath,
+				assertPathIsDirectory: deps.assertPathIsDirectory,
+				hasGitRepository: deps.hasGitRepository,
+				summarizeProjectTaskCounts: deps.workspaceRegistry.summarizeProjectTaskCounts,
+				createProjectSummary: deps.workspaceRegistry.createProjectSummary,
+				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
+				getTerminalManagerForWorkspace: deps.workspaceRegistry.getTerminalManagerForWorkspace,
+				disposeWorkspace: deps.disposeWorkspace,
+				collectProjectWorktreeTaskIdsForRemoval: deps.collectProjectWorktreeTaskIdsForRemoval,
+				warn: deps.warn,
+				buildProjectsPayload: deps.workspaceRegistry.buildProjectsPayload,
+				pickDirectoryPathFromSystemDialog: deps.pickDirectoryPathFromSystemDialog,
+			}),
+			hooksApi: createHooksApi({
+				getWorkspacePathById: deps.workspaceRegistry.getWorkspacePathById,
+				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
+				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
+				broadcastTaskReadyForReview: deps.runtimeStateHub.broadcastTaskReadyForReview,
+			}),
+		};
+	};
+
+	const trpcHttpHandler = createHTTPHandler({
+		basePath: "/api/trpc/",
+		router: runtimeAppRouter,
+		createContext: async ({ req }) => await createTrpcContext(req),
+	});
+
+	const server = createServer(async (req, res) => {
+		try {
+			const requestUrl = new URL(req.url ?? "/", "http://localhost");
+			const pathname = normalizeRequestPath(requestUrl.pathname);
+			if (pathname.startsWith("/api/trpc")) {
+				await trpcHttpHandler(req, res);
+				return;
+			}
+			if (pathname.startsWith("/api/")) {
+				res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+				res.end('{"error":"Not found"}');
+				return;
+			}
+
+			const asset = await readAsset(webUiDir, pathname);
+			res.writeHead(200, {
+				"Content-Type": asset.contentType,
+				"Cache-Control": "no-store",
+			});
+			res.end(asset.content);
+		} catch {
+			res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+			res.end("Not Found");
+		}
+	});
+	server.on("upgrade", (request, socket, head) => {
+		let requestUrl: URL;
+		try {
+			requestUrl = new URL(request.url ?? "/", KANBANANA_RUNTIME_ORIGIN);
+		} catch {
+			socket.destroy();
+			return;
+		}
+		if (normalizeRequestPath(requestUrl.pathname) !== "/api/runtime/ws") {
+			return;
+		}
+		(request as IncomingMessage & { __kanbananaUpgradeHandled?: boolean }).__kanbananaUpgradeHandled = true;
+		const requestedWorkspaceId = requestUrl.searchParams.get("workspaceId")?.trim() || null;
+		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedWorkspaceId });
+	});
+	const terminalWebSocketBridge = createTerminalWebSocketBridge({
+		server,
+		resolveTerminalManager: (workspaceId) => deps.workspaceRegistry.getTerminalManagerForWorkspace(workspaceId),
+		isTerminalWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/ws",
+	});
+	server.on("upgrade", (request, socket) => {
+		const handled = (request as IncomingMessage & { __kanbananaUpgradeHandled?: boolean }).__kanbananaUpgradeHandled;
+		if (handled) {
+			return;
+		}
+		socket.destroy();
+	});
+
+	await new Promise<void>((resolveListen, rejectListen) => {
+		server.once("error", rejectListen);
+		server.listen(KANBANANA_RUNTIME_PORT, KANBANANA_RUNTIME_HOST, () => {
+			server.off("error", rejectListen);
+			resolveListen();
+		});
+	});
+
+	const address = server.address();
+	if (!address || typeof address === "string") {
+		throw new Error("Failed to start local server.");
+	}
+	const activeWorkspaceId = deps.workspaceRegistry.getActiveWorkspaceId();
+	const url = activeWorkspaceId
+		? buildKanbananaRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)
+		: KANBANANA_RUNTIME_ORIGIN;
+
+	return {
+		url,
+		close: async () => {
+			await deps.runtimeStateHub.close();
+			await terminalWebSocketBridge.close();
+			await new Promise<void>((resolveClose, rejectClose) => {
+				server.close((error) => {
+					if (error) {
+						rejectClose(error);
+						return;
+					}
+					resolveClose();
+				});
+			});
+		},
+	};
+}

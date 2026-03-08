@@ -336,6 +336,13 @@ Acceptance criteria:
 - terminal manager hydration still works on startup
 - workspace switching and project removal behavior remain unchanged
 
+Completed in the second slice:
+- extracted `src/runtime/server/workspace-registry.ts`
+- moved active workspace ownership, runtime config caching, terminal manager lifecycle, workspace snapshot building, and project summary building into the registry
+- rewired `src/cli.ts` TRPC context creation to depend on registry capabilities instead of ad hoc local state
+- updated `projects-api` and `hooks-api` dependency contracts to consume registry-backed methods
+- preserved existing runtime state stream and workspace integration behavior under the current tests
+
 ### Phase 2: extract runtime state hub
 This is the next meaningful subsystem after registry extraction.
 
@@ -356,6 +363,13 @@ Acceptance criteria:
 - workspace removal still disconnects or resyncs clients correctly
 - timers and subscriptions are disposed correctly on shutdown
 
+Completed in the third slice:
+- extracted `src/runtime/server/runtime-state-hub.ts`
+- moved runtime WebSocket client ownership, workspace file refresh timers, terminal summary batching, and realtime cleanup into the hub
+- rewired `src/cli.ts` to delegate runtime WS upgrades and broadcasts to the hub while keeping terminal WS handling local for now
+- simplified `hooks-api` so it depends on `broadcastTaskReadyForReview` instead of raw websocket client maps
+- preserved runtime stream integration behavior under the existing tests
+
 ### Phase 3: extract HTTP host and runtime server composition
 Primary goals:
 - move transport wiring out of `cli.ts`
@@ -370,6 +384,13 @@ Acceptance criteria:
 - transport wiring is easy to find in one place
 - TRPC context creation is still centralized and readable
 
+Completed in the fourth slice:
+- extracted `src/runtime/server/runtime-server.ts`
+- moved HTTP asset serving, TRPC handler creation, runtime WS upgrade routing, terminal WS bridge setup, and server close logic into the runtime server module
+- rewired `src/cli.ts` to build registry and hub dependencies, then delegate HTTP host composition to `createRuntimeServer`
+- kept workspace-aware TRPC context construction centralized inside the runtime server module
+- preserved runtime stream integration coverage after the extraction
+
 ### Phase 4: extract shutdown coordinator
 Primary goals:
 - isolate shutdown-specific mutation and cleanup logic
@@ -378,6 +399,12 @@ Primary goals:
 Acceptance criteria:
 - shutdown sequence is unchanged
 - interrupted session persistence and worktree cleanup are still correct
+
+Completed in the fifth slice:
+- extracted `src/runtime/server/shutdown-coordinator.ts`
+- moved interrupted session collection, persistence, worktree cleanup, and final close sequencing into the shutdown coordinator
+- rewired `src/cli.ts` to delegate shutdown lifecycle work instead of owning the sequencing inline
+- preserved runtime state stream shutdown behavior under the existing integration tests
 
 ## File Organization Guardrails
 
@@ -429,19 +456,19 @@ If a new subsystem becomes substantial, add focused unit tests for that subsyste
 ## Progress Tracker
 
 - [x] Phase 0: extract shared utilities used by `cli.ts` and MCP server
-- [ ] Phase 1: extract workspace registry
-- [ ] Phase 2: extract runtime state hub
-- [ ] Phase 3: extract HTTP host and runtime server composition
-- [ ] Phase 4: extract shutdown coordinator
+- [x] Phase 1: extract workspace registry
+- [x] Phase 2: extract runtime state hub
+- [x] Phase 3: extract HTTP host and runtime server composition
+- [x] Phase 4: extract shutdown coordinator
 - [ ] Final cleanup: reduce `cli.ts` to bootstrap and signal wiring only
 
 ## Immediate Next Slice
 
-The most pragmatic next step is Phase 1:
+The most pragmatic next step is Final cleanup:
 
-1. create `workspace-registry.ts`
-2. move active workspace state and runtime config ownership into it
-3. move terminal manager lifecycle and workspace snapshot builders into it
-4. update TRPC API wiring to depend on registry capabilities instead of `cli.ts` closures
+1. decide whether the remaining CLI-local helpers should stay as entrypoint concerns or move into smaller runtime modules
+2. keep `src/cli.ts` focused on command parsing, startup fallback behavior, browser opening, and signal wiring
+3. avoid extracting tiny wrappers that only move code without clarifying ownership
+4. stop once the file is easy to navigate and each remaining helper is clearly CLI-specific
 
-That should produce the first meaningful subsystem extraction without requiring a large transport or shutdown rewrite.
+At this point the biggest runtime ownership boundaries are extracted, so the last step should be a restraint pass rather than another large move.
