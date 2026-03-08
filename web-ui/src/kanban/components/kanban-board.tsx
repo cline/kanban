@@ -328,7 +328,6 @@ export function KanbanBoard({
 						onMoveToTrashTask={column.id === "review" ? onMoveToTrashTask : undefined}
 						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 						openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
-<<<<<<< HEAD
 						reviewWorkspaceSnapshots={
 							column.id === "review" || column.id === "in_progress" || column.id === "trash"
 								? reviewWorkspaceSnapshots
