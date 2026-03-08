@@ -34,6 +34,7 @@ export interface TopBarTaskGitSummary {
 }
 
 type SettingsSection = "shortcuts";
+const MAX_GIT_BRANCH_BUTTON_CHARS = 20;
 
 function getWorkspacePathSegments(path: string): string[] {
 	return path.replaceAll("\\", "/").split("/").filter((segment) => segment.length > 0);
@@ -46,6 +47,13 @@ function resolveShortcutIcon(icon: string | undefined): IconName {
 	}
 	const candidate = normalized as IconName;
 	return BLUEPRINT_ICON_NAMES.has(candidate) ? candidate : "console";
+}
+
+function truncateBranchButtonLabel(branchLabel: string): string {
+	if (branchLabel.length <= MAX_GIT_BRANCH_BUTTON_CHARS) {
+		return branchLabel;
+	}
+	return `${branchLabel.slice(0, MAX_GIT_BRANCH_BUTTON_CHARS - 3)}...`;
 }
 
 function GitBranchStatusControl({
@@ -64,6 +72,7 @@ function GitBranchStatusControl({
 	isGitHistoryOpen?: boolean;
 }): React.ReactElement {
 	if (onToggleGitHistory) {
+		const buttonBranchLabel = truncateBranchButtonLabel(branchLabel);
 		return (
 			<>
 				<Button
@@ -75,10 +84,12 @@ function GitBranchStatusControl({
 					className={Classes.MONOSPACE_TEXT}
 					style={{
 						fontSize: "var(--bp-typography-size-body-small)",
+						flexShrink: 0,
 					}}
+					title={branchLabel}
 					text={
-						<span className={Classes.TEXT_OVERFLOW_ELLIPSIS}>
-							{branchLabel}
+						<span style={{ whiteSpace: "nowrap" }}>
+							{buttonBranchLabel}
 						</span>
 					}
 				/>
@@ -88,6 +99,7 @@ function GitBranchStatusControl({
 						fontSize: "var(--bp-typography-size-body-small)",
 						color: Colors.GRAY3,
 						marginLeft: 6,
+						whiteSpace: "nowrap",
 					}}
 				>
 					({changedFiles} {changedFiles === 1 ? "file" : "files"}
@@ -106,6 +118,7 @@ function GitBranchStatusControl({
 				fontSize: "var(--bp-typography-size-body-small)",
 				color: Colors.GRAY4,
 				marginRight: 4,
+				whiteSpace: "nowrap",
 			}}
 		>
 			<Icon icon="git-branch" size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
@@ -217,8 +230,12 @@ export function TopBar({
 		<Navbar
 			fixedToTop={false}
 			style={{
+				display: "flex",
+				flexWrap: "nowrap",
+				alignItems: "center",
 				height: 40,
 				minHeight: 40,
+				minWidth: 0,
 				paddingLeft: 12,
 				paddingRight: 8,
 				background: Colors.DARK_GRAY3,
@@ -226,7 +243,18 @@ export function TopBar({
 				borderBottom: "1px solid rgba(255, 255, 255, 0.2)",
 			}}
 		>
-			<NavbarGroup align={Alignment.LEFT} style={{ height: 40 }}>
+			<NavbarGroup
+				align={Alignment.LEFT}
+				style={{
+					display: "flex",
+					flexWrap: "nowrap",
+					alignItems: "center",
+					height: 40,
+					flex: "1 1 auto",
+					minWidth: 0,
+					overflow: "hidden",
+				}}
+			>
 				{onBack ? (
 					<>
 						<Button icon="arrow-left" variant="minimal" onClick={onBack} aria-label="Back to board" style={{ marginLeft: -8, marginRight: 4 }} />
@@ -243,26 +271,28 @@ export function TopBar({
 						.
 					</span>
 				) : displayWorkspacePath ? (
-					<span
-						className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
-						style={{ fontSize: 12, maxWidth: 640, color: Colors.GRAY4 }}
-						title={workspacePath}
-						data-testid="workspace-path"
-					>
-						{hasAbsoluteLeadingSlash ? "/" : ""}
-						{workspaceSegments.map((segment, index) => {
-							const isLast = index === workspaceSegments.length - 1;
-							return (
-								<span key={`${segment}-${index}`}>
-									{index === 0 ? "" : "/"}
-									<span style={isLast ? { color: Colors.LIGHT_GRAY5 } : undefined}>{segment}</span>
-								</span>
-							);
-						})}
-					</span>
+					<div style={{ flex: "0 1 auto", minWidth: 0, maxWidth: 640, overflow: "hidden" }}>
+						<span
+							className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
+							style={{ display: "block", width: "100%", minWidth: 0, fontSize: 12, maxWidth: "100%", color: Colors.GRAY4 }}
+							title={workspacePath}
+							data-testid="workspace-path"
+						>
+							{hasAbsoluteLeadingSlash ? "/" : ""}
+							{workspaceSegments.map((segment, index) => {
+								const isLast = index === workspaceSegments.length - 1;
+								return (
+									<span key={`${segment}-${index}`}>
+										{index === 0 ? "" : "/"}
+										<span style={isLast ? { color: Colors.LIGHT_GRAY5 } : undefined}>{segment}</span>
+									</span>
+								);
+							})}
+						</span>
+					</div>
 				) : null}
 				{displayWorkspacePath && !isWorkspacePathLoading ? (
-					<div style={{ marginLeft: 8 }}>
+					<div style={{ marginLeft: 8, flexShrink: 0 }}>
 						<OpenWorkspaceButton
 							options={openTargetOptions}
 							selectedOptionId={selectedOpenTargetId}
@@ -339,7 +369,10 @@ export function TopBar({
 					</>
 				) : null}
 			</NavbarGroup>
-			<NavbarGroup align={Alignment.RIGHT} style={{ height: 40, paddingRight: 2 }}>
+			<NavbarGroup
+				align={Alignment.RIGHT}
+				style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", height: 40, paddingRight: 2, flexShrink: 0 }}
+			>
 				{!hideProjectDependentActions && selectedShortcut && onRunShortcut ? (
 					<ButtonGroup>
 						<Button
