@@ -373,7 +373,9 @@ export function createMcpServer(cwd: string): McpServer {
 				autoReviewEnabled: z
 					.boolean()
 					.optional()
-					.describe("Optional replacement for whether this task should auto-run a review action."),
+					.describe(
+						"Optional replacement for whether this task should auto-run a review action. Set to false to cancel pending automatic review actions for the task.",
+					),
 				autoReviewMode: z
 					.enum(["commit", "pr", "move_to_trash"])
 					.optional()
