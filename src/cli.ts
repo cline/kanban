@@ -9,6 +9,7 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { WebSocket, WebSocketServer } from "ws";
+import packageJson from "../package.json" with { type: "json" };
 
 import { isHooksSubcommand, runHooksSubcommand } from "./hooks-cli.js";
 import { isMcpSubcommand, runMcpSubcommand } from "./mcp-cli.js";
@@ -55,6 +56,7 @@ import { createHooksApi } from "./runtime/trpc/hooks-api.js";
 import { createProjectsApi } from "./runtime/trpc/projects-api.js";
 import { createRuntimeApi } from "./runtime/trpc/runtime-api.js";
 import { createWorkspaceApi } from "./runtime/trpc/workspace-api.js";
+import { autoUpdateOnStartup } from "./runtime/update/auto-update.js";
 import { deleteTaskWorktree } from "./runtime/workspace/task-worktree.js";
 
 interface CliOptions {
@@ -83,6 +85,7 @@ const TASK_SESSION_STREAM_BATCH_MS = 150;
 const WORKSPACE_FILE_CHANGE_STREAM_BATCH_MS = 25;
 const WORKSPACE_FILE_WATCH_INTERVAL_MS = 2_000;
 const CLI_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode", "cline"];
+const KANBANANA_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 function parseCliAgentId(value: string): RuntimeAgentId {
 	const normalized = value.trim().toLowerCase();
@@ -1527,9 +1530,13 @@ async function run(): Promise<void> {
 		return;
 	}
 	if (options.version) {
-		console.log("0.1.0");
+		console.log(KANBANANA_VERSION);
 		return;
 	}
+
+	autoUpdateOnStartup({
+		currentVersion: KANBANANA_VERSION,
+	});
 
 	if (options.agent) {
 		const didChange = await persistCliAgentSelection(process.cwd(), options.agent);
