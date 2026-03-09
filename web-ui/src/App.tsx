@@ -1,54 +1,54 @@
 import { Alert, Button, Classes, Colors, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAppHotkeys } from "@/kanban/app/use-app-hotkeys";
-import { createIdleTaskSession } from "@/kanban/app/app-utils";
-import { useBoardInteractions } from "@/kanban/app/use-board-interactions";
-import { useDocumentVisibility } from "@/kanban/app/use-document-visibility";
-import { useGitActions } from "@/kanban/app/use-git-actions";
-import { useProjectUiState } from "@/kanban/app/use-project-ui-state";
-import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/kanban/app/use-project-navigation";
-import { RuntimeDisconnectedFallback } from "@/kanban/app/runtime-disconnected-fallback";
-import { useSelectedTaskWorkspaceInfo } from "@/kanban/app/use-selected-task-workspace-info";
-import { useShortcutActions } from "@/kanban/app/use-shortcut-actions";
-import { useTaskBranchOptions } from "@/kanban/app/use-task-branch-options";
-import { useTaskEditor } from "@/kanban/app/use-task-editor";
-import { useTerminalPanels } from "@/kanban/app/use-terminal-panels";
-import { useTaskSessions } from "@/kanban/app/use-task-sessions";
-import { useOpenWorkspace } from "@/kanban/app/use-open-workspace";
-import { useReviewReadyNotifications } from "@/kanban/app/use-review-ready-notifications";
-import { useTaskWorkspaceSnapshots } from "@/kanban/app/use-task-workspace-snapshots";
-import { useWorkspaceSync } from "@/kanban/app/use-workspace-sync";
-import { showAppToast } from "@/kanban/components/app-toaster";
-import { CardDetailView } from "@/kanban/components/card-detail-view";
-import { ClearTrashDialog } from "@/kanban/components/clear-trash-dialog";
-import { AgentTerminalPanel } from "@/kanban/components/detail-panels/agent-terminal-panel";
-import { GitHistoryView } from "@/kanban/components/git-history-view";
-import { KanbanBoard } from "@/kanban/components/kanban-board";
-import { KeyboardShortcutsDialog } from "@/kanban/components/keyboard-shortcuts-dialog";
-import { ProjectNavigationPanel } from "@/kanban/components/project-navigation-panel";
-import { ResizableBottomPane } from "@/kanban/components/resizable-bottom-pane";
-import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/kanban/components/runtime-settings-dialog";
-import { RuntimeStatusBanners } from "@/kanban/components/runtime-status-banners";
-import { TaskInlineCreateCard } from "@/kanban/components/task-inline-create-card";
-import { TaskTrashWarningDialog } from "@/kanban/components/task-trash-warning-dialog";
-import { TopBar } from "@/kanban/components/top-bar";
-import { createInitialBoardData } from "@/kanban/data/board-data";
-import type { PendingTrashWarningState } from "@/kanban/app/use-linked-backlog-task-actions";
+import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
+import { createIdleTaskSession } from "@/hooks/app-utils";
+import { useBoardInteractions } from "@/hooks/use-board-interactions";
+import { useDocumentVisibility } from "@/hooks/use-document-visibility";
+import { useGitActions } from "@/hooks/use-git-actions";
+import { useProjectUiState } from "@/hooks/use-project-ui-state";
+import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
+import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
+import { useSelectedTaskWorkspaceInfo } from "@/hooks/use-selected-task-workspace-info";
+import { useShortcutActions } from "@/hooks/use-shortcut-actions";
+import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
+import { useTaskEditor } from "@/hooks/use-task-editor";
+import { useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { useTaskSessions } from "@/hooks/use-task-sessions";
+import { useOpenWorkspace } from "@/hooks/use-open-workspace";
+import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
+import { useTaskWorkspaceSnapshots } from "@/hooks/use-task-workspace-snapshots";
+import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
+import { showAppToast } from "@/components/app-toaster";
+import { CardDetailView } from "@/components/card-detail-view";
+import { ClearTrashDialog } from "@/components/clear-trash-dialog";
+import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
+import { GitHistoryView } from "@/components/git-history-view";
+import { KanbanBoard } from "@/components/kanban-board";
+import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
+import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
+import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
+import { RuntimeStatusBanners } from "@/components/runtime-status-banners";
+import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
+import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
+import { TopBar } from "@/components/top-bar";
+import { createInitialBoardData } from "@/data/board-data";
+import type { PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
 import type {
 	RuntimeTaskSessionSummary,
-} from "@/kanban/runtime/types";
-import { useRuntimeProjectConfig } from "@/kanban/runtime/use-runtime-project-config";
-import { useTerminalConnectionReady } from "@/kanban/runtime/use-terminal-connection-ready";
-import { useWorkspacePersistence } from "@/kanban/runtime/use-workspace-persistence";
-import { saveWorkspaceState } from "@/kanban/runtime/workspace-state-query";
+} from "@/runtime/types";
+import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
+import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
+import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
+import { saveWorkspaceState } from "@/runtime/workspace-state-query";
 import {
 	findCardSelection,
-} from "@/kanban/state/board-state";
+} from "@/state/board-state";
 import type {
 	BoardData,
-} from "@/kanban/types";
-import { DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS } from "@/kanban/utils/task-prompt";
+} from "@/types";
+import { DISALLOWED_TASK_KICKOFF_SLASH_COMMANDS } from "@/utils/task-prompt";
 
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
