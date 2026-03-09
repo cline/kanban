@@ -11,6 +11,7 @@ import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from
 import {
 	applyDragResult,
 	clearColumnTasks,
+	disableTaskAutoReview,
 	findCardSelection,
 	getTaskColumnId,
 	moveTaskToColumn,
@@ -390,6 +391,10 @@ export function useBoardInteractions({
 		async (task: BoardCard, taskId: string, options?: { optimisticMoveApplied?: boolean }): Promise<void> => {
 			const resumed = await startTaskSession(task, { resumeFromTrash: true });
 			if (resumed.ok) {
+				setBoard((currentBoard) => {
+					const disabledAutoReview = disableTaskAutoReview(currentBoard, taskId);
+					return disabledAutoReview.updated ? disabledAutoReview.board : currentBoard;
+				});
 				onWorktreeError(null);
 				return;
 			}

@@ -422,6 +422,24 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 	return { board: withUpdatedColumns(board, columns), updated: true };
 }
 
+export function disableTaskAutoReview(
+	board: BoardData,
+	taskId: string,
+): { board: BoardData; updated: boolean } {
+	const selection = findCardSelection(board, taskId);
+	if (!selection) {
+		return { board, updated: false };
+	}
+
+	return updateTask(board, taskId, {
+		prompt: selection.card.prompt,
+		startInPlanMode: selection.card.startInPlanMode,
+		autoReviewEnabled: false,
+		autoReviewMode: DEFAULT_TASK_AUTO_REVIEW_MODE,
+		baseRef: selection.card.baseRef,
+	});
+}
+
 export function removeTask(board: BoardData, taskId: string): { board: BoardData; removed: boolean } {
 	let removed = false;
 	const columns = board.columns.map((column) => {
