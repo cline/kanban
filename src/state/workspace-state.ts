@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 
 import {
@@ -26,6 +26,7 @@ const BOARD_FILENAME = "board.json";
 const SESSIONS_FILENAME = "sessions.json";
 const META_FILENAME = "meta.json";
 const INDEX_VERSION = 1;
+const WORKSPACE_ID_COLLISION_SUFFIX_LENGTH = 4;
 
 const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "backlog", title: "Backlog" },
@@ -300,8 +301,46 @@ async function writeWorkspaceIndex(index: WorkspaceIndexFile): Promise<void> {
 	await writeJsonFileAtomic(getWorkspaceIndexPath(), index);
 }
 
-function hashWorkspacePath(repoPath: string, salt = ""): string {
-	return createHash("sha256").update(repoPath).update(salt).digest("hex").slice(0, 16);
+function toWorkspaceIdBase(repoPath: string): string {
+	const trimmed = repoPath.trim().replace(/[\\/]+$/g, "");
+	const folderName = basename(trimmed) || "project";
+	const normalized = folderName
+		.normalize("NFKD")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+	return normalized || "project";
+}
+
+function createWorkspaceIdCollisionSuffix(length: number): string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+	let suffix = "";
+	while (suffix.length < length) {
+		const bytes = randomBytes(length);
+		for (const byte of bytes) {
+			suffix += alphabet[byte % alphabet.length] ?? "";
+			if (suffix.length === length) {
+				break;
+			}
+		}
+	}
+	return suffix;
+}
+
+function createWorkspaceId(index: WorkspaceIndexFile, repoPath: string): string {
+	const baseId = toWorkspaceIdBase(repoPath);
+	if (!index.entries[baseId] || index.entries[baseId]?.repoPath === repoPath) {
+		return baseId;
+	}
+
+	for (let attempt = 0; attempt < 256; attempt += 1) {
+		const candidate = `${baseId}-${createWorkspaceIdCollisionSuffix(WORKSPACE_ID_COLLISION_SUFFIX_LENGTH)}`;
+		if (!index.entries[candidate] || index.entries[candidate]?.repoPath === repoPath) {
+			return candidate;
+		}
+	}
+
+	throw new Error(`Could not generate a unique workspace ID for ${repoPath}.`);
 }
 
 function ensureWorkspaceEntry(
@@ -320,12 +359,7 @@ function ensureWorkspaceEntry(
 		}
 	}
 
-	let salt = "";
-	let workspaceId = hashWorkspacePath(repoPath);
-	while (index.entries[workspaceId] && index.entries[workspaceId]?.repoPath !== repoPath) {
-		salt = `${salt}#`;
-		workspaceId = hashWorkspacePath(repoPath, salt);
-	}
+	const workspaceId = createWorkspaceId(index, repoPath);
 
 	const entry: WorkspaceIndexEntry = {
 		workspaceId,

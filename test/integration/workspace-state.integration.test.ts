@@ -175,6 +175,37 @@ describe.sequential("workspace-state integration", () => {
 		});
 	});
 
+	it("creates readable workspace ids from folder names with random suffix on collisions", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-id-format-");
+			try {
+				const workspaceAPath = join(sandboxRoot, "one", "vscrui");
+				const workspaceBPath = join(sandboxRoot, "two", "vscrui");
+				const workspaceCPath = join(sandboxRoot, "three", "My Cool Repo");
+				mkdirSync(workspaceAPath, { recursive: true });
+				mkdirSync(workspaceBPath, { recursive: true });
+				mkdirSync(workspaceCPath, { recursive: true });
+				initGitRepository(workspaceAPath);
+				initGitRepository(workspaceBPath);
+				initGitRepository(workspaceCPath);
+
+				const contextA = await loadWorkspaceContext(workspaceAPath);
+				const contextB = await loadWorkspaceContext(workspaceBPath);
+				const contextC = await loadWorkspaceContext(workspaceCPath);
+
+				expect(contextA.workspaceId).toBe("vscrui");
+				expect(contextB.workspaceId).toMatch(/^vscrui-[a-z0-9]{4}$/);
+				expect(contextB.workspaceId).not.toBe(contextA.workspaceId);
+				expect(contextC.workspaceId).toBe("my-cool-repo");
+
+				const contextAAgain = await loadWorkspaceContext(workspaceAPath);
+				expect(contextAAgain.workspaceId).toBe(contextA.workspaceId);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("can require an existing project without auto-creating workspace entries", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-autocreate-");
