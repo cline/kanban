@@ -269,6 +269,7 @@ export function useTaskEditor({
 		trackTaskCreated({
 			selected_agent_id: selectedAgentId ?? "unknown",
 			start_in_plan_mode: newTaskStartInPlanMode,
+			...(newTaskAutoReviewEnabled ? { auto_review_mode: newTaskAutoReviewMode } : {}),
 			prompt_character_count: prompt.length,
 		});
 		if (currentProjectId) {

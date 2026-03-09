@@ -3,6 +3,7 @@ import { useCallback } from "react";
 
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import { trackTaskResumedFromTrash } from "@/telemetry/events";
 import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoResponse,
@@ -123,6 +124,9 @@ export function useTaskSessions({
 					};
 				}
 				upsertSession(payload.summary);
+				if (options?.resumeFromTrash) {
+					trackTaskResumedFromTrash();
+				}
 				return { ok: true };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

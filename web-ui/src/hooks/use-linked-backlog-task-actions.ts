@@ -11,6 +11,7 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
+import { trackTaskDependencyCreated } from "@/telemetry/events";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
@@ -99,6 +100,7 @@ export function useLinkedBacklogTaskActions({
 				const latestResult = addTaskDependency(currentBoard, fromTaskId, toTaskId);
 				return latestResult.added ? latestResult.board : currentBoard;
 			});
+			trackTaskDependencyCreated();
 		},
 		[setBoard],
 	);
