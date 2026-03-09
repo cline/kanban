@@ -460,7 +460,7 @@ If a new subsystem becomes substantial, add focused unit tests for that subsyste
 - [x] Phase 2: extract runtime state hub
 - [x] Phase 3: extract HTTP host and runtime server composition
 - [x] Phase 4: extract shutdown coordinator
-- [ ] Final cleanup: reduce `cli.ts` to bootstrap and signal wiring only
+- [x] Final cleanup: reduce `cli.ts` to bootstrap and signal wiring only
 
 ## Immediate Next Slice
 
@@ -472,3 +472,14 @@ The most pragmatic next step is Final cleanup:
 4. stop once the file is easy to navigate and each remaining helper is clearly CLI-specific
 
 At this point the biggest runtime ownership boundaries are extracted, so the last step should be a restraint pass rather than another large move.
+
+Completed in the final cleanup slice:
+- moved shutdown-only board persistence and interrupted worktree cleanup helpers into `src/runtime/server/shutdown-coordinator.ts`
+- removed the extra terminal-manager tracking wrapper in `src/cli.ts` and now rely on the workspace registry readiness callback plus startup backfill
+- kept the remaining filesystem, git, shortcut, and system-dialog helpers in `src/cli.ts` because extracting them further would create thin wrapper modules without clearer ownership
+- reduced `src/cli.ts` to CLI parsing, startup fallback handling, runtime subsystem composition, browser opening, and signal wiring
+
+Final result:
+- `src/cli.ts` is now the bootstrap and orchestration entrypoint rather than the owner of long-lived runtime state
+- runtime ownership is split across `workspace-registry.ts`, `runtime-state-hub.ts`, `runtime-server.ts`, and `shutdown-coordinator.ts`
+- existing runtime integration behavior remains covered by the current validators

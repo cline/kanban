@@ -9,7 +9,6 @@ import { isMcpSubcommand, runMcpSubcommand } from "./mcp-cli.js";
 import type {
 	RuntimeAgentId,
 	RuntimeShortcutRunResponse,
-	RuntimeWorkspaceStateResponse,
 } from "./runtime/api-contract.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./runtime/config/runtime-config.js";
 import { createGitProcessEnv } from "./runtime/git-process-env.js";
@@ -25,17 +24,13 @@ import { shutdownRuntimeServer } from "./runtime/server/shutdown-coordinator.js"
 import { resolveInteractiveShellCommand } from "./runtime/server/shell.js";
 import {
 	loadWorkspaceContext,
-	loadWorkspaceState,
-	saveWorkspaceState,
 } from "./runtime/state/workspace-state.js";
 import {
 	collectProjectWorktreeTaskIdsForRemoval,
 	createWorkspaceRegistry,
 } from "./runtime/server/workspace-registry.js";
-import { updateTaskDependencies } from "./runtime/task-board-mutations.js";
 import type { TerminalSessionManager } from "./runtime/terminal/session-manager.js";
 import { autoUpdateOnStartup } from "./runtime/update/auto-update.js";
-import { deleteTaskWorktree } from "./runtime/workspace/task-worktree.js";
 
 interface CliOptions {
 	help: boolean;
@@ -300,104 +295,6 @@ async function runShortcutCommand(command: string, cwd: string): Promise<Runtime
 	});
 }
 
-function moveTaskToTrash(
-	board: RuntimeWorkspaceStateResponse["board"],
-	taskId: string,
-): RuntimeWorkspaceStateResponse["board"] {
-	const columns = board.columns.map((column) => ({
-		...column,
-		cards: [...column.cards],
-	}));
-	let removedCard: RuntimeWorkspaceStateResponse["board"]["columns"][number]["cards"][number] | undefined;
-
-	for (const column of columns) {
-		const cardIndex = column.cards.findIndex((candidate) => candidate.id === taskId);
-		if (cardIndex === -1) {
-			continue;
-		}
-		removedCard = column.cards[cardIndex];
-		column.cards.splice(cardIndex, 1);
-		break;
-	}
-
-	if (!removedCard) {
-		return board;
-	}
-	const trashColumnIndex = columns.findIndex((column) => column.id === "trash");
-	if (trashColumnIndex === -1) {
-		return board;
-	}
-	const trashColumn = columns[trashColumnIndex];
-	if (!trashColumn.cards.some((candidate) => candidate.id === taskId)) {
-		trashColumn.cards.unshift({
-			...removedCard,
-			updatedAt: Date.now(),
-		});
-	}
-	return updateTaskDependencies({
-		...board,
-		columns,
-	});
-}
-
-async function persistInterruptedSessions(
-	cwd: string,
-	interruptedTaskIds: string[],
-	terminalManager: TerminalSessionManager,
-): Promise<string[]> {
-	if (interruptedTaskIds.length === 0) {
-		return [];
-	}
-	const workspaceState = await loadWorkspaceState(cwd);
-	const worktreeTaskIds = collectProjectWorktreeTaskIdsForRemoval(workspaceState.board);
-	const worktreeTaskIdsToCleanup = interruptedTaskIds.filter((taskId) => worktreeTaskIds.has(taskId));
-	let nextBoard = workspaceState.board;
-	for (const taskId of interruptedTaskIds) {
-		nextBoard = moveTaskToTrash(nextBoard, taskId);
-	}
-	const nextSessions = {
-		...workspaceState.sessions,
-	};
-	for (const taskId of interruptedTaskIds) {
-		const summary = terminalManager.getSummary(taskId);
-		if (summary) {
-			nextSessions[taskId] = {
-				...summary,
-				state: "interrupted",
-				reviewReason: "interrupted",
-				updatedAt: Date.now(),
-			};
-		}
-	}
-	await saveWorkspaceState(cwd, {
-		board: nextBoard,
-		sessions: nextSessions,
-	});
-	return worktreeTaskIdsToCleanup;
-}
-
-async function cleanupInterruptedTaskWorktrees(repoPath: string, taskIds: string[]): Promise<void> {
-	if (taskIds.length === 0) {
-		return;
-	}
-	const deletions = await Promise.all(
-		taskIds.map(async (taskId) => ({
-			taskId,
-			deleted: await deleteTaskWorktree({
-				repoPath,
-				taskId,
-			}),
-		})),
-	);
-	for (const { taskId, deleted } of deletions) {
-		if (deleted.ok) {
-			continue;
-		}
-		const message = deleted.error ?? `Could not delete task workspace for task "${taskId}" during shutdown.`;
-		console.warn(`[kanbanana] ${message}`);
-	}
-}
-
 async function startServer(): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
 	let runtimeStateHub: ReturnType<typeof createRuntimeStateHub> | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
@@ -416,15 +313,6 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
 		runtimeHub.trackTerminalManager(workspaceId, terminalManager);
 	}
-
-	const ensureTrackedTerminalManagerForWorkspace = async (
-		workspaceId: string,
-		repoPath: string,
-	): Promise<TerminalSessionManager> => {
-		const manager = await workspaceRegistry.ensureTerminalManagerForWorkspace(workspaceId, repoPath);
-		runtimeHub.trackTerminalManager(workspaceId, manager);
-		return manager;
-	};
 
 	const disposeTrackedWorkspace = (
 		workspaceId: string,
@@ -445,7 +333,7 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 		warn: (message) => {
 			console.warn(`[kanbanana] ${message}`);
 		},
-		ensureTerminalManagerForWorkspace: ensureTrackedTerminalManagerForWorkspace,
+		ensureTerminalManagerForWorkspace: workspaceRegistry.ensureTerminalManagerForWorkspace,
 		resolveInteractiveShellCommand,
 		runShortcutCommand,
 		resolveProjectInputPath,
@@ -463,8 +351,9 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 	const shutdown = async () => {
 		await shutdownRuntimeServer({
 			workspaceRegistry,
-			persistInterruptedSessions,
-			cleanupInterruptedTaskWorktrees,
+			warn: (message) => {
+				console.warn(`[kanbanana] ${message}`);
+			},
 			closeRuntimeServer: close,
 		});
 	};
