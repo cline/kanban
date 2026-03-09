@@ -1,107 +1,62 @@
-# kanban
+# kanban (Research Preview)
 
-A kanban board for coding agents.
+A Human-in-the-Loop Agent Swarm Orchestration layer that gives more autonomy to your CLI agents with task dependency linking and automatic commits and pull requests. Each task runs in its own branchless worktree with .gitignore'd files like node_modules symlinked so your filesystem and git don't get polluted, letting you run hundreds of tasks in parallel on any computer. It also comes with a visualizer for your git branches and commit history, so you can keep track of the work your agents do.
 
-CLI agents are powerful, but using more than one at a time is a mess. You end up juggling terminals, worrying about git conflicts, and manually coordinating who works on what. Kanban gives you a simple pattern: a kanban board where each task runs its own agent in its own git worktree, completely isolated from everything else.
+1. Install an agent like Claude Code, Codex, Gemini, OpenCode, Cline
+2. Run `npx kanban` (or install with `npm i -g kanban`) in your repo to launch a web GUI
+3. Create tasks, link dependencies, hit the play button, and watch agents work in parallel. You can even use Kanban MCP to tell an agent to create parallelizable tasks and links in clever ways to get projects done quickly.
+4. When they finish, you review diffs, leave comments, and commit or make a PR.
 
-You create tasks, hit play, and watch agents work in parallel. When they finish, you review the diffs, leave comments, and merge. That's it.
-
-## Quick start
+<div align="center">
+<table>
+<tbody>
+<td align="center">
+<a href="https://www.npmjs.com/package/kanban" target="_blank">NPM</a>
+</td>
+<td align="center">
+<a href="https://github.com/cline/kanban" target="_blank">GitHub</a>
+</td>
+<td align="center">
+<a href="https://github.com/cline/kanban/issues" target="_blank">Issues</a>
+</td>
+<td align="center">
+<a href="https://github.com/cline/kanban/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop" target="_blank">Feature Requests</a>
+</td>
+<td align="center">
+<a href="https://discord.gg/cline" target="_blank">Discord</a>
+</td>
+<td align="center">
+<a href="https://x.com/caborncline" target="_blank">@cline</a> / <a href="https://x.com/sdrzn" target="_blank">@sdrzn</a>
+</td>
+</tbody>
+</table>
+</div>
 
 ```bash
 npx kanban
 ```
 
-This launches the web UI in your browser and starts the local runtime server. Kanban auto-detects which CLI agent you have installed and uses it to run tasks.
+This is where things get interesting. The MCP server lets your agent become an orchestrator that delegates work to other agents.
 
-If you have multiple agents installed, you can pick one:
-
-```bash
-npx kanban --agent claude
-```
-
-Supported agents: `claude`, `codex`, `gemini`, `opencode`, `cline`
-
-## How it works
-
-Kanban is a local-only tool. Nothing leaves your machine. It runs an HTTP server on `127.0.0.1:3484` and opens a web UI where you manage everything.
-
-The core idea is simple:
-
-1. You add tasks to the backlog. Each task is just a prompt describing the work.
-2. When you start a task, Kanban creates a git worktree for it and launches your chosen CLI agent inside that worktree. The agent works in total isolation from your main branch and from every other task.
-3. While agents work, the board shows live status. You can see which tasks are running, which are waiting for review, and what each agent is doing.
-4. When an agent finishes (or needs input), the task moves to review. You see the full diff of every change, can leave line comments, and decide what to do next.
-5. You merge the work, send it back for more changes, or toss it.
-
-Multiple agents run simultaneously without stepping on each other because each one gets its own worktree. You don't have to think about branches or conflicts until you're ready to merge.
-
-## The MCP server
-
-Kanban includes an MCP server that lets your agent manage the board directly. This is where things get interesting: an agent can create tasks, tune their automation settings, link dependent work together, start them, and inspect what's on the board, turning a single agent into an orchestrator that delegates work to other agents.
-
-To add the MCP server to your agent, add it with stdio:
+Add it to your agent:
 
 ```bash
 claude mcp add --transport stdio --scope user kanban -- kanban mcp
 ```
 
-The MCP server exposes these tools:
+With the MCP tools, your agent can:
 
-- `list_tasks` -- see what's on the board, including task links and auto-review settings
-- `create_task` -- add a new task to backlog, optionally with auto-review enabled
-- `update_task` -- change a task's prompt, base ref, plan mode, or auto-review settings
-- `link_tasks` -- link tasks so backlog work can wait on another task
-- `unlink_tasks` -- remove an existing task link
-- `start_task` -- kick off a task (creates the worktree, launches the agent)
+- `list_tasks` / see what's on the board, including task links and auto-review settings
+- `create_task` / add a new task to backlog, optionally with auto-review enabled
+- `update_task` / change a task's prompt, base ref, plan mode, or auto-review settings
+- `link_tasks` / link tasks so backlog work waits on another task to finish first
+- `unlink_tasks` / remove a task link
+- `start_task` / kick off a task (creates the worktree, launches the agent)
 
-Task linking is useful both for parallelization and for dependencies. When a larger effort is easy to break into multiple tasks that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes. When one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task. When the linked task eventually reaches review and gets moved to trash, the waiting backlog task becomes ready to start automatically.
+Task linking handles both parallelization and dependencies. Link multiple backlog tasks to the same dependency and they all become ready once it finishes. Auto-review settings let a task automatically commit, open a PR, or clean itself up after reaching review.
 
-Auto-review settings let a task automatically make a commit, open a PR, or move itself to trash after it reaches review.
-
-This means you can tell your agent something like "break this feature into subtasks on the kanban board, then start them all" and it will use the MCP tools to do exactly that. Each subtask runs in its own worktree with its own agent instance, all managed through the board.
-
-## CLI reference
-
-```
-kanban [options]
-
-Options:
-  --port <number>   Bind the runtime server to a specific port (default: 3484)
-  --agent <id>      Set the default agent (claude, codex, gemini, opencode, cline)
-  --no-open         Don't auto-open the browser
-  --help            Print usage
-  --version         Print version
-
-Subcommands:
-  kanban mcp     Run as an MCP stdio server
-```
-
-After installing globally, you can also view the man page:
-
-```bash
-man kanban
-```
-
-## Why a kanban board?
-
-The problem with running multiple agents isn't the agents themselves. It's coordination. You need to know what's happening, what's done, and what needs your attention. A kanban board is a natural fit because it gives you that visibility without adding process overhead.
-
-The columns map directly to agent lifecycle:
-
-- Backlog: work that's defined but not started
-- In Progress: an agent is actively working on it
-- Review: the agent is done (or paused) and needs your eyes
-- Done: merged and finished
-
-Each transition happens automatically. When you start a task, it moves to in progress. When the agent finishes or hits a permission boundary, it moves to review. You drag it back to in progress if you want the agent to keep going.
-
-This pattern scales. Five tasks running in parallel looks the same as one. You just check the board and handle whatever's in review.
-
-## Contributing
-
-See [DEVELOPMENT.md](DEVELOPMENT.md) for setup instructions, scripts, and architecture details.
+Tell your agent "break this feature into subtasks on the kanban board, then start them all" and it will use the MCP tools to do exactly that. Each subtask runs in its own worktree with its own agent instance.
 
 ## License
 
-Apache-2.0
+[Apache 2.0 (c) 2026 Cline Bot Inc.](./LICENSE)
