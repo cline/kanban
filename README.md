@@ -40,10 +40,10 @@ Multiple agents run simultaneously without stepping on each other because each o
 
 Kanban includes an MCP server that lets your agent manage the board directly. This is where things get interesting: an agent can create tasks, tune their automation settings, link dependent work together, start them, and inspect what's on the board, turning a single agent into an orchestrator that delegates work to other agents.
 
-To add the MCP server to your agent, point it at:
+To add the MCP server to your agent, add it with stdio:
 
 ```bash
-kanban mcp
+claude mcp add --transport stdio --scope user kanban -- kanban mcp
 ```
 
 The MCP server exposes these tools:
