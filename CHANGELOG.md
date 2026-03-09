@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.1]
+
+- Update version number
+
 ## [0.1.0]
 
 - Each task gets its own CLI agent working in a git worktree, so they can work in parallel on the same codebase without stepping on each other
