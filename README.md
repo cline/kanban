@@ -1,5 +1,9 @@
 # kanban (Research Preview)
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/deabc452-a340-4210-b42f-f8696be04ee9" width="100%" />
+</p>
+
 <div align="center">
 <table>
 <tbody>
@@ -34,7 +38,7 @@ A Human-in-the-Loop Agent Swarm Orchestration layer that gives more autonomy to 
 3. Create tasks, link dependencies, hit the play button, and watch agents work in parallel. You can even use Kanban MCP to tell an agent to create parallelizable tasks and links in clever ways to get projects done quickly.
 4. When they finish, you review diffs, leave comments, and commit or make a PR.
 
-The MCP server lets your agent become an orchestrator that delegates work to other agents.
+Use MCP to let the agent add and start tasks on the kanban board itself, decomposing large work into parallelizable linked tasks in clever ways to get work done quicker.
 
 ```bash
 claude mcp add --transport stdio --scope user kanban -- kanban mcp
@@ -42,16 +46,14 @@ claude mcp add --transport stdio --scope user kanban -- kanban mcp
 
 With the MCP tools, your agent can:
 
-- `list_tasks` / see what's on the board, including task links and auto-review settings
-- `create_task` / add a new task to backlog, optionally with auto-review enabled
-- `update_task` / change a task's prompt, base ref, plan mode, or auto-review settings
-- `link_tasks` / link tasks so backlog work waits on another task to finish first
-- `unlink_tasks` / remove a task link
-- `start_task` / kick off a task (creates the worktree, launches the agent)
+- `list_tasks`: see what's on the board, including task links and auto-review settings
+- `create_task`: add a new task to backlog, optionally with auto-review enabled
+- `update_task`: change a task's prompt, base ref, plan mode, or auto-review settings
+- `link_tasks`: link tasks so backlog work waits on another task to finish first
+- `unlink_tasks`: remove a task link
+- `start_task`: kick off a task (creates the worktree, launches the agent)
 
-Task linking handles both parallelization and dependencies. Link multiple backlog tasks to the same dependency and they all become ready once it finishes. Auto-review settings let a task automatically commit, open a PR, or clean itself up after reaching review.
-
-Tell your agent "break this feature into subtasks on the kanban board, then start them all" and it will use the MCP tools to do exactly that. Each subtask runs in its own worktree with its own agent instance.
+Task linking handles both parallelization and dependencies. Link multiple backlog tasks to the same dependency and they all become ready once it finishes. Auto-review settings let a task automatically commit, open a PR, or move to trash.
 
 ## License
 
