@@ -4,14 +4,13 @@ import { showAppToast } from "@/components/app-toaster";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 
 interface RuntimeShortcut {
-	id: string;
 	label: string;
 	command: string;
 }
 
 interface UseShortcutActionsInput {
 	currentProjectId: string | null;
-	selectedShortcutId: string | null | undefined;
+	selectedShortcutLabel: string | null | undefined;
 	shortcuts: RuntimeShortcut[];
 	refreshRuntimeProjectConfig: () => void;
 	prepareTerminalForShortcut: (input: {
@@ -26,30 +25,30 @@ interface UseShortcutActionsInput {
 }
 
 interface UseShortcutActionsResult {
-	runningShortcutId: string | null;
-	handleSelectShortcutId: (shortcutId: string) => void;
-	handleRunShortcut: (shortcutId: string) => Promise<void>;
+	runningShortcutLabel: string | null;
+	handleSelectShortcutLabel: (shortcutLabel: string) => void;
+	handleRunShortcut: (shortcutLabel: string) => Promise<void>;
 }
 
 export function useShortcutActions({
 	currentProjectId,
-	selectedShortcutId,
+	selectedShortcutLabel,
 	shortcuts,
 	refreshRuntimeProjectConfig,
 	prepareTerminalForShortcut,
 	prepareWaitForTerminalConnectionReady,
 	sendTaskSessionInput,
 }: UseShortcutActionsInput): UseShortcutActionsResult {
-	const [runningShortcutId, setRunningShortcutId] = useState<string | null>(null);
+	const [runningShortcutLabel, setRunningShortcutLabel] = useState<string | null>(null);
 
 	const saveSelectedShortcutPreference = useCallback(
-		async (nextShortcutId: string | null): Promise<boolean> => {
+		async (nextShortcutLabel: string | null): Promise<boolean> => {
 			if (!currentProjectId) {
 				return false;
 			}
 			try {
 				await saveRuntimeConfig(currentProjectId, {
-					selectedShortcutId: nextShortcutId,
+					selectedShortcutLabel: nextShortcutLabel,
 				});
 				refreshRuntimeProjectConfig();
 				return true;
@@ -70,24 +69,24 @@ export function useShortcutActions({
 		[currentProjectId, refreshRuntimeProjectConfig],
 	);
 
-	const handleSelectShortcutId = useCallback(
-		(shortcutId: string) => {
-			if (shortcutId === selectedShortcutId) {
+	const handleSelectShortcutLabel = useCallback(
+		(shortcutLabel: string) => {
+			if (shortcutLabel === selectedShortcutLabel) {
 				return;
 			}
-			void saveSelectedShortcutPreference(shortcutId);
+			void saveSelectedShortcutPreference(shortcutLabel);
 		},
-		[saveSelectedShortcutPreference, selectedShortcutId],
+		[saveSelectedShortcutPreference, selectedShortcutLabel],
 	);
 
 	const handleRunShortcut = useCallback(
-		async (shortcutId: string) => {
-			const shortcut = shortcuts.find((item) => item.id === shortcutId);
+		async (shortcutLabel: string) => {
+			const shortcut = shortcuts.find((item) => item.label === shortcutLabel);
 			if (!shortcut || !currentProjectId) {
 				return;
 			}
 
-			setRunningShortcutId(shortcutId);
+			setRunningShortcutLabel(shortcutLabel);
 			try {
 				const prepared = await prepareTerminalForShortcut({
 					prepareWaitForTerminalConnectionReady,
@@ -110,10 +109,10 @@ export function useShortcutActions({
 						message: `Could not run shortcut "${shortcut.label}": ${message}`,
 						timeout: 6000,
 					},
-					`shortcut-run-failed:${shortcut.id}`,
+					`shortcut-run-failed:${shortcut.label}`,
 				);
 			} finally {
-				setRunningShortcutId(null);
+				setRunningShortcutLabel(null);
 			}
 		},
 		[
@@ -126,8 +125,8 @@ export function useShortcutActions({
 	);
 
 	return {
-		runningShortcutId,
-		handleSelectShortcutId,
+		runningShortcutLabel,
+		handleSelectShortcutLabel,
 		handleRunShortcut,
 	};
 }

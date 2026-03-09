@@ -158,9 +158,9 @@ export function TopBar({
 	onOpenSettings,
 	onOpenKeyboardShortcuts,
 	shortcuts,
-	selectedShortcutId,
-	onSelectShortcutId,
-	runningShortcutId,
+	selectedShortcutLabel,
+	onSelectShortcutLabel,
+	runningShortcutLabel,
 	onRunShortcut,
 	openTargetOptions,
 	selectedOpenTargetId,
@@ -189,10 +189,10 @@ export function TopBar({
 	onOpenSettings?: (section?: SettingsSection) => void;
 	onOpenKeyboardShortcuts?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
-	selectedShortcutId?: string | null;
-	onSelectShortcutId?: (shortcutId: string) => void;
-	runningShortcutId?: string | null;
-	onRunShortcut?: (shortcutId: string) => void;
+	selectedShortcutLabel?: string | null;
+	onSelectShortcutLabel?: (shortcutLabel: string) => void;
+	runningShortcutLabel?: string | null;
+	onRunShortcut?: (shortcutLabel: string) => void;
 	openTargetOptions: readonly OpenTargetOption[];
 	selectedOpenTargetId: OpenTargetId;
 	onSelectOpenTarget: (targetId: OpenTargetId) => void;
@@ -227,8 +227,12 @@ export function TopBar({
 	const handleAddShortcut = () => {
 		onOpenSettings?.("shortcuts");
 	};
-	const selectedShortcut =
-		(shortcuts ?? []).find((shortcut) => shortcut.id === selectedShortcutId) ?? (shortcuts ?? [])[0] ?? null;
+	const shortcutItems = shortcuts ?? [];
+	const selectedShortcutIndex =
+		selectedShortcutLabel === null || selectedShortcutLabel === undefined
+			? 0
+			: shortcutItems.findIndex((shortcut) => shortcut.label === selectedShortcutLabel);
+	const selectedShortcut = shortcutItems[selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0] ?? null;
 
 	return (
 		<Navbar
@@ -409,11 +413,11 @@ export function TopBar({
 						<Button
 							variant="outlined"
 							size="small"
-							icon={<Icon icon={resolveShortcutIcon(selectedShortcut.icon)} size={13} />}
+							icon={resolveShortcutIcon(selectedShortcut.icon)}
 							text={selectedShortcut.label}
-							loading={Boolean(runningShortcutId)}
-							onClick={() => onRunShortcut(selectedShortcut.id)}
-							disabled={Boolean(runningShortcutId)}
+							loading={Boolean(runningShortcutLabel)}
+							onClick={() => onRunShortcut(selectedShortcut.label)}
+							disabled={Boolean(runningShortcutLabel)}
 							style={{ fontSize: "var(--bp-typography-size-body-small)" }}
 						/>
 						<Popover
@@ -421,15 +425,17 @@ export function TopBar({
 							placement="bottom-end"
 							content={
 								<Menu>
-									{(shortcuts ?? []).map((shortcut) => (
+									{shortcutItems.map((shortcut, shortcutIndex) => (
 										<MenuItem
-											key={shortcut.id}
+											key={`${shortcut.label}:${shortcut.command}:${shortcutIndex}`}
 											icon={resolveShortcutIcon(shortcut.icon)}
 											text={shortcut.label}
-											active={shortcut.id === selectedShortcut.id}
-											onClick={() => onSelectShortcutId?.(shortcut.id)}
+											active={shortcutIndex === (selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0)}
+											onClick={() => onSelectShortcutLabel?.(shortcut.label)}
 											labelElement={
-												shortcut.id === selectedShortcut.id ? <Icon icon="small-tick" /> : undefined
+												shortcutIndex === (selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0) ? (
+													<Icon icon="small-tick" />
+												) : undefined
 											}
 										/>
 									))}
@@ -443,7 +449,7 @@ export function TopBar({
 								variant="outlined"
 								icon="caret-down"
 								aria-label="Select shortcut"
-								disabled={Boolean(runningShortcutId)}
+								disabled={Boolean(runningShortcutLabel)}
 							/>
 						</Popover>
 					</ButtonGroup>
@@ -469,7 +475,7 @@ export function TopBar({
 							onClick={onToggleTerminal}
 							disabled={Boolean(isTerminalLoading)}
 							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
-							style={{ marginLeft: 5 }}
+							style={{ marginLeft: 8 }}
 						/>
 					</Tooltip>
 				) : null}

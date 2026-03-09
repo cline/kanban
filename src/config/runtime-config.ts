@@ -8,7 +8,7 @@ import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils.js";
 
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
-	selectedShortcutId?: string;
+	selectedShortcutLabel?: string;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
 	commitPromptTemplate?: string;
@@ -23,7 +23,7 @@ export interface RuntimeConfigState {
 	globalConfigPath: string;
 	projectConfigPath: string;
 	selectedAgentId: RuntimeAgentId;
-	selectedShortcutId: string | null;
+	selectedShortcutLabel: string | null;
 	agentAutonomousModeEnabled: boolean;
 	readyForReviewNotificationsEnabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
@@ -35,7 +35,7 @@ export interface RuntimeConfigState {
 
 export interface RuntimeConfigUpdateInput {
 	selectedAgentId?: RuntimeAgentId;
-	selectedShortcutId?: string | null;
+	selectedShortcutLabel?: string | null;
 	agentAutonomousModeEnabled?: boolean;
 	readyForReviewNotificationsEnabled?: boolean;
 	shortcuts?: RuntimeProjectShortcut[];
@@ -129,17 +129,15 @@ function normalizeShortcut(shortcut: RuntimeProjectShortcut): RuntimeProjectShor
 		return null;
 	}
 
-	const id = typeof shortcut.id === "string" ? shortcut.id.trim() : "";
 	const label = typeof shortcut.label === "string" ? shortcut.label.trim() : "";
 	const command = typeof shortcut.command === "string" ? shortcut.command.trim() : "";
 	const icon = typeof shortcut.icon === "string" ? shortcut.icon.trim() : "";
 
-	if (!id || !label || !command) {
+	if (!label || !command) {
 		return null;
 	}
 
 	return {
-		id,
 		label,
 		command,
 		icon: icon || undefined,
@@ -175,7 +173,7 @@ function normalizeBoolean(value: unknown, fallback: boolean): boolean {
 	return fallback;
 }
 
-function normalizeShortcutId(value: unknown): string | null {
+function normalizeShortcutLabel(value: unknown): string | null {
 	if (typeof value !== "string") {
 		return null;
 	}
@@ -213,7 +211,7 @@ function toRuntimeConfigState({
 		globalConfigPath,
 		projectConfigPath,
 		selectedAgentId: normalizeAgentId(globalConfig?.selectedAgentId),
-		selectedShortcutId: normalizeShortcutId(globalConfig?.selectedShortcutId),
+		selectedShortcutLabel: normalizeShortcutLabel(globalConfig?.selectedShortcutLabel),
 		agentAutonomousModeEnabled: normalizeBoolean(
 			globalConfig?.agentAutonomousModeEnabled,
 			DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED,
@@ -246,7 +244,7 @@ async function writeRuntimeGlobalConfigFile(
 	configPath: string,
 	config: {
 		selectedAgentId?: RuntimeAgentId;
-		selectedShortcutId?: string | null;
+		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		readyForReviewNotificationsEnabled?: boolean;
 		commitPromptTemplate?: string;
@@ -258,11 +256,11 @@ async function writeRuntimeGlobalConfigFile(
 	const existingSelectedAgentId = hasOwnKey(existing, "selectedAgentId")
 		? normalizeAgentId(existing?.selectedAgentId)
 		: undefined;
-	const selectedShortcutId =
-		config.selectedShortcutId === undefined ? undefined : normalizeShortcutId(config.selectedShortcutId);
-	const existingSelectedShortcutId = hasOwnKey(existing, "selectedShortcutId")
-		? normalizeShortcutId(existing?.selectedShortcutId)
-		: undefined;
+	const selectedShortcutLabel =
+		config.selectedShortcutLabel === undefined ? undefined : normalizeShortcutLabel(config.selectedShortcutLabel);
+	const existingSelectedShortcutLabel = hasOwnKey(existing, "selectedShortcutLabel")
+		? normalizeShortcutLabel(existing?.selectedShortcutLabel)
+			: undefined;
 	const agentAutonomousModeEnabled =
 		config.agentAutonomousModeEnabled === undefined
 			? DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED
@@ -288,12 +286,12 @@ async function writeRuntimeGlobalConfigFile(
 	} else if (existingSelectedAgentId !== undefined) {
 		payload.selectedAgentId = existingSelectedAgentId;
 	}
-	if (selectedShortcutId !== undefined) {
-		if (selectedShortcutId) {
-			payload.selectedShortcutId = selectedShortcutId;
+	if (selectedShortcutLabel !== undefined) {
+		if (selectedShortcutLabel) {
+			payload.selectedShortcutLabel = selectedShortcutLabel;
 		}
-	} else if (existingSelectedShortcutId) {
-		payload.selectedShortcutId = existingSelectedShortcutId;
+	} else if (existingSelectedShortcutLabel) {
+		payload.selectedShortcutLabel = existingSelectedShortcutLabel;
 	}
 	if (
 		hasOwnKey(existing, "agentAutonomousModeEnabled") ||
@@ -361,7 +359,7 @@ export async function saveRuntimeConfig(
 	cwd: string,
 	config: {
 		selectedAgentId: RuntimeAgentId;
-		selectedShortcutId: string | null;
+		selectedShortcutLabel: string | null;
 		agentAutonomousModeEnabled: boolean;
 		readyForReviewNotificationsEnabled: boolean;
 		shortcuts: RuntimeProjectShortcut[];
@@ -373,7 +371,7 @@ export async function saveRuntimeConfig(
 	const projectConfigPath = getRuntimeProjectConfigPath(cwd);
 	await writeRuntimeGlobalConfigFile(globalConfigPath, {
 		selectedAgentId: config.selectedAgentId,
-		selectedShortcutId: config.selectedShortcutId,
+		selectedShortcutLabel: config.selectedShortcutLabel,
 		agentAutonomousModeEnabled: config.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled: config.readyForReviewNotificationsEnabled,
 		commitPromptTemplate: config.commitPromptTemplate,
@@ -384,7 +382,7 @@ export async function saveRuntimeConfig(
 		globalConfigPath,
 		projectConfigPath,
 		selectedAgentId: normalizeAgentId(config.selectedAgentId),
-		selectedShortcutId: normalizeShortcutId(config.selectedShortcutId),
+		selectedShortcutLabel: normalizeShortcutLabel(config.selectedShortcutLabel),
 		agentAutonomousModeEnabled: normalizeBoolean(
 			config.agentAutonomousModeEnabled,
 			DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED,
@@ -405,8 +403,8 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 	const current = await loadRuntimeConfig(cwd);
 	const nextConfig = {
 		selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
-		selectedShortcutId:
-			updates.selectedShortcutId === undefined ? current.selectedShortcutId : updates.selectedShortcutId,
+		selectedShortcutLabel:
+			updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel,
 		agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 		readyForReviewNotificationsEnabled:
 			updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
@@ -417,7 +415,7 @@ export async function updateRuntimeConfig(cwd: string, updates: RuntimeConfigUpd
 
 	const hasChanges =
 		nextConfig.selectedAgentId !== current.selectedAgentId ||
-		nextConfig.selectedShortcutId !== current.selectedShortcutId ||
+		nextConfig.selectedShortcutLabel !== current.selectedShortcutLabel ||
 		nextConfig.agentAutonomousModeEnabled !== current.agentAutonomousModeEnabled ||
 		nextConfig.readyForReviewNotificationsEnabled !== current.readyForReviewNotificationsEnabled ||
 		nextConfig.commitPromptTemplate !== current.commitPromptTemplate ||

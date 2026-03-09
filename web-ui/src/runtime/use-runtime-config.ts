@@ -10,7 +10,7 @@ export interface UseRuntimeConfigResult {
 	isSaving: boolean;
 	save: (nextConfig: {
 		selectedAgentId?: RuntimeAgentId;
-		selectedShortcutId?: string | null;
+		selectedShortcutLabel?: string | null;
 		agentAutonomousModeEnabled?: boolean;
 		shortcuts?: RuntimeProjectShortcut[];
 		readyForReviewNotificationsEnabled?: boolean;
@@ -54,7 +54,7 @@ export function useRuntimeConfig(
 	const save = useCallback(
 		async (nextConfig: {
 			selectedAgentId?: RuntimeAgentId;
-			selectedShortcutId?: string | null;
+			selectedShortcutLabel?: string | null;
 			agentAutonomousModeEnabled?: boolean;
 			shortcuts?: RuntimeProjectShortcut[];
 			readyForReviewNotificationsEnabled?: boolean;

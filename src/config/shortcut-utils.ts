@@ -14,7 +14,6 @@ export function areRuntimeProjectShortcutsEqual(
 			return false;
 		}
 		if (
-			leftItem.id !== rightItem.id ||
 			leftItem.label !== rightItem.label ||
 			leftItem.command !== rightItem.command ||
 			(leftItem.icon ?? "") !== (rightItem.icon ?? "")

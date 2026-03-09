@@ -385,7 +385,6 @@ export const runtimeTaskWorkspaceInfoResponseSchema = z.object({
 export type RuntimeTaskWorkspaceInfoResponse = z.infer<typeof runtimeTaskWorkspaceInfoResponseSchema>;
 
 export const runtimeProjectShortcutSchema = z.object({
-	id: z.string(),
 	label: z.string(),
 	command: z.string(),
 	icon: z.string().optional(),
@@ -419,7 +418,7 @@ export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema
 
 export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
-	selectedShortcutId: z.string().nullable(),
+	selectedShortcutLabel: z.string().nullable(),
 	agentAutonomousModeEnabled: z.boolean(),
 	effectiveCommand: z.string().nullable(),
 	globalConfigPath: z.string(),
@@ -437,7 +436,7 @@ export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 
 export const runtimeConfigSaveRequestSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema.optional(),
-	selectedShortcutId: z.string().nullable().optional(),
+	selectedShortcutLabel: z.string().nullable().optional(),
 	agentAutonomousModeEnabled: z.boolean().optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),

@@ -238,7 +238,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				const current = await loadRuntimeConfig(tempProject);
 				await saveRuntimeConfig(tempProject, {
 					selectedAgentId: "claude",
-					selectedShortcutId: null,
+					selectedShortcutLabel: null,
 					agentAutonomousModeEnabled: true,
 					readyForReviewNotificationsEnabled: true,
 					shortcuts: [],
@@ -286,12 +286,12 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
-					selectedShortcutId?: string;
+					selectedShortcutLabel?: string;
 					agentAutonomousModeEnabled?: boolean;
 					readyForReviewNotificationsEnabled?: boolean;
 				};
 				expect(globalPayload.selectedAgentId).toBe("cline");
-				expect(globalPayload.selectedShortcutId).toBeUndefined();
+				expect(globalPayload.selectedShortcutLabel).toBeUndefined();
 				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
 			});

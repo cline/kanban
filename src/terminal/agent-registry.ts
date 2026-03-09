@@ -174,7 +174,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 
 	return {
 		selectedAgentId: runtimeConfig.selectedAgentId,
-		selectedShortcutId: runtimeConfig.selectedShortcutId,
+		selectedShortcutLabel: runtimeConfig.selectedShortcutLabel,
 		agentAutonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
 		effectiveCommand,
 		globalConfigPath: runtimeConfig.globalConfigPath,

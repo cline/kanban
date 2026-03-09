@@ -113,6 +113,22 @@ function formatNotificationPermissionStatus(permission: BrowserNotificationPermi
 	return permission;
 }
 
+function getNextShortcutLabel(shortcuts: RuntimeProjectShortcut[], baseLabel: string): string {
+	const normalizedTakenLabels = new Set(
+		shortcuts.map((shortcut) => shortcut.label.trim().toLowerCase()).filter((label) => label.length > 0),
+	);
+	const normalizedBaseLabel = baseLabel.trim().toLowerCase();
+	if (!normalizedTakenLabels.has(normalizedBaseLabel)) {
+		return baseLabel;
+	}
+
+	let suffix = 2;
+	while (normalizedTakenLabels.has(`${normalizedBaseLabel} ${suffix}`)) {
+		suffix += 1;
+	}
+	return `${baseLabel} ${suffix}`;
+}
+
 function AgentRow({
 	agent,
 	isSelected,
@@ -259,10 +275,10 @@ export function RuntimeSettingsDialog({
 	const [selectedPromptVariant, setSelectedPromptVariant] = useState<TaskGitAction>("commit");
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
-	const [pendingShortcutScrollId, setPendingShortcutScrollId] = useState<string | null>(null);
+	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
-	const shortcutRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
 	const controlsDisabled = isLoading || isSaving || config === null;
 	const commitPromptTemplateDefault = config?.commitPromptTemplateDefault ?? "";
 	const openPrPromptTemplateDefault = config?.openPrPromptTemplateDefault ?? "";
@@ -401,22 +417,22 @@ export function RuntimeSettingsDialog({
 	}, [initialSection, open]);
 
 	useEffect(() => {
-		if (!pendingShortcutScrollId) {
+	if (pendingShortcutScrollIndex === null) {
 			return;
 		}
 		const frame = window.requestAnimationFrame(() => {
-			const target = shortcutRowRefs.current[pendingShortcutScrollId];
+		const target = shortcutRowRefs.current[pendingShortcutScrollIndex] ?? null;
 			if (target) {
 				target.scrollIntoView({ block: "nearest", behavior: "smooth" });
 				const firstInput = target.querySelector("input");
 				firstInput?.focus();
-				setPendingShortcutScrollId(null);
+			setPendingShortcutScrollIndex(null);
 			}
 		});
 		return () => {
 			window.cancelAnimationFrame(frame);
 		};
-	}, [pendingShortcutScrollId, shortcuts]);
+	}, [pendingShortcutScrollIndex, shortcuts]);
 
 	useUnmount(() => {
 		if (copiedVariableResetTimerRef.current !== null) {
@@ -659,27 +675,28 @@ export function RuntimeSettingsDialog({
 						variant="minimal"
 						size="small"
 						onClick={() => {
-							const nextId = crypto.randomUUID();
-							setShortcuts((current) => [
-								...current,
-								{
-									id: nextId,
-									label: "Run",
-									command: "",
-									icon: "play",
-								},
-							]);
-							setPendingShortcutScrollId(nextId);
+							setShortcuts((current) => {
+								const nextLabel = getNextShortcutLabel(current, "Run");
+								setPendingShortcutScrollIndex(current.length);
+								return [
+									...current,
+									{
+										label: nextLabel,
+										command: "",
+										icon: "play",
+									},
+								];
+							});
 						}}
 						disabled={controlsDisabled}
 					/>
 				</div>
 
-				{shortcuts.map((shortcut) => (
+				{shortcuts.map((shortcut, shortcutIndex) => (
 					<div
-						key={shortcut.id}
+						key={shortcutIndex}
 						ref={(node) => {
-							shortcutRowRefs.current[shortcut.id] = node;
+							shortcutRowRefs.current[shortcutIndex] = node;
 						}}
 						style={{ display: "grid", gridTemplateColumns: "max-content 1fr 2fr auto", gap: 8, marginBottom: 4 }}
 					>
@@ -690,7 +707,9 @@ export function RuntimeSettingsDialog({
 							popoverProps={{ matchTargetWidth: false }}
 							onItemSelect={(option) =>
 								setShortcuts((current) =>
-									current.map((item) => (item.id === shortcut.id ? { ...item, icon: option.value } : item)),
+									current.map((item, itemIndex) =>
+										itemIndex === shortcutIndex ? { ...item, icon: option.value } : item,
+									),
 								)
 							}
 						>
@@ -707,8 +726,8 @@ export function RuntimeSettingsDialog({
 							value={shortcut.label}
 							onChange={(event) =>
 								setShortcuts((current) =>
-									current.map((item) =>
-										item.id === shortcut.id ? { ...item, label: event.target.value } : item,
+									current.map((item, itemIndex) =>
+										itemIndex === shortcutIndex ? { ...item, label: event.target.value } : item,
 									),
 								)
 							}
@@ -719,8 +738,8 @@ export function RuntimeSettingsDialog({
 							value={shortcut.command}
 							onChange={(event) =>
 								setShortcuts((current) =>
-									current.map((item) =>
-										item.id === shortcut.id ? { ...item, command: event.target.value } : item,
+									current.map((item, itemIndex) =>
+										itemIndex === shortcutIndex ? { ...item, command: event.target.value } : item,
 									),
 								)
 							}
@@ -731,7 +750,7 @@ export function RuntimeSettingsDialog({
 							icon="cross"
 							variant="minimal"
 							size="small"
-							onClick={() => setShortcuts((current) => current.filter((item) => item.id !== shortcut.id))}
+							onClick={() => setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))}
 						/>
 					</div>
 				))}

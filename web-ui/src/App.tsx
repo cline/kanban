@@ -105,16 +105,16 @@ export default function App(): ReactElement {
 	} = useTerminalConnectionReady();
 	const readyForReviewNotificationsEnabled = runtimeProjectConfig?.readyForReviewNotificationsEnabled ?? true;
 	const shortcuts = runtimeProjectConfig?.shortcuts ?? [];
-	const selectedShortcutId = useMemo(() => {
+	const selectedShortcutLabel = useMemo(() => {
 		if (shortcuts.length === 0) {
 			return null;
 		}
-		const configured = runtimeProjectConfig?.selectedShortcutId ?? null;
-		if (configured && shortcuts.some((shortcut) => shortcut.id === configured)) {
+		const configured = runtimeProjectConfig?.selectedShortcutLabel ?? null;
+		if (configured && shortcuts.some((shortcut) => shortcut.label === configured)) {
 			return configured;
 		}
-		return shortcuts[0]?.id ?? null;
-	}, [runtimeProjectConfig?.selectedShortcutId, shortcuts]);
+		return shortcuts[0]?.label ?? null;
+	}, [runtimeProjectConfig?.selectedShortcutLabel, shortcuts]);
 
 	const {
 		upsertSession,
@@ -354,9 +354,9 @@ export default function App(): ReactElement {
 		onWorktreeError: setWorktreeError,
 	});
 	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
-	const { runningShortcutId, handleSelectShortcutId, handleRunShortcut } = useShortcutActions({
+	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut } = useShortcutActions({
 		currentProjectId,
-		selectedShortcutId: runtimeProjectConfig?.selectedShortcutId,
+		selectedShortcutLabel: runtimeProjectConfig?.selectedShortcutLabel,
 		shortcuts,
 		refreshRuntimeProjectConfig,
 		prepareTerminalForShortcut,
@@ -706,9 +706,9 @@ export default function App(): ReactElement {
 					onOpenSettings={handleOpenSettings}
 					onOpenKeyboardShortcuts={() => setIsKeyboardShortcutsOpen(true)}
 					shortcuts={shortcuts}
-					selectedShortcutId={selectedShortcutId}
-					onSelectShortcutId={handleSelectShortcutId}
-					runningShortcutId={runningShortcutId}
+					selectedShortcutLabel={selectedShortcutLabel}
+					onSelectShortcutLabel={handleSelectShortcutLabel}
+					runningShortcutLabel={runningShortcutLabel}
 					onRunShortcut={handleRunShortcut}
 					openTargetOptions={openTargetOptions}
 					selectedOpenTargetId={selectedOpenTargetId}
