@@ -31,10 +31,14 @@
 
 A Human-in-the-Loop Agent Swarm Orchestration layer that gives more autonomy to your CLI agents with task dependency linking and automatic commits and pull requests. Each task runs in its own branchless worktree with .gitignore'd files like node_modules symlinked so your filesystem and git don't get polluted, letting you run hundreds of tasks in parallel on any computer. It also comes with a visualizer for your git branches and commit history, so you can keep track of the work your agents do.
 
+```
+npx kanban
+```
+
 ## Getting Started
 
 1. Install an agent like Claude Code, Codex, Gemini, OpenCode, Cline
-2. Run `npx kanban` (or install with `npm i -g kanban`) in your repo to launch a web GUI
+2. Run `kanban` (install with `npm i -g kanban`) in your repo to launch a web GUI
 3. Create tasks, link dependencies, hit the play button, and watch agents work in parallel. You can even use Kanban MCP to tell an agent to create parallelizable tasks and links in clever ways to get projects done quickly.
 4. When they finish, you review diffs, leave comments, and commit or make a PR.
 
