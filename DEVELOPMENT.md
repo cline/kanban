@@ -21,7 +21,7 @@ Run two terminals:
 npm run dev
 ```
 
-- Runs on `http://127.0.0.1:8484`
+- Runs on `http://127.0.0.1:3484`
 
 2. Web UI (Vite HMR):
 
@@ -30,7 +30,7 @@ npm run web:dev
 ```
 
 - Runs on `http://127.0.0.1:4173`
-- `/api/*` requests from Vite are proxied to `http://127.0.0.1:8484`
+- `/api/*` requests from Vite are proxied to `http://127.0.0.1:3484`
 
 Use `http://127.0.0.1:4173` while developing UI so changes hot reload.
 

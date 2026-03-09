@@ -1,5 +1,5 @@
 export const KANBAN_RUNTIME_HOST = "127.0.0.1";
-const DEFAULT_KANBAN_RUNTIME_PORT = 8484;
+const DEFAULT_KANBAN_RUNTIME_PORT = 3484;
 
 function parseRuntimePort(rawPort: string | undefined): number {
 	if (!rawPort) {

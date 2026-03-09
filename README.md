@@ -24,7 +24,7 @@ Supported agents: `claude`, `codex`, `gemini`, `opencode`, `cline`
 
 ## How it works
 
-Kanban is a local-only tool. Nothing leaves your machine. It runs an HTTP server on `127.0.0.1:8484` and opens a web UI where you manage everything.
+Kanban is a local-only tool. Nothing leaves your machine. It runs an HTTP server on `127.0.0.1:3484` and opens a web UI where you manage everything.
 
 The core idea is simple:
 
@@ -67,7 +67,7 @@ This means you can tell your agent something like "break this feature into subta
 kanban [options]
 
 Options:
-  --port <number>   Bind the runtime server to a specific port (default: 8484)
+  --port <number>   Bind the runtime server to a specific port (default: 3484)
   --agent <id>      Set the default agent (claude, codex, gemini, opencode, cline)
   --no-open         Don't auto-open the browser
   --help            Print usage
