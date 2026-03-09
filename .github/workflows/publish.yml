@@ -1,19 +1,57 @@
 name: Publish
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (example: v1.2.3)"
+        required: true
+        type: string
+
+concurrency:
+  group: publish-${{ github.workflow }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   publish:
+    name: Publish npm package and create GitHub release
+    needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve tag
+        id: resolve_tag
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            echo "Error: tag input is required"
+            exit 1
+          fi
+          git fetch origin --tags
+          if ! git show-ref --verify --quiet "refs/tags/$TAG"; then
+            echo "Error: tag '$TAG' does not exist"
+            exit 1
+          fi
+          git checkout --detach "refs/tags/$TAG^{commit}"
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+            echo "Error: tag must match vX.Y.Z (with optional prerelease suffix)"
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,16 +66,56 @@ jobs:
       - name: Install web-ui dependencies
         run: npm ci --prefix web-ui
 
-      - name: Build
-        run: npm run build
+      - name: Verify tag matches package version
+        id: version
+        run: |
+          TAG="${{ steps.resolve_tag.outputs.tag }}"
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED_TAG="v${PACKAGE_VERSION}"
+
+          if [ "$TAG" != "$EXPECTED_TAG" ]; then
+            echo "Error: tag '$TAG' does not match package version '$EXPECTED_TAG'"
+            exit 1
+          fi
+
+          echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build and validate package
+        run: npm run prepublishOnly
         env:
           POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
-          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST || 'https://data.cline.bot' }}
+          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
 
-      - name: Check
-        run: npm run check
-
-      - name: Publish to npm
+      - name: Publish to npm (OIDC trusted publishing)
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Extract changelog entry for release
+        id: changelog
+        run: |
+          node .github/scripts/extract-changelog-entry.mjs \
+            --version "${{ steps.version.outputs.package_version }}" \
+            --changelog CHANGELOG.md \
+            --output-key body
+
+      - name: Compute compare link
+        id: compare
+        run: |
+          TAG="${{ steps.resolve_tag.outputs.tag }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "link=Full Changelog: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "link=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          name: ${{ steps.resolve_tag.outputs.tag }}
+          body: |
+            ${{ steps.changelog.outputs.body }}
+
+            ${{ steps.compare.outputs.link }}
+          prerelease: ${{ contains(steps.resolve_tag.outputs.tag, '-') }}
