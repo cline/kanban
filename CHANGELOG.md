@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.2]
+
+- Fix OIDC trusted publishing for npm releases
+
 ## [0.1.1]
 
 - Update version number
