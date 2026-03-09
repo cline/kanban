@@ -1,8 +1,12 @@
 # Changelog
 
-## [0.1.3]
+## [0.1.4]
 
 - Fix OIDC trusted publishing for npm releases
+
+## [0.1.3]
+
+- Fix OIDC trusted publishing for npm releases (attempt 2)
 
 ## [0.1.2]
 
