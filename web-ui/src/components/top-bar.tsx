@@ -268,9 +268,7 @@ export function TopBar({
 							aria-label="Back to board"
 							style={{ marginRight: 4, flexShrink: 0 }}
 						/>
-						<span role="img" aria-label="banana" style={{ marginRight: 4 }}>
-							🍌
-						</span>
+						<Icon icon="alignment-top" size={16} color={Colors.GRAY4} style={{ marginRight: 4 }} />
 						<NavbarDivider />
 					</div>
 				) : null}
