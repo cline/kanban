@@ -1,7 +1,3 @@
-import { constants as fsConstants } from "node:fs";
-import { access, chmod } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
 import * as pty from "node-pty";
 
 import type {
@@ -27,8 +23,6 @@ import { reduceSessionTransition, type SessionTransitionEvent } from "./session-
 const MAX_HISTORY_BYTES = 1024 * 1024;
 const ACTIVITY_PREVIEW_THROTTLE_MS = 2500;
 const MAX_CLAUDE_TRUST_BUFFER_CHARS = 16_384;
-const require = createRequire(import.meta.url);
-let ensurePtyHelperExecutablePromise: Promise<void> | null = null;
 
 interface ActiveProcessState {
 	ptyProcess: pty.IPty;
@@ -163,50 +157,6 @@ function formatShellSpawnFailure(binary: string, error: unknown): string {
 	return `Failed to launch "${binary}": ${message}`;
 }
 
-async function ensureNodePtySpawnHelperExecutable(): Promise<void> {
-	if (ensurePtyHelperExecutablePromise) {
-		return ensurePtyHelperExecutablePromise;
-	}
-
-	ensurePtyHelperExecutablePromise = (async () => {
-		try {
-			const packageJsonPath = require.resolve("node-pty/package.json");
-			const packageRoot = dirname(packageJsonPath);
-			const helperCandidates = [
-				join(packageRoot, "build/Release/spawn-helper"),
-				join(packageRoot, "build/Debug/spawn-helper"),
-				join(packageRoot, `prebuilds/${process.platform}-${process.arch}/spawn-helper`),
-			];
-
-			for (const helperPath of helperCandidates) {
-				try {
-					await access(helperPath, fsConstants.F_OK);
-				} catch {
-					continue;
-				}
-
-				try {
-					await access(helperPath, fsConstants.X_OK);
-					return;
-				} catch {
-					// Continue to chmod attempt.
-				}
-
-				try {
-					await chmod(helperPath, 0o755);
-				} catch {
-					// Best effort; spawn will still surface a useful error if this fails.
-				}
-				return;
-			}
-		} catch {
-			// Best effort; if resolution fails, spawn path will report a runtime error.
-		}
-	})();
-
-	return ensurePtyHelperExecutablePromise;
-}
-
 export class TerminalSessionManager {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
@@ -291,8 +241,6 @@ export class TerminalSessionManager {
 			TERM: "xterm-256color",
 			COLORTERM: "truecolor",
 		};
-
-		await ensureNodePtySpawnHelperExecutable();
 
 		let ptyProcess: pty.IPty;
 		// Adapters can wrap the configured agent binary when they need extra runtime wiring
@@ -507,8 +455,6 @@ export class TerminalSessionManager {
 			TERM: "xterm-256color",
 			COLORTERM: "truecolor",
 		};
-
-		await ensureNodePtySpawnHelperExecutable();
 
 		let ptyProcess: pty.IPty;
 		try {

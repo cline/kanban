@@ -57,7 +57,6 @@
     "check": "npm run lint && npm run typecheck && npm run test",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "node scripts/fix-node-pty-helper-perms.mjs",
     "prepare": "husky",
     "prepublishOnly": "npm run build && npm run check"
   },
@@ -76,7 +75,7 @@
     "@modelcontextprotocol/sdk": "^1.22.1",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
-    "node-pty": "^1.1.0-beta34",
+    "node-pty": "^1.2.0-beta.11",
     "ws": "^8.18.0",
     "zod": "^4.3.6"
   }
