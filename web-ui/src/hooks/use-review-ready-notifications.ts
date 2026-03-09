@@ -171,7 +171,7 @@ export function useReviewReadyNotifications({
 			? truncateTaskPromptLabel(selection.card.prompt) || `Task ${latestTaskReadyForReview.taskId}`
 			: `Task ${latestTaskReadyForReview.taskId}`;
 		setPendingReviewReadyNotificationCount((current) => current + 1);
-		const notificationTitle = workspaceTitle ? `🍌 ${workspaceTitle} ready for review` : "🍌 Ready for review";
+		const notificationTitle = workspaceTitle ? `${workspaceTitle} ready for review` : "Ready for review";
 		showReadyForReviewNotification(latestTaskReadyForReview.taskId, notificationTitle, taskTitle);
 	}, [
 		activeWorkspaceId,
