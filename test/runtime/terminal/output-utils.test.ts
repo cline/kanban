@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createActivityPreviewTracker } from "../../../src/runtime/terminal/activity-preview.js";
+import { createActivityPreviewTracker } from "../../../src/terminal/activity-preview.js";
 
 function extractPreviewFromBuffer(
 	buffer: string,

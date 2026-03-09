@@ -1,1 +1,1 @@
-export * from "./runtime/api-contract.js";
+export * from "./core/api-contract.js";

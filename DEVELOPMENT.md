@@ -45,11 +45,10 @@ This mode serves built web assets from `dist/web-ui` and does not hot reload the
 
 ## Run `kanbanana` from any directory
 
-Create a global npm link from this repo:
+After cloning and installing dependencies, create/update the global CLI link from this repo:
 
 ```bash
-npm run build
-npm link
+npm run link
 ```
 
 Verify:
@@ -68,12 +67,12 @@ kanbanana
 
 After local code changes, run `npm run build` again before using the linked command.
 
-When switching between worktrees, re-run `npm link` from the worktree you want to test so the global `kanbanana` binary points at the right `dist/cli.js`. Without this, `kanbanana mcp` will serve a stale build from a different worktree.
+When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `kanbanana` binary points at the right `dist/cli.js`. Without this, `kanbanana mcp` will serve a stale build from a different worktree.
 
 Remove the global link:
 
 ```bash
-npm unlink -g kanbanana
+npm run unlink
 ```
 
 ## Scripts

@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { getCommitDiff, getGitRefs } from "../../src/runtime/workspace/git-history.js";
-import { discardGitChanges } from "../../src/runtime/workspace/git-sync.js";
+import { getCommitDiff, getGitRefs } from "../../src/workspace/git-history.js";
+import { discardGitChanges } from "../../src/workspace/git-sync.js";
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 

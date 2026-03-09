@@ -4,7 +4,7 @@ import {
 	parseHookIngestRequest,
 	parseTaskSessionStartRequest,
 	parseWorkspaceFileSearchRequest,
-} from "../../src/runtime/api-validation.js";
+} from "../../src/core/api-validation.js";
 
 describe("parseWorkspaceFileSearchRequest", () => {
 	it("parses q and limit", () => {

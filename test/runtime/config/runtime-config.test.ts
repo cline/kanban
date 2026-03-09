@@ -8,7 +8,7 @@ import {
 	pickBestInstalledAgentIdFromDetected,
 	saveRuntimeConfig,
 	updateRuntimeConfig,
-} from "../../../src/runtime/config/runtime-config.js";
+} from "../../../src/config/runtime-config.js";
 import { createTempDir } from "../../utilities/temp-dir.js";
 
 function withTemporaryEnv<T>(

@@ -5,7 +5,7 @@ import {
 	compareVersions,
 	detectAutoUpdateInstallation,
 	runAutoUpdateCheck,
-} from "../../../src/runtime/update/auto-update.js";
+} from "../../../src/update/auto-update.js";
 
 describe("compareVersions", () => {
 	it("supports semantic versions with prerelease values", () => {

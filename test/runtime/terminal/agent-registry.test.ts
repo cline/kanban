@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeConfigState } from "../../../src/runtime/config/runtime-config.js";
-import { buildRuntimeConfigResponse } from "../../../src/runtime/terminal/agent-registry.js";
+import type { RuntimeConfigState } from "../../../src/config/runtime-config.js";
+import { buildRuntimeConfigResponse } from "../../../src/terminal/agent-registry.js";
 
 function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): RuntimeConfigState {
 	return {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary } from "../../../src/runtime/api-contract.js";
-import { TerminalSessionManager } from "../../../src/runtime/terminal/session-manager.js";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
+import { TerminalSessionManager } from "../../../src/terminal/session-manager.js";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {

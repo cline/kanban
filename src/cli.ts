@@ -4,33 +4,33 @@ import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import packageJson from "../package.json" with { type: "json" };
 
-import { isHooksSubcommand, runHooksSubcommand } from "./hooks-cli.js";
-import { isMcpSubcommand, runMcpSubcommand } from "./mcp-cli.js";
+import { isHooksSubcommand, runHooksSubcommand } from "./commands/hooks.js";
+import { isMcpSubcommand, runMcpSubcommand } from "./commands/mcp.js";
 import type {
 	RuntimeAgentId,
 	RuntimeShortcutRunResponse,
-} from "./runtime/api-contract.js";
-import { loadRuntimeConfig, updateRuntimeConfig } from "./runtime/config/runtime-config.js";
-import { createGitProcessEnv } from "./runtime/git-process-env.js";
-import { resolveProjectInputPath } from "./runtime/projects/project-path.js";
+} from "./core/api-contract.js";
+import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
+import { createGitProcessEnv } from "./core/git-process-env.js";
+import { resolveProjectInputPath } from "./projects/project-path.js";
 import {
 	buildKanbananaRuntimeUrl,
 	KANBANANA_RUNTIME_ORIGIN,
-} from "./runtime/runtime-endpoint.js";
-import { openInBrowser } from "./runtime/server/browser.js";
-import { createRuntimeStateHub } from "./runtime/server/runtime-state-hub.js";
-import { createRuntimeServer } from "./runtime/server/runtime-server.js";
-import { shutdownRuntimeServer } from "./runtime/server/shutdown-coordinator.js";
-import { resolveInteractiveShellCommand } from "./runtime/server/shell.js";
+} from "./core/runtime-endpoint.js";
+import { openInBrowser } from "./server/browser.js";
+import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
+import { createRuntimeServer } from "./server/runtime-server.js";
+import { shutdownRuntimeServer } from "./server/shutdown-coordinator.js";
+import { resolveInteractiveShellCommand } from "./server/shell.js";
 import {
 	loadWorkspaceContext,
-} from "./runtime/state/workspace-state.js";
+} from "./state/workspace-state.js";
 import {
 	collectProjectWorktreeTaskIdsForRemoval,
 	createWorkspaceRegistry,
-} from "./runtime/server/workspace-registry.js";
-import type { TerminalSessionManager } from "./runtime/terminal/session-manager.js";
-import { autoUpdateOnStartup } from "./runtime/update/auto-update.js";
+} from "./server/workspace-registry.js";
+import type { TerminalSessionManager } from "./terminal/session-manager.js";
+import { autoUpdateOnStartup } from "./update/auto-update.js";
 
 interface CliOptions {
 	help: boolean;

@@ -7,8 +7,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
 
-import { createMcpServer } from "../../../src/runtime/mcp/server.js";
-import { loadWorkspaceContext } from "../../../src/runtime/state/workspace-state.js";
+import { createMcpServer } from "../../../src/mcp/server.js";
+import { loadWorkspaceContext } from "../../../src/state/workspace-state.js";
 import { createGitTestEnv } from "../../utilities/git-env.js";
 
 function createTempDir(prefix: string): string {

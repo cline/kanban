@@ -23,7 +23,7 @@ import type {
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceStateResponse,
-} from "../../src/runtime/api-contract.js";
+} from "../../src/core/api-contract.js";
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildKanbananaCommandParts, resolveKanbananaCommandParts } from "../../src/runtime/kanbanana-command.js";
+import { buildKanbananaCommandParts, resolveKanbananaCommandParts } from "../../src/core/kanbanana-command.js";
 
 describe("resolveKanbananaCommandParts", () => {
 	it("resolves node plus script entrypoint", () => {
@@ -44,6 +44,11 @@ describe("buildKanbananaCommandParts", () => {
 				execPath: "/usr/local/bin/node",
 				argv: ["/usr/local/bin/node", "/tmp/.npx/321/node_modules/kanbanana/dist/cli.js"],
 			}),
-		).toEqual(["/usr/local/bin/node", "/tmp/.npx/321/node_modules/kanbanana/dist/cli.js", "hooks", "ingest"]);
+		).toEqual([
+			"/usr/local/bin/node",
+			"/tmp/.npx/321/node_modules/kanbanana/dist/cli.js",
+			"hooks",
+			"ingest",
+		]);
 	});
 });

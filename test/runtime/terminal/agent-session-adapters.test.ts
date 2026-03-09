@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { prepareAgentLaunch } from "../../../src/runtime/terminal/agent-session-adapters.js";
+import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters.js";
 
 const originalHome = process.env.HOME;
 let tempHome: string | null = null;
