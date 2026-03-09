@@ -387,6 +387,10 @@ function isClaudeComposerBorder(line: string): boolean {
 	return /^[\s─━═↯▪•·]+$/u.test(stripAnsi(line));
 }
 
+function isClineAsciiArtLine(line: string): boolean {
+	return /^[\s@*.]+$/u.test(line) && /@{3,}/u.test(line);
+}
+
 function resolveAgentCutoff(agentId: RuntimeAgentId | null, lines: string[]): number {
 	if (agentId === "codex") {
 		return findCutoffFromMarkers(lines, [/^\s*[›>]\s/iu, /\bcontext left\b/iu, /\b\/model\b/iu]);
@@ -419,11 +423,7 @@ function resolveAgentCutoff(agentId: RuntimeAgentId | null, lines: string[]): nu
 		return findCutoffFromMarkers(lines, [/\bctrl\+t variants\b/iu, /\btab agents\b/iu, /\bctrl\+p commands\b/iu]);
 	}
 	if (agentId === "cline") {
-		const questionIndex = findCutoffFromMarkers(lines, [/\bwhat can i do for you\b/iu]);
-		if (questionIndex < lines.length) {
-			return questionIndex;
-		}
-		return findCutoffFromMarkers(lines, [/\/ for commands · @ for files/iu, /\bauto-approve all disabled\b/iu]);
+		return findCutoffFromMarkers(lines, [/\/ for commands\b/iu, /\bauto-approve all disabled\b/iu]);
 	}
 	return findCutoffFromMarkers(lines, [/^\s*[›❯>]\s/iu, /\btype your message\b/iu, /\bask anything\b/iu]);
 }
@@ -435,11 +435,17 @@ function isNoiseLine(line: string): boolean {
 	if (isMostlyBoxDrawing(line)) {
 		return true;
 	}
+	if (isClineAsciiArtLine(line)) {
+		return true;
+	}
+	if (/^[\s│┃╎║|]+$/u.test(line)) {
+		return true;
+	}
 	if (/^(?:[•●○⠋⧉▁▂▃▄▅▆▇█\s])+$/u.test(line)) {
 		return true;
 	}
 	if (
-		/(?:\bctrl\+|\bfor commands\b|\bfor shortcuts\b|\bcontext left\b|\bauto-approve\b|\bpress ctrl-c again to exit\b|\bchecking for updates\b|\bwaiting for auth\b|\binitializing\b|\bclaude code\b|\bopenai codex\b|\bapi usage billing\b|\bask anything\b|\bwhat can i do for you\b)/iu.test(
+		/(?:\bctrl\+|\bfor commands\b|\bfor shortcuts\b|\bcontext left\b|\bauto-approve\b|\bpress ctrl-c again to exit\b|\bchecking for updates\b|\bwaiting for auth\b|\binitializing\b|\bclaude code\b|\bopenai codex\b|\bapi usage billing\b|\bask anything\b|\bwhat can i do for you\b|\bstart new task\b)/iu.test(
 			line,
 		)
 	) {

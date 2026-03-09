@@ -109,6 +109,50 @@ describe("activity preview tracker", () => {
 		expect(preview).not.toContain("What can I do for you");
 	});
 
+	it("uses the latest cline task output instead of the startup logo", () => {
+		const buffer = [
+			"                    @@                ",
+			"                  @@@@@@              ",
+			"             @@@@@@@@@@@@@@@@         ",
+			"           @@@@@@@@@@@@@@@@@@@@       ",
+			"          @@@@@@@@@@@@@@@@@@@@@@      ",
+			"          @@@@@    @@@@    @@@@@      ",
+			"        @@@@@@     *@@@     @@@@@@    ",
+			"        @@@@@@     *@@@     @@@@@@    ",
+			"          @@@@@    @@@@.   @@@@@      ",
+			"          @@@@@@@@@@@@@@@@@@@@@@      ",
+			"           @@@@@@@@@@@@@@@@@@@@       ",
+			"             @@@@@@@@@@@@@@@@.        ",
+			"",
+			"         What can I do for you?",
+			"",
+			"  > hi ",
+			"",
+			" ⏺ Hi there! How can I help you today?",
+			"",
+			" ⏺ Task completed",
+			"   Hello! I'm Cline, your AI software engineer assistant.",
+			"   I'm ready to help you with coding, file management,",
+			"   system operations, or any other technical tasks.",
+			"   Just let me know what you'd like to work on!",
+			"",
+			"  Start New Task (1)       Exit (2)      ",
+			"╭───────────────────────────────────────╮",
+			"│                                       │",
+			"╰───────────────────────────────────────╯",
+			" / for commands · @   ○ Plan ● Act (Tab)",
+			" for files",
+			" anthropic/claude-sonnet-4.6 ████████",
+			" (7,794) | $0.031",
+		].join("\n");
+		const preview = extractPreviewFromBuffer(buffer, "cline");
+		expect(preview).toContain("I'm ready to help you with coding");
+		expect(preview).toContain("system operations");
+		expect(preview).not.toContain("What can I do for you");
+		expect(preview).not.toContain("@@@@@");
+		expect(preview).not.toContain("Start New Task");
+	});
+
 	it("strips empty lines and preserves multiple activity lines", () => {
 		const buffer = [
 			"first meaningful line",
