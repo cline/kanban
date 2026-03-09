@@ -19,7 +19,11 @@ export interface UseRuntimeConfigResult {
 	}) => Promise<RuntimeConfigResponse | null>;
 }
 
-export function useRuntimeConfig(open: boolean, workspaceId: string | null): UseRuntimeConfigResult {
+export function useRuntimeConfig(
+	open: boolean,
+	workspaceId: string | null,
+	initialConfig: RuntimeConfigResponse | null = null,
+): UseRuntimeConfigResult {
 	const [isSaving, setIsSaving] = useState(false);
 	const previousWorkspaceIdRef = useRef<string | null>(null);
 	const queryFn = useCallback(async () => {
@@ -36,12 +40,16 @@ export function useRuntimeConfig(open: boolean, workspaceId: string | null): Use
 	const setConfigData = configQuery.setData;
 
 	useEffect(() => {
-		if (previousWorkspaceIdRef.current === workspaceId) {
+		const workspaceChanged = previousWorkspaceIdRef.current !== workspaceId;
+		previousWorkspaceIdRef.current = workspaceId;
+		if (workspaceChanged) {
+			setConfigData(initialConfig);
 			return;
 		}
-		previousWorkspaceIdRef.current = workspaceId;
-		setConfigData(null);
-	}, [setConfigData, workspaceId]);
+		if (configQuery.data === null && initialConfig !== null) {
+			setConfigData(initialConfig);
+		}
+	}, [configQuery.data, initialConfig, setConfigData, workspaceId]);
 
 	const save = useCallback(
 		async (nextConfig: {

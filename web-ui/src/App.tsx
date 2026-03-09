@@ -96,6 +96,9 @@ export default function App(): ReactElement {
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
 	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } =
 		useRuntimeProjectConfig(currentProjectId);
+	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
+	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
+		useRuntimeProjectConfig(settingsWorkspaceId);
 	const {
 		markConnectionReady: markTerminalConnectionReady,
 		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
@@ -938,7 +941,8 @@ export default function App(): ReactElement {
 			<KeyboardShortcutsDialog isOpen={isKeyboardShortcutsOpen} onClose={() => setIsKeyboardShortcutsOpen(false)} />
 			<RuntimeSettingsDialog
 				open={isSettingsOpen}
-				workspaceId={currentProjectId}
+				workspaceId={settingsWorkspaceId}
+				initialConfig={settingsRuntimeProjectConfig}
 				initialSection={settingsInitialSection}
 				onOpenChange={(nextOpen) => {
 					setIsSettingsOpen(nextOpen);
@@ -948,6 +952,7 @@ export default function App(): ReactElement {
 				}}
 				onSaved={() => {
 					refreshRuntimeProjectConfig();
+					refreshSettingsRuntimeProjectConfig();
 				}}
 			/>
 			<ClearTrashDialog

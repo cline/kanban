@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core/api-contract.js";
+import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
 
 export interface ResolvedAgentCommand {
@@ -11,56 +12,12 @@ export interface ResolvedAgentCommand {
 	args: string[];
 }
 
-interface AgentTemplate {
-	id: RuntimeAgentId;
-	label: string;
-	binary: string;
-	baseArgs: string[];
-	autonomousArgs: string[];
-}
-
-const AGENT_TEMPLATES: AgentTemplate[] = [
-	{
-		id: "claude",
-		label: "Claude Code",
-		binary: "claude",
-		baseArgs: [],
-		autonomousArgs: ["--dangerously-skip-permissions"],
-	},
-	{
-		id: "codex",
-		label: "OpenAI Codex",
-		binary: "codex",
-		baseArgs: [],
-		autonomousArgs: ["--dangerously-bypass-approvals-and-sandbox"],
-	},
-	{
-		id: "gemini",
-		label: "Gemini CLI",
-		binary: "gemini",
-		baseArgs: [],
-		autonomousArgs: ["--yolo"],
-	},
-	{
-		id: "opencode",
-		label: "OpenCode",
-		binary: "opencode",
-		baseArgs: [],
-		autonomousArgs: [],
-	},
-	{
-		id: "cline",
-		label: "Cline CLI",
-		binary: "cline",
-		baseArgs: [],
-		autonomousArgs: ["--auto-approve-all"],
-	},
-];
-
-function getDefaultArgs(template: AgentTemplate, runtimeConfig: RuntimeConfigState): string[] {
-	return runtimeConfig.agentAutonomousModeEnabled
-		? [...template.baseArgs, ...template.autonomousArgs]
-		: [...template.baseArgs];
+function getDefaultArgs(agentId: RuntimeAgentId, runtimeConfig: RuntimeConfigState): string[] {
+	const entry = RUNTIME_AGENT_CATALOG.find((candidate) => candidate.id === agentId);
+	if (!entry) {
+		return [];
+	}
+	return runtimeConfig.agentAutonomousModeEnabled ? [...entry.baseArgs, ...entry.autonomousArgs] : [...entry.baseArgs];
 }
 
 function isBinaryAvailableOnPath(binary: string): boolean {
@@ -148,7 +105,7 @@ function joinCommand(binary: string, args: string[]): string {
 }
 
 export function detectInstalledCommands(): string[] {
-	const candidates = ["claude", "codex", "gemini", "opencode", "cline", "npx"];
+	const candidates = [...RUNTIME_AGENT_CATALOG.map((entry) => entry.binary), "npx"];
 	const detected: string[] = [];
 
 	for (const candidate of candidates) {
@@ -162,27 +119,27 @@ export function detectInstalledCommands(): string[] {
 
 function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: string[]): RuntimeAgentDefinition[] {
 	const detectedSet = new Set(detected);
-	return AGENT_TEMPLATES.map((template) => {
-		const defaultArgs = getDefaultArgs(template, runtimeConfig);
-		const command = joinCommand(template.binary, defaultArgs);
+	return RUNTIME_AGENT_CATALOG.map((entry) => {
+		const defaultArgs = getDefaultArgs(entry.id, runtimeConfig);
+		const command = joinCommand(entry.binary, defaultArgs);
 		return {
-			id: template.id,
-			label: template.label,
-			binary: template.binary,
+			id: entry.id,
+			label: entry.label,
+			binary: entry.binary,
 			command,
 			defaultArgs,
-			installed: detectedSet.has(template.binary),
-			configured: runtimeConfig.selectedAgentId === template.id,
+			installed: detectedSet.has(entry.binary),
+			configured: runtimeConfig.selectedAgentId === entry.id,
 		};
 	});
 }
 
 export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): ResolvedAgentCommand | null {
-	const selected = AGENT_TEMPLATES.find((template) => template.id === runtimeConfig.selectedAgentId);
+	const selected = RUNTIME_AGENT_CATALOG.find((entry) => entry.id === runtimeConfig.selectedAgentId);
 	if (!selected) {
 		return null;
 	}
-	const defaultArgs = getDefaultArgs(selected, runtimeConfig);
+	const defaultArgs = getDefaultArgs(selected.id, runtimeConfig);
 	const command = joinCommand(selected.binary, defaultArgs);
 	if (isBinaryAvailableOnPath(selected.binary)) {
 		return {

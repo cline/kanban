@@ -18,12 +18,13 @@ import {
 import type { IconName } from "@blueprintjs/icons";
 import type { ItemRenderer } from "@blueprintjs/select";
 import { Select } from "@blueprintjs/select";
+import { getRuntimeAgentCatalogEntry, RUNTIME_AGENT_CATALOG } from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { TASK_GIT_PROMPT_VARIABLES, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
-import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeProjectShortcut } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import {
 	type BrowserNotificationPermission,
@@ -31,20 +32,13 @@ import {
 	requestBrowserNotificationPermission,
 } from "@/utils/notification-permission";
 
-const AGENT_INSTALL_URLS: Partial<Record<RuntimeAgentId, string>> = {
-	claude: "https://docs.anthropic.com/en/docs/claude-code/quickstart",
-	codex: "https://github.com/openai/codex",
-	gemini: "https://github.com/google-gemini/gemini-cli",
-	opencode: "https://github.com/sst/opencode",
-	cline: "https://www.npmjs.com/package/cline",
-};
-const AGENT_AUTONOMOUS_ARGS: Record<RuntimeAgentId, string[]> = {
-	claude: ["--dangerously-skip-permissions"],
-	codex: ["--dangerously-bypass-approvals-and-sandbox"],
-	gemini: ["--yolo"],
-	opencode: [],
-	cline: ["--auto-approve-all"],
-};
+interface RuntimeSettingsAgentRowModel {
+	id: RuntimeAgentId;
+	label: string;
+	binary: string;
+	command: string;
+	installed: boolean | null;
+}
 
 function quoteCommandPartForDisplay(part: string): string {
 	if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(part)) {
@@ -54,7 +48,7 @@ function quoteCommandPartForDisplay(part: string): string {
 }
 
 function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, autonomousModeEnabled: boolean): string {
-	const args = autonomousModeEnabled ? (AGENT_AUTONOMOUS_ARGS[agentId] ?? []) : [];
+	const args = autonomousModeEnabled ? (getRuntimeAgentCatalogEntry(agentId)?.autonomousArgs ?? []) : [];
 	return [binary, ...args.map(quoteCommandPartForDisplay)].join(" ");
 }
 
@@ -125,24 +119,26 @@ function AgentRow({
 	onSelect,
 	disabled,
 }: {
-	agent: RuntimeAgentDefinition;
+	agent: RuntimeSettingsAgentRowModel;
 	isSelected: boolean;
 	onSelect: () => void;
 	disabled: boolean;
 }): React.ReactElement {
-	const installUrl = AGENT_INSTALL_URLS[agent.id];
+	const installUrl = getRuntimeAgentCatalogEntry(agent.id)?.installUrl;
+	const isInstalled = agent.installed === true;
+	const isInstallStatusPending = agent.installed === null;
 
 	return (
 		<div
 			role="button"
 			tabIndex={0}
 			onClick={() => {
-				if (agent.installed && !disabled) {
+				if (isInstalled && !disabled) {
 					onSelect();
 				}
 			}}
 			onKeyDown={(event) => {
-				if (event.key === "Enter" && agent.installed && !disabled) {
+				if (event.key === "Enter" && isInstalled && !disabled) {
 					onSelect();
 				}
 			}}
@@ -152,22 +148,26 @@ function AgentRow({
 				justifyContent: "space-between",
 				gap: 12,
 				padding: "5px 0",
-				cursor: agent.installed ? "pointer" : "default",
+				cursor: isInstalled ? "pointer" : "default",
 			}}
 		>
 			<div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0 }}>
 				<Icon
 					icon={isSelected ? "selection" : "circle"}
 					intent={isSelected ? "primary" : undefined}
-					className={!agent.installed ? Classes.TEXT_DISABLED : undefined}
+					className={!isInstalled ? Classes.TEXT_DISABLED : undefined}
 					style={{ marginTop: 2 }}
 				/>
 				<div style={{ minWidth: 0 }}>
 					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 						<span>{agent.label}</span>
-						{agent.installed ? (
+						{isInstalled ? (
 							<Tag minimal intent="success">
 								Installed
+							</Tag>
+						) : isInstallStatusPending ? (
+							<Tag minimal>
+								Checking...
 							</Tag>
 						) : null}
 					</div>
@@ -181,7 +181,7 @@ function AgentRow({
 					) : null}
 				</div>
 			</div>
-			{!agent.installed && installUrl ? (
+			{agent.installed === false && installUrl ? (
 				<AnchorButton
 					text="Install"
 					variant="outlined"
@@ -191,7 +191,7 @@ function AgentRow({
 					rel="noreferrer"
 					onClick={(event: React.MouseEvent) => event.stopPropagation()}
 				/>
-			) : !agent.installed ? (
+			) : agent.installed === false ? (
 				<Button text="Install" variant="outlined" size="small" disabled />
 			) : null}
 		</div>
@@ -236,17 +236,19 @@ function InlineUtilityButton({
 export function RuntimeSettingsDialog({
 	open,
 	workspaceId,
+	initialConfig = null,
 	onOpenChange,
 	onSaved,
 	initialSection,
 }: {
 	open: boolean;
 	workspaceId: string | null;
+	initialConfig?: RuntimeConfigResponse | null;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
-	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId);
+	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
@@ -261,6 +263,7 @@ export function RuntimeSettingsDialog({
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const shortcutRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+	const controlsDisabled = isLoading || isSaving || config === null;
 	const commitPromptTemplateDefault = config?.commitPromptTemplateDefault ?? "";
 	const openPrPromptTemplateDefault = config?.openPrPromptTemplateDefault ?? "";
 	const isCommitPromptAtDefault =
@@ -281,14 +284,28 @@ export function RuntimeSettingsDialog({
 		setNotificationPermission(getBrowserNotificationPermission());
 	}, []);
 
-	const supportedAgents = useMemo(() => config?.agents ?? [], [config?.agents]);
+	const supportedAgents = useMemo<RuntimeSettingsAgentRowModel[]>(() => {
+		const agents =
+			config?.agents.map((agent) => ({
+				id: agent.id,
+				label: agent.label,
+				binary: agent.binary,
+				installed: agent.installed,
+			})) ??
+			RUNTIME_AGENT_CATALOG.map((agent) => ({
+				id: agent.id,
+				label: agent.label,
+				binary: agent.binary,
+				installed: null,
+			}));
+		return agents.map((agent) => ({
+			...agent,
+			command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
+		}));
+	}, [agentAutonomousModeEnabled, config?.agents]);
 	const displayedAgents = useMemo(
-		() =>
-			supportedAgents.map((agent) => ({
-				...agent,
-				command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
-			})),
-		[agentAutonomousModeEnabled, supportedAgents],
+		() => supportedAgents,
+		[supportedAgents],
 	);
 	const configuredAgentId = config?.selectedAgentId ?? null;
 	const firstInstalledAgentId = displayedAgents.find((agent) => agent.installed)?.id;
@@ -440,8 +457,12 @@ export function RuntimeSettingsDialog({
 
 	const handleSave = async () => {
 		setSaveError(null);
+		if (!config) {
+			setSaveError("Runtime settings are still loading. Try again in a moment.");
+			return;
+		}
 		const selectedAgent = displayedAgents.find((agent) => agent.id === selectedAgentId);
-		if (!selectedAgent || !selectedAgent.installed) {
+		if (!selectedAgent || selectedAgent.installed !== true) {
 			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
 			return;
 		}
@@ -506,17 +527,17 @@ export function RuntimeSettingsDialog({
 						agent={agent}
 						isSelected={agent.id === selectedAgentId}
 						onSelect={() => setSelectedAgentId(agent.id)}
-						disabled={isLoading || isSaving}
+						disabled={controlsDisabled}
 					/>
 				))}
-				{displayedAgents.length === 0 ? (
+				{config === null ? (
 					<p className={Classes.TEXT_MUTED} style={{ padding: "8px 0" }}>
-						No supported agents discovered.
+						Checking which CLIs are installed for this project...
 					</p>
 				) : null}
 				<Checkbox
 					checked={agentAutonomousModeEnabled}
-					disabled={isLoading || isSaving}
+					disabled={controlsDisabled}
 					label="Enable bypass permissions flag"
 					onChange={(event) => {
 						setAgentAutonomousModeEnabled(event.currentTarget.checked);
@@ -550,7 +571,7 @@ export function RuntimeSettingsDialog({
 						value={selectedPromptVariant}
 						onChange={(event) => setSelectedPromptVariant(event.target.value as TaskGitAction)}
 						options={GIT_PROMPT_VARIANT_OPTIONS}
-						disabled={isLoading || isSaving}
+						disabled={controlsDisabled}
 						style={{ minWidth: 220 }}
 					/>
 					<Button
@@ -558,7 +579,7 @@ export function RuntimeSettingsDialog({
 						variant="minimal"
 						size="small"
 						onClick={handleResetSelectedPrompt}
-						disabled={isLoading || isSaving || isSelectedPromptAtDefault}
+						disabled={controlsDisabled || isSelectedPromptAtDefault}
 					/>
 				</div>
 				<TextArea
@@ -567,7 +588,7 @@ export function RuntimeSettingsDialog({
 					value={selectedPromptValue}
 					onChange={(event) => handleSelectedPromptChange(event.target.value)}
 					placeholder={selectedPromptPlaceholder}
-					disabled={isLoading || isSaving}
+					disabled={controlsDisabled}
 					className={Classes.MONOSPACE_TEXT}
 					style={{ fontFamily: "var(--bp-font-family-monospace)" }}
 				/>
@@ -580,7 +601,7 @@ export function RuntimeSettingsDialog({
 						onClick={() => {
 							handleCopyVariableToken(baseRefVariable.token);
 						}}
-						disabled={isLoading || isSaving}
+						disabled={controlsDisabled}
 					/>{" "}
 					to reference {baseRefVariable.description}
 				</p>
@@ -589,7 +610,7 @@ export function RuntimeSettingsDialog({
 				</h6>
 				<Switch
 					checked={readyForReviewNotificationsEnabled}
-					disabled={isLoading || isSaving}
+					disabled={controlsDisabled}
 					label="Notify when a task is ready for review"
 					onChange={(event) => {
 						setReadyForReviewNotificationsEnabled(event.currentTarget.checked);
@@ -603,7 +624,7 @@ export function RuntimeSettingsDialog({
 						<InlineUtilityButton
 							text="Request permission"
 							onClick={handleRequestPermission}
-							disabled={isLoading || isSaving}
+							disabled={controlsDisabled}
 						/>
 					) : null}
 				</div>
@@ -650,6 +671,7 @@ export function RuntimeSettingsDialog({
 							]);
 							setPendingShortcutScrollId(nextId);
 						}}
+						disabled={controlsDisabled}
 					/>
 				</div>
 
@@ -724,12 +746,12 @@ export function RuntimeSettingsDialog({
 			<DialogFooter
 				actions={
 					<>
-						<Button text="Cancel" variant="outlined" onClick={() => onOpenChange(false)} disabled={isSaving} />
+						<Button text="Cancel" variant="outlined" onClick={() => onOpenChange(false)} disabled={controlsDisabled} />
 						<Button
 							text="Save"
 							intent="primary"
 							onClick={() => void handleSave()}
-							disabled={isLoading || isSaving || !hasUnsavedChanges}
+							disabled={controlsDisabled || !hasUnsavedChanges}
 						/>
 					</>
 				}

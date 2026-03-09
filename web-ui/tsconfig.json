@@ -13,6 +13,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
+      "@runtime-agent-catalog": ["../src/core/agent-catalog.ts"],
       "@runtime-contract": ["../src/core/api-contract.ts"],
       "@runtime-trpc": ["../src/trpc/app-router.ts"],
       "@runtime-shortcuts": ["../src/config/shortcut-utils.ts"],
