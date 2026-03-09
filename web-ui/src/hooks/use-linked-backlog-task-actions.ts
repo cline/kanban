@@ -11,7 +11,7 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
-import { trackTaskDependencyCreated } from "@/telemetry/events";
+import { trackTaskDependencyCreated, trackTasksAutoStartedFromDependency } from "@/telemetry/events";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
@@ -153,13 +153,17 @@ export function useLinkedBacklogTaskActions({
 					}
 					return nextBoardState;
 				});
-				await Promise.all(
+				const startedTaskResults = await Promise.all(
 					readyTasks.map(async (readyTask) => {
-						await kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
+						return kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
 							optimisticMove: true,
 						});
 					}),
 				);
+				const startedTaskCount = startedTaskResults.filter((started) => started).length;
+				if (startedTaskCount > 0) {
+					trackTasksAutoStartedFromDependency(startedTaskCount);
+				}
 			}
 
 			await stopTaskSession(task.id);

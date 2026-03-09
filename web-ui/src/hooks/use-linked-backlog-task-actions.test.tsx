@@ -3,63 +3,70 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
-import type { BoardCard, BoardData } from "@/types";
+import type { BoardCard, BoardData, BoardDependency } from "@/types";
 
 const trackTaskDependencyCreatedMock = vi.hoisted(() => vi.fn());
+const trackTasksAutoStartedFromDependencyMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/telemetry/events", () => ({
 	trackTaskDependencyCreated: trackTaskDependencyCreatedMock,
+	trackTasksAutoStartedFromDependency: trackTasksAutoStartedFromDependencyMock,
 }));
 
-function createBoard(): BoardData {
+function createTask(taskId: string, prompt: string, createdAt: number): BoardCard {
+	return {
+		id: taskId,
+		prompt,
+		startInPlanMode: false,
+		autoReviewEnabled: false,
+		autoReviewMode: "commit",
+		baseRef: "main",
+		createdAt,
+		updatedAt: createdAt,
+	};
+}
+
+function createBoard(dependencies: BoardDependency[] = []): BoardData {
 	return {
 		columns: [
 			{
 				id: "backlog",
 				title: "Backlog",
-				cards: [
-					{
-						id: "task-1",
-						prompt: "Backlog task",
-						startInPlanMode: false,
-						autoReviewEnabled: false,
-						autoReviewMode: "commit",
-						baseRef: "main",
-						createdAt: 1,
-						updatedAt: 1,
-					},
-				],
+				cards: [createTask("task-1", "Backlog task", 1), createTask("task-3", "Second backlog task", 3)],
 			},
 			{ id: "in_progress", title: "In Progress", cards: [] },
 			{
 				id: "review",
 				title: "Review",
-				cards: [
-					{
-						id: "task-2",
-						prompt: "Review task",
-						startInPlanMode: false,
-						autoReviewEnabled: false,
-						autoReviewMode: "commit",
-						baseRef: "main",
-						createdAt: 2,
-						updatedAt: 2,
-					},
-				],
+				cards: [createTask("task-2", "Review task", 2)],
 			},
 			{ id: "trash", title: "Trash", cards: [] },
 		],
-		dependencies: [],
+		dependencies,
 	};
 }
 
 interface HookSnapshot {
 	board: BoardData;
 	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
+	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
 }
 
-function HookHarness({ onSnapshot }: { onSnapshot: (snapshot: HookSnapshot) => void }): null {
-	const [board, setBoard] = useState<BoardData>(() => createBoard());
+function HookHarness({
+	boardFactory,
+	onSnapshot,
+	kickoffTaskInProgress,
+}: {
+	boardFactory?: () => BoardData;
+	onSnapshot: (snapshot: HookSnapshot) => void;
+	kickoffTaskInProgress?: (
+		task: BoardCard,
+		taskId: string,
+		fromColumnId: "backlog" | "in_progress" | "review" | "trash",
+		options?: { optimisticMove?: boolean },
+	) => Promise<boolean>;
+}): null {
+	const [board, setBoard] = useState<BoardData>(() => (boardFactory ? boardFactory() : createBoard()));
 	const actions = useLinkedBacklogTaskActions({
 		board,
 		setBoard,
@@ -71,15 +78,16 @@ function HookHarness({ onSnapshot }: { onSnapshot: (snapshot: HookSnapshot) => v
 		fetchTaskWorkingChangeCount: async () => null,
 		fetchTaskWorkspaceInfo: async () => null,
 		maybeRequestNotificationPermissionForTaskStart: () => {},
-		kickoffTaskInProgress: async (_task: BoardCard, _taskId: string) => true,
+		kickoffTaskInProgress: kickoffTaskInProgress ?? (async (_task: BoardCard, _taskId: string) => true),
 	});
 
 	useEffect(() => {
 		onSnapshot({
 			board,
 			handleCreateDependency: actions.handleCreateDependency,
+			confirmMoveTaskToTrash: actions.confirmMoveTaskToTrash,
 		});
-	}, [actions.handleCreateDependency, board, onSnapshot]);
+	}, [actions.confirmMoveTaskToTrash, actions.handleCreateDependency, board, onSnapshot]);
 
 	return null;
 }
@@ -91,6 +99,7 @@ describe("useLinkedBacklogTaskActions", () => {
 
 	beforeEach(() => {
 		trackTaskDependencyCreatedMock.mockReset();
+		trackTasksAutoStartedFromDependencyMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -145,5 +154,43 @@ describe("useLinkedBacklogTaskActions", () => {
 			fromTaskId: "task-1",
 			toTaskId: "task-2",
 		});
+	});
+
+	it("tracks how many linked tasks were auto-started when a parent task is trashed", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const kickoffTaskInProgress = vi.fn(async () => true);
+		const boardFactory = () =>
+			createBoard([
+				{ id: "dep-1", fromTaskId: "task-1", toTaskId: "task-2", createdAt: 10 },
+				{ id: "dep-2", fromTaskId: "task-3", toTaskId: "task-2", createdAt: 11 },
+			]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					boardFactory={boardFactory}
+					kickoffTaskInProgress={kickoffTaskInProgress}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+		const initialSnapshot = latestSnapshot as HookSnapshot;
+		const reviewTask = initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0];
+		if (!reviewTask) {
+			throw new Error("Expected a review task.");
+		}
+
+		await act(async () => {
+			await initialSnapshot.confirmMoveTaskToTrash(reviewTask, initialSnapshot.board);
+		});
+
+		expect(kickoffTaskInProgress).toHaveBeenCalledTimes(2);
+		expect(trackTasksAutoStartedFromDependencyMock).toHaveBeenCalledWith(2);
 	});
 });

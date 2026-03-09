@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	trackTaskCreated,
 	trackTaskDependencyCreated,
+	trackTasksAutoStartedFromDependency,
 	trackTaskResumedFromTrash,
 } from "@/telemetry/events";
 
@@ -58,10 +59,14 @@ describe("telemetry events", () => {
 
 	it("captures the new task workflow events", () => {
 		trackTaskDependencyCreated();
+		trackTasksAutoStartedFromDependency(3);
 		trackTaskResumedFromTrash();
 
 		expect(captureMock).toHaveBeenNthCalledWith(1, "task_dependency_created", {});
-		expect(captureMock).toHaveBeenNthCalledWith(2, "task_resumed_from_trash", {});
+		expect(captureMock).toHaveBeenNthCalledWith(2, "tasks_auto_started_from_dependency", {
+			started_task_count: 3,
+		});
+		expect(captureMock).toHaveBeenNthCalledWith(3, "task_resumed_from_trash", {});
 	});
 
 	it("skips capture when telemetry is disabled", () => {
