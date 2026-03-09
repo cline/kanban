@@ -1,4 +1,4 @@
-import { Button, Card, Classes, Colors, Elevation, Icon, Spinner } from "@blueprintjs/core";
+import { Button, Card, Classes, Colors, Elevation, Icon, Spinner, Tooltip } from "@blueprintjs/core";
 import { Draggable } from "@hello-pangea/dnd";
 import type { MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +20,7 @@ export function BoardCard({
 	onClick,
 	onStart,
 	onMoveToTrash,
+	onRestoreFromTrash,
 	reviewWorkspaceSnapshot,
 	onCommit,
 	onOpenPr,
@@ -39,6 +40,7 @@ export function BoardCard({
 	onClick?: () => void;
 	onStart?: (taskId: string) => void;
 	onMoveToTrash?: (taskId: string) => void;
+	onRestoreFromTrash?: (taskId: string) => void;
 	reviewWorkspaceSnapshot?: ReviewTaskWorkspaceSnapshot;
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
@@ -56,7 +58,6 @@ export function BoardCard({
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const isTrashCard = columnId === "trash";
 	const showPreview = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const isCardDraggable = !isTrashCard;
 	const isCardInteractive = !isTrashCard;
 	const displayPrompt = useMemo(() => {
 		return card.prompt.trim();
@@ -117,7 +118,7 @@ export function BoardCard({
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 
 	return (
-		<Draggable draggableId={card.id} index={index} isDragDisabled={!isCardDraggable}>
+		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
 			{(provided, snapshot) => {
 				const isDragging = snapshot.isDragging;
 				const cardElevation = isDragging
@@ -172,7 +173,7 @@ export function BoardCard({
 						style={{
 							...provided.draggableProps.style,
 							marginBottom: 8,
-							cursor: isCardDraggable ? "grab" : "default",
+							cursor: "grab",
 						}}
 						onMouseEnter={() => {
 							setIsHovered(true);
@@ -237,6 +238,29 @@ export function BoardCard({
 											onMoveToTrash?.(card.id);
 										}}
 									/>
+				) : columnId === "trash" ? (
+					<Tooltip
+						placement="bottom"
+						content={
+							<>
+								Restore session
+								<br />
+								in new worktree
+							</>
+						}
+					>
+						<Button
+							icon={<Icon icon="reset" size={12} />}
+							variant="minimal"
+							size="small"
+							aria-label="Restore task from trash"
+							onMouseDown={stopEvent}
+							onClick={(event) => {
+								stopEvent(event);
+								onRestoreFromTrash?.(card.id);
+							}}
+						/>
+					</Tooltip>
 								) : null}
 							</div>
 							{displayPromptSplit.description ? (

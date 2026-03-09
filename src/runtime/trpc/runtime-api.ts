@@ -119,6 +119,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					cwd: taskCwd,
 					prompt: body.prompt,
 					startInPlanMode: body.startInPlanMode,
+					resumeFromTrash: body.resumeFromTrash,
 					cols: body.cols,
 					rows: body.rows,
 					workspaceId: workspaceScope.workspaceId,

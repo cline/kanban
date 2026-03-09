@@ -485,6 +485,7 @@ export default function App(): ReactElement {
 		handleCardSelect,
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
+		handleRestoreTaskFromTrash,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
@@ -818,6 +819,7 @@ export default function App(): ReactElement {
 											commitTaskLoadingById={commitTaskLoadingById}
 											openPrTaskLoadingById={openPrTaskLoadingById}
 											onMoveToTrashTask={handleMoveReviewCardToTrash}
+										onRestoreFromTrashTask={handleRestoreTaskFromTrash}
 											reviewWorkspaceSnapshots={workspaceSnapshots}
 											dependencies={board.dependencies}
 											onCreateDependency={handleCreateDependency}
@@ -901,6 +903,7 @@ export default function App(): ReactElement {
 								agentCommitTaskLoadingById={agentCommitTaskLoadingById}
 								agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
 								onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
+								onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
 								onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 								reviewWorkspaceSnapshots={workspaceSnapshots}
 								onAddReviewComments={(taskId: string, text: string) => {

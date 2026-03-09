@@ -18,6 +18,7 @@ export interface AgentAdapterLaunchInput {
 	cwd: string;
 	prompt: string;
 	startInPlanMode?: boolean;
+	resumeFromTrash?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
 }
@@ -303,6 +304,9 @@ const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
+			args.push("--continue");
+		}
 		if (input.startInPlanMode) {
 			const withoutImmediateBypass = args.filter((arg) => arg !== "--dangerously-skip-permissions");
 			args.length = 0;
@@ -379,6 +383,15 @@ const codexAdapter: AgentSessionAdapter = {
 		const env: Record<string, string | undefined> = {};
 		let binary = input.binary;
 
+		if (input.resumeFromTrash) {
+			if (!codexArgs.includes("resume")) {
+				codexArgs.push("resume");
+			}
+			if (!hasCliOption(codexArgs, "--last")) {
+				codexArgs.push("--last");
+			}
+		}
+
 		const hooks = resolveHookContext(input);
 		if (hooks) {
 			Object.assign(
@@ -429,6 +442,10 @@ const geminiAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume")) {
+			args.push("--resume", "latest");
+		}
 
 		if (input.startInPlanMode) {
 			args.push("--approval-mode=plan");
@@ -727,6 +744,9 @@ const opencodeAdapter: AgentSessionAdapter = {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
 		const baseConfigPath = await resolveOpenCodeBaseConfigPath(input.env?.OPENCODE_CONFIG);
+		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
+			args.push("--continue");
+		}
 
 		if (input.startInPlanMode) {
 			env.OPENCODE_EXPERIMENTAL_PLAN_MODE = "true";
@@ -791,6 +811,10 @@ const clineAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
+			args.push("--continue");
+		}
 
 		if (input.startInPlanMode) {
 			args.push("--plan");

@@ -37,10 +37,14 @@ interface StartTaskSessionResult {
 	message?: string;
 }
 
+interface StartTaskSessionOptions {
+	resumeFromTrash?: boolean;
+}
+
 export interface UseTaskSessionsResult {
 	upsertSession: (summary: RuntimeTaskSessionSummary) => void;
 	ensureTaskWorkspace: (task: BoardCard) => Promise<EnsureTaskWorkspaceResult>;
-	startTaskSession: (task: BoardCard) => Promise<StartTaskSessionResult>;
+	startTaskSession: (task: BoardCard, options?: StartTaskSessionOptions) => Promise<StartTaskSessionResult>;
 	stopTaskSession: (taskId: string) => Promise<void>;
 	sendTaskSessionInput: (
 		taskId: string,
@@ -95,18 +99,19 @@ export function useTaskSessions({
 	);
 
 	const startTaskSession = useCallback(
-		async (task: BoardCard): Promise<StartTaskSessionResult> => {
+		async (task: BoardCard, options?: StartTaskSessionOptions): Promise<StartTaskSessionResult> => {
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
 			}
 			try {
-				const kickoffPrompt = task.prompt.trim();
+				const kickoffPrompt = options?.resumeFromTrash ? "" : task.prompt.trim();
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const geometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
 				const payload = await trpcClient.runtime.startTaskSession.mutate({
 					taskId: task.id,
 					prompt: kickoffPrompt,
-					startInPlanMode: task.startInPlanMode,
+					startInPlanMode: options?.resumeFromTrash ? undefined : task.startInPlanMode,
+					resumeFromTrash: options?.resumeFromTrash,
 					baseRef: task.baseRef,
 					cols: geometry.cols,
 					rows: geometry.rows,

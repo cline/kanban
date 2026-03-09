@@ -70,6 +70,7 @@ export interface StartTaskSessionRequest {
 	cwd: string;
 	prompt: string;
 	startInPlanMode?: boolean;
+	resumeFromTrash?: boolean;
 	cols?: number;
 	rows?: number;
 	env?: Record<string, string | undefined>;
@@ -278,6 +279,7 @@ export class TerminalSessionManager {
 			cwd: request.cwd,
 			prompt: request.prompt,
 			startInPlanMode: request.startInPlanMode,
+			resumeFromTrash: request.resumeFromTrash,
 			env: request.env,
 			workspaceId: request.workspaceId,
 		});
@@ -373,14 +375,14 @@ export class TerminalSessionManager {
 
 		const startedAt = now();
 		updateSummary(entry, {
-			state: "running",
+			state: request.resumeFromTrash ? "awaiting_review" : "running",
 			agentId: request.agentId,
 			workspacePath: request.cwd,
 			pid: ptyProcess.pid,
 			startedAt,
 			lastOutputAt: null,
-			activityPreview: null,
-			reviewReason: null,
+			activityPreview: request.resumeFromTrash ? entry.summary.activityPreview : null,
+			reviewReason: request.resumeFromTrash ? "attention" : null,
 			exitCode: null,
 		});
 		this.emitSummary(entry.summary);

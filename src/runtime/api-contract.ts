@@ -450,6 +450,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	taskId: z.string(),
 	prompt: z.string(),
 	startInPlanMode: z.boolean().optional(),
+	resumeFromTrash: z.boolean().optional(),
 	baseRef: z.string(),
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),

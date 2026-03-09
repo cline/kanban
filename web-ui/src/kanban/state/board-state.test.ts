@@ -376,6 +376,35 @@ describe("board dependency state", () => {
 		expect(trashColumn?.cards.map((card) => card.id)).toEqual([taskB, taskA, taskC]);
 	});
 
+	it("allows manual trash to review drags", () => {
+		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
+		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
+
+		const movedAToTrash = moveTaskToColumn(fixture.board, taskA, "trash");
+		expect(movedAToTrash.moved).toBe(true);
+		const movedBToReview = moveTaskToColumn(movedAToTrash.board, taskB, "review");
+		expect(movedBToReview.moved).toBe(true);
+
+		const movedToReview = applyDragResult(movedBToReview.board, {
+			draggableId: taskA,
+			type: "CARD",
+			source: { droppableId: "trash", index: 0 },
+			destination: { droppableId: "review", index: 1 },
+			mode: "SNAP",
+			reason: "DROP",
+			combine: null,
+		});
+		expect(movedToReview.moveEvent).toMatchObject({
+			taskId: taskA,
+			fromColumnId: "trash",
+			toColumnId: "review",
+		});
+		expect(getTaskColumnId(movedToReview.board, taskA)).toBe("review");
+		const reviewColumn = movedToReview.board.columns.find((column) => column.id === "review");
+		expect(reviewColumn?.cards.map((card) => card.id)).toEqual([taskB, taskA]);
+	});
+
 	it("inserts programmatic trash drags at the top of trash", () => {
 		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");

@@ -166,4 +166,63 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(userPromptSubmitScript).toContain("to_in_progress");
 		expect(userPromptSubmitScript).toContain('{"cancel":false}');
 	});
+
+	it("adds resume flags for each agent", async () => {
+		setupTempHome();
+
+		const codexLaunch = await prepareAgentLaunch({
+			taskId: "task-codex",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(codexLaunch.args).toEqual(expect.arrayContaining(["resume", "--last"]));
+
+		const claudeLaunch = await prepareAgentLaunch({
+			taskId: "task-claude",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(claudeLaunch.args).toContain("--continue");
+
+		const geminiLaunch = await prepareAgentLaunch({
+			taskId: "task-gemini",
+			agentId: "gemini",
+			binary: "gemini",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(geminiLaunch.args).toEqual(expect.arrayContaining(["--resume", "latest"]));
+
+		const opencodeLaunch = await prepareAgentLaunch({
+			taskId: "task-opencode",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(opencodeLaunch.args).toContain("--continue");
+
+		const clineLaunch = await prepareAgentLaunch({
+			taskId: "task-cline",
+			agentId: "cline",
+			binary: "cline",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(clineLaunch.args).toContain("--continue");
+	});
 });

@@ -26,6 +26,7 @@ export function BoardColumn({
 	onCommitTask,
 	onOpenPrTask,
 	onMoveToTrashTask,
+	onRestoreFromTrashTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
 	reviewWorkspaceSnapshots,
@@ -51,6 +52,7 @@ export function BoardColumn({
 	onCommitTask?: (taskId: string) => void;
 	onOpenPrTask?: (taskId: string) => void;
 	onMoveToTrashTask?: (taskId: string) => void;
+	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
 	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
@@ -157,6 +159,7 @@ export function BoardColumn({
 											sessionSummary={taskSessions[card.id]}
 											onStart={onStartTask}
 											onMoveToTrash={onMoveToTrashTask}
+												onRestoreFromTrash={onRestoreFromTrashTask}
 											reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
 											onCommit={onCommitTask}
 											onOpenPr={onOpenPrTask}

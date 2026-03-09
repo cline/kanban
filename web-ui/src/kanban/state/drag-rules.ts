@@ -36,6 +36,9 @@ export function isAllowedCrossColumnCardMove(
 	if (toColumnId === "trash" && fromColumnId !== "trash") {
 		return true;
 	}
+	if (fromColumnId === "trash" && toColumnId === "review") {
+		return true;
+	}
 	if (
 		(fromColumnId === "in_progress" && toColumnId === "review") ||
 		(fromColumnId === "review" && toColumnId === "in_progress")

@@ -53,4 +53,8 @@ describe("drag rules", () => {
 			}),
 		).toBe(true);
 	});
+
+	it("allows manual trash to review drops", () => {
+		expect(isCardDropDisabled("review", "trash")).toBe(false);
+	});
 });

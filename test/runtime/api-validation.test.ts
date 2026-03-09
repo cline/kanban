@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseHookIngestRequest, parseWorkspaceFileSearchRequest } from "../../src/runtime/api-validation.js";
+import {
+	parseHookIngestRequest,
+	parseTaskSessionStartRequest,
+	parseWorkspaceFileSearchRequest,
+} from "../../src/runtime/api-validation.js";
 
 describe("parseWorkspaceFileSearchRequest", () => {
 	it("parses q and limit", () => {
@@ -54,5 +58,22 @@ describe("parseHookIngestRequest", () => {
 				event: "to_review",
 			});
 		}).toThrow("Missing workspaceId");
+	});
+});
+
+describe("parseTaskSessionStartRequest", () => {
+	it("parses resumeFromTrash and trims task identifiers", () => {
+		const parsed = parseTaskSessionStartRequest({
+			taskId: "  task-1  ",
+			prompt: "",
+			baseRef: "  main  ",
+			resumeFromTrash: true,
+		});
+		expect(parsed).toEqual({
+			taskId: "task-1",
+			prompt: "",
+			baseRef: "main",
+			resumeFromTrash: true,
+		});
 	});
 });
