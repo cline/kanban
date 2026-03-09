@@ -122,7 +122,10 @@ function buildClineNotificationHookScriptContent(): string {
 	if (process.platform === "win32") {
 		const command = commandParts.map(powerShellQuote).join(" ");
 		return `$inputText = [Console]::In.ReadToEnd()
-if ($inputText -match '"event"\\s*:\\s*"(user_attention|task_complete)"') {
+if (
+  $inputText -match '"event"\\s*:\\s*"user_attention"' -and
+  $inputText -notmatch '"source"\\s*:\\s*"completion_result"'
+) {
   try {
     & ${command} | Out-Null
   } catch {
@@ -135,7 +138,8 @@ exit 0
 	const command = commandParts.map(quoteShellArg).join(" ");
 	return `#!/usr/bin/env bash
 INPUT="$(cat || true)"
-if printf '%s' "$INPUT" | grep -Eq '"event"[[:space:]]*:[[:space:]]*"(user_attention|task_complete)"'; then
+if printf '%s' "$INPUT" | grep -Eq '"event"[[:space:]]*:[[:space:]]*"user_attention"' &&
+  ! printf '%s' "$INPUT" | grep -Eq '"source"[[:space:]]*:[[:space:]]*"completion_result"'; then
   ${command} >/dev/null 2>&1 || true
 fi
 echo '{"cancel":false}'

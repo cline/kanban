@@ -153,7 +153,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(notificationScript).toContain("hooks");
 		expect(notificationScript).toContain("to_review");
 		expect(notificationScript).toContain("user_attention");
-		expect(notificationScript).toContain("task_complete");
+		expect(notificationScript).toContain("completion_result");
 		expect(notificationScript).toContain('{"cancel":false}');
 
 		const taskCompleteScript = readFileSync(taskCompleteHookPath, "utf8");
