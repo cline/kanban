@@ -8,8 +8,8 @@ async function createTaskFromBacklog(page: Page, title: string) {
 
 test("renders kanban top bar and columns", async ({ page }) => {
 	await page.goto("/");
-	await expect(page.getByText("Kanbanana", { exact: true })).toBeVisible();
-	await expect(page).toHaveTitle(/Kanbanana/);
+	await expect(page.getByText("Kanban", { exact: true })).toBeVisible();
+	await expect(page).toHaveTitle(/Kanban/);
 	await expect(page.getByText("Backlog", { exact: true })).toBeVisible();
 	await expect(page.getByText("In Progress", { exact: true })).toBeVisible();
 	await expect(page.getByText("Review", { exact: true })).toBeVisible();

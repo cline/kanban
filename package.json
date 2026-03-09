@@ -1,5 +1,5 @@
 {
-  "name": "kanbanana",
+  "name": "kanban",
   "version": "0.1.0",
   "description": "A kanban foundation for coding agents",
   "keywords": [
@@ -9,20 +9,20 @@
     "task-management",
     "typescript"
   ],
-  "homepage": "https://github.com/cline/kanbanana",
+  "homepage": "https://github.com/cline/kanban",
   "bugs": {
-    "url": "https://github.com/cline/kanbanana/issues"
+    "url": "https://github.com/cline/kanban/issues"
   },
   "author": "Cline",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cline/kanbanana.git"
+    "url": "git+https://github.com/cline/kanban.git"
   },
   "type": "module",
   "bin": {
-    "kanbanana": "dist/cli.js"
+    "kanban": "dist/cli.js"
   },
-  "man": "./man/kanbanana.1",
+  "man": "./man/kanban.1",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -45,7 +45,7 @@
     "install:all": "npm install && npm --prefix web-ui install",
     "build": "npm run clean && npm run web:build && tsc -p tsconfig.build.json && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && shx chmod +x dist/cli.js",
     "link": "npm run build && npm link",
-    "unlink": "npm unlink -g kanbanana",
+    "unlink": "npm unlink -g kanban",
     "dev": "tsx watch src/cli.ts",
     "web:dev": "npm --prefix web-ui run dev",
     "web:build": "npm --prefix web-ui run build",

@@ -43,7 +43,7 @@ node dist/cli.js
 
 This mode serves built web assets from `dist/web-ui` and does not hot reload the web UI.
 
-## Run `kanbanana` from any directory
+## Run `kanban` from any directory
 
 After cloning and installing dependencies, create/update the global CLI link from this repo:
 
@@ -54,20 +54,20 @@ npm run link
 Verify:
 
 ```bash
-which kanbanana
-kanbanana --version
+which kanban
+kanban --version
 ```
 
 Then run from any project directory:
 
 ```bash
 cd /path/to/your/project
-kanbanana
+kanban
 ```
 
 After local code changes, run `npm run build` again before using the linked command.
 
-When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `kanbanana` binary points at the right `dist/cli.js`. Without this, `kanbanana mcp` will serve a stale build from a different worktree.
+When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `kanban` binary points at the right `dist/cli.js`. Without this, `kanban mcp` will serve a stale build from a different worktree.
 
 Remove the global link:
 
@@ -95,7 +95,7 @@ npm run unlink
 
 ## Agent tracking and runtime hooks
 
-Kanbanana tracks agent session state with runtime hook events. The core transition model is:
+Kanban tracks agent session state with runtime hook events. The core transition model is:
 
 - `in_progress -> review`
 - `review -> in_progress`
@@ -108,11 +108,11 @@ Internal runtime session states are named `running` and `awaiting_review`, and h
 How it works end to end:
 
 1. `prepareAgentLaunch` wires each agent with hook commands or hook-aware wrappers.
-2. Hook handlers call `kanbanana hooks ...` subcommands.
-3. `kanbanana hooks ingest --event <to_review|to_in_progress>` reads hook context from env:
-   - `KANBANANA_HOOK_TASK_ID`
-   - `KANBANANA_HOOK_WORKSPACE_ID`
-   - `KANBANANA_HOOK_PORT`
+2. Hook handlers call `kanban hooks ...` subcommands.
+3. `kanban hooks ingest --event <to_review|to_in_progress>` reads hook context from env:
+   - `KANBAN_HOOK_TASK_ID`
+   - `KANBAN_HOOK_WORKSPACE_ID`
+   - `KANBAN_HOOK_PORT`
 4. The ingest command calls runtime TRPC `hooks.ingest`.
 5. The runtime applies guarded transitions and ignores duplicates or invalid transitions as no-ops.
 
@@ -140,7 +140,7 @@ Important behavior details:
 - Hooks are best-effort and should not crash or block the underlying agent process.
 - Hook notify paths are asynchronous to keep agent UX responsive.
 - Runtime transition guards are authoritative and prevent state flapping from duplicate events.
-- Hook transport is implemented in Node and invoked through `kanbanana hooks ...`, so the behavior is consistent across Windows and non-Windows environments.
+- Hook transport is implemented in Node and invoked through `kanban hooks ...`, so the behavior is consistent across Windows and non-Windows environments.
 
 For a full technical breakdown, see:
 

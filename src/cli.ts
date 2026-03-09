@@ -14,8 +14,8 @@ import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.
 import { createGitProcessEnv } from "./core/git-process-env.js";
 import { resolveProjectInputPath } from "./projects/project-path.js";
 import {
-	buildKanbananaRuntimeUrl,
-	KANBANANA_RUNTIME_ORIGIN,
+	buildKanbanRuntimeUrl,
+	KANBAN_RUNTIME_ORIGIN,
 } from "./core/runtime-endpoint.js";
 import { openInBrowser } from "./server/browser.js";
 import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
@@ -40,7 +40,7 @@ interface CliOptions {
 }
 
 const CLI_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode", "cline"];
-const KANBANANA_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
+const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 function parseCliAgentId(value: string): RuntimeAgentId {
 	const normalized = value.trim().toLowerCase();
@@ -98,14 +98,14 @@ function parseCliOptions(argv: string[]): CliOptions {
 }
 
 function printHelp(): void {
-	console.log("kanbanana");
+	console.log("kanban");
 	console.log("Local orchestration board for coding agents.");
 	console.log("");
 	console.log("Usage:");
-	console.log("  kanbanana [--agent <id>] [--no-open] [--help] [--version]");
-	console.log("  kanbanana mcp");
+	console.log("  kanban [--agent <id>] [--no-open] [--help] [--version]");
+	console.log("  kanban mcp");
 	console.log("");
-	console.log(`Runtime URL: ${KANBANANA_RUNTIME_ORIGIN}`);
+	console.log(`Runtime URL: ${KANBAN_RUNTIME_ORIGIN}`);
 	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);
 }
 
@@ -186,13 +186,13 @@ function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	);
 }
 
-async function canReachKanbananaServer(workspaceId: string | null): Promise<boolean> {
+async function canReachKanbanServer(workspaceId: string | null): Promise<boolean> {
 	try {
 		const headers: Record<string, string> = {};
 		if (workspaceId) {
-			headers["x-kanbanana-workspace-id"] = workspaceId;
+			headers["x-kanban-workspace-id"] = workspaceId;
 		}
-		const response = await fetch(buildKanbananaRuntimeUrl("/api/trpc/projects.list"), {
+		const response = await fetch(buildKanbanRuntimeUrl("/api/trpc/projects.list"), {
 			method: "GET",
 			headers,
 			signal: AbortSignal.timeout(1_500),
@@ -216,14 +216,14 @@ async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
 		const context = await loadWorkspaceContext(process.cwd());
 		workspaceId = context.workspaceId;
 	}
-	const running = await canReachKanbananaServer(workspaceId);
+	const running = await canReachKanbanServer(workspaceId);
 	if (!running) {
 		return false;
 	}
 	const projectUrl = workspaceId
-		? buildKanbananaRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
-		: KANBANANA_RUNTIME_ORIGIN;
-	console.log(`Kanbanana already running at ${KANBANANA_RUNTIME_ORIGIN}`);
+		? buildKanbanRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
+		: KANBAN_RUNTIME_ORIGIN;
+	console.log(`Kanban already running at ${KANBAN_RUNTIME_ORIGIN}`);
 	if (!noOpen) {
 		try {
 			openInBrowser(projectUrl);
@@ -331,7 +331,7 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 		workspaceRegistry,
 		runtimeStateHub: runtimeHub,
 		warn: (message) => {
-			console.warn(`[kanbanana] ${message}`);
+			console.warn(`[kanban] ${message}`);
 		},
 		ensureTerminalManagerForWorkspace: workspaceRegistry.ensureTerminalManagerForWorkspace,
 		resolveInteractiveShellCommand,
@@ -352,7 +352,7 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 		await shutdownRuntimeServer({
 			workspaceRegistry,
 			warn: (message) => {
-				console.warn(`[kanbanana] ${message}`);
+				console.warn(`[kanban] ${message}`);
 			},
 			closeRuntimeServer: close,
 		});
@@ -383,12 +383,12 @@ async function run(): Promise<void> {
 		return;
 	}
 	if (options.version) {
-		console.log(KANBANANA_VERSION);
+		console.log(KANBAN_VERSION);
 		return;
 	}
 
 	autoUpdateOnStartup({
-		currentVersion: KANBANANA_VERSION,
+		currentVersion: KANBAN_VERSION,
 	});
 
 	if (options.agent) {
@@ -407,7 +407,7 @@ async function run(): Promise<void> {
 		}
 		throw error;
 	}
-	console.log(`Kanbanana running at ${runtime.url}`);
+	console.log(`Kanban running at ${runtime.url}`);
 	if (!options.noOpen) {
 		try {
 			openInBrowser(runtime.url);
@@ -451,6 +451,6 @@ async function run(): Promise<void> {
 
 run().catch((error) => {
 	const message = error instanceof Error ? error.message : String(error);
-	console.error(`Failed to start Kanbanana: ${message}`);
+	console.error(`Failed to start Kanban: ${message}`);
 	process.exit(1);
 });

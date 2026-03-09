@@ -2,12 +2,12 @@
 
 ## Purpose
 
-This document explains how Kanbanana tracks agent session state using runtime hooks.
+This document explains how Kanban tracks agent session state using runtime hooks.
 
 It focuses on:
 
 1. Launch-time wiring for each agent.
-2. The `kanbanana hooks ...` subcommand pipeline.
+2. The `kanban hooks ...` subcommand pipeline.
 3. State transition rules (`running` <-> `awaiting_review`).
 4. Generated files under the runtime home directory.
 5. Platform behavior differences and why the transport is implemented in Node.
@@ -45,7 +45,7 @@ Each CLI agent exposes different callback surfaces:
 2. Some provide completion-only callbacks.
 3. Some require parsing side-channel logs.
 
-Kanbanana normalizes all of that into two transition intents:
+Kanban normalizes all of that into two transition intents:
 
 1. `to_review`
 2. `to_in_progress`
@@ -59,9 +59,9 @@ Terminal session starts
   -> prepareAgentLaunch() builds per-agent command/env/config
   -> agent process emits hook-relevant signals
   -> agent hook/wrapper calls:
-       kanbanana hooks notify --event <to_review|to_in_progress>
+       kanban hooks notify --event <to_review|to_in_progress>
   -> notify path dispatches best-effort ingest
-       kanbanana hooks ingest --event <to_review|to_in_progress>
+       kanban hooks ingest --event <to_review|to_in_progress>
   -> hooks ingest calls runtime TRPC hooks.ingest
   -> hooks API validates transition eligibility
   -> session manager applies reducer transition event
@@ -73,27 +73,27 @@ Terminal session starts
 Runtime home root:
 
 ```text
-~/.kanbanana
+~/.kanban
 ```
 
 Hook-related files live under:
 
 ```text
-~/.kanbanana/hooks/<agent-id>/
+~/.kanban/hooks/<agent-id>/
 ```
 
 Generated files by agent:
 
 1. Claude
-   1. `~/.kanbanana/hooks/claude/settings.json`
+   1. `~/.kanban/hooks/claude/settings.json`
 2. Gemini
-   1. `~/.kanbanana/hooks/gemini/settings.json`
+   1. `~/.kanban/hooks/gemini/settings.json`
 3. OpenCode
-   1. `~/.kanbanana/hooks/opencode/kanbanana.js`
-   2. `~/.kanbanana/hooks/opencode/opencode.json`
+   1. `~/.kanban/hooks/opencode/kanban.js`
+   2. `~/.kanban/hooks/opencode/opencode.json`
 4. Codex
    1. No persistent wrapper script file is generated now.
-   2. Codex uses `kanbanana hooks codex-wrapper` as the wrapper command.
+   2. Codex uses `kanban hooks codex-wrapper` as the wrapper command.
 
 Generated hook files are written through idempotent text writes. Files only update when content changes.
 
@@ -101,11 +101,11 @@ Generated hook files are written through idempotent text writes. Files only upda
 
 When hook context is available, launch wiring injects:
 
-1. `KANBANANA_HOOK_TASK_ID`
-2. `KANBANANA_HOOK_WORKSPACE_ID`
-3. `KANBANANA_HOOK_PORT`
+1. `KANBAN_HOOK_TASK_ID`
+2. `KANBAN_HOOK_WORKSPACE_ID`
+3. `KANBAN_HOOK_PORT`
 
-These are required by `kanbanana hooks ingest` to route a hook event to the correct session and runtime process.
+These are required by `kanban hooks ingest` to route a hook event to the correct session and runtime process.
 
 ## Command resolution and cross-platform behavior
 
@@ -141,9 +141,9 @@ Shared hook context preconditions:
 
 Wiring:
 
-1. Write `~/.kanbanana/hooks/claude/settings.json`.
+1. Write `~/.kanban/hooks/claude/settings.json`.
 2. Pass `--settings <path>` to Claude.
-3. Inject `KANBANANA_HOOK_*` env vars.
+3. Inject `KANBAN_HOOK_*` env vars.
 
 Configured hook mapping in Claude settings:
 
@@ -158,11 +158,11 @@ Configured hook mapping in Claude settings:
 
 Wiring:
 
-1. Inject `KANBANANA_HOOK_*` env vars.
+1. Inject `KANBAN_HOOK_*` env vars.
 2. Replace spawn target with:
 
 ```text
-kanbanana hooks codex-wrapper --real-binary <configured-codex-binary> -- <codex args...>
+kanban hooks codex-wrapper --real-binary <configured-codex-binary> -- <codex args...>
 ```
 
 3. Keep prompt-detection fallback for returning from review when Codex prompt reappears.
@@ -188,13 +188,13 @@ Codex wrapper behavior:
 
 Wiring:
 
-1. Write `~/.kanbanana/hooks/gemini/settings.json`.
+1. Write `~/.kanban/hooks/gemini/settings.json`.
 2. Set `GEMINI_CLI_SYSTEM_SETTINGS_PATH=<that file>`.
-3. Inject `KANBANANA_HOOK_*` env vars.
+3. Inject `KANBAN_HOOK_*` env vars.
 4. Hook commands in Gemini settings call:
 
 ```text
-kanbanana hooks gemini-hook
+kanban hooks gemini-hook
 ```
 
 Gemini hook handler behavior:
@@ -214,10 +214,10 @@ The immediate stdout response is required to avoid blocking Gemini CLI hook exec
 
 Wiring:
 
-1. Generate plugin file at `~/.kanbanana/hooks/opencode/kanbanana.js`.
-2. Generate OpenCode config at `~/.kanbanana/hooks/opencode/opencode.json`.
+1. Generate plugin file at `~/.kanban/hooks/opencode/kanban.js`.
+2. Generate OpenCode config at `~/.kanban/hooks/opencode/opencode.json`.
 3. Set `OPENCODE_CONFIG=<generated config path>`.
-4. Inject `KANBANANA_HOOK_*` env vars.
+4. Inject `KANBAN_HOOK_*` env vars.
 
 Plugin behavior:
 
@@ -236,7 +236,7 @@ Plugin behavior:
 Behavior:
 
 1. Parse `--event`.
-2. Parse `KANBANANA_HOOK_*` env context.
+2. Parse `KANBAN_HOOK_*` env context.
 3. Call TRPC mutation `hooks.ingest` with timeout.
 4. Return non-zero on ingest failure.
 
@@ -307,7 +307,7 @@ Why no-op success is important:
 Codex wrapper may create a runtime session log path when absent:
 
 ```text
-<tmpdir>/kanbanana-codex-session-<pid>_<timestamp>.jsonl
+<tmpdir>/kanban-codex-session-<pid>_<timestamp>.jsonl
 ```
 
 This file is a runtime artifact used for watcher parsing, not a persistent config file.
@@ -338,14 +338,14 @@ Concrete behavior:
 When transitions are missing:
 
 1. Confirm hook env variables exist inside launched agent process.
-2. Confirm expected generated files exist under `~/.kanbanana/hooks`.
-3. Run `kanbanana hooks ingest --event to_review` manually with env vars set.
+2. Confirm expected generated files exist under `~/.kanban/hooks`.
+3. Run `kanban hooks ingest --event to_review` manually with env vars set.
 4. For Codex:
    1. Check `CODEX_TUI_SESSION_LOG_PATH`.
    2. Confirm log lines contain `dir=to_tui` and `kind=codex_event`.
 5. For Gemini:
    1. Confirm `GEMINI_CLI_SYSTEM_SETTINGS_PATH` points to generated settings.
-   2. Confirm hook command is `kanbanana hooks gemini-hook`.
+   2. Confirm hook command is `kanban hooks gemini-hook`.
 6. For OpenCode:
    1. Confirm `OPENCODE_CONFIG` points to generated config.
    2. Confirm plugin file URL references generated plugin.

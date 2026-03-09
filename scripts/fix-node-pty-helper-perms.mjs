@@ -27,11 +27,11 @@ async function ensureExecutable(path) {
 
 	try {
 		await chmod(path, 0o755);
-		console.log(`[kanbanana] fixed execute permission: ${path}`);
+		console.log(`[kanban] fixed execute permission: ${path}`);
 		return true;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		console.warn(`[kanbanana] could not chmod ${path}: ${message}`);
+		console.warn(`[kanban] could not chmod ${path}: ${message}`);
 		return false;
 	}
 }

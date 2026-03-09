@@ -10,7 +10,7 @@ const originalHome = process.env.HOME;
 let tempHome: string | null = null;
 
 function setupTempHome(): string {
-	tempHome = mkdtempSync(join(tmpdir(), "kanbanana-agent-adapters-"));
+	tempHome = mkdtempSync(join(tmpdir(), "kanban-agent-adapters-"));
 	process.env.HOME = tempHome;
 	return tempHome;
 }
@@ -40,8 +40,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		expect(launch.env.KANBANANA_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.KANBANANA_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
 
 		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
 		expect(launchCommand).toContain("hooks");
@@ -50,7 +50,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launchCommand).toContain("codex");
 		expect(launchCommand).toContain("--");
 
-		const wrapperPath = join(homedir(), ".kanbanana", "hooks", "codex", "codex-wrapper.mjs");
+		const wrapperPath = join(homedir(), ".kanban", "hooks", "codex", "codex-wrapper.mjs");
 		expect(existsSync(wrapperPath)).toBe(false);
 	});
 
@@ -66,7 +66,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const settingsPath = join(homedir(), ".kanbanana", "hooks", "claude", "settings.json");
+		const settingsPath = join(homedir(), ".kanban", "hooks", "claude", "settings.json");
 		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
 			hooks?: Record<string, unknown>;
 		};
@@ -87,14 +87,14 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const settingsPath = join(homedir(), ".kanbanana", "hooks", "gemini", "settings.json");
+		const settingsPath = join(homedir(), ".kanban", "hooks", "gemini", "settings.json");
 		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
 			hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
 		};
 		const afterToolCommand = settings.hooks?.AfterTool?.[0]?.hooks?.[0]?.command;
 		expect(afterToolCommand).toContain("hooks");
 		expect(afterToolCommand).toContain("gemini-hook");
-		const hookScriptPath = join(homedir(), ".kanbanana", "hooks", "gemini", "gemini-hook.mjs");
+		const hookScriptPath = join(homedir(), ".kanban", "hooks", "gemini", "gemini-hook.mjs");
 		expect(existsSync(hookScriptPath)).toBe(false);
 	});
 
@@ -110,7 +110,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const pluginPath = join(homedir(), ".kanbanana", "hooks", "opencode", "kanbanana.js");
+		const pluginPath = join(homedir(), ".kanban", "hooks", "opencode", "kanban.js");
 		const plugin = readFileSync(pluginPath, "utf8");
 		expect(plugin).toContain("parentID");
 		expect(plugin).toContain('"permission.ask"');
@@ -130,7 +130,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		const hooksDir = join(homedir(), ".kanbanana", "hooks", "cline");
+		const hooksDir = join(homedir(), ".kanban", "hooks", "cline");
 		const notificationHookPath =
 			process.platform === "win32" ? join(hooksDir, "Notification.ps1") : join(hooksDir, "Notification");
 		const taskCompleteHookPath =
@@ -138,8 +138,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const userPromptSubmitHookPath =
 			process.platform === "win32" ? join(hooksDir, "UserPromptSubmit.ps1") : join(hooksDir, "UserPromptSubmit");
 
-		expect(launch.env.KANBANANA_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.KANBANANA_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
 
 		const hooksDirArgIndex = launch.args.indexOf("--hooks-dir");
 		expect(hooksDirArgIndex).toBeGreaterThanOrEqual(0);

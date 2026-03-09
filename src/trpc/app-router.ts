@@ -233,7 +233,7 @@ const workspaceProcedure = t.procedure.use(({ ctx, next }) => {
 	if (!ctx.requestedWorkspaceId) {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
-			message: "Missing workspace scope. Include x-kanbanana-workspace-id header or workspaceId query parameter.",
+			message: "Missing workspace scope. Include x-kanban-workspace-id header or workspaceId query parameter.",
 		});
 	}
 	if (!ctx.workspaceScope) {

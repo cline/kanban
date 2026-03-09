@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskSessionSummary } from "../core/api-contract.js";
-import { buildKanbananaCommandParts } from "../core/kanbanana-command.js";
+import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 import { createHookRuntimeEnv } from "./hook-runtime-context.js";
 import { stripAnsi } from "./output-utils.js";
@@ -78,7 +78,7 @@ function buildHookCommand(event: RuntimeHookEvent): string {
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
-	return buildKanbananaCommandParts(["hooks", ...args]);
+	return buildKanbanCommandParts(["hooks", ...args]);
 }
 
 function buildHooksCommand(args: string[]): string {
@@ -152,11 +152,11 @@ echo '{"cancel":false}'
 function buildOpenCodePluginContent(reviewCommand: string, toInProgressCommand: string): string {
 	const reviewCmd = escapeForTemplateLiteral(reviewCommand);
 	const toInProgressCmd = escapeForTemplateLiteral(toInProgressCommand);
-	return `export const KanbananaPlugin = async ({ $, client }) => {
-  if (globalThis.__kanbananaOpencodePluginV2) return {};
-  globalThis.__kanbananaOpencodePluginV2 = true;
+	return `export const KanbanPlugin = async ({ $, client }) => {
+  if (globalThis.__kanbanOpencodePluginV2) return {};
+  globalThis.__kanbanOpencodePluginV2 = true;
 
-  if (!process?.env?.KANBANANA_HOOK_TASK_ID) return {};
+  if (!process?.env?.KANBAN_HOOK_TASK_ID) return {};
 
   let currentState = "idle";
   let rootSessionID = null;
@@ -757,7 +757,7 @@ const opencodeAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const pluginPath = join(getHookAgentDirectory("opencode"), "kanbanana.js");
+			const pluginPath = join(getHookAgentDirectory("opencode"), "kanban.js");
 			const configPath = join(getHookAgentDirectory("opencode"), "opencode.json");
 
 			const pluginContent = buildOpenCodePluginContent(

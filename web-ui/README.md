@@ -1,6 +1,6 @@
-# Kanbanana Web UI
+# Kanban Web UI
 
-This package contains the Kanbanana frontend served by the runtime.
+This package contains the Kanban frontend served by the runtime.
 
 ## Stack
 

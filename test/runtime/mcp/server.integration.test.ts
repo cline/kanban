@@ -28,7 +28,7 @@ function initGitRepository(cwd: string): void {
 
 async function withTemporaryHome<T>(fn: (homePath: string) => Promise<T>): Promise<T> {
 	const previousHome = process.env.HOME;
-	const temporaryHome = createTempDir("kanbanana-mcp-home-");
+	const temporaryHome = createTempDir("kanban-mcp-home-");
 	process.env.HOME = temporaryHome;
 	try {
 		return await fn(temporaryHome);
@@ -45,7 +45,7 @@ async function withTemporaryHome<T>(fn: (homePath: string) => Promise<T>): Promi
 async function withConnectedMcpClient<T>(cwd: string, fn: (client: Client) => Promise<T>): Promise<T> {
 	const server = createMcpServer(cwd);
 	const client = new Client({
-		name: "kanbanana-mcp-test-client",
+		name: "kanban-mcp-test-client",
 		version: "1.0.0",
 	});
 	const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

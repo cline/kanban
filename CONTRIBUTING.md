@@ -1,4 +1,4 @@
-# Contributing to kanbanana
+# Contributing to kanban
 
 Thanks for contributing.
 
@@ -19,4 +19,4 @@ Both commands must pass locally.
 
 ## Philosophy
 
-Kanbanana is in foundation mode. Favor clear primitives and good tooling over early complexity. Build extensibility into the core, then layer product features iteratively.
+Kanban is in foundation mode. Favor clear primitives and good tooling over early complexity. Build extensibility into the core, then layer product features iteratively.

@@ -1,6 +1,6 @@
 # Planning Column Research
 
-Research into whether Kanbanana should have a "Planning" column and how it maps to ACP.
+Research into whether Kanban should have a "Planning" column and how it maps to ACP.
 
 ## The Problem
 
@@ -14,7 +14,7 @@ Tool calls: `pending -> in_progress -> completed | failed`
 
 Plan entries: `pending -> in_progress -> completed`
 
-These are execution-level states, not workflow states. ACP doesn't have concepts like "backlog" or "review" -- it just tracks whether something is running. The kanban columns are a Kanbanana-layer concept that maps down to ACP, not the other way around.
+These are execution-level states, not workflow states. ACP doesn't have concepts like "backlog" or "review" -- it just tracks whether something is running. The kanban columns are a Kanban-layer concept that maps down to ACP, not the other way around.
 
 ## ACP Modes (the key finding)
 
@@ -80,10 +80,10 @@ Not in the ACP ecosystem yet via Zed wrappers. Would need a custom integration.
 ### For agents with native plan mode (Claude Code)
 
 1. Card moves to Planning column
-2. Kanbanana starts an ACP session with `modeId: "plan"`
+2. Kanban starts an ACP session with `modeId: "plan"`
 3. Agent reads codebase, reasons about the task, produces a plan
 4. Agent calls ExitPlanMode tool
-5. Kanbanana intercepts the ACP permission request
+5. Kanban intercepts the ACP permission request
 6. The plan is surfaced on the card for user review
 7. User approves -> card moves to In Progress, agent switches to code mode
 8. User rejects / gives feedback -> agent re-plans in the Planning column
@@ -92,7 +92,7 @@ Not in the ACP ecosystem yet via Zed wrappers. Would need a custom integration.
 
 Simulated planning:
 1. Card moves to Planning column
-2. Kanbanana starts an ACP session in `read-only` mode
+2. Kanban starts an ACP session in `read-only` mode
 3. The task prompt is wrapped with instructions: "Analyze this task and produce a detailed implementation plan. Do not make any changes. Output your plan as structured content."
 4. Agent reads codebase, produces a plan (can't write files due to read-only)
 5. When the session completes, the plan is surfaced on the card

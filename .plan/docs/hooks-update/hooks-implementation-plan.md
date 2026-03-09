@@ -2,20 +2,20 @@
 
 ## Context
 
-Kanbanana spawns CLI agents (Claude Code, Codex, Gemini, OpenCode, Cline) in terminal emulators to work on tasks. Currently, the output monitor (`output-monitor.ts`) uses regex pattern matching against PTY output to detect when agents need attention (e.g., permission prompts). This is fragile -- it relies on matching strings like "permission", "y/n", etc.
+Kanban spawns CLI agents (Claude Code, Codex, Gemini, OpenCode, Cline) in terminal emulators to work on tasks. Currently, the output monitor (`output-monitor.ts`) uses regex pattern matching against PTY output to detect when agents need attention (e.g., permission prompts). This is fragile -- it relies on matching strings like "permission", "y/n", etc.
 
 CLI agents have proper hook systems that fire events at specific lifecycle points. By injecting hook configs via CLI flags when spawning agents, we can reliably detect state transitions and move cards between columns automatically:
 - In Progress -> Review: agent finished, needs permission, or needs input
 - Review -> In Progress: user responded to the agent
 
-The hook scripts call `kanbanana hooks ingest` which POSTs to the running Kanbanana HTTP server to trigger the transition.
+The hook scripts call `kanban hooks ingest` which POSTs to the running Kanban HTTP server to trigger the transition.
 
 ## Architecture
 
 ```
 Agent CLI (claude/codex/gemini)
   |-- hook fires (Stop, Notification, UserPromptSubmit, etc.)
-  |-- runs: kanbanana hooks ingest --task-id <id> --event <event> --port <port>
+  |-- runs: kanban hooks ingest --task-id <id> --event <event> --port <port>
         |-- POST http://127.0.0.1:<port>/api/hooks/ingest { taskId, event }
               |-- TerminalSessionManager.transitionToReview() or transitionToRunning()
                     |-- WebSocket broadcast -> web UI updates card position
@@ -25,8 +25,8 @@ Agent CLI (claude/codex/gemini)
 
 Two events only: `review` and `inprogress`. The hook command is:
 ```
-kanbanana hooks ingest --task-id <id> --event review --port <port>
-kanbanana hooks ingest --task-id <id> --event inprogress --port <port>
+kanban hooks ingest --task-id <id> --event review --port <port>
+kanban hooks ingest --task-id <id> --event inprogress --port <port>
 ```
 
 ## Per-CLI Hook Strategy
@@ -68,10 +68,10 @@ kanbanana hooks ingest --task-id <id> --event inprogress --port <port>
 
 ### 3. Create `src/hooks-cli.ts` (new file)
 
-The `kanbanana hooks ingest` subcommand. Lightweight, fast, no stdout output (critical since CLIs parse stdout).
+The `kanban hooks ingest` subcommand. Lightweight, fast, no stdout output (critical since CLIs parse stdout).
 
 ```
-kanbanana hooks ingest --task-id <id> --event review|inprogress --port <port>
+kanban hooks ingest --task-id <id> --event review|inprogress --port <port>
 ```
 
 - Parse `--task-id`, `--event`, `--port` from argv
@@ -86,8 +86,8 @@ kanbanana hooks ingest --task-id <id> --event review|inprogress --port <port>
 #### 4a. Extend `StartTaskSessionRequest`
 
 Add three new fields:
-- `serverPort: number` -- the Kanbanana HTTP server port
-- `kanbanaBinaryPath: string` -- full path to the kanbanana script (process.argv[1])
+- `serverPort: number` -- the Kanban HTTP server port
+- `kanbanaBinaryPath: string` -- full path to the kanban script (process.argv[1])
 - `workspaceId: string` -- for Gemini temp file path
 
 #### 4b. Extend `LaunchCommand` interface
@@ -116,23 +116,23 @@ The hook command string format:
 
 #### 4d. Add `prepareGeminiHookConfig()` async function
 
-- Writes temp settings JSON to `~/.kanbanana/workspaces/<workspaceId>/hooks/gemini-<taskId>.json`
+- Writes temp settings JSON to `~/.kanban/workspaces/<workspaceId>/hooks/gemini-<taskId>.json`
 - Creates the `hooks/` subdirectory if needed
 - Returns the file path and a cleanup function that deletes the file
 - Config includes `AfterAgent` and `Notification` hooks firing `--event review`, and `BeforeAgent` hook firing `--event inprogress`
 
 #### 4e. Add `prepareOpenCodePlugin()` async function
 
-- Writes temp JS plugin file to `<taskCwd>/.opencode/plugins/kanbanana-<taskId>.js`
+- Writes temp JS plugin file to `<taskCwd>/.opencode/plugins/kanban-<taskId>.js`
 - Creates the `.opencode/plugins/` directory if needed
 - Returns a cleanup function that deletes the file
 - Plugin subscribes to:
-  - `session.idle` and `permission.asked` -> runs `kanbanana hooks ingest --event review`
-  - `permission.replied` -> runs `kanbanana hooks ingest --event inprogress`
+  - `session.idle` and `permission.asked` -> runs `kanban hooks ingest --event review`
+  - `permission.replied` -> runs `kanban hooks ingest --event inprogress`
 - Plugin uses Bun's `$` shell API to execute the hook command
 - Example plugin content:
   ```js
-  export const KanbananaPlugin = async ({ $ }) => {
+  export const KanbanPlugin = async ({ $ }) => {
     return {
       event: async ({ event }) => {
         if (event.type === "session.idle" || event.type === "permission.asked") {
@@ -194,7 +194,7 @@ Before `parseCliOptions`, check `process.argv[2] === "hooks"`. If so, import and
 
 #### 5b. Add `/api/hooks/ingest` POST endpoint
 
-- Does NOT require workspace scoping (no `x-kanbanana-workspace-id` header)
+- Does NOT require workspace scoping (no `x-kanban-workspace-id` header)
 - Searches `terminalManagersByWorkspaceId` to find which workspace has the task
 - For `event === "review"`: calls `transitionToReview(taskId, "hook")`
 - For `event === "inprogress"`: calls `transitionToRunning(taskId)`
@@ -216,13 +216,13 @@ The existing `output-monitor.ts` pattern detection remains as a fallback for Cli
 
 1. `src/runtime/api-contract.ts` -- add types, extend review reason union
 2. `src/runtime/state/workspace-state.ts` -- add "hook" to VALID_REVIEW_REASONS
-3. `src/hooks-cli.ts` -- new file, the `kanbanana hooks ingest` subcommand
+3. `src/hooks-cli.ts` -- new file, the `kanban hooks ingest` subcommand
 4. `src/runtime/terminal/session-manager.ts` -- hook injection in buildLaunchCommand, new public methods, Gemini temp file, Codex "›" detection, cleanup lifecycle
 5. `src/cli.ts` -- route hooks subcommand, add /api/hooks/ingest endpoint, pass new fields
 
 ## Verification
 
-1. Start kanbanana, create a task, start it with Claude Code agent
+1. Start kanban, create a task, start it with Claude Code agent
 2. Verify that the claude command includes `--settings` with hooks JSON in the spawned PTY
 3. When Claude finishes responding (Stop event) or shows a permission prompt (Notification), verify the card moves to Review column automatically
 4. When you type a response in the terminal, verify the card moves back to In Progress (via UserPromptSubmit hook)

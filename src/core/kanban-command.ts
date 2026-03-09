@@ -30,10 +30,10 @@ function looksLikeEntrypointPath(value: string): boolean {
 	if (/\.(?:mjs|cjs|js|ts|mts|cts)$/iu.test(value)) {
 		return true;
 	}
-	return /kanbanana(?:\.(?:cmd|ps1|exe))?$/iu.test(value);
+	return /kanban(?:\.(?:cmd|ps1|exe))?$/iu.test(value);
 }
 
-export function resolveKanbananaCommandParts(
+export function resolveKanbanCommandParts(
 	context: RuntimeInvocationContext = {
 		execPath: process.execPath,
 		argv: process.argv,
@@ -54,7 +54,7 @@ export function resolveKanbananaCommandParts(
 	return [...commandPrefix, entrypoint];
 }
 
-export function buildKanbananaCommandParts(
+export function buildKanbanCommandParts(
 	args: string[],
 	context: RuntimeInvocationContext = {
 		execPath: process.execPath,
@@ -62,5 +62,5 @@ export function buildKanbananaCommandParts(
 		execArgv: process.execArgv,
 	},
 ): string[] {
-	return [...resolveKanbananaCommandParts(context), ...args];
+	return [...resolveKanbanCommandParts(context), ...args];
 }

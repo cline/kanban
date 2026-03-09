@@ -230,7 +230,7 @@ export function detectAutoUpdateInstallation(options: {
 }
 
 function isAutoUpdateDisabled(env: NodeJS.ProcessEnv): boolean {
-	if (env.KANBANANA_NO_AUTO_UPDATE === "1") {
+	if (env.KANBAN_NO_AUTO_UPDATE === "1") {
 		return true;
 	}
 	if (env.NODE_ENV === "test" || env.VITEST === "true") {
@@ -294,7 +294,7 @@ export async function runAutoUpdateCheck(options: AutoUpdateStartupOptions): Pro
 		return;
 	}
 
-	const packageName = options.packageName ?? "kanbanana";
+	const packageName = options.packageName ?? "kanban";
 	const installation = detectAutoUpdateInstallation({
 		currentVersion: options.currentVersion,
 		packageName,

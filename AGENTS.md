@@ -48,10 +48,10 @@ Agent Client Protocol (ACP)
 - ACP is a protocol that lets us interface with CLI agents like codex. When working on anything ACP related, you can use:
 - .plan/docs/ACP-docs.md for all of ACP's documentation
 - .plan/docs/ACP-SDK-notes.md for a reference to how the ACP SDK is implemented
-- .plan/docs/ACP-reference-project.md for notes on ~/Repositories/kanbanana/vscode-acp, a client that implements ACP
+- .plan/docs/ACP-reference-project.md for notes on ~/Repositories/kanban/vscode-acp, a client that implements ACP
 
 web-ui Stack
-- Kanbanana web-ui uses Palantir Blueprint v6 (`@blueprintjs/core`, `@blueprintjs/icons`, `@blueprintjs/select`) for all UI components and styling.
+- Kanban web-ui uses Palantir Blueprint v6 (`@blueprintjs/core`, `@blueprintjs/icons`, `@blueprintjs/select`) for all UI components and styling.
 - Blueprint docs reference: `.plan/docs/blueprint-ui-docs.md`
 - Blueprint source repo (for checking patterns, API, dark theme behavior): `~/Repositories/kanban-idea/blueprint/`
 

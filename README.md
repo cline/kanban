@@ -1,35 +1,35 @@
-# kanbanana
+# kanban
 
 A kanban board for coding agents.
 
-CLI agents are powerful, but using more than one at a time is a mess. You end up juggling terminals, worrying about git conflicts, and manually coordinating who works on what. Kanbanana gives you a simple pattern: a kanban board where each task runs its own agent in its own git worktree, completely isolated from everything else.
+CLI agents are powerful, but using more than one at a time is a mess. You end up juggling terminals, worrying about git conflicts, and manually coordinating who works on what. Kanban gives you a simple pattern: a kanban board where each task runs its own agent in its own git worktree, completely isolated from everything else.
 
 You create tasks, hit play, and watch agents work in parallel. When they finish, you review the diffs, leave comments, and merge. That's it.
 
 ## Quick start
 
 ```bash
-npx kanbanana
+npx kanban
 ```
 
-This launches the web UI in your browser and starts the local runtime server. Kanbanana auto-detects which CLI agent you have installed and uses it to run tasks.
+This launches the web UI in your browser and starts the local runtime server. Kanban auto-detects which CLI agent you have installed and uses it to run tasks.
 
 If you have multiple agents installed, you can pick one:
 
 ```bash
-npx kanbanana --agent claude
+npx kanban --agent claude
 ```
 
 Supported agents: `claude`, `codex`, `gemini`, `opencode`, `cline`
 
 ## How it works
 
-Kanbanana is a local-only tool. Nothing leaves your machine. It runs an HTTP server on `127.0.0.1:8484` and opens a web UI where you manage everything.
+Kanban is a local-only tool. Nothing leaves your machine. It runs an HTTP server on `127.0.0.1:8484` and opens a web UI where you manage everything.
 
 The core idea is simple:
 
 1. You add tasks to the backlog. Each task is just a prompt describing the work.
-2. When you start a task, Kanbanana creates a git worktree for it and launches your chosen CLI agent inside that worktree. The agent works in total isolation from your main branch and from every other task.
+2. When you start a task, Kanban creates a git worktree for it and launches your chosen CLI agent inside that worktree. The agent works in total isolation from your main branch and from every other task.
 3. While agents work, the board shows live status. You can see which tasks are running, which are waiting for review, and what each agent is doing.
 4. When an agent finishes (or needs input), the task moves to review. You see the full diff of every change, can leave line comments, and decide what to do next.
 5. You merge the work, send it back for more changes, or toss it.
@@ -38,12 +38,12 @@ Multiple agents run simultaneously without stepping on each other because each o
 
 ## The MCP server
 
-Kanbanana includes an MCP server that lets your agent manage the board directly. This is where things get interesting: an agent can create tasks, tune their automation settings, link dependent work together, start them, and inspect what's on the board, turning a single agent into an orchestrator that delegates work to other agents.
+Kanban includes an MCP server that lets your agent manage the board directly. This is where things get interesting: an agent can create tasks, tune their automation settings, link dependent work together, start them, and inspect what's on the board, turning a single agent into an orchestrator that delegates work to other agents.
 
 To add the MCP server to your agent, point it at:
 
 ```bash
-kanbanana mcp
+kanban mcp
 ```
 
 The MCP server exposes these tools:
@@ -64,7 +64,7 @@ This means you can tell your agent something like "break this feature into subta
 ## CLI reference
 
 ```
-kanbanana [options]
+kanban [options]
 
 Options:
   --port <number>   Bind the runtime server to a specific port (default: 8484)
@@ -74,13 +74,13 @@ Options:
   --version         Print version
 
 Subcommands:
-  kanbanana mcp     Run as an MCP stdio server
+  kanban mcp     Run as an MCP stdio server
 ```
 
 After installing globally, you can also view the man page:
 
 ```bash
-man kanbanana
+man kanban
 ```
 
 ## Why a kanban board?

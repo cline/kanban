@@ -35,7 +35,7 @@ function commitAll(cwd: string, message: string): string {
 
 describe.sequential("git history runtime", () => {
 	it("returns correct metadata for root commit diffs", async () => {
-		const { path: repoPath, cleanup } = createTempDir("kanbanana-git-history-root-");
+		const { path: repoPath, cleanup } = createTempDir("kanban-git-history-root-");
 		try {
 			initRepository(repoPath);
 			writeFileSync(join(repoPath, "first.txt"), "hello\nworld\n", "utf8");
@@ -61,7 +61,7 @@ describe.sequential("git history runtime", () => {
 	});
 
 	it("returns rename metadata for rename-only commits", async () => {
-		const { path: repoPath, cleanup } = createTempDir("kanbanana-git-history-rename-");
+		const { path: repoPath, cleanup } = createTempDir("kanban-git-history-rename-");
 		try {
 			initRepository(repoPath);
 			writeFileSync(join(repoPath, "old.txt"), "hello\n", "utf8");
@@ -92,7 +92,7 @@ describe.sequential("git history runtime", () => {
 	});
 
 	it("discards tracked, staged, and untracked working copy changes", async () => {
-		const { path: repoPath, cleanup } = createTempDir("kanbanana-git-history-discard-");
+		const { path: repoPath, cleanup } = createTempDir("kanban-git-history-discard-");
 		try {
 			initRepository(repoPath);
 			writeFileSync(join(repoPath, "tracked.txt"), "original\n", "utf8");
@@ -115,7 +115,7 @@ describe.sequential("git history runtime", () => {
 	});
 
 	it("reads ahead and behind counts from tracked branches", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanbanana-git-history-refs-");
+		const { path: sandboxRoot, cleanup } = createTempDir("kanban-git-history-refs-");
 		try {
 			const remotePath = join(sandboxRoot, "remote.git");
 			const localPath = join(sandboxRoot, "local");

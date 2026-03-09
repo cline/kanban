@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 
 import type { RuntimeHookEvent } from "../core/api-contract.js";
-import { buildKanbananaCommandParts } from "../core/kanbanana-command.js";
-import { buildKanbananaRuntimeUrl } from "../core/runtime-endpoint.js";
+import { buildKanbanCommandParts } from "../core/kanban-command.js";
+import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint.js";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 
@@ -123,7 +123,7 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 	const trpcClient = createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
 			httpBatchLink({
-				url: buildKanbananaRuntimeUrl("/api/trpc"),
+				url: buildKanbanRuntimeUrl("/api/trpc"),
 				maxItems: 1,
 			}),
 		],
@@ -135,16 +135,16 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 			event: args.event,
 		}),
 		3000,
-		"kanbanana hooks ingest",
+		"kanban hooks ingest",
 	);
 	if (ingestResponse.ok === false) {
 		throw new Error(ingestResponse.error ?? "Hook ingest failed");
 	}
 }
 
-function spawnDetachedKanbanana(args: string[]): void {
+function spawnDetachedKanban(args: string[]): void {
 	try {
-		const commandParts = buildKanbananaCommandParts(args);
+		const commandParts = buildKanbanCommandParts(args);
 		const child = spawn(commandParts[0], commandParts.slice(1), {
 			detached: true,
 			stdio: "ignore",
@@ -345,7 +345,7 @@ async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
 			for (const line of lines) {
 				const event = parseCodexEventLine(line, state);
 				if (event) {
-					spawnDetachedKanbanana(["hooks", "notify", "--event", event]);
+					spawnDetachedKanban(["hooks", "notify", "--event", event]);
 				}
 			}
 		} catch {
@@ -414,7 +414,7 @@ async function runGeminiHookSubcommand(): Promise<void> {
 	if (!mappedEvent) {
 		return;
 	}
-	spawnDetachedKanbanana(["hooks", "notify", "--event", mappedEvent]);
+	spawnDetachedKanban(["hooks", "notify", "--event", mappedEvent]);
 }
 
 async function runCodexWrapperSubcommand(argv: string[]): Promise<void> {
@@ -422,7 +422,7 @@ async function runCodexWrapperSubcommand(argv: string[]): Promise<void> {
 	try {
 		wrapperArgs = parseCodexWrapperArgs(argv.slice(2));
 	} catch (error) {
-		process.stderr.write(`kanbanana hooks codex-wrapper: ${formatError(error)}\n`);
+		process.stderr.write(`kanban hooks codex-wrapper: ${formatError(error)}\n`);
 		process.exitCode = 1;
 		return;
 	}
@@ -444,7 +444,7 @@ async function runCodexWrapperSubcommand(argv: string[]): Promise<void> {
 		if (!childEnv.CODEX_TUI_SESSION_LOG_PATH) {
 			childEnv.CODEX_TUI_SESSION_LOG_PATH = join(
 				tmpdir(),
-				`kanbanana-codex-session-${process.pid}_${Date.now()}.jsonl`,
+				`kanban-codex-session-${process.pid}_${Date.now()}.jsonl`,
 			);
 		}
 		const sessionLogPath = childEnv.CODEX_TUI_SESSION_LOG_PATH;
@@ -462,7 +462,7 @@ async function runCodexWrapperSubcommand(argv: string[]): Promise<void> {
 		}
 	}
 
-	const reviewNotifyCommandParts = buildKanbananaCommandParts(["hooks", "notify", "--event", "to_review"]);
+	const reviewNotifyCommandParts = buildKanbanCommandParts(["hooks", "notify", "--event", "to_review"]);
 	const notifyConfig = `notify=${JSON.stringify(reviewNotifyCommandParts)}`;
 	const child = spawn(wrapperArgs.realBinary, ["-c", notifyConfig, ...wrapperArgs.agentArgs], {
 		stdio: "inherit",
@@ -515,7 +515,7 @@ export async function runHooksIngest(argv: string[]): Promise<void> {
 	try {
 		args = parseHooksIngestArgs(argv.slice(2));
 	} catch (error) {
-		process.stderr.write(`kanbanana hooks ingest: ${formatError(error)}\n`);
+		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;
 		return;
 	}
@@ -523,7 +523,7 @@ export async function runHooksIngest(argv: string[]): Promise<void> {
 	try {
 		await ingestHookEvent(args);
 	} catch (error) {
-		process.stderr.write(`kanbanana hooks ingest: ${formatError(error)}\n`);
+		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;
 	}
 }
@@ -547,7 +547,7 @@ export async function runHooksSubcommand(argv: string[]): Promise<void> {
 		return;
 	}
 	process.stderr.write(
-		`kanbanana hooks: unknown subcommand "${subcommand ?? ""}". Expected one of: ingest, notify, gemini-hook, codex-wrapper\n`,
+		`kanban hooks: unknown subcommand "${subcommand ?? ""}". Expected one of: ingest, notify, gemini-hook, codex-wrapper\n`,
 	);
 	process.exitCode = 1;
 }

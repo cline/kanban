@@ -1,16 +1,16 @@
-.TH KANBANANA 1 "March 2026" "kanbanana 0.1.0" "User Commands"
+.TH KANBAN 1 "March 2026" "kanban 0.1.0" "User Commands"
 .SH NAME
-kanbanana \- local orchestration board for coding agents
+kanban \- local orchestration board for coding agents
 .SH SYNOPSIS
-.B kanbanana
+.B kanban
 .RI [ --port " " number ]
 .RI [ --agent " " id ]
 .RI [ --no-open ]
 .RI [ --help ]
 .RI [ --version ]
 .SH DESCRIPTION
-.B kanbanana
-starts the local Kanbanana runtime server and serves the web UI.
+.B kanban
+starts the local Kanban runtime server and serves the web UI.
 
 When launched inside a git repository, it opens that repository's indexed workspace.
 When launched outside git, it starts with no active workspace or falls back to the first indexed project.
@@ -33,13 +33,13 @@ Show version and exit.
 .SH EXAMPLES
 .TP
 Start server on the default port:
-.B kanbanana
+.B kanban
 .TP
 Start server without auto-opening a browser:
-.B kanbanana --no-open
+.B kanban --no-open
 .TP
 Start server on a custom port:
-.B kanbanana --port 9000
+.B kanban --port 9000
 .SH EXIT STATUS
 .TP
 .B 0

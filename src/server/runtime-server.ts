@@ -6,10 +6,10 @@ import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 
 import type { RuntimeShortcutRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import {
-	buildKanbananaRuntimeUrl,
-	KANBANANA_RUNTIME_HOST,
-	KANBANANA_RUNTIME_ORIGIN,
-	KANBANANA_RUNTIME_PORT,
+	buildKanbanRuntimeUrl,
+	KANBAN_RUNTIME_HOST,
+	KANBAN_RUNTIME_ORIGIN,
+	KANBAN_RUNTIME_PORT,
 } from "../core/runtime-endpoint.js";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
 import type { RuntimeStateHub } from "./runtime-state-hub.js";
@@ -54,7 +54,7 @@ export interface RuntimeServer {
 }
 
 function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
-	const headerValue = request.headers["x-kanbanana-workspace-id"];
+	const headerValue = request.headers["x-kanban-workspace-id"];
 	const headerWorkspaceId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
 	if (typeof headerWorkspaceId === "string") {
 		const normalized = headerWorkspaceId.trim();
@@ -196,7 +196,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	server.on("upgrade", (request, socket, head) => {
 		let requestUrl: URL;
 		try {
-			requestUrl = new URL(request.url ?? "/", KANBANANA_RUNTIME_ORIGIN);
+			requestUrl = new URL(request.url ?? "/", KANBAN_RUNTIME_ORIGIN);
 		} catch {
 			socket.destroy();
 			return;
@@ -204,7 +204,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		if (normalizeRequestPath(requestUrl.pathname) !== "/api/runtime/ws") {
 			return;
 		}
-		(request as IncomingMessage & { __kanbananaUpgradeHandled?: boolean }).__kanbananaUpgradeHandled = true;
+		(request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled = true;
 		const requestedWorkspaceId = requestUrl.searchParams.get("workspaceId")?.trim() || null;
 		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedWorkspaceId });
 	});
@@ -214,7 +214,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		isTerminalWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/ws",
 	});
 	server.on("upgrade", (request, socket) => {
-		const handled = (request as IncomingMessage & { __kanbananaUpgradeHandled?: boolean }).__kanbananaUpgradeHandled;
+		const handled = (request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled;
 		if (handled) {
 			return;
 		}
@@ -223,7 +223,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	await new Promise<void>((resolveListen, rejectListen) => {
 		server.once("error", rejectListen);
-		server.listen(KANBANANA_RUNTIME_PORT, KANBANANA_RUNTIME_HOST, () => {
+		server.listen(KANBAN_RUNTIME_PORT, KANBAN_RUNTIME_HOST, () => {
 			server.off("error", rejectListen);
 			resolveListen();
 		});
@@ -235,8 +235,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	}
 	const activeWorkspaceId = deps.workspaceRegistry.getActiveWorkspaceId();
 	const url = activeWorkspaceId
-		? buildKanbananaRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)
-		: KANBANANA_RUNTIME_ORIGIN;
+		? buildKanbanRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)
+		: KANBAN_RUNTIME_ORIGIN;
 
 	return {
 		url,

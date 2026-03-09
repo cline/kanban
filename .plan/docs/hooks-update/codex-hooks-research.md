@@ -45,5 +45,5 @@ Codex wires `notify` through an `after_agent` hook and dispatches it when a turn
 
 This is useful for:
 - completion nudges
-- posting a completion event to Kanbanana
+- posting a completion event to Kanban
 - optional SMS/push via custom script

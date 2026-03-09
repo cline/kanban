@@ -19,7 +19,7 @@ import {
 import { createGitProcessEnv } from "../core/git-process-env.js";
 import { updateTaskDependencies } from "../core/task-board-mutations.js";
 
-const RUNTIME_HOME_DIR = ".kanbanana";
+const RUNTIME_HOME_DIR = ".kanban";
 const WORKSPACES_DIR = "workspaces";
 const INDEX_FILENAME = "index.json";
 const BOARD_FILENAME = "board.json";
@@ -502,7 +502,7 @@ export async function loadWorkspaceContext(
 	const existingEntry = findWorkspaceEntry(index, repoPath);
 	if (!autoCreateIfMissing) {
 		if (!existingEntry) {
-			throw new Error(`Project ${repoPath} is not added to Kanbanana yet.`);
+			throw new Error(`Project ${repoPath} is not added to Kanban yet.`);
 		}
 		return {
 			repoPath,

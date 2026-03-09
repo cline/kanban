@@ -20,9 +20,9 @@ describe("detectAutoUpdateInstallation", () => {
 	it("marks workspace-local execution as local and non-updatable", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanbanana",
-			entrypointPath: "/Users/saoud/Repositories/kanban-idea/kanbanana/dist/cli.js",
-			cwd: "/Users/saoud/Repositories/kanban-idea/kanbanana",
+			packageName: "kanban",
+			entrypointPath: "/workspace/kanban/dist/cli.js",
+			cwd: "/workspace/kanban",
 		});
 
 		expect(installation.packageManager).toBe(AutoUpdatePackageManager.LOCAL);
@@ -36,8 +36,8 @@ describe("runAutoUpdateCheck", () => {
 
 		await runAutoUpdateCheck({
 			currentVersion: "1.0.0",
-			packageName: "kanbanana",
-			argv: ["node", "/usr/local/lib/node_modules/kanbanana/dist/cli.js"],
+			packageName: "kanban",
+			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
 			cwd: "/Users/saoud/projects/work",
 			env: {},
 			resolveRealPath: (path) => path,
@@ -50,7 +50,7 @@ describe("runAutoUpdateCheck", () => {
 		expect(spawnedUpdates).toEqual([
 			{
 				command: "npm",
-				args: ["install", "-g", "kanbanana@latest"],
+				args: ["install", "-g", "kanban@latest"],
 			},
 		]);
 	});
@@ -61,8 +61,8 @@ describe("runAutoUpdateCheck", () => {
 
 		const options = {
 			currentVersion: "1.0.0",
-			packageName: "kanbanana",
-			argv: ["node", "/usr/local/lib/node_modules/kanbanana/dist/cli.js"],
+			packageName: "kanban",
+			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
 			cwd: "/Users/saoud/projects/work",
 			env: {},
 			resolveRealPath: (path: string) => path,
@@ -82,15 +82,15 @@ describe("runAutoUpdateCheck", () => {
 		expect(spawnCalls).toBe(2);
 	});
 
-	it("skips update checks when KANBANANA_NO_AUTO_UPDATE is set", async () => {
+	it("skips update checks when KANBAN_NO_AUTO_UPDATE is set", async () => {
 		let fetchCalled = false;
 
 		await runAutoUpdateCheck({
 			currentVersion: "1.0.0",
-			packageName: "kanbanana",
-			argv: ["node", "/usr/local/lib/node_modules/kanbanana/dist/cli.js"],
+			packageName: "kanban",
+			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
 			cwd: "/Users/saoud/projects/work",
-			env: { KANBANANA_NO_AUTO_UPDATE: "1" },
+			env: { KANBAN_NO_AUTO_UPDATE: "1" },
 			resolveRealPath: (path) => path,
 			fetchLatestVersion: async () => {
 				fetchCalled = true;

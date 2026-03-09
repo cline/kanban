@@ -43,9 +43,9 @@ export interface RuntimeConfigUpdateInput {
 	openPrPromptTemplate?: string;
 }
 
-const RUNTIME_HOME_DIR = ".kanbanana";
+const RUNTIME_HOME_DIR = ".kanban";
 const CONFIG_FILENAME = "config.json";
-const PROJECT_CONFIG_DIR = ".kanbanana";
+const PROJECT_CONFIG_DIR = ".kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: RuntimeAgentId[] = ["claude", "codex", "opencode", "gemini", "cline"];
@@ -64,7 +64,7 @@ Steps:
    - If branch {{base_ref}} is checked out in path P, use that P.
    - If not checked out anywhere, use current worktree as P by checking out {{base_ref}} there.
 3. In P, verify current branch is {{base_ref}}.
-4. If P has uncommitted changes, stash them: git -C P stash push -u -m "kanbanana-pre-cherry-pick"
+4. If P has uncommitted changes, stash them: git -C P stash push -u -m "kanban-pre-cherry-pick"
 5. Cherry-pick the task commit into P.
 6. If cherry-pick conflicts, resolve carefully, preserving both the intended task changes and existing user edits.
 7. If a stash was created, restore it with: git -C P stash pop

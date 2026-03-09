@@ -77,9 +77,9 @@ describe.sequential("runtime-config auto agent selection", () => {
 		if (process.platform === "win32") {
 			return;
 		}
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-runtime-config-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanbanana-project-runtime-config-");
-		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanbanana-bin-runtime-config-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-");
 
 		try {
 			writeFakeCommand(tempBin, "opencode");
@@ -93,7 +93,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				await withTemporaryEnv({ home: tempHome, pathPrefix: isolatedPath, replacePath: true }, async () => {
 					const state = await loadRuntimeConfig(tempProject);
 					expect(state.selectedAgentId).toBe("codex");
-					const persisted = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
+					const persisted = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
 						selectedAgentId?: string;
 						agentAutonomousModeEnabled?: boolean;
 						readyForReviewNotificationsEnabled?: boolean;
@@ -127,9 +127,9 @@ describe.sequential("runtime-config auto agent selection", () => {
 		if (process.platform === "win32") {
 			return;
 		}
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-runtime-config-default-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanbanana-project-runtime-config-default-");
-		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanbanana-bin-runtime-config-default-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-default-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-default-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-default-");
 
 		try {
 			const previousShell = process.env.SHELL;
@@ -138,7 +138,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
 					const state = await loadRuntimeConfig(tempProject);
 					expect(state.selectedAgentId).toBe("claude");
-					expect(existsSync(join(tempHome, ".kanbanana", "config.json"))).toBe(false);
+					expect(existsSync(join(tempHome, ".kanban", "config.json"))).toBe(false);
 				});
 			} finally {
 				if (previousShell === undefined) {
@@ -155,15 +155,15 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("does not override a previously configured agent", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-runtime-config-set-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanbanana-project-runtime-config-set-");
-		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanbanana-bin-runtime-config-set-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-set-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-set-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-set-");
 
 		try {
 			writeFakeCommand(tempBin, "claude");
 			writeFakeCommand(tempBin, "codex");
 
-			const runtimeConfigDir = join(tempHome, ".kanbanana");
+			const runtimeConfigDir = join(tempHome, ".kanban");
 			mkdirSync(runtimeConfigDir, { recursive: true });
 			writeFileSync(
 				join(runtimeConfigDir, "config.json"),
@@ -189,16 +189,16 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("does not auto-select when global config file already exists without selected agent", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-runtime-config-existing-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-existing-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanbanana-project-runtime-config-existing-",
+			"kanban-project-runtime-config-existing-",
 		);
-		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanbanana-bin-runtime-config-existing-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-existing-");
 
 		try {
 			writeFakeCommand(tempBin, "codex");
 
-			const runtimeConfigDir = join(tempHome, ".kanbanana");
+			const runtimeConfigDir = join(tempHome, ".kanban");
 			mkdirSync(runtimeConfigDir, { recursive: true });
 			writeFileSync(
 				join(runtimeConfigDir, "config.json"),
@@ -224,13 +224,13 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("save omits default keys when they were not previously set", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-runtime-config-omit-defaults-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-omit-defaults-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanbanana-project-runtime-config-omit-defaults-",
+			"kanban-project-runtime-config-omit-defaults-",
 		);
 
 		try {
-			const runtimeConfigDir = join(tempHome, ".kanbanana");
+			const runtimeConfigDir = join(tempHome, ".kanban");
 			mkdirSync(runtimeConfigDir, { recursive: true });
 			writeFileSync(join(runtimeConfigDir, "config.json"), "{}", "utf8");
 
@@ -246,7 +246,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
 				});
 
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
 					agentAutonomousModeEnabled?: boolean;
 					readyForReviewNotificationsEnabled?: boolean;
@@ -259,7 +259,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(globalPayload.commitPromptTemplate).toBeUndefined();
 				expect(globalPayload.openPrPromptTemplate).toBeUndefined();
 
-				const projectPayload = JSON.parse(readFileSync(join(tempProject, ".kanbanana", "config.json"), "utf8")) as {
+				const projectPayload = JSON.parse(readFileSync(join(tempProject, ".kanban", "config.json"), "utf8")) as {
 					shortcuts?: unknown[];
 				};
 				expect(projectPayload.shortcuts).toBeUndefined();
@@ -271,8 +271,8 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("updateRuntimeConfig supports partial updates", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanbanana-home-runtime-config-partial-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanbanana-project-runtime-config-partial-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-partial-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-partial-");
 
 		try {
 			await withTemporaryEnv({ home: tempHome }, async () => {
@@ -284,7 +284,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				});
 				expect(updated.selectedAgentId).toBe("cline");
 
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
 					selectedAgentId?: string;
 					selectedShortcutId?: string;
 					agentAutonomousModeEnabled?: boolean;
@@ -303,10 +303,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 	it("persists autonomous mode when disabled", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
-			"kanbanana-home-runtime-config-autonomous-disabled-",
+			"kanban-home-runtime-config-autonomous-disabled-",
 		);
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanbanana-project-runtime-config-autonomous-disabled-",
+			"kanban-project-runtime-config-autonomous-disabled-",
 		);
 
 		try {
@@ -316,7 +316,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				});
 				expect(updated.agentAutonomousModeEnabled).toBe(false);
 
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanbanana", "config.json"), "utf8")) as {
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".kanban", "config.json"), "utf8")) as {
 					agentAutonomousModeEnabled?: boolean;
 				};
 				expect(globalPayload.agentAutonomousModeEnabled).toBe(false);

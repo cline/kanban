@@ -448,7 +448,7 @@ function isNoiseLine(line: string): boolean {
 	if (/^\s*[❯›>](?:\s|$)/u.test(line)) {
 		return true;
 	}
-	if (/^(?:kanbanana|\/model|\d+\s+GEMINI\.md file)\b/iu.test(line)) {
+	if (/^(?:kanban|\/model|\d+\s+GEMINI\.md file)\b/iu.test(line)) {
 		return true;
 	}
 	return false;

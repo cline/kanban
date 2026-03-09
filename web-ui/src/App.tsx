@@ -767,7 +767,7 @@ export default function App(): ReactElement {
 								<NonIdealState
 									icon="folder-open"
 									title="No projects yet"
-									description="Add a git repository to start using Kanbanana."
+									description="Add a git repository to start using Kanban."
 									action={
 										<Button
 											intent="primary"

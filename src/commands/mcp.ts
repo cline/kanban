@@ -1,4 +1,4 @@
-import { runKanbananaMcpServer } from "../mcp/server.js";
+import { runKanbanMcpServer } from "../mcp/server.js";
 
 interface McpCliOptions {
 	help: boolean;
@@ -21,12 +21,12 @@ function parseMcpCliOptions(args: string[]): McpCliOptions {
 }
 
 function printMcpHelp(): void {
-	process.stdout.write("kanbanana mcp\n");
-	process.stdout.write("Run Kanbanana as a local MCP stdio server.\n");
+	process.stdout.write("kanban mcp\n");
+	process.stdout.write("Run Kanban as a local MCP stdio server.\n");
 	process.stdout.write("\n");
 	process.stdout.write("Usage:\n");
-	process.stdout.write("  kanbanana mcp\n");
-	process.stdout.write("  kanbanana mcp --help\n");
+	process.stdout.write("  kanban mcp\n");
+	process.stdout.write("  kanban mcp --help\n");
 }
 
 export async function runMcpSubcommand(argv: string[]): Promise<void> {
@@ -35,5 +35,5 @@ export async function runMcpSubcommand(argv: string[]): Promise<void> {
 		printMcpHelp();
 		return;
 	}
-	await runKanbananaMcpServer(process.cwd());
+	await runKanbanMcpServer(process.cwd());
 }

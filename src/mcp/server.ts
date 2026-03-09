@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import { resolveProjectInputPath } from "../projects/project-path.js";
-import { buildKanbananaRuntimeUrl, KANBANANA_RUNTIME_ORIGIN } from "../core/runtime-endpoint.js";
+import { buildKanbanRuntimeUrl, KANBAN_RUNTIME_ORIGIN } from "../core/runtime-endpoint.js";
 import { loadWorkspaceContext } from "../state/workspace-state.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 import {
@@ -24,8 +24,8 @@ interface RuntimeWorkspaceMutationResult<T> {
 }
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review"] as const;
-const KANBANANA_MCP_INSTRUCTIONS =
-	"Kanbanana is a web-based multi-agent orchestration GUI that launches after running kanbanana or npx kanbanana in the terminal. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree. If the user asks to add tasks to kb, ask kb, kanbanana, says go bananas, says banana mode, says bannana mode, or says add tasks without other context, they likely want to add tasks in Kanbanana. Kanbanana also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start. Tasks can also enable automatic review actions: auto-commit, auto-open-PR, or auto-move-to-trash once they reach review.";
+const KANBAN_MCP_INSTRUCTIONS =
+	"Kanban is a web-based multi-agent orchestration GUI that launches after running kanban or npx kanban in the terminal. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree. If the user asks to add tasks to kb, ask kb, kanban, says go bananas, says banana mode, says bannana mode, or says add tasks without other context, they likely want to add tasks in Kanban. Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start. Tasks can also enable automatic review actions: auto-commit, auto-open-PR, or auto-move-to-trash once they reach review.";
 
 async function resolveWorkspaceRepoPath(
 	projectPath: string | undefined,
@@ -53,7 +53,7 @@ function resolveTaskBaseRef(state: RuntimeWorkspaceStateResponse): string {
 }
 
 function getRuntimeApiUrl(): string {
-	return buildKanbananaRuntimeUrl("/api/trpc");
+	return buildKanbanRuntimeUrl("/api/trpc");
 }
 
 function createRuntimeTrpcClient(workspaceId: string | null) {
@@ -61,7 +61,7 @@ function createRuntimeTrpcClient(workspaceId: string | null) {
 		links: [
 			httpBatchLink({
 				url: getRuntimeApiUrl(),
-				headers: () => (workspaceId ? { "x-kanbanana-workspace-id": workspaceId } : {}),
+				headers: () => (workspaceId ? { "x-kanban-workspace-id": workspaceId } : {}),
 			}),
 		],
 	});
@@ -90,7 +90,7 @@ function createRuntimeToolError(toolName: string, message: string) {
 	return createJsonToolResult(
 		{
 			ok: false,
-			error: `Tool "${toolName}" at ${KANBANANA_RUNTIME_ORIGIN} failed with message: ${message}`,
+			error: `Tool "${toolName}" at ${KANBAN_RUNTIME_ORIGIN} failed with message: ${message}`,
 		},
 		{ isError: true },
 	);
@@ -173,7 +173,7 @@ async function ensureRuntimeWorkspace(workspaceRepoPath: string): Promise<string
 		path: workspaceRepoPath,
 	});
 	if (!added.ok || !added.project) {
-		throw new Error(added.error ?? `Could not register project ${workspaceRepoPath} in Kanbanana runtime.`);
+		throw new Error(added.error ?? `Could not register project ${workspaceRepoPath} in Kanban runtime.`);
 	}
 	return added.project.id;
 }
@@ -195,11 +195,11 @@ async function updateRuntimeWorkspaceState<T>(
 export function createMcpServer(cwd: string): McpServer {
 	const server = new McpServer(
 		{
-			name: "kanbanana",
+			name: "kanban",
 			version: "0.1.0",
 		},
 		{
-			instructions: KANBANANA_MCP_INSTRUCTIONS,
+			instructions: KANBAN_MCP_INSTRUCTIONS,
 		},
 	);
 
@@ -207,7 +207,7 @@ export function createMcpServer(cwd: string): McpServer {
 		"list_tasks",
 		{
 			title: "List tasks",
-			description: "List Kanbanana tasks for a workspace, including auto-review settings and task links.",
+			description: "List Kanban tasks for a workspace, including auto-review settings and task links.",
 			inputSchema: {
 				projectPath: z
 					.string()
@@ -255,14 +255,14 @@ export function createMcpServer(cwd: string): McpServer {
 		"create_task",
 		{
 			title: "Create task",
-			description: "Create a new Kanbanana task in backlog with optional plan mode and auto-review settings.",
+			description: "Create a new Kanban task in backlog with optional plan mode and auto-review settings.",
 			inputSchema: {
 				prompt: z.string().min(1).describe("Task prompt text."),
 				projectPath: z
 					.string()
 					.optional()
 					.describe(
-						"Optional workspace path. If not already registered in Kanbanana, it is auto-added if the project uses git.",
+						"Optional workspace path. If not already registered in Kanban, it is auto-added if the project uses git.",
 					),
 				baseRef: z
 					.string()
@@ -343,14 +343,14 @@ export function createMcpServer(cwd: string): McpServer {
 		"update_task",
 		{
 			title: "Update task",
-			description: "Update an existing Kanbanana task, including auto-review settings.",
+			description: "Update an existing Kanban task, including auto-review settings.",
 			inputSchema: {
 				taskId: z.string().min(1).describe("Task ID to update."),
 				projectPath: z
 					.string()
 					.optional()
 					.describe(
-						"Optional workspace path. If not already registered in Kanbanana, it is auto-added if the project uses git.",
+						"Optional workspace path. If not already registered in Kanban, it is auto-added if the project uses git.",
 					),
 				prompt: z.string().optional().describe("Optional replacement prompt text."),
 				baseRef: z.string().optional().describe("Optional replacement worktree base ref."),
@@ -446,7 +446,7 @@ export function createMcpServer(cwd: string): McpServer {
 		{
 			title: "Link tasks",
 			description:
-				"Link two Kanbanana tasks so one task can wait on another task. At least one task must be in backlog.",
+				"Link two Kanban tasks so one task can wait on another task. At least one task must be in backlog.",
 			inputSchema: {
 				taskId: z.string().min(1).describe("First task ID."),
 				linkedTaskId: z.string().min(1).describe("Second task ID to link."),
@@ -454,7 +454,7 @@ export function createMcpServer(cwd: string): McpServer {
 					.string()
 					.optional()
 					.describe(
-						"Optional workspace path. If not already registered in Kanbanana, it is auto-added if the project uses git.",
+						"Optional workspace path. If not already registered in Kanban, it is auto-added if the project uses git.",
 					),
 			},
 		},
@@ -500,7 +500,7 @@ export function createMcpServer(cwd: string): McpServer {
 		"unlink_tasks",
 		{
 			title: "Unlink tasks",
-			description: "Remove a Kanbanana task link by dependency ID.",
+			description: "Remove a Kanban task link by dependency ID.",
 			inputSchema: {
 				dependencyId: z
 					.string()
@@ -510,7 +510,7 @@ export function createMcpServer(cwd: string): McpServer {
 					.string()
 					.optional()
 					.describe(
-						"Optional workspace path. If not already registered in Kanbanana, it is auto-added if the project uses git.",
+						"Optional workspace path. If not already registered in Kanban, it is auto-added if the project uses git.",
 					),
 			},
 		},
@@ -569,14 +569,14 @@ export function createMcpServer(cwd: string): McpServer {
 		{
 			title: "Start task",
 			description:
-				"Start a Kanbanana task by ensuring its worktree, starting its agent session, and moving it to in_progress.",
+				"Start a Kanban task by ensuring its worktree, starting its agent session, and moving it to in_progress.",
 			inputSchema: {
 				taskId: z.string().min(1).describe("Task ID to start."),
 				projectPath: z
 					.string()
 					.optional()
 					.describe(
-						"Optional workspace path. If not already registered in Kanbanana, it is auto-added if the project uses git.",
+						"Optional workspace path. If not already registered in Kanban, it is auto-added if the project uses git.",
 					),
 			},
 		},
@@ -676,9 +676,9 @@ export function createMcpServer(cwd: string): McpServer {
 	return server;
 }
 
-export async function runKanbananaMcpServer(cwd: string): Promise<void> {
+export async function runKanbanMcpServer(cwd: string): Promise<void> {
 	const server = createMcpServer(cwd);
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
-	process.stderr.write("Kanbanana MCP server running on stdio\n");
+	process.stderr.write("Kanban MCP server running on stdio\n");
 }

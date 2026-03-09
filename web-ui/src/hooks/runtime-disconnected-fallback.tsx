@@ -16,8 +16,8 @@ export function RuntimeDisconnectedFallback(): ReactElement {
 		>
 			<NonIdealState
 				icon="error"
-				title="Disconnected from kanbanana"
-				description="Run kanbanana again in your terminal, then reload this tab."
+				title="Disconnected from kanban"
+				description="Run kanban again in your terminal, then reload this tab."
 			/>
 		</div>
 	);

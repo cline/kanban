@@ -290,13 +290,13 @@ export function AgentTerminalPanel({
 				}
 				if (payload.type === "exit") {
 					const label = payload.code == null ? "session exited" : `session exited with code ${payload.code}`;
-					terminalRef.current?.writeln(`\r\n[kanbanana] ${label}\r\n`);
+					terminalRef.current?.writeln(`\r\n[kanban] ${label}\r\n`);
 					setIsStopping(false);
 					return;
 				}
 				if (payload.type === "error") {
 					setLastError(payload.message);
-					terminalRef.current?.writeln(`\r\n[kanbanana] ${payload.message}\r\n`);
+					terminalRef.current?.writeln(`\r\n[kanban] ${payload.message}\r\n`);
 				}
 			} catch {
 				// Ignore malformed frames.

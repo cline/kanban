@@ -1,5 +1,5 @@
 
-# Hooks Research For Kanbanana Agent Status
+# Hooks Research For Kanban Agent Status
 
 We want a reliable way to move tasks from `In Progress` to `Review` when an agent needs user attention, and back from `Review` to `In Progress` when the user responds to agent.
 
@@ -50,7 +50,7 @@ Codex wires `notify` through an `after_agent` hook and dispatches it when a turn
 
 This is useful for:
 - completion nudges
-- posting a completion event to Kanbanana
+- posting a completion event to Kanban
 - optional SMS/push via custom script
 
 

@@ -491,7 +491,7 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.globalConfigPath ?? "~/.kanbanana/config.json"}
+					{config?.globalConfigPath ?? "~/.kanban/config.json"}
 					{config?.globalConfigPath ? (
 						<Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} />
 					) : null}
@@ -620,7 +620,7 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.projectConfigPath ?? "<project>/.kanbanana/config.json"}
+					{config?.projectConfigPath ?? "<project>/.kanban/config.json"}
 					{config?.projectConfigPath ? (
 						<Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} />
 					) : null}

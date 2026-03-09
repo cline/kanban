@@ -11,7 +11,7 @@ import {
 import { getBrowserNotificationPermission } from "@/utils/notification-permission";
 import {
 	createTabPresenceId,
-	hasVisibleKanbananaTabForWorkspace,
+	hasVisibleKanbanTabForWorkspace,
 	markTabHidden,
 	markTabVisible,
 } from "@/utils/tab-visibility-presence";
@@ -155,7 +155,7 @@ export function useReviewReadyNotifications({
 		}
 		const isVisibleNow = isDocumentCurrentlyVisible(isDocumentVisible);
 		const isWindowFocusedNow = typeof document === "undefined" ? isWindowFocused : document.hasFocus();
-		const hasVisiblePeerTabForWorkspace = hasVisibleKanbananaTabForWorkspace(
+		const hasVisiblePeerTabForWorkspace = hasVisibleKanbanTabForWorkspace(
 			latestTaskReadyForReview.workspaceId,
 			notificationPresenceTabIdRef.current,
 		);
@@ -213,7 +213,7 @@ export function useReviewReadyNotifications({
 		setPendingReviewReadyNotificationCount(0);
 	}, [activeWorkspaceId]);
 
-	const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanbanana` : "Kanbanana";
+	const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanban` : "Kanban";
 	const documentTitle =
 		pendingReviewReadyNotificationCount > 0 ? `(${pendingReviewReadyNotificationCount}) ${baseTitle}` : baseTitle;
 	useDocumentTitle(documentTitle);

@@ -5,7 +5,7 @@ import { panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 
-const GITHUB_URL = "https://github.com/cline/kanbanana";
+const GITHUB_URL = "https://github.com/cline/kanban";
 
 interface TaskCountBadge {
 	id: string;
