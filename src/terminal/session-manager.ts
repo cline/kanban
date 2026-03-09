@@ -5,6 +5,7 @@ import type {
 	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract.js";
+import { buildShellCommandLine, resolveInteractiveShellCommand } from "../core/shell.js";
 import { type ActivityPreviewTracker, createActivityPreviewTracker } from "./activity-preview.js";
 import {
 	type AgentAdapterLaunchInput,
@@ -23,6 +24,9 @@ import { reduceSessionTransition, type SessionTransitionEvent } from "./session-
 const MAX_HISTORY_BYTES = 1024 * 1024;
 const ACTIVITY_PREVIEW_THROTTLE_MS = 2500;
 const MAX_CLAUDE_TRUST_BUFFER_CHARS = 16_384;
+// Some interactive shells can start without emitting prompt output immediately.
+// Fallback ensures the initial command is still sent if onData does not fire quickly.
+const SHELL_KICKOFF_FALLBACK_DELAY_MS = 450;
 
 interface ActiveProcessState {
 	ptyProcess: pty.IPty;
@@ -245,9 +249,14 @@ export class TerminalSessionManager {
 		let ptyProcess: pty.IPty;
 		// Adapters can wrap the configured agent binary when they need extra runtime wiring
 		// (for example, Codex uses a wrapper script to watch session logs for hook transitions).
-		const spawnBinary = launch.binary ?? request.binary;
+		const commandBinary = launch.binary ?? request.binary;
+		const commandArgs = [...launch.args];
+		const kickoffShellCommand = buildShellCommandLine(commandBinary, commandArgs);
+		const shell = resolveInteractiveShellCommand();
+		const spawnBinary = shell.binary;
+		const spawnArgs = shell.args;
 		try {
-			ptyProcess = pty.spawn(spawnBinary, launch.args, {
+			ptyProcess = pty.spawn(spawnBinary, spawnArgs, {
 				name: "xterm-256color",
 				cwd: request.cwd,
 				env,
@@ -272,7 +281,7 @@ export class TerminalSessionManager {
 				exitCode: null,
 			});
 			this.emitSummary(summary);
-			throw new Error(formatSpawnFailure(spawnBinary, error));
+			throw new Error(formatSpawnFailure(commandBinary, error));
 		}
 
 		const active: ActiveProcessState = {
@@ -335,9 +344,41 @@ export class TerminalSessionManager {
 		});
 		this.emitSummary(entry.summary);
 
+		let kickoffShellCommandSent = false;
+		let kickoffShellTimer: NodeJS.Timeout | null = null;
+		const clearKickoffShellTimer = () => {
+			if (!kickoffShellTimer) {
+				return;
+			}
+			clearTimeout(kickoffShellTimer);
+			kickoffShellTimer = null;
+		};
+		const sendKickoffShellCommand = () => {
+			if (!kickoffShellCommand || kickoffShellCommandSent) {
+				return;
+			}
+			const runningEntry = this.entries.get(request.taskId);
+			if (!runningEntry?.active) {
+				return;
+			}
+			kickoffShellCommandSent = true;
+			clearKickoffShellTimer();
+			runningEntry.active.ptyProcess.write(kickoffShellCommand);
+			runningEntry.active.ptyProcess.write("\r");
+		};
+		if (kickoffShellCommand) {
+			kickoffShellTimer = setTimeout(() => {
+				sendKickoffShellCommand();
+				kickoffShellTimer = null;
+			}, SHELL_KICKOFF_FALLBACK_DELAY_MS);
+		}
+
 		ptyProcess.onData((data) => {
 			if (!entry.active) {
 				return;
+			}
+			if (kickoffShellCommand && !kickoffShellCommandSent) {
+				sendKickoffShellCommand();
 			}
 			const chunk = Buffer.from(data, "utf8");
 			entry.active.outputHistory.push(chunk);
@@ -396,6 +437,7 @@ export class TerminalSessionManager {
 			this.publishLatestActivityPreview(currentEntry, currentActive);
 			stopClaudeWorkspaceTrustTimers(currentActive);
 			clearActivityPreviewTimer(currentActive);
+			clearKickoffShellTimer();
 
 			const summary = this.applySessionEvent(currentEntry, {
 				type: "process.exit",
@@ -418,18 +460,6 @@ export class TerminalSessionManager {
 				});
 			}
 		});
-
-		const trimmedPrompt = request.prompt.trim();
-		if (trimmedPrompt && !launch.writesPromptInternally) {
-			setTimeout(() => {
-				const runningEntry = this.entries.get(request.taskId);
-				if (!runningEntry?.active) {
-					return;
-				}
-				runningEntry.active.ptyProcess.write(trimmedPrompt);
-				runningEntry.active.ptyProcess.write("\r");
-			}, 650);
-		}
 
 		return cloneSummary(entry.summary);
 	}

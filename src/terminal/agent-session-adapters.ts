@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskSessionSummary } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
+import { quoteShellArg } from "../core/shell.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 import { createHookRuntimeEnv } from "./hook-runtime-context.js";
 import { stripAnsi } from "./output-utils.js";
@@ -32,7 +33,6 @@ export interface PreparedAgentLaunch {
 	binary?: string;
 	args: string[];
 	env: Record<string, string | undefined>;
-	writesPromptInternally: boolean;
 	cleanup?: () => Promise<void>;
 	detectOutputTransition?: AgentOutputTransitionDetector;
 }
@@ -48,13 +48,6 @@ interface AgentSessionAdapter {
 
 function escapeForTemplateLiteral(value: string): string {
 	return value.replaceAll("\\", "\\\\").replaceAll("`", "\\`");
-}
-
-function shellQuote(value: string): string {
-	if (process.platform === "win32") {
-		return `"${value.replaceAll('"', '""')}"`;
-	}
-	return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function powerShellQuote(value: string): string {
@@ -74,7 +67,7 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 
 function buildHookCommand(event: RuntimeHookEvent): string {
 	const parts = buildHooksCommandParts(["ingest", "--event", event]);
-	return parts.map(shellQuote).join(" ");
+	return parts.map(quoteShellArg).join(" ");
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
@@ -82,7 +75,7 @@ function buildHooksCommandParts(args: string[]): string[] {
 }
 
 function buildHooksCommand(args: string[]): string {
-	return buildHooksCommandParts(args).map(shellQuote).join(" ");
+	return buildHooksCommandParts(args).map(quoteShellArg).join(" ");
 }
 
 function hasCliOption(args: string[], optionName: string): boolean {
@@ -117,7 +110,7 @@ Write-Output '{"cancel":false}'
 exit 0
 `;
 	}
-	const command = commandParts.map(shellQuote).join(" ");
+	const command = commandParts.map(quoteShellArg).join(" ");
 	return `#!/usr/bin/env bash
 ${command} >/dev/null 2>&1 || true
 echo '{"cancel":false}'
@@ -139,7 +132,7 @@ Write-Output '{"cancel":false}'
 exit 0
 `;
 	}
-	const command = commandParts.map(shellQuote).join(" ");
+	const command = commandParts.map(quoteShellArg).join(" ");
 	return `#!/usr/bin/env bash
 INPUT="$(cat || true)"
 if printf '%s' "$INPUT" | grep -Eq '"event"[[:space:]]*:[[:space:]]*"(user_attention|task_complete)"'; then
@@ -285,7 +278,6 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 		return {
 			args,
 			env: {},
-			writesPromptInternally: false,
 		};
 	}
 	if (mode === "flag" && flag) {
@@ -296,7 +288,6 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 	return {
 		args,
 		env: {},
-		writesPromptInternally: true,
 	};
 }
 
@@ -423,7 +414,6 @@ const codexAdapter: AgentSessionAdapter = {
 				binary,
 				args,
 				env,
-				writesPromptInternally: Boolean(trimmed),
 				detectOutputTransition: codexPromptDetector,
 			};
 		}
@@ -432,7 +422,6 @@ const codexAdapter: AgentSessionAdapter = {
 			binary,
 			args: codexArgs,
 			env,
-			writesPromptInternally: Boolean(trimmed),
 			detectOutputTransition: codexPromptDetector,
 		};
 	},
@@ -492,14 +481,12 @@ const geminiAdapter: AgentSessionAdapter = {
 			return {
 				args,
 				env,
-				writesPromptInternally: true,
 			};
 		}
 
 		return {
 			args,
 			env,
-			writesPromptInternally: false,
 		};
 	},
 };
@@ -795,14 +782,12 @@ const opencodeAdapter: AgentSessionAdapter = {
 			return {
 				args,
 				env,
-				writesPromptInternally: true,
 			};
 		}
 
 		return {
 			args,
 			env,
-			writesPromptInternally: false,
 		};
 	},
 };

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
+import { buildShellCommandLine } from "../../../src/core/shell.js";
 import { TerminalSessionManager } from "../../../src/terminal/session-manager.js";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -123,5 +124,12 @@ describe("TerminalSessionManager preview behavior", () => {
 		expect(entry.active.activityPreviewChunkBuffer).toBe("");
 		expect(entry.summary.activityPreview).toBe("parsed line");
 		expect(onState).toHaveBeenCalledTimes(1);
+	});
+
+	it("builds shell kickoff command lines with quoted arguments", () => {
+		const commandLine = buildShellCommandLine("cline", ["--auto-approve-all", "hello world"]);
+		expect(commandLine).toContain("cline");
+		expect(commandLine).toContain("--auto-approve-all");
+		expect(commandLine).toContain("hello world");
 	});
 });
