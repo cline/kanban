@@ -153,14 +153,15 @@ export function useLinkedBacklogTaskActions({
 					}
 					return nextBoardState;
 				});
-				const startedTaskResults = await Promise.all(
-					readyTasks.map(async (readyTask) => {
-						return kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
-							optimisticMove: true,
-						});
-					}),
-				);
-				const startedTaskCount = startedTaskResults.filter((started) => started).length;
+				let startedTaskCount = 0;
+				for (const readyTask of readyTasks) {
+					const started = await kickoffTaskInProgress(readyTask, readyTask.id, "backlog", {
+						optimisticMove: true,
+					});
+					if (started) {
+						startedTaskCount += 1;
+					}
+				}
 				if (startedTaskCount > 0) {
 					trackTasksAutoStartedFromDependency(startedTaskCount);
 				}

@@ -52,6 +52,19 @@ interface HookSnapshot {
 	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
 }
 
+interface Deferred<T> {
+	promise: Promise<T>;
+	resolve: (value: T | PromiseLike<T>) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	const promise = new Promise<T>((nextResolve) => {
+		resolve = nextResolve;
+	});
+	return { promise, resolve };
+}
+
 function HookHarness({
 	boardFactory,
 	onSnapshot,
@@ -191,6 +204,68 @@ describe("useLinkedBacklogTaskActions", () => {
 		});
 
 		expect(kickoffTaskInProgress).toHaveBeenCalledTimes(2);
+		expect(trackTasksAutoStartedFromDependencyMock).toHaveBeenCalledWith(2);
+	});
+
+	it("starts dependency-unblocked tasks one-at-a-time to avoid concurrent kickoff races", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const firstKickoff = createDeferred<boolean>();
+		const secondKickoff = createDeferred<boolean>();
+		const kickoffTaskInProgress = vi.fn((task: BoardCard) => {
+			if (task.id === "task-1") {
+				return firstKickoff.promise;
+			}
+			return secondKickoff.promise;
+		});
+		const boardFactory = () =>
+			createBoard([
+				{ id: "dep-1", fromTaskId: "task-1", toTaskId: "task-2", createdAt: 10 },
+				{ id: "dep-2", fromTaskId: "task-3", toTaskId: "task-2", createdAt: 11 },
+			]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					boardFactory={boardFactory}
+					kickoffTaskInProgress={kickoffTaskInProgress}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+		const initialSnapshot = latestSnapshot as HookSnapshot;
+		const reviewTask = initialSnapshot.board.columns.find((column) => column.id === "review")?.cards[0];
+		if (!reviewTask) {
+			throw new Error("Expected a review task.");
+		}
+
+		let movePromise: Promise<void> | null = null;
+		await act(async () => {
+			movePromise = initialSnapshot.confirmMoveTaskToTrash(reviewTask, initialSnapshot.board);
+			await Promise.resolve();
+		});
+
+		expect(kickoffTaskInProgress).toHaveBeenCalledTimes(1);
+		expect(kickoffTaskInProgress.mock.calls[0]?.[0]).toMatchObject({ id: "task-1" });
+
+		await act(async () => {
+			firstKickoff.resolve(true);
+			await Promise.resolve();
+		});
+
+		expect(kickoffTaskInProgress).toHaveBeenCalledTimes(2);
+		expect(kickoffTaskInProgress.mock.calls[1]?.[0]).toMatchObject({ id: "task-3" });
+
+		await act(async () => {
+			secondKickoff.resolve(true);
+			await movePromise;
+		});
+
 		expect(trackTasksAutoStartedFromDependencyMock).toHaveBeenCalledWith(2);
 	});
 });
