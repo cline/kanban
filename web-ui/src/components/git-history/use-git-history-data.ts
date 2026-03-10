@@ -111,18 +111,19 @@ export function useGitHistoryData({
 		retainDataOnError: true,
 	});
 
-	const prevWorkspaceIdRef = useRef(workspaceId);
+	const scopeKey = `${workspaceId ?? "__none__"}:${taskScope?.taskId ?? "__home__"}:${taskScope?.baseRef ?? "__home__"}`;
+	const prevScopeKeyRef = useRef(scopeKey);
 	useEffect(() => {
-		if (workspaceId === prevWorkspaceIdRef.current) {
+		if (scopeKey === prevScopeKeyRef.current) {
 			return;
 		}
-		prevWorkspaceIdRef.current = workspaceId;
+		prevScopeKeyRef.current = scopeKey;
 		setViewMode("commit");
 		setSelectedRefName(null);
 		setSelectedCommitHash(null);
 		setSelectedDiffPath(null);
 		refsQuery.setData(null);
-	}, [workspaceId, refsQuery.setData]);
+	}, [scopeKey, refsQuery.setData]);
 
 	const prevBranchRef = useRef(gitSummary?.currentBranch ?? null);
 	useEffect(() => {
