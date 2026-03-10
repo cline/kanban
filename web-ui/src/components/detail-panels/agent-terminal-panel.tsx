@@ -13,6 +13,7 @@ import type {
 	RuntimeTerminalWsClientMessage,
 	RuntimeTerminalWsServerMessage,
 } from "@/runtime/types";
+import { isTerminalDeviceAttributesResponse } from "@/terminal/terminal-autoresponse";
 import { decodeBase64ToText, encodeTextToBase64 } from "@/terminal/base64";
 
 type TerminalWithViewportCore = Terminal & {
@@ -213,6 +214,9 @@ export function AgentTerminalPanel({
 		});
 
 		const removeDataListener = terminal.onData((value) => {
+			if (isTerminalDeviceAttributesResponse(value)) {
+				return;
+			}
 			sendMessage({
 				type: "input",
 				data: encodeTextToBase64(value),
