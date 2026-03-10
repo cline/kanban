@@ -16,7 +16,6 @@ import {
 	type BoardCard,
 	type CardSelection,
 	getTaskAutoReviewActionLabel,
-	type ReviewTaskWorkspaceSnapshot,
 } from "@/types";
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -133,7 +132,6 @@ export function CardDetailView({
 	openPrTaskLoadingById,
 	agentCommitTaskLoadingById,
 	agentOpenPrTaskLoadingById,
-	reviewWorkspaceSnapshots,
 	onAddReviewComments,
 	onSendReviewComments,
 	onMoveToTrash,
@@ -177,7 +175,6 @@ export function CardDetailView({
 	openPrTaskLoadingById?: Record<string, boolean>;
 	agentCommitTaskLoadingById?: Record<string, boolean>;
 	agentOpenPrTaskLoadingById?: Record<string, boolean>;
-	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
 	onMoveToTrash: () => void;
@@ -206,9 +203,6 @@ export function CardDetailView({
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;
 	const hasNoWorkspaceFileChanges =
 		isRuntimeAvailable && workspaceChanges !== null && runtimeFiles !== null && runtimeFiles.length === 0;
-	const selectedReviewWorkspaceSnapshot = reviewWorkspaceSnapshots?.[selection.card.id];
-	const showReviewGitActions =
-		selection.column.id === "review" && (selectedReviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
@@ -304,7 +298,6 @@ export function CardDetailView({
 				onRestoreFromTrashTask={onRestoreTaskFromTrash}
 				commitTaskLoadingById={commitTaskLoadingById}
 				openPrTaskLoadingById={openPrTaskLoadingById}
-				reviewWorkspaceSnapshots={reviewWorkspaceSnapshots}
 			/>
 			<div
 				style={{
@@ -332,7 +325,6 @@ export function CardDetailView({
 								isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
 								showSessionToolbar={false}
 								autoFocus
-								showReviewGitActions={showReviewGitActions}
 								showMoveToTrash={showMoveToTrashActions}
 								onMoveToTrash={onMoveToTrash}
 								onCancelAutomaticAction={
@@ -345,6 +337,7 @@ export function CardDetailView({
 										? getTaskAutoReviewActionLabel(selection.card.autoReviewMode)
 										: null
 								}
+								taskColumnId={selection.column.id}
 							/>
 							{isWorkspaceChangesPending ? (
 								<WorkspaceChangesLoadingPanel />

@@ -17,7 +17,7 @@ import { useDependencyLinking } from "@/components/dependencies/use-dependency-l
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { canCreateTaskDependency } from "@/state/board-state";
 import { findCardColumnId, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
-import type { BoardCard, BoardColumnId, BoardData, BoardDependency, ReviewTaskWorkspaceSnapshot } from "@/types";
+import type { BoardCard, BoardColumnId, BoardData, BoardDependency } from "@/types";
 
 const BOARD_COLUMN_ORDER: BoardColumnId[] = ["backlog", "in_progress", "review", "trash"];
 
@@ -44,7 +44,6 @@ export function KanbanBoard({
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
-	reviewWorkspaceSnapshots,
 	dependencies,
 	onCreateDependency,
 	onDeleteDependency,
@@ -67,7 +66,6 @@ export function KanbanBoard({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
-	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	dependencies: BoardDependency[];
 	onCreateDependency?: (fromTaskId: string, toTaskId: string) => void;
 	onDeleteDependency?: (dependencyId: string) => void;
@@ -383,11 +381,6 @@ export function KanbanBoard({
 						onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
 						commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 						openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
-						reviewWorkspaceSnapshots={
-							column.id === "review" || column.id === "in_progress" || column.id === "trash"
-								? reviewWorkspaceSnapshots
-								: undefined
-						}
 						activeDragTaskId={activeDragTaskId}
 						activeDragSourceColumnId={activeDragSourceColumnId}
 						programmaticCardMoveInFlight={programmaticCardMoveInFlight}

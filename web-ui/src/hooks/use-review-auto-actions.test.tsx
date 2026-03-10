@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 import type { BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/types";
 
 function createBoard(autoReviewEnabled: boolean): BoardData {
@@ -55,9 +56,9 @@ function HookHarness({
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
 }): null {
+	setTaskWorkspaceSnapshot(workspaceSnapshots["task-1"] ?? null);
 	useReviewAutoActions({
 		board,
-		workspaceSnapshots,
 		taskGitActionLoadingByTaskId: {},
 		runAutoReviewGitAction,
 		requestMoveTaskToTrash,
@@ -84,6 +85,7 @@ describe("useReviewAutoActions", () => {
 		act(() => {
 			root.unmount();
 		});
+		resetWorkspaceMetadataStore();
 		container.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;

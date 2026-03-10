@@ -10,6 +10,10 @@ import { showAppToast } from "@/components/app-toaster";
 import { useLinkedBacklogTaskActions, type PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import {
+	clearTaskWorkspaceInfo,
+	setTaskWorkspaceInfo,
+} from "@/stores/workspace-metadata-store";
+import {
 	applyDragResult,
 	clearColumnTasks,
 	disableTaskAutoReview,
@@ -27,7 +31,6 @@ import type {
 	BoardCard,
 	BoardColumnId,
 	BoardData,
-	ReviewTaskWorkspaceSnapshot,
 } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
@@ -52,11 +55,8 @@ interface UseBoardInteractionsInput {
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	selectedCard: SelectedBoardCard | null;
 	selectedTaskId: string | null;
-	selectedTaskWorkspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
-	workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot>;
 	currentProjectId: string | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
-	setSelectedTaskWorkspaceInfo: Dispatch<SetStateAction<RuntimeTaskWorkspaceInfoResponse | null>>;
 	setPendingTrashWarning: Dispatch<SetStateAction<PendingTrashWarningState | null>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
@@ -107,11 +107,8 @@ export function useBoardInteractions({
 	setSessions,
 	selectedCard,
 	selectedTaskId,
-	selectedTaskWorkspaceInfo,
-	workspaceSnapshots,
 	currentProjectId,
 	setSelectedTaskId,
-	setSelectedTaskWorkspaceInfo,
 	setPendingTrashWarning,
 	setIsClearTrashDialogOpen,
 	setIsGitHistoryOpen,
@@ -229,7 +226,7 @@ export function useBoardInteractions({
 			}
 			if (selectedTaskId === taskId) {
 				if (ensured.response) {
-					setSelectedTaskWorkspaceInfo({
+					setTaskWorkspaceInfo({
 						taskId,
 						path: ensured.response.path,
 						exists: true,
@@ -241,7 +238,7 @@ export function useBoardInteractions({
 				}
 				const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
 				if (infoAfterEnsure) {
-					setSelectedTaskWorkspaceInfo(infoAfterEnsure);
+					setTaskWorkspaceInfo(infoAfterEnsure);
 				}
 			}
 			const started = await startTaskSession(task);
@@ -278,7 +275,6 @@ export function useBoardInteractions({
 			onWorktreeError,
 			selectedTaskId,
 			setBoard,
-			setSelectedTaskWorkspaceInfo,
 			startTaskSession,
 		],
 	);
@@ -364,7 +360,6 @@ export function useBoardInteractions({
 		useLinkedBacklogTaskActions({
 			board,
 			setBoard,
-			selectedTaskWorkspaceInfo,
 			setSelectedTaskId,
 			setPendingTrashWarning,
 			stopTaskSession,
@@ -381,7 +376,6 @@ export function useBoardInteractions({
 
 	useReviewAutoActions({
 		board,
-		workspaceSnapshots,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
 		requestMoveTaskToTrash: requestMoveTaskToTrashWithAnimation,
@@ -622,7 +616,7 @@ export function useBoardInteractions({
 		);
 		if (selectedTaskId && taskIds.includes(selectedTaskId)) {
 			setSelectedTaskId(null);
-			setSelectedTaskWorkspaceInfo(null);
+			clearTaskWorkspaceInfo(selectedTaskId);
 		}
 
 		void (async () => {
@@ -640,7 +634,6 @@ export function useBoardInteractions({
 		setIsClearTrashDialogOpen,
 		setPendingTrashWarning,
 		setSelectedTaskId,
-		setSelectedTaskWorkspaceInfo,
 		setSessions,
 		stopTaskSession,
 		trashTaskIds,

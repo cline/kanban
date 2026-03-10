@@ -10,7 +10,6 @@ import type {
 	BoardCard as BoardCardModel,
 	BoardColumnId,
 	BoardColumn as BoardColumnModel,
-	ReviewTaskWorkspaceSnapshot,
 } from "@/types";
 
 export function BoardColumn({
@@ -29,7 +28,6 @@ export function BoardColumn({
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
-	reviewWorkspaceSnapshots,
 	onCardClick,
 	activeDragTaskId,
 	activeDragSourceColumnId,
@@ -55,7 +53,6 @@ export function BoardColumn({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
-	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	onCardClick?: (card: BoardCardModel) => void;
 	activeDragTaskId?: string | null;
 	activeDragSourceColumnId?: BoardColumnId | null;
@@ -159,8 +156,7 @@ export function BoardColumn({
 											sessionSummary={taskSessions[card.id]}
 											onStart={onStartTask}
 											onMoveToTrash={onMoveToTrashTask}
-												onRestoreFromTrash={onRestoreFromTrashTask}
-											reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
+											onRestoreFromTrash={onRestoreFromTrashTask}
 											onCommit={onCommitTask}
 											onOpenPr={onOpenPrTask}
 											isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}

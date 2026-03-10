@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import { getTaskWorkspaceSnapshot, subscribeToAnyTaskMetadata } from "@/stores/workspace-metadata-store";
 import { findCardSelection } from "@/state/board-state";
 import type {
 	BoardCard,
 	BoardColumnId,
 	BoardData,
-	ReviewTaskWorkspaceSnapshot,
 	TaskAutoReviewMode,
 } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
@@ -28,7 +28,6 @@ interface RequestMoveTaskToTrashOptions {
 
 interface UseReviewAutoActionsOptions {
 	board: BoardData;
-	workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot>;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (
@@ -41,7 +40,6 @@ interface UseReviewAutoActionsOptions {
 
 export function useReviewAutoActions({
 	board,
-	workspaceSnapshots,
 	taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction,
 	requestMoveTaskToTrash,
@@ -113,10 +111,11 @@ export function useReviewAutoActions({
 		clearAllAutoReviewState();
 	}, [clearAllAutoReviewState, resetKey]);
 
-	useEffect(() => {
+	const evaluateAutoReview = useCallback(
+		(trigger: { source: string; taskId?: string }) => {
 		const columnByTaskId = new Map<string, BoardColumnId>();
 		const reviewCardsForAutomation: BoardCard[] = [];
-		for (const column of board.columns) {
+		for (const column of boardRef.current.columns) {
 			for (const card of column.cards) {
 				columnByTaskId.set(card.id, column.id);
 				if (column.id === "review") {
@@ -196,7 +195,7 @@ export function useReviewAutoActions({
 			// - A task is only "armed" for auto-trash after we actually see working changes in review and trigger commit/pr.
 			// - Review entries with zero changes (common during start-in-plan-mode planning loops) are intentionally ignored.
 			// - Once armed, a later review state with zero changes is treated as commit/pr success, then we auto-move to trash.
-			const changedFiles = workspaceSnapshots[reviewTask.id]?.changedFiles;
+			const changedFiles = getTaskWorkspaceSnapshot(reviewTask.id)?.changedFiles;
 			const awaitingAction = awaitingCleanActionByTaskIdRef.current[reviewTask.id] ?? null;
 			if (awaitingAction) {
 				if (
@@ -257,5 +256,26 @@ export function useReviewAutoActions({
 				});
 			});
 		}
-	}, [board, clearAutoReviewTimer, scheduleAutoReviewAction, taskGitActionLoadingByTaskId, workspaceSnapshots]);
+		},
+		[clearAutoReviewTimer, scheduleAutoReviewAction, taskGitActionLoadingByTaskId],
+	);
+
+	useEffect(() => {
+		evaluateAutoReview({
+			source: "board_or_loading_change",
+		});
+	}, [board, evaluateAutoReview, taskGitActionLoadingByTaskId]);
+
+	useEffect(() => {
+		return subscribeToAnyTaskMetadata((taskId) => {
+			const selection = findCardSelection(boardRef.current, taskId);
+			if (!selection || selection.column.id !== "review") {
+				return;
+			}
+			evaluateAutoReview({
+				source: "task_metadata_store",
+				taskId,
+			});
+		});
+	}, [evaluateAutoReview]);
 }

@@ -12,7 +12,6 @@ import type {
 	BoardColumn,
 	BoardColumnId,
 	CardSelection,
-	ReviewTaskWorkspaceSnapshot,
 } from "@/types";
 
 function ColumnSection({
@@ -34,7 +33,6 @@ function ColumnSection({
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
-	reviewWorkspaceSnapshots,
 	activeDragSourceColumnId,
 }: {
 	column: BoardColumn;
@@ -55,7 +53,6 @@ function ColumnSection({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
-	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 	activeDragSourceColumnId?: BoardColumnId | null;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
@@ -142,7 +139,6 @@ function ColumnSection({
 												onStart={onStartTask}
 												onMoveToTrash={onMoveToTrashTask}
 												onRestoreFromTrash={onRestoreFromTrashTask}
-												reviewWorkspaceSnapshot={reviewWorkspaceSnapshots?.[card.id]}
 												onCommit={onCommitTask}
 												onOpenPr={onOpenPrTask}
 												isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
@@ -189,7 +185,6 @@ export function ColumnContextPanel({
 	onRestoreFromTrashTask,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
-	reviewWorkspaceSnapshots,
 }: {
 	selection: CardSelection;
 	onCardSelect: (taskId: string) => void;
@@ -208,7 +203,6 @@ export function ColumnContextPanel({
 	onRestoreFromTrashTask?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
-	reviewWorkspaceSnapshots?: Record<string, ReviewTaskWorkspaceSnapshot>;
 }): React.ReactElement {
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 
@@ -262,11 +256,6 @@ export function ColumnContextPanel({
 							onRestoreFromTrashTask={column.id === "trash" ? onRestoreFromTrashTask : undefined}
 							commitTaskLoadingById={column.id === "review" ? commitTaskLoadingById : undefined}
 							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
-							reviewWorkspaceSnapshots={
-								column.id === "review" || column.id === "in_progress" || column.id === "trash"
-									? reviewWorkspaceSnapshots
-									: undefined
-							}
 							activeDragSourceColumnId={activeDragSourceColumnId}
 						/>
 					))}

@@ -83,7 +83,6 @@ function HookHarness({
 	const actions = useLinkedBacklogTaskActions({
 		board,
 		setBoard,
-		selectedTaskWorkspaceInfo: null,
 		setSelectedTaskId: () => {},
 		setPendingTrashWarning: () => {},
 		stopTaskSession: async () => {},

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
 import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import { getTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import {
 	addTaskDependency,
 	findCardSelection,
@@ -31,7 +32,6 @@ interface RequestMoveTaskToTrashOptions {
 export function useLinkedBacklogTaskActions({
 	board,
 	setBoard,
-	selectedTaskWorkspaceInfo,
 	setSelectedTaskId,
 	setPendingTrashWarning,
 	stopTaskSession,
@@ -43,7 +43,6 @@ export function useLinkedBacklogTaskActions({
 }: {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
-	selectedTaskWorkspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 	setPendingTrashWarning: Dispatch<SetStateAction<PendingTrashWarningState | null>>;
 	stopTaskSession: (taskId: string) => Promise<void>;
@@ -224,9 +223,8 @@ export function useLinkedBacklogTaskActions({
 					});
 				}
 				const workspaceInfo =
-					selectedTaskWorkspaceInfo && selectedTaskWorkspaceInfo.taskId === selection.card.id
-						? selectedTaskWorkspaceInfo
-						: await fetchTaskWorkspaceInfo(selection.card);
+					getTaskWorkspaceInfo(selection.card.id, selection.card.baseRef) ??
+					(await fetchTaskWorkspaceInfo(selection.card));
 				setPendingTrashWarning({
 					taskId,
 					fileCount: changeCount,
@@ -243,7 +241,6 @@ export function useLinkedBacklogTaskActions({
 			fetchTaskWorkingChangeCount,
 			fetchTaskWorkspaceInfo,
 			performMoveTaskToTrash,
-			selectedTaskWorkspaceInfo,
 			setBoard,
 			setPendingTrashWarning,
 			setSelectedTaskId,

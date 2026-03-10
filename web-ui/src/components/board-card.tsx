@@ -4,9 +4,10 @@ import type { MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import { useMeasure } from "@/utils/react-use";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import type { BoardCard as BoardCardModel, BoardColumnId, ReviewTaskWorkspaceSnapshot } from "@/types";
+import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
@@ -21,7 +22,6 @@ export function BoardCard({
 	onStart,
 	onMoveToTrash,
 	onRestoreFromTrash,
-	reviewWorkspaceSnapshot,
 	onCommit,
 	onOpenPr,
 	isCommitLoading = false,
@@ -41,7 +41,6 @@ export function BoardCard({
 	onStart?: (taskId: string) => void;
 	onMoveToTrash?: (taskId: string) => void;
 	onRestoreFromTrash?: (taskId: string) => void;
-	reviewWorkspaceSnapshot?: ReviewTaskWorkspaceSnapshot;
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
 	isCommitLoading?: boolean;
@@ -56,6 +55,7 @@ export function BoardCard({
 	const [titleContainerRef, titleRect] = useMeasure<HTMLDivElement>();
 	const titleRef = useRef<HTMLParagraphElement | null>(null);
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
+	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
 	const displayPrompt = useMemo(() => {

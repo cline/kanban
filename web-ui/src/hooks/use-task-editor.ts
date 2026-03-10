@@ -8,7 +8,7 @@ import {
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 } from "@/hooks/app-utils";
 import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/utils/react-use";
-import type { RuntimeAgentId, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeAgentId } from "@/runtime/types";
 import { addTaskToColumn, findCardSelection, updateTask } from "@/state/board-state";
 import { trackTaskCreated } from "@/telemetry/events";
 import type { BoardCard, BoardData, TaskAutoReviewMode } from "@/types";
@@ -22,7 +22,6 @@ interface UseTaskEditorInput {
 	defaultTaskBranchRef: string;
 	selectedAgentId: RuntimeAgentId | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
-	setSelectedTaskWorkspaceInfo: Dispatch<SetStateAction<RuntimeTaskWorkspaceInfoResponse | null>>;
 	onClearWorktreeError: () => void;
 }
 
@@ -71,7 +70,6 @@ export function useTaskEditor({
 	defaultTaskBranchRef,
 	selectedAgentId,
 	setSelectedTaskId,
-	setSelectedTaskWorkspaceInfo,
 	onClearWorktreeError,
 }: UseTaskEditorInput): UseTaskEditorResult {
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
@@ -182,7 +180,6 @@ export function useTaskEditor({
 		(task: BoardCard, options?: OpenEditTaskOptions) => {
 			if (!options?.preserveDetailSelection) {
 				setSelectedTaskId(null);
-				setSelectedTaskWorkspaceInfo(null);
 			}
 			setIsInlineTaskCreateOpen(false);
 			setNewTaskPrompt("");
@@ -195,7 +192,7 @@ export function useTaskEditor({
 			const fallbackBranch = task.baseRef || resolvedDefaultTaskBranchRef;
 			setEditTaskBranchRef(fallbackBranch);
 		},
-		[resolvedDefaultTaskBranchRef, setSelectedTaskId, setSelectedTaskWorkspaceInfo],
+		[resolvedDefaultTaskBranchRef, setSelectedTaskId],
 	);
 
 	const handleCancelEditTask = useCallback(() => {

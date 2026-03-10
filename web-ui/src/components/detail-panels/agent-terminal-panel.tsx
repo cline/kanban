@@ -1,10 +1,11 @@
 import "@xterm/xterm/css/xterm.css";
 
 import { Button, Callout, Classes, Colors, Divider, Icon, Tag, Tooltip } from "@blueprintjs/core";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 
 import { panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import { useTerminalSession } from "@/terminal/use-terminal-session";
 
 const isMacPlatform =
@@ -45,6 +46,54 @@ function getStateIntent(summary: RuntimeTaskSessionSummary | null): "none" | "su
 	return "none";
 }
 
+function AgentTerminalReviewActions({
+	taskId,
+	taskColumnId,
+	onCommit,
+	onOpenPr,
+	isCommitLoading,
+	isOpenPrLoading,
+}: {
+	taskId: string;
+	taskColumnId: string;
+	onCommit?: () => void;
+	onOpenPr?: () => void;
+	isCommitLoading: boolean;
+	isOpenPrLoading: boolean;
+}): React.ReactElement | null {
+	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(taskId);
+	const showReviewGitActions = taskColumnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
+
+	if (!showReviewGitActions) {
+		return null;
+	}
+
+	return (
+		<div style={{ display: "flex", gap: 6 }}>
+			<Button
+				text="Commit"
+				size="small"
+				variant="solid"
+				intent="primary"
+				style={{ flex: "1 1 0" }}
+				loading={isCommitLoading}
+				disabled={isCommitLoading || isOpenPrLoading}
+				onClick={onCommit}
+			/>
+			<Button
+				text="Open PR"
+				size="small"
+				variant="solid"
+				intent="primary"
+				style={{ flex: "1 1 0" }}
+				loading={isOpenPrLoading}
+				disabled={isCommitLoading || isOpenPrLoading}
+				onClick={onOpenPr}
+			/>
+		</div>
+	);
+}
+
 export function AgentTerminalPanel({
 	taskId,
 	workspaceId,
@@ -54,10 +103,10 @@ export function AgentTerminalPanel({
 	onOpenPr,
 	isCommitLoading = false,
 	isOpenPrLoading = false,
+	taskColumnId = "in_progress",
 	onMoveToTrash,
 	onCancelAutomaticAction,
 	cancelAutomaticActionLabel,
-	showReviewGitActions,
 	showMoveToTrash,
 	showSessionToolbar = true,
 	onClose,
@@ -83,10 +132,10 @@ export function AgentTerminalPanel({
 	onOpenPr?: () => void;
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
+	taskColumnId?: string;
 	onMoveToTrash?: () => void;
 	onCancelAutomaticAction?: () => void;
 	cancelAutomaticActionLabel?: string | null;
-	showReviewGitActions?: boolean;
 	showMoveToTrash?: boolean;
 	showSessionToolbar?: boolean;
 	onClose?: () => void;
@@ -255,30 +304,14 @@ export function AgentTerminalPanel({
 			{showMoveToTrash && onMoveToTrash ? (
 				<>
 					<div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 12px" }}>
-						{showReviewGitActions ? (
-							<div style={{ display: "flex", gap: 6 }}>
-								<Button
-									text="Commit"
-									size="small"
-									variant="solid"
-									intent="primary"
-									style={{ flex: "1 1 0" }}
-									loading={isCommitLoading}
-									disabled={isCommitLoading || isOpenPrLoading}
-									onClick={onCommit}
-								/>
-								<Button
-									text="Open PR"
-									size="small"
-									variant="solid"
-									intent="primary"
-									style={{ flex: "1 1 0" }}
-									loading={isOpenPrLoading}
-									disabled={isCommitLoading || isOpenPrLoading}
-									onClick={onOpenPr}
-								/>
-							</div>
-						) : null}
+						<AgentTerminalReviewActions
+							taskId={taskId}
+							taskColumnId={taskColumnId}
+							onCommit={onCommit}
+							onOpenPr={onOpenPr}
+							isCommitLoading={isCommitLoading}
+							isOpenPrLoading={isOpenPrLoading}
+						/>
 						{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
 							<Button
 								text={`Cancel Automatic ${cancelAutomaticActionButtonLabel}`}

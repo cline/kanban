@@ -19,19 +19,16 @@ import {
 import { type IconName, IconNames } from "@blueprintjs/icons";
 
 import { OpenWorkspaceButton } from "@/components/open-workspace-button";
-import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeProjectShortcut } from "@/runtime/types";
+import type { RuntimeGitSyncAction, RuntimeProjectShortcut } from "@/runtime/types";
+import {
+	useHomeGitSummaryValue,
+	useTaskWorkspaceInfoValue,
+	useTaskWorkspaceSnapshotValue,
+} from "@/stores/workspace-metadata-store";
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 import { formatPathForDisplay } from "@/utils/path-display";
 
 const BLUEPRINT_ICON_NAMES = new Set<IconName>(Object.values(IconNames));
-
-export interface TopBarTaskGitSummary {
-	branch: string | null;
-	headCommit: string | null;
-	changedFiles: number | null;
-	additions: number | null;
-	deletions: number | null;
-}
 
 type SettingsSection = "shortcuts";
 
@@ -138,14 +135,123 @@ function GitBranchStatusControl({
 	);
 }
 
+function TopBarGitStatusSection({
+	showHomeGitSummary,
+	selectedTaskId,
+	selectedTaskBaseRef,
+	onToggleGitHistory,
+	isGitHistoryOpen,
+	runningGitAction,
+	onGitFetch,
+	onGitPull,
+	onGitPush,
+}: {
+	showHomeGitSummary: boolean;
+	selectedTaskId: string | null;
+	selectedTaskBaseRef: string | null;
+	onToggleGitHistory?: () => void;
+	isGitHistoryOpen?: boolean;
+	runningGitAction?: RuntimeGitSyncAction | null;
+	onGitFetch?: () => void;
+	onGitPull?: () => void;
+	onGitPush?: () => void;
+}): React.ReactElement | null {
+	const homeGitSummary = useHomeGitSummaryValue();
+	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedTaskId, selectedTaskBaseRef);
+	const taskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedTaskId);
+
+	if (showHomeGitSummary && homeGitSummary) {
+		const branchLabel = homeGitSummary.currentBranch ?? "detached HEAD";
+		const pullCount = homeGitSummary.behindCount ?? 0;
+		const pushCount = homeGitSummary.aheadCount ?? 0;
+		const pullTooltip =
+			pullCount > 0
+				? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
+				: "Pull from upstream. Branch is already up to date.";
+		const pushTooltip =
+			pushCount > 0
+				? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
+				: "Push local commits to upstream. No local commits are pending.";
+		return (
+			<>
+				<NavbarDivider />
+				<GitBranchStatusControl
+					branchLabel={branchLabel}
+					changedFiles={homeGitSummary.changedFiles ?? 0}
+					additions={homeGitSummary.additions ?? 0}
+					deletions={homeGitSummary.deletions ?? 0}
+					onToggleGitHistory={onToggleGitHistory}
+					isGitHistoryOpen={isGitHistoryOpen}
+				/>
+				<ButtonGroup style={{ marginLeft: 6 }}>
+					<Tooltip
+						placement="bottom"
+						content="Fetch latest refs from upstream without changing your local branch or files."
+					>
+						<Button
+							icon={<Icon icon="circle-arrow-down" size={18} />}
+							size="small"
+							variant="minimal"
+							onClick={onGitFetch}
+							loading={runningGitAction === "fetch"}
+							aria-label="Fetch from upstream"
+						/>
+					</Tooltip>
+					<Tooltip placement="bottom" content={pullTooltip}>
+						<Button
+							icon="download"
+							size="small"
+							text={<span style={{ color: Colors.GRAY3 }}>{pullCount}</span>}
+							variant="minimal"
+							onClick={onGitPull}
+							loading={runningGitAction === "pull"}
+							aria-label="Pull from upstream"
+						/>
+					</Tooltip>
+					<Tooltip placement="bottom" content={pushTooltip}>
+						<Button
+							icon="upload"
+							size="small"
+							text={<span style={{ color: Colors.GRAY3 }}>{pushCount}</span>}
+							variant="minimal"
+							onClick={onGitPush}
+							loading={runningGitAction === "push"}
+							aria-label="Push to upstream"
+						/>
+					</Tooltip>
+				</ButtonGroup>
+			</>
+		);
+	}
+
+	if (selectedTaskId && (taskWorkspaceInfo || taskWorkspaceSnapshot)) {
+		return (
+			<>
+				<NavbarDivider />
+				<GitBranchStatusControl
+					branchLabel={taskWorkspaceInfo?.branch ?? taskWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "initializing"}
+					changedFiles={taskWorkspaceSnapshot?.changedFiles ?? 0}
+					additions={taskWorkspaceSnapshot?.additions ?? 0}
+					deletions={taskWorkspaceSnapshot?.deletions ?? 0}
+					onToggleGitHistory={onToggleGitHistory}
+					isGitHistoryOpen={isGitHistoryOpen}
+				/>
+			</>
+		);
+	}
+
+	return null;
+}
+
 export function TopBar({
 	onBack,
 	workspacePath,
 	isWorkspacePathLoading = false,
 	workspaceHint,
 	runtimeHint,
-	gitSummary,
-	taskGitSummary,
+	selectedTaskId,
+	selectedTaskBaseRef,
+	showHomeGitSummary,
 	runningGitAction,
 	onGitFetch,
 	onGitPull,
@@ -175,8 +281,9 @@ export function TopBar({
 	isWorkspacePathLoading?: boolean;
 	workspaceHint?: string;
 	runtimeHint?: string;
-	gitSummary?: RuntimeGitSyncSummary | null;
-	taskGitSummary?: TopBarTaskGitSummary | null;
+	selectedTaskId?: string | null;
+	selectedTaskBaseRef?: string | null;
+	showHomeGitSummary?: boolean;
 	runningGitAction?: RuntimeGitSyncAction | null;
 	onGitFetch?: () => void;
 	onGitPull?: () => void;
@@ -204,23 +311,6 @@ export function TopBar({
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
 	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
-	const hasHomeGitSummary = Boolean(gitSummary);
-	const branchLabel = gitSummary?.currentBranch ?? "detached HEAD";
-	const pullCount = gitSummary?.behindCount ?? 0;
-	const pushCount = gitSummary?.aheadCount ?? 0;
-	const hasTaskGitSummary = Boolean(taskGitSummary);
-	const taskBranchLabel = taskGitSummary?.branch ?? taskGitSummary?.headCommit?.slice(0, 8) ?? "initializing";
-	const taskChangedFiles = taskGitSummary?.changedFiles ?? 0;
-	const taskAdditions = taskGitSummary?.additions ?? 0;
-	const taskDeletions = taskGitSummary?.deletions ?? 0;
-	const pullTooltip =
-		pullCount > 0
-			? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
-			: "Pull from upstream. Branch is already up to date.";
-	const pushTooltip =
-		pushCount > 0
-			? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
-			: "Push local commits to upstream. No local commits are pending.";
 	const isMacPlatform =
 		typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 	const terminalShortcutIcon = isMacPlatform ? "key-command" : "key-control";
@@ -334,67 +424,18 @@ export function TopBar({
 						{runtimeHint}
 					</Tag>
 				) : null}
-				{!hideProjectDependentActions && hasHomeGitSummary ? (
-					<>
-						<NavbarDivider />
-						<GitBranchStatusControl
-							branchLabel={branchLabel}
-							changedFiles={gitSummary?.changedFiles ?? 0}
-							additions={gitSummary?.additions ?? 0}
-							deletions={gitSummary?.deletions ?? 0}
-							onToggleGitHistory={onToggleGitHistory}
-							isGitHistoryOpen={isGitHistoryOpen}
-						/>
-						<ButtonGroup style={{ marginLeft: 6 }}>
-							<Tooltip
-								placement="bottom"
-								content="Fetch latest refs from upstream without changing your local branch or files."
-							>
-								<Button
-									icon={<Icon icon="circle-arrow-down" size={18} />}
-									size="small"
-									variant="minimal"
-									onClick={onGitFetch}
-									loading={runningGitAction === "fetch"}
-									aria-label="Fetch from upstream"
-								/>
-							</Tooltip>
-							<Tooltip placement="bottom" content={pullTooltip}>
-								<Button
-									icon="download"
-									size="small"
-									text={<span style={{ color: Colors.GRAY3 }}>{pullCount}</span>}
-									variant="minimal"
-									onClick={onGitPull}
-									loading={runningGitAction === "pull"}
-									aria-label="Pull from upstream"
-								/>
-							</Tooltip>
-							<Tooltip placement="bottom" content={pushTooltip}>
-								<Button
-									icon="upload"
-									size="small"
-									text={<span style={{ color: Colors.GRAY3 }}>{pushCount}</span>}
-									variant="minimal"
-									onClick={onGitPush}
-									loading={runningGitAction === "push"}
-									aria-label="Push to upstream"
-								/>
-							</Tooltip>
-						</ButtonGroup>
-					</>
-				) : hasTaskGitSummary ? (
-					<>
-						<NavbarDivider />
-						<GitBranchStatusControl
-							branchLabel={taskBranchLabel}
-							changedFiles={taskChangedFiles}
-							additions={taskAdditions}
-							deletions={taskDeletions}
-							onToggleGitHistory={onToggleGitHistory}
-							isGitHistoryOpen={isGitHistoryOpen}
-						/>
-					</>
+				{!hideProjectDependentActions ? (
+					<TopBarGitStatusSection
+						showHomeGitSummary={showHomeGitSummary === true}
+						selectedTaskId={selectedTaskId ?? null}
+						selectedTaskBaseRef={selectedTaskBaseRef ?? null}
+						onToggleGitHistory={onToggleGitHistory}
+						isGitHistoryOpen={isGitHistoryOpen}
+						runningGitAction={runningGitAction}
+						onGitFetch={onGitFetch}
+						onGitPull={onGitPull}
+						onGitPush={onGitPush}
+					/>
 				) : null}
 			</NavbarGroup>
 			<NavbarGroup

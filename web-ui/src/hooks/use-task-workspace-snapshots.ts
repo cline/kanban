@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import {
+	clearInactiveTaskWorkspaceSnapshots,
+	setTaskWorkspaceSnapshot,
+} from "@/stores/workspace-metadata-store";
 import type { BoardCard, ReviewTaskWorkspaceSnapshot } from "@/types";
 
 interface UseTaskWorkspaceSnapshotsOptions {
@@ -7,12 +12,12 @@ interface UseTaskWorkspaceSnapshotsOptions {
 	reviewCards: BoardCard[];
 	inProgressCards: BoardCard[];
 	trashCards: BoardCard[];
+	sessions: Record<string, RuntimeTaskSessionSummary>;
 	isDocumentVisible: boolean;
 	fetchReviewWorkspaceSnapshot: (task: BoardCard) => Promise<ReviewTaskWorkspaceSnapshot | null>;
 }
 
 interface UseTaskWorkspaceSnapshotsResult {
-	workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot>;
 	resetWorkspaceSnapshots: () => void;
 }
 
@@ -22,21 +27,23 @@ export function useTaskWorkspaceSnapshots(options: UseTaskWorkspaceSnapshotsOpti
 		reviewCards,
 		inProgressCards,
 		trashCards,
+		sessions,
 		isDocumentVisible,
 		fetchReviewWorkspaceSnapshot,
 	} = options;
-	const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<string, ReviewTaskWorkspaceSnapshot>>({});
 	const reviewWorkspaceSnapshotLoadingRef = useRef<Set<string>>(new Set());
 	const inProgressWorkspaceSnapshotLoadingRef = useRef<Set<string>>(new Set());
 	const reviewWorkspaceSnapshotAttemptedRef = useRef<Set<string>>(new Set());
 	const activeReviewTaskIdsRef = useRef<Set<string>>(new Set());
+	const lastFetchedSessionUpdatedAtByTaskIdRef = useRef<Record<string, number>>({});
 
 	const resetWorkspaceSnapshots = useCallback(() => {
-		setWorkspaceSnapshots({});
 		reviewWorkspaceSnapshotLoadingRef.current.clear();
 		inProgressWorkspaceSnapshotLoadingRef.current.clear();
 		reviewWorkspaceSnapshotAttemptedRef.current.clear();
 		activeReviewTaskIdsRef.current = new Set();
+		lastFetchedSessionUpdatedAtByTaskIdRef.current = {};
+		clearInactiveTaskWorkspaceSnapshots(new Set());
 	}, []);
 
 	const activeWorkspaceSnapshotTaskIds = useMemo(() => {
@@ -53,32 +60,8 @@ export function useTaskWorkspaceSnapshots(options: UseTaskWorkspaceSnapshotsOpti
 		return ids;
 	}, [inProgressCards, reviewCards, trashCards]);
 
-	const upsertWorkspaceSnapshot = useCallback((taskId: string, snapshot: ReviewTaskWorkspaceSnapshot) => {
-		setWorkspaceSnapshots((current) => {
-			const existing = current[taskId];
-			if (existing && JSON.stringify(existing) === JSON.stringify(snapshot)) {
-				return current;
-			}
-			return {
-				...current,
-				[taskId]: snapshot,
-			};
-		});
-	}, []);
-
 	useEffect(() => {
-		setWorkspaceSnapshots((current) => {
-			let changed = false;
-			const next: Record<string, ReviewTaskWorkspaceSnapshot> = {};
-			for (const [taskId, snapshot] of Object.entries(current)) {
-				if (activeWorkspaceSnapshotTaskIds.has(taskId)) {
-					next[taskId] = snapshot;
-					continue;
-				}
-				changed = true;
-			}
-			return changed ? next : current;
-		});
+		clearInactiveTaskWorkspaceSnapshots(activeWorkspaceSnapshotTaskIds);
 	}, [activeWorkspaceSnapshotTaskIds]);
 
 	useEffect(() => {
@@ -94,16 +77,19 @@ export function useTaskWorkspaceSnapshots(options: UseTaskWorkspaceSnapshotsOpti
 				reviewWorkspaceSnapshotAttemptedRef.current.delete(taskId);
 			}
 		});
-		if (!currentProjectId) {
-			reviewWorkspaceSnapshotLoadingRef.current.clear();
-			reviewWorkspaceSnapshotAttemptedRef.current.clear();
+		if (!currentProjectId || !isDocumentVisible) {
+			if (!currentProjectId) {
+				reviewWorkspaceSnapshotLoadingRef.current.clear();
+				reviewWorkspaceSnapshotAttemptedRef.current.clear();
+				lastFetchedSessionUpdatedAtByTaskIdRef.current = {};
+			}
 			return;
 		}
 		for (const reviewCard of reviewCards) {
-			if (workspaceSnapshots[reviewCard.id]) {
-				continue;
-			}
-			if (reviewWorkspaceSnapshotAttemptedRef.current.has(reviewCard.id)) {
+			const sessionUpdatedAt = sessions[reviewCard.id]?.updatedAt ?? 0;
+			const lastFetchedUpdatedAt = lastFetchedSessionUpdatedAtByTaskIdRef.current[reviewCard.id] ?? -1;
+			const shouldRefreshForSessionUpdate = sessionUpdatedAt > lastFetchedUpdatedAt;
+			if (!shouldRefreshForSessionUpdate && reviewWorkspaceSnapshotAttemptedRef.current.has(reviewCard.id)) {
 				continue;
 			}
 			if (reviewWorkspaceSnapshotLoadingRef.current.has(reviewCard.id)) {
@@ -111,16 +97,17 @@ export function useTaskWorkspaceSnapshots(options: UseTaskWorkspaceSnapshotsOpti
 			}
 			reviewWorkspaceSnapshotAttemptedRef.current.add(reviewCard.id);
 			reviewWorkspaceSnapshotLoadingRef.current.add(reviewCard.id);
+			lastFetchedSessionUpdatedAtByTaskIdRef.current[reviewCard.id] = sessionUpdatedAt;
 			void (async () => {
 				const snapshot = await fetchReviewWorkspaceSnapshot(reviewCard);
 				reviewWorkspaceSnapshotLoadingRef.current.delete(reviewCard.id);
 				if (!snapshot || !activeReviewTaskIdsRef.current.has(reviewCard.id)) {
 					return;
 				}
-				upsertWorkspaceSnapshot(reviewCard.id, snapshot);
+				setTaskWorkspaceSnapshot(snapshot);
 			})();
 		}
-	}, [currentProjectId, fetchReviewWorkspaceSnapshot, reviewCards, upsertWorkspaceSnapshot, workspaceSnapshots]);
+	}, [currentProjectId, fetchReviewWorkspaceSnapshot, isDocumentVisible, reviewCards, sessions]);
 
 	useEffect(() => {
 		const inProgressTaskIds = new Set(inProgressCards.map((card) => card.id));
@@ -130,31 +117,35 @@ export function useTaskWorkspaceSnapshots(options: UseTaskWorkspaceSnapshotsOpti
 			}
 		});
 
-		if (!currentProjectId) {
-			inProgressWorkspaceSnapshotLoadingRef.current.clear();
+		if (!currentProjectId || !isDocumentVisible) {
+			if (!currentProjectId) {
+				inProgressWorkspaceSnapshotLoadingRef.current.clear();
+			}
 			return;
 		}
 		for (const card of inProgressCards) {
-			if (workspaceSnapshots[card.id]) {
+			const sessionUpdatedAt = sessions[card.id]?.updatedAt ?? 0;
+			const lastFetchedUpdatedAt = lastFetchedSessionUpdatedAtByTaskIdRef.current[card.id] ?? -1;
+			if (sessionUpdatedAt <= lastFetchedUpdatedAt && lastFetchedUpdatedAt >= 0) {
 				continue;
 			}
 			if (inProgressWorkspaceSnapshotLoadingRef.current.has(card.id)) {
 				continue;
 			}
 			inProgressWorkspaceSnapshotLoadingRef.current.add(card.id);
+			lastFetchedSessionUpdatedAtByTaskIdRef.current[card.id] = sessionUpdatedAt;
 			void (async () => {
 				const snapshot = await fetchReviewWorkspaceSnapshot(card);
 				inProgressWorkspaceSnapshotLoadingRef.current.delete(card.id);
 				if (!snapshot) {
 					return;
 				}
-				upsertWorkspaceSnapshot(card.id, snapshot);
+				setTaskWorkspaceSnapshot(snapshot);
 			})();
 		}
-	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards, upsertWorkspaceSnapshot, workspaceSnapshots]);
+	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards, isDocumentVisible, sessions]);
 
 	return {
-		workspaceSnapshots,
 		resetWorkspaceSnapshots,
 	};
 }

@@ -43,6 +43,11 @@ import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-re
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
 import { saveWorkspaceState } from "@/runtime/workspace-state-query";
 import {
+	getTaskWorkspaceInfo,
+	getTaskWorkspaceSnapshot,
+	resetWorkspaceMetadataStore,
+} from "@/stores/workspace-metadata-store";
+import {
 	findCardSelection,
 } from "@/state/board-state";
 import type {
@@ -137,11 +142,7 @@ export default function App(): ReactElement {
 		}
 		return findCardSelection(board, selectedTaskId);
 	}, [board, selectedTaskId]);
-	const {
-		selectedTaskWorkspaceInfo,
-		setSelectedTaskWorkspaceInfo,
-		activeSelectedTaskWorkspaceInfo,
-	} = useSelectedTaskWorkspaceInfo({
+	useSelectedTaskWorkspaceInfo({
 		currentProjectId,
 		selectedCard,
 		sessions,
@@ -156,20 +157,15 @@ export default function App(): ReactElement {
 	const trashCards = useMemo(() => {
 		return board.columns.find((column) => column.id === "trash")?.cards ?? [];
 	}, [board.columns]);
-	const { workspaceSnapshots, resetWorkspaceSnapshots } = useTaskWorkspaceSnapshots({
+	const { resetWorkspaceSnapshots } = useTaskWorkspaceSnapshots({
 		currentProjectId,
 		reviewCards,
 		inProgressCards,
 		trashCards,
+		sessions,
 		isDocumentVisible,
 		fetchReviewWorkspaceSnapshot,
 	});
-	const selectedCardWorkspaceSnapshot = useMemo(() => {
-		if (!selectedCard) {
-			return null;
-		}
-		return workspaceSnapshots[selectedCard.card.id] ?? null;
-	}, [selectedCard, workspaceSnapshots]);
 	const {
 		workspacePath,
 		workspaceGit,
@@ -262,7 +258,6 @@ export default function App(): ReactElement {
 		defaultTaskBranchRef,
 		selectedAgentId: runtimeProjectConfig?.selectedAgentId ?? null,
 		setSelectedTaskId,
-		setSelectedTaskWorkspaceInfo,
 		onClearWorktreeError: () => setWorktreeError(null),
 	});
 
@@ -281,7 +276,6 @@ export default function App(): ReactElement {
 	}, [isProjectSwitching, resetTaskEditorState]);
 
 	const {
-		gitSummary,
 		runningGitAction,
 		taskGitActionLoadingByTaskId,
 		commitTaskLoadingById,
@@ -306,8 +300,6 @@ export default function App(): ReactElement {
 		currentProjectId,
 		board,
 		selectedCard,
-		selectedTaskWorkspaceInfo,
-		workspaceSnapshots,
 		runtimeProjectConfig,
 		sendTaskSessionInput,
 		fetchTaskWorkspaceInfo,
@@ -431,7 +423,7 @@ export default function App(): ReactElement {
 	useEffect(() => {
 		setWorktreeError(null);
 		setSelectedTaskId(null);
-		setSelectedTaskWorkspaceInfo(null);
+		resetWorkspaceMetadataStore();
 		resetTaskEditorState();
 		setIsClearTrashDialogOpen(false);
 		resetGitActionState();
@@ -441,6 +433,7 @@ export default function App(): ReactElement {
 	}, [
 		currentProjectId,
 		resetGitActionState,
+		resetWorkspaceMetadataStore,
 		resetProjectNavigationState,
 		resetTaskEditorState,
 		resetTerminalPanelsState,
@@ -499,11 +492,8 @@ export default function App(): ReactElement {
 		setSessions,
 		selectedCard,
 		selectedTaskId,
-		selectedTaskWorkspaceInfo,
-		workspaceSnapshots,
 		currentProjectId,
 		setSelectedTaskId,
-		setSelectedTaskWorkspaceInfo,
 		setPendingTrashWarning,
 		setIsClearTrashDialogOpen,
 		setIsGitHistoryOpen,
@@ -528,8 +518,12 @@ export default function App(): ReactElement {
 		if (!selectedCard) {
 			return null;
 		}
-		return activeSelectedTaskWorkspaceInfo?.path ?? selectedCardWorkspaceSnapshot?.path ?? null;
-	}, [activeSelectedTaskWorkspaceInfo?.path, selectedCard, selectedCardWorkspaceSnapshot?.path]);
+		return (
+			getTaskWorkspaceInfo(selectedCard.card.id, selectedCard.card.baseRef)?.path ??
+			getTaskWorkspaceSnapshot(selectedCard.card.id)?.path ??
+			null
+		);
+	}, [selectedCard]);
 
 	const runtimeHint = useMemo(() => {
 		if (shouldUseNavigationPath || !runtimeProjectConfig) {
@@ -546,43 +540,35 @@ export default function App(): ReactElement {
 	}, [runtimeProjectConfig, shouldUseNavigationPath]);
 
 	const activeWorkspacePath = selectedCard
-		? (activeSelectedTaskWorkspaceInfo?.path ?? selectedCardWorkspaceSnapshot?.path ?? workspacePath ?? undefined)
+		? (
+				getTaskWorkspaceInfo(selectedCard.card.id, selectedCard.card.baseRef)?.path ??
+				getTaskWorkspaceSnapshot(selectedCard.card.id)?.path ??
+				workspacePath ??
+				undefined
+			)
 		: shouldUseNavigationPath
 			? (navigationProjectPath ?? undefined)
 			: (workspacePath ?? undefined);
 
 	const activeWorkspaceHint = useMemo(() => {
-		if (!selectedCard || !activeSelectedTaskWorkspaceInfo) {
+		if (!selectedCard) {
+			return undefined;
+		}
+		const activeSelectedTaskWorkspaceInfo = getTaskWorkspaceInfo(selectedCard.card.id, selectedCard.card.baseRef);
+		if (!activeSelectedTaskWorkspaceInfo) {
 			return undefined;
 		}
 		if (!activeSelectedTaskWorkspaceInfo.exists) {
 			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
 		}
 		return undefined;
-	}, [activeSelectedTaskWorkspaceInfo, selectedCard]);
+	}, [selectedCard]);
 
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
 	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
 	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
-	const navbarGitSummary = hasNoProjects || selectedCard ? null : gitSummary;
 	const shouldHideProjectDependentTopBarActions =
 		!selectedCard && (isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
-
-	const navbarTaskGitSummary = useMemo(() => {
-		if (hasNoProjects || !selectedCard) {
-			return null;
-		}
-		if (!activeSelectedTaskWorkspaceInfo && !selectedCardWorkspaceSnapshot) {
-			return null;
-		}
-		return {
-			branch: activeSelectedTaskWorkspaceInfo?.branch ?? selectedCardWorkspaceSnapshot?.branch ?? null,
-			headCommit: activeSelectedTaskWorkspaceInfo?.headCommit ?? selectedCardWorkspaceSnapshot?.headCommit ?? null,
-			changedFiles: selectedCardWorkspaceSnapshot?.changedFiles ?? 0,
-			additions: selectedCardWorkspaceSnapshot?.additions ?? 0,
-			deletions: selectedCardWorkspaceSnapshot?.deletions ?? 0,
-		};
-	}, [activeSelectedTaskWorkspaceInfo, hasNoProjects, selectedCard, selectedCardWorkspaceSnapshot]);
 
 	const {
 		openTargetOptions,
@@ -671,8 +657,9 @@ export default function App(): ReactElement {
 					isWorkspacePathLoading={shouldShowProjectLoadingState}
 					workspaceHint={navbarWorkspaceHint}
 					runtimeHint={navbarRuntimeHint}
-					gitSummary={navbarGitSummary}
-					taskGitSummary={navbarTaskGitSummary}
+					selectedTaskId={selectedCard?.card.id ?? null}
+					selectedTaskBaseRef={selectedCard?.card.baseRef ?? null}
+					showHomeGitSummary={!hasNoProjects && !selectedCard}
 					runningGitAction={selectedCard || hasNoProjects ? null : runningGitAction}
 					onGitFetch={
 						selectedCard
@@ -819,8 +806,7 @@ export default function App(): ReactElement {
 											commitTaskLoadingById={commitTaskLoadingById}
 											openPrTaskLoadingById={openPrTaskLoadingById}
 											onMoveToTrashTask={handleMoveReviewCardToTrash}
-										onRestoreFromTrashTask={handleRestoreTaskFromTrash}
-											reviewWorkspaceSnapshots={workspaceSnapshots}
+											onRestoreFromTrashTask={handleRestoreTaskFromTrash}
 											dependencies={board.dependencies}
 											onCreateDependency={handleCreateDependency}
 											onDeleteDependency={handleDeleteDependency}
@@ -904,7 +890,6 @@ export default function App(): ReactElement {
 								onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 								onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
 								onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
-								reviewWorkspaceSnapshots={workspaceSnapshots}
 								onAddReviewComments={(taskId: string, text: string) => {
 									void handleAddReviewComments(taskId, text);
 								}}
