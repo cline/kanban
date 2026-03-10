@@ -498,11 +498,11 @@ export function useGitActions({
 	}, [currentProjectId, isDiscardingHomeWorkingChanges, refreshGitHistory]);
 
 	useEffect(() => {
-		if (!currentProjectId) {
+		if (!currentProjectId || !isDocumentVisible || selectedCard || isGitHistoryOpen) {
 			return;
 		}
 		void refreshGitSummary();
-	}, [currentProjectId, refreshGitSummary, workspaceRevision]);
+	}, [currentProjectId, isDocumentVisible, isGitHistoryOpen, refreshGitSummary, selectedCard, workspaceRevision]);
 
 	const runAutoReviewGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction) => {

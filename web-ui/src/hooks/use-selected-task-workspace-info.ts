@@ -8,6 +8,7 @@ interface UseSelectedTaskWorkspaceInfoInput {
 	currentProjectId: string | null;
 	selectedCard: CardSelection | null;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
+	isDocumentVisible: boolean;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 }
 
@@ -19,12 +20,13 @@ export function useSelectedTaskWorkspaceInfo({
 	currentProjectId,
 	selectedCard,
 	sessions,
+	isDocumentVisible,
 	fetchTaskWorkspaceInfo,
 }: UseSelectedTaskWorkspaceInfoInput): UseSelectedTaskWorkspaceInfoResult {
 	useEffect(() => {
 		let cancelled = false;
 		const loadSelectedTaskWorkspaceInfo = async () => {
-			if (!selectedCard || !currentProjectId) {
+			if (!selectedCard || !currentProjectId || !isDocumentVisible) {
 				return;
 			}
 			const info = await fetchTaskWorkspaceInfo(selectedCard.card);
@@ -39,6 +41,7 @@ export function useSelectedTaskWorkspaceInfo({
 	}, [
 		currentProjectId,
 		fetchTaskWorkspaceInfo,
+		isDocumentVisible,
 		selectedCard?.card.baseRef,
 		selectedCard?.card.id,
 		selectedCard ? (sessions[selectedCard.card.id]?.updatedAt ?? 0) : 0,

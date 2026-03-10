@@ -146,6 +146,7 @@ export default function App(): ReactElement {
 		currentProjectId,
 		selectedCard,
 		sessions,
+		isDocumentVisible,
 		fetchTaskWorkspaceInfo,
 	});
 	const reviewCards = useMemo(() => {
