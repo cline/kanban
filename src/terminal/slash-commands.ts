@@ -54,6 +54,15 @@ const OPENCODE_DEFAULT_COMMANDS: RuntimeSlashCommandDescription[] = [
 	{ name: "mcp", description: "Show MCP status." },
 ];
 
+const DROID_DEFAULT_COMMANDS: RuntimeSlashCommandDescription[] = [
+	{ name: "help", description: "Show available commands." },
+	{ name: "review", description: "Start the code review workflow." },
+	{ name: "model", description: "Switch AI model." },
+	{ name: "mcp", description: "Manage MCP servers." },
+	{ name: "settings", description: "Configure droid settings." },
+	{ name: "status", description: "Show current droid status and configuration." },
+];
+
 const CLINE_DEFAULT_COMMANDS: RuntimeSlashCommandDescription[] = [
 	{ name: "help", description: "Show available commands." },
 ];
@@ -100,6 +109,9 @@ function inferCommandFamily(command: ResolvedAgentCommand): CommandFamily {
 	if (command.agentId === "opencode") {
 		return "opencode";
 	}
+	if (command.agentId === "droid") {
+		return "droid";
+	}
 	if (command.agentId === "cline") {
 		return "cline";
 	}
@@ -115,6 +127,9 @@ function inferCommandFamily(command: ResolvedAgentCommand): CommandFamily {
 	}
 	if (binaryName.includes("opencode")) {
 		return "opencode";
+	}
+	if (binaryName.includes("droid")) {
+		return "droid";
 	}
 	if (binaryName.includes("cline")) {
 		return "cline";
@@ -134,6 +149,9 @@ function getDefaultCommands(family: CommandFamily): RuntimeSlashCommandDescripti
 	}
 	if (family === "opencode") {
 		return OPENCODE_DEFAULT_COMMANDS;
+	}
+	if (family === "droid") {
+		return DROID_DEFAULT_COMMANDS;
 	}
 	if (family === "cline") {
 		return CLINE_DEFAULT_COMMANDS;

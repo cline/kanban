@@ -65,6 +65,7 @@ export interface StartTaskSessionRequest {
 	agentId: AgentAdapterLaunchInput["agentId"];
 	binary: string;
 	args: string[];
+	autonomousModeEnabled?: boolean;
 	cwd: string;
 	prompt: string;
 	startInPlanMode?: boolean;
@@ -230,6 +231,7 @@ export class TerminalSessionManager {
 			agentId: request.agentId,
 			binary: request.binary,
 			args: request.args,
+			autonomousModeEnabled: request.autonomousModeEnabled,
 			cwd: request.cwd,
 			prompt: request.prompt,
 			startInPlanMode: request.startInPlanMode,

@@ -422,6 +422,15 @@ function resolveAgentCutoff(agentId: RuntimeAgentId | null, lines: string[]): nu
 		}
 		return findCutoffFromMarkers(lines, [/\bctrl\+t variants\b/iu, /\btab agents\b/iu, /\bctrl\+p commands\b/iu]);
 	}
+	if (agentId === "droid") {
+		return findCutoffFromMarkers(lines, [
+			/\bauto \([^)]+\)\s*-\s*allow all commands\b/iu,
+			/\bshift\+tab to cycle modes\b/iu,
+			/\bctrl\+l for autonomy\b/iu,
+			/\?\s*for help\b/iu,
+			/\/ide\b.*\bvs code\b/iu,
+		]);
+	}
 	if (agentId === "cline") {
 		return findCutoffFromMarkers(lines, [/\/ for commands\b/iu, /\bauto-approve all disabled\b/iu]);
 	}
@@ -445,7 +454,7 @@ function isNoiseLine(line: string): boolean {
 		return true;
 	}
 	if (
-		/(?:\bctrl\+|\bfor commands\b|\bfor shortcuts\b|\bcontext left\b|\bauto-approve\b|\bpress ctrl-c again to exit\b|\bchecking for updates\b|\bwaiting for auth\b|\binitializing\b|\bclaude code\b|\bopenai codex\b|\bapi usage billing\b|\bask anything\b|\bwhat can i do for you\b|\bstart new task\b)/iu.test(
+		/(?:\bctrl\+|\bfor commands\b|\bfor shortcuts\b|\bcontext left\b|\bauto-approve\b|\bpress ctrl-c again to exit\b|\bchecking for updates\b|\bwaiting for auth\b|\binitializing\b|\bclaude code\b|\bopenai codex\b|\bapi usage billing\b|\bask anything\b|\bwhat can i do for you\b|\bstart new task\b|\byou are standing in an open terminal\b|\ban ai awaits your commands\b|\benter to send\b|\bcurrent folder:\b|\btip:\s*enable shift\+enter\b|\bauto \([^)]+\)\s*-\s*allow all commands\b|\bshift\+tab to cycle modes\b|\bctrl\+n to cycle models\b|\bctrl\+l for autonomy\b|\?\s*for help\b|\/ide\s+for\s+vs\s+code\b)/iu.test(
 			line,
 		)
 	) {

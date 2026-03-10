@@ -118,6 +118,41 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(plugin).toContain('currentState = "idle"');
 	});
 
+	it("writes Droid settings with hook transitions and runtime autonomy mode", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "droid",
+			binary: "droid",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+
+		const settingsArgIndex = launch.args.indexOf("--settings");
+		expect(settingsArgIndex).toBeGreaterThanOrEqual(0);
+		const settingsPath = launch.args[settingsArgIndex + 1];
+		expect(settingsPath).toBeDefined();
+
+		const settings = JSON.parse(readFileSync(settingsPath ?? "", "utf8")) as {
+			autonomyMode?: string;
+			hooks?: Record<string, Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>>;
+		};
+		expect(settings.autonomyMode).toBe("auto-high");
+		expect(settings.hooks?.Stop?.[0]?.hooks?.[0]?.command).toContain("to_review");
+		expect(settings.hooks?.Notification?.[0]?.hooks?.[0]?.command).toContain("to_review");
+		expect(settings.hooks?.PreToolUse?.[0]?.matcher).toBe("AskUser");
+		expect(settings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("to_review");
+		expect(settings.hooks?.PostToolUse?.[0]?.matcher).toBe("AskUser");
+		expect(settings.hooks?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("to_review");
+		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -214,6 +249,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(opencodeLaunch.args).toContain("--continue");
 
+		const droidLaunch = await prepareAgentLaunch({
+			taskId: "task-droid",
+			agentId: "droid",
+			binary: "droid",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(droidLaunch.args).toContain("--resume");
+
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline",
 			agentId: "cline",
@@ -224,5 +270,101 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeFromTrash: true,
 		});
 		expect(clineLaunch.args).toContain("--continue");
+	});
+
+	it("applies autonomous mode flags in adapters for non-droid CLIs", async () => {
+		setupTempHome();
+
+		const claudeLaunch = await prepareAgentLaunch({
+			taskId: "task-claude-auto",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(claudeLaunch.args).toContain("--dangerously-skip-permissions");
+
+		const codexLaunch = await prepareAgentLaunch({
+			taskId: "task-codex-auto",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
+
+		const geminiLaunch = await prepareAgentLaunch({
+			taskId: "task-gemini-auto",
+			agentId: "gemini",
+			binary: "gemini",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(geminiLaunch.args).toContain("--yolo");
+
+		const clineLaunch = await prepareAgentLaunch({
+			taskId: "task-cline-auto",
+			agentId: "cline",
+			binary: "cline",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(clineLaunch.args).toContain("--auto-approve-all");
+	});
+
+	it("preserves explicit autonomous args when autonomous mode is disabled", async () => {
+		setupTempHome();
+
+		const claudeLaunch = await prepareAgentLaunch({
+			taskId: "task-claude-no-auto",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--dangerously-skip-permissions"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(claudeLaunch.args).toContain("--dangerously-skip-permissions");
+
+		const codexLaunch = await prepareAgentLaunch({
+			taskId: "task-codex-no-auto",
+			agentId: "codex",
+			binary: "codex",
+			args: ["--dangerously-bypass-approvals-and-sandbox"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
+
+		const geminiLaunch = await prepareAgentLaunch({
+			taskId: "task-gemini-no-auto",
+			agentId: "gemini",
+			binary: "gemini",
+			args: ["--yolo"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(geminiLaunch.args).toContain("--yolo");
+
+		const clineLaunch = await prepareAgentLaunch({
+			taskId: "task-cline-no-auto",
+			agentId: "cline",
+			binary: "cline",
+			args: ["--auto-approve-all"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(clineLaunch.args).toContain("--auto-approve-all");
 	});
 });

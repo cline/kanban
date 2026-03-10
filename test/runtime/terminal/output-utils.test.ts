@@ -4,7 +4,7 @@ import { createActivityPreviewTracker } from "../../../src/terminal/activity-pre
 
 function extractPreviewFromBuffer(
 	buffer: string,
-	agentId: "codex" | "claude" | "gemini" | "opencode" | "cline" | null,
+	agentId: "codex" | "claude" | "gemini" | "opencode" | "droid" | "cline" | null,
 ): string | null {
 	const tracker = createActivityPreviewTracker(120, 40);
 	tracker.append(buffer);
@@ -95,6 +95,48 @@ describe("activity preview tracker", () => {
 		const preview = extractPreviewFromBuffer(buffer, "opencode");
 		expect(preview).toContain("Ran tests and fixed");
 		expect(preview).not.toContain("Ask anything");
+	});
+
+	it("ignores droid composer rows", () => {
+		const buffer = [
+			"Refactored runtime state syncing and fixed stale session hydration.",
+			"",
+			"/ for commands",
+			"> continue with the next change",
+		].join("\n");
+		const preview = extractPreviewFromBuffer(buffer, "droid");
+		expect(preview).toContain("Refactored runtime state syncing");
+		expect(preview).not.toContain("/ for commands");
+		expect(preview).not.toContain("continue with the next change");
+	});
+
+	it("ignores droid startup and footer chrome while preserving task output", () => {
+		const buffer = [
+			"█████████    █████████     ████████    ███   █████████",
+			"",
+			"You are standing in an open terminal. An AI awaits your commands.",
+			"ENTER to send • \\ + ENTER for a new line • @ to mention files",
+			"Current folder: /Users/saoud/.kanban/worktrees/dbdae/vscrui",
+			"Tip: Enable Shift+Enter for new lines in VS Code. Run /terminal-setup to configure it.",
+			"> read a random file",
+			"LIST DIRECTORY (current directory)",
+			"↳ Listed 19 items.",
+			"READ (tsconfig.json)",
+			"↳ Read 20 lines.",
+			"⛬ Random file read",
+			"I picked tsconfig.json at random and read it.",
+			"Auto (High) - allow all commands              GPT-5.3-Codex (High)",
+			"shift+tab to cycle modes (auto/spec), ctrl+N to cycle models, tab ctrl+L for autonomy for reasoning",
+			"[⏱ 17s, context: 1%]? for help                    /ide for VS Code",
+		].join("\n");
+		const preview = extractPreviewFromBuffer(buffer, "droid");
+		expect(preview).toContain("I picked tsconfig.json");
+		expect(preview).toContain("Random file read");
+		expect(preview).not.toContain("You are standing in an open terminal");
+		expect(preview).not.toContain("Current folder:");
+		expect(preview).not.toContain("Auto (High) - allow all commands");
+		expect(preview).not.toContain("/ide for VS Code");
+		expect(preview).not.toContain("read a random file");
 	});
 
 	it("ignores cline composer rows", () => {

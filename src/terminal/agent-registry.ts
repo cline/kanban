@@ -12,12 +12,12 @@ export interface ResolvedAgentCommand {
 	args: string[];
 }
 
-function getDefaultArgs(agentId: RuntimeAgentId, runtimeConfig: RuntimeConfigState): string[] {
+function getDefaultArgs(agentId: RuntimeAgentId): string[] {
 	const entry = RUNTIME_AGENT_CATALOG.find((candidate) => candidate.id === agentId);
 	if (!entry) {
 		return [];
 	}
-	return runtimeConfig.agentAutonomousModeEnabled ? [...entry.baseArgs, ...entry.autonomousArgs] : [...entry.baseArgs];
+	return [...entry.baseArgs];
 }
 
 function isBinaryAvailableOnPath(binary: string): boolean {
@@ -120,7 +120,7 @@ export function detectInstalledCommands(): string[] {
 function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: string[]): RuntimeAgentDefinition[] {
 	const detectedSet = new Set(detected);
 	return RUNTIME_AGENT_CATALOG.map((entry) => {
-		const defaultArgs = getDefaultArgs(entry.id, runtimeConfig);
+		const defaultArgs = getDefaultArgs(entry.id);
 		const command = joinCommand(entry.binary, defaultArgs);
 		return {
 			id: entry.id,
@@ -139,7 +139,7 @@ export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Resolved
 	if (!selected) {
 		return null;
 	}
-	const defaultArgs = getDefaultArgs(selected.id, runtimeConfig);
+	const defaultArgs = getDefaultArgs(selected.id);
 	const command = joinCommand(selected.binary, defaultArgs);
 	if (isBinaryAvailableOnPath(selected.binary)) {
 		return {

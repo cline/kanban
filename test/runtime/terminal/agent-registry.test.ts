@@ -21,7 +21,7 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 }
 
 describe("buildRuntimeConfigResponse", () => {
-	it("includes autonomous flags in curated agent commands when enabled", () => {
+	it("keeps curated agent default args independent of autonomous mode", () => {
 		const config = createRuntimeConfigState({
 			agentAutonomousModeEnabled: true,
 		});
@@ -29,14 +29,12 @@ describe("buildRuntimeConfigResponse", () => {
 		const response = buildRuntimeConfigResponse(config);
 
 		expect(response.agentAutonomousModeEnabled).toBe(true);
-		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([
-			"--dangerously-skip-permissions",
-		]);
-		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([
-			"--dangerously-bypass-approvals-and-sandbox",
-		]);
-		expect(response.agents.find((agent) => agent.id === "gemini")?.defaultArgs).toEqual(["--yolo"]);
-		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual(["--auto-approve-all"]);
+		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "gemini")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "opencode")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 	});
 
 	it("omits autonomous flags from curated agent commands when disabled", () => {
@@ -51,6 +49,7 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "gemini")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "opencode")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.command).toBe("claude");
 		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");

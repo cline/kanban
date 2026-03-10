@@ -39,7 +39,7 @@ interface CliOptions {
 	agent: RuntimeAgentId | null;
 }
 
-const CLI_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode", "cline"];
+const CLI_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode", "droid", "cline"];
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 function parseCliAgentId(value: string): RuntimeAgentId {
@@ -49,6 +49,7 @@ function parseCliAgentId(value: string): RuntimeAgentId {
 		normalized === "codex" ||
 		normalized === "gemini" ||
 		normalized === "opencode" ||
+		normalized === "droid" ||
 		normalized === "cline"
 	) {
 		return normalized;

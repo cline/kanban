@@ -60,7 +60,7 @@ export const runtimeSlashCommandDescriptionSchema = z.object({
 });
 export type RuntimeSlashCommandDescription = z.infer<typeof runtimeSlashCommandDescriptionSchema>;
 
-export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "cline"]);
+export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "cline"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
 export const runtimeSlashCommandsResponseSchema = z.object({

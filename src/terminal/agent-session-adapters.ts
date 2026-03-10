@@ -16,6 +16,7 @@ export interface AgentAdapterLaunchInput {
 	agentId: RuntimeAgentId;
 	binary?: string;
 	args: string[];
+	autonomousModeEnabled?: boolean;
 	cwd: string;
 	prompt: string;
 	startInPlanMode?: boolean;
@@ -299,6 +300,9 @@ const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+		if (input.autonomousModeEnabled && !input.startInPlanMode && !hasCliOption(args, "--dangerously-skip-permissions")) {
+			args.push("--dangerously-skip-permissions");
+		}
 		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
 		}
@@ -306,7 +310,7 @@ const claudeAdapter: AgentSessionAdapter = {
 			const withoutImmediateBypass = args.filter((arg) => arg !== "--dangerously-skip-permissions");
 			args.length = 0;
 			args.push(...withoutImmediateBypass);
-			if (!args.includes("--allow-dangerously-skip-permissions")) {
+			if (!hasCliOption(args, "--allow-dangerously-skip-permissions")) {
 				args.push("--allow-dangerously-skip-permissions");
 			}
 			args.push("--permission-mode", "plan");
@@ -378,6 +382,10 @@ const codexAdapter: AgentSessionAdapter = {
 		const env: Record<string, string | undefined> = {};
 		let binary = input.binary;
 
+		if (input.autonomousModeEnabled && !hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox")) {
+			codexArgs.push("--dangerously-bypass-approvals-and-sandbox");
+		}
+
 		if (input.resumeFromTrash) {
 			if (!codexArgs.includes("resume")) {
 				codexArgs.push("resume");
@@ -435,6 +443,10 @@ const geminiAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--yolo")) {
+			args.push("--yolo");
+		}
 
 		if (input.resumeFromTrash && !hasCliOption(args, "--resume")) {
 			args.push("--resume", "latest");
@@ -796,10 +808,68 @@ const opencodeAdapter: AgentSessionAdapter = {
 	},
 };
 
+const droidAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume") && !hasCliOption(args, "-r")) {
+			args.push("--resume");
+		}
+
+		const hooks = resolveHookContext(input);
+		const shouldWriteSettings = Boolean(hooks) || input.startInPlanMode || input.autonomousModeEnabled !== undefined;
+		if (shouldWriteSettings) {
+			const settingsPath = join(getHookAgentDirectory("droid"), "settings.json");
+			const settings: Record<string, unknown> = {
+				autonomyMode: input.startInPlanMode ? "spec" : input.autonomousModeEnabled ? "auto-high" : "normal",
+			};
+
+			if (hooks) {
+				const reviewNotifyCommand = buildHooksCommand(["notify", "--event", "to_review"]);
+				const inProgressNotifyCommand = buildHooksCommand(["notify", "--event", "to_in_progress"]);
+				settings.hooks = {
+					Stop: [{ hooks: [{ type: "command", command: reviewNotifyCommand }] }],
+					Notification: [{ hooks: [{ type: "command", command: reviewNotifyCommand }] }],
+					PreToolUse: [{ matcher: "AskUser", hooks: [{ type: "command", command: reviewNotifyCommand }] }],
+					PostToolUse: [{ matcher: "AskUser", hooks: [{ type: "command", command: reviewNotifyCommand }] }],
+					UserPromptSubmit: [{ hooks: [{ type: "command", command: inProgressNotifyCommand }] }],
+				};
+
+				Object.assign(
+					env,
+					createHookRuntimeEnv({
+						taskId: hooks.taskId,
+						workspaceId: hooks.workspaceId,
+					}),
+				);
+			}
+
+			await ensureTextFile(settingsPath, JSON.stringify(settings, null, 2));
+			if (!hasCliOption(args, "--settings")) {
+				args.push("--settings", settingsPath);
+			}
+		}
+
+		const withPromptLaunch = withPrompt(args, input.prompt, "append");
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+		};
+	},
+};
+
 const clineAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--auto-approve-all")) {
+			args.push("--auto-approve-all");
+		}
 
 		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
@@ -850,6 +920,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	codex: codexAdapter,
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
+	droid: droidAdapter,
 	cline: clineAdapter,
 };
 

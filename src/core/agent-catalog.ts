@@ -43,6 +43,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://github.com/sst/opencode",
 	},
 	{
+		id: "droid",
+		label: "Droid CLI",
+		binary: "droid",
+		baseArgs: [],
+		autonomousArgs: ["--auto", "high"],
+		installUrl: "https://docs.factory.ai/cli/getting-started/quickstart",
+	},
+	{
 		id: "cline",
 		label: "Cline CLI",
 		binary: "cline",
