@@ -48,6 +48,25 @@ Use MCP to let the agent add and start tasks on the kanban board itself, decompo
 claude mcp add --transport stdio --scope user kanban -- kanban mcp
 ```
 
+<details>
+<summary>Using Cline?</summary>
+
+Add this to your `~/.cline/data/settings/cline_mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "kanban": {
+      "command": "kanban",
+      "args": ["mcp"],
+      "transportType": "stdio"
+    }
+  }
+}
+```
+
+</details>
+
 With the MCP tools, your agent can:
 
 - `list_tasks`: see what's on the board, including task links and auto-review settings
