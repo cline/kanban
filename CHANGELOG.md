@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5]
+
+- Added Droid CLI agent support alongside Claude and Codex
+- Dogfood launcher for quickly opening Kanban on its own repo with runtime port selection
+- Terminal rebuilt around xterm and node-pty for better performance and reliability
+- Filter terminal device attribute auto-responses from being sent to agents as input
+- Fix workspace metadata causing unnecessary rerenders, with retry recovery
+- Fix task worktrees being recreated when the base ref updates if they already exist
+- Fix self-ignored directories being symlinked in task worktrees
+- Fix bypass permissions toggle resetting unexpectedly
+- Fix git refs not clearing when switching detail scope
+
 ## [0.1.4]
 
 - Each task gets its own CLI agent working in a git worktree, so they can work in parallel on the same codebase without stepping on each other
