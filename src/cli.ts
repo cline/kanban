@@ -2,6 +2,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
+import { createServer as createNetServer } from "node:net";
 import packageJson from "../package.json" with { type: "json" };
 
 import { isHooksSubcommand, runHooksSubcommand } from "./commands/hooks.js";
@@ -15,7 +16,11 @@ import { createGitProcessEnv } from "./core/git-process-env.js";
 import { resolveProjectInputPath } from "./projects/project-path.js";
 import {
 	buildKanbanRuntimeUrl,
-	KANBAN_RUNTIME_ORIGIN,
+	DEFAULT_KANBAN_RUNTIME_PORT,
+	getKanbanRuntimePort,
+	getKanbanRuntimeOrigin,
+	parseRuntimePort,
+	setKanbanRuntimePort,
 } from "./core/runtime-endpoint.js";
 import { openInBrowser } from "./server/browser.js";
 import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
@@ -37,6 +42,7 @@ interface CliOptions {
 	version: boolean;
 	noOpen: boolean;
 	agent: RuntimeAgentId | null;
+	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
 }
 
 const CLI_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode", "droid", "cline"];
@@ -57,11 +63,27 @@ function parseCliAgentId(value: string): RuntimeAgentId {
 	throw new Error(`Invalid agent: ${value}. Expected one of: ${CLI_AGENT_IDS.join(", ")}`);
 }
 
+function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } | { mode: "auto" } {
+	const normalized = rawValue.trim().toLowerCase();
+	if (!normalized) {
+		throw new Error("Missing value for --port.");
+	}
+	if (normalized === "auto") {
+		return { mode: "auto" };
+	}
+	try {
+		return { mode: "fixed", value: parseRuntimePort(normalized) };
+	} catch {
+		throw new Error(`Invalid port value: ${rawValue}. Expected an integer from 1-65535 or "auto".`);
+	}
+}
+
 function parseCliOptions(argv: string[]): CliOptions {
 	let help = false;
 	let version = false;
 	let noOpen = false;
 	let agent: RuntimeAgentId | null = null;
+	let port: { mode: "fixed"; value: number } | { mode: "auto" } | null = null;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -92,10 +114,27 @@ function parseCliOptions(argv: string[]): CliOptions {
 				throw new Error("Missing value for --agent.");
 			}
 			agent = parseCliAgentId(value);
+			continue;
+		}
+		if (arg === "--port") {
+			const value = argv[index + 1];
+			if (!value) {
+				throw new Error("Missing value for --port.");
+			}
+			port = parseCliPortValue(value);
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--port=")) {
+			const value = arg.slice("--port=".length);
+			if (!value) {
+				throw new Error("Missing value for --port.");
+			}
+			port = parseCliPortValue(value);
 		}
 	}
 
-	return { help, version, noOpen, agent };
+	return { help, version, noOpen, agent, port };
 }
 
 function printHelp(): void {
@@ -103,11 +142,47 @@ function printHelp(): void {
 	console.log("Local orchestration board for coding agents.");
 	console.log("");
 	console.log("Usage:");
-	console.log("  kanban [--agent <id>] [--no-open] [--help] [--version]");
+	console.log("  kanban [--agent <id>] [--port <number|auto>] [--no-open] [--help] [--version]");
 	console.log("  kanban mcp");
 	console.log("");
-	console.log(`Runtime URL: ${KANBAN_RUNTIME_ORIGIN}`);
+	console.log(`Runtime URL: ${getKanbanRuntimeOrigin()}`);
 	console.log(`Agent IDs: ${CLI_AGENT_IDS.join(", ")}`);
+}
+
+async function isPortAvailable(port: number): Promise<boolean> {
+	return await new Promise<boolean>((resolve) => {
+		const probe = createNetServer();
+		probe.once("error", () => {
+			resolve(false);
+		});
+		probe.listen(port, "127.0.0.1", () => {
+			probe.close(() => {
+				resolve(true);
+			});
+		});
+	});
+}
+
+async function findAvailableRuntimePort(startPort: number): Promise<number> {
+	for (let candidate = startPort; candidate <= 65535; candidate += 1) {
+		if (await isPortAvailable(candidate)) {
+			return candidate;
+		}
+	}
+	throw new Error("No available runtime port found.");
+}
+
+async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<number | null> {
+	if (!portOption) {
+		return null;
+	}
+	if (portOption.mode === "fixed") {
+		setKanbanRuntimePort(portOption.value);
+		return portOption.value;
+	}
+	const autoPort = await findAvailableRuntimePort(DEFAULT_KANBAN_RUNTIME_PORT);
+	setKanbanRuntimePort(autoPort);
+	return autoPort;
 }
 
 async function persistCliAgentSelection(cwd: string, selectedAgentId: RuntimeAgentId): Promise<boolean> {
@@ -223,8 +298,8 @@ async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
 	}
 	const projectUrl = workspaceId
 		? buildKanbanRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
-		: KANBAN_RUNTIME_ORIGIN;
-	console.log(`Kanban already running at ${KANBAN_RUNTIME_ORIGIN}`);
+		: getKanbanRuntimeOrigin();
+	console.log(`Kanban already running at ${getKanbanRuntimeOrigin()}`);
 	if (!noOpen) {
 		try {
 			openInBrowser(projectUrl);
@@ -366,6 +441,26 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 	};
 }
 
+async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaited<ReturnType<typeof startServer>>> {
+	if (options.port?.mode !== "auto") {
+		return await startServer();
+	}
+
+	while (true) {
+		try {
+			return await startServer();
+		} catch (error) {
+			if (!isAddressInUseError(error)) {
+				throw error;
+			}
+			const currentPort = getKanbanRuntimePort();
+			const retryPort = await findAvailableRuntimePort(currentPort + 1);
+			setKanbanRuntimePort(retryPort);
+			console.warn(`Runtime port ${currentPort} became busy during startup, retrying on ${retryPort}.`);
+		}
+	}
+}
+
 async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
 	if (isMcpSubcommand(argv)) {
@@ -388,6 +483,11 @@ async function run(): Promise<void> {
 		return;
 	}
 
+	const selectedPort = await applyRuntimePortOption(options.port);
+	if (selectedPort !== null) {
+		console.log(`Using runtime port ${selectedPort}.`);
+	}
+
 	autoUpdateOnStartup({
 		currentVersion: KANBAN_VERSION,
 	});
@@ -401,9 +501,9 @@ async function run(): Promise<void> {
 
 	let runtime: Awaited<ReturnType<typeof startServer>>;
 	try {
-		runtime = await startServer();
+		runtime = await startServerWithAutoPortRetry(options);
 	} catch (error) {
-		if (isAddressInUseError(error) && (await tryOpenExistingServer(options.noOpen))) {
+		if (options.port?.mode !== "auto" && isAddressInUseError(error) && (await tryOpenExistingServer(options.noOpen))) {
 			return;
 		}
 		throw error;

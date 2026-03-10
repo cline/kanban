@@ -48,6 +48,7 @@
     "clean": "shx rm -rf dist coverage",
     "install:all": "npm install && npm --prefix web-ui install",
     "build": "npm run clean && npm run web:build && tsc -p tsconfig.build.json && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && shx chmod +x dist/cli.js",
+    "dogfood": "node scripts/dogfood.mjs",
     "link": "npm run build && npm link",
     "unlink": "npm unlink -g kanban",
     "dev": "tsx watch src/cli.ts",

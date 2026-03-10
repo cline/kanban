@@ -1,7 +1,7 @@
 export const KANBAN_RUNTIME_HOST = "127.0.0.1";
-const DEFAULT_KANBAN_RUNTIME_PORT = 3484;
+export const DEFAULT_KANBAN_RUNTIME_PORT = 3484;
 
-function parseRuntimePort(rawPort: string | undefined): number {
+export function parseRuntimePort(rawPort: string | undefined): number {
 	if (!rawPort) {
 		return DEFAULT_KANBAN_RUNTIME_PORT;
 	}
@@ -12,16 +12,32 @@ function parseRuntimePort(rawPort: string | undefined): number {
 	return parsed;
 }
 
-export const KANBAN_RUNTIME_PORT = parseRuntimePort(process.env.KANBAN_RUNTIME_PORT?.trim());
-export const KANBAN_RUNTIME_ORIGIN = `http://${KANBAN_RUNTIME_HOST}:${KANBAN_RUNTIME_PORT}`;
-export const KANBAN_RUNTIME_WS_ORIGIN = `ws://${KANBAN_RUNTIME_HOST}:${KANBAN_RUNTIME_PORT}`;
+let runtimePort = parseRuntimePort(process.env.KANBAN_RUNTIME_PORT?.trim());
+
+export function getKanbanRuntimePort(): number {
+	return runtimePort;
+}
+
+export function setKanbanRuntimePort(port: number): void {
+	const normalized = parseRuntimePort(String(port));
+	runtimePort = normalized;
+	process.env.KANBAN_RUNTIME_PORT = String(normalized);
+}
+
+export function getKanbanRuntimeOrigin(): string {
+	return `http://${KANBAN_RUNTIME_HOST}:${getKanbanRuntimePort()}`;
+}
+
+export function getKanbanRuntimeWsOrigin(): string {
+	return `ws://${KANBAN_RUNTIME_HOST}:${getKanbanRuntimePort()}`;
+}
 
 export function buildKanbanRuntimeUrl(pathname: string): string {
 	const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
-	return `${KANBAN_RUNTIME_ORIGIN}${normalizedPath}`;
+	return `${getKanbanRuntimeOrigin()}${normalizedPath}`;
 }
 
 export function buildKanbanRuntimeWsUrl(pathname: string): string {
 	const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
-	return `${KANBAN_RUNTIME_WS_ORIGIN}${normalizedPath}`;
+	return `${getKanbanRuntimeWsOrigin()}${normalizedPath}`;
 }

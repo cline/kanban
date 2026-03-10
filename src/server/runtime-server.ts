@@ -7,9 +7,9 @@ import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import type { RuntimeShortcutRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import {
 	buildKanbanRuntimeUrl,
+	getKanbanRuntimeOrigin,
+	getKanbanRuntimePort,
 	KANBAN_RUNTIME_HOST,
-	KANBAN_RUNTIME_ORIGIN,
-	KANBAN_RUNTIME_PORT,
 } from "../core/runtime-endpoint.js";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
 import type { RuntimeStateHub } from "./runtime-state-hub.js";
@@ -196,7 +196,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	server.on("upgrade", (request, socket, head) => {
 		let requestUrl: URL;
 		try {
-			requestUrl = new URL(request.url ?? "/", KANBAN_RUNTIME_ORIGIN);
+			requestUrl = new URL(request.url ?? "/", getKanbanRuntimeOrigin());
 		} catch {
 			socket.destroy();
 			return;
@@ -223,7 +223,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	await new Promise<void>((resolveListen, rejectListen) => {
 		server.once("error", rejectListen);
-		server.listen(KANBAN_RUNTIME_PORT, KANBAN_RUNTIME_HOST, () => {
+		server.listen(getKanbanRuntimePort(), KANBAN_RUNTIME_HOST, () => {
 			server.off("error", rejectListen);
 			resolveListen();
 		});
@@ -236,7 +236,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const activeWorkspaceId = deps.workspaceRegistry.getActiveWorkspaceId();
 	const url = activeWorkspaceId
 		? buildKanbanRuntimeUrl(`/${encodeURIComponent(activeWorkspaceId)}`)
-		: KANBAN_RUNTIME_ORIGIN;
+		: getKanbanRuntimeOrigin();
 
 	return {
 		url,

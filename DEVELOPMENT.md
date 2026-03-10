@@ -43,6 +43,43 @@ node dist/cli.js
 
 This mode serves built web assets from `dist/web-ui` and does not hot reload the web UI.
 
+Runtime port options:
+
+```bash
+# fixed port
+node dist/cli.js --port 3484
+
+# pick the first free port starting at 3484
+node dist/cli.js --port auto
+```
+
+You can still use `KANBAN_RUNTIME_PORT` if needed, but `--port` is preferred for local multi-instance runs.
+
+## Dogfooding with two Kanban instances
+
+Run your stable orchestrator first (main checkout):
+
+```bash
+cd /path/to/kanban-main
+npm run build
+node dist/cli.js --port 3484
+```
+
+Then run a test checkout against a target project (feature worktree):
+
+```bash
+cd /path/to/kanban-feature-worktree
+npm run dogfood -- --project /path/to/target/repo --port auto
+```
+
+Dogfood launcher behavior:
+
+- builds the current checkout by default
+- launches `dist/cli.js` with `cwd` set to the target project
+- supports `--port <number|auto>`
+- supports `--no-open`
+- supports `--skip-build` when you already built and want faster restarts
+
 ## Run `kanban` from any directory
 
 After cloning and installing dependencies, create/update the global CLI link from this repo:
@@ -78,6 +115,7 @@ npm run unlink
 ## Scripts
 
 - `npm run build`: build runtime and bundled web UI into `dist`
+- `npm run dogfood -- --project <path> [--port <number|auto>] [--no-open] [--skip-build]`: build and launch this checkout against a target project
 - `npm run dev`: run CLI in watch mode
 - `npm run web:dev`: run web UI dev server
 - `npm run web:build`: build web UI

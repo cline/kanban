@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import { resolveProjectInputPath } from "../projects/project-path.js";
-import { buildKanbanRuntimeUrl, KANBAN_RUNTIME_ORIGIN } from "../core/runtime-endpoint.js";
+import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint.js";
 import { loadWorkspaceContext } from "../state/workspace-state.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 import {
@@ -90,7 +90,7 @@ function createRuntimeToolError(toolName: string, message: string) {
 	return createJsonToolResult(
 		{
 			ok: false,
-			error: `Tool "${toolName}" at ${KANBAN_RUNTIME_ORIGIN} failed with message: ${message}`,
+			error: `Tool "${toolName}" at ${getKanbanRuntimeOrigin()} failed with message: ${message}`,
 		},
 		{ isError: true },
 	);
