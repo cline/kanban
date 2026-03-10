@@ -24,10 +24,10 @@ import type {
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectsResponse,
+	RuntimeCommandRunRequest,
+	RuntimeCommandRunResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
-	RuntimeShortcutRunRequest,
-	RuntimeShortcutRunResponse,
 	RuntimeSlashCommandsResponse,
 	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
@@ -70,10 +70,10 @@ import {
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
 	runtimeProjectsResponseSchema,
+	runtimeCommandRunRequestSchema,
+	runtimeCommandRunResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
-	runtimeShortcutRunRequestSchema,
-	runtimeShortcutRunResponseSchema,
 	runtimeSlashCommandsResponseSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionInputResponseSchema,
@@ -126,10 +126,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeShellSessionStartRequest,
 		) => Promise<RuntimeShellSessionStartResponse>;
-		runShortcut: (
+		runCommand: (
 			scope: RuntimeTrpcWorkspaceScope,
-			input: RuntimeShortcutRunRequest,
-		) => Promise<RuntimeShortcutRunResponse>;
+			input: RuntimeCommandRunRequest,
+		) => Promise<RuntimeCommandRunResponse>;
 	};
 	workspaceApi: {
 		loadGitSummary: (
@@ -296,11 +296,11 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.startShellSession(ctx.workspaceScope, input);
 			}),
-		runShortcut: workspaceProcedure
-			.input(runtimeShortcutRunRequestSchema)
-			.output(runtimeShortcutRunResponseSchema)
+		runCommand: workspaceProcedure
+			.input(runtimeCommandRunRequestSchema)
+			.output(runtimeCommandRunResponseSchema)
 			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.runShortcut(ctx.workspaceScope, input);
+				return await ctx.runtimeApi.runCommand(ctx.workspaceScope, input);
 			}),
 	}),
 	workspace: t.router({

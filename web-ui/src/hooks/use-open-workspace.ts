@@ -79,7 +79,7 @@ export function useOpenWorkspace({ currentProjectId, workspacePath }: UseOpenWor
 			setIsOpeningWorkspace(true);
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.runtime.runShortcut.mutate({
+				const payload = await trpcClient.runtime.runCommand.mutate({
 					command: buildOpenCommand(preferredOpenTargetId, workspacePath),
 				});
 				if (payload.exitCode !== 0) {

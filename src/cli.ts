@@ -9,7 +9,7 @@ import { isHooksSubcommand, runHooksSubcommand } from "./commands/hooks.js";
 import { isMcpSubcommand, runMcpSubcommand } from "./commands/mcp.js";
 import type {
 	RuntimeAgentId,
-	RuntimeShortcutRunResponse,
+	RuntimeCommandRunResponse,
 } from "./core/api-contract.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
 import { createGitProcessEnv } from "./core/git-process-env.js";
@@ -312,11 +312,11 @@ async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
 	return true;
 }
 
-async function runShortcutCommand(command: string, cwd: string): Promise<RuntimeShortcutRunResponse> {
+async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCommandRunResponse> {
 	const startedAt = Date.now();
 	const outputLimitBytes = 64 * 1024;
 
-	return await new Promise<RuntimeShortcutRunResponse>((resolve, reject) => {
+	return await new Promise<RuntimeCommandRunResponse>((resolve, reject) => {
 		const child = spawn(command, {
 			cwd,
 			shell: true,
@@ -411,7 +411,7 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 		},
 		ensureTerminalManagerForWorkspace: workspaceRegistry.ensureTerminalManagerForWorkspace,
 		resolveInteractiveShellCommand,
-		runShortcutCommand,
+		runCommand: runScopedCommand,
 		resolveProjectInputPath,
 		assertPathIsDirectory,
 		hasGitRepository,

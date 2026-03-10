@@ -6,8 +6,8 @@ import {
 	type RuntimeHookIngestRequest,
 	type RuntimeProjectAddRequest,
 	type RuntimeProjectRemoveRequest,
+	type RuntimeCommandRunRequest,
 	type RuntimeShellSessionStartRequest,
-	type RuntimeShortcutRunRequest,
 	type RuntimeTaskSessionInputRequest,
 	type RuntimeTaskSessionStartRequest,
 	type RuntimeTaskSessionStopRequest,
@@ -23,8 +23,8 @@ import {
 	runtimeHookIngestRequestSchema,
 	runtimeProjectAddRequestSchema,
 	runtimeProjectRemoveRequestSchema,
+	runtimeCommandRunRequestSchema,
 	runtimeShellSessionStartRequestSchema,
-	runtimeShortcutRunRequestSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionStartRequestSchema,
 	runtimeTaskSessionStopRequestSchema,
@@ -174,11 +174,11 @@ export function parseRuntimeConfigSaveRequest(value: unknown): RuntimeConfigSave
 	return parseWithSchema(runtimeConfigSaveRequestSchema, value);
 }
 
-export function parseShortcutRunRequest(value: unknown): RuntimeShortcutRunRequest {
-	const parsed = parseWithSchema(runtimeShortcutRunRequestSchema, value);
+export function parseCommandRunRequest(value: unknown): RuntimeCommandRunRequest {
+	const parsed = parseWithSchema(runtimeCommandRunRequestSchema, value);
 	const command = parsed.command.trim();
 	if (!command) {
-		throw new Error("Shortcut command cannot be empty.");
+		throw new Error("Command cannot be empty.");
 	}
 	return {
 		command,

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 
-import type { RuntimeShortcutRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
+import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import {
 	buildKanbanRuntimeUrl,
 	getKanbanRuntimeOrigin,
@@ -34,7 +34,7 @@ export interface CreateRuntimeServerDependencies {
 	warn: (message: string) => void;
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
-	runShortcutCommand: (command: string, cwd: string) => Promise<RuntimeShortcutRunResponse>;
+	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
 	assertPathIsDirectory: (targetPath: string) => Promise<void>;
 	hasGitRepository: (path: string) => boolean;
@@ -126,7 +126,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				setActiveRuntimeConfig: deps.workspaceRegistry.setActiveRuntimeConfig,
 				getScopedTerminalManager,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
-				runShortcutCommand: deps.runShortcutCommand,
+				runCommand: deps.runCommand,
 			}),
 			workspaceApi: createWorkspaceApi({
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,

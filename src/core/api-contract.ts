@@ -391,19 +391,19 @@ export const runtimeProjectShortcutSchema = z.object({
 });
 export type RuntimeProjectShortcut = z.infer<typeof runtimeProjectShortcutSchema>;
 
-export const runtimeShortcutRunRequestSchema = z.object({
+export const runtimeCommandRunRequestSchema = z.object({
 	command: z.string(),
 });
-export type RuntimeShortcutRunRequest = z.infer<typeof runtimeShortcutRunRequestSchema>;
+export type RuntimeCommandRunRequest = z.infer<typeof runtimeCommandRunRequestSchema>;
 
-export const runtimeShortcutRunResponseSchema = z.object({
+export const runtimeCommandRunResponseSchema = z.object({
 	exitCode: z.number(),
 	stdout: z.string(),
 	stderr: z.string(),
 	combinedOutput: z.string(),
 	durationMs: z.number(),
 });
-export type RuntimeShortcutRunResponse = z.infer<typeof runtimeShortcutRunResponseSchema>;
+export type RuntimeCommandRunResponse = z.infer<typeof runtimeCommandRunResponseSchema>;
 
 export const runtimeAgentDefinitionSchema = z.object({
 	id: runtimeAgentIdSchema,

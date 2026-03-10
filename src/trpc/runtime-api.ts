@@ -1,10 +1,10 @@
 import { TRPCError } from "@trpc/server";
 
-import type { RuntimeShortcutRunResponse, RuntimeSlashCommandsResponse } from "../core/api-contract.js";
+import type { RuntimeCommandRunResponse, RuntimeSlashCommandsResponse } from "../core/api-contract.js";
 import {
+	parseCommandRunRequest,
 	parseRuntimeConfigSaveRequest,
 	parseShellSessionStartRequest,
-	parseShortcutRunRequest,
 	parseTaskSessionInputRequest,
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
@@ -23,7 +23,7 @@ export interface CreateRuntimeApiDependencies {
 	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
-	runShortcutCommand: (command: string, cwd: string) => Promise<RuntimeShortcutRunResponse>;
+	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 }
 
 function normalizeOptionalTaskWorkspaceScopeInput(
@@ -218,10 +218,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				};
 			}
 		},
-		runShortcut: async (workspaceScope, input) => {
+		runCommand: async (workspaceScope, input) => {
 			try {
-				const body = parseShortcutRunRequest(input);
-				return await deps.runShortcutCommand(body.command, workspaceScope.workspacePath);
+				const body = parseCommandRunRequest(input);
+				return await deps.runCommand(body.command, workspaceScope.workspacePath);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				throw new TRPCError({
