@@ -72,6 +72,12 @@ cd /path/to/kanban-feature-worktree
 npm run dogfood -- --project /path/to/target/repo --port auto
 ```
 
+If `--project` is omitted, the launcher starts Kanban from a non-git cwd so runtime behaves like launching outside a git repo and opens the first indexed project (if any):
+
+```bash
+npm run dogfood -- --port auto
+```
+
 Dogfood launcher behavior:
 
 - builds the current checkout by default
@@ -115,7 +121,7 @@ npm run unlink
 ## Scripts
 
 - `npm run build`: build runtime and bundled web UI into `dist`
-- `npm run dogfood -- --project <path> [--port <number|auto>] [--no-open] [--skip-build]`: build and launch this checkout against a target project
+- `npm run dogfood -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build]`: build and launch this checkout, optionally targeting a specific project path
 - `npm run dev`: run CLI in watch mode
 - `npm run web:dev`: run web UI dev server
 - `npm run web:build`: build web UI

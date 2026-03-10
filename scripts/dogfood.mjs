@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +11,7 @@ const nodeBinary = process.execPath;
 const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function printHelp() {
-	console.log("Usage: npm run dogfood -- --project <path> [--port <number|auto>] [--no-open] [--skip-build]");
+	console.log("Usage: npm run dogfood -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build]");
 }
 
 function parseArgs(argv) {
@@ -62,12 +63,8 @@ function parseArgs(argv) {
 		throw new Error(`Unknown option: ${arg}`);
 	}
 
-	if (!project.trim()) {
-		throw new Error("Missing required --project <path>.");
-	}
-
 	return {
-		project: resolve(project.trim()),
+		project: project.trim() ? resolve(project.trim()) : null,
 		port: port.trim() || "auto",
 		noOpen,
 		skipBuild,
@@ -103,13 +100,19 @@ async function main() {
 	if (args.noOpen) {
 		launchArgs.push("--no-open");
 	}
+	const launchCwd = args.project ?? tmpdir();
 
 	console.log(`[dogfood] Launching ${cliEntrypoint}`);
-	console.log(`[dogfood] Target project: ${args.project}`);
+	if (args.project) {
+		console.log(`[dogfood] Target project: ${args.project}`);
+	} else {
+		console.log(`[dogfood] No --project provided; launching from non-git cwd ${launchCwd}`);
+		console.log("[dogfood] Kanban will open the first indexed project if one exists.");
+	}
 	console.log(`[dogfood] Runtime port: ${args.port}`);
 
 	const exitCode = await runCommand(nodeBinary, launchArgs, {
-		cwd: args.project,
+		cwd: launchCwd,
 		env: process.env,
 	});
 	process.exit(exitCode);
