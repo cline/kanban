@@ -4,6 +4,9 @@ import { useCallback } from "react";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { trackTaskResumedFromTrash } from "@/telemetry/events";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
+import { getTerminalGeometry } from "@/terminal/terminal-geometry-registry";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoResponse,
@@ -22,10 +25,6 @@ interface EnsureTaskWorkspaceResult {
 	ok: boolean;
 	message?: string;
 	response?: Extract<RuntimeWorktreeEnsureResponse, { ok: true }>;
-}
-
-interface SendTaskSessionInputOptions {
-	appendNewline?: boolean;
 }
 
 interface SendTaskSessionInputResult {
@@ -50,7 +49,7 @@ export interface UseTaskSessionsResult {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: SendTaskSessionInputOptions,
+		options?: SendTerminalInputOptions,
 	) => Promise<SendTaskSessionInputResult>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<RuntimeWorktreeDeleteResponse | null>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
@@ -107,7 +106,8 @@ export function useTaskSessions({
 			try {
 				const kickoffPrompt = options?.resumeFromTrash ? "" : task.prompt.trim();
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const geometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
+				const geometry =
+					getTerminalGeometry(task.id) ?? estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
 				const payload = await trpcClient.runtime.startTaskSession.mutate({
 					taskId: task.id,
 					prompt: kickoffPrompt,
@@ -155,8 +155,19 @@ export function useTaskSessions({
 		async (
 			taskId: string,
 			text: string,
-			options?: SendTaskSessionInputOptions,
+			options?: SendTerminalInputOptions,
 		): Promise<SendTaskSessionInputResult> => {
+			const appendNewline = options?.appendNewline ?? true;
+			const controller = options?.preferTerminal === false ? null : getTerminalController(taskId);
+			if (controller) {
+				const sent =
+					options?.mode === "paste"
+						? !appendNewline && controller.paste(text)
+						: controller.input(appendNewline ? `${text}\n` : text);
+				if (sent) {
+					return { ok: true };
+				}
+			}
 			if (!currentProjectId) {
 				return { ok: false, message: "No project selected." };
 			}
@@ -165,7 +176,7 @@ export function useTaskSessions({
 				const payload = await trpcClient.runtime.sendTaskSessionInput.mutate({
 					taskId,
 					text,
-					appendNewline: options?.appendNewline ?? true,
+					appendNewline,
 				});
 				if (!payload.ok) {
 					const errorMessage = payload.error || "Task session input failed.";

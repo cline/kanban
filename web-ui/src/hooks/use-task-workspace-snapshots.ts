@@ -7,7 +7,6 @@ interface UseTaskWorkspaceSnapshotsOptions {
 	reviewCards: BoardCard[];
 	inProgressCards: BoardCard[];
 	trashCards: BoardCard[];
-	workspaceStatusRetrievedAt: number;
 	isDocumentVisible: boolean;
 	fetchReviewWorkspaceSnapshot: (task: BoardCard) => Promise<ReviewTaskWorkspaceSnapshot | null>;
 }
@@ -23,7 +22,6 @@ export function useTaskWorkspaceSnapshots(options: UseTaskWorkspaceSnapshotsOpti
 		reviewCards,
 		inProgressCards,
 		trashCards,
-		workspaceStatusRetrievedAt,
 		isDocumentVisible,
 		fetchReviewWorkspaceSnapshot,
 	} = options;
@@ -154,48 +152,6 @@ export function useTaskWorkspaceSnapshots(options: UseTaskWorkspaceSnapshotsOpti
 			})();
 		}
 	}, [currentProjectId, fetchReviewWorkspaceSnapshot, inProgressCards, upsertWorkspaceSnapshot, workspaceSnapshots]);
-
-	useEffect(() => {
-		if (!currentProjectId || workspaceStatusRetrievedAt <= 0 || !isDocumentVisible) {
-			return;
-		}
-		for (const card of inProgressCards) {
-			if (inProgressWorkspaceSnapshotLoadingRef.current.has(card.id)) {
-				continue;
-			}
-			inProgressWorkspaceSnapshotLoadingRef.current.add(card.id);
-			void (async () => {
-				const snapshot = await fetchReviewWorkspaceSnapshot(card);
-				inProgressWorkspaceSnapshotLoadingRef.current.delete(card.id);
-				if (!snapshot) {
-					return;
-				}
-				upsertWorkspaceSnapshot(card.id, snapshot);
-			})();
-		}
-		for (const card of reviewCards) {
-			if (reviewWorkspaceSnapshotLoadingRef.current.has(card.id)) {
-				continue;
-			}
-			reviewWorkspaceSnapshotLoadingRef.current.add(card.id);
-			void (async () => {
-				const snapshot = await fetchReviewWorkspaceSnapshot(card);
-				reviewWorkspaceSnapshotLoadingRef.current.delete(card.id);
-				if (!snapshot) {
-					return;
-				}
-				upsertWorkspaceSnapshot(card.id, snapshot);
-			})();
-		}
-	}, [
-		currentProjectId,
-		fetchReviewWorkspaceSnapshot,
-		inProgressCards,
-		isDocumentVisible,
-		reviewCards,
-		upsertWorkspaceSnapshot,
-		workspaceStatusRetrievedAt,
-	]);
 
 	return {
 		workspaceSnapshots,

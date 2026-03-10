@@ -30,12 +30,15 @@ export type AgentOutputTransitionDetector = (
 	summary: RuntimeTaskSessionSummary,
 ) => SessionTransitionEvent | null;
 
+export type AgentOutputTransitionInspectionPredicate = (summary: RuntimeTaskSessionSummary) => boolean;
+
 export interface PreparedAgentLaunch {
 	binary?: string;
 	args: string[];
 	env: Record<string, string | undefined>;
 	cleanup?: () => Promise<void>;
 	detectOutputTransition?: AgentOutputTransitionDetector;
+	shouldInspectOutputForTransition?: AgentOutputTransitionInspectionPredicate;
 }
 
 interface HookContext {
@@ -376,6 +379,10 @@ function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): 
 	return null;
 }
 
+function shouldInspectCodexOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
+	return summary.state === "awaiting_review" && (summary.reviewReason === "attention" || summary.reviewReason === "hook");
+}
+
 const codexAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const codexArgs = [...input.args];
@@ -427,6 +434,7 @@ const codexAdapter: AgentSessionAdapter = {
 				args,
 				env,
 				detectOutputTransition: codexPromptDetector,
+				shouldInspectOutputForTransition: shouldInspectCodexOutputForTransition,
 			};
 		}
 
@@ -435,6 +443,7 @@ const codexAdapter: AgentSessionAdapter = {
 			args: codexArgs,
 			env,
 			detectOutputTransition: codexPromptDetector,
+			shouldInspectOutputForTransition: shouldInspectCodexOutputForTransition,
 		};
 	},
 };

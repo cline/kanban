@@ -7,11 +7,11 @@ import { WebSocketServer } from "ws";
 import type { RuntimeTerminalWsServerMessage } from "../core/api-contract.js";
 import { parseTerminalWsClientMessage } from "../core/api-validation.js";
 import { getKanbanRuntimeOrigin } from "../core/runtime-endpoint.js";
-import type { TerminalSessionManager } from "./session-manager.js";
+import type { TerminalSessionService } from "./terminal-session-service.js";
 
 interface TerminalWebSocketConnectionContext {
 	taskId: string;
-	terminalManager: TerminalSessionManager;
+	terminalManager: TerminalSessionService;
 }
 
 interface UpgradeRequest extends IncomingMessage {
@@ -20,20 +20,38 @@ interface UpgradeRequest extends IncomingMessage {
 
 export interface CreateTerminalWebSocketBridgeRequest {
 	server: Server;
-	resolveTerminalManager: (workspaceId: string) => TerminalSessionManager | null;
-	isTerminalWebSocketPath: (pathname: string) => boolean;
+	resolveTerminalManager: (workspaceId: string) => TerminalSessionService | null;
+	isTerminalIoWebSocketPath: (pathname: string) => boolean;
+	isTerminalControlWebSocketPath: (pathname: string) => boolean;
 }
 
 export interface TerminalWebSocketBridge {
 	close: () => Promise<void>;
 }
 
-function bufferToBase64(input: Buffer): string {
-	return input.toString("base64");
+const OUTPUT_BATCH_INTERVAL_MS = 4;
+const LOW_LATENCY_CHUNK_BYTES = 256;
+const LOW_LATENCY_IDLE_WINDOW_MS = 5;
+const OUTPUT_BUFFER_HIGH_WATER_MARK_BYTES = 16 * 1024;
+const OUTPUT_BUFFER_LOW_WATER_MARK_BYTES = Math.floor(OUTPUT_BUFFER_HIGH_WATER_MARK_BYTES / 4);
+const OUTPUT_RESUME_CHECK_INTERVAL_MS = 16;
+
+function getWebSocketTransportSocket(ws: WebSocket): Socket | null {
+	const transportSocket = (ws as WebSocket & { _socket?: Socket })._socket;
+	return transportSocket ?? null;
 }
 
-function base64ToBuffer(value: string): Buffer {
-	return Buffer.from(value, "base64");
+function rawDataToBuffer(message: RawData): Buffer {
+	if (typeof message === "string") {
+		return Buffer.from(message, "utf8");
+	}
+	if (Buffer.isBuffer(message)) {
+		return message;
+	}
+	if (Array.isArray(message)) {
+		return Buffer.concat(message.map((part) => rawDataToBuffer(part)));
+	}
+	return Buffer.from(message);
 }
 
 function parseWebSocketPayload(message: RawData) {
@@ -46,28 +64,44 @@ function parseWebSocketPayload(message: RawData) {
 	}
 }
 
+function sendControlMessage(ws: WebSocket, message: RuntimeTerminalWsServerMessage): void {
+	if (ws.readyState !== ws.OPEN) {
+		return;
+	}
+	ws.send(JSON.stringify(message));
+}
+
 export function createTerminalWebSocketBridge({
 	server,
 	resolveTerminalManager,
-	isTerminalWebSocketPath,
+	isTerminalIoWebSocketPath,
+	isTerminalControlWebSocketPath,
 }: CreateTerminalWebSocketBridgeRequest): TerminalWebSocketBridge {
 	const activeSockets = new Set<Socket>();
 	server.on("connection", (socket: Socket) => {
+		socket.setNoDelay(true);
 		activeSockets.add(socket);
 		socket.on("close", () => {
 			activeSockets.delete(socket);
 		});
 	});
 
-	const wsServer = new WebSocketServer({ noServer: true });
+	const ioServer = new WebSocketServer({ noServer: true });
+	const controlServer = new WebSocketServer({ noServer: true });
+
 	server.on("upgrade", (request, socket, head) => {
 		try {
+			(socket as Socket).setNoDelay(true);
 			const upgradeRequest = request as UpgradeRequest;
 			const url = new URL(request.url ?? "/", getKanbanRuntimeOrigin());
-			if (!isTerminalWebSocketPath(url.pathname)) {
+			const pathname = url.pathname;
+			const isIoRequest = isTerminalIoWebSocketPath(pathname);
+			const isControlRequest = isTerminalControlWebSocketPath(pathname);
+			if (!isIoRequest && !isControlRequest) {
 				return;
 			}
 			upgradeRequest.__kanbanUpgradeHandled = true;
+
 			const taskId = url.searchParams.get("taskId")?.trim();
 			const workspaceId = url.searchParams.get("workspaceId")?.trim();
 			if (!taskId || !workspaceId) {
@@ -80,41 +114,159 @@ export function createTerminalWebSocketBridge({
 				return;
 			}
 
-			wsServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-				wsServer.emit("connection", ws, { taskId, terminalManager });
+			const targetServer = isIoRequest ? ioServer : controlServer;
+			targetServer.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+				targetServer.emit("connection", ws, { taskId, terminalManager });
 			});
 		} catch {
 			socket.destroy();
 		}
 	});
 
-	wsServer.on("connection", (ws: WebSocket, context: unknown) => {
+	ioServer.on("connection", (ws: WebSocket, context: unknown) => {
 		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		let detachListener: (() => void) | null = null;
+		let pendingOutputChunks: Buffer[] = [];
+		let outputFlushTimer: ReturnType<typeof setTimeout> | null = null;
+		let lastOutputSentAt = 0;
+		let outputPaused = false;
+		let resumeCheckTimer: ReturnType<typeof setTimeout> | null = null;
 
-		const send = (message: RuntimeTerminalWsServerMessage) => {
+		const clearResumeCheck = () => {
+			if (resumeCheckTimer !== null) {
+				clearTimeout(resumeCheckTimer);
+				resumeCheckTimer = null;
+			}
+			const transportSocket = getWebSocketTransportSocket(ws);
+			transportSocket?.removeListener("drain", checkResumeAfterBackpressure);
+		};
+
+		const checkResumeAfterBackpressure = () => {
+			if (!outputPaused) {
+				clearResumeCheck();
+				return;
+			}
 			if (ws.readyState !== ws.OPEN) {
 				return;
 			}
-			ws.send(JSON.stringify(message));
+			if (ws.bufferedAmount < OUTPUT_BUFFER_LOW_WATER_MARK_BYTES) {
+				outputPaused = false;
+				clearResumeCheck();
+				terminalManager.resumeOutput(taskId);
+				return;
+			}
+			scheduleResumeCheck();
+		};
+
+		const scheduleResumeCheck = () => {
+			if (!outputPaused) {
+				return;
+			}
+			clearResumeCheck();
+			const transportSocket = getWebSocketTransportSocket(ws);
+			transportSocket?.once("drain", checkResumeAfterBackpressure);
+			resumeCheckTimer = setTimeout(() => {
+				resumeCheckTimer = null;
+				checkResumeAfterBackpressure();
+			}, OUTPUT_RESUME_CHECK_INTERVAL_MS);
+		};
+
+		const checkBackpressureAfterSend = () => {
+			if (outputPaused || ws.readyState !== ws.OPEN) {
+				return;
+			}
+			if (ws.bufferedAmount >= OUTPUT_BUFFER_HIGH_WATER_MARK_BYTES) {
+				outputPaused = true;
+				terminalManager.pauseOutput(taskId);
+				scheduleResumeCheck();
+			}
+		};
+
+		const sendOutputChunk = (chunk: Buffer) => {
+			if (ws.readyState !== ws.OPEN) {
+				return;
+			}
+			ws.send(chunk);
+			lastOutputSentAt = Date.now();
+			checkBackpressureAfterSend();
+		};
+
+		const flushOutputBatch = () => {
+			outputFlushTimer = null;
+			if (pendingOutputChunks.length === 0 || ws.readyState !== ws.OPEN) {
+				pendingOutputChunks = [];
+				return;
+			}
+			sendOutputChunk(Buffer.concat(pendingOutputChunks));
+			pendingOutputChunks = [];
+		};
+
+		const enqueueOutput = (chunk: Buffer) => {
+			const now = Date.now();
+			const shouldSendImmediately =
+				pendingOutputChunks.length === 0 &&
+				outputFlushTimer === null &&
+				chunk.byteLength <= LOW_LATENCY_CHUNK_BYTES &&
+				now - lastOutputSentAt >= LOW_LATENCY_IDLE_WINDOW_MS;
+			if (shouldSendImmediately) {
+				sendOutputChunk(chunk);
+				return;
+			}
+			pendingOutputChunks.push(chunk);
+			if (outputFlushTimer === null) {
+				outputFlushTimer = setTimeout(flushOutputBatch, OUTPUT_BATCH_INTERVAL_MS);
+			}
 		};
 
 		detachListener = terminalManager.attach(taskId, {
 			onOutput: (chunk) => {
-				send({
-					type: "output",
-					data: bufferToBase64(chunk),
-				});
+				enqueueOutput(chunk);
 			},
+		});
+
+		ws.on("message", (rawMessage: RawData) => {
+			try {
+				const summary = terminalManager.writeInput(taskId, rawDataToBuffer(rawMessage));
+				if (!summary) {
+					ws.close(1011, "Task session is not running.");
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				ws.close(1011, message);
+			}
+		});
+
+		ws.on("close", () => {
+			if (outputFlushTimer !== null) {
+				clearTimeout(outputFlushTimer);
+				outputFlushTimer = null;
+			}
+			clearResumeCheck();
+			if (outputPaused) {
+				outputPaused = false;
+				terminalManager.resumeOutput(taskId);
+			}
+			pendingOutputChunks = [];
+			detachListener?.();
+			detachListener = null;
+		});
+	});
+
+	controlServer.on("connection", (ws: WebSocket, context: unknown) => {
+		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
+		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
+		let detachListener: (() => void) | null = null;
+
+		detachListener = terminalManager.attach(taskId, {
 			onState: (summary) => {
-				send({
+				sendControlMessage(ws, {
 					type: "state",
 					summary,
 				});
 			},
 			onExit: (code) => {
-				send({
+				sendControlMessage(ws, {
 					type: "exit",
 					code,
 				});
@@ -124,29 +276,10 @@ export function createTerminalWebSocketBridge({
 		ws.on("message", (rawMessage: RawData) => {
 			const message = parseWebSocketPayload(rawMessage);
 			if (!message) {
-				send({
+				sendControlMessage(ws, {
 					type: "error",
-					message: "Invalid terminal message payload.",
+					message: "Invalid terminal control payload.",
 				});
-				return;
-			}
-
-			if (message.type === "input") {
-				try {
-					const summary = terminalManager.writeInput(taskId, base64ToBuffer(message.data));
-					if (!summary) {
-						send({
-							type: "error",
-							message: "Task session is not running.",
-						});
-					}
-				} catch (error) {
-					const errorMessage = error instanceof Error ? error.message : String(error);
-					send({
-						type: "error",
-						message: errorMessage,
-					});
-				}
 				return;
 			}
 
@@ -168,7 +301,14 @@ export function createTerminalWebSocketBridge({
 
 	return {
 		close: async () => {
-			for (const client of wsServer.clients) {
+			for (const client of ioServer.clients) {
+				try {
+					client.terminate();
+				} catch {
+					// Ignore websocket termination errors during shutdown.
+				}
+			}
+			for (const client of controlServer.clients) {
 				try {
 					client.terminate();
 				} catch {
@@ -176,8 +316,10 @@ export function createTerminalWebSocketBridge({
 				}
 			}
 			await new Promise<void>((resolveCloseWebSockets) => {
-				wsServer.close(() => {
-					resolveCloseWebSockets();
+				ioServer.close(() => {
+					controlServer.close(() => {
+						resolveCloseWebSockets();
+					});
 				});
 			});
 			for (const socket of activeSockets) {

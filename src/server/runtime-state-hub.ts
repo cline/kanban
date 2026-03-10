@@ -8,7 +8,6 @@ import type {
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
-	RuntimeStateStreamWorkspaceRetrieveStatusMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract.js";
@@ -16,8 +15,6 @@ import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspa
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
-const WORKSPACE_FILE_CHANGE_STREAM_BATCH_MS = 25;
-const WORKSPACE_FILE_WATCH_INTERVAL_MS = 2_000;
 
 export interface DisposeRuntimeStateWorkspaceOptions {
 	disconnectClients?: boolean;
@@ -51,8 +48,6 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const runtimeStateClients = new Set<WebSocket>();
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
 	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
-	const workspaceFileChangeBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
-	const workspaceFileRefreshIntervalsByWorkspaceId = new Map<string, NodeJS.Timeout>();
 
 	const sendRuntimeStateMessage = (client: WebSocket, payload: RuntimeStateStreamMessage) => {
 		if (client.readyState !== WebSocket.OPEN) {
@@ -63,62 +58,6 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		} catch {
 			// Ignore websocket write errors; close handlers clean up disconnected sockets.
 		}
-	};
-
-	const flushWorkspaceFileChangeBroadcast = (workspaceId: string) => {
-		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-		if (!runtimeClients || runtimeClients.size === 0) {
-			return;
-		}
-		const payload: RuntimeStateStreamWorkspaceRetrieveStatusMessage = {
-			type: "workspace_retrieve_status",
-			workspaceId,
-			retrievedAt: Date.now(),
-		};
-		for (const client of runtimeClients) {
-			sendRuntimeStateMessage(client, payload);
-		}
-	};
-
-	const queueWorkspaceFileChangeBroadcast = (workspaceId: string) => {
-		if (workspaceFileChangeBroadcastTimersByWorkspaceId.has(workspaceId)) {
-			return;
-		}
-		const timer = setTimeout(() => {
-			workspaceFileChangeBroadcastTimersByWorkspaceId.delete(workspaceId);
-			flushWorkspaceFileChangeBroadcast(workspaceId);
-		}, WORKSPACE_FILE_CHANGE_STREAM_BATCH_MS);
-		timer.unref();
-		workspaceFileChangeBroadcastTimersByWorkspaceId.set(workspaceId, timer);
-	};
-
-	const disposeWorkspaceFileChangeBroadcast = (workspaceId: string) => {
-		const timer = workspaceFileChangeBroadcastTimersByWorkspaceId.get(workspaceId);
-		if (timer) {
-			clearTimeout(timer);
-		}
-		workspaceFileChangeBroadcastTimersByWorkspaceId.delete(workspaceId);
-	};
-
-	const ensureWorkspaceFileRefresh = (workspaceId: string) => {
-		if (workspaceFileRefreshIntervalsByWorkspaceId.has(workspaceId)) {
-			return;
-		}
-		queueWorkspaceFileChangeBroadcast(workspaceId);
-		const timer = setInterval(() => {
-			queueWorkspaceFileChangeBroadcast(workspaceId);
-		}, WORKSPACE_FILE_WATCH_INTERVAL_MS);
-		timer.unref();
-		workspaceFileRefreshIntervalsByWorkspaceId.set(workspaceId, timer);
-	};
-
-	const disposeWorkspaceFileRefresh = (workspaceId: string) => {
-		const timer = workspaceFileRefreshIntervalsByWorkspaceId.get(workspaceId);
-		if (timer) {
-			clearInterval(timer);
-		}
-		workspaceFileRefreshIntervalsByWorkspaceId.delete(workspaceId);
-		disposeWorkspaceFileChangeBroadcast(workspaceId);
 	};
 
 	const broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
@@ -193,7 +132,6 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				clients.delete(client);
 				if (clients.size === 0) {
 					runtimeStateClientsByWorkspaceId.delete(workspaceId);
-					disposeWorkspaceFileRefresh(workspaceId);
 				}
 			}
 		}
@@ -212,7 +150,6 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 		terminalSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
 		disposeTaskSessionSummaryBroadcast(workspaceId);
-		disposeWorkspaceFileRefresh(workspaceId);
 
 		if (!options?.disconnectClients) {
 			return;
@@ -340,9 +277,6 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				if (workspace.didPruneProjects) {
 					void broadcastRuntimeProjectsUpdated(workspace.workspaceId);
 				}
-				if (workspace.workspaceId) {
-					ensureWorkspaceFileRefresh(workspace.workspaceId);
-				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				sendRuntimeStateMessage(client, {
@@ -385,14 +319,6 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			}
 			taskSessionBroadcastTimersByWorkspaceId.clear();
 			pendingTaskSessionSummariesByWorkspaceId.clear();
-			for (const timer of workspaceFileRefreshIntervalsByWorkspaceId.values()) {
-				clearInterval(timer);
-			}
-			workspaceFileRefreshIntervalsByWorkspaceId.clear();
-			for (const timer of workspaceFileChangeBroadcastTimersByWorkspaceId.values()) {
-				clearTimeout(timer);
-			}
-			workspaceFileChangeBroadcastTimersByWorkspaceId.clear();
 			for (const unsubscribe of terminalSummaryUnsubscribeByWorkspaceId.values()) {
 				try {
 					unsubscribe();

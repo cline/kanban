@@ -78,7 +78,6 @@ describe("useTaskSessions", () => {
 				startedAt: 1,
 				updatedAt: 1,
 				lastOutputAt: null,
-				activityPreview: null,
 				reviewReason: null,
 				exitCode: null,
 			},

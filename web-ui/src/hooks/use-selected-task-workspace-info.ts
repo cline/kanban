@@ -15,9 +15,9 @@ function matchesWorkspaceInfoSelection(
 }
 
 interface UseSelectedTaskWorkspaceInfoInput {
+	currentProjectId: string | null;
 	selectedCard: CardSelection | null;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
-	workspaceStatusRetrievedAt: number | null;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 }
 
@@ -28,9 +28,9 @@ export interface UseSelectedTaskWorkspaceInfoResult {
 }
 
 export function useSelectedTaskWorkspaceInfo({
+	currentProjectId,
 	selectedCard,
 	sessions,
-	workspaceStatusRetrievedAt,
 	fetchTaskWorkspaceInfo,
 }: UseSelectedTaskWorkspaceInfoInput): UseSelectedTaskWorkspaceInfoResult {
 	const [selectedTaskWorkspaceInfo, setSelectedTaskWorkspaceInfo] = useState<RuntimeTaskWorkspaceInfoResponse | null>(
@@ -73,7 +73,6 @@ export function useSelectedTaskWorkspaceInfo({
 		selectedCard?.card.baseRef,
 		selectedCard?.card.id,
 		selectedCard ? (sessions[selectedCard.card.id]?.updatedAt ?? 0) : 0,
-		workspaceStatusRetrievedAt,
 	]);
 
 	return {

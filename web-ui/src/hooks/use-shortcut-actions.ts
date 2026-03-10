@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 
 interface RuntimeShortcut {
 	label: string;
@@ -20,7 +21,7 @@ interface UseShortcutActionsInput {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: { appendNewline?: boolean },
+		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 }
 

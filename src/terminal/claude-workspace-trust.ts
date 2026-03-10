@@ -3,7 +3,6 @@ import { join } from "node:path";
 import type { RuntimeAgentId } from "../core/api-contract.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 
-export const CLAUDE_WORKSPACE_TRUST_POLL_MS = 150;
 export const CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS = 100;
 
 function normalizeTerminalText(input: string): string {
@@ -78,13 +77,8 @@ export function shouldAutoConfirmClaudeWorkspaceTrust(agentId: RuntimeAgentId, c
 }
 
 export function stopClaudeWorkspaceTrustTimers(state: {
-	claudeWorkspaceTrustPollTimer: NodeJS.Timeout | null;
 	claudeWorkspaceTrustConfirmTimer: NodeJS.Timeout | null;
 }): void {
-	if (state.claudeWorkspaceTrustPollTimer) {
-		clearInterval(state.claudeWorkspaceTrustPollTimer);
-		state.claudeWorkspaceTrustPollTimer = null;
-	}
 	if (state.claudeWorkspaceTrustConfirmTimer) {
 		clearTimeout(state.claudeWorkspaceTrustConfirmTimer);
 		state.claudeWorkspaceTrustConfirmTimer = null;

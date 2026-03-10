@@ -5,6 +5,7 @@ import type { DropResult } from "@hello-pangea/dnd";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import { showAppToast } from "@/components/app-toaster";
 import { useLinkedBacklogTaskActions, type PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
@@ -68,7 +69,7 @@ interface UseBoardInteractionsInput {
 	sendTaskSessionInput: (
 		taskId: string,
 		input: string,
-		options?: { appendNewline?: boolean },
+		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 	onWorktreeError: (message: string | null) => void;
 	readyForReviewNotificationsEnabled: boolean;
@@ -141,7 +142,7 @@ export function useBoardInteractions({
 
 	const handleAddReviewComments = useCallback(
 		async (taskId: string, text: string) => {
-			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false });
+			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
 			if (!typed.ok) {
 				showAppToast({
 					intent: "danger",
@@ -156,7 +157,7 @@ export function useBoardInteractions({
 
 	const handleSendReviewComments = useCallback(
 		async (taskId: string, text: string) => {
-			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false });
+			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
 			if (!typed.ok) {
 				showAppToast({
 					intent: "danger",

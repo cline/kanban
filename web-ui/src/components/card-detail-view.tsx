@@ -111,7 +111,6 @@ export function CardDetailView({
 	currentProjectId,
 	sessionSummary,
 	taskSessions,
-	workspaceStatusRetrievedAt,
 	onSessionSummary,
 	onBack,
 	onCardSelect,
@@ -156,7 +155,6 @@ export function CardDetailView({
 	currentProjectId: string | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
-	workspaceStatusRetrievedAt: number;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
 	onBack: () => void;
 	onCardSelect: (taskId: string) => void;
@@ -285,15 +283,6 @@ export function CardDetailView({
 	useEffect(() => {
 		void refresh();
 	}, [refresh, sessionSummary?.state]);
-
-	useEffect(() => {
-		const state = sessionSummary?.state;
-		const shouldRefreshFromFilesystemSignal = state === "running" || state === "awaiting_review";
-		if (!shouldRefreshFromFilesystemSignal || workspaceStatusRetrievedAt <= 0) {
-			return;
-		}
-		void refresh();
-	}, [refresh, sessionSummary?.state, workspaceStatusRetrievedAt]);
 
 	return (
 		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: Colors.DARK_GRAY1 }}>

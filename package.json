@@ -1,6 +1,6 @@
 {
   "name": "kanban",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A kanban foundation for coding agents",
   "publishConfig": {
     "access": "public",

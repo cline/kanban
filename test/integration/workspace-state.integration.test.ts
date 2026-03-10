@@ -53,7 +53,6 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 		startedAt: null,
 		updatedAt: Date.now(),
 		lastOutputAt: null,
-		activityPreview: null,
 		reviewReason: null,
 		exitCode: null,
 	};

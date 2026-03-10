@@ -57,7 +57,6 @@ export function BoardCard({
 	const titleRef = useRef<HTMLParagraphElement | null>(null);
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const isTrashCard = columnId === "trash";
-	const showPreview = columnId === "in_progress" || columnId === "review" || isTrashCard;
 	const isCardInteractive = !isTrashCard;
 	const displayPrompt = useMemo(() => {
 		return card.prompt.trim();
@@ -279,13 +278,6 @@ export function BoardCard({
 								>
 									{displayPromptSplit.description}
 								</p>
-							) : null}
-							{showPreview && sessionSummary?.activityPreview ? (
-								<div className="kb-task-preview-pane" style={isTrashCard ? { opacity: 0.55 } : undefined}>
-									<p className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} kb-task-preview-text`}>
-										{sessionSummary.activityPreview}
-									</p>
-								</div>
 							) : null}
 							{showWorkspaceStatus && reviewWorkspaceSnapshot ? (
 								<p

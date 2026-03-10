@@ -5,6 +5,7 @@ import { showAppToast } from "@/components/app-toaster";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useInterval } from "@/utils/react-use";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type {
 	RuntimeConfigResponse,
 	RuntimeGitSyncAction,
@@ -33,14 +34,13 @@ interface UseGitActionsInput {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: { appendNewline?: boolean },
+		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	isGitHistoryOpen: boolean;
 	isDocumentVisible: boolean;
 	refreshWorkspaceState: () => Promise<void>;
 	workspaceRevision: number | null;
-	workspaceStatusRetrievedAt: number;
 }
 
 export interface UseGitActionsResult {
@@ -95,7 +95,6 @@ export function useGitActions({
 	isDocumentVisible,
 	refreshWorkspaceState,
 	workspaceRevision,
-	workspaceStatusRetrievedAt,
 }: UseGitActionsInput): UseGitActionsResult {
 	const [gitSummary, setGitSummary] = useState<RuntimeGitSyncSummary | null>(null);
 	const [runningGitAction, setRunningGitAction] = useState<RuntimeGitSyncAction | null>(null);
@@ -258,7 +257,7 @@ export function useGitActions({
 							}
 						: null,
 				});
-				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false });
+				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
 				if (!typed.ok) {
 					showAppToast({
 						intent: "danger",
@@ -494,13 +493,6 @@ export function useGitActions({
 		}
 		void refreshGitSummary();
 	}, [currentProjectId, refreshGitSummary, workspaceRevision]);
-
-	useEffect(() => {
-		if (!currentProjectId || selectedCard || workspaceStatusRetrievedAt <= 0 || !isDocumentVisible) {
-			return;
-		}
-		void refreshGitSummary();
-	}, [currentProjectId, isDocumentVisible, refreshGitSummary, selectedCard, workspaceStatusRetrievedAt]);
 
 	const runAutoReviewGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction) => {

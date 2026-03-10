@@ -1,49 +1,40 @@
-import * as pty from "node-pty";
-
 import type {
 	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract.js";
 import { buildShellCommandLine, resolveInteractiveShellCommand } from "../core/shell.js";
-import { type ActivityPreviewTracker, createActivityPreviewTracker } from "./activity-preview.js";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
+	type AgentOutputTransitionInspectionPredicate,
 	prepareAgentLaunch,
 } from "./agent-session-adapters.js";
 import {
 	CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS,
-	CLAUDE_WORKSPACE_TRUST_POLL_MS,
 	hasClaudeWorkspaceTrustPrompt,
 	shouldAutoConfirmClaudeWorkspaceTrust,
 	stopClaudeWorkspaceTrustTimers,
 } from "./claude-workspace-trust.js";
+import { PtySession } from "./pty-session.js";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
+import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service.js";
 
-const MAX_HISTORY_BYTES = 1024 * 1024;
-const ACTIVITY_PREVIEW_THROTTLE_MS = 2500;
 const MAX_CLAUDE_TRUST_BUFFER_CHARS = 16_384;
 // Some interactive shells can start without emitting prompt output immediately.
 // Fallback ensures the initial command is still sent if onData does not fire quickly.
 const SHELL_KICKOFF_FALLBACK_DELAY_MS = 450;
 
 interface ActiveProcessState {
-	ptyProcess: pty.IPty;
-	outputHistory: Buffer[];
-	historyBytes: number;
+	session: PtySession;
 	claudeTrustBuffer: string | null;
 	cols: number;
 	rows: number;
-	shutdownInterrupted: boolean;
 	onSessionCleanup: (() => Promise<void>) | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
+	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
 	awaitingCodexPromptAfterEnter: boolean;
-	activityPreviewTimer: NodeJS.Timeout | null;
-	activityPreviewChunkBuffer: string;
-	activityPreviewTracker: ActivityPreviewTracker;
 	autoConfirmedClaudeWorkspaceTrust: boolean;
-	claudeWorkspaceTrustPollTimer: NodeJS.Timeout | null;
 	claudeWorkspaceTrustConfirmTimer: NodeJS.Timeout | null;
 }
 
@@ -52,12 +43,6 @@ interface SessionEntry {
 	active: ActiveProcessState | null;
 	listenerIdCounter: number;
 	listeners: Map<number, TerminalSessionListener>;
-}
-
-export interface TerminalSessionListener {
-	onOutput?: (chunk: Buffer) => void;
-	onState?: (summary: RuntimeTaskSessionSummary) => void;
-	onExit?: (code: number | null) => void;
 }
 
 export interface StartTaskSessionRequest {
@@ -86,25 +71,6 @@ export interface StartShellSessionRequest {
 	env?: Record<string, string | undefined>;
 }
 
-function terminatePtyProcess(active: ActiveProcessState): void {
-	const pid = active.ptyProcess.pid;
-	active.ptyProcess.kill();
-	if (process.platform !== "win32" && Number.isFinite(pid) && pid > 0) {
-		try {
-			process.kill(-pid, "SIGTERM");
-		} catch {
-			// Best effort: process group may already be gone or inaccessible.
-		}
-	}
-}
-
-function clearActivityPreviewTimer(active: ActiveProcessState): void {
-	if (active.activityPreviewTimer) {
-		clearTimeout(active.activityPreviewTimer);
-		active.activityPreviewTimer = null;
-	}
-}
-
 function now(): number {
 	return Date.now();
 }
@@ -119,7 +85,6 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		startedAt: null,
 		updatedAt: now(),
 		lastOutputAt: null,
-		activityPreview: null,
 		reviewReason: null,
 		exitCode: null,
 	};
@@ -162,7 +127,7 @@ function formatShellSpawnFailure(binary: string, error: unknown): string {
 	return `Failed to launch "${binary}": ${message}`;
 }
 
-export class TerminalSessionManager {
+export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
 
@@ -197,7 +162,7 @@ export class TerminalSessionManager {
 		const entry = this.ensureEntry(taskId);
 
 		listener.onState?.(cloneSummary(entry.summary));
-		for (const chunk of entry.active?.outputHistory ?? []) {
+		for (const chunk of entry.active?.session.getOutputHistory() ?? []) {
 			listener.onOutput?.(chunk);
 		}
 
@@ -218,8 +183,7 @@ export class TerminalSessionManager {
 
 		if (entry.active) {
 			stopClaudeWorkspaceTrustTimers(entry.active);
-			clearActivityPreviewTimer(entry.active);
-			terminatePtyProcess(entry.active);
+			entry.active.session.stop();
 			entry.active = null;
 		}
 
@@ -248,7 +212,6 @@ export class TerminalSessionManager {
 			COLORTERM: "truecolor",
 		};
 
-		let ptyProcess: pty.IPty;
 		// Adapters can wrap the configured agent binary when they need extra runtime wiring
 		// (for example, Codex uses a wrapper script to watch session logs for hook transitions).
 		const commandBinary = launch.binary ?? request.binary;
@@ -257,95 +220,6 @@ export class TerminalSessionManager {
 		const shell = resolveInteractiveShellCommand();
 		const spawnBinary = shell.binary;
 		const spawnArgs = shell.args;
-		try {
-			ptyProcess = pty.spawn(spawnBinary, spawnArgs, {
-				name: "xterm-256color",
-				cwd: request.cwd,
-				env,
-				cols,
-				rows,
-			});
-		} catch (error) {
-			if (launch.cleanup) {
-				void launch.cleanup().catch(() => {
-					// Best effort: cleanup failure is non-critical.
-				});
-			}
-			const summary = updateSummary(entry, {
-				state: "failed",
-				agentId: request.agentId,
-				workspacePath: request.cwd,
-				pid: null,
-				startedAt: null,
-				lastOutputAt: null,
-				activityPreview: null,
-				reviewReason: "error",
-				exitCode: null,
-			});
-			this.emitSummary(summary);
-			throw new Error(formatSpawnFailure(commandBinary, error));
-		}
-
-		const active: ActiveProcessState = {
-			ptyProcess,
-			outputHistory: [],
-			historyBytes: 0,
-			claudeTrustBuffer: shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd) ? "" : null,
-			cols,
-			rows,
-			shutdownInterrupted: false,
-			onSessionCleanup: launch.cleanup ?? null,
-			detectOutputTransition: launch.detectOutputTransition ?? null,
-			awaitingCodexPromptAfterEnter: false,
-			activityPreviewTimer: null,
-			activityPreviewChunkBuffer: "",
-			activityPreviewTracker: createActivityPreviewTracker(cols, rows),
-			autoConfirmedClaudeWorkspaceTrust: false,
-			claudeWorkspaceTrustPollTimer: null,
-			claudeWorkspaceTrustConfirmTimer: null,
-		};
-		entry.active = active;
-		if (shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd)) {
-			active.claudeWorkspaceTrustPollTimer = setInterval(() => {
-				const currentEntry = this.entries.get(request.taskId);
-				const currentActive = currentEntry?.active;
-				if (!currentActive) {
-					return;
-				}
-				if (currentActive.autoConfirmedClaudeWorkspaceTrust) {
-					stopClaudeWorkspaceTrustTimers(currentActive);
-					return;
-				}
-				if (!currentActive.claudeTrustBuffer || !hasClaudeWorkspaceTrustPrompt(currentActive.claudeTrustBuffer)) {
-					return;
-				}
-				currentActive.autoConfirmedClaudeWorkspaceTrust = true;
-				stopClaudeWorkspaceTrustTimers(currentActive);
-				currentActive.claudeWorkspaceTrustConfirmTimer = setTimeout(() => {
-					const activeEntry = this.entries.get(request.taskId)?.active;
-					if (!activeEntry || !activeEntry.autoConfirmedClaudeWorkspaceTrust) {
-						return;
-					}
-					activeEntry.ptyProcess.write("\r");
-					activeEntry.claudeWorkspaceTrustConfirmTimer = null;
-				}, CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS);
-			}, CLAUDE_WORKSPACE_TRUST_POLL_MS);
-		}
-
-		const startedAt = now();
-		updateSummary(entry, {
-			state: request.resumeFromTrash ? "awaiting_review" : "running",
-			agentId: request.agentId,
-			workspacePath: request.cwd,
-			pid: ptyProcess.pid,
-			startedAt,
-			lastOutputAt: null,
-			activityPreview: request.resumeFromTrash ? entry.summary.activityPreview : null,
-			reviewReason: request.resumeFromTrash ? "attention" : null,
-			exitCode: null,
-		});
-		this.emitSummary(entry.summary);
-
 		let kickoffShellCommandSent = false;
 		let kickoffShellTimer: NodeJS.Timeout | null = null;
 		const clearKickoffShellTimer = () => {
@@ -365,103 +239,164 @@ export class TerminalSessionManager {
 			}
 			kickoffShellCommandSent = true;
 			clearKickoffShellTimer();
-			runningEntry.active.ptyProcess.write(kickoffShellCommand);
-			runningEntry.active.ptyProcess.write("\r");
+			runningEntry.active.session.write(kickoffShellCommand);
+			runningEntry.active.session.write("\r");
 		};
+		let session: PtySession;
+		try {
+			session = PtySession.spawn({
+				binary: spawnBinary,
+				args: spawnArgs,
+				cwd: request.cwd,
+				env,
+				cols,
+				rows,
+				onData: (chunk) => {
+					if (!entry.active) {
+						return;
+					}
+					if (kickoffShellCommand && !kickoffShellCommandSent) {
+						sendKickoffShellCommand();
+					}
+
+					const needsDecodedOutput =
+						entry.active.claudeTrustBuffer !== null ||
+						(entry.active.detectOutputTransition !== null &&
+							(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true));
+					const data = needsDecodedOutput ? chunk.toString("utf8") : "";
+
+					if (entry.active.claudeTrustBuffer !== null) {
+						entry.active.claudeTrustBuffer += data;
+						if (entry.active.claudeTrustBuffer.length > MAX_CLAUDE_TRUST_BUFFER_CHARS) {
+							entry.active.claudeTrustBuffer = entry.active.claudeTrustBuffer.slice(-MAX_CLAUDE_TRUST_BUFFER_CHARS);
+						}
+						if (
+							!entry.active.autoConfirmedClaudeWorkspaceTrust &&
+							entry.active.claudeWorkspaceTrustConfirmTimer === null &&
+							hasClaudeWorkspaceTrustPrompt(entry.active.claudeTrustBuffer)
+						) {
+							entry.active.autoConfirmedClaudeWorkspaceTrust = true;
+							entry.active.claudeWorkspaceTrustConfirmTimer = setTimeout(() => {
+								const activeEntry = this.entries.get(request.taskId)?.active;
+								if (!activeEntry || !activeEntry.autoConfirmedClaudeWorkspaceTrust) {
+									return;
+								}
+								activeEntry.session.write("\r");
+								activeEntry.claudeWorkspaceTrustConfirmTimer = null;
+							}, CLAUDE_WORKSPACE_TRUST_CONFIRM_DELAY_MS);
+						}
+					}
+					updateSummary(entry, { lastOutputAt: now() });
+
+					const adapterEvent = entry.active.detectOutputTransition?.(data, entry.summary) ?? null;
+					if (adapterEvent) {
+						const requiresEnterForCodex =
+							adapterEvent.type === "agent.prompt-ready" &&
+							entry.summary.agentId === "codex" &&
+							!entry.active.awaitingCodexPromptAfterEnter;
+						if (!requiresEnterForCodex) {
+							const summary = this.applySessionEvent(entry, adapterEvent);
+							if (adapterEvent.type === "agent.prompt-ready" && entry.summary.agentId === "codex") {
+								entry.active.awaitingCodexPromptAfterEnter = false;
+							}
+							for (const taskListener of entry.listeners.values()) {
+								taskListener.onState?.(cloneSummary(summary));
+							}
+							this.emitSummary(summary);
+						}
+					}
+
+					for (const taskListener of entry.listeners.values()) {
+						taskListener.onOutput?.(chunk);
+					}
+				},
+				onExit: (event) => {
+					const currentEntry = this.entries.get(request.taskId);
+					if (!currentEntry) {
+						return;
+					}
+					const currentActive = currentEntry.active;
+					if (!currentActive) {
+						return;
+					}
+					stopClaudeWorkspaceTrustTimers(currentActive);
+					clearKickoffShellTimer();
+
+					const summary = this.applySessionEvent(currentEntry, {
+						type: "process.exit",
+						exitCode: event.exitCode,
+						interrupted: currentActive.session.wasInterrupted(),
+					});
+
+					for (const taskListener of currentEntry.listeners.values()) {
+						taskListener.onState?.(cloneSummary(summary));
+						taskListener.onExit?.(event.exitCode);
+					}
+					currentEntry.active = null;
+					this.emitSummary(summary);
+
+					const cleanupFn = currentActive.onSessionCleanup;
+					currentActive.onSessionCleanup = null;
+					if (cleanupFn) {
+						cleanupFn().catch(() => {
+							// Best effort: cleanup failure is non-critical.
+						});
+					}
+				},
+			});
+		} catch (error) {
+			if (launch.cleanup) {
+				void launch.cleanup().catch(() => {
+					// Best effort: cleanup failure is non-critical.
+				});
+			}
+			const summary = updateSummary(entry, {
+				state: "failed",
+				agentId: request.agentId,
+				workspacePath: request.cwd,
+				pid: null,
+				startedAt: null,
+				lastOutputAt: null,
+				reviewReason: "error",
+				exitCode: null,
+			});
+			this.emitSummary(summary);
+			throw new Error(formatSpawnFailure(commandBinary, error));
+		}
+
+		const active: ActiveProcessState = {
+			session,
+			claudeTrustBuffer: shouldAutoConfirmClaudeWorkspaceTrust(request.agentId, request.cwd) ? "" : null,
+			cols,
+			rows,
+			onSessionCleanup: launch.cleanup ?? null,
+			detectOutputTransition: launch.detectOutputTransition ?? null,
+			shouldInspectOutputForTransition: launch.shouldInspectOutputForTransition ?? null,
+			awaitingCodexPromptAfterEnter: false,
+			autoConfirmedClaudeWorkspaceTrust: false,
+			claudeWorkspaceTrustConfirmTimer: null,
+		};
+		entry.active = active;
+
+		const startedAt = now();
+		updateSummary(entry, {
+			state: request.resumeFromTrash ? "awaiting_review" : "running",
+			agentId: request.agentId,
+			workspacePath: request.cwd,
+			pid: session.pid,
+			startedAt,
+			lastOutputAt: null,
+			reviewReason: request.resumeFromTrash ? "attention" : null,
+			exitCode: null,
+		});
+		this.emitSummary(entry.summary);
+
 		if (kickoffShellCommand) {
 			kickoffShellTimer = setTimeout(() => {
 				sendKickoffShellCommand();
 				kickoffShellTimer = null;
 			}, SHELL_KICKOFF_FALLBACK_DELAY_MS);
 		}
-
-		ptyProcess.onData((data) => {
-			if (!entry.active) {
-				return;
-			}
-			if (kickoffShellCommand && !kickoffShellCommandSent) {
-				sendKickoffShellCommand();
-			}
-			const chunk = Buffer.from(data, "utf8");
-			entry.active.outputHistory.push(chunk);
-			entry.active.historyBytes += chunk.byteLength;
-			while (entry.active.historyBytes > MAX_HISTORY_BYTES && entry.active.outputHistory.length > 0) {
-				const shifted = entry.active.outputHistory.shift();
-				if (!shifted) {
-					break;
-				}
-				entry.active.historyBytes -= shifted.byteLength;
-			}
-
-			if (entry.active.claudeTrustBuffer !== null) {
-				entry.active.claudeTrustBuffer += data;
-				if (entry.active.claudeTrustBuffer.length > MAX_CLAUDE_TRUST_BUFFER_CHARS) {
-					entry.active.claudeTrustBuffer = entry.active.claudeTrustBuffer.slice(-MAX_CLAUDE_TRUST_BUFFER_CHARS);
-				}
-			}
-			entry.active.activityPreviewChunkBuffer += data;
-			this.queueActivityPreviewPublish(entry);
-
-			updateSummary(entry, { lastOutputAt: now() });
-
-			const adapterEvent = entry.active.detectOutputTransition?.(data, entry.summary) ?? null;
-			if (adapterEvent) {
-				const requiresEnterForCodex =
-					adapterEvent.type === "agent.prompt-ready" &&
-					entry.summary.agentId === "codex" &&
-					!entry.active.awaitingCodexPromptAfterEnter;
-				if (!requiresEnterForCodex) {
-					const summary = this.applySessionEvent(entry, adapterEvent);
-					if (adapterEvent.type === "agent.prompt-ready" && entry.summary.agentId === "codex") {
-						entry.active.awaitingCodexPromptAfterEnter = false;
-					}
-					for (const taskListener of entry.listeners.values()) {
-						taskListener.onState?.(cloneSummary(summary));
-					}
-					this.emitSummary(summary);
-				}
-			}
-
-			for (const taskListener of entry.listeners.values()) {
-				taskListener.onOutput?.(chunk);
-			}
-		});
-
-		ptyProcess.onExit((event) => {
-			const currentEntry = this.entries.get(request.taskId);
-			if (!currentEntry) {
-				return;
-			}
-			const currentActive = currentEntry.active;
-			if (!currentActive) {
-				return;
-			}
-			this.publishLatestActivityPreview(currentEntry, currentActive);
-			stopClaudeWorkspaceTrustTimers(currentActive);
-			clearActivityPreviewTimer(currentActive);
-			clearKickoffShellTimer();
-
-			const summary = this.applySessionEvent(currentEntry, {
-				type: "process.exit",
-				exitCode: event.exitCode,
-				interrupted: currentActive.shutdownInterrupted,
-			});
-
-			for (const taskListener of currentEntry.listeners.values()) {
-				taskListener.onState?.(cloneSummary(summary));
-				taskListener.onExit?.(event.exitCode);
-			}
-			currentEntry.active = null;
-			this.emitSummary(summary);
-
-			const cleanupFn = currentActive.onSessionCleanup;
-			currentActive.onSessionCleanup = null;
-			if (cleanupFn) {
-				cleanupFn().catch(() => {
-					// Best effort: cleanup failure is non-critical.
-				});
-			}
-		});
 
 		return cloneSummary(entry.summary);
 	}
@@ -474,8 +409,7 @@ export class TerminalSessionManager {
 
 		if (entry.active) {
 			stopClaudeWorkspaceTrustTimers(entry.active);
-			clearActivityPreviewTimer(entry.active);
-			terminatePtyProcess(entry.active);
+			entry.active.session.stop();
 			entry.active = null;
 		}
 
@@ -488,14 +422,57 @@ export class TerminalSessionManager {
 			COLORTERM: "truecolor",
 		};
 
-		let ptyProcess: pty.IPty;
+		let session: PtySession;
 		try {
-			ptyProcess = pty.spawn(request.binary, request.args ?? [], {
-				name: "xterm-256color",
+			session = PtySession.spawn({
+				binary: request.binary,
+				args: request.args ?? [],
 				cwd: request.cwd,
 				env,
 				cols,
 				rows,
+				onData: (chunk) => {
+					if (!entry.active) {
+						return;
+					}
+
+					if (entry.active.claudeTrustBuffer !== null) {
+						entry.active.claudeTrustBuffer += chunk.toString("utf8");
+						if (entry.active.claudeTrustBuffer.length > MAX_CLAUDE_TRUST_BUFFER_CHARS) {
+							entry.active.claudeTrustBuffer = entry.active.claudeTrustBuffer.slice(-MAX_CLAUDE_TRUST_BUFFER_CHARS);
+						}
+					}
+					updateSummary(entry, { lastOutputAt: now() });
+
+					for (const taskListener of entry.listeners.values()) {
+						taskListener.onOutput?.(chunk);
+					}
+				},
+				onExit: (event) => {
+					const currentEntry = this.entries.get(request.taskId);
+					if (!currentEntry) {
+						return;
+					}
+					const currentActive = currentEntry.active;
+					if (!currentActive) {
+						return;
+					}
+					stopClaudeWorkspaceTrustTimers(currentActive);
+
+					const summary = updateSummary(currentEntry, {
+						state: currentActive.session.wasInterrupted() ? "interrupted" : "idle",
+						reviewReason: currentActive.session.wasInterrupted() ? "interrupted" : null,
+						exitCode: event.exitCode,
+						pid: null,
+					});
+
+					for (const taskListener of currentEntry.listeners.values()) {
+						taskListener.onState?.(cloneSummary(summary));
+						taskListener.onExit?.(event.exitCode);
+					}
+					currentEntry.active = null;
+					this.emitSummary(summary);
+				},
 			});
 		} catch (error) {
 			const summary = updateSummary(entry, {
@@ -505,7 +482,6 @@ export class TerminalSessionManager {
 				pid: null,
 				startedAt: null,
 				lastOutputAt: null,
-				activityPreview: null,
 				reviewReason: "error",
 				exitCode: null,
 			});
@@ -514,21 +490,15 @@ export class TerminalSessionManager {
 		}
 
 		const active: ActiveProcessState = {
-			ptyProcess,
-			outputHistory: [],
-			historyBytes: 0,
+			session,
 			claudeTrustBuffer: null,
 			cols,
 			rows,
-			shutdownInterrupted: false,
 			onSessionCleanup: null,
 			detectOutputTransition: null,
+			shouldInspectOutputForTransition: null,
 			awaitingCodexPromptAfterEnter: false,
-			activityPreviewTimer: null,
-			activityPreviewChunkBuffer: "",
-			activityPreviewTracker: createActivityPreviewTracker(cols, rows),
 			autoConfirmedClaudeWorkspaceTrust: false,
-			claudeWorkspaceTrustPollTimer: null,
 			claudeWorkspaceTrustConfirmTimer: null,
 		};
 		entry.active = active;
@@ -537,73 +507,13 @@ export class TerminalSessionManager {
 			state: "running",
 			agentId: null,
 			workspacePath: request.cwd,
-			pid: ptyProcess.pid,
+			pid: session.pid,
 			startedAt: now(),
 			lastOutputAt: null,
-			activityPreview: null,
 			reviewReason: null,
 			exitCode: null,
 		});
 		this.emitSummary(entry.summary);
-
-		ptyProcess.onData((data) => {
-			if (!entry.active) {
-				return;
-			}
-			const chunk = Buffer.from(data, "utf8");
-			entry.active.outputHistory.push(chunk);
-			entry.active.historyBytes += chunk.byteLength;
-			while (entry.active.historyBytes > MAX_HISTORY_BYTES && entry.active.outputHistory.length > 0) {
-				const shifted = entry.active.outputHistory.shift();
-				if (!shifted) {
-					break;
-				}
-				entry.active.historyBytes -= shifted.byteLength;
-			}
-
-			if (entry.active.claudeTrustBuffer !== null) {
-				entry.active.claudeTrustBuffer += data;
-				if (entry.active.claudeTrustBuffer.length > MAX_CLAUDE_TRUST_BUFFER_CHARS) {
-					entry.active.claudeTrustBuffer = entry.active.claudeTrustBuffer.slice(-MAX_CLAUDE_TRUST_BUFFER_CHARS);
-				}
-			}
-			entry.active.activityPreviewChunkBuffer += data;
-			this.queueActivityPreviewPublish(entry);
-
-			updateSummary(entry, { lastOutputAt: now() });
-
-			for (const taskListener of entry.listeners.values()) {
-				taskListener.onOutput?.(chunk);
-			}
-		});
-
-		ptyProcess.onExit((event) => {
-			const currentEntry = this.entries.get(request.taskId);
-			if (!currentEntry) {
-				return;
-			}
-			const currentActive = currentEntry.active;
-			if (!currentActive) {
-				return;
-			}
-			this.publishLatestActivityPreview(currentEntry, currentActive);
-			stopClaudeWorkspaceTrustTimers(currentActive);
-			clearActivityPreviewTimer(currentActive);
-
-			const summary = updateSummary(currentEntry, {
-				state: currentActive.shutdownInterrupted ? "interrupted" : "idle",
-				reviewReason: currentActive.shutdownInterrupted ? "interrupted" : null,
-				exitCode: event.exitCode,
-				pid: null,
-			});
-
-			for (const taskListener of currentEntry.listeners.values()) {
-				taskListener.onState?.(cloneSummary(summary));
-				taskListener.onExit?.(event.exitCode);
-			}
-			currentEntry.active = null;
-			this.emitSummary(summary);
-		});
 
 		return cloneSummary(entry.summary);
 	}
@@ -613,16 +523,15 @@ export class TerminalSessionManager {
 		if (!entry?.active) {
 			return null;
 		}
-		const text = data.toString("utf8");
 		if (
 			entry.summary.agentId === "codex" &&
 			entry.summary.state === "awaiting_review" &&
 			(entry.summary.reviewReason === "hook" || entry.summary.reviewReason === "attention") &&
-			(text.includes("\r") || text.includes("\n"))
+			(data.includes(13) || data.includes(10))
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;
 		}
-		entry.active.ptyProcess.write(text);
+		entry.active.session.write(data);
 		return cloneSummary(entry.summary);
 	}
 
@@ -633,10 +542,27 @@ export class TerminalSessionManager {
 		}
 		const safeCols = Math.max(1, Math.floor(cols));
 		const safeRows = Math.max(1, Math.floor(rows));
-		entry.active.ptyProcess.resize(safeCols, safeRows);
+		entry.active.session.resize(safeCols, safeRows);
 		entry.active.cols = safeCols;
 		entry.active.rows = safeRows;
-		entry.active.activityPreviewTracker.resize(safeCols, safeRows);
+		return true;
+	}
+
+	pauseOutput(taskId: string): boolean {
+		const entry = this.entries.get(taskId);
+		if (!entry?.active) {
+			return false;
+		}
+		entry.active.session.pause();
+		return true;
+	}
+
+	resumeOutput(taskId: string): boolean {
+		const entry = this.entries.get(taskId);
+		if (!entry?.active) {
+			return false;
+		}
+		entry.active.session.resume();
 		return true;
 	}
 
@@ -680,12 +606,10 @@ export class TerminalSessionManager {
 		if (!entry?.active) {
 			return entry ? cloneSummary(entry.summary) : null;
 		}
-		this.publishLatestActivityPreview(entry, entry.active);
 		const cleanupFn = entry.active.onSessionCleanup;
 		entry.active.onSessionCleanup = null;
 		stopClaudeWorkspaceTrustTimers(entry.active);
-		clearActivityPreviewTimer(entry.active);
-		terminatePtyProcess(entry.active);
+		entry.active.session.stop();
 		if (cleanupFn) {
 			cleanupFn().catch(() => {
 				// Best effort: cleanup failure is non-critical.
@@ -700,11 +624,8 @@ export class TerminalSessionManager {
 			if (!entry.active) {
 				continue;
 			}
-			this.publishLatestActivityPreview(entry, entry.active);
-			entry.active.shutdownInterrupted = true;
 			stopClaudeWorkspaceTrustTimers(entry.active);
-			clearActivityPreviewTimer(entry.active);
-			terminatePtyProcess(entry.active);
+			entry.active.session.stop({ interrupted: true });
 		}
 		return activeEntries.map((entry) => cloneSummary(entry.summary));
 	}
@@ -738,36 +659,6 @@ export class TerminalSessionManager {
 		};
 		this.entries.set(taskId, created);
 		return created;
-	}
-
-	private queueActivityPreviewPublish(entry: SessionEntry): void {
-		if (!entry.active || entry.active.activityPreviewTimer) {
-			return;
-		}
-		const activeAtSchedule = entry.active;
-		activeAtSchedule.activityPreviewTimer = setTimeout(() => {
-			activeAtSchedule.activityPreviewTimer = null;
-			this.publishLatestActivityPreview(entry, activeAtSchedule);
-		}, ACTIVITY_PREVIEW_THROTTLE_MS);
-	}
-
-	private publishLatestActivityPreview(entry: SessionEntry, active: ActiveProcessState): void {
-		if (entry.active !== active) {
-			return;
-		}
-		if (active.activityPreviewChunkBuffer.length > 0) {
-			active.activityPreviewTracker.append(active.activityPreviewChunkBuffer);
-			active.activityPreviewChunkBuffer = "";
-		}
-		const parsedActivityPreview = active.activityPreviewTracker.extract(entry.summary.agentId);
-		if (parsedActivityPreview === entry.summary.activityPreview) {
-			return;
-		}
-		const summary = updateSummary(entry, { activityPreview: parsedActivityPreview });
-		for (const taskListener of entry.listeners.values()) {
-			taskListener.onState?.(cloneSummary(summary));
-		}
-		this.emitSummary(summary);
 	}
 
 	private emitSummary(summary: RuntimeTaskSessionSummary): void {

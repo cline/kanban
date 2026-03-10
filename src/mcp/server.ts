@@ -132,7 +132,6 @@ function formatTaskRecord(state: RuntimeWorkspaceStateResponse, task: RuntimeBoa
 					startedAt: session.startedAt,
 					updatedAt: session.updatedAt,
 					lastOutputAt: session.lastOutputAt,
-					activityPreview: session.activityPreview,
 					reviewReason: session.reviewReason,
 					exitCode: session.exitCode,
 				}

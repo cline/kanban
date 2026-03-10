@@ -1,15 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, CardSelection } from "@/types";
 
 const HOME_TERMINAL_TASK_ID = "__home_terminal__";
 const HOME_TERMINAL_ROWS = 16;
 const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
+const APPROX_TERMINAL_CELL_WIDTH_PX = 8;
+const MIN_TERMINAL_COLS = 40;
+
+function estimateShellTerminalCols(): number {
+	if (typeof window === "undefined") {
+		return 120;
+	}
+	return Math.max(MIN_TERMINAL_COLS, Math.floor(Math.max(0, window.innerWidth - 96) / APPROX_TERMINAL_CELL_WIDTH_PX));
+}
 
 function getDetailTerminalTaskId(card: BoardCard): string {
 	return `${DETAIL_TERMINAL_TASK_PREFIX}${card.id}`;
+}
+
+async function resolveShellTerminalGeometry(taskId: string): Promise<{ cols: number; rows: number }> {
+	const existingGeometry = getTerminalGeometry(taskId);
+	if (existingGeometry) {
+		return existingGeometry;
+	}
+	await prepareWaitForTerminalGeometry(taskId)();
+	return (
+		getTerminalGeometry(taskId) ?? {
+			cols: estimateShellTerminalCols(),
+			rows: HOME_TERMINAL_ROWS,
+		}
+	);
 }
 
 interface StartDetailTerminalOptions {
@@ -25,7 +50,7 @@ interface UseTerminalPanelsInput {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: { appendNewline?: boolean },
+		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 	onWorktreeError: (message: string | null) => void;
 }
@@ -124,10 +149,12 @@ export function useTerminalPanels({
 		}
 		setIsHomeTerminalStarting(true);
 		try {
+			const geometry = await resolveShellTerminalGeometry(HOME_TERMINAL_TASK_ID);
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
 			const payload = await trpcClient.runtime.startShellSession.mutate({
 				taskId: HOME_TERMINAL_TASK_ID,
-				rows: HOME_TERMINAL_ROWS,
+				cols: geometry.cols,
+				rows: geometry.rows,
 				baseRef: workspaceGit?.currentBranch ?? workspaceGit?.defaultBranch ?? "HEAD",
 			});
 			if (!payload.ok || !payload.summary) {
@@ -177,10 +204,12 @@ export function useTerminalPanels({
 			}
 			try {
 				const targetTaskId = getDetailTerminalTaskId(card);
+				const geometry = await resolveShellTerminalGeometry(targetTaskId);
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.runtime.startShellSession.mutate({
 					taskId: targetTaskId,
-					rows: HOME_TERMINAL_ROWS,
+					cols: geometry.cols,
+					rows: geometry.rows,
 					workspaceTaskId: card.id,
 					baseRef: card.baseRef,
 				});

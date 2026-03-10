@@ -72,7 +72,6 @@ export default function App(): ReactElement {
 		currentProjectId,
 		projects,
 		workspaceState: streamedWorkspaceState,
-		workspaceStatusRetrievedAt,
 		latestTaskReadyForReview,
 		streamError,
 		isRuntimeDisconnected,
@@ -143,9 +142,9 @@ export default function App(): ReactElement {
 		setSelectedTaskWorkspaceInfo,
 		activeSelectedTaskWorkspaceInfo,
 	} = useSelectedTaskWorkspaceInfo({
+		currentProjectId,
 		selectedCard,
 		sessions,
-		workspaceStatusRetrievedAt,
 		fetchTaskWorkspaceInfo,
 	});
 	const reviewCards = useMemo(() => {
@@ -162,7 +161,6 @@ export default function App(): ReactElement {
 		reviewCards,
 		inProgressCards,
 		trashCards,
-		workspaceStatusRetrievedAt,
 		isDocumentVisible,
 		fetchReviewWorkspaceSnapshot,
 	});
@@ -317,7 +315,6 @@ export default function App(): ReactElement {
 		isDocumentVisible,
 		refreshWorkspaceState,
 		workspaceRevision,
-		workspaceStatusRetrievedAt,
 	});
 	const agentCommand = runtimeProjectConfig?.effectiveCommand ?? null;
 	const {
@@ -883,7 +880,6 @@ export default function App(): ReactElement {
 								currentProjectId={currentProjectId}
 								sessionSummary={detailSession}
 								taskSessions={sessions}
-								workspaceStatusRetrievedAt={workspaceStatusRetrievedAt}
 								onSessionSummary={upsertSession}
 								onBack={handleBack}
 								onCardSelect={handleCardSelect}

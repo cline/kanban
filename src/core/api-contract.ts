@@ -185,7 +185,6 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	startedAt: z.number().nullable(),
 	updatedAt: z.number(),
 	lastOutputAt: z.number().nullable(),
-	activityPreview: z.string().nullable(),
 	reviewReason: runtimeTaskSessionReviewReasonSchema,
 	exitCode: z.number().nullable(),
 });
@@ -252,15 +251,6 @@ export const runtimeStateStreamTaskSessionsMessageSchema = z.object({
 });
 export type RuntimeStateStreamTaskSessionsMessage = z.infer<typeof runtimeStateStreamTaskSessionsMessageSchema>;
 
-export const runtimeStateStreamWorkspaceRetrieveStatusMessageSchema = z.object({
-	type: z.literal("workspace_retrieve_status"),
-	workspaceId: z.string(),
-	retrievedAt: z.number(),
-});
-export type RuntimeStateStreamWorkspaceRetrieveStatusMessage = z.infer<
-	typeof runtimeStateStreamWorkspaceRetrieveStatusMessageSchema
->;
-
 export const runtimeStateStreamProjectsMessageSchema = z.object({
 	type: z.literal("projects_updated"),
 	currentProjectId: z.string().nullable(),
@@ -288,7 +278,6 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamSnapshotMessageSchema,
 	runtimeStateStreamWorkspaceStateMessageSchema,
 	runtimeStateStreamTaskSessionsMessageSchema,
-	runtimeStateStreamWorkspaceRetrieveStatusMessageSchema,
 	runtimeStateStreamProjectsMessageSchema,
 	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
@@ -506,12 +495,6 @@ export const runtimeShellSessionStartResponseSchema = z.object({
 });
 export type RuntimeShellSessionStartResponse = z.infer<typeof runtimeShellSessionStartResponseSchema>;
 
-export const runtimeTerminalWsInputMessageSchema = z.object({
-	type: z.literal("input"),
-	data: z.string(),
-});
-export type RuntimeTerminalWsInputMessage = z.infer<typeof runtimeTerminalWsInputMessageSchema>;
-
 export const runtimeTerminalWsResizeMessageSchema = z.object({
 	type: z.literal("resize"),
 	cols: z.number().int().positive(),
@@ -525,17 +508,10 @@ export const runtimeTerminalWsStopMessageSchema = z.object({
 export type RuntimeTerminalWsStopMessage = z.infer<typeof runtimeTerminalWsStopMessageSchema>;
 
 export const runtimeTerminalWsClientMessageSchema = z.discriminatedUnion("type", [
-	runtimeTerminalWsInputMessageSchema,
 	runtimeTerminalWsResizeMessageSchema,
 	runtimeTerminalWsStopMessageSchema,
 ]);
 export type RuntimeTerminalWsClientMessage = z.infer<typeof runtimeTerminalWsClientMessageSchema>;
-
-export const runtimeTerminalWsOutputMessageSchema = z.object({
-	type: z.literal("output"),
-	data: z.string(),
-});
-export type RuntimeTerminalWsOutputMessage = z.infer<typeof runtimeTerminalWsOutputMessageSchema>;
 
 export const runtimeTerminalWsStateMessageSchema = z.object({
 	type: z.literal("state"),
@@ -556,7 +532,6 @@ export const runtimeTerminalWsExitMessageSchema = z.object({
 export type RuntimeTerminalWsExitMessage = z.infer<typeof runtimeTerminalWsExitMessageSchema>;
 
 export const runtimeTerminalWsServerMessageSchema = z.discriminatedUnion("type", [
-	runtimeTerminalWsOutputMessageSchema,
 	runtimeTerminalWsStateMessageSchema,
 	runtimeTerminalWsErrorMessageSchema,
 	runtimeTerminalWsExitMessageSchema,

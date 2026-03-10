@@ -1,49 +1,14 @@
 import "@xterm/xterm/css/xterm.css";
 
 import { Button, Callout, Classes, Colors, Divider, Icon, Tag, Tooltip } from "@blueprintjs/core";
-import { FitAddon } from "@xterm/addon-fit";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import { Terminal } from "@xterm/xterm";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 
 import { panelSeparatorColor } from "@/data/column-colors";
-import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type {
-	RuntimeTaskSessionSummary,
-	RuntimeTerminalWsClientMessage,
-	RuntimeTerminalWsServerMessage,
-} from "@/runtime/types";
-import { isTerminalDeviceAttributesResponse } from "@/terminal/terminal-autoresponse";
-import { decodeBase64ToText, encodeTextToBase64 } from "@/terminal/base64";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { useTerminalSession } from "@/terminal/use-terminal-session";
 
-type TerminalWithViewportCore = Terminal & {
-	_core?: {
-		viewport?: {
-			scrollBarWidth: number;
-		};
-	};
-};
-
-const SHIFT_ENTER_SEQUENCE = "\n";
 const isMacPlatform =
 	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
-
-function getWebSocketUrl(taskId: string, workspaceId: string): string {
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const url = new URL(`${protocol}//${window.location.host}/api/terminal/ws`);
-	url.searchParams.set("taskId", taskId);
-	url.searchParams.set("workspaceId", workspaceId);
-	return url.toString();
-}
-
-function disableFitScrollbarReserve(terminal: Terminal): void {
-	const terminalWithCore = terminal as TerminalWithViewportCore;
-	const viewport = terminalWithCore._core?.viewport;
-	if (!viewport) {
-		return;
-	}
-	viewport.scrollBarWidth = 0;
-}
 
 function describeState(summary: RuntimeTaskSessionSummary | null): string {
 	if (!summary) {
@@ -139,217 +104,16 @@ export function AgentTerminalPanel({
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
 }): React.ReactElement {
-	const containerRef = useRef<HTMLDivElement | null>(null);
-	const terminalRef = useRef<Terminal | null>(null);
-	const fitAddonRef = useRef<FitAddon | null>(null);
-	const socketRef = useRef<WebSocket | null>(null);
-	const [lastError, setLastError] = useState<string | null>(null);
-	const [isStopping, setIsStopping] = useState(false);
-
-	const sendMessage = useCallback((message: RuntimeTerminalWsClientMessage) => {
-		const socket = socketRef.current;
-		if (!socket || socket.readyState !== WebSocket.OPEN) {
-			return;
-		}
-		socket.send(JSON.stringify(message));
-	}, []);
-
-	const requestResize = useCallback(() => {
-		const fitAddon = fitAddonRef.current;
-		const terminal = terminalRef.current;
-		if (!fitAddon || !terminal) {
-			return;
-		}
-		fitAddon.fit();
-		sendMessage({
-			type: "resize",
-			cols: terminal.cols,
-			rows: terminal.rows,
-		});
-	}, [sendMessage]);
-
-	useEffect(() => {
-		const container = containerRef.current;
-		if (!container) {
-			return;
-		}
-
-		const terminal = new Terminal({
-			cursorBlink: true,
-			fontSize: 12,
-			fontFamily:
-				'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-			theme: {
-				background: terminalBackgroundColor,
-				foreground: Colors.LIGHT_GRAY5,
-				cursor: cursorColor,
-				selectionBackground: `${Colors.BLUE3}4D`,
-			},
-		});
-		const fitAddon = new FitAddon();
-		terminal.loadAddon(fitAddon);
-		terminal.loadAddon(new WebLinksAddon());
-		terminal.open(container);
-		disableFitScrollbarReserve(terminal);
-		fitAddon.fit();
-		if (autoFocus) {
-			window.requestAnimationFrame(() => {
-				terminal.focus();
-			});
-		}
-
-		terminalRef.current = terminal;
-		fitAddonRef.current = fitAddon;
-		terminal.attachCustomKeyEventHandler((event) => {
-			if (event.key === "Enter" && event.shiftKey) {
-				if (event.type === "keydown") {
-					sendMessage({
-						type: "input",
-						data: encodeTextToBase64(SHIFT_ENTER_SEQUENCE),
-					});
-				}
-				return false;
-			}
-			return true;
-		});
-
-		const removeDataListener = terminal.onData((value) => {
-			if (isTerminalDeviceAttributesResponse(value)) {
-				return;
-			}
-			sendMessage({
-				type: "input",
-				data: encodeTextToBase64(value),
-			});
-		});
-
-		const resizeObserver = new ResizeObserver(() => {
-			requestResize();
-		});
-		resizeObserver.observe(container);
-
-		return () => {
-			removeDataListener.dispose();
-			resizeObserver.disconnect();
-			fitAddonRef.current = null;
-			terminalRef.current = null;
-			terminal.dispose();
-		};
-	}, [autoFocus, cursorColor, requestResize, sendMessage, terminalBackgroundColor]);
-
-	useEffect(() => {
-		if (!isVisible) {
-			return;
-		}
-		const frame = window.requestAnimationFrame(() => {
-			requestResize();
-			if (autoFocus) {
-				terminalRef.current?.focus();
-			}
-		});
-		return () => {
-			window.cancelAnimationFrame(frame);
-		};
-	}, [autoFocus, isVisible, requestResize]);
-
-	useEffect(() => {
-		const terminal = terminalRef.current;
-		if (!terminal) {
-			return;
-		}
-		terminal.reset();
-		setIsStopping(false);
-		setLastError(null);
-	}, [taskId, workspaceId]);
-
-	useEffect(() => {
-		if (!workspaceId) {
-			setLastError("No project selected.");
-			return;
-		}
-		let disposed = false;
-		const ws = new WebSocket(getWebSocketUrl(taskId, workspaceId));
-		socketRef.current = ws;
-		setLastError(null);
-
-		ws.onopen = () => {
-			if (disposed) {
-				return;
-			}
-			setLastError(null);
-			onConnectionReady?.(taskId);
-			requestResize();
-		};
-
-		ws.onmessage = (event) => {
-			try {
-				const payload = JSON.parse(String(event.data)) as RuntimeTerminalWsServerMessage;
-				if (payload.type === "output") {
-					terminalRef.current?.write(decodeBase64ToText(payload.data));
-					return;
-				}
-				if (payload.type === "state") {
-					onSummary?.(payload.summary);
-					return;
-				}
-				if (payload.type === "exit") {
-					const label = payload.code == null ? "session exited" : `session exited with code ${payload.code}`;
-					terminalRef.current?.writeln(`\r\n[kanban] ${label}\r\n`);
-					setIsStopping(false);
-					return;
-				}
-				if (payload.type === "error") {
-					setLastError(payload.message);
-					terminalRef.current?.writeln(`\r\n[kanban] ${payload.message}\r\n`);
-				}
-			} catch {
-				// Ignore malformed frames.
-			}
-		};
-
-		ws.onerror = () => {
-			if (disposed) {
-				return;
-			}
-			setLastError("Terminal connection failed.");
-		};
-		ws.onclose = () => {
-			if (disposed) {
-				return;
-			}
-			if (socketRef.current === ws) {
-				socketRef.current = null;
-			}
-			setLastError("Terminal connection closed. Close and reopen to reconnect.");
-			setIsStopping(false);
-		};
-
-		return () => {
-			disposed = true;
-			if (socketRef.current === ws) {
-				socketRef.current = null;
-			}
-			ws.close();
-		};
-	}, [onConnectionReady, onSummary, requestResize, taskId, workspaceId]);
-
-	const handleStop = useCallback(async () => {
-		setIsStopping(true);
-		sendMessage({ type: "stop" });
-		try {
-			if (workspaceId) {
-				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				await trpcClient.runtime.stopTaskSession.mutate({ taskId });
-			}
-		} catch {
-			// Keep terminal usable even if stop API fails.
-		}
-		setIsStopping(false);
-	}, [sendMessage, taskId, workspaceId]);
-
-	const handleClear = useCallback(() => {
-		terminalRef.current?.clear();
-	}, []);
+	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = useTerminalSession({
+		taskId,
+		workspaceId,
+		onSummary,
+		onConnectionReady,
+		autoFocus,
+		isVisible,
+		terminalBackgroundColor,
+		cursorColor,
+	});
 
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
@@ -395,20 +159,15 @@ export function AgentTerminalPanel({
 							<Tag intent={statusIntent} minimal>
 								{statusLabel}
 							</Tag>
-							{summary?.activityPreview ? (
-								<span className={`${Classes.TEXT_MUTED} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}>
-									{summary.activityPreview}
-								</span>
-							) : null}
 						</div>
 						<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-							<Button text="Clear" variant="outlined" size="small" onClick={handleClear} />
+							<Button text="Clear" variant="outlined" size="small" onClick={clearTerminal} />
 							<Button
 								text="Stop"
 								variant="outlined"
 								size="small"
 								onClick={() => {
-									void handleStop();
+									void stopTerminal();
 								}}
 								disabled={!canStop || isStopping}
 							/>
