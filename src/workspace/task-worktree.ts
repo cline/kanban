@@ -130,6 +130,41 @@ function shouldSkipSymlink(relativePath: string): boolean {
 	return segments.some((segment) => SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment));
 }
 
+function isPathWithinRoot(path: string, root: string): boolean {
+	return path === root || path.startsWith(`${root}/`);
+}
+
+function isPathWithinAnyRoot(path: string, roots: Set<string>): boolean {
+	for (const root of roots) {
+		if (isPathWithinRoot(path, root)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function getRootIgnoredPaths(relativePaths: string[]): string[] {
+	const uniquePaths = Array.from(new Set(relativePaths.map((path) => toPlatformRelativePath(path)).filter(Boolean)));
+	uniquePaths.sort((left, right) => {
+		const leftDepth = left.split("/").length;
+		const rightDepth = right.split("/").length;
+		if (leftDepth !== rightDepth) {
+			return leftDepth - rightDepth;
+		}
+		return left.localeCompare(right);
+	});
+
+	const roots: string[] = [];
+	for (const path of uniquePaths) {
+		if (roots.some((root) => isPathWithinRoot(path, root))) {
+			continue;
+		}
+		roots.push(path);
+	}
+
+	return roots;
+}
+
 async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 	const output = await runGit([
 		"-C",
@@ -146,10 +181,86 @@ async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 		.filter((line) => line.length > 0);
 }
 
+function isIgnoredByOwnNestedRule(ignoredPath: string, ignoreSourcePath: string): boolean {
+	const normalizedIgnoredPath = toPlatformRelativePath(ignoredPath);
+	const normalizedIgnoreSourcePath = toPlatformRelativePath(ignoreSourcePath);
+	if (!normalizedIgnoredPath || !normalizedIgnoreSourcePath) {
+		return false;
+	}
+	return normalizedIgnoreSourcePath.startsWith(`${normalizedIgnoredPath}/`);
+}
+
+function parseCheckIgnoreVerboseLine(line: string): { ignoredPath: string; ignoreSourcePath: string } | null {
+	const [sourceMetadata, ignoredPathRaw] = line.split("\t");
+	if (!sourceMetadata || !ignoredPathRaw) {
+		return null;
+	}
+
+	const sourceMatch = sourceMetadata.match(/^(.*):(\d+):(.*)$/u);
+	if (!sourceMatch) {
+		return null;
+	}
+
+	const ignoreSourcePath = toPlatformRelativePath(sourceMatch[1] ?? "");
+	const ignoredPath = toPlatformRelativePath(ignoredPathRaw);
+	if (!ignoreSourcePath || !ignoredPath) {
+		return null;
+	}
+
+	return {
+		ignoredPath,
+		ignoreSourcePath,
+	};
+}
+
+async function listSelfIgnoredPaths(repoPath: string, relativePaths: string[]): Promise<Set<string>> {
+	// Some tool-managed directories are ignored by nested rules inside the directory itself,
+	// e.g. Husky's `.husky/_/.gitignore` with `*` ignores `.husky/_/`.
+	// If we symlink those directories into a worktree, git won't apply the nested ignore rule
+	// through the symlink boundary and the path shows up as untracked (`?? .husky/_`).
+	// We detect those root paths and skip symlinking them.
+	const rootIgnoredPaths = getRootIgnoredPaths(relativePaths);
+	if (rootIgnoredPaths.length === 0) {
+		return new Set<string>();
+	}
+
+	const selfIgnoredPaths = new Set<string>();
+	for (const relativePath of rootIgnoredPaths) {
+		const sourcePath = join(repoPath, relativePath);
+		const sourceStat = await lstat(sourcePath).catch(() => null);
+		if (!sourceStat?.isDirectory()) {
+			continue;
+		}
+
+		const output = await tryRunGit(["-C", repoPath, "check-ignore", "-v", "--", `${relativePath}/`]);
+		if (!output) {
+			continue;
+		}
+
+		const parsed = parseCheckIgnoreVerboseLine(output.split("\n")[0] ?? "");
+		if (!parsed) {
+			continue;
+		}
+		if (parsed.ignoredPath !== relativePath) {
+			continue;
+		}
+		if (isIgnoredByOwnNestedRule(relativePath, parsed.ignoreSourcePath)) {
+			selfIgnoredPaths.add(relativePath);
+		}
+	}
+
+	return selfIgnoredPaths;
+}
+
 async function symlinkIgnoredPaths(repoPath: string, worktreePath: string): Promise<void> {
 	const ignoredPaths = await listIgnoredPaths(repoPath);
+	const selfIgnoredRootPaths = await listSelfIgnoredPaths(repoPath, ignoredPaths);
 	for (const relativePath of ignoredPaths) {
 		if (shouldSkipSymlink(relativePath)) {
+			continue;
+		}
+
+		if (isPathWithinAnyRoot(relativePath, selfIgnoredRootPaths)) {
 			continue;
 		}
 
@@ -228,6 +339,7 @@ export async function ensureTaskWorktree(options: {
 		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
 		const existingCommit = await tryRunGit(["-C", worktreePath, "rev-parse", "HEAD"]);
 		if (existingCommit === baseCommit) {
+			await symlinkIgnoredPaths(context.repoPath, worktreePath);
 			return {
 				ok: true,
 				path: worktreePath,
