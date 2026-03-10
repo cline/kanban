@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ensureTaskWorktree } from "../../src/workspace/task-worktree.js";
+import { ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree.js";
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 
@@ -81,7 +81,7 @@ describe.sequential("task-worktree integration", () => {
 				]);
 				expect(ignoredPaths).toContain(".husky/_/");
 
-				const ensured = await ensureTaskWorktree({
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
 					cwd: repoPath,
 					taskId: "task-1",
 					baseRef: "HEAD",
@@ -94,7 +94,7 @@ describe.sequential("task-worktree integration", () => {
 				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(false);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
 
-				const ensuredAgain = await ensureTaskWorktree({
+				const ensuredAgain = await ensureTaskWorktreeIfDoesntExist({
 					cwd: repoPath,
 					taskId: "task-1",
 					baseRef: "HEAD",

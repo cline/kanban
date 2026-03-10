@@ -303,7 +303,7 @@ async function pruneEmptyParents(rootPath: string, fromPath: string): Promise<vo
 	}
 }
 
-export async function ensureTaskWorktree(options: {
+export async function ensureTaskWorktreeIfDoesntExist(options: {
 	cwd: string;
 	taskId: string;
 	baseRef: string;
@@ -311,6 +311,20 @@ export async function ensureTaskWorktree(options: {
 	try {
 		const context = await loadWorkspaceContext(options.cwd);
 		const taskId = normalizeTaskId(options.taskId);
+		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
+		// Investigation note: ensure is called on every task start. The previous implementation
+		// compared the worktree HEAD to the latest baseRef commit and recreated the worktree
+		// when the base branch advanced, which could destroy valid task progress. Existing
+		// worktrees are now treated as authoritative and only missing worktrees are created.
+		const existingCommit = await tryRunGit(["-C", worktreePath, "rev-parse", "HEAD"]);
+		if (existingCommit) {
+			return {
+				ok: true,
+				path: worktreePath,
+				baseRef: options.baseRef.trim(),
+				baseCommit: existingCommit,
+			};
+		}
 
 		const requestedBaseRef = options.baseRef.trim();
 		if (!requestedBaseRef) {
@@ -336,19 +350,7 @@ export async function ensureTaskWorktree(options: {
 			};
 		}
 
-		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
-		const existingCommit = await tryRunGit(["-C", worktreePath, "rev-parse", "HEAD"]);
-		if (existingCommit === baseCommit) {
-			await symlinkIgnoredPaths(context.repoPath, worktreePath);
-			return {
-				ok: true,
-				path: worktreePath,
-				baseRef: requestedBaseRef,
-				baseCommit,
-			};
-		}
-
-		if (existingCommit || (await pathExists(worktreePath))) {
+		if (await pathExists(worktreePath)) {
 			await removeTaskWorktreeInternal(context.repoPath, worktreePath);
 		}
 
@@ -413,7 +415,7 @@ export async function resolveTaskCwd(options: {
 	}
 
 	if (options.ensure) {
-		const ensured = await ensureTaskWorktree({
+		const ensured = await ensureTaskWorktreeIfDoesntExist({
 			cwd: options.cwd,
 			taskId: options.taskId,
 			baseRef: normalizedBaseRef,

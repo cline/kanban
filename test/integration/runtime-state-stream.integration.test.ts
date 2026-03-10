@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
@@ -22,6 +22,7 @@ import type {
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskWorkspaceInfoResponse,
+	RuntimeWorktreeEnsureResponse,
 	RuntimeWorkspaceStateResponse,
 } from "../../src/core/api-contract.js";
 import { createGitTestEnv } from "../utilities/git-env.js";
@@ -135,6 +136,24 @@ function initGitRepository(path: string): void {
 	if (init.status !== 0) {
 		throw new Error(`Failed to initialize git repository at ${path}`);
 	}
+}
+
+function runGit(cwd: string, args: string[]): string {
+	const result = spawnSync("git", args, {
+		cwd,
+		encoding: "utf8",
+		env: createGitTestEnv(),
+	});
+	if (result.status !== 0) {
+		throw new Error(result.stderr || result.stdout || `git ${args.join(" ")} failed`);
+	}
+	return result.stdout.trim();
+}
+
+function commitAll(cwd: string, message: string): string {
+	runGit(cwd, ["add", "."]);
+	runGit(cwd, ["commit", "-qm", message]);
+	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
 function resolveTsxCliEntrypoint(): string {
@@ -724,6 +743,123 @@ describe.sequential("runtime state stream integration", () => {
 			cleanupHome();
 		}
 	}, 30_000);
+
+	it("preserves existing task worktree when base ref advances", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-preserve-worktree-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-preserve-worktree-");
+
+		mkdirSync(projectPath, { recursive: true });
+		initGitRepository(projectPath);
+		runGit(projectPath, ["config", "user.name", "Test User"]);
+		runGit(projectPath, ["config", "user.email", "test@example.com"]);
+		writeFileSync(join(projectPath, "initial.txt"), "one\n", "utf8");
+		const firstBaseCommit = commitAll(projectPath, "initial commit");
+		const baseRef = runGit(projectPath, ["symbolic-ref", "--short", "HEAD"]);
+
+		const port = await getAvailablePort();
+		const server = await startKanbanServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port,
+		});
+
+		try {
+			const runtimeUrl = new URL(server.runtimeUrl);
+			const workspaceId = decodeURIComponent(runtimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const stateResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "workspace.getState",
+				type: "query",
+				workspaceId,
+			});
+			expect(stateResponse.status).toBe(200);
+
+			const taskId = "preserve-worktree-task";
+			const board = createBoard("Preserve existing worktree");
+			const backlogColumn = board.columns.find((column) => column.id === "backlog");
+			if (!backlogColumn || !backlogColumn.cards[0]) {
+				throw new Error("Expected a backlog card for seed board.");
+			}
+			backlogColumn.cards[0].id = taskId;
+			backlogColumn.cards[0].baseRef = baseRef;
+
+			const saveResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "workspace.saveState",
+				type: "mutation",
+				workspaceId,
+				payload: {
+					board,
+					sessions: stateResponse.payload.sessions,
+					expectedRevision: stateResponse.payload.revision,
+				},
+			});
+			expect(saveResponse.status).toBe(200);
+
+			const firstEnsure = await requestJson<RuntimeWorktreeEnsureResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "workspace.ensureWorktree",
+				type: "mutation",
+				workspaceId,
+				payload: {
+					taskId,
+					baseRef,
+				},
+			});
+			expect(firstEnsure.status).toBe(200);
+			expect(firstEnsure.payload.ok).toBe(true);
+			if (!firstEnsure.payload.ok) {
+				throw new Error(firstEnsure.payload.error ?? "ensureWorktree failed");
+			}
+			expect(firstEnsure.payload.baseCommit).toBe(firstBaseCommit);
+
+			runGit(firstEnsure.payload.path, ["config", "user.name", "Task User"]);
+			runGit(firstEnsure.payload.path, ["config", "user.email", "task@example.com"]);
+			writeFileSync(join(firstEnsure.payload.path, "task-local.txt"), "task commit\n", "utf8");
+			const taskWorktreeCommit = commitAll(firstEnsure.payload.path, "task-local commit");
+
+			writeFileSync(join(projectPath, "advance-base.txt"), "two\n", "utf8");
+			const advancedBaseCommit = commitAll(projectPath, "advance base");
+			expect(advancedBaseCommit).not.toBe(firstBaseCommit);
+
+			const secondEnsure = await requestJson<RuntimeWorktreeEnsureResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "workspace.ensureWorktree",
+				type: "mutation",
+				workspaceId,
+				payload: {
+					taskId,
+					baseRef,
+				},
+			});
+			expect(secondEnsure.status).toBe(200);
+			expect(secondEnsure.payload.ok).toBe(true);
+			if (!secondEnsure.payload.ok) {
+				throw new Error(secondEnsure.payload.error ?? "ensureWorktree failed");
+			}
+			expect(secondEnsure.payload.path).toBe(firstEnsure.payload.path);
+			expect(secondEnsure.payload.baseCommit).toBe(taskWorktreeCommit);
+
+			const taskContext = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "workspace.getTaskContext",
+				type: "query",
+				workspaceId,
+				payload: {
+					taskId,
+					baseRef,
+				},
+			});
+			expect(taskContext.status).toBe(200);
+			expect(taskContext.payload.headCommit).toBe(taskWorktreeCommit);
+		} finally {
+			await server.stop();
+			cleanupProject();
+			cleanupHome();
+		}
+	}, 45_000);
 
 	it("moves stale hook-review cards to trash on shutdown after hydration", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-review-");

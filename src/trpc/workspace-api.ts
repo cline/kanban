@@ -18,7 +18,7 @@ import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncA
 import { searchWorkspaceFiles } from "../workspace/search-workspace-files.js";
 import {
 	deleteTaskWorktree,
-	ensureTaskWorktree,
+	ensureTaskWorktreeIfDoesntExist,
 	getTaskWorkspaceInfo,
 	resolveTaskCwd,
 } from "../workspace/task-worktree.js";
@@ -228,7 +228,7 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		ensureWorktree: async (workspaceScope, input) => {
 			const body = parseWorktreeEnsureRequest(input);
-			return await ensureTaskWorktree({
+			return await ensureTaskWorktreeIfDoesntExist({
 				cwd: workspaceScope.workspacePath,
 				taskId: body.taskId,
 				baseRef: body.baseRef,
