@@ -392,8 +392,8 @@ export function RuntimeSettingsDialog({
 		config?.readyForReviewNotificationsEnabled,
 		config?.selectedAgentId,
 		config?.shortcuts,
+		fallbackAgentId,
 		open,
-		supportedAgents,
 	]);
 
 	useEffect(() => {
