@@ -1,12 +1,20 @@
 import { Button, Classes, Colors, Icon } from "@blueprintjs/core";
+import type { IconName } from "@blueprintjs/icons";
 import { Droppable } from "@hello-pangea/dnd";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 import { BoardCard } from "@/components/board-card";
-import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/data/column-colors";
+import { columnAccentColors, columnBgColor, columnLightColors, panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { isCardDropDisabled, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import type { BoardCard as BoardCardModel, BoardColumnId, BoardColumn as BoardColumnModel } from "@/types";
+
+const COL_ICON_NAMES: Record<string, IconName> = {
+	backlog: "folder-open",
+	in_progress: "play",
+	review: "tick-circle",
+	trash: "archive",
+};
 
 export function BoardColumn({
 	column,
@@ -65,8 +73,9 @@ export function BoardColumn({
 	dependencyTargetTaskId?: string | null;
 	isDependencyLinking?: boolean;
 }): React.ReactElement {
-	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
-	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
+	const accentColor = columnAccentColors[column.id] ?? "rgba(80, 100, 130, 0.60)";
+	const lightColor = columnLightColors[column.id] ?? "rgba(120, 150, 185, 0.60)";
+	const colIcon: IconName = COL_ICON_NAMES[column.id] ?? "folder-open";
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -93,25 +102,41 @@ export function BoardColumn({
 				flexDirection: "column",
 				minWidth: 0,
 				minHeight: 0,
-				background: Colors.DARK_GRAY1,
+				background: columnBgColor,
 				borderRight: `1px solid ${panelSeparatorColor}`,
+				// Thin top accent strip per column
+				borderTop: `2px solid ${accentColor}`,
 			}}
 		>
 			<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minHeight: 0 }}>
-				<div
-					style={{
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "space-between",
-						height: 40,
-						padding: "0 12px",
-						background: accentColor,
-						borderBottom: `1px solid ${Colors.DARK_GRAY5}`,
-					}}
-				>
-					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-						<span style={{ fontWeight: 600 }}>{column.title}</span>
-						<span style={{ color: lightColor }}>{column.cards.length}</span>
+				{/* Column header */}
+				<div className="kb-column-header">
+					{/* Left: icon + path */}
+					<div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: "1 1 0" }}>
+						<Icon icon={colIcon} size={13} color={accentColor} style={{ flexShrink: 0 }} />
+						<span className="kb-column-title-path" style={{ color: accentColor }}>
+							{column.title}
+						</span>
+					</div>
+					{/* Right: count + dots + action */}
+					<div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+						{column.cards.length > 0 ? (
+							<span
+								style={{
+									fontFamily: "var(--kb-font-mono)",
+									fontSize: "var(--bp-typography-size-body-x-small)",
+									color: lightColor,
+								}}
+							>
+								[{column.cards.length}]
+							</span>
+						) : null}
+						{/* Window chrome dots — right side */}
+						<div className="kb-column-header-dots" aria-hidden>
+							<div className="kb-column-header-dot" />
+							<div className="kb-column-header-dot" />
+							<div className="kb-column-header-dot" />
+						</div>
 					</div>
 					{canStartAllTasks ? (
 						<Button
@@ -142,14 +167,14 @@ export function BoardColumn({
 					{(cardProvided) => (
 						<div ref={cardProvided.innerRef} {...cardProvided.droppableProps} className="kb-column-cards">
 							{canCreate && !inlineTaskCreator ? (
-								<Button
-									icon="plus"
-									text={createTaskButtonText}
-									aria-label="Create task"
-									fill
+								<button
+									type="button"
+									className="kb-create-task-trigger"
 									onClick={onCreateTask}
-									style={{ marginBottom: 8, flexShrink: 0 }}
-								/>
+								>
+									<span style={{ color: "var(--kb-accent-blue)", fontWeight: 600 }}>+</span>
+									<span>New task</span>
+								</button>
 							) : null}
 							{inlineTaskCreator}
 

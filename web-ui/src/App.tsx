@@ -767,7 +767,7 @@ export default function App(): ReactElement {
 									minHeight: 0,
 									alignItems: "center",
 									justifyContent: "center",
-									background: Colors.DARK_GRAY1,
+									background: "var(--kb-surface-app)",
 								}}
 							>
 								<Spinner size={30} />
@@ -780,7 +780,7 @@ export default function App(): ReactElement {
 									minHeight: 0,
 									alignItems: "center",
 									justifyContent: "center",
-									background: Colors.DARK_GRAY1,
+									background: "var(--kb-surface-app)",
 									padding: "calc(var(--bp-surface-spacing) * 6)",
 								}}
 							>

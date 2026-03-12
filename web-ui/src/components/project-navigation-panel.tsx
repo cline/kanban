@@ -1,4 +1,4 @@
-import { Alert, AnchorButton, Button, Classes, Colors, CompoundTag, Icon, Intent } from "@blueprintjs/core";
+import { Alert, AnchorButton, Button, Classes, CompoundTag, Icon, Intent } from "@blueprintjs/core";
 import { useState } from "react";
 
 import { panelSeparatorColor } from "@/data/column-colors";
@@ -51,39 +51,64 @@ export function ProjectNavigationPanel({
 				minHeight: 0,
 				overflow: "hidden",
 				borderRight: `1px solid ${panelSeparatorColor}`,
-				background: Colors.DARK_GRAY2,
+				background: "var(--kb-surface-nav)",
 			}}
 		>
-			<div style={{ padding: "12px 12px 8px" }}>
-				<div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-					<Icon icon="alignment-top" size={20} color="#AAB0B7" style={{ marginTop: 4.5 }} />
-					<div>
-						<div style={{ fontWeight: 600, fontSize: "var(--bp-typography-size-body-large)" }}>
-							kanban{" "}
-							<span
-								className={Classes.TEXT_MUTED}
-								style={{ fontWeight: 400, fontSize: "var(--bp-typography-size-body-small)" }}
-							>
-								v{__APP_VERSION__}
-							</span>
-						</div>
-						<AnchorButton
-							href={GITHUB_URL}
-							target="_blank"
-							rel="noopener noreferrer"
-							variant="minimal"
-							intent="primary"
-							size="small"
-							style={{ padding: 0, minHeight: 0, fontSize: "var(--bp-typography-size-body-small)" }}
+			{/* App identity header — height matches TopBar via --kb-column-header-height */}
+			<div
+				style={{
+					height: "var(--kb-column-header-height)",
+					minHeight: "var(--kb-column-header-height)",
+					display: "flex",
+					alignItems: "center",
+					padding: "0 12px",
+					borderBottom: "1px solid var(--kb-border-subtle)",
+				}}
+			>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+					<Icon icon="alignment-top" size={16} color="var(--kb-accent-blue)" />
+					<div style={{ minWidth: 0, flex: "1 1 0" }}>
+						<div
+							style={{
+								fontFamily: "var(--kb-font-mono)",
+								fontWeight: 700,
+								fontSize: "var(--bp-typography-size-body-medium)",
+								letterSpacing: "0.06em",
+								color: "var(--kb-text-primary)",
+								textTransform: "uppercase",
+							}}
 						>
-							View on GitHub
-						</AnchorButton>
+							kanban
+						</div>
+						<div
+							style={{
+								fontFamily: "var(--kb-font-mono)",
+								fontSize: "var(--kb-font-size-label)",
+								letterSpacing: "0.08em",
+								color: "var(--kb-text-label)",
+								marginTop: 1,
+							}}
+						>
+							v{__APP_VERSION__}{" "}
+							<AnchorButton
+								href={GITHUB_URL}
+								target="_blank"
+								rel="noopener noreferrer"
+								variant="minimal"
+								intent="primary"
+								size="small"
+								style={{ padding: 0, minHeight: 0, fontSize: "var(--kb-font-size-label)", letterSpacing: "0.06em" }}
+							>
+								View on GitHub
+							</AnchorButton>
+						</div>
 					</div>
 				</div>
 			</div>
 
-			<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 12px" }}>
-				<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-medium)" }}>
+			{/* Navigation section header */}
+			<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px 4px" }}>
+				<span className="kb-nav-section-header">
 					Projects
 				</span>
 				<Button
@@ -129,12 +154,6 @@ export function ProjectNavigationPanel({
 						}}
 					/>
 				))}
-			</div>
-			<div
-				className={Classes.TEXT_MUTED}
-				style={{ padding: "8px 12px", fontSize: "var(--bp-typography-size-body-x-small)", textAlign: "center" }}
-			>
-				Made with <Icon icon="heart" size={10} /> by Cline
 			</div>
 			<Alert
 				isOpen={pendingProjectRemoval !== null}
@@ -253,7 +272,7 @@ function ProjectRow({
 			id: "in_progress",
 			title: "In Progress",
 			shortLabel: "IP",
-			intent: Intent.WARNING,
+			intent: Intent.PRIMARY,
 			count: project.taskCounts.in_progress,
 		},
 		{
@@ -288,7 +307,7 @@ function ProjectRow({
 				display: "flex",
 				alignItems: "center",
 				gap: 6,
-				padding: "6px 8px 6px 12px",
+				padding: "10px 8px 10px 12px",
 				cursor: "pointer",
 				borderLeft: isCurrent ? "2px solid var(--bp-intent-primary-rest)" : "2px solid transparent",
 			}}
@@ -316,7 +335,7 @@ function ProjectRow({
 				>
 					{displayPath}
 				</div>
-				{taskCountBadges.length > 0 ? (
+				{taskCountBadges.length > 0 && !isCurrent ? (
 					<div style={{ display: "flex", gap: 4, marginTop: 4 }}>
 						{taskCountBadges.map((badge) => (
 							<CompoundTag

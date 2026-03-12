@@ -1,17 +1,31 @@
-import { Colors } from "@blueprintjs/core";
+// Column accent colors for the sys/terminal aesthetic.
+// Values reference CSS custom properties defined in globals.css — single source of truth.
 
-export const panelSeparatorColor = Colors.DARK_GRAY4;
+export const panelSeparatorColor = "var(--kb-border-panel)";
 
+// Top-border accent strip color per column
 export const columnAccentColors: Record<string, string> = {
-	backlog: Colors.GRAY1,
-	in_progress: Colors.ORANGE3,
-	review: Colors.GREEN3,
-	trash: Colors.RED3,
+	backlog: "var(--kb-col-backlog-accent)",
+	in_progress: "var(--kb-col-active-accent)",
+	review: "var(--kb-col-review-accent)",
+	trash: "var(--kb-col-trash-accent)",
 };
 
+// Lighter text color (count, meta) per column
 export const columnLightColors: Record<string, string> = {
-	backlog: Colors.GRAY5,
-	in_progress: Colors.ORANGE5,
-	review: Colors.GREEN5,
-	trash: Colors.RED5,
+	backlog: "var(--kb-col-backlog-light)",
+	in_progress: "var(--kb-col-active-light)",
+	review: "var(--kb-col-review-light)",
+	trash: "var(--kb-col-trash-light)",
+};
+
+// All columns share the same body background (slightly darker than app surface)
+export const columnBgColor = "var(--kb-surface-col-bg)";
+
+// Path-style column labels for the sys aesthetic
+export const columnPathLabels: Record<string, string> = {
+	backlog: "~/root/pending",
+	in_progress: "~/root/active",
+	review: "~/root/stable",
+	trash: "~/root/archives",
 };

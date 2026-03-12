@@ -334,14 +334,13 @@ export function TopBar({
 				display: "flex",
 				flexWrap: "nowrap",
 				alignItems: "center",
-				height: 40,
-				minHeight: 40,
+				height: "var(--kb-column-header-height)",
+				minHeight: "var(--kb-column-header-height)",
 				minWidth: 0,
 				paddingLeft: onBack ? 6 : 12,
 				paddingRight: 8,
-				background: Colors.DARK_GRAY3,
-				boxShadow: "none",
-				borderBottom: "1px solid rgba(255, 255, 255, 0.2)",
+				background: "var(--kb-surface-nav)",
+				boxShadow: "0 2px 16px var(--kb-accent-blue-shadow)",
 			}}
 		>
 			<NavbarGroup

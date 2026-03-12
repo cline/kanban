@@ -3,14 +3,139 @@
 @import "@blueprintjs/icons/lib/css/blueprint-icons.css";
 @import "@blueprintjs/select/lib/css/blueprint-select.css";
 
+/* ============================================================
+   DESIGN TOKENS — sys aesthetic
+   ============================================================ */
+
+:root {
+	/* Surface hierarchy */
+	--kb-surface-app: #080d13;
+	--kb-surface-panel: #0d1520;
+	--kb-surface-raised: #111d2c;
+	--kb-surface-card: #0f1a27;
+	--kb-surface-card-hover: #152233;
+	--kb-surface-nav: #0a1018;
+
+	/* Borders */
+	--kb-border-default: rgba(40, 100, 200, 0.18);
+	--kb-border-subtle: rgba(40, 100, 200, 0.10);
+	--kb-border-active: rgba(59, 141, 241, 0.55);
+	--kb-border-panel: rgba(30, 70, 140, 0.30);
+
+	/* Accent */
+	--kb-accent-blue: #3b8df1;
+	--kb-accent-blue-dim: rgba(59, 141, 241, 0.12);
+	--kb-accent-blue-glow: rgba(59, 141, 241, 0.25);
+	--kb-accent-teal: #38c9c9;
+	--kb-accent-teal-dim: rgba(56, 201, 201, 0.12);
+	--kb-accent-amber: #e5a82e;
+	--kb-accent-amber-dim: rgba(229, 168, 46, 0.12);
+	--kb-accent-red: #e0443a;
+	--kb-accent-red-dim: rgba(224, 68, 58, 0.10);
+	--kb-accent-blue-shadow: rgba(59, 141, 241, 0.10);
+
+	/* Column accent colors */
+	--kb-col-backlog-accent: rgba(120, 155, 200, 0.90);
+	--kb-col-backlog-dim: rgba(60, 70, 90, 0.15);
+	--kb-col-backlog-light: rgba(140, 170, 210, 0.80);
+	--kb-col-active-accent: rgba(59, 141, 241, 0.85);
+	--kb-col-active-dim: rgba(59, 141, 241, 0.08);
+	--kb-col-active-light: rgba(100, 175, 255, 0.70);
+	--kb-col-review-accent: rgba(56, 201, 201, 0.80);
+	--kb-col-review-dim: rgba(56, 201, 201, 0.07);
+	--kb-col-review-light: rgba(80, 220, 220, 0.70);
+	--kb-col-trash-accent: rgba(200, 60, 50, 0.65);
+	--kb-col-trash-dim: rgba(200, 60, 50, 0.07);
+	--kb-col-trash-light: rgba(220, 100, 90, 0.70);
+
+	/* Column body background (slightly darker than app surface) */
+	--kb-surface-col-bg: #050910;
+
+	/* Text */
+	--kb-text-primary: #c8d8ea;
+	--kb-text-muted: #4f6d8a;
+	--kb-text-label: #3b6fa0;
+	--kb-text-meta: rgba(100, 140, 180, 0.5);
+	--kb-text-accent: var(--kb-accent-blue);
+
+	/* Typography */
+	--kb-font-mono: var(--bp-font-family-monospace);
+	--kb-font-size-label: 9px;
+	--kb-font-size-meta: var(--bp-typography-size-body-x-small);
+	--kb-font-size-body: var(--bp-typography-size-body-small);
+
+	/* Spacing */
+	--kb-spacing-xs: 4px;
+	--kb-spacing-sm: 8px;
+	--kb-spacing-md: 12px;
+	--kb-spacing-lg: 16px;
+
+	/* Radius */
+	--kb-radius-sm: 2px;
+	--kb-radius-md: 4px;
+	--kb-radius-lg: 6px;
+
+	/* Column header */
+	--kb-column-header-height: 50px;
+}
+
+/* ============================================================
+   BASE OVERRIDES
+   ============================================================ */
+
 html,
 body,
 #root {
 	height: 100%;
 	overflow: hidden;
+	background: var(--kb-surface-app);
+	color: var(--kb-text-primary);
 }
 
-/* -- Shared layout -- */
+/* Override Blueprint's default dark bg to match our deeper navy */
+.bp6-dark {
+	background-color: var(--kb-surface-app);
+}
+
+/* Blueprint navbar override */
+.bp6-navbar {
+	background-color: var(--kb-surface-nav) !important;
+}
+
+/* Blueprint card override for the dark-system look */
+.bp6-dark .bp6-card {
+	background-color: var(--kb-surface-card);
+	box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--kb-border-default);
+}
+
+.bp6-dark .bp6-card.bp6-interactive:hover {
+	background-color: var(--kb-surface-card-hover);
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6), inset 0 0 0 1px var(--kb-border-active);
+	cursor: pointer;
+}
+
+/* Scrollbar styling — system terminal feel */
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(59, 141, 241, 0.20);
+	border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(59, 141, 241, 0.40);
+}
+
+/* ============================================================
+   SHARED LAYOUT
+   ============================================================ */
 
 .kb-board {
 	display: flex;
@@ -40,6 +165,10 @@ body,
 	padding: 8px;
 }
 
+/* ============================================================
+   BOARD CARD SHELL
+   ============================================================ */
+
 .kb-board-card-shell {
 	position: relative;
 	z-index: 1;
@@ -51,20 +180,129 @@ body,
 }
 
 .kb-board-card-shell .bp6-card.bp6-interactive.bp6-selected:active {
-	box-shadow: 0 0 0 3px rgba(76, 144, 240, 0.2), 0 0 0 1px #4c90f0;
+	box-shadow: 0 0 0 2px var(--kb-accent-blue-glow), 0 0 0 1px var(--kb-accent-blue), inset 0 0 0 1px var(--kb-accent-blue);
 }
 
 .bp6-dark .kb-board-card-shell .bp6-card.bp6-interactive.bp6-selected:active {
-	box-shadow: 0 0 0 3px rgba(138, 187, 255, 0.4), 0 0 0 1px #8abbff;
+	box-shadow: 0 0 0 2px var(--kb-accent-blue-glow), 0 0 0 1px var(--kb-accent-blue), inset 0 0 0 1px var(--kb-accent-blue);
 }
 
 .kb-board-card-dependency-source {
-	box-shadow: inset 0 0 0 1px var(--bp-intent-primary-rest);
+	box-shadow: inset 0 0 0 1px var(--kb-accent-blue) !important;
 }
 
 .kb-board-card-dependency-target {
-	box-shadow: inset 0 0 0 1px var(--bp-intent-success-rest);
+	box-shadow: inset 0 0 0 1px var(--kb-accent-teal) !important;
 }
+
+/* ============================================================
+   BOARD COLUMN
+   ============================================================ */
+
+.kb-column-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: var(--kb-column-header-height);
+	padding: 0 12px;
+	background: var(--kb-surface-panel);
+	border-bottom: 1px solid var(--kb-border-panel);
+}
+
+.kb-column-header-dots {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-right: 8px;
+}
+
+.kb-column-header-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: rgba(120, 140, 170, 0.25);
+	border: 1px solid rgba(120, 140, 170, 0.15);
+}
+
+.kb-column-title-path {
+	font-family: var(--kb-font-mono);
+	font-size: var(--bp-typography-size-body-small);
+	font-weight: 600;
+	letter-spacing: 0.02em;
+}
+
+/* ============================================================
+   BOARD CARD — SYSTEM STYLE
+   ============================================================ */
+
+.kb-card-pid {
+	font-family: var(--kb-font-mono);
+	font-size: var(--kb-font-size-label);
+	letter-spacing: 0.08em;
+	color: var(--kb-text-meta);
+	margin-bottom: 4px;
+	text-transform: uppercase;
+}
+
+.kb-card-title {
+	font-family: var(--kb-font-mono);
+	font-weight: 600;
+	font-size: var(--bp-typography-size-body-small);
+	letter-spacing: 0.01em;
+}
+
+.kb-card-cmd-prefix {
+	color: var(--kb-accent-blue);
+	margin-right: 4px;
+}
+
+.kb-status-label {
+	font-family: var(--kb-font-mono);
+	font-size: var(--kb-font-size-label);
+	letter-spacing: 0.10em;
+	text-transform: uppercase;
+	padding: 2px 5px;
+	border-radius: var(--kb-radius-sm);
+	border: 1px solid currentColor;
+	opacity: 0.75;
+}
+
+/* ============================================================
+   CREATE TASK — DASHED INITIALIZE BUTTON
+   ============================================================ */
+
+.kb-create-task-trigger {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	width: 100%;
+	padding: 10px;
+	margin-bottom: 8px;
+	background: transparent;
+	border: 1px dashed rgba(59, 141, 241, 0.30);
+	border-radius: var(--kb-radius-md);
+	cursor: pointer;
+	font-family: var(--kb-font-mono);
+	font-size: var(--bp-typography-size-body-small);
+	letter-spacing: 0.05em;
+	color: var(--kb-text-label);
+	transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.kb-create-task-trigger:hover {
+	border-color: var(--kb-accent-blue);
+	color: var(--kb-accent-blue);
+	background: var(--kb-accent-blue-dim);
+}
+
+.kb-create-task-trigger:active {
+	background: rgba(59, 141, 241, 0.18);
+}
+
+/* ============================================================
+   DEPENDENCY OVERLAY
+   ============================================================ */
 
 .kb-dependency-overlay {
 	position: absolute;
@@ -82,14 +320,14 @@ body,
 
 .kb-dependency-path {
 	fill: none;
-	stroke: var(--bp-palette-indigo-4);
-	stroke-width: 2;
+	stroke: var(--kb-accent-blue);
+	stroke-width: 1.5;
 	stroke-linecap: round;
 	stroke-linejoin: round;
 }
 
 .kb-dependency-path-hover {
-	stroke: var(--bp-intent-danger-rest);
+	stroke: var(--kb-accent-red);
 	stroke-width: 2;
 }
 
@@ -103,9 +341,9 @@ body,
 
 .kb-dependency-draft-path {
 	fill: none;
-	stroke: var(--bp-palette-indigo-4);
-	stroke-width: 2;
-	stroke-dasharray: 6 4;
+	stroke: var(--kb-accent-blue);
+	stroke-width: 1.5;
+	stroke-dasharray: 5 4;
 	stroke-linecap: round;
 	stroke-linejoin: round;
 }
@@ -122,13 +360,17 @@ body,
 	pointer-events: none;
 	border: none;
 	border-radius: 999px;
-	background: var(--bp-intent-danger-rest);
+	background: var(--kb-accent-red);
 }
 
 body.kb-dependency-link-mode {
 	cursor: crosshair;
 	user-select: none;
 }
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
 
 .kb-empty-state-center {
 	display: flex;
@@ -137,7 +379,9 @@ body.kb-dependency-link-mode {
 	justify-content: center;
 }
 
-/* -- Shared UI patterns -- */
+/* ============================================================
+   STATUS BANNER + NAVBAR TAG
+   ============================================================ */
 
 .kb-status-banner {
 	padding: 8px 12px;
@@ -147,20 +391,58 @@ body.kb-dependency-link-mode {
 	margin-left: 8px;
 }
 
-/* -- Project navigation rows (hover-reveal actions) -- */
+/* ============================================================
+   TOP BAR — SYSTEM HEADER
+   ============================================================ */
+
+.kb-topbar {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	height: var(--kb-column-header-height);
+	min-height: var(--kb-column-header-height);
+	background: var(--kb-surface-nav);
+	border-bottom: 1px solid var(--kb-border-active);
+	box-shadow: 0 1px 12px var(--kb-accent-blue-shadow);
+}
+
+.kb-topbar-label {
+	font-family: var(--kb-font-mono);
+	font-size: var(--bp-typography-size-body-small);
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	color: var(--kb-text-primary);
+	text-transform: uppercase;
+}
+
+/* ============================================================
+   PROJECT NAVIGATION PANEL
+   ============================================================ */
+
+.kb-nav-section-header {
+	font-family: var(--kb-font-mono);
+	font-size: var(--kb-font-size-label);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--kb-text-label);
+	user-select: none;
+}
 
 .kb-project-row-actions {
 	opacity: 0;
 }
 
+.kb-project-row {
+	transition: background 0.1s ease;
+}
+
 .kb-project-row:hover {
-	background: var(--bp-palette-dark-gray-4);
+	background: rgba(59, 141, 241, 0.07);
 }
 
 .kb-project-row-selected,
 .kb-project-row-selected:hover {
-	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.15);
-	color: var(--bp-palette-blue-5);
+	background: var(--kb-accent-blue-dim);
 }
 
 .kb-project-row:hover .kb-project-row-actions {
@@ -169,9 +451,12 @@ body.kb-dependency-link-mode {
 
 .kb-project-count-tag {
 	font-size: var(--bp-typography-size-body-x-small);
+	font-family: var(--kb-font-mono);
 }
 
-/* -- File tree rows (hover/variant selectors) -- */
+/* ============================================================
+   FILE TREE
+   ============================================================ */
 
 .kb-file-tree-row {
 	display: flex;
@@ -190,7 +475,7 @@ body.kb-dependency-link-mode {
 }
 
 .kb-file-tree-row:hover:not(.kb-file-tree-row-directory) {
-	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.1);
+	background: var(--kb-accent-blue-dim);
 }
 
 .kb-file-tree-row-directory {
@@ -199,11 +484,13 @@ body.kb-dependency-link-mode {
 }
 
 .kb-file-tree-row-selected {
-	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.2);
-	color: var(--bp-palette-light-gray-5);
+	background: rgba(59, 141, 241, 0.20);
+	color: var(--kb-text-primary);
 }
 
-/* -- Diff rows (variant selectors) -- */
+/* ============================================================
+   DIFF ROWS
+   ============================================================ */
 
 .kb-diff-row {
 	display: grid;
@@ -344,7 +631,9 @@ body.kb-dependency-link-mode {
 	color: var(--bp-palette-light-gray-4);
 }
 
-/* -- Diff entry (sibling selector) -- */
+/* ============================================================
+   DIFF ENTRY
+   ============================================================ */
 
 .kb-diff-entry {
 	overflow-x: auto;
@@ -352,14 +641,13 @@ body.kb-dependency-link-mode {
 }
 
 .kb-diff-entry + .kb-diff-entry {
-	border-top: 1px solid var(--bp-palette-dark-gray-5);
+	border-top: 1px solid var(--kb-border-subtle);
 }
 
-/* -- Diff file header (aria-expanded selector) -- */
-
 .kb-diff-file-header {
-	border-bottom: 1px solid var(--bp-palette-dark-gray-5);
+	border-bottom: 1px solid var(--kb-border-subtle);
 	font-size: var(--bp-typography-size-body-small);
+	font-family: var(--kb-font-mono);
 	border-bottom-left-radius: 0;
 	border-bottom-right-radius: 0;
 }
@@ -368,7 +656,9 @@ body.kb-dependency-link-mode {
 	border-bottom: none;
 }
 
-/* -- Diff comment UI -- */
+/* ============================================================
+   DIFF INLINE COMMENT
+   ============================================================ */
 
 .kb-diff-inline-comment {
 	padding: 4px 6px;
@@ -380,17 +670,21 @@ body.kb-dependency-link-mode {
 	justify-content: space-between;
 	gap: 8px;
 	padding: 8px 12px;
-	border-top: 1px solid var(--bp-palette-dark-gray-5);
-	background: var(--bp-palette-dark-gray-2);
+	border-top: 1px solid var(--kb-border-subtle);
+	background: var(--kb-surface-raised);
 }
 
-/* -- Focus ring fix (Blueprint uses :focus, not :focus-visible) -- */
+/* ============================================================
+   FOCUS RING FIX
+   ============================================================ */
 
 :focus:not(:focus-visible) {
 	outline: none;
 }
 
-/* -- Utilities -- */
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
 
 .kb-line-clamp-2 {
 	display: -webkit-box;
@@ -415,9 +709,9 @@ body.kb-dependency-link-mode {
 .kb-task-preview-pane {
 	margin-top: 8px;
 	padding: 8px;
-	border: 1px solid var(--bp-palette-dark-gray-5);
-	border-radius: var(--bp-surface-border-radius);
-	background: var(--bp-palette-dark-gray-1);
+	border: 1px solid var(--kb-border-subtle);
+	border-radius: var(--kb-radius-md);
+	background: var(--kb-surface-app);
 }
 
 .kb-task-preview-text {
@@ -428,7 +722,9 @@ body.kb-dependency-link-mode {
 	overflow-wrap: anywhere;
 }
 
-/* -- Read-only diff (no hover interactions) -- */
+/* ============================================================
+   DIFF READONLY
+   ============================================================ */
 
 .kb-diff-readonly .kb-diff-row {
 	cursor: default;
@@ -461,7 +757,9 @@ body.kb-dependency-link-mode {
 	opacity: 1;
 }
 
-/* -- Git history rows (hover selectors) -- */
+/* ============================================================
+   GIT HISTORY ROWS
+   ============================================================ */
 
 .kb-git-ref-row {
 	background: none;
@@ -469,27 +767,27 @@ body.kb-dependency-link-mode {
 
 .kb-git-ref-row + .kb-git-ref-row,
 .kb-git-ref-row + div + .kb-git-ref-row {
-	margin-top: 4px;
+	margin-top: 2px;
 }
 
 .kb-git-ref-row:hover {
-	background: var(--bp-palette-dark-gray-4);
+	background: rgba(59, 141, 241, 0.07);
 }
 
 .kb-git-ref-row-selected,
 .kb-git-ref-row-selected:hover {
-	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.2);
-	color: var(--bp-palette-light-gray-5);
+	background: rgba(59, 141, 241, 0.15);
+	color: var(--kb-text-primary);
 }
 
 .kb-git-ref-row-selected-warning,
 .kb-git-ref-row-selected-warning:hover {
 	background: oklch(from var(--bp-intent-warning-rest) l c h / 0.2);
-	color: var(--bp-palette-light-gray-5);
+	color: var(--kb-text-primary);
 }
 
 .kb-git-working-copy-header {
-	background: oklch(from var(--bp-intent-warning-rest) l c h / 0.2);
+	background: oklch(from var(--bp-intent-warning-rest) l c h / 0.15);
 }
 
 .kb-git-commit-row {
@@ -497,31 +795,55 @@ body.kb-dependency-link-mode {
 }
 
 .kb-git-commit-row:hover {
-	background: var(--bp-palette-dark-gray-4);
+	background: rgba(59, 141, 241, 0.06);
 }
 
 .kb-git-commit-row-selected,
 .kb-git-commit-row-selected:hover {
-	background: oklch(from var(--bp-intent-primary-rest) l c h / 0.2);
-	color: var(--bp-palette-light-gray-5);
+	background: rgba(59, 141, 241, 0.15);
+	color: var(--kb-text-primary);
 }
 
 .kb-git-commit-row-selected .kb-git-commit-row-meta,
 .kb-git-commit-row-selected:hover .kb-git-commit-row-meta,
 .kb-git-commit-row-selected .kb-git-commit-row-message,
 .kb-git-commit-row-selected:hover .kb-git-commit-row-message {
-	color: var(--bp-palette-light-gray-5) !important;
+	color: var(--kb-text-primary) !important;
 }
 
-/* -- Terminal scrollbar (xterm 6 custom scrollable element) -- */
+/* ============================================================
+   TERMINAL SCROLLBAR (xterm 6 custom scrollable element)
+   ============================================================ */
 
 .kb-terminal-container .xterm .xterm-scrollable-element > .scrollbar.vertical {
-	width: 10px !important;
+	width: 6px !important;
 	right: 1px !important;
 }
 
 .kb-terminal-container .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
-	left: 2px !important;
+	left: 0 !important;
 	width: 6px !important;
 	border-radius: 999px;
+	background: rgba(59, 141, 241, 0.25) !important;
+}
+
+/* ============================================================
+   RESIZABLE PANE DIVIDER
+   ============================================================ */
+
+.kb-resize-handle {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 4px;
+	cursor: ns-resize;
+	z-index: 10;
+	background: transparent;
+	transition: background 0.15s ease;
+}
+
+.kb-resize-handle:hover,
+.kb-resize-handle-active {
+	background: rgba(59, 141, 241, 0.35);
 }
