@@ -141,7 +141,7 @@ describe("useRuntimeProjectConfig", () => {
 					}}
 				/>,
 			);
-				await Promise.resolve();
+			await Promise.resolve();
 		});
 
 		const loadedProjectASnapshot = findLatestLoadedSnapshot(snapshots);

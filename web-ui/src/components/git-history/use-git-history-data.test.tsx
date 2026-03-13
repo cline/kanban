@@ -160,11 +160,8 @@ describe("useGitHistoryData", () => {
 			taskScope ? createRefsResponse("task-branch", "taskhash1") : createRefsResponse("main", "homehash1"),
 		);
 		getGitLogQueryMock.mockImplementation(
-			async ({
-				taskScope,
-			}: {
-				taskScope?: { taskId: string; baseRef: string } | null;
-			}) => (taskScope ? createLogResponse("taskhash1", "Task commit") : createLogResponse("homehash1", "Home commit")),
+			async ({ taskScope }: { taskScope?: { taskId: string; baseRef: string } | null }) =>
+				taskScope ? createLogResponse("taskhash1", "Task commit") : createLogResponse("homehash1", "Home commit"),
 		);
 		getCommitDiffQueryMock.mockImplementation(async ({ commitHash }: { commitHash: string }) =>
 			createDiffResponse(commitHash),

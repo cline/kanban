@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
-import { useRawLocalStorageValue } from "@/utils/react-use";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import {
 	buildOpenCommand,
@@ -12,6 +11,7 @@ import {
 	type OpenTargetOption,
 	PREFERRED_OPEN_TARGET_STORAGE_KEY,
 } from "@/utils/open-targets";
+import { useRawLocalStorageValue } from "@/utils/react-use";
 
 const OPEN_TARGET_OPTIONS = getOpenTargetOptions();
 

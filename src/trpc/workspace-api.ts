@@ -9,7 +9,11 @@ import type {
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract.js";
-import { parseGitCheckoutRequest, parseWorktreeDeleteRequest, parseWorktreeEnsureRequest } from "../core/api-validation.js";
+import {
+	parseGitCheckoutRequest,
+	parseWorktreeDeleteRequest,
+	parseWorktreeEnsureRequest,
+} from "../core/api-validation.js";
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { getWorkspaceChanges } from "../workspace/get-workspace-changes.js";

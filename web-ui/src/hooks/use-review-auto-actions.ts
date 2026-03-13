@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import { getTaskWorkspaceSnapshot, subscribeToAnyTaskMetadata } from "@/stores/workspace-metadata-store";
 import { findCardSelection } from "@/state/board-state";
-import type {
-	BoardCard,
-	BoardColumnId,
-	BoardData,
-	TaskAutoReviewMode,
-} from "@/types";
+import { getTaskWorkspaceSnapshot, subscribeToAnyTaskMetadata } from "@/stores/workspace-metadata-store";
+import type { BoardCard, BoardColumnId, BoardData, TaskAutoReviewMode } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
 
 const AUTO_REVIEW_ACTION_DELAY_MS = 500;
@@ -113,96 +108,60 @@ export function useReviewAutoActions({
 
 	const evaluateAutoReview = useCallback(
 		(trigger: { source: string; taskId?: string }) => {
-		const columnByTaskId = new Map<string, BoardColumnId>();
-		const reviewCardsForAutomation: BoardCard[] = [];
-		for (const column of boardRef.current.columns) {
-			for (const card of column.cards) {
-				columnByTaskId.set(card.id, column.id);
-				if (column.id === "review") {
-					reviewCardsForAutomation.push(card);
+			const columnByTaskId = new Map<string, BoardColumnId>();
+			const reviewCardsForAutomation: BoardCard[] = [];
+			for (const column of boardRef.current.columns) {
+				for (const card of column.cards) {
+					columnByTaskId.set(card.id, column.id);
+					if (column.id === "review") {
+						reviewCardsForAutomation.push(card);
+					}
 				}
 			}
-		}
 
-		for (const taskId of Object.keys(awaitingCleanActionByTaskIdRef.current)) {
-			const columnId = columnByTaskId.get(taskId);
-			if (!columnId || columnId === "trash") {
-				delete awaitingCleanActionByTaskIdRef.current[taskId];
-				clearAutoReviewTimer(taskId);
-				moveToTrashInFlightTaskIdsRef.current.delete(taskId);
-			}
-		}
-
-		for (const taskId of moveToTrashInFlightTaskIdsRef.current) {
-			if (columnByTaskId.get(taskId) !== "review") {
-				moveToTrashInFlightTaskIdsRef.current.delete(taskId);
-			}
-		}
-
-		const reviewTaskIds = new Set(reviewCardsForAutomation.map((card) => card.id));
-		for (const taskId of Object.keys(timerByTaskIdRef.current)) {
-			if (!reviewTaskIds.has(taskId)) {
-				clearAutoReviewTimer(taskId);
-			}
-		}
-
-		for (const reviewTask of reviewCardsForAutomation) {
-			const autoReviewEnabled = isTaskAutoReviewEnabled(reviewTask);
-			if (!autoReviewEnabled) {
-				delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
-				clearAutoReviewTimer(reviewTask.id);
-				continue;
+			for (const taskId of Object.keys(awaitingCleanActionByTaskIdRef.current)) {
+				const columnId = columnByTaskId.get(taskId);
+				if (!columnId || columnId === "trash") {
+					delete awaitingCleanActionByTaskIdRef.current[taskId];
+					clearAutoReviewTimer(taskId);
+					moveToTrashInFlightTaskIdsRef.current.delete(taskId);
+				}
 			}
 
-			const autoReviewMode = resolveTaskAutoReviewMode(reviewTask.autoReviewMode);
-			const loadingState = taskGitActionLoadingByTaskId[reviewTask.id];
-			const isGitActionInFlight =
-				autoReviewMode === "commit"
-					? loadingState?.commitSource !== null && loadingState?.commitSource !== undefined
-					: autoReviewMode === "pr"
-						? loadingState?.prSource !== null && loadingState?.prSource !== undefined
-						: false;
+			for (const taskId of moveToTrashInFlightTaskIdsRef.current) {
+				if (columnByTaskId.get(taskId) !== "review") {
+					moveToTrashInFlightTaskIdsRef.current.delete(taskId);
+				}
+			}
 
-			if (autoReviewMode === "move_to_trash") {
-				if (moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)) {
+			const reviewTaskIds = new Set(reviewCardsForAutomation.map((card) => card.id));
+			for (const taskId of Object.keys(timerByTaskIdRef.current)) {
+				if (!reviewTaskIds.has(taskId)) {
+					clearAutoReviewTimer(taskId);
+				}
+			}
+
+			for (const reviewTask of reviewCardsForAutomation) {
+				const autoReviewEnabled = isTaskAutoReviewEnabled(reviewTask);
+				if (!autoReviewEnabled) {
+					delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+					clearAutoReviewTimer(reviewTask.id);
 					continue;
 				}
-				scheduleAutoReviewAction(reviewTask.id, "move_to_trash", () => {
-					const latestSelection = findCardSelection(boardRef.current, reviewTask.id);
-					if (!latestSelection || latestSelection.column.id !== "review") {
-						return;
-					}
-					if (!isTaskAutoReviewEnabled(latestSelection.card)) {
-						return;
-					}
-					if (resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode) !== "move_to_trash") {
-						return;
-					}
-					delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
-					moveToTrashInFlightTaskIdsRef.current.add(reviewTask.id);
-					void requestMoveTaskToTrashRef
-						.current(reviewTask.id, "review", {
-							skipWorkingChangeWarning: true,
-						})
-						.finally(() => {
-							moveToTrashInFlightTaskIdsRef.current.delete(reviewTask.id);
-						});
-				});
-				continue;
-			}
 
-			// Commit/PR automation mental model:
-			// - A task is only "armed" for auto-trash after we actually see working changes in review and trigger commit/pr.
-			// - Review entries with zero changes (common during start-in-plan-mode planning loops) are intentionally ignored.
-			// - Once armed, a later review state with zero changes is treated as commit/pr success, then we auto-move to trash.
-			const changedFiles = getTaskWorkspaceSnapshot(reviewTask.id)?.changedFiles;
-			const awaitingAction = awaitingCleanActionByTaskIdRef.current[reviewTask.id] ?? null;
-			if (awaitingAction) {
-				if (
-					changedFiles === 0 &&
-					!isGitActionInFlight &&
-					!moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)
-				) {
+				const autoReviewMode = resolveTaskAutoReviewMode(reviewTask.autoReviewMode);
+				const loadingState = taskGitActionLoadingByTaskId[reviewTask.id];
+				const isGitActionInFlight =
+					autoReviewMode === "commit"
+						? loadingState?.commitSource !== null && loadingState?.commitSource !== undefined
+						: autoReviewMode === "pr"
+							? loadingState?.prSource !== null && loadingState?.prSource !== undefined
+							: false;
+
+				if (autoReviewMode === "move_to_trash") {
+					if (moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)) {
+						continue;
+					}
 					scheduleAutoReviewAction(reviewTask.id, "move_to_trash", () => {
 						const latestSelection = findCardSelection(boardRef.current, reviewTask.id);
 						if (!latestSelection || latestSelection.column.id !== "review") {
@@ -211,51 +170,87 @@ export function useReviewAutoActions({
 						if (!isTaskAutoReviewEnabled(latestSelection.card)) {
 							return;
 						}
-						const latestMode = resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode);
-						if (latestMode !== autoReviewMode) {
+						if (resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode) !== "move_to_trash") {
 							return;
 						}
+						delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
 						moveToTrashInFlightTaskIdsRef.current.add(reviewTask.id);
 						void requestMoveTaskToTrashRef
 							.current(reviewTask.id, "review", {
 								skipWorkingChangeWarning: true,
 							})
 							.finally(() => {
-								delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
 								moveToTrashInFlightTaskIdsRef.current.delete(reviewTask.id);
 							});
 					});
-				} else {
-					clearAutoReviewTimer(reviewTask.id);
+					continue;
 				}
-				continue;
-			}
 
-			if ((changedFiles ?? 0) <= 0 || isGitActionInFlight) {
-				clearAutoReviewTimer(reviewTask.id);
-				continue;
-			}
-
-			scheduleAutoReviewAction(reviewTask.id, autoReviewMode, () => {
-				const latestSelection = findCardSelection(boardRef.current, reviewTask.id);
-				if (!latestSelection || latestSelection.column.id !== "review") {
-					return;
-				}
-				if (!isTaskAutoReviewEnabled(latestSelection.card)) {
-					return;
-				}
-				const latestMode = resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode);
-				if (latestMode !== autoReviewMode) {
-					return;
-				}
-				awaitingCleanActionByTaskIdRef.current[reviewTask.id] = latestMode;
-				void runAutoReviewGitActionRef.current(reviewTask.id, latestMode).then((triggered) => {
-					if (!triggered && awaitingCleanActionByTaskIdRef.current[reviewTask.id] === latestMode) {
-						delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+				// Commit/PR automation mental model:
+				// - A task is only "armed" for auto-trash after we actually see working changes in review and trigger commit/pr.
+				// - Review entries with zero changes (common during start-in-plan-mode planning loops) are intentionally ignored.
+				// - Once armed, a later review state with zero changes is treated as commit/pr success, then we auto-move to trash.
+				const changedFiles = getTaskWorkspaceSnapshot(reviewTask.id)?.changedFiles;
+				const awaitingAction = awaitingCleanActionByTaskIdRef.current[reviewTask.id] ?? null;
+				if (awaitingAction) {
+					if (
+						changedFiles === 0 &&
+						!isGitActionInFlight &&
+						!moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)
+					) {
+						scheduleAutoReviewAction(reviewTask.id, "move_to_trash", () => {
+							const latestSelection = findCardSelection(boardRef.current, reviewTask.id);
+							if (!latestSelection || latestSelection.column.id !== "review") {
+								return;
+							}
+							if (!isTaskAutoReviewEnabled(latestSelection.card)) {
+								return;
+							}
+							const latestMode = resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode);
+							if (latestMode !== autoReviewMode) {
+								return;
+							}
+							moveToTrashInFlightTaskIdsRef.current.add(reviewTask.id);
+							void requestMoveTaskToTrashRef
+								.current(reviewTask.id, "review", {
+									skipWorkingChangeWarning: true,
+								})
+								.finally(() => {
+									delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+									moveToTrashInFlightTaskIdsRef.current.delete(reviewTask.id);
+								});
+						});
+					} else {
+						clearAutoReviewTimer(reviewTask.id);
 					}
+					continue;
+				}
+
+				if ((changedFiles ?? 0) <= 0 || isGitActionInFlight) {
+					clearAutoReviewTimer(reviewTask.id);
+					continue;
+				}
+
+				scheduleAutoReviewAction(reviewTask.id, autoReviewMode, () => {
+					const latestSelection = findCardSelection(boardRef.current, reviewTask.id);
+					if (!latestSelection || latestSelection.column.id !== "review") {
+						return;
+					}
+					if (!isTaskAutoReviewEnabled(latestSelection.card)) {
+						return;
+					}
+					const latestMode = resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode);
+					if (latestMode !== autoReviewMode) {
+						return;
+					}
+					awaitingCleanActionByTaskIdRef.current[reviewTask.id] = latestMode;
+					void runAutoReviewGitActionRef.current(reviewTask.id, latestMode).then((triggered) => {
+						if (!triggered && awaitingCleanActionByTaskIdRef.current[reviewTask.id] === latestMode) {
+							delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+						}
+					});
 				});
-			});
-		}
+			}
 		},
 		[clearAutoReviewTimer, scheduleAutoReviewAction, taskGitActionLoadingByTaskId],
 	);

@@ -104,12 +104,7 @@ function HookHarness({
 			handleToggleDetailTerminal: result.handleToggleDetailTerminal,
 			isDetailTerminalOpen: result.isDetailTerminalOpen,
 		});
-	}, [
-		onSnapshot,
-		result.detailTerminalTaskId,
-		result.handleToggleDetailTerminal,
-		result.isDetailTerminalOpen,
-	]);
+	}, [onSnapshot, result.detailTerminalTaskId, result.handleToggleDetailTerminal, result.isDetailTerminalOpen]);
 
 	return null;
 }

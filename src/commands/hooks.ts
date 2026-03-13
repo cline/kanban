@@ -259,9 +259,9 @@ function inferActivityText(
 	notificationType: string | null,
 ): string | null {
 	const hookEventName = payload
-		? readStringField(payload, "hook_event_name") ??
+		? (readStringField(payload, "hook_event_name") ??
 			readStringField(payload, "hookEventName") ??
-			readStringField(payload, "hookName")
+			readStringField(payload, "hookName"))
 		: null;
 	const normalizedHookEvent = hookEventName?.toLowerCase() ?? "";
 	const codexType = payload ? readStringField(payload, "type") : null;
@@ -301,7 +301,11 @@ function inferActivityText(
 	if (normalizedHookEvent === "userpromptsubmit" || normalizedHookEvent === "beforeagent") {
 		return "Resumed after user input";
 	}
-	if (normalizedHookEvent === "stop" || normalizedHookEvent === "subagentstop" || normalizedHookEvent === "afteragent") {
+	if (
+		normalizedHookEvent === "stop" ||
+		normalizedHookEvent === "subagentstop" ||
+		normalizedHookEvent === "afteragent"
+	) {
 		return finalMessage ? `Final: ${truncateText(finalMessage, 140)}` : "Waiting for review";
 	}
 	if (normalizedHookEvent === "taskcomplete") {
@@ -330,28 +334,28 @@ function normalizeHookMetadata(
 	flagMetadata: Partial<RuntimeTaskHookActivity>,
 ): Partial<RuntimeTaskHookActivity> | undefined {
 	const hookEventName = payload
-		? readStringField(payload, "hook_event_name") ??
+		? (readStringField(payload, "hook_event_name") ??
 			readStringField(payload, "hookEventName") ??
-			readStringField(payload, "hookName")
+			readStringField(payload, "hookName"))
 		: null;
 	const toolName = payload
-		? readStringField(payload, "tool_name") ??
+		? (readStringField(payload, "tool_name") ??
 			readNestedString(payload, ["preToolUse", "tool"]) ??
 			readNestedString(payload, ["preToolUse", "toolName"]) ??
 			readNestedString(payload, ["postToolUse", "tool"]) ??
 			readNestedString(payload, ["postToolUse", "toolName"]) ??
-			readNestedString(payload, ["input", "tool"])
+			readNestedString(payload, ["input", "tool"]))
 		: null;
 	const notificationType = payload
-		? readStringField(payload, "notification_type") ??
+		? (readStringField(payload, "notification_type") ??
 			readNestedString(payload, ["event", "type"]) ??
-			readNestedString(payload, ["notification", "event"])
+			readNestedString(payload, ["notification", "event"]))
 		: null;
 	const finalMessage = payload
-		? readStringField(payload, "last_assistant_message") ??
+		? (readStringField(payload, "last_assistant_message") ??
 			readStringField(payload, "last-assistant-message") ??
 			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
-			readNestedString(payload, ["taskComplete", "result"])
+			readNestedString(payload, ["taskComplete", "result"]))
 		: null;
 
 	const transcriptPath = payload ? readStringField(payload, "transcript_path") : null;
@@ -547,7 +551,10 @@ function extractCodexCommandSnippet(message: CodexEventPayload, line: string): s
 	}
 
 	if (Array.isArray(message.command)) {
-		const commandText = message.command.filter((part): part is string => typeof part === "string").join(" ").trim();
+		const commandText = message.command
+			.filter((part): part is string => typeof part === "string")
+			.join(" ")
+			.trim();
 		if (commandText) {
 			return commandText;
 		}
@@ -607,7 +614,8 @@ function parseCodexEventLine(
 	const normalizedType = type.toLowerCase();
 	const command = extractCodexCommandSnippet(message, line);
 	const messageText = typeof message.message === "string" ? normalizeWhitespace(message.message) : "";
-	const lastAgentMessage = typeof message.last_agent_message === "string" ? normalizeWhitespace(message.last_agent_message) : "";
+	const lastAgentMessage =
+		typeof message.last_agent_message === "string" ? normalizeWhitespace(message.last_agent_message) : "";
 
 	if (normalizedType === "task_started" || normalizedType === "turn_started" || normalizedType === "turn_begin") {
 		const turnId = pickFirstString([
@@ -736,7 +744,10 @@ function parseCodexEventLine(
 
 	if (normalizedType === "exec_command_end") {
 		const callId = pickFirstString([extractJsonStringField(line, "call_id"), message.call_id, parsed.call_id]);
-		const status = pickFirstString([extractJsonStringField(line, "status"), (message as Record<string, unknown>).status]);
+		const status = pickFirstString([
+			extractJsonStringField(line, "status"),
+			(message as Record<string, unknown>).status,
+		]);
 		const failed = status.toLowerCase() === "failed";
 		const fingerprint = `${normalizedType}:${callId}:${status}`;
 		if (fingerprint === state.lastActivityFingerprint) {
@@ -835,9 +846,7 @@ async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
 			for (const line of lines) {
 				const mapped = parseCodexEventLine(line, state);
 				if (mapped) {
-					spawnDetachedKanban(
-						appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata),
-					);
+					spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
 				}
 			}
 		} catch {

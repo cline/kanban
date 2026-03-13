@@ -70,8 +70,7 @@ function readFirstExistingFile(paths: string[]): string | null {
 			if (existsSync(path)) {
 				return readFileSync(path, "utf8");
 			}
-		} catch {
-		}
+		} catch {}
 	}
 	return null;
 }
@@ -168,9 +167,17 @@ function hasAgentMcpServer(agentId: RuntimeAgentId, serverName: "linear"): boole
 		case "codex":
 			return hasCodexMcpServer(serverName);
 		case "droid":
-			return hasJsonObjectKey(readFirstExistingFile([join(homedir(), ".factory", "mcp.json")]), "mcpServers", serverName);
+			return hasJsonObjectKey(
+				readFirstExistingFile([join(homedir(), ".factory", "mcp.json")]),
+				"mcpServers",
+				serverName,
+			);
 		case "gemini":
-			return hasJsonObjectKey(readFirstExistingFile([join(homedir(), ".gemini", "settings.json")]), "mcpServers", serverName);
+			return hasJsonObjectKey(
+				readFirstExistingFile([join(homedir(), ".gemini", "settings.json")]),
+				"mcpServers",
+				serverName,
+			);
 		case "opencode":
 			return hasJsonObjectKey(readFirstExistingFile(getOpenCodeConfigPaths()), "mcp", serverName);
 		default:

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
-
+import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
 	disposeAllPersistentTerminalsForWorkspace,
 	disposePersistentTerminal,
 	ensurePersistentTerminal,
 } from "@/terminal/persistent-terminal-manager";
-import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 
 interface UsePrewarmedAgentTerminalsInput {
 	currentProjectId: string | null;

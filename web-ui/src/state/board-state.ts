@@ -439,10 +439,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 	return { board: withUpdatedColumns(board, columns), updated: true };
 }
 
-export function disableTaskAutoReview(
-	board: BoardData,
-	taskId: string,
-): { board: BoardData; updated: boolean } {
+export function disableTaskAutoReview(board: BoardData, taskId: string): { board: BoardData; updated: boolean } {
 	const selection = findCardSelection(board, taskId);
 	if (!selection) {
 		return { board, updated: false };

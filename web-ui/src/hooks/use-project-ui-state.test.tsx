@@ -19,11 +19,7 @@ function createBoard(): BoardData {
 	};
 }
 
-function HookHarness({
-	onResult,
-}: {
-	onResult: (result: ReturnType<typeof useProjectUiState>) => void;
-}): null {
+function HookHarness({ onResult }: { onResult: (result: ReturnType<typeof useProjectUiState>) => void }): null {
 	const result = useProjectUiState({
 		board: createBoard(),
 		canPersistWorkspaceState: true,

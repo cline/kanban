@@ -1,18 +1,13 @@
+import type { DropResult } from "@hello-pangea/dnd";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DropResult } from "@hello-pangea/dnd";
-
+import { showAppToast } from "@/components/app-toaster";
+import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import { type PendingTrashWarningState, useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
-import { showAppToast } from "@/components/app-toaster";
-import { useLinkedBacklogTaskActions, type PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
-import {
-	clearTaskWorkspaceInfo,
-	setTaskWorkspaceInfo,
-} from "@/stores/workspace-metadata-store";
 import {
 	applyDragResult,
 	clearColumnTasks,
@@ -22,19 +17,16 @@ import {
 	moveTaskToColumn,
 	updateTask,
 } from "@/state/board-state";
+import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
+import type { BoardCard, BoardColumnId, BoardData } from "@/types";
+import { resolveTaskAutoReviewMode } from "@/types";
+import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import {
 	getBrowserNotificationPermission,
 	hasPromptedForBrowserNotificationPermission,
 	requestBrowserNotificationPermission,
 } from "@/utils/notification-permission";
-import type {
-	BoardCard,
-	BoardColumnId,
-	BoardData,
-} from "@/types";
-import { resolveTaskAutoReviewMode } from "@/types";
-import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
-import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 
 interface TaskGitActionLoadingStateLike {
 	commitSource: string | null;
@@ -84,10 +76,7 @@ interface UseBoardInteractionsInput {
 
 export interface UseBoardInteractionsResult {
 	handleProgrammaticCardMoveReady: ReturnType<typeof useProgrammaticCardMoves>["handleProgrammaticCardMoveReady"];
-	confirmMoveTaskToTrash: (
-		task: BoardCard,
-		currentBoard?: BoardData,
-	) => Promise<void>;
+	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
 	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
 	handleDeleteDependency: (dependencyId: string) => void;
 	handleDragEnd: (result: DropResult, options?: { selectDroppedTask?: boolean }) => void;
@@ -318,14 +307,7 @@ export function useBoardInteractions({
 			onWorktreeError(null);
 			return true;
 		},
-		[
-			ensureTaskWorkspace,
-			fetchTaskWorkspaceInfo,
-			onWorktreeError,
-			selectedTaskId,
-			setBoard,
-			startTaskSession,
-		],
+		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, onWorktreeError, selectedTaskId, setBoard, startTaskSession],
 	);
 
 	const startBacklogTaskWithAnimation = useCallback(
@@ -624,9 +606,7 @@ export function useBoardInteractions({
 	const handleStartAllBacklogTasks = useCallback(
 		(taskIds?: string[]) => {
 			const requestedTaskIds =
-				taskIds ??
-				board.columns.find((column) => column.id === "backlog")?.cards.map((card) => card.id) ??
-				[];
+				taskIds ?? board.columns.find((column) => column.id === "backlog")?.cards.map((card) => card.id) ?? [];
 			if (requestedTaskIds.length === 0) {
 				return;
 			}

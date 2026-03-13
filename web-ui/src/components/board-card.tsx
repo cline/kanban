@@ -3,13 +3,12 @@ import { Draggable } from "@hello-pangea/dnd";
 import type { MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-
-import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
-import { getTaskAutoReviewCancelButtonLabel } from "@/types";
-import { useMeasure } from "@/utils/react-use";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
+import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
+import { useMeasure } from "@/utils/react-use";
 import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
 
@@ -176,9 +175,8 @@ export function BoardCard({
 	const showReviewGitActions = columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const sessionActivity = useMemo(() => getCardSessionActivity(sessionSummary), [sessionSummary]);
-	const cancelAutomaticActionLabel = !isTrashCard && card.autoReviewEnabled
-		? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode)
-		: null;
+	const cancelAutomaticActionLabel =
+		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -303,29 +301,29 @@ export function BoardCard({
 											onMoveToTrash?.(card.id);
 										}}
 									/>
-				) : columnId === "trash" ? (
-					<Tooltip
-						placement="bottom"
-						content={
-							<>
-								Restore session
-								<br />
-								in new worktree
-							</>
-						}
-					>
-						<Button
-							icon={<Icon icon="reset" size={12} />}
-							variant="minimal"
-							size="small"
-							aria-label="Restore task from trash"
-							onMouseDown={stopEvent}
-							onClick={(event) => {
-								stopEvent(event);
-								onRestoreFromTrash?.(card.id);
-							}}
-						/>
-					</Tooltip>
+								) : columnId === "trash" ? (
+									<Tooltip
+										placement="bottom"
+										content={
+											<>
+												Restore session
+												<br />
+												in new worktree
+											</>
+										}
+									>
+										<Button
+											icon={<Icon icon="reset" size={12} />}
+											variant="minimal"
+											size="small"
+											aria-label="Restore task from trash"
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												onRestoreFromTrash?.(card.id);
+											}}
+										/>
+									</Tooltip>
 								) : null}
 							</div>
 							{displayPromptSplit.description ? (

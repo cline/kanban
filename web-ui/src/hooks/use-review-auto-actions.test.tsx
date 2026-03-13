@@ -1,9 +1,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 import type { BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/types";
 

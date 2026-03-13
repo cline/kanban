@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import { registerTerminalController } from "@/terminal/terminal-controller-registry";
 import { disposePersistentTerminal, ensurePersistentTerminal } from "@/terminal/persistent-terminal-manager";
+import { registerTerminalController } from "@/terminal/terminal-controller-registry";
 
 interface UsePersistentTerminalSessionInput {
 	taskId: string;

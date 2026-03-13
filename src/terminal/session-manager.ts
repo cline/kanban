@@ -12,20 +12,20 @@ import {
 	prepareAgentLaunch,
 } from "./agent-session-adapters.js";
 import {
-	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
 	hasClaudeWorkspaceTrustPrompt,
 	shouldAutoConfirmClaudeWorkspaceTrust,
 	stopWorkspaceTrustTimers,
+	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
 } from "./claude-workspace-trust.js";
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust.js";
 import { PtySession } from "./pty-session.js";
+import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
 import {
 	createTerminalProtocolFilterState,
 	disableOsc11BackgroundQueryIntercept,
 	filterTerminalProtocolOutput,
 	type TerminalProtocolFilterState,
 } from "./terminal-protocol-filter.js";
-import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service.js";
 
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;

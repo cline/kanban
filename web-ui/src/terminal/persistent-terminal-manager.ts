@@ -5,14 +5,13 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-
+import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTerminalWsClientMessage,
 	RuntimeTerminalWsServerMessage,
 } from "@/runtime/types";
-import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
 
@@ -127,17 +126,15 @@ class PersistentTerminal {
 		this.parkingRoot.appendChild(this.hostElement);
 		const initialGeometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
 
-		this.terminal = new Terminal(
-			{
-				...createKanbanTerminalOptions({
-					cursorColor: this.appearance.cursorColor,
-					isMacPlatform,
-					terminalBackgroundColor: this.appearance.terminalBackgroundColor,
-				}),
-				cols: initialGeometry.cols,
-				rows: initialGeometry.rows,
-			},
-		);
+		this.terminal = new Terminal({
+			...createKanbanTerminalOptions({
+				cursorColor: this.appearance.cursorColor,
+				isMacPlatform,
+				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
+			}),
+			cols: initialGeometry.cols,
+			rows: initialGeometry.rows,
+		});
 		this.terminal.loadAddon(this.fitAddon);
 		this.terminal.loadAddon(new ClipboardAddon());
 		this.terminal.loadAddon(new WebLinksAddon());

@@ -125,7 +125,7 @@ function buildClineHookScriptContent(event: RuntimeHookEvent): string {
 	const commandParts = buildHooksCommandParts(["notify", "--event", event, "--source", "cline"]);
 	if (process.platform === "win32") {
 		const command = commandParts.map(powerShellQuote).join(" ");
- 		return `$inputText = [Console]::In.ReadToEnd()
+		return `$inputText = [Console]::In.ReadToEnd()
 try {
   $inputText | & ${command} | Out-Null
 } catch {
@@ -324,7 +324,11 @@ const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
-		if (input.autonomousModeEnabled && !input.startInPlanMode && !hasCliOption(args, "--dangerously-skip-permissions")) {
+		if (
+			input.autonomousModeEnabled &&
+			!input.startInPlanMode &&
+			!hasCliOption(args, "--dangerously-skip-permissions")
+		) {
 			args.push("--dangerously-skip-permissions");
 		}
 		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
@@ -345,17 +349,21 @@ const claudeAdapter: AgentSessionAdapter = {
 			const settingsPath = join(getHookAgentDirectory("claude"), "settings.json");
 			const hooksSettings = {
 				hooks: {
-					Stop: [
-						{ hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }] },
-					],
+					Stop: [{ hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }] }],
 					SubagentStop: [
 						{ hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }] },
 					],
 					PreToolUse: [
-						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }] },
+						{
+							matcher: "*",
+							hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }],
+						},
 					],
 					PermissionRequest: [
-						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }] },
+						{
+							matcher: "*",
+							hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }],
+						},
 					],
 					PostToolUse: [
 						{
@@ -374,7 +382,10 @@ const claudeAdapter: AgentSessionAdapter = {
 							matcher: "permission_prompt",
 							hooks: [{ type: "command", command: buildHookCommand("to_review", { source: "claude" }) }],
 						},
-						{ matcher: "*", hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }] },
+						{
+							matcher: "*",
+							hooks: [{ type: "command", command: buildHookCommand("activity", { source: "claude" }) }],
+						},
 					],
 					UserPromptSubmit: [
 						{ hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }] },
@@ -418,7 +429,9 @@ function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): 
 }
 
 function shouldInspectCodexOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
-	return summary.state === "awaiting_review" && (summary.reviewReason === "attention" || summary.reviewReason === "hook");
+	return (
+		summary.state === "awaiting_review" && (summary.reviewReason === "attention" || summary.reviewReason === "hook")
+	);
 }
 
 const codexAdapter: AgentSessionAdapter = {
@@ -884,13 +897,7 @@ const droidAdapter: AgentSessionAdapter = {
 
 			if (hooks) {
 				const droidActiveToolMatcher = "Read|Grep|Glob|FetchUrl|WebSearch|Execute|Task|Edit|Create";
-				const reviewNotifyCommand = buildHooksCommand([
-					"notify",
-					"--event",
-					"to_review",
-					"--source",
-					"droid",
-				]);
+				const reviewNotifyCommand = buildHooksCommand(["notify", "--event", "to_review", "--source", "droid"]);
 				const inProgressNotifyCommand = buildHooksCommand([
 					"notify",
 					"--event",
@@ -898,13 +905,7 @@ const droidAdapter: AgentSessionAdapter = {
 					"--source",
 					"droid",
 				]);
-				const activityNotifyCommand = buildHooksCommand([
-					"notify",
-					"--event",
-					"activity",
-					"--source",
-					"droid",
-				]);
+				const activityNotifyCommand = buildHooksCommand(["notify", "--event", "activity", "--source", "droid"]);
 				settings.hooks = {
 					Stop: [{ hooks: [{ type: "command", command: reviewNotifyCommand }] }],
 					Notification: [

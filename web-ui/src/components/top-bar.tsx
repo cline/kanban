@@ -73,27 +73,27 @@ function GitBranchStatusControl({
 					overflow: "hidden",
 				}}
 			>
-					<Button
-						icon={<Icon icon="git-branch" size={12} />}
-						alignText="start"
-						ellipsizeText
-						size="small"
-						variant="outlined"
-						intent={isGitHistoryOpen ? "primary" : undefined}
-						active={isGitHistoryOpen}
-						onClick={onToggleGitHistory}
-						className={Classes.MONOSPACE_TEXT}
-						textClassName={Classes.FILL}
-						style={{
-							fontSize: "var(--bp-typography-size-body-small)",
-							flexShrink: 1,
-							minWidth: 0,
-							maxWidth: "100%",
-							overflow: "hidden",
-						}}
-						title={branchLabel}
-						text={branchLabel}
-					/>
+				<Button
+					icon={<Icon icon="git-branch" size={12} />}
+					alignText="start"
+					ellipsizeText
+					size="small"
+					variant="outlined"
+					intent={isGitHistoryOpen ? "primary" : undefined}
+					active={isGitHistoryOpen}
+					onClick={onToggleGitHistory}
+					className={Classes.MONOSPACE_TEXT}
+					textClassName={Classes.FILL}
+					style={{
+						fontSize: "var(--bp-typography-size-body-small)",
+						flexShrink: 1,
+						minWidth: 0,
+						maxWidth: "100%",
+						overflow: "hidden",
+					}}
+					title={branchLabel}
+					text={branchLabel}
+				/>
 				<span
 					className={Classes.MONOSPACE_TEXT}
 					style={{
@@ -230,7 +230,9 @@ function TopBarGitStatusSection({
 			<>
 				<NavbarDivider />
 				<GitBranchStatusControl
-					branchLabel={taskWorkspaceInfo?.branch ?? taskWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "initializing"}
+					branchLabel={
+						taskWorkspaceInfo?.branch ?? taskWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "initializing"
+					}
 					changedFiles={taskWorkspaceSnapshot?.changedFiles ?? 0}
 					additions={taskWorkspaceSnapshot?.additions ?? 0}
 					deletions={taskWorkspaceSnapshot?.deletions ?? 0}

@@ -16,10 +16,7 @@ vi.mock("@/terminal/persistent-terminal-manager", () => ({
 	disposeAllPersistentTerminalsForWorkspace: disposeAllPersistentTerminalsForWorkspaceMock,
 }));
 
-function createSummary(
-	taskId: string,
-	overrides: Partial<RuntimeTaskSessionSummary> = {},
-): RuntimeTaskSessionSummary {
+function createSummary(taskId: string, overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {
 		taskId,
 		state: "running",
@@ -152,11 +149,7 @@ describe("usePrewarmedAgentTerminals", () => {
 		);
 		expect(disposePersistentTerminalMock).toHaveBeenCalledTimes(2);
 		expect(disposePersistentTerminalMock).toHaveBeenNthCalledWith(1, "project-1", "task-a");
-		expect(disposePersistentTerminalMock).toHaveBeenNthCalledWith(
-			2,
-			"project-1",
-			getDetailTerminalTaskId("task-a"),
-		);
+		expect(disposePersistentTerminalMock).toHaveBeenNthCalledWith(2, "project-1", getDetailTerminalTaskId("task-a"));
 
 		ensurePersistentTerminalMock.mockClear();
 		disposePersistentTerminalMock.mockClear();

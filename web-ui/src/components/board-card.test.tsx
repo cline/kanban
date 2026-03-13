@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardCard } from "@/components/board-card";
@@ -132,8 +131,8 @@ describe("BoardCard", () => {
 			cancelButton?.click();
 		});
 
-		const nextCancelButton = Array.from(container.querySelectorAll("button")).find(
-			(button) => button.textContent?.includes("Cancel Auto-"),
+		const nextCancelButton = Array.from(container.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Cancel Auto-"),
 		);
 		expect(nextCancelButton).toBeUndefined();
 	});

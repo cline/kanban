@@ -150,7 +150,9 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.Notification?.[1]?.hooks?.[0]?.command).toContain("to_review");
 		expect(settings.hooks?.PreToolUse?.[0]?.matcher).toBe("*");
 		expect(settings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
-		const preToolInProgressHook = settings.hooks?.PreToolUse?.find((hook) => hook.matcher === "Read|Grep|Glob|FetchUrl|WebSearch|Execute|Task|Edit|Create");
+		const preToolInProgressHook = settings.hooks?.PreToolUse?.find(
+			(hook) => hook.matcher === "Read|Grep|Glob|FetchUrl|WebSearch|Execute|Task|Edit|Create",
+		);
 		expect(preToolInProgressHook?.hooks?.[0]?.command).toContain("to_in_progress");
 		const preToolReviewHook = settings.hooks?.PreToolUse?.find((hook) => hook.matcher === "AskUser");
 		expect(preToolReviewHook?.hooks?.[0]?.command).toContain("to_review");

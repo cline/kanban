@@ -11,17 +11,17 @@ import {
 	getKanbanRuntimePort,
 	KANBAN_RUNTIME_HOST,
 } from "../core/runtime-endpoint.js";
-import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
-import type { RuntimeStateHub } from "./runtime-state-hub.js";
-import type { WorkspaceRegistry } from "./workspace-registry.js";
-import { createTerminalWebSocketBridge } from "../terminal/ws-server.js";
+import { loadWorkspaceContextById } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
+import { createTerminalWebSocketBridge } from "../terminal/ws-server.js";
 import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router.js";
 import { createHooksApi } from "../trpc/hooks-api.js";
 import { createProjectsApi } from "../trpc/projects-api.js";
 import { createRuntimeApi } from "../trpc/runtime-api.js";
 import { createWorkspaceApi } from "../trpc/workspace-api.js";
-import { loadWorkspaceContextById } from "../state/workspace-state.js";
+import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
+import type { RuntimeStateHub } from "./runtime-state-hub.js";
+import type { WorkspaceRegistry } from "./workspace-registry.js";
 
 interface DisposeTrackedWorkspaceResult {
 	terminalManager: TerminalSessionManager | null;

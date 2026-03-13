@@ -56,8 +56,7 @@ export function useWorkspaceSync({
 	});
 	const workspaceRefreshRequestIdRef = useRef(0);
 
-	const isWorkspaceMetadataPending =
-		currentProjectId !== null && appliedWorkspaceProjectId !== currentProjectId;
+	const isWorkspaceMetadataPending = currentProjectId !== null && appliedWorkspaceProjectId !== currentProjectId;
 
 	useEffect(() => {
 		if (workspaceVersionRef.current.projectId !== currentProjectId) {

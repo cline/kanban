@@ -16,11 +16,7 @@ function runGit(cwd: string, args: string[]): string {
 	});
 	if (result.status !== 0) {
 		throw new Error(
-			[
-				`git ${args.join(" ")} failed in ${cwd}`,
-				result.stdout.trim(),
-				result.stderr.trim(),
-			]
+			[`git ${args.join(" ")} failed in ${cwd}`, result.stdout.trim(), result.stderr.trim()]
 				.filter((part) => part.length > 0)
 				.join("\n"),
 		);
@@ -127,7 +123,7 @@ describe.sequential("task-worktree integration", () => {
 				mkdirSync(join(repoPath, ".next"), { recursive: true });
 				mkdirSync(join(repoPath, "node_modules"), { recursive: true });
 				writeFileSync(join(repoPath, ".next", "BUILD_ID"), "build\n", "utf8");
-				writeFileSync(join(repoPath, "node_modules", "package.json"), "{\n  \"name\": \"fixture\"\n}\n", "utf8");
+				writeFileSync(join(repoPath, "node_modules", "package.json"), '{\n  "name": "fixture"\n}\n', "utf8");
 
 				runGit(repoPath, ["add", "README.md", ".gitignore"]);
 				runGit(repoPath, ["commit", "-m", "init"]);

@@ -6,11 +6,7 @@ import { BoardCard } from "@/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { isCardDropDisabled, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
-import type {
-	BoardCard as BoardCardModel,
-	BoardColumnId,
-	BoardColumn as BoardColumnModel,
-} from "@/types";
+import type { BoardCard as BoardCardModel, BoardColumnId, BoardColumn as BoardColumnModel } from "@/types";
 
 export function BoardColumn({
 	column,

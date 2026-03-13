@@ -1,24 +1,6 @@
 import { Alert, Button, Classes, Colors, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
-import { createIdleTaskSession } from "@/hooks/app-utils";
-import { useBoardInteractions } from "@/hooks/use-board-interactions";
-import { useDocumentVisibility } from "@/hooks/use-document-visibility";
-import { useGitActions } from "@/hooks/use-git-actions";
-import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
-import { useProjectUiState } from "@/hooks/use-project-ui-state";
-import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
-import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
-import { useShortcutActions } from "@/hooks/use-shortcut-actions";
-import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
-import { useTaskEditor } from "@/hooks/use-task-editor";
-import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-prompts";
-import { useTerminalPanels } from "@/hooks/use-terminal-panels";
-import { useTaskSessions } from "@/hooks/use-task-sessions";
-import { useOpenWorkspace } from "@/hooks/use-open-workspace";
-import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
-import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
@@ -35,26 +17,38 @@ import { TaskStartServicePromptDialog } from "@/components/task-start-service-pr
 import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
 import { TopBar } from "@/components/top-bar";
 import { createInitialBoardData } from "@/data/board-data";
+import { createIdleTaskSession } from "@/hooks/app-utils";
+import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
+import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
+import { useBoardInteractions } from "@/hooks/use-board-interactions";
+import { useDocumentVisibility } from "@/hooks/use-document-visibility";
+import { useGitActions } from "@/hooks/use-git-actions";
 import type { PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
-import type {
-	RuntimeTaskSessionSummary,
-} from "@/runtime/types";
+import { useOpenWorkspace } from "@/hooks/use-open-workspace";
+import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
+import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
+import { useProjectUiState } from "@/hooks/use-project-ui-state";
+import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
+import { useShortcutActions } from "@/hooks/use-shortcut-actions";
+import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
+import { useTaskEditor } from "@/hooks/use-task-editor";
+import { useTaskSessions } from "@/hooks/use-task-sessions";
+import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-prompts";
+import { useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
 import { saveWorkspaceState } from "@/runtime/workspace-state-query";
+import { findCardSelection } from "@/state/board-state";
 import {
 	getTaskWorkspaceInfo,
 	getTaskWorkspaceSnapshot,
 	replaceWorkspaceMetadata,
 	resetWorkspaceMetadataStore,
 } from "@/stores/workspace-metadata-store";
-import {
-	findCardSelection,
-} from "@/state/board-state";
-import type {
-	BoardData,
-} from "@/types";
+import type { BoardData } from "@/types";
 
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
@@ -316,7 +310,7 @@ export default function App(): ReactElement {
 		homeTerminalShellBinary,
 		homeTerminalPaneHeight,
 		isDetailTerminalOpen,
-	detailTerminalTaskId,
+		detailTerminalTaskId,
 		isDetailTerminalStarting,
 		detailTerminalPaneHeight,
 		isHomeTerminalExpanded,
@@ -580,12 +574,10 @@ export default function App(): ReactElement {
 	}, [runtimeProjectConfig, shouldUseNavigationPath]);
 
 	const activeWorkspacePath = selectedCard
-		? (
-				getTaskWorkspaceInfo(selectedCard.card.id, selectedCard.card.baseRef)?.path ??
-				getTaskWorkspaceSnapshot(selectedCard.card.id)?.path ??
-				workspacePath ??
-				undefined
-			)
+		? (getTaskWorkspaceInfo(selectedCard.card.id, selectedCard.card.baseRef)?.path ??
+			getTaskWorkspaceSnapshot(selectedCard.card.id)?.path ??
+			workspacePath ??
+			undefined)
 		: shouldUseNavigationPath
 			? (navigationProjectPath ?? undefined)
 			: (workspacePath ?? undefined);
@@ -763,7 +755,7 @@ export default function App(): ReactElement {
 							selectedCard
 								? {
 										visibility: "hidden",
-								}
+									}
 								: undefined
 						}
 					>

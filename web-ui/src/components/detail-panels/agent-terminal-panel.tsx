@@ -1,8 +1,8 @@
 import "@xterm/xterm/css/xterm.css";
 
 import { Button, Callout, Classes, Colors, Divider, Icon, Tag, Tooltip } from "@blueprintjs/core";
+import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
-import type { ReactElement, MutableRefObject } from "react";
 
 import { panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -269,7 +269,9 @@ function AgentTerminalPanelLayout({
 								content={
 									<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
 										<span>{isExpanded ? "Collapse" : "Expand"}</span>
-										<span style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
+										<span
+											style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}
+										>
 											<span>(</span>
 											<Icon icon={isMacPlatform ? "key-command" : "key-control"} size={11} />
 											<span>+ M)</span>

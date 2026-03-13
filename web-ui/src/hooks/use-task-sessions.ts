@@ -3,16 +3,16 @@ import { useCallback } from "react";
 
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import { trackTaskResumedFromTrash } from "@/telemetry/events";
-import { getTerminalController } from "@/terminal/terminal-controller-registry";
-import { getTerminalGeometry } from "@/terminal/terminal-geometry-registry";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "@/runtime/types";
+import { trackTaskResumedFromTrash } from "@/telemetry/events";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
+import { getTerminalGeometry } from "@/terminal/terminal-geometry-registry";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard } from "@/types";
 
 interface UseTaskSessionsInput {
@@ -151,11 +151,7 @@ export function useTaskSessions({
 	);
 
 	const sendTaskSessionInput = useCallback(
-		async (
-			taskId: string,
-			text: string,
-			options?: SendTerminalInputOptions,
-		): Promise<SendTaskSessionInputResult> => {
+		async (taskId: string, text: string, options?: SendTerminalInputOptions): Promise<SendTaskSessionInputResult> => {
 			const appendNewline = options?.appendNewline ?? true;
 			const controller = options?.preferTerminal === false ? null : getTerminalController(taskId);
 			if (controller) {

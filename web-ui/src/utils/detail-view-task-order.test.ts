@@ -16,7 +16,13 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 		const nextTaskId = getNextDetailTaskIdAfterTrashMove(
 			{
 				columns: [
-					{ id: "backlog", title: "Backlog", cards: [{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 }] },
+					{
+						id: "backlog",
+						title: "Backlog",
+						cards: [
+							{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+						],
+					},
 					{
 						id: "in_progress",
 						title: "In Progress",
@@ -25,7 +31,13 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 							{ id: "i2", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
-					{ id: "review", title: "Review", cards: [{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 }] },
+					{
+						id: "review",
+						title: "Review",
+						cards: [
+							{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+						],
+					},
 					{ id: "trash", title: "Trash", cards: [] },
 				],
 				dependencies: [],
@@ -41,8 +53,20 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 			{
 				columns: [
 					{ id: "backlog", title: "Backlog", cards: [] },
-					{ id: "in_progress", title: "In Progress", cards: [{ id: "i1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 }] },
-					{ id: "review", title: "Review", cards: [{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 }] },
+					{
+						id: "in_progress",
+						title: "In Progress",
+						cards: [
+							{ id: "i1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+						],
+					},
+					{
+						id: "review",
+						title: "Review",
+						cards: [
+							{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+						],
+					},
 					{ id: "trash", title: "Trash", cards: [] },
 				],
 				dependencies: [],
@@ -57,9 +81,27 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 		const nextTaskId = getNextDetailTaskIdAfterTrashMove(
 			{
 				columns: [
-					{ id: "backlog", title: "Backlog", cards: [{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 }] },
-					{ id: "in_progress", title: "In Progress", cards: [{ id: "i1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 }] },
-					{ id: "review", title: "Review", cards: [{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 }] },
+					{
+						id: "backlog",
+						title: "Backlog",
+						cards: [
+							{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+						],
+					},
+					{
+						id: "in_progress",
+						title: "In Progress",
+						cards: [
+							{ id: "i1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+						],
+					},
+					{
+						id: "review",
+						title: "Review",
+						cards: [
+							{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+						],
+					},
 					{ id: "trash", title: "Trash", cards: [] },
 				],
 				dependencies: [],
@@ -74,7 +116,13 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 		const nextTaskId = getNextDetailTaskIdAfterTrashMove(
 			{
 				columns: [
-					{ id: "backlog", title: "Backlog", cards: [{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 }] },
+					{
+						id: "backlog",
+						title: "Backlog",
+						cards: [
+							{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+						],
+					},
 					{ id: "in_progress", title: "In Progress", cards: [] },
 					{ id: "review", title: "Review", cards: [] },
 					{ id: "trash", title: "Trash", cards: [] },

@@ -1,8 +1,4 @@
-import type {
-	RuntimeHookEvent,
-	RuntimeHookIngestResponse,
-	RuntimeTaskSessionSummary,
-} from "../core/api-contract.js";
+import type { RuntimeHookEvent, RuntimeHookIngestResponse, RuntimeTaskSessionSummary } from "../core/api-contract.js";
 import { parseHookIngestRequest } from "../core/api-validation.js";
 import { loadWorkspaceContextById } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";

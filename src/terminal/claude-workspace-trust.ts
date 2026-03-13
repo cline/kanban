@@ -76,9 +76,7 @@ export function shouldAutoConfirmClaudeWorkspaceTrust(agentId: RuntimeAgentId, c
 	return agentId === "claude" && isTaskWorktreePath(cwd);
 }
 
-export function stopWorkspaceTrustTimers(state: {
-	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
-}): void {
+export function stopWorkspaceTrustTimers(state: { workspaceTrustConfirmTimer: NodeJS.Timeout | null }): void {
 	if (state.workspaceTrustConfirmTimer) {
 		clearTimeout(state.workspaceTrustConfirmTimer);
 		state.workspaceTrustConfirmTimer = null;
