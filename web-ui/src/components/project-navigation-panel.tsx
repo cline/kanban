@@ -155,6 +155,12 @@ export function ProjectNavigationPanel({
 					/>
 				))}
 			</div>
+			<div
+				className={Classes.TEXT_MUTED}
+				style={{ padding: "8px 12px", fontSize: "var(--bp-typography-size-body-x-small)", textAlign: "center" }}
+			>
+				Made with <Icon icon="heart" size={10} /> by Cline
+			</div>
 			<Alert
 				isOpen={pendingProjectRemoval !== null}
 				icon="warning-sign"

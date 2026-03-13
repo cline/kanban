@@ -26,7 +26,6 @@ function extractMentionTags(prompt: string): string[] {
 interface CardSessionActivity {
 	dotColor: string;
 	text: string;
-	/** Optional status label style: "executing" | "stable" | "waiting" | "failed" */
 	status?: "executing" | "stable" | "waiting" | "failed";
 }
 
@@ -83,20 +82,6 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		return { dotColor: Colors.BLUE4, text: "Thinking...", status: "executing" };
 	}
 	return null;
-}
-
-type StatusLabelKind = NonNullable<CardSessionActivity["status"]> | "initializing";
-
-/** Renders the bracketed system status label using the shared .kb-status-label class */
-function StatusLabel({ status, color }: { status: StatusLabelKind; color: string }): React.ReactElement {
-	return (
-		<span
-			className="kb-status-label"
-			style={{ color, whiteSpace: "nowrap", flexShrink: 0 }}
-		>
-			STATUS: {status}
-		</span>
-	);
 }
 
 export function BoardCard({
@@ -179,9 +164,6 @@ export function BoardCard({
 		event.stopPropagation();
 	};
 
-	// Short task ID for "PID"-style display
-	const shortId = card.id.slice(-8).toUpperCase();
-
 	const renderStatusMarker = () => {
 		if (columnId === "in_progress") {
 			return <Spinner size={10} />;
@@ -208,17 +190,6 @@ export function BoardCard({
 		? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode)
 		: null;
 	const mentionTags = useMemo(() => extractMentionTags(card.prompt), [card.prompt]);
-
-	// Map session status to a display color using CSS tokens
-	const statusColor = sessionActivity
-		? sessionActivity.status === "stable"
-			? "var(--kb-accent-teal)"
-			: sessionActivity.status === "waiting"
-				? "var(--kb-accent-amber)"
-				: sessionActivity.status === "failed"
-					? "var(--kb-accent-red)"
-					: "var(--kb-accent-blue)"
-		: null;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -298,22 +269,9 @@ export function BoardCard({
 							className={`${isDependencySource ? "kb-board-card-dependency-source" : ""} ${isDependencyTarget ? "kb-board-card-dependency-target" : ""}`.trim()}
 							style={{ padding: "8px 10px" }}
 						>
-							{/* PID meta header */}
-							<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-								<span className="kb-card-pid">
-									[PID: {shortId}]
-								</span>
+							{/* Card action header */}
+							<div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 4 }}>
 								<div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-									{/* Status label for active/review states */}
-									{sessionActivity?.status && statusColor ? (
-										<StatusLabel
-											status={sessionActivity.status}
-											color={statusColor}
-										/>
-									) : columnId === "in_progress" ? (
-										<StatusLabel status="initializing" color="var(--kb-accent-blue)" />
-									) : null}
-									{/* Action button */}
 									{columnId === "backlog" ? (
 										<Button
 											icon="play"
@@ -445,7 +403,7 @@ export function BoardCard({
 											width: 6,
 											height: 6,
 											borderRadius: "50%",
-											backgroundColor: isTrashCard ? "rgba(80,100,120,0.4)" : (statusColor ?? sessionActivity.dotColor),
+											backgroundColor: isTrashCard ? "rgba(80,100,120,0.4)" : sessionActivity.dotColor,
 											flexShrink: 0,
 											marginTop: 5,
 										}}
