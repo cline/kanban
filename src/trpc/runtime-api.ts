@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
-
+import type { RuntimeConfigState } from "../config/runtime-config.js";
+import { updateRuntimeConfig } from "../config/runtime-config.js";
 import type { RuntimeCommandRunResponse } from "../core/api-contract.js";
 import {
 	parseCommandRunRequest,
@@ -9,8 +10,6 @@ import {
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
 } from "../core/api-validation.js";
-import type { RuntimeConfigState } from "../config/runtime-config.js";
-import { updateRuntimeConfig } from "../config/runtime-config.js";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { resolveTaskCwd } from "../workspace/task-worktree.js";

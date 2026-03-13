@@ -5,12 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTaskEditor } from "@/hooks/use-task-editor";
 import type { BoardCard, BoardData, TaskAutoReviewMode } from "@/types";
 
-function createTask(
-	taskId: string,
-	prompt: string,
-	createdAt: number,
-	overrides: Partial<BoardCard> = {},
-): BoardCard {
+function createTask(taskId: string, prompt: string, createdAt: number, overrides: Partial<BoardCard> = {}): BoardCard {
 	return {
 		id: taskId,
 		prompt,

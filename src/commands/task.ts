@@ -8,8 +8,8 @@ import {
 	addTaskToColumn,
 	getTaskColumnId,
 	moveTaskToColumn,
-	removeTaskDependency,
 	type RuntimeAddTaskDependencyResult,
+	removeTaskDependency,
 	updateTask,
 } from "../core/task-board-mutations.js";
 import { resolveProjectInputPath } from "../projects/project-path.js";
@@ -400,7 +400,9 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 	}
 
 	if (fromColumnId !== "backlog" && fromColumnId !== "in_progress") {
-		throw new Error(`Task "${input.taskId}" is in "${fromColumnId}" and can only be started from backlog or in_progress.`);
+		throw new Error(
+			`Task "${input.taskId}" is in "${fromColumnId}" and can only be started from backlog or in_progress.`,
+		);
 	}
 
 	const moved = moveTaskToColumn(runtimeState.board, input.taskId, "in_progress");
@@ -505,12 +507,13 @@ export function registerTaskCommand(program: Command): void {
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
 		.option("--column <column>", "Filter column: backlog | in_progress | review.", parseListColumn)
 		.action(async (options: { projectPath?: string; column?: ListTaskColumn }) => {
-			await runTaskCommand(async () =>
-				await listTasks({
-					cwd: process.cwd(),
-					projectPath: options.projectPath,
-					column: options.column,
-				}),
+			await runTaskCommand(
+				async () =>
+					await listTasks({
+						cwd: process.cwd(),
+						projectPath: options.projectPath,
+						column: options.column,
+					}),
 			);
 		});
 
@@ -532,16 +535,17 @@ export function registerTaskCommand(program: Command): void {
 				autoReviewEnabled?: unknown;
 				autoReviewMode?: "commit" | "pr" | "move_to_trash";
 			}) => {
-				await runTaskCommand(async () =>
-					await createTask({
-						cwd: process.cwd(),
-						prompt: options.prompt,
-						projectPath: options.projectPath,
-						baseRef: options.baseRef,
-						startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
-						autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
-						autoReviewMode: options.autoReviewMode,
-					}),
+				await runTaskCommand(
+					async () =>
+						await createTask({
+							cwd: process.cwd(),
+							prompt: options.prompt,
+							projectPath: options.projectPath,
+							baseRef: options.baseRef,
+							startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
+							autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
+							autoReviewMode: options.autoReviewMode,
+						}),
 				);
 			},
 		);
@@ -566,17 +570,18 @@ export function registerTaskCommand(program: Command): void {
 				autoReviewEnabled?: unknown;
 				autoReviewMode?: "commit" | "pr" | "move_to_trash";
 			}) => {
-				await runTaskCommand(async () =>
-					await updateTaskCommand({
-						cwd: process.cwd(),
-						taskId: options.taskId,
-						projectPath: options.projectPath,
-						prompt: options.prompt,
-						baseRef: options.baseRef,
-						startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
-						autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
-						autoReviewMode: options.autoReviewMode,
-					}),
+				await runTaskCommand(
+					async () =>
+						await updateTaskCommand({
+							cwd: process.cwd(),
+							taskId: options.taskId,
+							projectPath: options.projectPath,
+							prompt: options.prompt,
+							baseRef: options.baseRef,
+							startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
+							autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
+							autoReviewMode: options.autoReviewMode,
+						}),
 				);
 			},
 		);
@@ -588,13 +593,14 @@ export function registerTaskCommand(program: Command): void {
 		.requiredOption("--linked-task-id <id>", "Second task ID.")
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
 		.action(async (options: { taskId: string; linkedTaskId: string; projectPath?: string }) => {
-			await runTaskCommand(async () =>
-				await linkTasks({
-					cwd: process.cwd(),
-					taskId: options.taskId,
-					linkedTaskId: options.linkedTaskId,
-					projectPath: options.projectPath,
-				}),
+			await runTaskCommand(
+				async () =>
+					await linkTasks({
+						cwd: process.cwd(),
+						taskId: options.taskId,
+						linkedTaskId: options.linkedTaskId,
+						projectPath: options.projectPath,
+					}),
 			);
 		});
 
@@ -604,12 +610,13 @@ export function registerTaskCommand(program: Command): void {
 		.requiredOption("--dependency-id <id>", "Dependency ID.")
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
 		.action(async (options: { dependencyId: string; projectPath?: string }) => {
-			await runTaskCommand(async () =>
-				await unlinkTasks({
-					cwd: process.cwd(),
-					dependencyId: options.dependencyId,
-					projectPath: options.projectPath,
-				}),
+			await runTaskCommand(
+				async () =>
+					await unlinkTasks({
+						cwd: process.cwd(),
+						dependencyId: options.dependencyId,
+						projectPath: options.projectPath,
+					}),
 			);
 		});
 
@@ -619,12 +626,13 @@ export function registerTaskCommand(program: Command): void {
 		.requiredOption("--task-id <id>", "Task ID.")
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
 		.action(async (options: { taskId: string; projectPath?: string }) => {
-			await runTaskCommand(async () =>
-				await startTask({
-					cwd: process.cwd(),
-					taskId: options.taskId,
-					projectPath: options.projectPath,
-				}),
+			await runTaskCommand(
+				async () =>
+					await startTask({
+						cwd: process.cwd(),
+						taskId: options.taskId,
+						projectPath: options.projectPath,
+					}),
 			);
 		});
 }

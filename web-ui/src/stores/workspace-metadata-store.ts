@@ -257,7 +257,8 @@ export function clearTaskWorkspaceSnapshot(taskId: string | null | undefined): b
 		return false;
 	}
 	const { [normalizedTaskId]: _removed, ...rest } = workspaceMetadataState.taskWorkspaceSnapshotByTaskId;
-	const { [normalizedTaskId]: _removedVersion, ...restVersions } = workspaceMetadataState.taskWorkspaceStateVersionByTaskId;
+	const { [normalizedTaskId]: _removedVersion, ...restVersions } =
+		workspaceMetadataState.taskWorkspaceStateVersionByTaskId;
 	workspaceMetadataState.taskWorkspaceSnapshotByTaskId = rest;
 	workspaceMetadataState.taskWorkspaceStateVersionByTaskId = restVersions;
 	emitTaskMetadata(normalizedTaskId);

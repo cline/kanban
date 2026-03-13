@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
-import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, CardSelection } from "@/types";
 
 const HOME_TERMINAL_TASK_ID = "__home_terminal__";
@@ -97,9 +97,7 @@ export interface UseTerminalPanelsResult {
 	handleToggleDetailTerminal: () => void;
 	handleSendAgentCommandToHomeTerminal: () => void;
 	handleSendAgentCommandToDetailTerminal: () => void;
-	prepareTerminalForShortcut: (
-		input: PrepareTerminalForShortcutInput,
-	) => Promise<PrepareTerminalForShortcutResult>;
+	prepareTerminalForShortcut: (input: PrepareTerminalForShortcutInput) => Promise<PrepareTerminalForShortcutResult>;
 	closeHomeTerminal: () => void;
 	closeDetailTerminal: () => void;
 	resetTerminalPanelsState: () => void;
@@ -127,7 +125,7 @@ export function useTerminalPanels({
 	const [isHomeTerminalExpanded, setIsHomeTerminalExpanded] = useState(false);
 	const detailTerminalTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card.id) : null;
 	const currentDetailTerminalPanelState = detailTerminalTaskId
-		? detailTerminalPanelStateByTaskId[detailTerminalTaskId] ?? DEFAULT_DETAIL_TERMINAL_PANEL_STATE
+		? (detailTerminalPanelStateByTaskId[detailTerminalTaskId] ?? DEFAULT_DETAIL_TERMINAL_PANEL_STATE)
 		: DEFAULT_DETAIL_TERMINAL_PANEL_STATE;
 	const isDetailTerminalOpen = currentDetailTerminalPanelState.isOpen;
 	const detailTerminalPaneHeight = currentDetailTerminalPanelState.paneHeight;
@@ -220,13 +218,7 @@ export function useTerminalPanels({
 		} finally {
 			setIsHomeTerminalStarting(false);
 		}
-	}, [
-		currentProjectId,
-		onWorktreeError,
-		upsertSession,
-		workspaceGit?.currentBranch,
-		workspaceGit?.defaultBranch,
-	]);
+	}, [currentProjectId, onWorktreeError, upsertSession, workspaceGit?.currentBranch, workspaceGit?.defaultBranch]);
 
 	const handleToggleHomeTerminal = useCallback(() => {
 		if (isHomeTerminalOpen) {

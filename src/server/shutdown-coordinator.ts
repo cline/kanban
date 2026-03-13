@@ -1,10 +1,10 @@
-import { loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state.js";
-import { updateTaskDependencies } from "../core/task-board-mutations.js";
-import { deleteTaskWorktree } from "../workspace/task-worktree.js";
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
+import { updateTaskDependencies } from "../core/task-board-mutations.js";
+import { loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state.js";
+import type { TerminalSessionManager } from "../terminal/session-manager.js";
+import { deleteTaskWorktree } from "../workspace/task-worktree.js";
 import type { WorkspaceRegistry } from "./workspace-registry.js";
 import { collectProjectWorktreeTaskIdsForRemoval } from "./workspace-registry.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
 
 export interface RuntimeShutdownCoordinatorDependencies {
 	workspaceRegistry: Pick<WorkspaceRegistry, "listManagedWorkspaces">;

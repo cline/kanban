@@ -22,8 +22,8 @@ import type {
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskWorkspaceInfoResponse,
-	RuntimeWorktreeEnsureResponse,
 	RuntimeWorkspaceStateResponse,
+	RuntimeWorktreeEnsureResponse,
 } from "../../src/core/api-contract.js";
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
@@ -828,7 +828,8 @@ describe.sequential("runtime state stream integration", () => {
 				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(snapshot.workspaceMetadata).not.toBeNull();
-			const initialTaskMetadata = snapshot.workspaceMetadata?.taskWorkspaces.find((task) => task.taskId === taskId) ?? null;
+			const initialTaskMetadata =
+				snapshot.workspaceMetadata?.taskWorkspaces.find((task) => task.taskId === taskId) ?? null;
 			expect(initialTaskMetadata).not.toBeNull();
 			expect(initialTaskMetadata?.changedFiles ?? 0).toBe(0);
 			expect(snapshot.workspaceMetadata?.taskWorkspaces.some((task) => task.taskId === trashTaskId)).toBe(false);

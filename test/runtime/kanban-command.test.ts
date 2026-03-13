@@ -44,11 +44,6 @@ describe("buildKanbanCommandParts", () => {
 				execPath: "/usr/local/bin/node",
 				argv: ["/usr/local/bin/node", "/tmp/.npx/321/node_modules/kanban/dist/cli.js"],
 			}),
-		).toEqual([
-			"/usr/local/bin/node",
-			"/tmp/.npx/321/node_modules/kanban/dist/cli.js",
-			"hooks",
-			"ingest",
-		]);
+		).toEqual(["/usr/local/bin/node", "/tmp/.npx/321/node_modules/kanban/dist/cli.js", "hooks", "ingest"]);
 	});
 });

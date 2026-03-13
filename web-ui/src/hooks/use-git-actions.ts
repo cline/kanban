@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
-
-import { useGitHistoryData, type UseGitHistoryDataResult } from "@/components/git-history/use-git-history-data";
 import { showAppToast } from "@/components/app-toaster";
+import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/git-history/use-git-history-data";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import { findCardSelection } from "@/state/board-state";
 import {
 	getTaskWorkspaceInfo,
 	getTaskWorkspaceSnapshot,
@@ -15,12 +16,6 @@ import {
 	useTaskWorkspaceStateVersionValue,
 } from "@/stores/workspace-metadata-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
-import type {
-	RuntimeConfigResponse,
-	RuntimeGitSyncAction,
-	RuntimeTaskWorkspaceInfoResponse,
-} from "@/runtime/types";
-import { findCardSelection } from "@/state/board-state";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
 
 type TaskGitActionSource = "card" | "agent";
@@ -427,7 +422,13 @@ export function useGitActions({
 				setIsSwitchingHomeBranch(false);
 			}
 		},
-		[currentProjectId, homeGitSummary?.currentBranch, isSwitchingHomeBranch, refreshGitHistory, refreshWorkspaceState],
+		[
+			currentProjectId,
+			homeGitSummary?.currentBranch,
+			isSwitchingHomeBranch,
+			refreshGitHistory,
+			refreshWorkspaceState,
+		],
 	);
 
 	const discardHomeWorkingChanges = useCallback(async () => {

@@ -1,3 +1,4 @@
+import type { RuntimeConfigState } from "../config/runtime-config.js";
 import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
@@ -5,14 +6,13 @@ import type {
 	RuntimeProjectTaskCounts,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract.js";
-import type { RuntimeConfigState } from "../config/runtime-config.js";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
 	loadWorkspaceState,
+	type RuntimeWorkspaceIndexEntry,
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
-	type RuntimeWorkspaceIndexEntry,
 } from "../state/workspace-state.js";
 import { TerminalSessionManager } from "../terminal/session-manager.js";
 
@@ -58,7 +58,10 @@ export interface WorkspaceRegistry {
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
 	setActiveWorkspace: (workspaceId: string, repoPath: string) => Promise<void>;
 	clearActiveWorkspace: () => void;
-	disposeWorkspace: (workspaceId: string, options?: DisposeWorkspaceRegistryOptions) => {
+	disposeWorkspace: (
+		workspaceId: string,
+		options?: DisposeWorkspaceRegistryOptions,
+	) => {
 		terminalManager: TerminalSessionManager | null;
 		workspacePath: string | null;
 	};
@@ -178,9 +181,7 @@ function toProjectSummary(project: {
 	};
 }
 
-export async function createWorkspaceRegistry(
-	deps: CreateWorkspaceRegistryDependencies,
-): Promise<WorkspaceRegistry> {
+export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDependencies): Promise<WorkspaceRegistry> {
 	const launchedFromGitRepo = deps.hasGitRepository(deps.cwd);
 	const initialWorkspace = launchedFromGitRepo ? await loadWorkspaceContext(deps.cwd) : null;
 	let indexedWorkspace: RuntimeWorkspaceIndexEntry | null = null;
@@ -323,7 +324,9 @@ export async function createWorkspaceRegistry(
 	const buildProjectsPayload = async (preferredCurrentProjectId: string | null) => {
 		const projects = await listWorkspaceIndexEntries();
 		const fallbackProjectId =
-			projects.find((project) => project.workspaceId === activeWorkspaceId)?.workspaceId ?? projects[0]?.workspaceId ?? null;
+			projects.find((project) => project.workspaceId === activeWorkspaceId)?.workspaceId ??
+			projects[0]?.workspaceId ??
+			null;
 		const resolvedCurrentProjectId =
 			(preferredCurrentProjectId &&
 				projects.some((project) => project.workspaceId === preferredCurrentProjectId) &&

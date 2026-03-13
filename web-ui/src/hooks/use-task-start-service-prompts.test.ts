@@ -28,9 +28,7 @@ describe("detectTaskStartServicePromptIds", () => {
 	});
 
 	it("detects github links", () => {
-		expect(detectTaskStartServicePromptIds("See https://github.com/cline/kanban/issues/42")).toEqual([
-			"github_cli",
-		]);
+		expect(detectTaskStartServicePromptIds("See https://github.com/cline/kanban/issues/42")).toEqual(["github_cli"]);
 	});
 
 	it("detects plain github mentions", () => {

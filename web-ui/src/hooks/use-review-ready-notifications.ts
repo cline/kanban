@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/utils/react-use";
 import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import type { BoardData } from "@/types";
@@ -9,6 +8,7 @@ import {
 	subscribeToNotificationBadgeClear,
 } from "@/utils/notification-badge-sync";
 import { getBrowserNotificationPermission } from "@/utils/notification-permission";
+import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/utils/react-use";
 import {
 	createTabPresenceId,
 	hasVisibleKanbanTabForWorkspace,

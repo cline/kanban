@@ -4,10 +4,10 @@ import {
 	toTelemetrySelectedAgentId,
 	trackTaskCreated,
 	trackTaskDependencyCreated,
-	trackTasksAutoStartedFromDependency,
 	trackTaskResumedFromTrash,
-	trackTaskStartSetupPromptViewed,
 	trackTaskStartSetupInstallCommandClicked,
+	trackTaskStartSetupPromptViewed,
+	trackTasksAutoStartedFromDependency,
 } from "@/telemetry/events";
 
 const captureMock = vi.hoisted(() => vi.fn());

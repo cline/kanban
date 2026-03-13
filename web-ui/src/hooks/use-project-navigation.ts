@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
-import { useWindowEvent } from "@/utils/react-use";
+import { buildProjectPathname, parseProjectIdFromPathname } from "@/hooks/app-utils";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
-import { buildProjectPathname, parseProjectIdFromPathname } from "@/hooks/app-utils";
+import { useWindowEvent } from "@/utils/react-use";
 
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
 

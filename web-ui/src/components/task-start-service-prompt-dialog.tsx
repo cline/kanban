@@ -60,7 +60,11 @@ export function TaskStartServicePromptDialog({
 					<>
 						<Button text="Close" onClick={onClose} />
 						{installCommand && onRunInstallCommand ? (
-							<Button intent="primary" text={prompt?.installButtonLabel ?? "Run command"} onClick={onRunInstallCommand} />
+							<Button
+								intent="primary"
+								text={prompt?.installButtonLabel ?? "Run command"}
+								onClick={onRunInstallCommand}
+							/>
 						) : null}
 					</>
 				}

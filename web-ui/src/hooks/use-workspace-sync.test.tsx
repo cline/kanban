@@ -1,9 +1,8 @@
 import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { createInitialBoardData } from "@/data/board-data";
+import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "@/runtime/types";
 import type { BoardData } from "@/types";
 

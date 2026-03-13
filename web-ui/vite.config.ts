@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
-import { defineConfig, transformWithEsbuild, type Plugin, type ResolvedConfig } from "vite";
+import { defineConfig, type Plugin, type ResolvedConfig, transformWithEsbuild } from "vite";
 
 const rootPkg = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf-8")) as { version: string };
 const XTERM_CHUNK_NAME = "xterm-vendor";

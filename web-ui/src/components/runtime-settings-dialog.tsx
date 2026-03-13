@@ -23,7 +23,6 @@ import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { TASK_GIT_PROMPT_VARIABLES, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import { useUnmount, useWindowEvent } from "@/utils/react-use";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import {
@@ -31,6 +30,7 @@ import {
 	getBrowserNotificationPermission,
 	requestBrowserNotificationPermission,
 } from "@/utils/notification-permission";
+import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 interface RuntimeSettingsAgentRowModel {
 	id: RuntimeAgentId;
@@ -183,9 +183,7 @@ function AgentRow({
 								Installed
 							</Tag>
 						) : isInstallStatusPending ? (
-							<Tag minimal>
-								Checking...
-							</Tag>
+							<Tag minimal>Checking...</Tag>
 						) : null}
 					</div>
 					{agent.command ? (
@@ -320,10 +318,7 @@ export function RuntimeSettingsDialog({
 			command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
 		}));
 	}, [agentAutonomousModeEnabled, config?.agents]);
-	const displayedAgents = useMemo(
-		() => supportedAgents,
-		[supportedAgents],
-	);
+	const displayedAgents = useMemo(() => supportedAgents, [supportedAgents]);
 	const configuredAgentId = config?.selectedAgentId ?? null;
 	const firstInstalledAgentId = displayedAgents.find((agent) => agent.installed)?.id;
 	const fallbackAgentId = firstInstalledAgentId ?? displayedAgents[0]?.id ?? "claude";
@@ -418,16 +413,16 @@ export function RuntimeSettingsDialog({
 	}, [initialSection, open]);
 
 	useEffect(() => {
-	if (pendingShortcutScrollIndex === null) {
+		if (pendingShortcutScrollIndex === null) {
 			return;
 		}
 		const frame = window.requestAnimationFrame(() => {
-		const target = shortcutRowRefs.current[pendingShortcutScrollIndex] ?? null;
+			const target = shortcutRowRefs.current[pendingShortcutScrollIndex] ?? null;
 			if (target) {
 				target.scrollIntoView({ block: "nearest", behavior: "smooth" });
 				const firstInput = target.querySelector("input");
 				firstInput?.focus();
-			setPendingShortcutScrollIndex(null);
+				setPendingShortcutScrollIndex(null);
 			}
 		});
 		return () => {
@@ -719,29 +714,29 @@ export function RuntimeSettingsDialog({
 									),
 								)
 							}
+						>
+							<Button
+								variant="outlined"
+								size="small"
+								aria-label={`Shortcut icon: ${getShortcutIconOption(shortcut.icon).label}`}
+								style={{
+									minWidth: 0,
+									paddingLeft: 4,
+									paddingRight: 8,
+								}}
 							>
-								<Button
-									variant="outlined"
-									size="small"
-									aria-label={`Shortcut icon: ${getShortcutIconOption(shortcut.icon).label}`}
+								<span
 									style={{
-										minWidth: 0,
-										paddingLeft: 4,
-										paddingRight: 8,
+										display: "flex",
+										alignItems: "center",
+										gap: 4,
 									}}
 								>
-									<span
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: 4,
-										}}
-									>
-										<Icon icon={getShortcutIconOption(shortcut.icon).value} />
-										<Icon icon="caret-down" size={12} />
-									</span>
-								</Button>
-							</ShortcutIconSelect>
+									<Icon icon={getShortcutIconOption(shortcut.icon).value} />
+									<Icon icon="caret-down" size={12} />
+								</span>
+							</Button>
+						</ShortcutIconSelect>
 						<InputGroup
 							value={shortcut.label}
 							onChange={(event) =>
@@ -770,7 +765,9 @@ export function RuntimeSettingsDialog({
 							icon="cross"
 							variant="minimal"
 							size="small"
-							onClick={() => setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))}
+							onClick={() =>
+								setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))
+							}
 						/>
 					</div>
 				))}
@@ -785,7 +782,12 @@ export function RuntimeSettingsDialog({
 			<DialogFooter
 				actions={
 					<>
-						<Button text="Cancel" variant="outlined" onClick={() => onOpenChange(false)} disabled={controlsDisabled} />
+						<Button
+							text="Cancel"
+							variant="outlined"
+							onClick={() => onOpenChange(false)}
+							disabled={controlsDisabled}
+						/>
 						<Button
 							text="Save"
 							intent="primary"

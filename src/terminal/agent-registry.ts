@@ -1,11 +1,7 @@
-import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core/api-contract.js";
-import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
-import {
-	isBinaryAvailableOnPath,
-	isBinaryResolvableInShell,
-	toShellLaunchCommand,
-} from "./command-discovery.js";
+import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog.js";
+import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core/api-contract.js";
+import { isBinaryAvailableOnPath, isBinaryResolvableInShell, toShellLaunchCommand } from "./command-discovery.js";
 import { detectTaskStartSetupAvailability } from "./task-start-setup-detection.js";
 
 export interface ResolvedAgentCommand {

@@ -38,7 +38,11 @@ function isCsiFinalByte(byte: number): boolean {
 	return byte >= 0x40 && byte <= 0x7e;
 }
 
-function shouldSuppressDeviceAttributeQuery(state: TerminalProtocolFilterState, sequenceBody: Buffer, finalByte: number): boolean {
+function shouldSuppressDeviceAttributeQuery(
+	state: TerminalProtocolFilterState,
+	sequenceBody: Buffer,
+	finalByte: number,
+): boolean {
 	if (!state.suppressDeviceAttributeQueries || finalByte !== DEVICE_ATTRIBUTES_FINAL) {
 		return false;
 	}
@@ -141,9 +145,7 @@ export function filterTerminalProtocolOutput(
 			}
 
 			const finalByte = source[finalIndex] as number;
-			if (
-				!shouldSuppressDeviceAttributeQuery(state, source.subarray(sequenceStart + 2, finalIndex), finalByte)
-			) {
+			if (!shouldSuppressDeviceAttributeQuery(state, source.subarray(sequenceStart + 2, finalIndex), finalByte)) {
 				segments.push(source.subarray(sequenceStart, finalIndex + 1));
 			}
 

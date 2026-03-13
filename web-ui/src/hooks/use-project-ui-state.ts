@@ -1,8 +1,7 @@
 import type { ComponentProps } from "react";
 import { useMemo } from "react";
-
-import { countTasksByColumn } from "@/hooks/app-utils";
 import type { ProjectNavigationPanel } from "@/components/project-navigation-panel";
+import { countTasksByColumn } from "@/hooks/app-utils";
 import type { BoardData } from "@/types";
 
 type ProjectSummaries = ComponentProps<typeof ProjectNavigationPanel>["projects"];

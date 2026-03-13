@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -179,7 +179,7 @@ function escapeGitIgnoreLiteral(path: string): string {
 	return normalized
 		.replace(/\\/g, "\\\\")
 		.replace(/^([#!])/u, "\\$1")
-		.replace(/([*?\[])/g, "\\$1");
+		.replace(/([*?[])/g, "\\$1");
 }
 
 function stripManagedExcludeBlock(content: string): string {
@@ -233,7 +233,9 @@ async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: s
 }
 
 async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: string): Promise<void> {
-	const ignoredPaths = getUniquePaths(await listIgnoredPaths(repoPath)).filter((relativePath) => !shouldSkipSymlink(relativePath));
+	const ignoredPaths = getUniquePaths(await listIgnoredPaths(repoPath)).filter(
+		(relativePath) => !shouldSkipSymlink(relativePath),
+	);
 	await syncManagedIgnoredPathExcludes(repoPath, ignoredPaths);
 	for (const relativePath of ignoredPaths) {
 		if (shouldSkipSymlink(relativePath)) {

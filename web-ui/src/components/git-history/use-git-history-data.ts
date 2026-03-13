@@ -339,7 +339,11 @@ export function useGitHistoryData({
 
 	const diffQuery = useTrpcQuery<RuntimeGitCommitDiffResponse>({
 		enabled:
-			!isScopeTransitioning && enabled && workspaceId !== null && selectedCommitHash !== null && viewMode === "commit",
+			!isScopeTransitioning &&
+			enabled &&
+			workspaceId !== null &&
+			selectedCommitHash !== null &&
+			viewMode === "commit",
 		queryFn: diffQueryFn,
 	});
 
@@ -428,7 +432,6 @@ export function useGitHistoryData({
 		workingCopyQuery.refetch,
 		workspaceId,
 	]);
-
 
 	const selectWorkingCopy = useCallback(() => {
 		setViewMode("working-copy");

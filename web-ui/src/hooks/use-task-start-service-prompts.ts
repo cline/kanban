@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
-import type { RuntimeTaskStartSetupAvailability } from "@/runtime/types";
-import type { RuntimeAgentId } from "@/runtime/types";
-import { LocalStorageKey } from "@/storage/local-storage-store";
+import type { RuntimeAgentId, RuntimeTaskStartSetupAvailability } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskStartSetupKind } from "@/telemetry/events";
 import {
 	toTelemetrySelectedAgentId,
@@ -40,15 +39,14 @@ type TaskStartServicePromptPlatform = "mac" | "windows" | "other";
 
 const LINEAR_WORD_PATTERN = /\blinear\b/i;
 const GITHUB_WORD_PATTERN = /\bgithub\b/i;
-const DEFAULT_LINEAR_INSTALL_COMMAND =
-	"claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp";
+const DEFAULT_LINEAR_INSTALL_COMMAND = "claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp";
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {
 		case "codex":
 			return "codex mcp add linear --url https://mcp.linear.app/mcp";
 		case "gemini":
-				return "gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user";
+			return "gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user";
 		case "opencode":
 			return "opencode mcp add";
 		case "droid":
@@ -446,11 +444,7 @@ export function useTaskStartServicePrompts({
 		});
 		setPendingTaskStartServicePromptQueue((currentQueue) => currentQueue.slice(1));
 		setTaskStartServicePromptDoNotShowAgain(false);
-	}, [
-		acknowledgeTaskStartServicePrompt,
-		activePendingTaskStartServicePrompt,
-		taskStartServicePromptDoNotShowAgain,
-	]);
+	}, [acknowledgeTaskStartServicePrompt, activePendingTaskStartServicePrompt, taskStartServicePromptDoNotShowAgain]);
 
 	const handleRunTaskStartServiceInstallCommand = useCallback(() => {
 		if (!activePendingTaskStartServicePrompt) {
@@ -556,16 +550,12 @@ export function useTaskStartServicePrompts({
 			clearTaskStartServicePromptAcknowledgements([taskId]);
 			handleStartTask(taskId);
 		},
-		[
-			board,
-			clearTaskStartServicePromptAcknowledgements,
-			handleStartTask,
-			queueTaskStartServicePrompts,
-		],
+		[board, clearTaskStartServicePromptAcknowledgements, handleStartTask, queueTaskStartServicePrompts],
 	);
 
 	const handleStartAllBacklogTasksWithServiceSetupPrompt = useCallback(() => {
-		const backlogTaskIds = board.columns.find((column) => column.id === "backlog")?.cards.map((card) => card.id) ?? [];
+		const backlogTaskIds =
+			board.columns.find((column) => column.id === "backlog")?.cards.map((card) => card.id) ?? [];
 		if (backlogTaskIds.length === 0) {
 			return;
 		}
@@ -574,7 +564,12 @@ export function useTaskStartServicePrompts({
 		}
 		clearTaskStartServicePromptAcknowledgements(backlogTaskIds);
 		handleStartAllBacklogTasks(backlogTaskIds);
-	}, [board.columns, clearTaskStartServicePromptAcknowledgements, handleStartAllBacklogTasks, queueTaskStartServicePrompts]);
+	}, [
+		board.columns,
+		clearTaskStartServicePromptAcknowledgements,
+		handleStartAllBacklogTasks,
+		queueTaskStartServicePrompts,
+	]);
 
 	const handleCreateAndStartTask = useCallback(() => {
 		const taskId = handleCreateTask();

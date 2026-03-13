@@ -74,14 +74,14 @@ describe("ColumnContextPanel", () => {
 		document.body.appendChild(container);
 		root = createRoot(container);
 		scrollIntoViewMock = vi.fn();
-			Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-				configurable: true,
-				value: scrollIntoViewMock,
-			});
-			vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
-				callback(0);
-				return 1;
-			});
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: scrollIntoViewMock,
+		});
+		vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+			callback(0);
+			return 1;
+		});
 		vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
 	});
 

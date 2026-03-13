@@ -2,9 +2,8 @@ import { Menu, MenuItem, Popover, PopoverInteractionKind, TextArea } from "@blue
 import { Classes as SelectClasses } from "@blueprintjs/select";
 import type { KeyboardEvent, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import { useDebouncedEffect } from "@/utils/react-use";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import { useDebouncedEffect } from "@/utils/react-use";
 
 const FILE_MENTION_LIMIT = 8;
 const MENTION_QUERY_DEBOUNCE_MS = 120;

@@ -17,11 +17,7 @@ const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string
 ];
 const AUTO_REVIEW_MODE_SELECT_WIDTH_CH = 14.5;
 
-function ButtonShortcut({
-	includeShift = false,
-}: {
-	includeShift?: boolean;
-}): ReactElement {
+function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): ReactElement {
 	return (
 		<span
 			style={{

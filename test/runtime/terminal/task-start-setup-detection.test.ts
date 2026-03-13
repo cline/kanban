@@ -69,17 +69,13 @@ describe.sequential("detectTaskStartSetupAvailability", () => {
 			mkdirSync(join(tempHome, ".codex"), { recursive: true });
 			writeFileSync(
 				join(tempHome, ".codex", "config.toml"),
-				[
-					"[mcp_servers.linear]",
-					'url = "https://mcp.linear.app/mcp"',
-				].join("\n"),
+				["[mcp_servers.linear]", 'url = "https://mcp.linear.app/mcp"'].join("\n"),
 				"utf8",
 			);
 			writeFakeCommand(tempBin, "gh");
 
-			const availability = withTemporaryEnv(
-				{ home: tempHome, pathPrefix: tempBin, replacePath: true },
-				() => detectTaskStartSetupAvailability("codex"),
+			const availability = withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, () =>
+				detectTaskStartSetupAvailability("codex"),
 			);
 
 			expect(availability).toEqual({
@@ -100,14 +96,7 @@ describe.sequential("detectTaskStartSetupAvailability", () => {
 			mkdirSync(join(tempHome, ".config", "opencode"), { recursive: true });
 			writeFileSync(
 				join(tempHome, ".config", "opencode", "opencode.jsonc"),
-				[
-					"{",
-					"  // local MCP servers",
-					'  "mcp": {',
-					'    "linear": { "type": "remote" }',
-					"  }",
-					"}",
-				].join("\n"),
+				["{", "  // local MCP servers", '  "mcp": {', '    "linear": { "type": "remote" }', "  }", "}"].join("\n"),
 				"utf8",
 			);
 			writeFileSync(

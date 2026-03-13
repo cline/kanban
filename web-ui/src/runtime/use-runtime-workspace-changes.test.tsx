@@ -50,13 +50,7 @@ interface HookSnapshot {
 	isRuntimeAvailable: boolean;
 }
 
-function HookHarness({
-	taskId,
-	onSnapshot,
-}: {
-	taskId: string;
-	onSnapshot: (snapshot: HookSnapshot) => void;
-}): null {
+function HookHarness({ taskId, onSnapshot }: { taskId: string; onSnapshot: (snapshot: HookSnapshot) => void }): null {
 	const workspaceChanges = useRuntimeWorkspaceChanges(taskId, "project-1", "main");
 
 	useEffect(() => {

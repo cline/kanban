@@ -2,8 +2,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
+import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
-import { getTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import {
 	addTaskDependency,
 	findCardSelection,
@@ -12,9 +12,9 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
+import { getTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import { trackTaskDependencyCreated, trackTasksAutoStartedFromDependency } from "@/telemetry/events";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
-import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import { truncateTaskPromptLabel } from "@/utils/task-prompt";
 

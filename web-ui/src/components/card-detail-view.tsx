@@ -13,11 +13,7 @@ import { panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
-import {
-	type BoardCard,
-	type CardSelection,
-	getTaskAutoReviewActionLabel,
-} from "@/types";
+import { type BoardCard, type CardSelection, getTaskAutoReviewActionLabel } from "@/types";
 
 // We still poll the open detail diff because line content can change without changing
 // the overall file or line counts that drive the shared workspace metadata stream.
@@ -208,10 +204,7 @@ export function CardDetailView({
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
-	const {
-		changes: workspaceChanges,
-		isRuntimeAvailable,
-	} = useRuntimeWorkspaceChanges(
+	const { changes: workspaceChanges, isRuntimeAvailable } = useRuntimeWorkspaceChanges(
 		selection.card.id,
 		currentProjectId,
 		selection.card.baseRef,

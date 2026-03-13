@@ -696,8 +696,7 @@ export function DependencyOverlay({
 					sourceAnchor: TaskAnchor;
 					targetAnchor: TaskAnchor;
 					isTransient: boolean;
-				} =>
-					candidate !== null,
+				} => candidate !== null,
 			);
 
 		const laneOrderByTaskId = new Map<string, Array<{ dependencyId: string; oppositeCenterY: number }>>();

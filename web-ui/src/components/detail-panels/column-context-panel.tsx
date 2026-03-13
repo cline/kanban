@@ -7,12 +7,7 @@ import { BoardCard } from "@/components/board-card";
 import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardColumnId, isCardDropDisabled } from "@/state/drag-rules";
-import type {
-	BoardCard as BoardCardModel,
-	BoardColumn,
-	BoardColumnId,
-	CardSelection,
-} from "@/types";
+import type { BoardCard as BoardCardModel, BoardColumn, BoardColumnId, CardSelection } from "@/types";
 
 function ColumnSection({
 	column,

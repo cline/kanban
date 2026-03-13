@@ -12,9 +12,9 @@ import type {
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract.js";
-import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor.js";
+import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry.js";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
 
@@ -32,9 +32,14 @@ export interface CreateRuntimeStateHubDependencies {
 
 export interface RuntimeStateHub {
 	trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => void;
-	handleUpgrade: (request: IncomingMessage, socket: Parameters<WebSocketServer["handleUpgrade"]>[1], head: Buffer, context: {
-		requestedWorkspaceId: string | null;
-	}) => void;
+	handleUpgrade: (
+		request: IncomingMessage,
+		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
+		head: Buffer,
+		context: {
+			requestedWorkspaceId: string | null;
+		},
+	) => void;
 	disposeWorkspace: (workspaceId: string, options?: DisposeRuntimeStateWorkspaceOptions) => void;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void>;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void>;
@@ -302,7 +307,10 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			let didConnectWorkspaceMonitor = false;
 
 			try {
-				let projectsPayload: { currentProjectId: string | null; projects: RuntimeStateStreamProjectsMessage["projects"] };
+				let projectsPayload: {
+					currentProjectId: string | null;
+					projects: RuntimeStateStreamProjectsMessage["projects"];
+				};
 				let workspaceState: RuntimeStateStreamSnapshotMessage["workspaceState"];
 				let workspaceMetadata: RuntimeStateStreamSnapshotMessage["workspaceMetadata"];
 				if (workspace.workspaceId && workspace.workspacePath) {
@@ -344,7 +352,8 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					return;
 				}
 				if (monitorWorkspaceId) {
-					const workspaceClients = runtimeStateClientsByWorkspaceId.get(monitorWorkspaceId) ?? new Set<WebSocket>();
+					const workspaceClients =
+						runtimeStateClientsByWorkspaceId.get(monitorWorkspaceId) ?? new Set<WebSocket>();
 					workspaceClients.add(client);
 					runtimeStateClientsByWorkspaceId.set(monitorWorkspaceId, workspaceClients);
 					runtimeStateWorkspaceIdByClient.set(client, monitorWorkspaceId);

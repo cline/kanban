@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	splitPromptToTitleDescriptionByWidth,
-	truncateTaskPromptLabel,
-} from "@/utils/task-prompt";
+import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 
 describe("truncateTaskPromptLabel", () => {
 	it("normalizes whitespace and truncates when needed", () => {
@@ -46,4 +43,3 @@ describe("splitPromptToTitleDescriptionByWidth", () => {
 		});
 	});
 });
-

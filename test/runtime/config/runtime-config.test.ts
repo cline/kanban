@@ -192,9 +192,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 	it("does not auto-select when global config file already exists without selected agent", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-existing-");
-		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
-			"kanban-project-runtime-config-existing-",
-		);
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-existing-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-existing-");
 
 		try {
@@ -303,9 +301,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 	});
 
 	it("persists autonomous mode when disabled", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
-			"kanban-home-runtime-config-autonomous-disabled-",
-		);
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-autonomous-disabled-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
 			"kanban-project-runtime-config-autonomous-disabled-",
 		);
