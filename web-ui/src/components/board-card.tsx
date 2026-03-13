@@ -9,19 +9,8 @@ import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { useMeasure } from "@/utils/react-use";
-import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
+import { cmdWordColor, extractMentionTags, splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
-
-/** Accent color for the first command word — teal in review, blue everywhere else */
-function cmdWordColor(columnId: string): string {
-	return columnId === "review" ? "var(--kb-accent-teal)" : "var(--kb-accent-blue)";
-}
-
-/** Extract @mention tokens from a task prompt */
-function extractMentionTags(prompt: string): string[] {
-	const matches = prompt.match(/@\w+/g);
-	return matches ? [...new Set(matches)].slice(0, 3) : [];
-}
 
 interface CardSessionActivity {
 	dotColor: string;
@@ -82,6 +71,28 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		return { dotColor: Colors.BLUE4, text: "Thinking...", status: "executing" };
 	}
 	return null;
+}
+
+/** Renders the card title with accent colour on the first "command word". */
+function CardTitleText({
+	title,
+	columnId,
+	isTrashCard,
+}: {
+	title: string;
+	columnId: string;
+	isTrashCard: boolean;
+}): React.ReactElement {
+	if (isTrashCard) return <>{title}</>;
+	const words = title.split(/\s+/);
+	const cmdWord = words[0] ?? "";
+	const rest = words.length > 1 ? ` ${words.slice(1).join(" ")}` : "";
+	return (
+		<>
+			<span style={{ color: cmdWordColor(columnId) }}>{cmdWord}</span>
+			{rest}
+		</>
+	);
 }
 
 export function BoardCard({
@@ -286,18 +297,20 @@ export function BoardCard({
 											}}
 										/>
 									) : columnId === "review" ? (
-										<Button
-											icon={<Icon icon="trash" size={13} />}
-											intent="primary"
-											variant="minimal"
-											size="small"
-											aria-label="Move task to trash"
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												onMoveToTrash?.(card.id);
-											}}
-										/>
+									<Button
+										icon={<Icon icon="trash" size={13} />}
+										intent="primary"
+										variant="minimal"
+										size="small"
+										loading={isMoveToTrashLoading}
+										disabled={isMoveToTrashLoading}
+										aria-label="Move task to trash"
+										onMouseDown={stopEvent}
+										onClick={(event) => {
+											stopEvent(event);
+											onMoveToTrash?.(card.id);
+										}}
+									/>
 									) : columnId === "trash" ? (
 										<Tooltip
 											placement="bottom"
@@ -322,13 +335,6 @@ export function BoardCard({
 											/>
 										</Tooltip>
 									) : null}
-									{/* Context menu indicator — decorative */}
-									<Icon
-										icon="more"
-										size={12}
-										color="var(--kb-text-meta)"
-										style={{ cursor: "default", flexShrink: 0 }}
-									/>
 								</div>
 							</div>
 
@@ -344,24 +350,16 @@ export function BoardCard({
 										style={{
 											margin: 0,
 											color: isTrashCard
-												? "rgba(100, 120, 145, 0.55)"
+												? "var(--kb-text-trash-primary)"
 												: "var(--kb-text-primary)",
 											textDecoration: isTrashCard ? "line-through" : undefined,
 										}}
 									>
-										{isTrashCard ? (
-											displayPromptSplit.title
-										) : (() => {
-											const words = displayPromptSplit.title.split(/\s+/);
-											const cmdWord = words[0] ?? "";
-											const rest = words.length > 1 ? ` ${words.slice(1).join(" ")}` : "";
-											return (
-												<>
-													<span style={{ color: cmdWordColor(columnId) }}>{cmdWord}</span>
-													{rest}
-												</>
-											);
-										})()}
+										<CardTitleText
+											title={displayPromptSplit.title}
+											columnId={columnId}
+											isTrashCard={isTrashCard}
+										/>
 									</p>
 								</div>
 							</div>
@@ -379,8 +377,8 @@ export function BoardCard({
 										WebkitBoxOrient: "vertical",
 										overflow: "hidden",
 										color: isTrashCard
-											? "rgba(80, 100, 120, 0.45)"
-											: "rgba(140, 170, 200, 0.65)",
+											? "var(--kb-text-trash-muted)"
+											: "var(--kb-text-body-dim)",
 									}}
 								>
 									{displayPromptSplit.description}
@@ -398,12 +396,13 @@ export function BoardCard({
 									}}
 								>
 									<span
+										className={sessionActivity.status === "executing" && !isTrashCard ? "kb-dot-executing" : undefined}
 										style={{
 											display: "inline-block",
 											width: 6,
 											height: 6,
 											borderRadius: "50%",
-											backgroundColor: isTrashCard ? "rgba(80,100,120,0.4)" : sessionActivity.dotColor,
+											backgroundColor: isTrashCard ? "var(--kb-text-trash-faint)" : sessionActivity.dotColor,
 											flexShrink: 0,
 											marginTop: 5,
 										}}
@@ -415,8 +414,8 @@ export function BoardCard({
 											whiteSpace: "normal",
 											overflowWrap: "anywhere",
 											color: isTrashCard
-												? "rgba(80, 100, 120, 0.45)"
-												: "rgba(140, 175, 215, 0.70)",
+												? "var(--kb-text-trash-muted)"
+												: "var(--kb-text-activity)",
 										}}
 									>
 										{sessionActivity.text}
@@ -434,13 +433,13 @@ export function BoardCard({
 										lineHeight: 1.4,
 										whiteSpace: "normal",
 										overflowWrap: "anywhere",
-										color: isTrashCard ? "rgba(80,100,120,0.45)" : undefined,
+										color: isTrashCard ? "var(--kb-text-trash-muted)" : undefined,
 									}}
 								>
 									{isTrashCard ? (
 										<span
 											style={{
-												color: "rgba(80, 100, 120, 0.45)",
+												color: "var(--kb-text-trash-muted)",
 												textDecoration: "line-through",
 											}}
 										>
@@ -482,8 +481,8 @@ export function BoardCard({
 												fontSize: "var(--kb-font-size-label)",
 												fontFamily: "var(--kb-font-mono)",
 												letterSpacing: "0.06em",
-												backgroundColor: "rgba(59, 141, 241, 0.08)",
-												border: "1px solid rgba(59, 141, 241, 0.25)",
+												backgroundColor: "var(--kb-accent-blue-dim)",
+												border: "1px solid var(--kb-accent-blue-glow)",
 												color: "var(--kb-accent-blue)",
 												padding: "1px 6px",
 											}}

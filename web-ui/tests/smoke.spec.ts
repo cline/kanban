@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
-const PROJECT_PATH = "/Users/jose/Documents/GitHub/kanban";
+// Resolve from env so CI runners can override; falls back to cwd() which is the repo root locally.
+const PROJECT_PATH = process.env.TEST_PROJECT_PATH ?? process.cwd();
 
 /**
  * Ensure the kanban project exists and is selected, making the board visible.

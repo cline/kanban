@@ -278,7 +278,7 @@ function ProjectRow({
 			id: "in_progress",
 			title: "In Progress",
 			shortLabel: "IP",
-			intent: Intent.PRIMARY,
+			intent: Intent.WARNING,
 			count: project.taskCounts.in_progress,
 		},
 		{
@@ -341,7 +341,7 @@ function ProjectRow({
 				>
 					{displayPath}
 				</div>
-				{taskCountBadges.length > 0 && !isCurrent ? (
+				{taskCountBadges.length > 0 ? (
 					<div style={{ display: "flex", gap: 4, marginTop: 4 }}>
 						{taskCountBadges.map((badge) => (
 							<CompoundTag

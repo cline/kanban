@@ -57,10 +57,17 @@
 	--kb-text-label: #3b6fa0;
 	--kb-text-meta: rgba(100, 140, 180, 0.5);
 	--kb-text-accent: var(--kb-accent-blue);
+	--kb-text-body-dim: rgba(140, 170, 200, 0.65);
+	--kb-text-activity: rgba(140, 175, 215, 0.70);
+
+	/* Trash-card dimmed text states */
+	--kb-text-trash-primary: rgba(100, 120, 145, 0.55);
+	--kb-text-trash-muted: rgba(80, 100, 120, 0.45);
+	--kb-text-trash-faint: rgba(80, 100, 120, 0.40);
 
 	/* Typography */
 	--kb-font-mono: var(--bp-font-family-monospace);
-	--kb-font-size-label: 9px;
+	--kb-font-size-label: var(--bp-typography-size-body-x-small); /* 10px — Blueprint's smallest defined size */
 	--kb-font-size-meta: var(--bp-typography-size-body-x-small);
 	--kb-font-size-body: var(--bp-typography-size-body-small);
 
@@ -95,23 +102,6 @@ body,
 /* Override Blueprint's default dark bg to match our deeper navy */
 .bp6-dark {
 	background-color: var(--kb-surface-app);
-}
-
-/* Blueprint navbar override */
-.bp6-navbar {
-	background-color: var(--kb-surface-nav) !important;
-}
-
-/* Blueprint card override for the dark-system look */
-.bp6-dark .bp6-card {
-	background-color: var(--kb-surface-card);
-	box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--kb-border-default);
-}
-
-.bp6-dark .bp6-card.bp6-interactive:hover {
-	background-color: var(--kb-surface-card-hover);
-	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6), inset 0 0 0 1px var(--kb-border-active);
-	cursor: pointer;
 }
 
 /* Scrollbar styling — system terminal feel */
@@ -179,6 +169,17 @@ body,
 	z-index: 2;
 }
 
+/* Scoped card theming — only affects board cards, not dialogs/panels/other surfaces */
+.kb-board-card-shell .bp6-card {
+	background-color: var(--kb-surface-card);
+	box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--kb-border-default);
+}
+
+.kb-board-card-shell .bp6-card.bp6-interactive:hover {
+	background-color: var(--kb-surface-card-hover);
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6), inset 0 0 0 1px var(--kb-border-active);
+}
+
 .kb-board-card-shell .bp6-card.bp6-interactive.bp6-selected:active {
 	box-shadow: 0 0 0 2px var(--kb-accent-blue-glow), 0 0 0 1px var(--kb-accent-blue), inset 0 0 0 1px var(--kb-accent-blue);
 }
@@ -229,6 +230,19 @@ body,
 	font-size: var(--bp-typography-size-body-small);
 	font-weight: 600;
 	letter-spacing: 0.02em;
+}
+
+/* ============================================================
+   ACTIVITY DOT ANIMATION
+   ============================================================ */
+
+@keyframes kb-pulse {
+	0%, 100% { opacity: 1; }
+	50%       { opacity: 0.35; }
+}
+
+.kb-dot-executing {
+	animation: kb-pulse 1.8s ease-in-out infinite;
 }
 
 /* ============================================================

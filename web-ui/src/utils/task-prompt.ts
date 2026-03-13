@@ -86,3 +86,17 @@ export function splitPromptToTitleDescriptionByWidth(
 		description: split.overflow,
 	};
 }
+
+/** Extract unique @mention tokens from a task prompt (max 3). */
+export function extractMentionTags(prompt: string): string[] {
+	const matches = prompt.match(/@\w+/g);
+	return matches ? [...new Set(matches)].slice(0, 3) : [];
+}
+
+/**
+ * Accent color for the first "command word" in a task title.
+ * Review column gets teal to match its column accent; everything else gets blue.
+ */
+export function cmdWordColor(columnId: string): string {
+	return columnId === "review" ? "var(--kb-accent-teal)" : "var(--kb-accent-blue)";
+}

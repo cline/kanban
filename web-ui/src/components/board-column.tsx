@@ -158,15 +158,19 @@ export function BoardColumn({
 					{(cardProvided) => (
 						<div ref={cardProvided.innerRef} {...cardProvided.droppableProps} className="kb-column-cards">
 							{canCreate && !inlineTaskCreator ? (
-								<button
-									type="button"
+								<Button
 									className="kb-create-task-trigger"
+									fill
+									variant="minimal"
 									onClick={onCreateTask}
-								>
-									<span style={{ color: "var(--kb-accent-blue)", fontWeight: 600 }}>+</span>
-									<span>Create task</span>
-									<span aria-hidden style={{ opacity: 0.45, fontSize: "var(--bp-typography-size-body-small)" }}>(c)</span>
-								</button>
+									text={
+										<>
+											<span style={{ color: "var(--kb-accent-blue)", fontWeight: 600 }}>+</span>
+											<span>Create task</span>
+											<span aria-hidden style={{ opacity: 0.45, fontSize: "var(--bp-typography-size-body-small)" }}>(c)</span>
+										</>
+									}
+								/>
 							) : null}
 							{inlineTaskCreator}
 

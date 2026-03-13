@@ -22,10 +22,3 @@ export const columnLightColors: Record<string, string> = {
 // All columns share the same body background (slightly darker than app surface)
 export const columnBgColor = "var(--kb-surface-col-bg)";
 
-// Path-style column labels for the sys aesthetic
-export const columnPathLabels: Record<string, string> = {
-	backlog: "~/root/pending",
-	in_progress: "~/root/active",
-	review: "~/root/stable",
-	trash: "~/root/archives",
-};

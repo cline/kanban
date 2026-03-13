@@ -49,6 +49,8 @@ vi.mock("@/utils/task-prompt", () => ({
 		title: prompt,
 		description: "",
 	}),
+	extractMentionTags: () => [],
+	cmdWordColor: () => "var(--kb-accent-blue)",
 }));
 
 function createCard(overrides?: Partial<Parameters<typeof BoardCard>[0]["card"]>) {
