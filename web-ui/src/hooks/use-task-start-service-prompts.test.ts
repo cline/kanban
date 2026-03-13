@@ -4,9 +4,11 @@ import {
 	buildTaskStartServicePromptContent,
 	collectPendingTaskStartServicePrompts,
 	detectTaskStartServicePromptIds,
+	getStartableBacklogTaskIds,
 	getTaskStartServicePromptKey,
 	isTaskStartServicePromptAlreadyConfigured,
 } from "@/hooks/use-task-start-service-prompts";
+import type { BoardCard, BoardData, BoardDependency } from "@/types";
 
 describe("detectTaskStartServicePromptIds", () => {
 	it("detects linear links", () => {
@@ -186,5 +188,129 @@ describe("collectPendingTaskStartServicePrompts", () => {
 				isPromptDoNotShowAgainEnabled: () => false,
 			}),
 		).toEqual([]);
+	});
+});
+
+describe("getStartableBacklogTaskIds", () => {
+	function createCard(id: string, prompt = "Do something"): BoardCard {
+		return {
+			id,
+			prompt,
+			startInPlanMode: false,
+			autoReviewEnabled: false,
+			autoReviewMode: "commit",
+			baseRef: "main",
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		};
+	}
+
+	function createBoard({
+		backlogCards,
+		dependencies = [],
+		inProgressCards = [],
+	}: {
+		backlogCards: BoardCard[];
+		dependencies?: BoardDependency[];
+		inProgressCards?: BoardCard[];
+	}): BoardData {
+		return {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: backlogCards },
+				{ id: "in_progress", title: "In Progress", cards: inProgressCards },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [] },
+			],
+			dependencies,
+		};
+	}
+
+	it("returns all backlog task ids when there are no dependencies", () => {
+		const board = createBoard({ backlogCards: [createCard("task-1"), createCard("task-2"), createCard("task-3")] });
+		expect(getStartableBacklogTaskIds(board)).toEqual(["task-1", "task-2", "task-3"]);
+	});
+
+	it("returns empty array when backlog is empty", () => {
+		const board = createBoard({ backlogCards: [] });
+		expect(getStartableBacklogTaskIds(board)).toEqual([]);
+	});
+
+	it("excludes a parent task whose child is also in the backlog", () => {
+		// A → B means A is parent, B is child. Child B should run first, so A is excluded.
+		const board = createBoard({
+			backlogCards: [createCard("task-a"), createCard("task-b")],
+			dependencies: [{ id: "dep-1", fromTaskId: "task-a", toTaskId: "task-b", createdAt: 1 }],
+		});
+		expect(getStartableBacklogTaskIds(board)).toEqual(["task-b"]);
+	});
+
+	it("excludes a parent task whose child is in progress", () => {
+		// A → B, B is in progress. A should wait for B to finish, so A is excluded.
+		const board = createBoard({
+			backlogCards: [createCard("task-a")],
+			dependencies: [{ id: "dep-1", fromTaskId: "task-a", toTaskId: "task-b", createdAt: 1 }],
+			inProgressCards: [createCard("task-b")],
+		});
+		expect(getStartableBacklogTaskIds(board)).toEqual([]);
+	});
+
+	it("includes a parent task whose child is in review (neither backlog nor in_progress)", () => {
+		// A → B, B is in review. Child is done, so parent A can start.
+		const board: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [createCard("task-a")] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [createCard("task-b")] },
+				{ id: "trash", title: "Trash", cards: [] },
+			],
+			dependencies: [{ id: "dep-1", fromTaskId: "task-a", toTaskId: "task-b", createdAt: 1 }],
+		};
+		expect(getStartableBacklogTaskIds(board)).toEqual(["task-a"]);
+	});
+
+	it("only starts the leaf of a chain when all tasks are in the backlog (A → B → C)", () => {
+		// A → B → C: C is the leaf child, should run first. A and B are excluded.
+		const board = createBoard({
+			backlogCards: [createCard("task-a"), createCard("task-b"), createCard("task-c")],
+			dependencies: [
+				{ id: "dep-1", fromTaskId: "task-a", toTaskId: "task-b", createdAt: 1 },
+				{ id: "dep-2", fromTaskId: "task-b", toTaskId: "task-c", createdAt: 2 },
+			],
+		});
+		expect(getStartableBacklogTaskIds(board)).toEqual(["task-c"]);
+	});
+
+	it("starts multiple independent leaf children while excluding their parents", () => {
+		const board = createBoard({
+			backlogCards: [createCard("parent-1"), createCard("child-1"), createCard("parent-2"), createCard("child-2")],
+			dependencies: [
+				{ id: "dep-1", fromTaskId: "parent-1", toTaskId: "child-1", createdAt: 1 },
+				{ id: "dep-2", fromTaskId: "parent-2", toTaskId: "child-2", createdAt: 2 },
+			],
+		});
+		expect(getStartableBacklogTaskIds(board)).toEqual(["child-1", "child-2"]);
+	});
+
+	it("excludes both parents in a diamond where two parents share a child in the backlog", () => {
+		// task-a → task-c, task-b → task-c: both parents have a child in backlog, so both are excluded
+		const board = createBoard({
+			backlogCards: [createCard("task-a"), createCard("task-b"), createCard("task-c")],
+			dependencies: [
+				{ id: "dep-1", fromTaskId: "task-a", toTaskId: "task-c", createdAt: 1 },
+				{ id: "dep-2", fromTaskId: "task-b", toTaskId: "task-c", createdAt: 2 },
+			],
+		});
+		const result = getStartableBacklogTaskIds(board);
+		expect(result).not.toContain("task-a");
+		expect(result).not.toContain("task-b");
+		expect(result).toContain("task-c");
+	});
+
+	it("includes a task whose dependency points to a non-existent child", () => {
+		const board = createBoard({
+			backlogCards: [createCard("task-a")],
+			dependencies: [{ id: "dep-1", fromTaskId: "task-a", toTaskId: "ghost", createdAt: 1 }],
+		});
+		expect(getStartableBacklogTaskIds(board)).toEqual(["task-a"]);
 	});
 });
