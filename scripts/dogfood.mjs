@@ -118,7 +118,7 @@ async function main() {
 	}
 
 	const cliEntrypoint = resolve(repoRoot, "dist/cli.js");
-	const launchArgs = [cliEntrypoint, "--port", args.port];
+	const launchArgs = [cliEntrypoint, "--port", args.port, "--skip-shutdown-cleanup"];
 	if (args.noOpen) {
 		launchArgs.push("--no-open");
 	}

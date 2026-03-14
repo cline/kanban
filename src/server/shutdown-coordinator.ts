@@ -10,6 +10,7 @@ export interface RuntimeShutdownCoordinatorDependencies {
 	workspaceRegistry: Pick<WorkspaceRegistry, "listManagedWorkspaces">;
 	warn: (message: string) => void;
 	closeRuntimeServer: () => Promise<void>;
+	skipSessionCleanup?: boolean;
 }
 
 function moveTaskToTrash(
@@ -136,6 +137,11 @@ function collectShutdownInterruptedTaskIds(
 }
 
 export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDependencies): Promise<void> {
+	if (deps.skipSessionCleanup) {
+		await deps.closeRuntimeServer();
+		return;
+	}
+
 	const interruptedByWorkspace: Array<{
 		workspacePath: string;
 		terminalManager: TerminalSessionManager;

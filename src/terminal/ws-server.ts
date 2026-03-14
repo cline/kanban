@@ -126,6 +126,7 @@ export function createTerminalWebSocketBridge({
 	ioServer.on("connection", (ws: WebSocket, context: unknown) => {
 		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
+		terminalManager.recoverStaleSession(taskId);
 		let detachListener: (() => void) | null = null;
 		let pendingOutputChunks: Buffer[] = [];
 		let outputFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -256,6 +257,7 @@ export function createTerminalWebSocketBridge({
 	controlServer.on("connection", (ws: WebSocket, context: unknown) => {
 		const taskId = (context as TerminalWebSocketConnectionContext).taskId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
+		terminalManager.recoverStaleSession(taskId);
 		let detachListener: (() => void) | null = null;
 
 		detachListener = terminalManager.attach(taskId, {

@@ -229,13 +229,18 @@ async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): P
 	});
 }
 
-async function startKanbanServer(input: { cwd: string; homeDir: string; port: number }): Promise<{
+async function startKanbanServer(input: {
+	cwd: string;
+	homeDir: string;
+	port: number;
+	extraArgs?: string[];
+}): Promise<{
 	runtimeUrl: string;
 	stop: () => Promise<void>;
 }> {
 	const tsxEntrypoint = resolveTsxCliEntrypoint();
 	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
-	const child = spawn(process.execPath, [tsxEntrypoint, cliEntrypoint, "--no-open"], {
+	const child = spawn(process.execPath, [tsxEntrypoint, cliEntrypoint, "--no-open", ...(input.extraArgs ?? [])], {
 		cwd: input.cwd,
 		env: createGitTestEnv({
 			HOME: input.homeDir,
@@ -1247,6 +1252,128 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceInfo.payload.exists).toBe(false);
 		} finally {
 			await thirdServer.stop();
+			cleanupProject();
+			cleanupHome();
+		}
+	}, 45_000);
+
+	it("skips stale session shutdown cleanup when --skip-shutdown-cleanup is enabled", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-skip-cleanup-flag-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-skip-cleanup-flag-");
+
+		mkdirSync(projectPath, { recursive: true });
+		initGitRepository(projectPath);
+
+		const taskId = "skip-cleanup-flag-review-task";
+		const taskTitle = "Keep review task when cleanup flag is enabled";
+		const now = Date.now();
+
+		const firstPort = await getAvailablePort();
+		const firstServer = await startKanbanServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: firstPort,
+			extraArgs: ["--skip-shutdown-cleanup"],
+		});
+
+		try {
+			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const currentState = await requestJson<RuntimeWorkspaceStateResponse>({
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.getState",
+				type: "query",
+				workspaceId,
+			});
+			expect(currentState.status).toBe(200);
+
+			const seedResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.saveState",
+				type: "mutation",
+				workspaceId,
+				payload: {
+					board: createReviewBoard(taskId, taskTitle),
+					sessions: {
+						[taskId]: {
+							taskId,
+							state: "awaiting_review",
+							agentId: "codex",
+							workspacePath: projectPath,
+							pid: null,
+							startedAt: now - 2_000,
+							updatedAt: now,
+							lastOutputAt: now,
+							reviewReason: "hook",
+							exitCode: null,
+							lastHookAt: null,
+							latestHookActivity: null,
+						},
+					},
+					expectedRevision: currentState.payload.revision,
+				},
+			});
+			expect(seedResponse.status).toBe(200);
+
+			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.getTaskContext",
+				type: "query",
+				workspaceId,
+				payload: {
+					taskId,
+					baseRef: "HEAD",
+				},
+			});
+			expect(taskWorkspaceInfo.status).toBe(200);
+			mkdirSync(taskWorkspaceInfo.payload.path, { recursive: true });
+		} finally {
+			await firstServer.stop();
+		}
+
+		const secondPort = await getAvailablePort();
+		const secondServer = await startKanbanServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: secondPort,
+		});
+
+		try {
+			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
+				baseUrl: `http://127.0.0.1:${secondPort}`,
+				procedure: "workspace.getState",
+				type: "query",
+				workspaceId,
+			});
+			expect(finalState.status).toBe(200);
+
+			const reviewCards = finalState.payload.board.columns.find((column) => column.id === "review")?.cards ?? [];
+			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
+			expect(reviewCards.some((card) => card.id === taskId)).toBe(true);
+			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
+			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
+			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("hook");
+
+			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+				baseUrl: `http://127.0.0.1:${secondPort}`,
+				procedure: "workspace.getTaskContext",
+				type: "query",
+				workspaceId,
+				payload: {
+					taskId,
+					baseRef: "HEAD",
+				},
+			});
+			expect(workspaceInfo.status).toBe(200);
+			expect(workspaceInfo.payload.exists).toBe(true);
+		} finally {
+			await secondServer.stop();
 			cleanupProject();
 			cleanupHome();
 		}

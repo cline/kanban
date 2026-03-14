@@ -599,6 +599,37 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return cloneSummary(entry.summary);
 	}
 
+	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+		if (entry.active || !isActiveState(entry.summary.state)) {
+			return cloneSummary(entry.summary);
+		}
+
+		const summary = updateSummary(entry, {
+			state: "idle",
+			agentId: null,
+			workspacePath: null,
+			pid: null,
+			startedAt: null,
+			lastOutputAt: null,
+			reviewReason: null,
+			exitCode: null,
+			lastHookAt: null,
+			latestHookActivity: null,
+			latestTurnCheckpoint: null,
+			previousTurnCheckpoint: null,
+		});
+
+		for (const listener of entry.listeners.values()) {
+			listener.onState?.(cloneSummary(summary));
+		}
+		this.emitSummary(summary);
+		return cloneSummary(summary);
+	}
+
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {

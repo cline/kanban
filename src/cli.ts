@@ -34,6 +34,7 @@ import { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown } from "./update/au
 
 interface CliOptions {
 	noOpen: boolean;
+	skipShutdownCleanup: boolean;
 	agent: RuntimeAgentId | null;
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
 }
@@ -75,6 +76,7 @@ interface RootCommandOptions {
 	agent?: RuntimeAgentId;
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
+	skipShutdownCleanup?: boolean;
 }
 
 async function isPortAvailable(port: number): Promise<boolean> {
@@ -298,7 +300,11 @@ async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCo
 	});
 }
 
-async function startServer(): Promise<{ url: string; close: () => Promise<void>; shutdown: () => Promise<void> }> {
+async function startServer(): Promise<{
+	url: string;
+	close: () => Promise<void>;
+	shutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
+}> {
 	let runtimeStateHub: ReturnType<typeof createRuntimeStateHub> | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
@@ -351,13 +357,14 @@ async function startServer(): Promise<{ url: string; close: () => Promise<void>;
 		await runtimeServer.close();
 	};
 
-	const shutdown = async () => {
+	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
 		await shutdownRuntimeServer({
 			workspaceRegistry,
 			warn: (message) => {
 				console.warn(`[kanban] ${message}`);
 			},
 			closeRuntimeServer: close,
+			skipSessionCleanup: options?.skipSessionCleanup ?? false,
 		});
 	};
 
@@ -457,7 +464,12 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 		}, 3000);
 		forceExitTimer.unref();
 		try {
-			await runtime.shutdown();
+			if (options.skipShutdownCleanup) {
+				console.warn("Skipping shutdown task cleanup for this instance.");
+			}
+			await runtime.shutdown({
+				skipSessionCleanup: options.skipShutdownCleanup,
+			});
 			clearTimeout(forceExitTimer);
 			process.exit(130);
 		} catch (error) {
@@ -484,6 +496,7 @@ function createProgram(): Command {
 		.option("--agent <id>", `Default agent ID (${CLI_AGENT_IDS.join(", ")}).`, parseCliAgentId)
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
+		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}\nAgent IDs: ${CLI_AGENT_IDS.join(", ")}`);
 
@@ -502,6 +515,7 @@ function createProgram(): Command {
 			agent: options.agent ?? null,
 			port: options.port ?? null,
 			noOpen: options.open === false,
+			skipShutdownCleanup: options.skipShutdownCleanup === true,
 		});
 	});
 

@@ -8,6 +8,7 @@ export interface TerminalSessionListener {
 
 export interface TerminalSessionService {
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null;
+	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null;
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null;
 	resize(taskId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): boolean;
 	pauseOutput(taskId: string): boolean;
