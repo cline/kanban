@@ -1,9 +1,10 @@
-import { Button, Classes, Colors, Icon } from "@blueprintjs/core";
 import { Droppable } from "@hello-pangea/dnd";
+import { Play, Plus, Trash2 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 import { BoardCard } from "@/components/board-card";
-import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/data/column-colors";
+import { Button } from "@/components/ui/button";
+import { ColumnIndicator } from "@/components/ui/column-indicator";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { isCardDropDisabled, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import type { BoardCard as BoardCardModel, BoardColumnId, BoardColumn as BoardColumnModel } from "@/types";
@@ -65,8 +66,6 @@ export function BoardColumn({
 	dependencyTargetTaskId?: string | null;
 	isDependencyLinking?: boolean;
 }): React.ReactElement {
-	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
-	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -76,9 +75,9 @@ export function BoardColumn({
 		programmaticCardMoveInFlight,
 	});
 	const createTaskButtonText = (
-		<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+		<span className="inline-flex items-center gap-1.5">
 			<span>Create task</span>
-			<span aria-hidden className={Classes.TEXT_MUTED}>
+			<span aria-hidden className="text-text-secondary">
 				(c)
 			</span>
 		</span>
@@ -87,37 +86,33 @@ export function BoardColumn({
 	return (
 		<section
 			data-column-id={column.id}
+			className="flex flex-col min-w-0 min-h-0 bg-surface-1 rounded-lg overflow-hidden"
 			style={{
-				display: "flex",
 				flex: "1 1 0",
-				flexDirection: "column",
-				minWidth: 0,
-				minHeight: 0,
-				background: Colors.DARK_GRAY1,
-				borderRight: `1px solid ${panelSeparatorColor}`,
 			}}
 		>
-			<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minHeight: 0 }}>
+			<div className="flex flex-col min-h-0" style={{ flex: "1 1 0" }}>
 				<div
+					className="flex items-center justify-between"
 					style={{
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "space-between",
 						height: 40,
 						padding: "0 12px",
-						background: accentColor,
-						borderBottom: `1px solid ${Colors.DARK_GRAY5}`,
 					}}
 				>
-					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-						<span style={{ fontWeight: 600 }}>{column.title}</span>
-						<span style={{ color: lightColor }}>{column.cards.length}</span>
+					<div className="flex items-center gap-2">
+						<ColumnIndicator columnId={column.id} />
+						<span className="font-semibold text-sm">
+							{column.title}
+						</span>
+						<span className="text-text-secondary text-xs">
+							{column.cards.length}
+						</span>
 					</div>
 					{canStartAllTasks ? (
 						<Button
-							icon={<Icon icon="play" color={column.cards.length > 0 ? Colors.GRAY4 : Colors.GRAY3} />}
-							variant="minimal"
-							size="small"
+							icon={<Play size={14} />}
+							variant="ghost"
+							size="sm"
 							onClick={onStartAllTasks}
 							disabled={column.cards.length === 0}
 							aria-label="Start all backlog tasks"
@@ -126,10 +121,10 @@ export function BoardColumn({
 					) : null}
 					{canClearTrash ? (
 						<Button
-							icon="trash"
-							variant="minimal"
-							size="small"
-							intent="danger"
+							icon={<Trash2 size={14} />}
+							variant="ghost"
+							size="sm"
+							className="text-status-red hover:text-status-red"
 							onClick={onClearTrash}
 							disabled={column.cards.length === 0}
 							aria-label="Clear trash"
@@ -143,13 +138,14 @@ export function BoardColumn({
 						<div ref={cardProvided.innerRef} {...cardProvided.droppableProps} className="kb-column-cards">
 							{canCreate && !inlineTaskCreator ? (
 								<Button
-									icon="plus"
-									text={createTaskButtonText}
+									icon={<Plus size={14} />}
 									aria-label="Create task"
 									fill
 									onClick={onCreateTask}
-									style={{ marginBottom: 8, flexShrink: 0 }}
-								/>
+									style={{ marginBottom: 6, flexShrink: 0 }}
+								>
+									{createTaskButtonText}
+								</Button>
 							) : null}
 							{inlineTaskCreator}
 
@@ -163,7 +159,7 @@ export function BoardColumn({
 												key={card.id}
 												data-task-id={card.id}
 												data-column-id={column.id}
-												style={{ marginBottom: 8 }}
+												style={{ marginBottom: 6 }}
 											>
 												{inlineTaskEditor}
 											</div>,
@@ -212,3 +208,4 @@ export function BoardColumn({
 		</section>
 	);
 }
+

@@ -1,4 +1,4 @@
-import { Icon } from "@blueprintjs/core";
+import { X } from "lucide-react";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -952,7 +952,7 @@ export function DependencyOverlay({
 					className="kb-dependency-delete-control"
 					style={{ left: hoveredDependency.midpointX, top: hoveredDependency.midpointY }}
 				>
-					<Icon icon="cross" size={10} color="var(--bp-palette-light-gray-5)" />
+					<X size={10} color="var(--color-text-primary)" />
 				</div>
 			) : null}
 		</>

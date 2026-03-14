@@ -1,69 +1,22 @@
-import type { ButtonProps } from "@blueprintjs/core";
-import { Button, Icon, MenuItem } from "@blueprintjs/core";
-import type { ItemListPredicate, ItemRenderer } from "@blueprintjs/select";
-import { Select } from "@blueprintjs/select";
+import * as RadixPopover from "@radix-ui/react-popover";
 import { Fzf } from "fzf";
-import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { Check, ChevronDown, GitBranch } from "lucide-react";
+import type { CSSProperties, KeyboardEvent, ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 
 export interface BranchSelectOption {
 	value: string;
 	label: string;
 }
 
-const BranchSelect = Select.ofType<BranchSelectOption>();
 const MATCHED_TEXT_STYLE = {
-	color: "var(--bp-typography-color-primary-rest)",
+	color: "var(--color-text-primary)",
 	fontWeight: 600,
 } as const;
-
-function renderHighlightedText(value: string, positions: Set<number> | undefined): ReactNode {
-	if (!positions || positions.size === 0) {
-		return value;
-	}
-
-	const fragments: ReactNode[] = [];
-	let currentText = "";
-	let currentIsMatch: boolean | null = null;
-	for (let index = 0; index < value.length; index += 1) {
-		const character = value[index];
-		if (character == null) {
-			continue;
-		}
-		const isMatch = positions.has(index);
-		if (currentIsMatch === null) {
-			currentText = character;
-			currentIsMatch = isMatch;
-			continue;
-		}
-		if (isMatch === currentIsMatch) {
-			currentText += character;
-			continue;
-		}
-		fragments.push(
-			<span
-				key={`${index}:${currentIsMatch ? "match" : "plain"}`}
-				style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}
-			>
-				{currentText}
-			</span>,
-		);
-		currentText = character;
-		currentIsMatch = isMatch;
-	}
-
-	if (currentIsMatch === null) {
-		return value;
-	}
-
-	fragments.push(
-		<span key="end" style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}>
-			{currentText}
-		</span>,
-	);
-
-	return fragments;
-}
 
 export function BranchSelectDropdown({
 	options,
@@ -91,7 +44,7 @@ export function BranchSelectDropdown({
 	id?: string;
 	disabled?: boolean;
 	fill?: boolean;
-	size?: ButtonProps["size"];
+	size?: "sm" | "md";
 	buttonText?: string;
 	buttonClassName?: string;
 	buttonStyle?: CSSProperties;
@@ -106,6 +59,9 @@ export function BranchSelectDropdown({
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState("");
+	const [activeOptionIndex, setActiveOptionIndex] = useState(0);
+	const inputRef = useRef<HTMLInputElement | null>(null);
+	const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const orderedOptions = useMemo(() => {
 		const items = options.slice();
 		if (!selectedValue) {
@@ -139,81 +95,181 @@ export function BranchSelectDropdown({
 		() => new Map(fuzzyMatches.map((match) => [match.item.value, match])),
 		[fuzzyMatches],
 	);
-	const filterBranchList = useMemo((): ItemListPredicate<BranchSelectOption> => {
-		return (_nextQuery, items) => {
-			if (!query.trim()) {
-				return items;
-			}
-			return fuzzyMatches.map((entry) => entry.item);
-		};
-	}, [fuzzyMatches, query]);
+	const filteredItems = useMemo(() => {
+		if (!query.trim()) {
+			return orderedOptions;
+		}
+		return fuzzyMatches.map((entry) => entry.item);
+	}, [fuzzyMatches, orderedOptions, query]);
 	const resolvedButtonText = buttonText ?? selectedOption?.label ?? emptyText;
-	const renderBranchOption = useMemo((): ItemRenderer<BranchSelectOption> => {
-		return (option, { handleClick, handleFocus, modifiers }) => {
-			if (!modifiers.matchesPredicate) {
-				return null;
+
+	const handleOpenChange = useCallback(
+		(nextOpen: boolean) => {
+			setIsOpen(nextOpen);
+			setQuery("");
+			if (!nextOpen) {
+				setActiveOptionIndex(0);
 			}
-			const match = fuzzyMatchesByValue.get(option.value);
-			return (
-				<MenuItem
-					key={option.value}
-					active={modifiers.active}
-					disabled={modifiers.disabled}
-					text={renderHighlightedText(option.label, match?.positions)}
-					onClick={handleClick}
-					onFocus={handleFocus}
-					roleStructure="listoption"
-					style={{ paddingLeft: 8, paddingRight: 8 }}
-					labelElement={
-						showSelectedIndicator && option.value === selectedValue ? <Icon icon="small-tick" /> : undefined
-					}
-				/>
-			);
-		};
-	}, [fuzzyMatchesByValue, selectedValue, showSelectedIndicator]);
+			onPopoverOpenChange?.(nextOpen);
+		},
+		[onPopoverOpenChange],
+	);
+
+	useEffect(() => {
+		if (filteredItems.length === 0) {
+			setActiveOptionIndex(0);
+			return;
+		}
+		setActiveOptionIndex((currentIndex) => {
+			if (currentIndex >= 0 && currentIndex < filteredItems.length) {
+				return currentIndex;
+			}
+			if (!selectedValue) {
+				return 0;
+			}
+			const selectedIndex = filteredItems.findIndex((option) => option.value === selectedValue);
+			return selectedIndex >= 0 ? selectedIndex : 0;
+		});
+	}, [filteredItems, selectedValue]);
+
+	useEffect(() => {
+		if (!isOpen) {
+			return;
+		}
+		const optionElement = optionRefs.current[activeOptionIndex] ?? null;
+		optionElement?.scrollIntoView({ block: "nearest" });
+	}, [activeOptionIndex, isOpen]);
+
+	useEffect(() => {
+		if (isOpen) {
+			window.requestAnimationFrame(() => {
+				inputRef.current?.focus();
+			});
+		}
+	}, [isOpen]);
+
+	const handleSearchInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+		if (filteredItems.length === 0) {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				handleOpenChange(false);
+			}
+			return;
+		}
+
+		if (event.key === "ArrowDown") {
+			event.preventDefault();
+			setActiveOptionIndex((currentIndex) => Math.min(currentIndex + 1, filteredItems.length - 1));
+			return;
+		}
+
+		if (event.key === "ArrowUp") {
+			event.preventDefault();
+			setActiveOptionIndex((currentIndex) => Math.max(currentIndex - 1, 0));
+			return;
+		}
+
+		if (event.key === "Home") {
+			event.preventDefault();
+			setActiveOptionIndex(0);
+			return;
+		}
+
+		if (event.key === "End") {
+			event.preventDefault();
+			setActiveOptionIndex(filteredItems.length - 1);
+			return;
+		}
+
+		if (event.key === "Enter") {
+			event.preventDefault();
+			const option = filteredItems[activeOptionIndex];
+			if (!option) {
+				return;
+			}
+			onSelect(option.value);
+			handleOpenChange(false);
+			return;
+		}
+
+		if (event.key === "Escape") {
+			event.preventDefault();
+			handleOpenChange(false);
+		}
+	};
+
+	const resolvedIconSize = typeof iconSize === "number" ? iconSize : 14;
 
 	return (
-		<BranchSelect
-			items={orderedOptions}
-			itemRenderer={renderBranchOption}
-			itemListPredicate={filterBranchList}
-			query={query}
-			onQueryChange={setQuery}
-			onItemSelect={(option) => onSelect(option.value)}
-			popoverProps={{
-				matchTargetWidth,
-				minimal: true,
-				onOpening: () => {
-					setIsOpen(true);
-					setQuery("");
-					onPopoverOpenChange?.(true);
-				},
-				onClosing: () => {
-					setIsOpen(false);
-					setQuery("");
-					onPopoverOpenChange?.(false);
-				},
-			}}
-			popoverContentProps={dropdownStyle ? { style: dropdownStyle } : undefined}
-			menuProps={menuStyle ? { style: menuStyle } : undefined}
-			inputProps={{ size: "small" }}
-			resetOnClose
-			noResults={<MenuItem disabled text={noResultsText} roleStructure="listoption" />}
-		>
-			<Button
-				id={id}
-				size={size}
-				variant="outlined"
-				alignText="left"
-				fill={fill}
-				icon={typeof iconSize === "number" ? <Icon icon="git-branch" size={iconSize} /> : "git-branch"}
-				endIcon="caret-down"
-				text={resolvedButtonText}
-				active={isOpen}
-				disabled={disabled}
-				className={buttonClassName}
-				style={buttonStyle}
-			/>
-		</BranchSelect>
+		<RadixPopover.Root open={isOpen} onOpenChange={handleOpenChange}>
+			<RadixPopover.Trigger asChild>
+				<Button
+					id={id}
+					size={size}
+					variant="default"
+					fill={fill}
+					icon={<GitBranch size={resolvedIconSize} />}
+					iconRight={<ChevronDown size={14} />}
+					disabled={disabled}
+					className={cn(fill && "justify-between text-left", buttonClassName)}
+					style={buttonStyle}
+				>
+					<span className="flex-1 truncate text-left">{resolvedButtonText}</span>
+				</Button>
+			</RadixPopover.Trigger>
+			<RadixPopover.Portal>
+				<RadixPopover.Content
+					className="z-50 max-h-[300px] rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
+					style={{
+						width: matchTargetWidth ? "var(--radix-popover-trigger-width)" : undefined,
+						...dropdownStyle,
+					}}
+					sideOffset={4}
+				>
+					<div className="p-2 border-b border-border">
+						<input
+							ref={inputRef}
+							className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							placeholder="Search..."
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+							onKeyDown={handleSearchInputKeyDown}
+						/>
+					</div>
+					<div className="max-h-[250px] overflow-y-auto p-1" style={menuStyle}>
+						{filteredItems.length === 0 ? (
+							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{noResultsText}</div>
+						) : (
+							filteredItems.map((option, optionIndex) => {
+								const match = fuzzyMatchesByValue.get(option.value);
+								const isSelected = showSelectedIndicator && option.value === selectedValue;
+								const isActive = optionIndex === activeOptionIndex;
+								return (
+									<button
+										type="button"
+										key={option.value}
+										ref={(node) => {
+											optionRefs.current[optionIndex] = node;
+										}}
+										className={cn(
+											"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] rounded-md text-left",
+											isActive ? "bg-surface-3 text-text-primary" : "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
+										)}
+										onMouseEnter={() => setActiveOptionIndex(optionIndex)}
+										onClick={() => {
+											onSelect(option.value);
+											handleOpenChange(false);
+										}}
+									>
+										<span className="flex-1 break-all">{renderFuzzyHighlightedText(option.label, match?.positions, MATCHED_TEXT_STYLE)}</span>
+										{isSelected ? <Check size={14} className="shrink-0 text-text-secondary" /> : null}
+									</button>
+								);
+							})
+						)}
+					</div>
+				</RadixPopover.Content>
+			</RadixPopover.Portal>
+		</RadixPopover.Root>
 	);
 }

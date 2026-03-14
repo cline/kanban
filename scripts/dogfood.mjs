@@ -71,14 +71,36 @@ function parseArgs(argv) {
 	};
 }
 
-function runCommand(command, args, options = {}) {
+function runCommand(command, args, { trapSignals, ...spawnOptions } = {}) {
 	return new Promise((resolveExit, reject) => {
 		const child = spawn(command, args, {
 			stdio: "inherit",
-			...options,
+			...spawnOptions,
 		});
-		child.on("error", reject);
+
+		// When trapSignals is set, ignore SIGINT/SIGTERM in the parent and let
+		// the child handle shutdown gracefully. Both processes receive the signal
+		// from the process group, so the parent just needs to wait for the child
+		// to finish its cleanup and exit.
+		const noop = trapSignals ? () => {} : undefined;
+		if (noop) {
+			process.on("SIGINT", noop);
+			process.on("SIGTERM", noop);
+		}
+
+		const cleanup = () => {
+			if (noop) {
+				process.off("SIGINT", noop);
+				process.off("SIGTERM", noop);
+			}
+		};
+
+		child.on("error", (err) => {
+			cleanup();
+			reject(err);
+		});
 		child.on("close", (code) => {
+			cleanup();
 			resolveExit(typeof code === "number" ? code : 1);
 		});
 	});
@@ -114,6 +136,7 @@ async function main() {
 	const exitCode = await runCommand(nodeBinary, launchArgs, {
 		cwd: launchCwd,
 		env: process.env,
+		trapSignals: true,
 	});
 	process.exit(exitCode);
 }

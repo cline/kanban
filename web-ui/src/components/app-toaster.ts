@@ -1,23 +1,25 @@
-import { OverlayToaster, Position, type Toaster, type ToastProps } from "@blueprintjs/core";
+import { toast } from "sonner";
 
-let toasterPromise: Promise<Toaster> | null = null;
-
-async function getAppToaster(): Promise<Toaster | null> {
-	if (typeof document === "undefined") {
-		return null;
-	}
-	if (!toasterPromise) {
-		toasterPromise = OverlayToaster.create({
-			position: Position.BOTTOM_RIGHT,
-			maxToasts: 4,
-		});
-	}
-	return await toasterPromise;
+interface AppToastProps {
+	intent?: "danger" | "warning" | "success" | "primary" | "none";
+	icon?: string;
+	message: string;
+	timeout?: number;
 }
 
-export function showAppToast(props: ToastProps, key?: string): void {
-	void (async () => {
-		const toaster = await getAppToaster();
-		toaster?.show(props, key);
-	})();
+export function showAppToast(props: AppToastProps, key?: string): void {
+	const options: Parameters<typeof toast>[1] = {
+		id: key,
+		duration: props.timeout ?? 5000,
+	};
+
+	if (props.intent === "danger") {
+		toast.error(props.message, options);
+	} else if (props.intent === "warning") {
+		toast.warning(props.message, options);
+	} else if (props.intent === "success") {
+		toast.success(props.message, options);
+	} else {
+		toast(props.message, options);
+	}
 }

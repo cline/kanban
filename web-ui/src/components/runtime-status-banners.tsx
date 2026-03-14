@@ -1,13 +1,12 @@
-import { Button, Callout } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 
 export function RuntimeStatusBanners({
-	worktreeError,
-	onDismissWorktreeError,
+	worktreeError: _worktreeError,
+	onDismissWorktreeError: _onDismissWorktreeError,
 }: {
 	worktreeError: string | null;
 	onDismissWorktreeError: () => void;
-}): ReactElement {
+}): ReactElement | null {
 	// FIXME: remove this component. Sometimes moving to trash triggers a transient
 	// worktree error during cleanup that briefly flashes then disappears. Need to
 	// investigate the root cause in the cleanup flow rather than showing a banner.

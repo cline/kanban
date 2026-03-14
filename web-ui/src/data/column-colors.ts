@@ -1,17 +1,13 @@
-import { Colors } from "@blueprintjs/core";
-
-export const panelSeparatorColor = Colors.DARK_GRAY4;
-
-export const columnAccentColors: Record<string, string> = {
-	backlog: Colors.GRAY1,
-	in_progress: Colors.ORANGE3,
-	review: Colors.GREEN3,
-	trash: Colors.RED3,
+export const columnIndicatorColors: Record<string, string> = {
+	backlog: "var(--color-text-primary)",
+	in_progress: "var(--color-accent)",
+	review: "var(--color-status-green)",
+	trash: "var(--color-status-red)",
 };
 
-export const columnLightColors: Record<string, string> = {
-	backlog: Colors.GRAY5,
-	in_progress: Colors.ORANGE5,
-	review: Colors.GREEN5,
-	trash: Colors.RED5,
+export const columnBackgroundColors: Record<string, string> = {
+	backlog: "var(--color-surface-0)",
+	in_progress: "var(--color-surface-0)",
+	review: "var(--color-surface-0)",
+	trash: "var(--color-surface-0)",
 };

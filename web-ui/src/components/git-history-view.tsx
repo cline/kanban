@@ -1,11 +1,19 @@
-import { Alert, Button, Colors, NonIdealState } from "@blueprintjs/core";
+import { GitBranch, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { GitCommitDiffPanel } from "@/components/git-history/git-commit-diff-panel";
 import { GitCommitListPanel } from "@/components/git-history/git-commit-list-panel";
 import { GitRefsPanel } from "@/components/git-history/git-refs-panel";
 import type { UseGitHistoryDataResult } from "@/components/git-history/use-git-history-data";
-import { panelSeparatorColor } from "@/data/column-colors";
+import { Button } from "@/components/ui/button";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogDescription,
+	AlertDialogTitle,
+} from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeGitCommit } from "@/runtime/types";
 
 function CommitDiffHeader({ commit }: { commit: RuntimeGitCommit }): React.ReactElement {
@@ -13,14 +21,14 @@ function CommitDiffHeader({ commit }: { commit: RuntimeGitCommit }): React.React
 		<div
 			style={{
 				padding: "10px 12px",
-				borderBottom: `1px solid ${panelSeparatorColor}`,
-				background: Colors.DARK_GRAY2,
+				borderBottom: "1px solid var(--color-divider)",
+				background: "var(--color-surface-1)",
 			}}
 		>
 			<div
 				style={{
-					fontSize: "var(--bp-typography-size-body-medium)",
-					color: "var(--bp-palette-light-gray-5)",
+					fontSize: 14,
+					color: "var(--color-text-primary)",
 					marginBottom: 4,
 					lineHeight: 1.4,
 				}}
@@ -32,8 +40,8 @@ function CommitDiffHeader({ commit }: { commit: RuntimeGitCommit }): React.React
 					display: "flex",
 					alignItems: "center",
 					gap: 8,
-					fontSize: "var(--bp-typography-size-body-x-small)",
-					color: "var(--bp-palette-gray-3)",
+					fontSize: 10,
+					color: "var(--color-text-tertiary)",
 				}}
 			>
 				<span>{commit.authorName}</span>
@@ -44,7 +52,7 @@ function CommitDiffHeader({ commit }: { commit: RuntimeGitCommit }): React.React
 						day: "numeric",
 					})}
 				</span>
-				<code style={{ fontFamily: "var(--bp-font-family-monospace)" }}>{commit.shortHash}</code>
+				<code className="font-mono">{commit.shortHash}</code>
 			</div>
 		</div>
 	);
@@ -69,14 +77,15 @@ export function GitHistoryView({
 
 	if (!workspaceId) {
 		return (
-			<div className="kb-empty-state-center" style={{ flex: 1, background: Colors.DARK_GRAY1 }}>
-				<NonIdealState icon="git-branch" title="No project selected" />
+			<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary" style={{ flex: 1, background: "var(--color-surface-0)" }}>
+				<GitBranch size={48} />
+				<h3 className="font-semibold text-text-primary">No project selected</h3>
 			</div>
 		);
 	}
 
 	return (
-		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: Colors.DARK_GRAY1 }}>
+		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: "var(--color-surface-0)" }}>
 			<GitRefsPanel
 				refs={gitHistory.refs}
 				selectedRefName={gitHistory.viewMode === "working-copy" ? null : (gitHistory.activeRef?.name ?? null)}
@@ -88,7 +97,7 @@ export function GitHistoryView({
 				onSelectWorkingCopy={gitHistory.hasWorkingCopy ? gitHistory.selectWorkingCopy : undefined}
 				onCheckoutRef={onCheckoutBranch}
 			/>
-			<div style={{ width: 1, background: panelSeparatorColor, flexShrink: 0 }} />
+			<div style={{ width: 1, background: "var(--color-divider)", flexShrink: 0 }} />
 			<GitCommitListPanel
 				commits={gitHistory.commits}
 				totalCount={gitHistory.totalCommitCount}
@@ -101,7 +110,7 @@ export function GitHistoryView({
 				onSelectCommit={gitHistory.selectCommit}
 				onLoadMore={gitHistory.loadMoreCommits}
 			/>
-			<div style={{ width: 1, background: panelSeparatorColor, flexShrink: 0 }} />
+			<div style={{ width: 1, background: "var(--color-divider)", flexShrink: 0 }} />
 			<GitCommitDiffPanel
 				diffSource={gitHistory.diffSource}
 				isLoading={gitHistory.isDiffLoading}
@@ -118,45 +127,63 @@ export function GitHistoryView({
 								display: "flex",
 								alignItems: "center",
 								padding: "10px 12px",
-								borderBottom: `1px solid ${panelSeparatorColor}`,
-								fontSize: "var(--bp-typography-size-body-medium)",
-								color: "var(--bp-palette-light-gray-5)",
+								borderBottom: "1px solid var(--color-border)",
+								fontSize: 14,
+								color: "var(--color-text-primary)",
 							}}
 						>
 							<span style={{ flex: 1 }}>Working Copy Changes</span>
 							{onDiscardWorkingChanges ? (
 								<Button
-									icon="trash"
-									variant="minimal"
-									size="small"
-									intent="danger"
+									variant="danger"
+									size="sm"
+									icon={<Trash2 size={14} />}
 									aria-label="Discard all changes"
 									disabled={isDiscardWorkingChangesPending}
-									loading={isDiscardWorkingChangesPending}
 									onClick={() => setIsDiscardAlertOpen(true)}
-								/>
+								>
+									{isDiscardWorkingChangesPending ? <Spinner size={14} /> : null}
+								</Button>
 							) : null}
 						</div>
 					) : null
 				}
 			/>
-			<Alert
-				isOpen={isDiscardAlertOpen}
-				cancelButtonText="Cancel"
-				confirmButtonText="Discard All"
-				icon="trash"
-				intent="danger"
-				loading={isDiscardWorkingChangesPending}
-				canEscapeKeyCancel
-				canOutsideClickCancel
-				onCancel={() => setIsDiscardAlertOpen(false)}
-				onConfirm={() => {
-					setIsDiscardAlertOpen(false);
-					onDiscardWorkingChanges?.();
-				}}
+			<AlertDialog
+				open={isDiscardAlertOpen}
+				onOpenChange={(open) => { if (!open) setIsDiscardAlertOpen(false); }}
 			>
-				<p>Are you sure you want to discard all working copy changes? This cannot be undone.</p>
-			</Alert>
+				<AlertDialogTitle className="text-sm font-semibold text-text-primary">
+					Discard all changes?
+				</AlertDialogTitle>
+				<AlertDialogDescription className="text-text-secondary mt-2">
+					Are you sure you want to discard all working copy changes? This cannot be undone.
+				</AlertDialogDescription>
+				<div className="flex justify-end gap-2 mt-4">
+					<AlertDialogCancel asChild>
+						<Button
+							variant="default"
+							onClick={() => setIsDiscardAlertOpen(false)}
+							disabled={isDiscardWorkingChangesPending}
+						>
+							Cancel
+						</Button>
+					</AlertDialogCancel>
+					<AlertDialogAction asChild>
+						<Button
+							variant="danger"
+							disabled={isDiscardWorkingChangesPending}
+							onClick={() => {
+								setIsDiscardAlertOpen(false);
+								onDiscardWorkingChanges?.();
+							}}
+						>
+							{isDiscardWorkingChangesPending ? <Spinner size={14} /> : null}
+							Discard All
+						</Button>
+					</AlertDialogAction>
+				</div>
+			</AlertDialog>
 		</div>
 	);
 }

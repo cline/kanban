@@ -1,10 +1,11 @@
-import { Button, Classes, Collapse, Colors, Icon } from "@blueprintjs/core";
 import { type BeforeCapture, DragDropContext, Droppable, type DropResult } from "@hello-pangea/dnd";
+import { ChevronDown, ChevronRight, Play, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BoardCard } from "@/components/board-card";
-import { columnAccentColors, columnLightColors, panelSeparatorColor } from "@/data/column-colors";
+import { Button } from "@/components/ui/button";
+import { ColumnIndicator } from "@/components/ui/column-indicator";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardColumnId, isCardDropDisabled } from "@/state/drag-rules";
 import type { BoardCard as BoardCardModel, BoardColumn, BoardColumnId, CardSelection } from "@/types";
@@ -55,21 +56,11 @@ function ColumnSection({
 	activeDragSourceColumnId?: BoardColumnId | null;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
-	const accentColor = columnAccentColors[column.id] ?? Colors.GRAY1;
-	const lightColor = columnLightColors[column.id] ?? Colors.GRAY5;
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null);
-	const createTaskButtonText = (
-		<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-			<span>Create task</span>
-			<span aria-hidden className={Classes.TEXT_MUTED}>
-				(c)
-			</span>
-		</span>
-	);
 
 	useEffect(() => {
 		if (!column.cards.some((card) => card.id === selectedCardId)) {
@@ -79,26 +70,52 @@ function ColumnSection({
 	}, [column.cards, selectedCardId]);
 
 	return (
-		<div>
-			<div style={{ display: "flex", alignItems: "center", background: accentColor, height: 40 }}>
-				<Button
-					variant="minimal"
-					alignText="left"
-					icon={<Icon icon={open ? "chevron-down" : "chevron-right"} color={lightColor} />}
+		<div className="bg-surface-1 rounded-lg shrink-0">
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					height: 40,
+				}}
+			>
+				<button
+					type="button"
 					onClick={() => setOpen((prev) => !prev)}
-					style={{ color: lightColor, height: 40, flex: "1 1 auto", minWidth: 0 }}
-					text={
-						<span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-							<span style={{ fontWeight: 600, color: Colors.WHITE }}>{column.title}</span>
-							<span style={{ color: lightColor }}>{column.cards.length}</span>
+					className="hover:bg-surface-0 rounded-md"
+					style={{
+						height: 32,
+						flex: "1 1 auto",
+						minWidth: 0,
+						display: "flex",
+						alignItems: "center",
+						gap: 8,
+						padding: "0 8px",
+						margin: "0 4px",
+						background: "none",
+						border: "none",
+						cursor: "pointer",
+						color: "inherit",
+						textAlign: "left",
+					}}
+				>
+					{open ? (
+						<ChevronDown size={16} className="text-text-secondary" style={{ flexShrink: 0 }} />
+					) : (
+						<ChevronRight size={16} className="text-text-secondary" style={{ flexShrink: 0 }} />
+					)}
+					<span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+						<ColumnIndicator columnId={column.id} />
+						<span style={{ fontWeight: 600, fontSize: 13 }}>{column.title}</span>
+						<span className="text-text-secondary" style={{ fontSize: 11 }}>
+							{column.cards.length}
 						</span>
-					}
-				/>
+					</span>
+				</button>
 				{canStartAllTasks ? (
 					<Button
-						icon={<Icon icon="play" color={column.cards.length > 0 ? Colors.GRAY4 : Colors.GRAY3} />}
-						variant="minimal"
-						size="small"
+						icon={<Play size={14} />}
+						variant="ghost"
+						size="sm"
 						onClick={onStartAllTasks}
 						disabled={column.cards.length === 0}
 						aria-label="Start all backlog tasks"
@@ -108,10 +125,10 @@ function ColumnSection({
 				) : null}
 				{canClearTrash ? (
 					<Button
-						icon="trash"
-						variant="minimal"
-						size="small"
-						intent="danger"
+						icon={<Trash2 size={14} />}
+						variant="ghost"
+						size="sm"
+						className="text-status-red hover:text-status-red"
 						onClick={onClearTrash}
 						disabled={column.cards.length === 0}
 						aria-label="Clear trash"
@@ -120,7 +137,7 @@ function ColumnSection({
 					/>
 				) : null}
 			</div>
-			<Collapse isOpen={open}>
+			<div style={{ display: open ? "block" : "none" }}>
 				<Droppable droppableId={column.id} type={cardDropType} isDropDisabled={isDropDisabled}>
 					{(provided) => {
 						return (
@@ -135,13 +152,19 @@ function ColumnSection({
 							>
 								{canCreate && !inlineTaskCreator ? (
 									<Button
-										icon="plus"
-										text={createTaskButtonText}
+										icon={<span style={{ fontSize: 16, lineHeight: 1 }}>+</span>}
 										aria-label="Create task"
 										fill
 										onClick={onCreateTask}
 										style={{ marginBottom: 8 }}
-									/>
+									>
+										<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+											<span>Create task</span>
+											<span aria-hidden className="text-text-secondary">
+												(c)
+											</span>
+										</span>
+									</Button>
 								) : null}
 								{inlineTaskCreator}
 								{(() => {
@@ -186,12 +209,16 @@ function ColumnSection({
 									return items;
 								})()}
 								{provided.placeholder}
-								{column.cards.length === 0 ? <p className={Classes.TEXT_MUTED}>No cards</p> : null}
+								{column.cards.length === 0 ? (
+									<div className="flex items-center justify-center py-4 text-text-tertiary text-xs">
+										Empty
+									</div>
+								) : null}
 							</div>
 						);
 					}}
 				</Droppable>
-			</Collapse>
+			</div>
 		</div>
 	);
 }
@@ -285,13 +312,14 @@ export function ColumnContextPanel({
 				width: "20%",
 				minHeight: 0,
 				overflow: "hidden",
-				background: Colors.DARK_GRAY1,
-				borderRight: `1px solid ${panelSeparatorColor}`,
+				background: "var(--color-surface-0)",
+				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
 			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>
 				<div
 					ref={scrollContainerRef}
+					className="flex flex-col gap-2 p-2"
 					style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}
 				>
 					{selection.allColumns.map((column) => (

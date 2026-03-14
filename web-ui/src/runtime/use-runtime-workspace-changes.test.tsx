@@ -50,8 +50,27 @@ interface HookSnapshot {
 	isRuntimeAvailable: boolean;
 }
 
-function HookHarness({ taskId, onSnapshot }: { taskId: string; onSnapshot: (snapshot: HookSnapshot) => void }): null {
-	const workspaceChanges = useRuntimeWorkspaceChanges(taskId, "project-1", "main");
+function HookHarness({
+	taskId,
+	viewKey = null,
+	clearOnViewTransition = true,
+	onSnapshot,
+}: {
+	taskId: string;
+	viewKey?: string | null;
+	clearOnViewTransition?: boolean;
+	onSnapshot: (snapshot: HookSnapshot) => void;
+}): null {
+	const workspaceChanges = useRuntimeWorkspaceChanges(
+		taskId,
+		"project-1",
+		"main",
+		"working_copy",
+		0,
+		null,
+		viewKey,
+		clearOnViewTransition,
+	);
 
 	useEffect(() => {
 		onSnapshot({
@@ -141,6 +160,120 @@ describe("useRuntimeWorkspaceChanges", () => {
 
 		expect(snapshots.at(-1)).toMatchObject({
 			paths: ["task-b.ts"],
+			isLoading: false,
+			isRuntimeAvailable: true,
+		});
+	});
+
+	it("clears the previous diff immediately when the last-turn view key changes", async () => {
+		const nextTurnDiffDeferred = createDeferred<RuntimeWorkspaceChangesResponse>();
+		getChangesQueryMock.mockResolvedValueOnce(createWorkspaceChangesResponse("turn-1.ts"));
+		getChangesQueryMock.mockImplementationOnce(() => nextTurnDiffDeferred.promise);
+
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-a"
+					viewKey="awaiting_review:checkpoint-2:checkpoint-1"
+					onSnapshot={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)).toMatchObject({
+			paths: ["turn-1.ts"],
+			isLoading: false,
+			isRuntimeAvailable: true,
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-a"
+					viewKey="running:checkpoint-2:checkpoint-1"
+					onSnapshot={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+		});
+
+		expect(snapshots.at(-1)).toMatchObject({
+			paths: [],
+			isLoading: true,
+			isRuntimeAvailable: true,
+		});
+
+		await act(async () => {
+			nextTurnDiffDeferred.resolve(createWorkspaceChangesResponse("turn-2.ts"));
+			await nextTurnDiffDeferred.promise;
+		});
+
+		expect(snapshots.at(-1)).toMatchObject({
+			paths: ["turn-2.ts"],
+			isLoading: false,
+			isRuntimeAvailable: true,
+		});
+	});
+
+	it("keeps the previous diff visible during a view-key transition when requested", async () => {
+		const nextTurnDiffDeferred = createDeferred<RuntimeWorkspaceChangesResponse>();
+		getChangesQueryMock.mockResolvedValueOnce(createWorkspaceChangesResponse("turn-1.ts"));
+		getChangesQueryMock.mockImplementationOnce(() => nextTurnDiffDeferred.promise);
+
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-a"
+					viewKey="running:checkpoint-1:none"
+					clearOnViewTransition={false}
+					onSnapshot={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)).toMatchObject({
+			paths: ["turn-1.ts"],
+			isLoading: false,
+			isRuntimeAvailable: true,
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-a"
+					viewKey="awaiting_review:checkpoint-2:checkpoint-1"
+					clearOnViewTransition={false}
+					onSnapshot={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+		});
+
+		expect(snapshots.at(-1)).toMatchObject({
+			paths: ["turn-1.ts"],
+			isLoading: true,
+			isRuntimeAvailable: true,
+		});
+
+		await act(async () => {
+			nextTurnDiffDeferred.resolve(createWorkspaceChangesResponse("turn-2.ts"));
+			await nextTurnDiffDeferred.promise;
+		});
+
+		expect(snapshots.at(-1)).toMatchObject({
+			paths: ["turn-2.ts"],
 			isLoading: false,
 			isRuntimeAvailable: true,
 		});

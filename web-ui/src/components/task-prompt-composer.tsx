@@ -1,5 +1,4 @@
-import { Menu, MenuItem, Popover, PopoverInteractionKind, TextArea } from "@blueprintjs/core";
-import { Classes as SelectClasses } from "@blueprintjs/select";
+import * as RadixPopover from "@radix-ui/react-popover";
 import type { KeyboardEvent, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -87,9 +86,8 @@ export function TaskPromptComposer({
 	workspaceId = null,
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-	const popoverRef = useRef<InstanceType<typeof Popover> | null>(null);
-	const menuRef = useRef<HTMLUListElement | null>(null);
-	const suggestionItemRefs = useRef(new Map<string, HTMLLIElement>());
+	const menuRef = useRef<HTMLDivElement | null>(null);
+	const suggestionItemRefs = useRef(new Map<string, HTMLButtonElement>());
 	const mentionSearchRequestIdRef = useRef(0);
 	const [cursorIndex, setCursorIndex] = useState(0);
 	const [mentionSuggestions, setMentionSuggestions] = useState<PromptSuggestion[]>([]);
@@ -173,7 +171,7 @@ export function TaskPromptComposer({
 	}, [activeToken?.kind, activeToken?.query, activeToken?.start]);
 
 	useEffect(() => {
-		if (!autoFocus) {
+		if (!autoFocus || disabled || !enabled) {
 			return;
 		}
 		window.requestAnimationFrame(() => {
@@ -185,7 +183,7 @@ export function TaskPromptComposer({
 			textareaRef.current.setSelectionRange(cursor, cursor);
 			setCursorIndex(cursor);
 		});
-	}, [autoFocus]);
+	}, [autoFocus, disabled, enabled]);
 
 	const applySuggestion = useCallback(
 		(suggestion: PromptSuggestion) => {
@@ -206,7 +204,7 @@ export function TaskPromptComposer({
 		[activeToken, onValueChange, value],
 	);
 
-	const setSuggestionItemRef = useCallback((itemKey: string, node: HTMLLIElement | null) => {
+	const setSuggestionItemRef = useCallback((itemKey: string, node: HTMLButtonElement | null) => {
 		if (node) {
 			suggestionItemRefs.current.set(itemKey, node);
 			return;
@@ -271,15 +269,6 @@ export function TaskPromptComposer({
 		if (!showSuggestions) {
 			return;
 		}
-		window.requestAnimationFrame(() => {
-			void popoverRef.current?.reposition();
-		});
-	}, [activeToken?.query, showMentionLoading, showSuggestions, suggestions.length]);
-
-	useEffect(() => {
-		if (!showSuggestions) {
-			return;
-		}
 		const activeSuggestion = suggestions[selectedSuggestionIndex];
 		if (!activeSuggestion) {
 			return;
@@ -304,48 +293,54 @@ export function TaskPromptComposer({
 	}, [selectedSuggestionIndex, showSuggestions, suggestions]);
 
 	return (
-		<Popover
-			autoFocus={false}
-			enforceFocus={false}
-			fill
-			interactionKind={PopoverInteractionKind.CLICK_TARGET_ONLY}
-			isOpen={showSuggestions}
-			matchTargetWidth
-			minimal
-			modifiers={{ flip: { enabled: false } }}
-			onInteraction={(nextOpenState) => {
-				if (!nextOpenState) {
-					setIsSuggestionPickerOpen(false);
-				}
-			}}
-			onOpened={() => {
-				void popoverRef.current?.reposition();
-			}}
-			placement="bottom-start"
-			popoverClassName={SelectClasses.SUGGEST_POPOVER}
-			content={
-				showMentionLoading ? (
-					<Menu>
-						<MenuItem disabled text="Loading files..." roleStructure="listoption" />
-					</Menu>
-				) : (
-					<Menu ulRef={menuRef} style={{ overflowX: "hidden", overflowY: "auto" }}>
-						{suggestions.map((suggestion, index) => {
-							const suggestionKey = `${suggestion.kind}:${suggestion.id}`;
-							return (
-								<MenuItem
-									key={suggestionKey}
-									ref={(node) => setSuggestionItemRef(suggestionKey, node)}
-									active={index === selectedSuggestionIndex}
-									roleStructure="listoption"
-									style={{ paddingLeft: 6, paddingRight: 6 }}
-									text={
+		<RadixPopover.Root open={showSuggestions}>
+			<RadixPopover.Anchor asChild>
+				<textarea
+					id={id}
+					ref={textareaRef}
+					value={value}
+					onChange={(event) => {
+						onValueChange(event.target.value);
+						setCursorIndex(event.target.selectionStart ?? event.target.value.length);
+					}}
+					onKeyDown={handleTextareaKeyDown}
+					onClick={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+					onKeyUp={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+					placeholder={placeholder}
+					disabled={disabled}
+					className="w-full rounded-md border border-border-bright bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+					style={{ minHeight: 80, resize: "vertical" }}
+				/>
+			</RadixPopover.Anchor>
+			<RadixPopover.Portal>
+				<RadixPopover.Content
+					className="z-50 rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
+					style={{ width: "var(--radix-popover-anchor-width)" }}
+					sideOffset={4}
+					onOpenAutoFocus={(event) => event.preventDefault()}
+					onCloseAutoFocus={(event) => event.preventDefault()}
+				>
+					{showMentionLoading ? (
+						<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">Loading files...</div>
+					) : (
+						<div ref={menuRef} className="max-h-[200px] overflow-x-hidden overflow-y-auto p-1">
+							{suggestions.map((suggestion, index) => {
+								const suggestionKey = `${suggestion.kind}:${suggestion.id}`;
+								return (
+									<button
+										type="button"
+										key={suggestionKey}
+										ref={(node) => setSuggestionItemRef(suggestionKey, node)}
+										className={`flex w-full items-center px-1.5 py-1 text-left rounded-md ${index === selectedSuggestionIndex ? "bg-surface-3" : "hover:bg-surface-3"}`}
+										onMouseDown={(event) => {
+											event.preventDefault();
+											applySuggestion(suggestion);
+										}}
+										onMouseEnter={() => setSelectedSuggestionIndex(index)}
+									>
 										<span
+											className="block text-xs leading-tight max-w-full text-text-primary"
 											style={{
-												display: "block",
-												fontSize: "var(--bp-typography-size-body-small)",
-												lineHeight: 1.15,
-												maxWidth: "100%",
 												overflowWrap: "anywhere",
 												wordBreak: "break-word",
 												whiteSpace: "normal",
@@ -353,37 +348,13 @@ export function TaskPromptComposer({
 										>
 											{suggestion.text}
 										</span>
-									}
-									onMouseDown={(event) => {
-										event.preventDefault();
-										applySuggestion(suggestion);
-									}}
-									onMouseEnter={() => setSelectedSuggestionIndex(index)}
-								/>
-							);
-						})}
-					</Menu>
-				)
-			}
-			ref={popoverRef}
-		>
-			<TextArea
-				id={id}
-				inputRef={textareaRef}
-				value={value}
-				onChange={(event) => {
-					onValueChange(event.target.value);
-					setCursorIndex(event.target.selectionStart ?? event.target.value.length);
-				}}
-				onKeyDown={handleTextareaKeyDown}
-				onClick={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
-				onKeyUp={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
-				placeholder={placeholder}
-				disabled={disabled}
-				autoFocus={autoFocus}
-				fill
-				style={{ minHeight: 80, resize: "vertical" }}
-			/>
-		</Popover>
+									</button>
+								);
+							})}
+						</div>
+					)}
+				</RadixPopover.Content>
+			</RadixPopover.Portal>
+		</RadixPopover.Root>
 	);
 }

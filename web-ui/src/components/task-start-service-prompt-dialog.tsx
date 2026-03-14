@@ -1,6 +1,9 @@
-import { Button, Callout, Checkbox, Classes, Dialog, DialogBody, DialogFooter, Pre } from "@blueprintjs/core";
+import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import { AlertTriangle, Check } from "lucide-react";
 import type { ReactElement } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import type { TaskStartServicePromptContent } from "@/hooks/use-task-start-service-prompts";
 
 export function TaskStartServicePromptDialog({
@@ -20,61 +23,64 @@ export function TaskStartServicePromptDialog({
 }): ReactElement {
 	const installCommand = prompt?.installCommand ?? null;
 	const learnMoreUrl = prompt?.learnMoreUrl ?? null;
+	const doNotShowAgainCheckboxId = "task-start-service-prompt-do-not-show-again";
 
 	return (
 		<Dialog
-			isOpen={open}
-			onClose={onClose}
-			title={prompt?.title ?? "Setup recommendation"}
-			icon="info-sign"
-			style={{ width: 560 }}
+			open={open}
+			onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}
 		>
+			<DialogHeader title={prompt?.title ?? "Setup recommendation"} />
 			<DialogBody>
-				<p className={Classes.TEXT_MUTED}>
+				<p className="text-text-secondary text-[13px]">
 					{prompt?.description}
 					{learnMoreUrl ? (
 						<>
 							{" "}
-							<a href={learnMoreUrl} target="_blank" rel="noreferrer">
+							<a href={learnMoreUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline">
 								Learn more.
 							</a>
 						</>
 					) : null}
 				</p>
 				{installCommand ? (
-					<div style={{ marginTop: 12 }}>
-						<p className={Classes.TEXT_MUTED} style={{ marginTop: 0, marginBottom: 6 }}>
+					<div className="mt-3">
+						<p className="text-text-secondary text-[13px] mb-1.5">
 							{prompt?.installCommandDescription ?? "Install command:"}
 						</p>
-						<Pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{installCommand}</Pre>
+						<pre className="rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap overflow-auto">
+							{installCommand}
+						</pre>
 					</div>
 				) : null}
 				{prompt?.authenticationNote ? (
-					<Callout intent="warning" icon="warning-sign" compact style={{ marginTop: 12 }}>
-						{prompt.authenticationNote}
-					</Callout>
+					<div className="flex gap-2 rounded-md border border-status-orange/30 bg-status-orange/5 p-3 text-[13px] mt-3">
+						<AlertTriangle size={16} className="text-status-orange shrink-0 mt-0.5" />
+						<span className="text-text-primary">{prompt.authenticationNote}</span>
+					</div>
 				) : null}
 			</DialogBody>
-			<DialogFooter
-				actions={
-					<>
-						<Button text="Close" onClick={onClose} />
-						{installCommand && onRunInstallCommand ? (
-							<Button
-								intent="primary"
-								text={prompt?.installButtonLabel ?? "Run command"}
-								onClick={onRunInstallCommand}
-							/>
-						) : null}
-					</>
-				}
-			>
-				<Checkbox
-					checked={doNotShowAgain}
-					onChange={(event) => onDoNotShowAgainChange(event.currentTarget.checked)}
-					label="Do not show again"
-					style={{ margin: 0 }}
-				/>
+			<DialogFooter>
+				<label htmlFor={doNotShowAgainCheckboxId} className="flex items-center gap-2 text-[13px] text-text-primary mr-auto cursor-pointer">
+					<RadixCheckbox.Root
+						id={doNotShowAgainCheckboxId}
+						aria-label="Do not show service setup prompt again"
+						checked={doNotShowAgain}
+						onCheckedChange={(checked) => onDoNotShowAgainChange(checked === true)}
+						className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+					>
+						<RadixCheckbox.Indicator>
+							<Check size={12} className="text-white" />
+						</RadixCheckbox.Indicator>
+					</RadixCheckbox.Root>
+					<span>Do not show again</span>
+				</label>
+				<Button onClick={onClose}>Close</Button>
+				{installCommand && onRunInstallCommand ? (
+					<Button variant="primary" onClick={onRunInstallCommand}>
+						{prompt?.installButtonLabel ?? "Run command"}
+					</Button>
+				) : null}
 			</DialogFooter>
 		</Dialog>
 	);

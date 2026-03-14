@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin, type ResolvedConfig, transformWithEsbuild } from "vite";
 
@@ -54,7 +55,7 @@ export default defineConfig({
 	// 770 KB raw and 108.5 KB gzipped across emitted frontend assets.
 	// Compared with fully minifying everything, this costs about 545 KB raw and
 	// 58.5 KB gzipped, which is the current tradeoff for keeping OpenCode stable.
-	plugins: [react(), selectiveBuildMinifyPlugin()],
+	plugins: [tailwindcss(), react(), selectiveBuildMinifyPlugin()],
 	envPrefix: ["VITE_", "POSTHOG_"],
 	define: {
 		__APP_VERSION__: JSON.stringify(rootPkg.version),

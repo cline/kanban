@@ -1,6 +1,3 @@
-import { MenuItem } from "@blueprintjs/core";
-import type { ItemRenderer } from "@blueprintjs/select";
-
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { BoardData, TaskAutoReviewMode } from "@/types";
@@ -98,20 +95,33 @@ export const filterTask = (query: string, task: SearchableTask): boolean => {
 	);
 };
 
-export const renderTask: ItemRenderer<SearchableTask> = (task, { handleClick, handleFocus, modifiers }) => {
+export const renderTask = (
+	task: SearchableTask,
+	{
+		handleClick,
+		handleFocus,
+		modifiers,
+	}: {
+		handleClick: React.MouseEventHandler<HTMLElement>;
+		handleFocus: () => void;
+		modifiers: { matchesPredicate: boolean; active: boolean; disabled: boolean };
+	},
+): React.ReactElement | null => {
 	if (!modifiers.matchesPredicate) {
 		return null;
 	}
 	return (
-		<MenuItem
+		<button
 			key={task.id}
-			active={modifiers.active}
+			type="button"
+			className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-text-primary rounded-md hover:bg-surface-3 text-left ${modifiers.active ? "bg-surface-3" : ""}`}
 			disabled={modifiers.disabled}
-			label={task.columnTitle}
-			text={task.title}
 			onClick={handleClick}
 			onFocus={handleFocus}
-			roleStructure="listoption"
-		/>
+			role="option"
+		>
+			<span className="flex-1 truncate">{task.title}</span>
+			<span className="text-text-tertiary text-xs shrink-0">{task.columnTitle}</span>
+		</button>
 	);
 };

@@ -25,8 +25,12 @@ export type RuntimeWorkspaceFileChange = z.infer<typeof runtimeWorkspaceFileChan
 export const runtimeWorkspaceChangesRequestSchema = z.object({
 	taskId: z.string(),
 	baseRef: z.string(),
+	mode: z.enum(["working_copy", "last_turn"]).optional(),
 });
 export type RuntimeWorkspaceChangesRequest = z.infer<typeof runtimeWorkspaceChangesRequestSchema>;
+
+export const runtimeWorkspaceChangesModeSchema = z.enum(["working_copy", "last_turn"]);
+export type RuntimeWorkspaceChangesMode = z.infer<typeof runtimeWorkspaceChangesModeSchema>;
 
 export const runtimeWorkspaceChangesResponseSchema = z.object({
 	repoRoot: z.string(),
@@ -173,6 +177,14 @@ export const runtimeTaskHookActivitySchema = z.object({
 });
 export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySchema>;
 
+export const runtimeTaskTurnCheckpointSchema = z.object({
+	turn: z.number().int().positive(),
+	ref: z.string(),
+	commit: z.string(),
+	createdAt: z.number(),
+});
+export type RuntimeTaskTurnCheckpoint = z.infer<typeof runtimeTaskTurnCheckpointSchema>;
+
 export const runtimeTaskSessionSummarySchema = z.object({
 	taskId: z.string(),
 	state: runtimeTaskSessionStateSchema,
@@ -186,6 +198,8 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	exitCode: z.number().nullable(),
 	lastHookAt: z.number().nullable().default(null),
 	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
+	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
+	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 });
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 

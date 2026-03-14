@@ -1,7 +1,8 @@
-import { BlueprintProvider } from "@blueprintjs/core";
 import ReactDOM from "react-dom/client";
+import { Toaster } from "sonner";
 
 import App from "@/App";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { TelemetryProvider } from "@/telemetry/posthog-provider";
 import "@/styles/globals.css";
 
@@ -11,9 +12,21 @@ if (!root) {
 }
 
 ReactDOM.createRoot(root).render(
-	<BlueprintProvider>
-		<TelemetryProvider>
+	<TelemetryProvider>
+		<TooltipProvider>
 			<App />
-		</TelemetryProvider>
-	</BlueprintProvider>,
+			<Toaster
+				theme="dark"
+				position="bottom-right"
+				toastOptions={{
+					style: {
+						background: "var(--color-surface-1)",
+						border: "1px solid var(--color-border)",
+						color: "var(--color-text-primary)",
+						fontSize: "13px",
+					},
+				}}
+			/>
+		</TooltipProvider>
+	</TelemetryProvider>,
 );

@@ -1,4 +1,5 @@
 import { diffLines, diffWordsWithSpace } from "diff";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-c";
@@ -23,8 +24,9 @@ import "prismjs/components/prism-swift";
 import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-yaml";
-import { Button, Classes, Colors, Icon } from "@blueprintjs/core";
 import { useCallback, useMemo, useState } from "react";
+
+import { Button } from "@/components/ui/button";
 
 const CONTEXT_RADIUS = 3;
 const MIN_COLLAPSE_LINES = 8;
@@ -412,16 +414,16 @@ export function DiffRowText({
 		if (highlightedLineHtml) {
 			return (
 				<span
-					className={`${Classes.MONOSPACE_TEXT} kb-diff-text`}
+					className="font-mono kb-diff-text"
 					dangerouslySetInnerHTML={{ __html: highlightedLineHtml }}
 				/>
 			);
 		}
-		return <span className={`${Classes.MONOSPACE_TEXT} kb-diff-text`}>{row.text || " "}</span>;
+		return <span className="font-mono kb-diff-text">{row.text || " "}</span>;
 	}
 
 	return (
-		<span className={`${Classes.MONOSPACE_TEXT} kb-diff-text`}>
+		<span className="font-mono kb-diff-text">
 			{row.segments.map((segment) => {
 				const className =
 					segment.tone === "added"
@@ -470,7 +472,7 @@ export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; pa
 
 		return (
 			<div key={row.key} className={baseClass} style={{ cursor: "default" }}>
-				<span className="kb-diff-line-number" style={{ color: Colors.GRAY2 }}>
+				<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
 					<span className="kb-diff-line-number-text">{row.lineNumber ?? ""}</span>
 				</span>
 				<DiffRowText
@@ -492,15 +494,15 @@ export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; pa
 				return (
 					<div key={item.block.id}>
 						<Button
-							variant="minimal"
-							size="small"
+							variant="ghost"
+							size="sm"
 							fill
-							alignText="left"
-							icon={<Icon icon={item.block.expanded ? "chevron-down" : "chevron-right"} size={12} />}
-							text={`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+							icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+							className="justify-start text-xs rounded-none mt-0.5 mb-0.5"
 							onClick={() => toggleBlock(item.block.id)}
-							style={{ fontSize: 12, marginTop: 2, marginBottom: 2, borderRadius: 0 }}
-						/>
+						>
+							{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+						</Button>
 						{item.block.expanded ? item.block.rows.map((row) => renderRow(row)) : null}
 					</div>
 				);

@@ -107,7 +107,7 @@ export function useReviewAutoActions({
 	}, [clearAllAutoReviewState, resetKey]);
 
 	const evaluateAutoReview = useCallback(
-		(trigger: { source: string; taskId?: string }) => {
+		(_trigger: { source: string; taskId?: string }) => {
 			const columnByTaskId = new Map<string, BoardColumnId>();
 			const reviewCardsForAutomation: BoardCard[] = [];
 			for (const column of boardRef.current.columns) {

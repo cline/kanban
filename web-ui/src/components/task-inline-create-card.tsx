@@ -1,9 +1,11 @@
-import { Button, Card, Checkbox, Code, FormGroup, HTMLSelect, Icon } from "@blueprintjs/core";
+import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
 import type { ReactElement } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
+import { Button } from "@/components/ui/button";
 import type { TaskAutoReviewMode } from "@/types";
 
 export type TaskInlineCardMode = "create" | "edit";
@@ -15,7 +17,7 @@ const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string
 	{ value: "pr", label: "Make PR" },
 	{ value: "move_to_trash", label: "Move to Trash" },
 ];
-const AUTO_REVIEW_MODE_SELECT_WIDTH_CH = 14.5;
+const AUTO_REVIEW_MODE_SELECT_WIDTH_CH = 16;
 
 function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): ReactElement {
 	return (
@@ -28,9 +30,9 @@ function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): R
 			}}
 			aria-hidden
 		>
-			<Icon icon="key-command" size={12} />
-			{includeShift ? <Icon icon="key-shift" size={12} /> : null}
-			<Icon icon="key-enter" size={12} />
+			<Command size={12} />
+			{includeShift ? <ArrowBigUp size={12} /> : null}
+			<CornerDownLeft size={12} />
 		</span>
 	);
 }
@@ -83,7 +85,7 @@ export function TaskInlineCreateCard({
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
 	const cancelLabel = "Cancel (esc)";
-	const cardMarginBottom = mode === "create" ? 8 : 0;
+	const cardMarginBottom = mode === "create" ? 6 : 0;
 
 	useHotkeys(
 		"esc",
@@ -104,14 +106,8 @@ export function TaskInlineCreateCard({
 	);
 
 	return (
-		<Card compact style={{ flexShrink: 0, marginBottom: cardMarginBottom }}>
-			<FormGroup
-				helperText={
-					<span>
-						Use <Code>@file</Code> to reference files.
-					</span>
-				}
-			>
+		<div className="rounded-md border border-border-bright bg-surface-2 p-3" style={{ flexShrink: 0, marginBottom: cardMarginBottom, fontSize: 12 }}>
+			<div>
 				<TaskPromptComposer
 					id={promptId}
 					value={prompt}
@@ -123,82 +119,106 @@ export function TaskInlineCreateCard({
 					autoFocus
 					workspaceId={workspaceId}
 				/>
-			</FormGroup>
+				<p className="text-[11px] text-text-tertiary mt-1 mb-0">
+					Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference files.
+				</p>
+			</div>
 
-			<FormGroup style={{ marginTop: -12, marginBottom: 4 }}>
-				<Checkbox
-					id={planModeId}
-					checked={startInPlanMode}
-					disabled={startInPlanModeDisabled || !enabled}
-					onChange={(event) => onStartInPlanModeChange(event.currentTarget.checked)}
-					label="Start in plan mode"
-				/>
-			</FormGroup>
+			<div className="flex flex-col gap-2 mt-3">
+				<label htmlFor={planModeId} className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none">
+					<RadixCheckbox.Root
+						id={planModeId}
+						aria-label="Start in plan mode"
+						checked={startInPlanMode}
+						onCheckedChange={(checked) => onStartInPlanModeChange(checked === true)}
+						disabled={startInPlanModeDisabled || !enabled}
+						className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:opacity-40"
+					>
+						<RadixCheckbox.Indicator>
+							<Check size={10} className="text-white" />
+						</RadixCheckbox.Indicator>
+					</RadixCheckbox.Root>
+					<span>Start in plan mode</span>
+				</label>
 
-			<FormGroup
-				helperText="Creates the worktree at the selected ref's current HEAD in detached state."
-				style={{ marginTop: -5, marginBottom: 0 }}
-			>
-				<span style={{ display: "block", marginTop: 2, marginBottom: 4 }}>Worktree base ref</span>
-				<BranchSelectDropdown
-					id={branchSelectId}
-					options={branchOptions}
-					selectedValue={branchRef}
-					onSelect={onBranchRefChange}
-					fill
-					emptyText="No branches detected"
-				/>
-			</FormGroup>
-
-			<FormGroup style={{ marginTop: 8, marginBottom: 4 }}>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, rowGap: 6, flexWrap: "wrap" }}>
-					<Checkbox
-						id={autoReviewEnabledId}
-						checked={autoReviewEnabled}
-						onChange={(event) => onAutoReviewEnabledChange(event.currentTarget.checked)}
-						label="Automatically"
-					/>
-					<HTMLSelect
-						id={autoReviewModeId}
-						value={autoReviewMode}
-						onChange={(event) => onAutoReviewModeChange(event.currentTarget.value as TaskAutoReviewMode)}
-						options={AUTO_REVIEW_MODE_OPTIONS}
-						style={{
-							width: `${AUTO_REVIEW_MODE_SELECT_WIDTH_CH}ch`,
-							maxWidth: "100%",
-						}}
+				<div>
+					<span className="text-[11px] text-text-secondary block mb-1">Worktree base ref</span>
+					<BranchSelectDropdown
+						id={branchSelectId}
+						options={branchOptions}
+						selectedValue={branchRef}
+						onSelect={onBranchRefChange}
+						fill
+						size="sm"
+						emptyText="No branches detected"
 					/>
 				</div>
-			</FormGroup>
 
-			<div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
-				<Button text={cancelLabel} variant="outlined" onClick={onCancel} />
-				<div style={{ display: "flex", gap: 8 }}>
+				<div className="flex items-center gap-2 flex-wrap">
+					<label htmlFor={autoReviewEnabledId} className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none">
+						<RadixCheckbox.Root
+							id={autoReviewEnabledId}
+							aria-label="Enable automatic review action"
+							checked={autoReviewEnabled}
+							onCheckedChange={(checked) => onAutoReviewEnabledChange(checked === true)}
+							className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+						>
+							<RadixCheckbox.Indicator>
+								<Check size={10} className="text-white" />
+							</RadixCheckbox.Indicator>
+						</RadixCheckbox.Root>
+						<span>Automatically</span>
+					</label>
+					<div className="relative inline-flex">
+						<select
+							id={autoReviewModeId}
+							value={autoReviewMode}
+							onChange={(event) => onAutoReviewModeChange(event.currentTarget.value as TaskAutoReviewMode)}
+							className="h-7 appearance-none rounded-md border border-border-bright bg-surface-2 pl-2 pr-7 text-[12px] text-text-primary cursor-pointer focus:border-border-focus focus:outline-none"
+							style={{
+								width: `${AUTO_REVIEW_MODE_SELECT_WIDTH_CH}ch`,
+								maxWidth: "100%",
+							}}
+						>
+							{AUTO_REVIEW_MODE_OPTIONS.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</select>
+						<ChevronDown size={14} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+					</div>
+				</div>
+			</div>
+
+			<div className="flex justify-between gap-2 mt-3">
+				<Button variant="default" size="sm" onClick={onCancel}>{cancelLabel}</Button>
+				<div className="flex gap-2">
 					<Button
-						text={
-							<span style={{ display: "inline-flex", alignItems: "center" }}>
-								<span>{actionLabel}</span>
-								<ButtonShortcut />
-							</span>
-						}
+						size="sm"
 						onClick={onCreate}
 						disabled={!prompt.trim() || !branchRef}
-					/>
+					>
+						<span className="inline-flex items-center">
+							<span>{actionLabel}</span>
+							<ButtonShortcut />
+						</span>
+					</Button>
 					{onCreateAndStart ? (
 						<Button
-							text={
-								<span style={{ display: "inline-flex", alignItems: "center" }}>
-									<span>Start</span>
-									<ButtonShortcut includeShift />
-								</span>
-							}
-							intent="primary"
+							variant="primary"
+							size="sm"
 							onClick={onCreateAndStart}
 							disabled={!prompt.trim() || !branchRef}
-						/>
+						>
+							<span className="inline-flex items-center">
+								<span>Start</span>
+								<ButtonShortcut includeShift />
+							</span>
+						</Button>
 					) : null}
 				</div>
 			</div>
-		</Card>
+		</div>
 	);
 }

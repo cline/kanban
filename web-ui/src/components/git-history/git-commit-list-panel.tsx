@@ -1,8 +1,10 @@
-import { Button, Classes, Icon, Spinner, Tag } from "@blueprintjs/core";
+import { GitBranch, Locate } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Virtuoso } from "react-virtuoso";
 
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeGitCommit, RuntimeGitRef } from "@/runtime/types";
 
 function formatRelativeDate(isoDate: string): string {
@@ -40,15 +42,19 @@ function hashToColor(str: string): string {
 }
 
 const GRAPH_LANE_COLORS = [
-	"var(--bp-palette-blue-4)",
-	"var(--bp-palette-green-4)",
-	"var(--bp-palette-orange-4)",
-	"var(--bp-palette-violet-4)",
-	"var(--bp-palette-rose-4)",
-	"var(--bp-palette-cerulean-4)",
-	"var(--bp-palette-lime-4)",
-	"var(--bp-palette-gold-4)",
+	"var(--color-status-blue)",
+	"var(--color-status-green)",
+	"var(--color-status-orange)",
+	"var(--color-status-violet)",
+	"var(--color-status-rose)",
+	"var(--color-status-cyan)",
+	"var(--color-status-lime)",
+	"var(--color-status-gold)",
 ];
+
+const REF_BADGE_BACKGROUND_SELECTED = "color-mix(in srgb, white 20%, transparent)";
+const REF_BADGE_BACKGROUND_HEAD = "color-mix(in srgb, var(--color-status-blue) 15%, transparent)";
+const REF_BADGE_BACKGROUND_DEFAULT = "color-mix(in srgb, white 6%, transparent)";
 
 interface GraphLane {
 	hash: string;
@@ -252,11 +258,11 @@ export function GitCommitListPanel({
 			<div
 				style={{
 					padding: "10px 12px 6px",
-					fontSize: "var(--bp-typography-size-body-x-small)",
+					fontSize: 10,
 					fontWeight: 600,
 					textTransform: "uppercase",
 					letterSpacing: "0.05em",
-					color: "var(--bp-palette-gray-3)",
+					color: "var(--color-text-tertiary)",
 				}}
 			>
 				Commits
@@ -282,13 +288,13 @@ export function GitCommitListPanel({
 					<div style={{ padding: "8px 12px" }}>
 						{Array.from({ length: 8 }, (_, i) => (
 							<div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
-								<div className={Classes.SKELETON} style={{ width: 28, height: 28, borderRadius: "50%" }} />
+								<div className="animate-pulse rounded-full bg-surface-3" style={{ width: 28, height: 28 }} />
 								<div style={{ flex: 1 }}>
 									<div
-										className={Classes.SKELETON}
-										style={{ height: 13, width: `${65 + (i % 3) * 10}%`, borderRadius: 3, marginBottom: 4 }}
+										className="animate-pulse rounded bg-surface-3"
+										style={{ height: 13, width: `${65 + (i % 3) * 10}%`, marginBottom: 4 }}
 									/>
-									<div className={Classes.SKELETON} style={{ height: 11, width: "40%", borderRadius: 3 }} />
+									<div className="animate-pulse rounded bg-surface-3" style={{ height: 11, width: "40%" }} />
 								</div>
 							</div>
 						))}
@@ -306,11 +312,11 @@ export function GitCommitListPanel({
 						<div
 							style={{
 								textAlign: "center",
-								color: "var(--bp-palette-gray-3)",
-								fontSize: "var(--bp-typography-size-body-small)",
+								color: "var(--color-text-tertiary)",
+								fontSize: 12,
 							}}
 						>
-							<div style={{ color: "var(--bp-palette-red-4)", marginBottom: 6 }}>Could not load commits</div>
+							<div style={{ color: "var(--color-status-red)", marginBottom: 6 }}>Could not load commits</div>
 							<div>{errorMessage}</div>
 						</div>
 					</div>
@@ -321,8 +327,8 @@ export function GitCommitListPanel({
 							alignItems: "center",
 							justifyContent: "center",
 							height: "100%",
-							color: "var(--bp-palette-gray-3)",
-							fontSize: "var(--bp-typography-size-body-small)",
+							color: "var(--color-text-tertiary)",
+							fontSize: 12,
 						}}
 					>
 						No commits
@@ -360,10 +366,10 @@ export function GitCommitListPanel({
 										color: "inherit",
 										textAlign: "left",
 										fontFamily: "inherit",
-										fontSize: "var(--bp-typography-size-body-small)",
+										fontSize: 12,
 										cursor: "pointer",
 										gap: 6,
-										borderBottom: "1px solid var(--bp-palette-dark-gray-4)",
+										borderBottom: "1px solid var(--color-border)",
 									}}
 								>
 									{graphRow ? <GraphSvg row={graphRow} maxLanes={maxLanes} /> : null}
@@ -377,7 +383,7 @@ export function GitCommitListPanel({
 											alignItems: "center",
 											justifyContent: "center",
 											flexShrink: 0,
-											fontSize: "var(--bp-typography-size-body-x-small)",
+											fontSize: 10,
 											fontWeight: 600,
 											color: "white",
 										}}
@@ -401,32 +407,39 @@ export function GitCommitListPanel({
 												display: "flex",
 												alignItems: "center",
 												gap: 6,
-												fontSize: "var(--bp-typography-size-body-small)",
+												fontSize: 12,
 											}}
 										>
 											<span
 												className="kb-line-clamp-1 kb-git-commit-row-meta"
-												style={{ color: "var(--bp-palette-gray-3)" }}
+												style={{ color: "var(--color-text-tertiary)" }}
 											>
 												{commit.authorName}
 											</span>
 											{commitRefs && commitRefs.length > 0
 												? commitRefs.map((ref) => (
-														<Tag
+														<span
 															key={ref.name}
-															minimal
-															round
-															intent={ref.isHead ? "primary" : "none"}
-															icon={
-																<Icon
-																	icon={ref.type === "detached" ? "locate" : "git-branch"}
-																	size={10}
-																/>
-															}
-															style={{ fontSize: 9, flexShrink: 0 }}
+															className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs shrink-0"
+															style={{
+																fontSize: 9,
+																backgroundColor: isSelected
+																	? REF_BADGE_BACKGROUND_SELECTED
+																	: ref.isHead
+																		? REF_BADGE_BACKGROUND_HEAD
+																		: REF_BADGE_BACKGROUND_DEFAULT,
+																color: isSelected
+																				? "var(--color-text-primary)"
+																				: ref.isHead ? "var(--color-status-blue)" : "var(--color-text-secondary)",
+															}}
 														>
+															{ref.type === "detached" ? (
+																<Locate size={10} />
+															) : (
+																<GitBranch size={10} />
+															)}
 															{ref.type === "detached" ? "HEAD" : ref.name}
-														</Tag>
+														</span>
 													))
 												: null}
 											<span
@@ -434,7 +447,7 @@ export function GitCommitListPanel({
 												style={{
 													flexShrink: 0,
 													marginLeft: "auto",
-													color: "var(--bp-palette-gray-3)",
+													color: "var(--color-text-tertiary)",
 												}}
 											>
 												{formatRelativeDate(commit.date)}
@@ -445,14 +458,13 @@ export function GitCommitListPanel({
 												display: "flex",
 												alignItems: "center",
 												gap: 6,
-												fontSize: "var(--bp-typography-size-body-small)",
-												color: "var(--bp-palette-gray-3)",
+												fontSize: 12,
+												color: "var(--color-text-tertiary)",
 											}}
 										>
 											<code
-												className="kb-git-commit-row-meta"
+												className="kb-git-commit-row-meta font-mono"
 												style={{
-													fontFamily: "var(--bp-font-family-monospace)",
 													flexShrink: 0,
 												}}
 											>
@@ -462,8 +474,8 @@ export function GitCommitListPanel({
 												className="kb-line-clamp-1 kb-git-commit-row-message"
 												style={{
 													color: isSelected
-														? "var(--bp-palette-light-gray-5)"
-														: "var(--bp-palette-gray-5)",
+														? "var(--color-text-primary)"
+														: "var(--color-text-secondary)",
 												}}
 											>
 												{commit.message}
@@ -484,11 +496,11 @@ export function GitCommitListPanel({
 												justifyContent: "center",
 												gap: 8,
 												padding: "10px 12px",
-												color: "var(--bp-palette-gray-3)",
+												color: "var(--color-text-tertiary)",
 											}}
 										>
 											<Spinner size={16} />
-											<span style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
+											<span style={{ fontSize: 12 }}>
 												Loading more commits...
 											</span>
 										</div>
@@ -503,24 +515,25 @@ export function GitCommitListPanel({
 												justifyContent: "space-between",
 												gap: 8,
 												padding: "10px 12px",
-												color: "var(--bp-palette-gray-3)",
+											color: "var(--color-text-tertiary)",
 											}}
 										>
 											<span
 												style={{
-													fontSize: "var(--bp-typography-size-body-small)",
-													color: "var(--bp-palette-red-4)",
+													fontSize: 12,
+													color: "var(--color-status-red)",
 												}}
 											>
 												{errorMessage}
 											</span>
 											{canLoadMore ? (
 												<Button
-													size="small"
-													variant="minimal"
-													text="Retry"
+													size="sm"
+													variant="ghost"
 													onClick={() => onLoadMore?.()}
-												/>
+												>
+													Retry
+												</Button>
 											) : null}
 										</div>
 									);
@@ -531,8 +544,8 @@ export function GitCommitListPanel({
 											style={{
 												padding: "10px 12px",
 												textAlign: "center",
-												color: "var(--bp-palette-gray-3)",
-												fontSize: "var(--bp-typography-size-body-small)",
+												color: "var(--color-text-tertiary)",
+												fontSize: 12,
 											}}
 										>
 											End of history

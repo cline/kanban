@@ -1,7 +1,13 @@
-import type { RuntimeHookEvent, RuntimeHookIngestResponse, RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import type {
+	RuntimeHookEvent,
+	RuntimeHookIngestResponse,
+	RuntimeTaskSessionSummary,
+	RuntimeTaskTurnCheckpoint,
+} from "../core/api-contract.js";
 import { parseHookIngestRequest } from "../core/api-validation.js";
 import { loadWorkspaceContextById } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
+import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints.js";
 import type { RuntimeTrpcContext } from "./app-router.js";
 
 export interface CreateHooksApiDependencies {
@@ -9,6 +15,12 @@ export interface CreateHooksApiDependencies {
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
 	broadcastTaskReadyForReview: (workspaceId: string, taskId: string) => void;
+	captureTaskTurnCheckpoint?: (input: {
+		cwd: string;
+		taskId: string;
+		turn: number;
+	}) => Promise<RuntimeTaskTurnCheckpoint>;
+	deleteTaskTurnCheckpointRef?: (input: { cwd: string; ref: string }) => Promise<void>;
 }
 
 function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: RuntimeHookEvent): boolean {
@@ -24,6 +36,9 @@ function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event
 }
 
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
+	const checkpointCapture = deps.captureTaskTurnCheckpoint ?? captureTaskTurnCheckpoint;
+	const checkpointRefDelete = deps.deleteTaskTurnCheckpointRef ?? deleteTaskTurnCheckpointRef;
+
 	return {
 		ingest: async (input) => {
 			try {
@@ -66,6 +81,30 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						ok: false,
 						error: `Task "${taskId}" transition failed`,
 					} satisfies RuntimeHookIngestResponse;
+				}
+
+				if (event === "to_review") {
+					const nextTurn = (transitionedSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
+					const checkpointCwd = transitionedSummary.workspacePath ?? workspacePath;
+					const staleRef = transitionedSummary.previousTurnCheckpoint?.ref ?? null;
+					try {
+						const checkpoint = await checkpointCapture({
+							cwd: checkpointCwd,
+							taskId,
+							turn: nextTurn,
+						});
+						manager.applyTurnCheckpoint(taskId, checkpoint);
+						if (staleRef) {
+							void checkpointRefDelete({
+								cwd: checkpointCwd,
+								ref: staleRef,
+							}).catch(() => {
+								// Best effort cleanup only.
+							});
+						}
+					} catch {
+						// Best effort checkpointing only.
+					}
 				}
 
 				if (body.metadata) {

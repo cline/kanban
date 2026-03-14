@@ -28,6 +28,17 @@ interface NameStatusEntry {
 	previousPath?: string;
 }
 
+interface ChangesBetweenRefsInput {
+	cwd: string;
+	fromRef: string;
+	toRef: string;
+}
+
+interface ChangesFromRefInput {
+	cwd: string;
+	fromRef: string;
+}
+
 interface DiffStat {
 	additions: number;
 	deletions: number;
@@ -188,6 +199,14 @@ async function readHeadFile(repoRoot: string, path: string): Promise<string | nu
 	}
 }
 
+async function readFileAtRef(repoRoot: string, ref: string, path: string): Promise<string | null> {
+	try {
+		return await runGit(["show", `${ref}:${path}`], repoRoot);
+	} catch {
+		return null;
+	}
+}
+
 async function readWorkingTreeFile(repoRoot: string, path: string): Promise<string | null> {
 	try {
 		return await readFile(join(repoRoot, path), "utf8");
@@ -237,6 +256,55 @@ async function readDiffStat(repoRoot: string, path: string): Promise<DiffStat | 
 	}
 }
 
+async function readDiffStatBetweenRefs(
+	repoRoot: string,
+	fromRef: string,
+	toRef: string,
+	path: string,
+): Promise<DiffStat | null> {
+	try {
+		const output = await runGit(["diff", "--numstat", fromRef, toRef, "--", path], repoRoot);
+		const firstLine = output
+			.split("\n")
+			.map((line) => line.trim())
+			.find(Boolean);
+		if (!firstLine) {
+			return null;
+		}
+		const [addedRaw, deletedRaw] = firstLine.split("\t");
+		const additions = Number.parseInt(addedRaw ?? "", 10);
+		const deletions = Number.parseInt(deletedRaw ?? "", 10);
+		return {
+			additions: Number.isFinite(additions) ? additions : 0,
+			deletions: Number.isFinite(deletions) ? deletions : 0,
+		};
+	} catch {
+		return null;
+	}
+}
+
+async function readDiffStatFromRef(repoRoot: string, fromRef: string, path: string): Promise<DiffStat | null> {
+	try {
+		const output = await runGit(["diff", "--numstat", fromRef, "--", path], repoRoot);
+		const firstLine = output
+			.split("\n")
+			.map((line) => line.trim())
+			.find(Boolean);
+		if (!firstLine) {
+			return null;
+		}
+		const [addedRaw, deletedRaw] = firstLine.split("\t");
+		const additions = Number.parseInt(addedRaw ?? "", 10);
+		const deletions = Number.parseInt(deletedRaw ?? "", 10);
+		return {
+			additions: Number.isFinite(additions) ? additions : 0,
+			deletions: Number.isFinite(deletions) ? deletions : 0,
+		};
+	} catch {
+		return null;
+	}
+}
+
 async function buildFileChange(repoRoot: string, entry: NameStatusEntry): Promise<RuntimeWorkspaceFileChange> {
 	const basePath = entry.previousPath ?? entry.path;
 	const oldText =
@@ -255,6 +323,68 @@ async function buildFileChange(repoRoot: string, entry: NameStatusEntry): Promis
 		deletions: stats.deletions,
 		oldText,
 		newText,
+	};
+}
+
+async function buildFileChangeBetweenRefs(
+	repoRoot: string,
+	entry: NameStatusEntry,
+	fromRef: string,
+	toRef: string,
+): Promise<RuntimeWorkspaceFileChange> {
+	const basePath = entry.previousPath ?? entry.path;
+	const oldText = entry.status === "added" ? null : await readFileAtRef(repoRoot, fromRef, basePath);
+	const newText = entry.status === "deleted" ? null : await readFileAtRef(repoRoot, toRef, entry.path);
+	const stats =
+		(await readDiffStatBetweenRefs(repoRoot, fromRef, toRef, entry.path)) ?? fallbackStats(oldText, newText);
+
+	return {
+		path: entry.path,
+		previousPath: entry.previousPath,
+		status: entry.status,
+		additions: stats.additions,
+		deletions: stats.deletions,
+		oldText,
+		newText,
+	};
+}
+
+async function buildFileChangeFromRef(
+	repoRoot: string,
+	entry: NameStatusEntry,
+	fromRef: string,
+): Promise<RuntimeWorkspaceFileChange> {
+	const basePath = entry.previousPath ?? entry.path;
+	const oldText =
+		entry.status === "added" || entry.status === "untracked"
+			? null
+			: await readFileAtRef(repoRoot, fromRef, basePath);
+	const newText = entry.status === "deleted" ? null : await readWorkingTreeFile(repoRoot, entry.path);
+	const stats =
+		entry.status === "untracked"
+			? { additions: toLineCount(newText ?? ""), deletions: 0 }
+			: ((await readDiffStatFromRef(repoRoot, fromRef, entry.path)) ?? fallbackStats(oldText, newText));
+
+	return {
+		path: entry.path,
+		previousPath: entry.previousPath,
+		status: entry.status,
+		additions: stats.additions,
+		deletions: stats.deletions,
+		oldText,
+		newText,
+	};
+}
+
+export async function createEmptyWorkspaceChangesResponse(cwd: string): Promise<RuntimeWorkspaceChangesResponse> {
+	const repoRoot = (await runGit(["rev-parse", "--show-toplevel"], cwd)).trim();
+	if (!repoRoot) {
+		throw new Error("Could not resolve git repository root.");
+	}
+	return {
+		repoRoot,
+		generatedAt: Date.now(),
+		files: [],
 	};
 }
 
@@ -314,4 +444,80 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 	});
 	pruneWorkspaceChangesCache();
 	return response;
+}
+
+export async function getWorkspaceChangesBetweenRefs(
+	input: ChangesBetweenRefsInput,
+): Promise<RuntimeWorkspaceChangesResponse> {
+	const repoRoot = (await runGit(["rev-parse", "--show-toplevel"], input.cwd)).trim();
+	if (!repoRoot) {
+		throw new Error("Could not resolve git repository root.");
+	}
+
+	const trackedChangesOutput = await runGit(
+		["diff", "--name-status", "--find-renames", input.fromRef, input.toRef, "--"],
+		repoRoot,
+	);
+	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
+	if (trackedChanges.length === 0) {
+		return {
+			repoRoot,
+			generatedAt: Date.now(),
+			files: [],
+		};
+	}
+
+	const files = await Promise.all(
+		trackedChanges.map((entry) => buildFileChangeBetweenRefs(repoRoot, entry, input.fromRef, input.toRef)),
+	);
+	files.sort((left, right) => left.path.localeCompare(right.path));
+
+	return {
+		repoRoot,
+		generatedAt: Date.now(),
+		files,
+	};
+}
+
+export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkspaceChangesResponse> {
+	const repoRoot = (await runGit(["rev-parse", "--show-toplevel"], input.cwd)).trim();
+	if (!repoRoot) {
+		throw new Error("Could not resolve git repository root.");
+	}
+
+	const [trackedChangesOutput, untrackedOutput] = await Promise.all([
+		runGit(["diff", "--name-status", "--find-renames", input.fromRef, "--"], repoRoot),
+		runGit(["ls-files", "--others", "--exclude-standard"], repoRoot),
+	]);
+	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
+	const untrackedPaths = untrackedOutput
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
+	const trackedPaths = new Set(trackedChanges.map((entry) => entry.path));
+	const allChanges: NameStatusEntry[] = [
+		...trackedChanges,
+		...untrackedPaths
+			.filter((path) => !trackedPaths.has(path))
+			.map((path) => ({
+				path,
+				status: "untracked" as const,
+			})),
+	];
+
+	if (allChanges.length === 0) {
+		return {
+			repoRoot,
+			generatedAt: Date.now(),
+			files: [],
+		};
+	}
+
+	const files = await Promise.all(allChanges.map((entry) => buildFileChangeFromRef(repoRoot, entry, input.fromRef)));
+	files.sort((left, right) => left.path.localeCompare(right.path));
+	return {
+		repoRoot,
+		generatedAt: Date.now(),
+		files,
+	};
 }

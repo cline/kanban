@@ -3,6 +3,7 @@ import type {
 	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
+	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract.js";
 import { buildShellCommandLine, resolveInteractiveShellCommand } from "../core/shell.js";
 import {
@@ -102,6 +103,8 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		latestTurnCheckpoint: null,
+		previousTurnCheckpoint: null,
 	};
 }
 
@@ -407,6 +410,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 				exitCode: null,
 				lastHookAt: null,
 				latestHookActivity: null,
+				latestTurnCheckpoint: null,
+				previousTurnCheckpoint: null,
 			});
 			this.emitSummary(summary);
 			throw new Error(formatSpawnFailure(commandBinary, error));
@@ -447,6 +452,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
+			latestTurnCheckpoint: null,
+			previousTurnCheckpoint: null,
 		});
 		this.emitSummary(entry.summary);
 
@@ -549,6 +556,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 				exitCode: null,
 				lastHookAt: null,
 				latestHookActivity: null,
+				latestTurnCheckpoint: null,
+				previousTurnCheckpoint: null,
 			});
 			this.emitSummary(summary);
 			throw new Error(formatShellSpawnFailure(request.binary, error));
@@ -582,6 +591,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
+			latestTurnCheckpoint: null,
+			previousTurnCheckpoint: null,
 		});
 		this.emitSummary(entry.summary);
 
@@ -731,6 +742,30 @@ export class TerminalSessionManager implements TerminalSessionService {
 			}
 			this.emitSummary(summary);
 		}
+		return cloneSummary(summary);
+	}
+
+	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+
+		const latestCheckpoint = entry.summary.latestTurnCheckpoint ?? null;
+		if (latestCheckpoint?.ref === checkpoint.ref && latestCheckpoint.commit === checkpoint.commit) {
+			return cloneSummary(entry.summary);
+		}
+
+		const summary = updateSummary(entry, {
+			previousTurnCheckpoint: latestCheckpoint,
+			latestTurnCheckpoint: checkpoint,
+		});
+		if (entry.active) {
+			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+		}
+		this.emitSummary(summary);
 		return cloneSummary(summary);
 	}
 

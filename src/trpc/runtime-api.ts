@@ -13,6 +13,7 @@ import {
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { resolveTaskCwd } from "../workspace/task-worktree.js";
+import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints.js";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router.js";
 
 export interface CreateRuntimeApiDependencies {
@@ -71,9 +72,24 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					rows: body.rows,
 					workspaceId: workspaceScope.workspaceId,
 				});
+
+				let nextSummary = summary;
+				if (!body.resumeFromTrash) {
+					try {
+						const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
+						const checkpoint = await captureTaskTurnCheckpoint({
+							cwd: taskCwd,
+							taskId: body.taskId,
+							turn: nextTurn,
+						});
+						nextSummary = terminalManager.applyTurnCheckpoint(body.taskId, checkpoint) ?? summary;
+					} catch {
+						// Best effort checkpointing only.
+					}
+				}
 				return {
 					ok: true,
-					summary,
+					summary: nextSummary,
 				};
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

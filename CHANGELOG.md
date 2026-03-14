@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.12]
+
+- Redesigned the web UI with a refined dark theme, custom UI primitives, and polished controls for a more professional look and feel
+- Added split diff view so you can click the expand button above any diff to see changes side by side
+- Added last turn changes, which takes a Git snapshot each time you send a message to your agent so you can see exactly what changed since your last message
+- Added an all changes view to see every modification in a task's worktree at a glance
+- Resizable agent terminal emulator so you can drag to make it bigger or smaller
+- Inline task creation controls with keyboard shortcut hints
+- Fix diff panel persisting stale content when switching views
+- Fix last-turn diff transitions flickering during scope changes
+- Only keep terminal connections alive for tasks actively on the board, and clean them up when the runtime disconnects
+- Fix WebSocket proxy so terminal connections work correctly during local development
+- Fix the dogfood launcher not waiting for the child process to exit, which could leave orphaned processes on shutdown
+
 ## [0.1.11]
 
 - Add Kanban skill for creating and managing tasks directly from your agent

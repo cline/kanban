@@ -1,4 +1,3 @@
-import { Colors } from "@blueprintjs/core";
 import type { ReactElement, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -130,8 +129,8 @@ export function ResizableBottomPane({
 				minHeight,
 				minWidth: 0,
 				overflow: "visible",
-				borderTop: "1px solid var(--bp-palette-dark-gray-5)",
-				background: Colors.DARK_GRAY2,
+				borderTop: "1px solid var(--color-divider)",
+				background: "var(--color-surface-1)",
 			}}
 		>
 			<div

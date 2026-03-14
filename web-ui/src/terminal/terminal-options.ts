@@ -1,5 +1,6 @@
-import { Colors } from "@blueprintjs/core";
 import type { ITerminalOptions } from "@xterm/xterm";
+
+import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 
 interface CreateKanbanTerminalOptionsInput {
 	cursorColor: string;
@@ -40,10 +41,10 @@ export function createKanbanTerminalOptions({
 			background: terminalBackgroundColor,
 			cursor: cursorColor,
 			cursorAccent: terminalBackgroundColor,
-			foreground: Colors.LIGHT_GRAY5,
-			selectionBackground: `${Colors.BLUE3}4D`,
-			selectionForeground: Colors.WHITE,
-			selectionInactiveBackground: `${Colors.DARK_GRAY3}66`,
+			foreground: TERMINAL_THEME_COLORS.textPrimary,
+			selectionBackground: TERMINAL_THEME_COLORS.selectionBackground,
+			selectionForeground: TERMINAL_THEME_COLORS.selectionForeground,
+			selectionInactiveBackground: TERMINAL_THEME_COLORS.selectionInactiveBackground,
 		},
 		windowOptions: {
 			getCellSizePixels: true,

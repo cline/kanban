@@ -171,7 +171,10 @@ echo '{"cancel":false}'
 `;
 }
 
-function buildOpenCodePluginContent(reviewCommand: string, toInProgressCommand: string): string {
+function buildOpenCodePluginContent(
+	reviewCommand: string,
+	toInProgressCommand: string,
+): string {
 	const reviewCmd = escapeForTemplateLiteral(reviewCommand);
 	const toInProgressCmd = escapeForTemplateLiteral(toInProgressCommand);
 	return `export const KanbanPlugin = async ({ $, client }) => {
@@ -388,7 +391,11 @@ const claudeAdapter: AgentSessionAdapter = {
 						},
 					],
 					UserPromptSubmit: [
-						{ hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }] },
+						{
+							hooks: [
+								{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) },
+							],
+						},
 					],
 				},
 			};

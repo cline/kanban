@@ -1,13 +1,13 @@
-import { Alert, Button, Classes, Colors, NonIdealState, Pre, Spinner } from "@blueprintjs/core";
+import { FolderOpen } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
 import { KanbanBoard } from "@/components/kanban-board";
-import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
@@ -16,6 +16,9 @@ import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TaskStartServicePromptDialog } from "@/components/task-start-service-prompt-dialog";
 import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
 import { TopBar } from "@/components/top-bar";
+import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogTitle } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
@@ -48,6 +51,7 @@ import {
 	replaceWorkspaceMetadata,
 	resetWorkspaceMetadataStore,
 } from "@/stores/workspace-metadata-store";
+import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 
 export default function App(): ReactElement {
@@ -56,7 +60,6 @@ export default function App(): ReactElement {
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-	const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
 	const [worktreeError, setWorktreeError] = useState<string | null>(null);
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
@@ -339,9 +342,11 @@ export default function App(): ReactElement {
 	usePrewarmedAgentTerminals({
 		currentProjectId,
 		isWorkspaceReady: !isWorkspaceMetadataPending,
+		isRuntimeDisconnected,
+		board,
 		sessions,
-		cursorColor: Colors.LIGHT_GRAY5,
-		terminalBackgroundColor: Colors.DARK_GRAY1,
+		cursorColor: TERMINAL_THEME_COLORS.textPrimary,
+		terminalBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
 	});
 	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut } = useShortcutActions({
@@ -664,10 +669,7 @@ export default function App(): ReactElement {
 	}
 
 	return (
-		<div
-			className={Classes.DARK}
-			style={{ display: "flex", flexDirection: "row", height: "100svh", minWidth: 0, overflow: "hidden" }}
-		>
+		<div className="flex h-[100svh] min-w-0 overflow-hidden">
 			{!selectedCard ? (
 				<ProjectNavigationPanel
 					projects={displayedProjects}
@@ -683,7 +685,7 @@ export default function App(): ReactElement {
 					}}
 				/>
 			) : null}
-			<div style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
+			<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 				<TopBar
 					onBack={selectedCard ? handleBack : undefined}
 					workspacePath={navbarWorkspacePath}
@@ -721,8 +723,7 @@ export default function App(): ReactElement {
 					isTerminalOpen={selectedCard ? isDetailTerminalOpen : isHomeTerminalOpen}
 					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
 					onOpenSettings={handleOpenSettings}
-					onOpenKeyboardShortcuts={() => setIsKeyboardShortcutsOpen(true)}
-					shortcuts={shortcuts}
+						shortcuts={shortcuts}
 					selectedShortcutLabel={selectedShortcutLabel}
 					onSelectShortcutLabel={handleSelectShortcutLabel}
 					runningShortcutLabel={runningShortcutLabel}
@@ -738,78 +739,35 @@ export default function App(): ReactElement {
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
 				<RuntimeStatusBanners worktreeError={worktreeError} onDismissWorktreeError={() => setWorktreeError(null)} />
-				<div
-					style={{
-						position: "relative",
-						display: "flex",
-						flex: "1 1 0",
-						minHeight: 0,
-						minWidth: 0,
-						overflow: "hidden",
-					}}
-				>
+				<div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
 					<div
 						className="kb-home-layout"
 						aria-hidden={selectedCard ? true : undefined}
-						style={
-							selectedCard
-								? {
-										visibility: "hidden",
-									}
-								: undefined
-						}
+						style={selectedCard ? { visibility: "hidden" } : undefined}
 					>
 						{shouldShowProjectLoadingState ? (
-							<div
-								style={{
-									display: "flex",
-									flex: "1 1 0",
-									minHeight: 0,
-									alignItems: "center",
-									justifyContent: "center",
-									background: Colors.DARK_GRAY1,
-								}}
-							>
+							<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
 								<Spinner size={30} />
 							</div>
 						) : hasNoProjects ? (
-							<div
-								style={{
-									display: "flex",
-									flex: "1 1 0",
-									minHeight: 0,
-									alignItems: "center",
-									justifyContent: "center",
-									background: Colors.DARK_GRAY1,
-									padding: "calc(var(--bp-surface-spacing) * 6)",
-								}}
-							>
-								<NonIdealState
-									icon="folder-open"
-									title="No projects yet"
-									description="Add a git repository to start using Kanban."
-									action={
-										<Button
-											intent="primary"
-											text="Add project"
-											onClick={() => {
-												void handleAddProject();
-											}}
-										/>
-									}
-								/>
+							<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0 p-6">
+								<div className="flex flex-col items-center justify-center gap-3 text-text-tertiary">
+									<FolderOpen size={48} strokeWidth={1} />
+									<h3 className="text-sm font-semibold text-text-primary">No projects yet</h3>
+									<p className="text-[13px] text-text-secondary">Add a git repository to start using Kanban.</p>
+									<Button
+										variant="primary"
+										onClick={() => {
+											void handleAddProject();
+										}}
+									>
+										Add project
+									</Button>
+								</div>
 							</div>
 						) : (
-							<div
-								style={{
-									display: "flex",
-									flex: "1 1 0",
-									flexDirection: "column",
-									minHeight: 0,
-									minWidth: 0,
-								}}
-							>
-								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, minWidth: 0 }}>
+							<div className="flex flex-1 flex-col min-h-0 min-w-0">
+								<div className="flex flex-1 min-h-0 min-w-0">
 									{isGitHistoryOpen ? (
 										<GitHistoryView
 											workspaceId={currentProjectId}
@@ -858,15 +816,7 @@ export default function App(): ReactElement {
 										initialHeight={homeTerminalPaneHeight}
 										onHeightChange={setHomeTerminalPaneHeight}
 									>
-										<div
-											style={{
-												display: "flex",
-												flex: "1 1 0",
-												minWidth: 0,
-												paddingLeft: "calc(var(--bp-surface-spacing) * 3)",
-												paddingRight: "calc(var(--bp-surface-spacing) * 3)",
-											}}
-										>
+										<div className="flex flex-1 min-w-0 px-3">
 											<AgentTerminalPanel
 												key={`${currentProjectId ?? "none"}:${homeTerminalTaskId}`}
 												taskId={homeTerminalTaskId}
@@ -878,9 +828,9 @@ export default function App(): ReactElement {
 												autoFocus
 												minimalHeaderTitle="Terminal"
 												minimalHeaderSubtitle={homeTerminalShellBinary}
-												panelBackgroundColor={Colors.DARK_GRAY2}
-												terminalBackgroundColor={Colors.DARK_GRAY2}
-												cursorColor={Colors.LIGHT_GRAY5}
+										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
 												showRightBorder={false}
 												isVisible={!selectedCard}
 												onConnectionReady={markTerminalConnectionReady}
@@ -896,7 +846,7 @@ export default function App(): ReactElement {
 						)}
 					</div>
 					{selectedCard && detailSession ? (
-						<div style={{ position: "absolute", inset: 0, display: "flex", minHeight: 0, minWidth: 0 }}>
+						<div className="absolute inset-0 flex min-h-0 min-w-0">
 							<CardDetailView
 								selection={selectedCard}
 								currentProjectId={currentProjectId}
@@ -959,8 +909,7 @@ export default function App(): ReactElement {
 					) : null}
 				</div>
 			</div>
-			<KeyboardShortcutsDialog isOpen={isKeyboardShortcutsOpen} onClose={() => setIsKeyboardShortcutsOpen(false)} />
-			<RuntimeSettingsDialog
+				<RuntimeSettingsDialog
 				open={isSettingsOpen}
 				workspaceId={settingsWorkspaceId}
 				initialConfig={settingsRuntimeProjectConfig}
@@ -1014,22 +963,31 @@ export default function App(): ReactElement {
 					void confirmMoveTaskToTrash(selection.card, board);
 				}}
 			/>
-			<Alert
-				isOpen={gitActionError !== null}
-				canEscapeKeyCancel
-				canOutsideClickCancel
-				confirmButtonText="Close"
-				icon="warning-sign"
-				intent="danger"
-				onCancel={clearGitActionError}
-				onConfirm={clearGitActionError}
+			<AlertDialog
+				open={gitActionError !== null}
+				onOpenChange={(open) => {
+					if (!open) {
+						clearGitActionError();
+					}
+				}}
 			>
-				<p>{gitActionErrorTitle}</p>
-				<p>{gitActionError?.message}</p>
+				<AlertDialogTitle className="text-sm font-semibold text-text-primary mb-2">
+					{gitActionErrorTitle}
+				</AlertDialogTitle>
+				<p className="text-[13px] text-text-secondary mb-3">{gitActionError?.message}</p>
 				{gitActionError?.output ? (
-					<Pre style={{ maxHeight: 220, overflow: "auto" }}>{gitActionError.output}</Pre>
+					<pre className="rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap overflow-auto max-h-[220px] mb-4">
+						{gitActionError.output}
+					</pre>
 				) : null}
-			</Alert>
+				<div className="flex justify-end">
+					<AlertDialogAction asChild>
+						<Button variant="default" onClick={clearGitActionError}>
+							Close
+						</Button>
+					</AlertDialogAction>
+				</div>
+			</AlertDialog>
 		</div>
 	);
 }

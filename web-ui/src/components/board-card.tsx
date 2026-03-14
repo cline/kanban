@@ -1,5 +1,5 @@
-import { Button, Card, Classes, Colors, Elevation, Icon, Spinner, Tooltip } from "@blueprintjs/core";
 import { Draggable } from "@hello-pangea/dnd";
+import { GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -11,11 +11,24 @@ import { formatPathForDisplay } from "@/utils/path-display";
 import { useMeasure } from "@/utils/react-use";
 import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
+import { cn } from "@/components/ui/cn";
 
 interface CardSessionActivity {
 	dotColor: string;
 	text: string;
 }
+
+const SESSION_ACTIVITY_COLOR = {
+	thinking: "var(--color-status-blue)",
+	success: "var(--color-status-green)",
+	waiting: "var(--color-status-gold)",
+	error: "var(--color-status-red)",
+	muted: "var(--color-text-tertiary)",
+	secondary: "var(--color-text-secondary)",
+} as const;
 
 function formatToolLabel(toolName: string, activityText: string): string {
 	const marker = `${toolName}: `;
@@ -36,22 +49,22 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	const toolName = hookActivity?.toolName?.trim() ?? null;
 	const finalMessage = hookActivity?.finalMessage?.trim();
 	if (summary.state === "awaiting_review" && finalMessage) {
-		return { dotColor: Colors.GREEN4, text: finalMessage };
+		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: finalMessage };
 	}
 	if (activityText) {
-		let dotColor = Colors.BLUE4;
+		let dotColor: string = SESSION_ACTIVITY_COLOR.thinking;
 		let text = activityText;
 		if (text.startsWith("Final: ")) {
-			dotColor = Colors.GREEN4;
+			dotColor = SESSION_ACTIVITY_COLOR.success;
 			text = text.slice(7);
 		} else if (text.startsWith("Waiting for approval")) {
-			dotColor = Colors.GOLD4;
+			dotColor = SESSION_ACTIVITY_COLOR.waiting;
 		} else if (text.startsWith("Waiting for review")) {
-			dotColor = Colors.GREEN4;
+			dotColor = SESSION_ACTIVITY_COLOR.success;
 		} else if (text.startsWith("Failed ")) {
-			dotColor = Colors.RED4;
+			dotColor = SESSION_ACTIVITY_COLOR.error;
 		} else if (text === "Agent active" || text === "Working on task" || text.startsWith("Resumed")) {
-			return { dotColor: Colors.BLUE4, text: "Thinking..." };
+			return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
 		}
 		if (toolName && (text.startsWith("Using ") || text.startsWith("Completed ") || text.startsWith("Failed "))) {
 			text = formatToolLabel(toolName, activityText);
@@ -59,10 +72,10 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		return { dotColor, text };
 	}
 	if (summary.state === "awaiting_review") {
-		return { dotColor: Colors.GREEN4, text: "Waiting for review" };
+		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Waiting for review" };
 	}
 	if (summary.state === "running") {
-		return { dotColor: Colors.BLUE4, text: "Thinking..." };
+		return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
 	}
 	return null;
 }
@@ -182,11 +195,6 @@ export function BoardCard({
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
 			{(provided, snapshot) => {
 				const isDragging = snapshot.isDragging;
-				const cardElevation = isDragging
-					? Elevation.THREE
-					: isHovered && isCardInteractive
-						? Elevation.ONE
-						: Elevation.ZERO;
 				const draggableContent = (
 					<div
 						ref={provided.innerRef}
@@ -195,6 +203,7 @@ export function BoardCard({
 						className="kb-board-card-shell"
 						data-task-id={card.id}
 						data-column-id={columnId}
+						data-selected={selected}
 						onMouseDownCapture={(event) => {
 							if (!isCardInteractive) {
 								return;
@@ -233,7 +242,7 @@ export function BoardCard({
 						}}
 						style={{
 							...provided.draggableProps.style,
-							marginBottom: 8,
+							marginBottom: 6,
 							cursor: "grab",
 						}}
 						onMouseEnter={() => {
@@ -248,37 +257,36 @@ export function BoardCard({
 						}}
 						onMouseLeave={() => setIsHovered(false)}
 					>
-						<Card
-							elevation={cardElevation}
-							interactive={isCardInteractive}
-							selected={selected}
-							compact
-							className={`${isDependencySource ? "kb-board-card-dependency-source" : ""} ${isDependencyTarget ? "kb-board-card-dependency-target" : ""}`.trim()}
+						<div
+							className={cn(
+								"rounded-md border border-border-bright bg-surface-2 p-2.5",
+								isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
+								isDragging && "shadow-lg",
+								isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
+								isDependencySource && "kb-board-card-dependency-source",
+								isDependencyTarget && "kb-board-card-dependency-target",
+							)}
 						>
-							<div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24 }}>
+							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
 								{statusMarker ? (
-									<div style={{ display: "inline-flex", alignItems: "center" }}>{statusMarker}</div>
+									<div className="inline-flex items-center">{statusMarker}</div>
 								) : null}
-								<div ref={titleContainerRef} style={{ flex: "1 1 auto", minWidth: 0 }}>
+								<div ref={titleContainerRef} className="flex-1 min-w-0">
 									<p
 										ref={titleRef}
-										className="kb-line-clamp-1"
-										style={{
-											margin: 0,
-											fontWeight: 500,
-											color: isTrashCard ? Colors.GRAY3 : undefined,
-											textDecoration: isTrashCard ? "line-through" : undefined,
-										}}
+										className={cn(
+											"kb-line-clamp-1 m-0 font-medium text-sm",
+											isTrashCard && "line-through text-text-tertiary",
+										)}
 									>
 										{displayPromptSplit.title}
 									</p>
 								</div>
 								{columnId === "backlog" ? (
 									<Button
-										icon="play"
-										intent="primary"
-										variant="minimal"
-										size="small"
+										icon={<Play size={14} />}
+										variant="ghost"
+										size="sm"
 										aria-label="Start task"
 										onMouseDown={stopEvent}
 										onClick={(event) => {
@@ -288,11 +296,9 @@ export function BoardCard({
 									/>
 								) : columnId === "review" ? (
 									<Button
-										icon={<Icon icon="trash" size={13} />}
-										intent="primary"
-										variant="minimal"
-										size="small"
-										loading={isMoveToTrashLoading}
+										icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
+										variant="ghost"
+										size="sm"
 										disabled={isMoveToTrashLoading}
 										aria-label="Move task to trash"
 										onMouseDown={stopEvent}
@@ -303,7 +309,7 @@ export function BoardCard({
 									/>
 								) : columnId === "trash" ? (
 									<Tooltip
-										placement="bottom"
+										side="bottom"
 										content={
 											<>
 												Restore session
@@ -313,9 +319,9 @@ export function BoardCard({
 										}
 									>
 										<Button
-											icon={<Icon icon="reset" size={12} />}
-											variant="minimal"
-											size="small"
+											icon={<RotateCcw size={12} />}
+											variant="ghost"
+											size="sm"
 											aria-label="Restore task from trash"
 											onMouseDown={stopEvent}
 											onClick={(event) => {
@@ -328,16 +334,16 @@ export function BoardCard({
 							</div>
 							{displayPromptSplit.description ? (
 								<p
-									className={isTrashCard ? undefined : Classes.TEXT_MUTED}
+									className={cn(
+										"text-sm leading-[1.4]",
+										isTrashCard ? "text-text-tertiary" : "text-text-secondary",
+									)}
 									style={{
 										margin: "4px 0 0",
-										fontSize: "var(--bp-typography-size-body-small)",
-										lineHeight: 1.4,
 										display: "-webkit-box",
 										WebkitLineClamp: 3,
 										WebkitBoxOrient: "vertical",
 										overflow: "hidden",
-										color: isTrashCard ? Colors.GRAY1 : undefined,
 									}}
 								>
 									{displayPromptSplit.description}
@@ -345,29 +351,24 @@ export function BoardCard({
 							) : null}
 							{sessionActivity ? (
 								<div
+									className="flex gap-1.5 items-start mt-1"
 									style={{
-										display: "flex",
-										gap: 6,
-										alignItems: "flex-start",
-										marginTop: 6,
-										color: isTrashCard ? Colors.GRAY2 : undefined,
+									color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
 									}}
 								>
 									<span
+										className="inline-block shrink-0 rounded-full"
 										style={{
-											display: "inline-block",
-											width: 8,
-											height: 8,
-											borderRadius: "50%",
-											backgroundColor: isTrashCard ? Colors.GRAY2 : sessionActivity.dotColor,
-											flexShrink: 0,
+											width: 6,
+											height: 6,
+										backgroundColor: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : sessionActivity.dotColor,
 											marginTop: 4,
 										}}
 									/>
 									<span
-										className={Classes.MONOSPACE_TEXT}
+										className="font-mono"
 										style={{
-											fontSize: "var(--bp-typography-size-body-small)",
+											fontSize: 12,
 											whiteSpace: "normal",
 											overflowWrap: "anywhere",
 										}}
@@ -378,20 +379,20 @@ export function BoardCard({
 							) : null}
 							{showWorkspaceStatus && reviewWorkspaceSnapshot ? (
 								<p
-									className={Classes.MONOSPACE_TEXT}
+									className="font-mono"
 									style={{
-										margin: "6px 0 0",
-										fontSize: "var(--bp-typography-size-body-small)",
+										margin: "4px 0 0",
+										fontSize: 12,
 										lineHeight: 1.4,
 										whiteSpace: "normal",
 										overflowWrap: "anywhere",
-										color: isTrashCard ? Colors.GRAY2 : undefined,
+									color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
 									}}
 								>
 									{isTrashCard ? (
 										<span
 											style={{
-												color: Colors.GRAY2,
+											color: SESSION_ACTIVITY_COLOR.muted,
 												textDecoration: "line-through",
 											}}
 										>
@@ -399,21 +400,24 @@ export function BoardCard({
 										</span>
 									) : (
 										<>
-											<span style={{ color: Colors.GRAY4 }}>{reviewWorkspacePath}</span>
-											<Icon
-												icon="git-branch"
+										<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewWorkspacePath}</span>
+											<GitBranch
 												size={10}
-												color={Colors.GRAY4}
-												style={{ margin: "0px 4px 2px" }}
+												style={{
+													display: "inline",
+												color: SESSION_ACTIVITY_COLOR.secondary,
+													margin: "0px 4px 2px",
+													verticalAlign: "middle",
+												}}
 											/>
-											<span style={{ color: Colors.GRAY4 }}>{reviewRefLabel}</span>
+										<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewRefLabel}</span>
 											{reviewChangeSummary ? (
 												<>
-													<span style={{ color: Colors.GRAY3 }}> (</span>
-													<span style={{ color: Colors.GRAY3 }}>{reviewChangeSummary.filesLabel}</span>
-													<span style={{ color: Colors.GREEN4 }}> +{reviewChangeSummary.additions}</span>
-													<span style={{ color: Colors.RED4 }}> -{reviewChangeSummary.deletions}</span>
-													<span style={{ color: Colors.GRAY3 }}>)</span>
+												<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}> (</span>
+												<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
+												<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
+												<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
+												<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>)</span>
 												</>
 											) : null}
 										</>
@@ -421,42 +425,40 @@ export function BoardCard({
 								</p>
 							) : null}
 							{showReviewGitActions ? (
-								<div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+								<div className="flex gap-1.5 mt-1.5">
 									<Button
-										text="Commit"
-										size="small"
-										variant="solid"
-										intent="primary"
-										style={{ flex: "1 1 0" }}
-										loading={isCommitLoading}
+										variant="primary"
+										size="sm"
+										icon={isCommitLoading ? <Spinner size={12} /> : undefined}
 										disabled={isAnyGitActionLoading}
+										style={{ flex: "1 1 0" }}
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
 											onCommit?.(card.id);
 										}}
-									/>
+									>
+										Commit
+									</Button>
 									<Button
-										text="Open PR"
-										size="small"
-										variant="solid"
-										intent="primary"
-										style={{ flex: "1 1 0" }}
-										loading={isOpenPrLoading}
+										variant="primary"
+										size="sm"
+										icon={isOpenPrLoading ? <Spinner size={12} /> : undefined}
 										disabled={isAnyGitActionLoading}
+										style={{ flex: "1 1 0" }}
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
 											onOpenPr?.(card.id);
 										}}
-									/>
+									>
+										Open PR
+									</Button>
 								</div>
 							) : null}
 							{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
 								<Button
-									text={cancelAutomaticActionLabel}
-									size="small"
-									variant="outlined"
+									size="sm"
 									fill
 									style={{ marginTop: 12 }}
 									onMouseDown={stopEvent}
@@ -464,9 +466,11 @@ export function BoardCard({
 										stopEvent(event);
 										onCancelAutomaticAction(card.id);
 									}}
-								/>
+								>
+									{cancelAutomaticActionLabel}
+								</Button>
 							) : null}
-						</Card>
+						</div>
 					</div>
 				);
 

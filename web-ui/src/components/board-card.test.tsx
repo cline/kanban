@@ -145,6 +145,6 @@ describe("BoardCard", () => {
 		const trashButton = container.querySelector('button[aria-label="Move task to trash"]');
 		expect(trashButton).toBeInstanceOf(HTMLButtonElement);
 		expect((trashButton as HTMLButtonElement | null)?.disabled).toBe(true);
-		expect(trashButton?.className).toContain("bp6-loading");
+		expect(trashButton?.querySelector("svg.animate-spin")).toBeTruthy();
 	});
 });

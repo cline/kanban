@@ -1,10 +1,11 @@
 import "@xterm/xterm/css/xterm.css";
 
-import { Button, Callout, Classes, Colors, Divider, Icon, Tag, Tooltip } from "@blueprintjs/core";
+import { Command, Maximize2, MessageSquare, Minimize2, X } from "lucide-react";
 import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
-import { panelSeparatorColor } from "@/data/column-colors";
+import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
@@ -23,6 +24,7 @@ interface AgentTerminalSessionControls {
 export interface AgentTerminalPanelProps {
 	taskId: string;
 	workspaceId: string | null;
+	terminalEnabled?: boolean;
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onCommit?: () => void;
@@ -71,9 +73,11 @@ function describeState(summary: RuntimeTaskSessionSummary | null): string {
 	return "Idle";
 }
 
-function getStateIntent(summary: RuntimeTaskSessionSummary | null): "none" | "success" | "warning" | "danger" {
+type StatusTagStyle = "neutral" | "success" | "warning" | "danger";
+
+function getStateTagStyle(summary: RuntimeTaskSessionSummary | null): StatusTagStyle {
 	if (!summary) {
-		return "none";
+		return "neutral";
 	}
 	if (summary.state === "running") {
 		return "success";
@@ -84,8 +88,15 @@ function getStateIntent(summary: RuntimeTaskSessionSummary | null): "none" | "su
 	if (summary.state === "interrupted" || summary.state === "failed") {
 		return "danger";
 	}
-	return "none";
+	return "neutral";
 }
+
+const statusTagColors: Record<StatusTagStyle, string> = {
+	neutral: "bg-surface-3 text-text-secondary",
+	success: "bg-status-green/15 text-status-green",
+	warning: "bg-status-orange/15 text-status-orange",
+	danger: "bg-status-red/15 text-status-red",
+};
 
 function AgentTerminalReviewActions({
 	taskId,
@@ -112,25 +123,23 @@ function AgentTerminalReviewActions({
 	return (
 		<div style={{ display: "flex", gap: 6 }}>
 			<Button
-				text="Commit"
-				size="small"
-				variant="solid"
-				intent="primary"
+				variant="primary"
+				size="sm"
 				style={{ flex: "1 1 0" }}
-				loading={isCommitLoading}
 				disabled={isCommitLoading || isOpenPrLoading}
 				onClick={onCommit}
-			/>
+			>
+				{isCommitLoading ? "..." : "Commit"}
+			</Button>
 			<Button
-				text="Open PR"
-				size="small"
-				variant="solid"
-				intent="primary"
+				variant="primary"
+				size="sm"
 				style={{ flex: "1 1 0" }}
-				loading={isOpenPrLoading}
 				disabled={isCommitLoading || isOpenPrLoading}
 				onClick={onOpenPr}
-			/>
+			>
+				{isOpenPrLoading ? "..." : "Open PR"}
+			</Button>
 		</div>
 	);
 }
@@ -154,9 +163,9 @@ function AgentTerminalPanelLayout({
 	autoFocus: _autoFocus = false,
 	minimalHeaderTitle = "Terminal",
 	minimalHeaderSubtitle = null,
-	panelBackgroundColor = Colors.DARK_GRAY1,
-	terminalBackgroundColor = Colors.DARK_GRAY1,
-	cursorColor: _cursorColor = Colors.LIGHT_GRAY5,
+	panelBackgroundColor = "var(--color-surface-0)",
+	terminalBackgroundColor = "var(--color-surface-0)",
+	cursorColor: _cursorColor = "var(--color-text-primary)",
 	showRightBorder = true,
 	isVisible: _isVisible = true,
 	onConnectionReady: _onConnectionReady,
@@ -169,7 +178,7 @@ function AgentTerminalPanelLayout({
 	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
-	const statusIntent = useMemo(() => getStateIntent(summary), [summary]);
+	const statusTagStyle = useMemo(() => getStateTagStyle(summary), [summary]);
 	const agentLabel = useMemo(() => {
 		const normalizedCommand = agentCommand?.trim();
 		if (!normalizedCommand) {
@@ -193,7 +202,7 @@ function AgentTerminalPanelLayout({
 				minWidth: 0,
 				minHeight: 0,
 				background: panelBackgroundColor,
-				borderRight: showRightBorder ? `1px solid ${panelSeparatorColor}` : undefined,
+				borderRight: showRightBorder ? "1px solid var(--color-divider)" : undefined,
 			}}
 		>
 			{showSessionToolbar ? (
@@ -208,24 +217,29 @@ function AgentTerminalPanelLayout({
 						}}
 					>
 						<div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-							<Tag intent={statusIntent} minimal>
+							<span
+								className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${statusTagColors[statusTagStyle]}`}
+							>
 								{statusLabel}
-							</Tag>
+							</span>
 						</div>
 						<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-							<Button text="Clear" variant="outlined" size="small" onClick={clearTerminal} />
+							<Button variant="default" size="sm" onClick={clearTerminal}>
+								Clear
+							</Button>
 							<Button
-								text="Stop"
-								variant="outlined"
-								size="small"
+								variant="default"
+								size="sm"
 								onClick={() => {
 									void stopTerminal();
 								}}
 								disabled={!canStop || isStopping}
-							/>
+							>
+								Stop
+							</Button>
 						</div>
 					</div>
-					<Divider />
+					<div className="h-px bg-border" />
 				</>
 			) : onClose ? (
 				<div
@@ -238,13 +252,13 @@ function AgentTerminalPanelLayout({
 					}}
 				>
 					<div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-						<span className={Classes.TEXT_MUTED} style={{ fontSize: "var(--bp-typography-size-body-small)" }}>
+						<span className="text-text-secondary" style={{ fontSize: 12 }}>
 							{minimalHeaderTitle}
 						</span>
 						{minimalHeaderSubtitle ? (
 							<span
-								className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
-								style={{ fontSize: "var(--bp-typography-size-body-x-small)" }}
+								className="truncate font-mono text-text-secondary"
+								style={{ fontSize: 10 }}
 								title={minimalHeaderSubtitle}
 							>
 								{minimalHeaderSubtitle}
@@ -253,11 +267,11 @@ function AgentTerminalPanelLayout({
 					</div>
 					<div style={{ display: "flex", alignItems: "center", gap: 2, marginRight: "-6px" }}>
 						{agentLabel && onSendAgentCommand ? (
-							<Tooltip placement="top" content={`Run ${agentLabel}`}>
+							<Tooltip side="top" content={`Run ${agentLabel}`}>
 								<Button
-									icon={<Icon icon="chat" size={12} />}
-									variant="minimal"
-									size="small"
+									icon={<MessageSquare size={12} />}
+									variant="ghost"
+									size="sm"
 									onClick={onSendAgentCommand}
 									aria-label={`Run ${agentLabel}`}
 								/>
@@ -265,7 +279,7 @@ function AgentTerminalPanelLayout({
 						) : null}
 						{onToggleExpand ? (
 							<Tooltip
-								placement="top"
+								side="top"
 								content={
 									<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
 										<span>{isExpanded ? "Collapse" : "Expand"}</span>
@@ -273,22 +287,28 @@ function AgentTerminalPanelLayout({
 											style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}
 										>
 											<span>(</span>
-											<Icon icon={isMacPlatform ? "key-command" : "key-control"} size={11} />
+											{isMacPlatform ? <Command size={11} /> : <span style={{ fontSize: 11 }}>Ctrl</span>}
 											<span>+ M)</span>
 										</span>
 									</span>
 								}
 							>
 								<Button
-									icon={<Icon icon={isExpanded ? "minimize" : "maximize"} size={12} />}
-									variant="minimal"
-									size="small"
+									icon={isExpanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+									variant="ghost"
+									size="sm"
 									onClick={onToggleExpand}
 									aria-label={isExpanded ? "Collapse terminal" : "Expand terminal"}
 								/>
 							</Tooltip>
 						) : null}
-						<Button icon="cross" variant="minimal" size="small" onClick={onClose} aria-label="Close terminal" />
+						<Button
+							icon={<X size={14} />}
+							variant="ghost"
+							size="sm"
+							onClick={onClose}
+							aria-label="Close terminal"
+						/>
 					</div>
 				</div>
 			) : null}
@@ -300,9 +320,11 @@ function AgentTerminalPanelLayout({
 				/>
 			</div>
 			{lastError ? (
-				<Callout intent="danger" compact style={{ borderRadius: 0 }}>
+				<div
+					className="flex gap-2 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-[13px] text-status-red"
+				>
 					{lastError}
-				</Callout>
+				</div>
 			) : null}
 			{showMoveToTrash && onMoveToTrash ? (
 				<div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 12px" }}>
@@ -316,20 +338,21 @@ function AgentTerminalPanelLayout({
 					/>
 					{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
 						<Button
-							text={`Cancel Automatic ${cancelAutomaticActionButtonLabel}`}
-							variant="outlined"
+							variant="default"
 							fill
 							onClick={onCancelAutomaticAction}
-						/>
+						>
+							{`Cancel Automatic ${cancelAutomaticActionButtonLabel}`}
+						</Button>
 					) : null}
 					<Button
-						intent="danger"
-						text="Move Card To Trash"
+						variant="danger"
 						fill
-						loading={isMoveToTrashLoading}
 						disabled={isMoveToTrashLoading}
 						onClick={onMoveToTrash}
-					/>
+					>
+						{isMoveToTrashLoading ? "..." : "Move Card To Trash"}
+					</Button>
 				</div>
 			) : null}
 		</div>
@@ -337,16 +360,19 @@ function AgentTerminalPanelLayout({
 }
 
 export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement {
+	// enabled gates whether this panel should keep a live persistent terminal connection.
+	// We disable it for non-active task contexts so backlog and trash views do not keep extra websocket sockets open.
 	const sessionControls = usePersistentTerminalSession({
 		taskId: props.taskId,
 		workspaceId: props.workspaceId,
+		enabled: props.terminalEnabled ?? true,
 		onSummary: props.onSummary,
 		onConnectionReady: props.onConnectionReady,
 		autoFocus: props.autoFocus,
 		isVisible: props.isVisible,
 		sessionStartedAt: props.summary?.startedAt ?? null,
-		terminalBackgroundColor: props.terminalBackgroundColor ?? Colors.DARK_GRAY1,
-		cursorColor: props.cursorColor ?? Colors.LIGHT_GRAY5,
+		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-0)",
+		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
 	});
 
 	return <AgentTerminalPanelLayout {...props} sessionControls={sessionControls} />;

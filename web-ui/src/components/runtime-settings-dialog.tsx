@@ -1,27 +1,30 @@
+import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import * as RadixPopover from "@radix-ui/react-popover";
+import * as RadixSwitch from "@radix-ui/react-switch";
 import {
-	AnchorButton,
-	Button,
-	Callout,
-	Checkbox,
-	Classes,
-	Dialog,
-	DialogBody,
-	DialogFooter,
-	HTMLSelect,
-	Icon,
-	InputGroup,
-	MenuItem,
-	Switch,
-	Tag,
-	TextArea,
-} from "@blueprintjs/core";
-import type { IconName } from "@blueprintjs/icons";
-import type { ItemRenderer } from "@blueprintjs/select";
-import { Select } from "@blueprintjs/select";
+	Check,
+	ChevronDown,
+	Circle,
+	CircleDot,
+	ExternalLink,
+	Plus,
+	Settings,
+	X,
+} from "lucide-react";
 import { getRuntimeAgentCatalogEntry, RUNTIME_AGENT_CATALOG } from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import {
+	getRuntimeShortcutIconComponent,
+	getRuntimeShortcutPickerOption,
+	RUNTIME_SHORTCUT_ICON_OPTIONS,
+	type RuntimeShortcutIconOption,
+	type RuntimeShortcutPickerIconId,
+} from "@/components/shared/runtime-shortcut-icons";
 import { TASK_GIT_PROMPT_VARIABLES, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
@@ -61,50 +64,15 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 	{ value: "pr", label: "Make PR" },
 ];
 
-const SHORTCUT_ICON_OPTIONS: Array<{ value: IconName; label: string }> = [
-	{ value: "play", label: "Play" },
-	{ value: "console", label: "Terminal" },
-	{ value: "bug", label: "Debug" },
-	{ value: "download", label: "Download" },
-	{ value: "upload", label: "Upload" },
-	{ value: "build", label: "Build" },
-	{ value: "code", label: "Code" },
-	{ value: "rocket", label: "Deploy" },
-];
-const SHORTCUT_ICON_VALUES = new Set<IconName>(SHORTCUT_ICON_OPTIONS.map((option) => option.value));
-const ShortcutIconSelect = Select.ofType<{ value: IconName; label: string }>();
 export type RuntimeSettingsSection = "shortcuts";
 
-const renderShortcutIconOption: ItemRenderer<{ value: IconName; label: string }> = (
-	option,
-	{ handleClick, handleFocus, modifiers },
-) => {
-	if (!modifiers.matchesPredicate) {
-		return null;
-	}
-	return (
-		<MenuItem
-			key={option.value}
-			active={modifiers.active}
-			disabled={modifiers.disabled}
-			text=""
-			icon={option.value}
-			aria-label={option.label}
-			onClick={handleClick}
-			onFocus={handleFocus}
-			roleStructure="listoption"
-		/>
-	);
-};
+function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
+	return getRuntimeShortcutPickerOption(icon);
+}
 
-function getShortcutIconOption(icon: string | undefined): { value: IconName; label: string } {
-	if (icon && SHORTCUT_ICON_VALUES.has(icon as IconName)) {
-		const match = SHORTCUT_ICON_OPTIONS.find((option) => option.value === icon);
-		if (match) {
-			return match;
-		}
-	}
-	return SHORTCUT_ICON_OPTIONS[0] ?? { value: "console", label: "Terminal" };
+function ShortcutIconComponent({ icon, size = 14 }: { icon: string | undefined; size?: number }): React.ReactElement {
+	const Component = getRuntimeShortcutIconComponent(icon);
+	return <Component size={size} />;
 }
 
 function formatNotificationPermissionStatus(permission: BrowserNotificationPermission): string {
@@ -159,55 +127,47 @@ function AgentRow({
 					onSelect();
 				}
 			}}
-			style={{
-				display: "flex",
-				alignItems: "center",
-				justifyContent: "space-between",
-				gap: 12,
-				padding: "5px 0",
-				cursor: isInstalled ? "pointer" : "default",
-			}}
+			className="flex items-center justify-between gap-3 py-1.5"
+			style={{ cursor: isInstalled ? "pointer" : "default" }}
 		>
-			<div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0 }}>
-				<Icon
-					icon={isSelected ? "selection" : "circle"}
-					intent={isSelected ? "primary" : undefined}
-					className={!isInstalled ? Classes.TEXT_DISABLED : undefined}
-					style={{ marginTop: 2 }}
-				/>
-				<div style={{ minWidth: 0 }}>
-					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-						<span>{agent.label}</span>
+			<div className="flex items-start gap-2 min-w-0">
+				{isSelected ? (
+					<CircleDot size={16} className="text-accent mt-0.5 shrink-0" />
+				) : (
+					<Circle size={16} className={cn("mt-0.5 shrink-0", !isInstalled ? "text-text-tertiary" : "text-text-secondary")} />
+				)}
+				<div className="min-w-0">
+					<div className="flex items-center gap-2">
+						<span className="text-[13px] text-text-primary">{agent.label}</span>
 						{isInstalled ? (
-							<Tag minimal intent="success">
+							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-green/10 text-status-green">
 								Installed
-							</Tag>
+							</span>
 						) : isInstallStatusPending ? (
-							<Tag minimal>Checking...</Tag>
+							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-3 text-text-secondary">
+								Checking...
+							</span>
 						) : null}
 					</div>
 					{agent.command ? (
-						<p
-							className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
-							style={{ margin: "1px 0 0", fontSize: "var(--bp-typography-size-body-small)" }}
-						>
+						<p className="text-text-secondary font-mono text-xs mt-0.5 m-0">
 							{agent.command}
 						</p>
 					) : null}
 				</div>
 			</div>
 			{agent.installed === false && installUrl ? (
-				<AnchorButton
-					text="Install"
-					variant="outlined"
-					size="small"
+				<a
 					href={installUrl}
 					target="_blank"
 					rel="noreferrer"
 					onClick={(event: React.MouseEvent) => event.stopPropagation()}
-				/>
+					className="inline-flex items-center justify-center rounded-md font-medium duration-150 cursor-default select-none h-7 px-2 text-xs bg-surface-2 border border-border text-text-primary hover:bg-surface-3 hover:border-border-bright"
+				>
+					Install
+				</a>
 			) : agent.installed === false ? (
-				<Button text="Install" variant="outlined" size="small" disabled />
+				<Button size="sm" disabled>Install</Button>
 			) : null}
 		</div>
 	);
@@ -228,14 +188,12 @@ function InlineUtilityButton({
 }): React.ReactElement {
 	return (
 		<Button
-			text={text}
-			size="small"
-			variant="outlined"
+			size="sm"
 			disabled={disabled}
 			onClick={onClick}
-			className={monospace ? Classes.MONOSPACE_TEXT : undefined}
+			className={cn(monospace && "font-mono")}
 			style={{
-				fontSize: "var(--bp-typography-size-body-x-small)",
+				fontSize: 10,
 				verticalAlign: "middle",
 				...(typeof widthCh === "number"
 					? {
@@ -244,7 +202,67 @@ function InlineUtilityButton({
 						}
 					: {}),
 			}}
-		/>
+		>
+			{text}
+		</Button>
+	);
+}
+
+function ShortcutIconPicker({
+	value,
+	onSelect,
+}: {
+	value: string | undefined;
+	onSelect: (icon: RuntimeShortcutPickerIconId) => void;
+}): React.ReactElement {
+	const [open, setOpen] = useState(false);
+	const selectedOption = getShortcutIconOption(value);
+
+	return (
+		<RadixPopover.Root open={open} onOpenChange={setOpen}>
+			<RadixPopover.Trigger asChild>
+				<button
+					type="button"
+					aria-label={`Shortcut icon: ${selectedOption.label}`}
+					className="inline-flex items-center gap-1 h-7 px-1.5 rounded-md border border-border bg-surface-2 text-text-primary hover:bg-surface-3"
+				>
+					<ShortcutIconComponent icon={value} size={14} />
+					<ChevronDown size={12} />
+				</button>
+			</RadixPopover.Trigger>
+			<RadixPopover.Portal>
+				<RadixPopover.Content
+					side="bottom"
+					align="start"
+					sideOffset={4}
+					className="z-50 rounded-md border border-border bg-surface-2 p-1 shadow-lg"
+					style={{ animation: "kb-tooltip-show 100ms ease" }}
+				>
+					<div className="flex gap-0.5">
+						{RUNTIME_SHORTCUT_ICON_OPTIONS.map((option) => {
+							const IconComponent = getRuntimeShortcutIconComponent(option.value);
+							return (
+								<button
+									key={option.value}
+									type="button"
+									aria-label={option.label}
+									className={cn(
+										"p-1.5 rounded hover:bg-surface-3",
+										selectedOption.value === option.value && "bg-surface-3",
+									)}
+									onClick={() => {
+										onSelect(option.value);
+										setOpen(false);
+									}}
+								>
+									<IconComponent size={14} />
+								</button>
+							);
+						})}
+					</div>
+				</RadixPopover.Content>
+			</RadixPopover.Portal>
+		</RadixPopover.Root>
 	);
 }
 
@@ -295,6 +313,7 @@ export function RuntimeSettingsDialog({
 	const selectedPromptPlaceholder =
 		selectedPromptVariant === "commit" ? "Commit prompt template" : "PR prompt template";
 	const baseRefVariable = TASK_GIT_PROMPT_VARIABLES[0];
+	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
 	}, []);
@@ -510,14 +529,13 @@ export function RuntimeSettingsDialog({
 	};
 
 	return (
-		<Dialog isOpen={open} onClose={() => onOpenChange(false)} title="Settings" icon="cog">
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogHeader title="Settings" icon={<Settings size={16} />} />
 			<DialogBody>
-				<h5 className={Classes.HEADING} style={{ margin: 0 }}>
-					Global
-				</h5>
+				<h5 className="font-semibold text-text-primary m-0">Global</h5>
 				<p
-					className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
-					style={{ margin: 0, wordBreak: "break-all", cursor: config?.globalConfigPath ? "pointer" : undefined }}
+					className="text-text-secondary font-mono text-xs m-0 break-all"
+					style={{ cursor: config?.globalConfigPath ? "pointer" : undefined }}
 					onClick={() => {
 						if (config?.globalConfigPath) {
 							window.open(`file://${config.globalConfigPath}`);
@@ -526,13 +544,11 @@ export function RuntimeSettingsDialog({
 				>
 					{config?.globalConfigPath ?? "~/.kanban/config.json"}
 					{config?.globalConfigPath ? (
-						<Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} />
+						<ExternalLink size={12} className="inline ml-1.5 align-middle" />
 					) : null}
 				</p>
 
-				<h6 className={Classes.HEADING} style={{ margin: "12px 0 0" }}>
-					Agent runtime
-				</h6>
+				<h6 className="font-semibold text-text-primary mt-3 mb-0">Agent runtime</h6>
 				{displayedAgents.map((agent) => (
 					<AgentRow
 						key={agent.id}
@@ -543,68 +559,65 @@ export function RuntimeSettingsDialog({
 					/>
 				))}
 				{config === null ? (
-					<p className={Classes.TEXT_MUTED} style={{ padding: "8px 0" }}>
+					<p className="text-text-secondary py-2">
 						Checking which CLIs are installed for this project...
 					</p>
 				) : null}
-				<Checkbox
-					checked={agentAutonomousModeEnabled}
-					disabled={controlsDisabled}
-					label="Enable bypass permissions flag"
-					onChange={(event) => {
-						setAgentAutonomousModeEnabled(event.currentTarget.checked);
-					}}
-					style={{ marginTop: 8 }}
-				/>
-				<p className={Classes.TEXT_MUTED} style={{ margin: "0 0 0 24px" }}>
+				<label htmlFor={bypassPermissionsCheckboxId} className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer">
+					<RadixCheckbox.Root
+						id={bypassPermissionsCheckboxId}
+						aria-label="Enable bypass permissions flag"
+						checked={agentAutonomousModeEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={(checked) => setAgentAutonomousModeEnabled(checked === true)}
+						className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:opacity-40"
+					>
+						<RadixCheckbox.Indicator>
+							<Check size={12} className="text-white" />
+						</RadixCheckbox.Indicator>
+					</RadixCheckbox.Root>
+					<span>Enable bypass permissions flag</span>
+				</label>
+				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
 					Allows agents to use tools without stopping for permission. Use at your own risk.
 				</p>
 
-				<div
-					style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 4px" }}
-				>
-					<h6 className={Classes.HEADING} style={{ margin: 0 }}>
-						Git button prompts
-					</h6>
+				<div className="flex items-center justify-between mt-4 mb-1">
+					<h6 className="font-semibold text-text-primary m-0">Git button prompts</h6>
 				</div>
-				<p className={Classes.TEXT_MUTED} style={{ margin: "0 0 8px" }}>
+				<p className="text-text-secondary text-[13px] mt-0 mb-2">
 					Modify the prompts sent to the agent when using Commit or Make PR on tasks in Review.
 				</p>
-				<div
-					style={{
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "space-between",
-						gap: 8,
-						marginBottom: 8,
-					}}
-				>
-					<HTMLSelect
+				<div className="flex items-center justify-between gap-2 mb-2">
+					<select
 						value={selectedPromptVariant}
 						onChange={(event) => setSelectedPromptVariant(event.target.value as TaskGitAction)}
-						options={GIT_PROMPT_VARIANT_OPTIONS}
 						disabled={controlsDisabled}
+						className="h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
 						style={{ minWidth: 220 }}
-					/>
+					>
+						{GIT_PROMPT_VARIANT_OPTIONS.map((option) => (
+							<option key={option.value} value={option.value}>{option.label}</option>
+						))}
+					</select>
 					<Button
-						text="Reset"
-						variant="minimal"
-						size="small"
+						variant="ghost"
+						size="sm"
 						onClick={handleResetSelectedPrompt}
 						disabled={controlsDisabled || isSelectedPromptAtDefault}
-					/>
+					>
+						Reset
+					</Button>
 				</div>
-				<TextArea
-					fill
+				<textarea
 					rows={5}
 					value={selectedPromptValue}
 					onChange={(event) => handleSelectedPromptChange(event.target.value)}
 					placeholder={selectedPromptPlaceholder}
 					disabled={controlsDisabled}
-					className={Classes.MONOSPACE_TEXT}
-					style={{ fontFamily: "var(--bp-font-family-monospace)" }}
+					className="w-full rounded-md border border-border bg-surface-2 p-3 text-[13px] text-text-primary font-mono placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none disabled:opacity-40"
 				/>
-				<p className={Classes.TEXT_MUTED} style={{ margin: "8px 0 10px" }}>
+				<p className="text-text-secondary text-[13px] mt-2 mb-2.5">
 					Use{" "}
 					<InlineUtilityButton
 						text={copiedVariableToken === baseRefVariable.token ? "Copied!" : baseRefVariable.token}
@@ -617,19 +630,20 @@ export function RuntimeSettingsDialog({
 					/>{" "}
 					to reference {baseRefVariable.description}
 				</p>
-				<h6 className={Classes.HEADING} style={{ margin: "18px 0 8px" }}>
-					Notifications
-				</h6>
-				<Switch
-					checked={readyForReviewNotificationsEnabled}
-					disabled={controlsDisabled}
-					label="Notify when a task is ready for review"
-					onChange={(event) => {
-						setReadyForReviewNotificationsEnabled(event.currentTarget.checked);
-					}}
-				/>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 8px" }}>
-					<p className={Classes.TEXT_MUTED} style={{ margin: 0 }}>
+				<h6 className="font-semibold text-text-primary mt-4 mb-2">Notifications</h6>
+				<div className="flex items-center gap-2">
+					<RadixSwitch.Root
+						checked={readyForReviewNotificationsEnabled}
+						disabled={controlsDisabled}
+						onCheckedChange={setReadyForReviewNotificationsEnabled}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span className="text-[13px] text-text-primary">Notify when a task is ready for review</span>
+				</div>
+				<div className="flex items-center gap-2 mt-2 mb-2">
+					<p className="text-text-secondary text-[13px] m-0">
 						Browser permission: {formatNotificationPermissionStatus(notificationPermission)}
 					</p>
 					{notificationPermission !== "granted" && notificationPermission !== "unsupported" ? (
@@ -641,12 +655,10 @@ export function RuntimeSettingsDialog({
 					) : null}
 				</div>
 
-				<h5 className={Classes.HEADING} style={{ margin: "18px 0 0" }}>
-					Project
-				</h5>
+				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
 				<p
-					className={`${Classes.TEXT_MUTED} ${Classes.MONOSPACE_TEXT}`}
-					style={{ margin: 0, wordBreak: "break-all", cursor: config?.projectConfigPath ? "pointer" : undefined }}
+					className="text-text-secondary font-mono text-xs m-0 break-all"
+					style={{ cursor: config?.projectConfigPath ? "pointer" : undefined }}
 					onClick={() => {
 						if (config?.projectConfigPath) {
 							window.open(`file://${config.projectConfigPath}`);
@@ -655,21 +667,18 @@ export function RuntimeSettingsDialog({
 				>
 					{config?.projectConfigPath ?? "<project>/.kanban/config.json"}
 					{config?.projectConfigPath ? (
-						<Icon icon="share" style={{ marginLeft: 6, verticalAlign: "middle" }} size={12} />
+						<ExternalLink size={12} className="inline ml-1.5 align-middle" />
 					) : null}
 				</p>
 
-				<div
-					style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "12px 0 8px" }}
-				>
-					<h6 ref={shortcutsSectionRef} className={Classes.HEADING} style={{ margin: 0 }}>
+				<div className="flex items-center justify-between mt-3 mb-2">
+					<h6 ref={shortcutsSectionRef} className="font-semibold text-text-primary m-0">
 						Script shortcuts
 					</h6>
 					<Button
-						icon="plus"
-						text="Add"
-						variant="minimal"
-						size="small"
+						variant="ghost"
+						size="sm"
+						icon={<Plus size={14} />}
 						onClick={() => {
 							setShortcuts((current) => {
 								const nextLabel = getNextShortcutLabel(current, "Run");
@@ -685,7 +694,9 @@ export function RuntimeSettingsDialog({
 							});
 						}}
 						disabled={controlsDisabled}
-					/>
+					>
+						Add
+					</Button>
 				</div>
 
 				{shortcuts.map((shortcut, shortcutIndex) => (
@@ -694,50 +705,20 @@ export function RuntimeSettingsDialog({
 						ref={(node) => {
 							shortcutRowRefs.current[shortcutIndex] = node;
 						}}
-						style={{ display: "grid", gridTemplateColumns: "max-content 1fr 2fr auto", gap: 8, marginBottom: 4 }}
+						className="grid gap-2 mb-1"
+						style={{ gridTemplateColumns: "max-content 1fr 2fr auto" }}
 					>
-						<ShortcutIconSelect
-							items={SHORTCUT_ICON_OPTIONS}
-							itemRenderer={renderShortcutIconOption}
-							filterable={false}
-							menuProps={{
-								style: {
-									minWidth: "unset",
-									width: "fit-content",
-								},
-							}}
-							popoverProps={{ matchTargetWidth: false }}
-							onItemSelect={(option) =>
+						<ShortcutIconPicker
+							value={shortcut.icon}
+							onSelect={(icon) =>
 								setShortcuts((current) =>
 									current.map((item, itemIndex) =>
-										itemIndex === shortcutIndex ? { ...item, icon: option.value } : item,
+										itemIndex === shortcutIndex ? { ...item, icon } : item,
 									),
 								)
 							}
-						>
-							<Button
-								variant="outlined"
-								size="small"
-								aria-label={`Shortcut icon: ${getShortcutIconOption(shortcut.icon).label}`}
-								style={{
-									minWidth: 0,
-									paddingLeft: 4,
-									paddingRight: 8,
-								}}
-							>
-								<span
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 4,
-									}}
-								>
-									<Icon icon={getShortcutIconOption(shortcut.icon).value} />
-									<Icon icon="caret-down" size={12} />
-								</span>
-							</Button>
-						</ShortcutIconSelect>
-						<InputGroup
+						/>
+						<input
 							value={shortcut.label}
 							onChange={(event) =>
 								setShortcuts((current) =>
@@ -747,9 +728,9 @@ export function RuntimeSettingsDialog({
 								)
 							}
 							placeholder="Label"
-							size="small"
+							className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 						/>
-						<InputGroup
+						<input
 							value={shortcut.command}
 							onChange={(event) =>
 								setShortcuts((current) =>
@@ -759,44 +740,41 @@ export function RuntimeSettingsDialog({
 								)
 							}
 							placeholder="Command"
-							size="small"
+							className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 						/>
 						<Button
-							icon="cross"
-							variant="minimal"
-							size="small"
+							variant="ghost"
+							size="sm"
+							icon={<X size={14} />}
 							onClick={() =>
 								setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))
 							}
 						/>
 					</div>
 				))}
-				{shortcuts.length === 0 ? <p className={Classes.TEXT_MUTED}>No shortcuts configured.</p> : null}
+				{shortcuts.length === 0 ? <p className="text-text-secondary text-[13px]">No shortcuts configured.</p> : null}
 
 				{saveError ? (
-					<Callout intent="danger" compact style={{ marginTop: 12 }}>
-						{saveError}
-					</Callout>
+					<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mt-3">
+						<span className="text-text-primary">{saveError}</span>
+					</div>
 				) : null}
 			</DialogBody>
-			<DialogFooter
-				actions={
-					<>
-						<Button
-							text="Cancel"
-							variant="outlined"
-							onClick={() => onOpenChange(false)}
-							disabled={controlsDisabled}
-						/>
-						<Button
-							text="Save"
-							intent="primary"
-							onClick={() => void handleSave()}
-							disabled={controlsDisabled || !hasUnsavedChanges}
-						/>
-					</>
-				}
-			/>
+			<DialogFooter>
+				<Button
+					onClick={() => onOpenChange(false)}
+					disabled={controlsDisabled}
+				>
+					Cancel
+				</Button>
+				<Button
+					variant="primary"
+					onClick={() => void handleSave()}
+					disabled={controlsDisabled || !hasUnsavedChanges}
+				>
+					Save
+				</Button>
+			</DialogFooter>
 		</Dialog>
 	);
 }

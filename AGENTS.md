@@ -51,36 +51,43 @@ Agent Client Protocol (ACP)
 - .plan/docs/ACP-reference-project.md for notes on ~/Repositories/kanban/vscode-acp, a client that implements ACP
 
 web-ui Stack
-- Kanban web-ui uses Palantir Blueprint v6 (`@blueprintjs/core`, `@blueprintjs/icons`, `@blueprintjs/select`) for all UI components and styling.
-- Blueprint docs reference: `.plan/docs/blueprint-ui-docs.md`
-- Blueprint source repo (for checking patterns, API, dark theme behavior): `~/Repositories/kanban-idea/blueprint/`
+- Kanban web-ui uses Tailwind CSS v4 for styling, Radix UI for accessible headless primitives, and Lucide React for icons.
+- Custom UI primitives live in `src/components/ui/` (button, dialog, tooltip, kbd, spinner, cn utility).
+- Toast notifications use `sonner`. Import `{ toast }` from `"sonner"` or use `showAppToast` from `@/components/app-toaster`.
 
-Blueprint styling mental model
-- In a Blueprint app, component props ARE the styling system. `<Button intent="primary" variant="outlined" size="small" fill />` is the equivalent of writing CSS. Don't reach for CSS or inline styles for things Blueprint components already handle via props.
-- The only custom CSS you should write is app-level layout glue that Blueprint has no component for (panel arrangements, sidebar widths, scroll containers). This lives in `globals.css` with `kb-` prefixed classes.
-- Do NOT use Tailwind, CSS-in-JS, or any other styling system alongside Blueprint. They compete with Blueprint's dark theme system, reset/normalize, and spacing scale. Blueprint is the single source of truth for styling.
-- When you need a color in CSS, use Blueprint's CSS custom properties (`--bp-palette-dark-gray-1`, `--bp-intent-primary-rest`, `--bp-typography-size-body-small`, etc.). Never hardcode hex values in CSS. The full list is in `node_modules/@blueprintjs/core/lib/css/blueprint.css` (search for `--bp-`).
-- When you need a color in TSX for truly dynamic/computed values (drag-and-drop accent colors, conditional per-element coloring), use Blueprint's `Colors` constants from `@blueprintjs/core`.
-- Default to inline `style=` for component-specific styles. Only extract a `kb-*` class into `globals.css` when the same styles are applied across multiple components, or when you need CSS features that inline styles can't express (pseudo-selectors like `:hover`, sibling selectors like `+`, attribute selectors like `[aria-expanded]`, or `oklch()` color functions). A class used by a single component is unnecessary indirection -- just inline it.
-- Blueprint's spacing is a 4px base grid (`--bp-surface-spacing`).
-- NEVER hardcode font sizes as pixel values. Use Blueprint's typography CSS variables: `--bp-typography-size-body-x-small` (10px), `--bp-typography-size-body-small` (12px), `--bp-typography-size-body-medium` (14px, the default), `--bp-typography-size-body-large` (16px). For code/monospace: `--bp-typography-size-code-small` (12px), `--bp-typography-size-code-medium` (13px), `--bp-typography-size-code-large` (14px). In CSS use `var(--bp-typography-size-body-small)`. In TSX, if you must set font size inline, still prefer not overriding the default (14px) at all -- Blueprint components already use the right size. If you need small text, apply `Classes.TEXT_SMALL` or use a CSS class with the variable.
+Styling mental model
+- Use Tailwind utility classes as the primary styling system. Prefer `className` over inline `style={{}}`.
+- Only use inline `style={{}}` for truly dynamic values (colors from props/variables, computed positions from drag-and-drop, runtime-dependent dimensions).
+- App-level layout glue and complex CSS selectors (`:hover`, sibling selectors, attribute selectors) live in `globals.css` with `kb-` prefixed classes.
+- The design system tokens are defined in `globals.css` inside `@theme { ... }`. Use Tailwind utilities that reference them: `bg-surface-0`, `text-text-primary`, `border-border`, etc.
 
-Blueprint namespace (v6 = `bp6-`)
-- Blueprint v6 uses the `bp6-` CSS namespace prefix. NEVER hardcode `bp5-` anywhere.
-- Use the `Classes` constants from `@blueprintjs/core` instead of hardcoding class name strings. For example: `Classes.DARK` instead of `"bp6-dark"`, `Classes.TEXT_MUTED` instead of `"bp6-text-muted"`, `Classes.HEADING` instead of `"bp6-heading"`.
-- If the `Classes` constant doesn't exist for what you need, check the Blueprint source at `~/Repositories/kanban-idea/blueprint/` to find the right approach.
-- If you're unsure what namespace version is installed, check `node_modules/@blueprintjs/core/lib/esm/common/classes.js` for the actual `NS` value.
+Design tokens (defined in globals.css @theme)
+- Surface hierarchy: `surface-0` (#1F2428, app bg / columns), `surface-1` (#24292E, navbar / project col / raised), `surface-2` (#2D3339, cards/inputs), `surface-3` (#353C43, hover), `surface-4` (#3E464E, pressed/scrollbars)
+- Borders: `border` (#30363D, default), `border-bright` (#444C56, more visible), `border-focus` (#0084FF, focus rings)
+- Text: `text-primary` (#E6EDF3), `text-secondary` (#8B949E), `text-tertiary` (#6E7681)
+- Accent: `accent` (#0084FF), `accent-hover` (#339DFF)
+- Status: `status-blue` (#4C9AFF), `status-green` (#3FB950), `status-orange` (#D29922), `status-red` (#F85149), `status-purple` (#A371F7), `status-gold` (#D4A72C)
+- Border radius: `rounded-sm` (4px), `rounded-md` (6px), `rounded-lg` (8px), `rounded-xl` (12px)
+
+UI primitives (src/components/ui/)
+- `Button` from `@/components/ui/button`: `variant="default"|"primary"|"danger"|"ghost"`, `size="sm"|"md"`, `icon={<LucideIcon />}`, `fill`, children for text content.
+- `Dialog`, `DialogHeader`, `DialogBody`, `DialogFooter` from `@/components/ui/dialog`: For modals. `DialogHeader` takes a `title` string.
+- `AlertDialog`, `AlertDialogTitle`, `AlertDialogDescription`, `AlertDialogAction`, `AlertDialogCancel` from `@/components/ui/dialog`: For destructive confirmations.
+- `Tooltip` from `@/components/ui/tooltip`: `<Tooltip content="text"><trigger/></Tooltip>`.
+- `Spinner` from `@/components/ui/spinner`: `size` (number), `className`.
+- `Kbd` from `@/components/ui/kbd`: Keyboard shortcut display.
+- `cn` from `@/components/ui/cn`: Utility for conditional className joining.
+
+Icons
+- Use `lucide-react` for all icons. Import individual icons: `import { Settings, Plus, Play } from "lucide-react"`.
+- Standard icon sizes: 14px for small buttons, 16px for default contexts.
+- Pass icons as JSX elements to button `icon` prop: `icon={<Settings size={16} />}`.
+
+Radix UI primitives
+- Use Radix directly for headless behavior: `@radix-ui/react-popover`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-checkbox`, `@radix-ui/react-switch`, `@radix-ui/react-collapsible`, `@radix-ui/react-select`.
+- Style Radix components with Tailwind classes. Use `data-[state=checked]:` for state-driven styling.
 
 Dark theme
-- The app runs in Blueprint dark theme. The `bp6-dark` class is on `<body>` in `index.html`.
-- Blueprint's dark theme class only themes child Blueprint components. It does NOT automatically set background/text colors on plain HTML elements. You must either use Blueprint components (which handle dark theme internally) or explicitly set dark colors on custom elements via `--bp-palette-*` CSS variables.
-- Surface color hierarchy in dark theme: `--bp-palette-dark-gray-1` (app background), `--bp-palette-dark-gray-2` (raised surfaces like headers), `--bp-palette-dark-gray-5` (borders/dividers), `--bp-palette-black` (terminal/code backgrounds only).
-
-Use Blueprint primitives, don't reinvent
-- Do NOT write custom styled `<button>`, `<input>`, `<select>`, `<dialog>`, or `<div>` elements when Blueprint has a component for it. Use `Button`, `AnchorButton`, `InputGroup`, `HTMLSelect`, `Dialog`, `Card`, `Alert`, `Callout`, `Tag`, `Menu`, `MenuItem`, `Navbar`, `NonIdealState`, `Section`, `SectionCard`, `Collapse`, `Icon`, `TextArea`, `FormGroup`, `Checkbox`, `Switch`, `Tabs`, `Tree`, `Spinner`, `ProgressBar`, `Tooltip`, `Popover`, etc.
-- Do NOT write custom CSS for things Blueprint handles (elevation shadows, focus rings, intent colors, disabled states, hover states). Use the component props: `intent`, `variant`, `size`, `elevation`, `compact`, `fill`, `disabled`, `interactive`, `minimal`.
-- For icons, use Blueprint's `Icon` component or pass icon name strings to component `icon` props (e.g., `icon="cog"`, `icon="plus"`). Do NOT install or use lucide-react, heroicons, or other icon libraries.
-- For semantic coloring, use Blueprint's intent system (`intent="primary"`, `"success"`, `"warning"`, `"danger"`). Do NOT hardcode hex color values for standard UI states.
-- For button styles, use Blueprint's variant system (`variant="solid"`, `"outlined"`, `"minimal"`).
-- For external links styled as buttons, use `AnchorButton` instead of wrapping `<a>` around `<Button>`.
-- For empty/error/loading states, use `NonIdealState`. For inline alerts/banners, use `Callout`. For confirmation prompts, use `Alert`. For modals, use `Dialog` with `DialogBody`/`DialogFooter`. For selections from a list, use `Select`/`Omnibar` from `@blueprintjs/select`.
+- The app is always in dark theme. Colors are set via CSS custom properties in `globals.css`.
+- Surface hierarchy: `bg-surface-0` (app background) -> `bg-surface-1` (raised panels) -> `bg-surface-2` (cards/inputs) -> `bg-surface-3` (hover) -> `bg-surface-4` (pressed).
+- Do NOT use Blueprint, Tailwind's light-mode defaults, or any `dark:` prefix. The theme is always dark.

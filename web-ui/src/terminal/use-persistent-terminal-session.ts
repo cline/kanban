@@ -8,6 +8,7 @@ import { registerTerminalController } from "@/terminal/terminal-controller-regis
 interface UsePersistentTerminalSessionInput {
 	taskId: string;
 	workspaceId: string | null;
+	enabled?: boolean;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onConnectionReady?: (taskId: string) => void;
 	autoFocus?: boolean;
@@ -28,6 +29,7 @@ export interface UsePersistentTerminalSessionResult {
 export function usePersistentTerminalSession({
 	taskId,
 	workspaceId,
+	enabled = true,
 	onSummary,
 	onConnectionReady,
 	autoFocus = false,
@@ -47,7 +49,24 @@ export function usePersistentTerminalSession({
 	const [isStopping, setIsStopping] = useState(false);
 
 	useEffect(() => {
+		if (!enabled) {
+			const previousSession = previousSessionRef.current;
+			if (previousSession) {
+				disposePersistentTerminal(previousSession.workspaceId, previousSession.taskId);
+			}
+			terminalRef.current?.unmount(containerRef.current);
+			terminalRef.current = null;
+			previousSessionRef.current = null;
+			setLastError(null);
+			setIsStopping(false);
+			return;
+		}
+
 		if (!workspaceId) {
+			const previousSession = previousSessionRef.current;
+			if (previousSession) {
+				disposePersistentTerminal(previousSession.workspaceId, previousSession.taskId);
+			}
 			terminalRef.current?.unmount(containerRef.current);
 			terminalRef.current = null;
 			previousSessionRef.current = null;
@@ -107,6 +126,7 @@ export function usePersistentTerminalSession({
 	}, [
 		autoFocus,
 		cursorColor,
+		enabled,
 		isVisible,
 		onConnectionReady,
 		onSummary,

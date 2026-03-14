@@ -1,62 +1,18 @@
-import { Button, Classes, Colors, Icon, InputGroup, NonIdealState, Tag, Tooltip } from "@blueprintjs/core";
+import { AlertCircle, ArrowDown, ArrowUp, FileText, GitBranch, Info, Locate, Search } from "lucide-react";
 import { Fzf } from "fzf";
 import { useMemo, useState } from "react";
 
+import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
+import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeGitRef } from "@/runtime/types";
 
 const ROW_HEIGHT = 30;
 const MATCHED_TEXT_STYLE = {
-	color: "var(--bp-typography-color-primary-rest)",
+	color: "var(--color-status-blue)",
 	fontWeight: 600,
 } as const;
-
-function renderHighlightedText(value: string, positions: Set<number> | undefined): React.ReactNode {
-	if (!positions || positions.size === 0) {
-		return value;
-	}
-
-	const fragments: React.ReactNode[] = [];
-	let currentText = "";
-	let currentIsMatch: boolean | null = null;
-	for (let index = 0; index < value.length; index += 1) {
-		const character = value[index];
-		if (character == null) {
-			continue;
-		}
-		const isMatch = positions.has(index);
-		if (currentIsMatch === null) {
-			currentText = character;
-			currentIsMatch = isMatch;
-			continue;
-		}
-		if (currentIsMatch === isMatch) {
-			currentText += character;
-			continue;
-		}
-		fragments.push(
-			<span
-				key={`${index}:${currentIsMatch ? "match" : "plain"}`}
-				style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}
-			>
-				{currentText}
-			</span>,
-		);
-		currentText = character;
-		currentIsMatch = isMatch;
-	}
-
-	if (currentIsMatch === null) {
-		return value;
-	}
-
-	fragments.push(
-		<span key="end" style={currentIsMatch ? MATCHED_TEXT_STYLE : undefined}>
-			{currentText}
-		</span>,
-	);
-
-	return fragments;
-}
+const HEAD_BADGE_BACKGROUND = "color-mix(in srgb, var(--color-status-blue) 15%, transparent)";
 
 function AheadBehindIndicator({ ahead, behind }: { ahead?: number; behind?: number }): React.ReactElement | null {
 	if (!ahead && !behind) {
@@ -68,20 +24,20 @@ function AheadBehindIndicator({ ahead, behind }: { ahead?: number; behind?: numb
 				display: "inline-flex",
 				alignItems: "center",
 				gap: 3,
-				fontSize: "var(--bp-typography-size-body-x-small)",
-				color: "var(--bp-palette-gray-3)",
+				fontSize: 10,
+				color: "var(--color-text-tertiary)",
 				flexShrink: 0,
 			}}
 		>
 			{ahead ? (
 				<span style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
-					<Icon icon="arrow-up" size={9} />
+					<ArrowUp size={9} />
 					{ahead}
 				</span>
 			) : null}
 			{behind ? (
 				<span style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
-					<Icon icon="arrow-down" size={9} />
+					<ArrowDown size={9} />
 					{behind}
 				</span>
 			) : null}
@@ -146,7 +102,7 @@ export function GitRefsPanel({
 				minWidth: 180,
 				maxWidth: 280,
 				overflow: "hidden",
-				background: Colors.DARK_GRAY2,
+				background: "var(--color-surface-1)",
 			}}
 		>
 			<div
@@ -160,9 +116,9 @@ export function GitRefsPanel({
 				<span
 					style={{
 						flex: 1,
-						fontSize: "var(--bp-typography-size-body-medium)",
+						fontSize: 14,
 						fontWeight: 600,
-						color: "var(--bp-palette-light-gray-5)",
+						color: "var(--color-text-primary)",
 					}}
 				>
 					Git History
@@ -174,30 +130,32 @@ export function GitRefsPanel({
 							workspace branch.
 						</div>
 					}
-					placement="bottom"
+					side="bottom"
 				>
-					<Button icon="info-sign" variant="minimal" size="small" aria-label="Git history help" />
+					<Button variant="ghost" size="sm" icon={<Info size={14} />} aria-label="Git history help" />
 				</Tooltip>
 			</div>
 			<div style={{ overflowY: "auto", overscrollBehavior: "contain", padding: "8px 6px" }}>
 				{isLoading ? (
 					<div style={{ padding: "4px 6px" }}>
 						<div
-							className={Classes.SKELETON}
-							style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3, marginBottom: 4 }}
+							className="animate-pulse rounded bg-surface-3"
+							style={{ height: ROW_HEIGHT - 4, width: "100%", marginBottom: 4 }}
 						/>
 						<div
-							className={Classes.SKELETON}
-							style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3, marginBottom: 4 }}
+							className="animate-pulse rounded bg-surface-3"
+							style={{ height: ROW_HEIGHT - 4, width: "100%", marginBottom: 4 }}
 						/>
 						<div
-							className={Classes.SKELETON}
-							style={{ height: ROW_HEIGHT - 4, width: "100%", borderRadius: 3 }}
+							className="animate-pulse rounded bg-surface-3"
+							style={{ height: ROW_HEIGHT - 4, width: "100%" }}
 						/>
 					</div>
 				) : errorMessage ? (
-					<div className="kb-empty-state-center" style={{ minHeight: 180, padding: 12 }}>
-						<NonIdealState icon="error" title="Could not load refs" description={errorMessage} />
+					<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary" style={{ minHeight: 180, padding: 12 }}>
+						<AlertCircle size={48} />
+						<h3 className="font-semibold text-text-primary">Could not load refs</h3>
+						<p className="text-text-secondary">{errorMessage}</p>
 					</div>
 				) : (
 					<>
@@ -207,11 +165,11 @@ export function GitRefsPanel({
 								selectedClassName="kb-git-ref-row-selected-warning"
 								onSelect={onSelectWorkingCopy}
 							>
-								<Icon icon="document" size={12} color={Colors.GOLD4} />
+								<FileText size={12} style={{ color: "var(--color-status-gold)" }} />
 								<span style={{ flex: 1 }}>Working Copy</span>
-								<Tag minimal round style={{ fontSize: "var(--bp-typography-size-body-x-small)" }}>
+								<span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs bg-surface-3 text-text-secondary" style={{ fontSize: 10 }}>
 									{workingCopyChanges}
-								</Tag>
+								</span>
 							</RefRow>
 						) : null}
 
@@ -220,7 +178,7 @@ export function GitRefsPanel({
 								isSelected={!isWorkingCopySelected && selectedRefName === detachedRef.name}
 								onSelect={() => onSelectRef(detachedRef)}
 							>
-								<Icon icon="locate" size={12} />
+								<Locate size={12} />
 								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
 									HEAD ({detachedRef.name})
 								</span>
@@ -235,32 +193,35 @@ export function GitRefsPanel({
 								}
 								onSelect={() => onSelectRef(headBranch)}
 							>
-								<Icon icon="git-branch" size={12} />
+								<GitBranch size={12} />
 								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
 									{headBranch.name}
 								</span>
 								<AheadBehindIndicator ahead={headBranch.ahead} behind={headBranch.behind} />
-								<Tag
-									minimal
-									round
-									intent="primary"
-									style={{ fontSize: "var(--bp-typography-size-body-x-small)" }}
+								<span
+									className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium"
+									style={{
+										fontSize: 10,
+										backgroundColor: HEAD_BADGE_BACKGROUND,
+										color: "var(--color-status-blue)",
+									}}
 								>
 									HEAD
-								</Tag>
+								</span>
 							</RefRow>
 						) : null}
 
 						{showSearch ? (
 							<div style={{ padding: "6px 0 4px" }}>
-								<InputGroup
-									leftIcon="search"
-									placeholder="Filter branches..."
-									size="small"
-									value={searchQuery}
-									onChange={(e) => setSearchQuery(e.target.value)}
-									style={{ fontSize: "var(--bp-typography-size-body-small)" }}
-								/>
+								<div className="relative">
+									<Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
+									<input
+										className="h-7 w-full rounded-md border border-border bg-surface-2 pl-8 pr-3 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+										placeholder="Filter branches..."
+										value={searchQuery}
+										onChange={(e) => setSearchQuery(e.target.value)}
+									/>
+								</div>
 							</div>
 						) : null}
 
@@ -271,9 +232,9 @@ export function GitRefsPanel({
 								onSelect={() => onSelectRef(ref)}
 								onDoubleClick={onCheckoutRef ? () => onCheckoutRef(ref.name) : undefined}
 							>
-								<Icon icon="git-branch" size={12} />
+								<GitBranch size={12} />
 								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
-									{renderHighlightedText(ref.name, fuzzyBranchResultsByName.get(ref.name)?.positions)}
+									{renderFuzzyHighlightedText(ref.name, fuzzyBranchResultsByName.get(ref.name)?.positions, MATCHED_TEXT_STYLE)}
 								</span>
 								<AheadBehindIndicator ahead={ref.ahead} behind={ref.behind} />
 							</RefRow>
@@ -283,8 +244,8 @@ export function GitRefsPanel({
 							<div
 								style={{
 									padding: "8px 8px",
-									fontSize: "var(--bp-typography-size-body-small)",
-									color: "var(--bp-palette-gray-3)",
+									fontSize: 12,
+									color: "var(--color-text-tertiary)",
 									textAlign: "center",
 								}}
 							>
@@ -324,8 +285,8 @@ function RefRow({
 				paddingLeft: 8,
 				paddingRight: 4,
 				overflow: "hidden",
-				borderRadius: "var(--bp-surface-border-radius)",
-				color: isSelected ? "var(--bp-palette-light-gray-5)" : "var(--bp-palette-gray-4)",
+				borderRadius: 4,
+				color: isSelected ? "var(--color-text-primary)" : "var(--color-text-secondary)",
 			}}
 		>
 			<button
@@ -346,7 +307,7 @@ function RefRow({
 					color: "inherit",
 					textAlign: "left",
 					fontFamily: "inherit",
-					fontSize: "var(--bp-typography-size-body-small)",
+					fontSize: 12,
 					cursor: "pointer",
 				}}
 			>

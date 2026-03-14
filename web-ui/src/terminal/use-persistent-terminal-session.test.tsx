@@ -33,14 +33,17 @@ function HookHarness({
 	taskId,
 	workspaceId,
 	sessionStartedAt,
+	enabled = true,
 }: {
 	taskId: string;
 	workspaceId: string | null;
 	sessionStartedAt: number | null;
+	enabled?: boolean;
 }) {
 	const { containerRef } = usePersistentTerminalSession({
 		taskId,
 		workspaceId,
+		enabled,
 		sessionStartedAt,
 		terminalBackgroundColor: "terminal-background",
 		cursorColor: "cursor-color",
@@ -109,5 +112,20 @@ describe("usePersistentTerminalSession", () => {
 
 		expect(disposePersistentTerminalMock).not.toHaveBeenCalled();
 		expect(ensurePersistentTerminalMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("disposes terminal when disabled", async () => {
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} enabled />);
+		});
+
+		disposePersistentTerminalMock.mockClear();
+
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} enabled={false} />);
+		});
+
+		expect(disposePersistentTerminalMock).toHaveBeenCalledTimes(1);
+		expect(disposePersistentTerminalMock).toHaveBeenCalledWith("project-1", "task-a");
 	});
 });

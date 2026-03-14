@@ -1,4 +1,4 @@
-import { Button, Card, Classes, Colors, Icon, NonIdealState } from "@blueprintjs/core";
+import { ChevronDown, ChevronRight, GitCommit, GitCompare, AlertCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import {
@@ -8,7 +8,6 @@ import {
 	truncatePathMiddle,
 	type UnifiedDiffRow,
 } from "@/components/shared/diff-renderer";
-import { panelSeparatorColor } from "@/data/column-colors";
 import type { RuntimeGitCommitDiffFile, RuntimeWorkspaceFileChange } from "@/runtime/types";
 
 export type GitCommitDiffSource =
@@ -83,7 +82,7 @@ export function GitCommitDiffPanel({
 	const suppressScrollSyncUntilRef = useRef(0);
 	const scrollSyncSelectionRef = useRef<{ path: string; at: number } | null>(null);
 
-	const files = diffSource ? (diffSource.type === "commit" ? diffSource.files : diffSource.files) : [];
+	const files = diffSource?.files ?? [];
 	const filePaths = useMemo(() => {
 		if (!diffSource) {
 			return [];
@@ -152,10 +151,10 @@ export function GitCommitDiffPanel({
 			return;
 		}
 		programmaticScrollUntilRef.current = Date.now() + 320;
-		const containerRect = container.getBoundingClientRect();
-		const sectionRect = section.getBoundingClientRect();
-		const delta = sectionRect.top - containerRect.top - 6;
-		container.scrollTop = Math.max(0, container.scrollTop + delta);
+		const containerStyle = window.getComputedStyle(container);
+		const paddingTop = Number.parseFloat(containerStyle.paddingTop) || 0;
+		const targetScrollTop = Math.max(0, section.offsetTop - paddingTop);
+		container.scrollTop = targetScrollTop;
 	}, []);
 
 	useEffect(() => {
@@ -173,13 +172,13 @@ export function GitCommitDiffPanel({
 
 	if (!diffSource && !isLoading) {
 		return (
-			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
-				<div className="kb-empty-state-center" style={{ flex: 1 }}>
-					<NonIdealState
-						icon={errorMessage ? "error" : "git-commit"}
-						title={errorMessage ? "Could not load diff" : "Select a commit"}
-						description={errorMessage ?? undefined}
-					/>
+			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
+				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary" style={{ flex: 1 }}>
+					{errorMessage ? <AlertCircle size={48} /> : <GitCommit size={48} />}
+					<h3 className="font-semibold text-text-primary">
+						{errorMessage ? "Could not load diff" : "Select a commit"}
+					</h3>
+					{errorMessage ? <p className="text-text-secondary">{errorMessage}</p> : null}
 				</div>
 			</div>
 		);
@@ -187,27 +186,27 @@ export function GitCommitDiffPanel({
 
 	if (isLoading) {
 		return (
-			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
+			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
 				<div
 					style={{
 						display: "flex",
 						flex: "1 1 0",
 						flexDirection: "column",
-						borderRight: `1px solid ${panelSeparatorColor}`,
+						borderRight: "1px solid var(--color-divider)",
 					}}
 				>
 					<div style={{ padding: "10px 10px 6px" }}>
 						{Array.from({ length: 4 }, (_, i) => (
 							<div key={i} style={{ marginBottom: 10 }}>
 								<div
-									className={Classes.SKELETON}
-									style={{ height: 14, width: `${50 + (i % 3) * 15}%`, borderRadius: 3, marginBottom: 6 }}
+									className="animate-pulse rounded bg-surface-3"
+									style={{ height: 14, width: `${50 + (i % 3) * 15}%`, marginBottom: 6 }}
 								/>
 								<div
-									className={Classes.SKELETON}
-									style={{ height: 11, width: "90%", borderRadius: 3, marginBottom: 3 }}
+									className="animate-pulse rounded bg-surface-3"
+									style={{ height: 11, width: "90%", marginBottom: 3 }}
 								/>
-								<div className={Classes.SKELETON} style={{ height: 11, width: "80%", borderRadius: 3 }} />
+								<div className="animate-pulse rounded bg-surface-3" style={{ height: 11, width: "80%" }} />
 							</div>
 						))}
 					</div>
@@ -218,10 +217,10 @@ export function GitCommitDiffPanel({
 							key={i}
 							style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}
 						>
-							<div className={Classes.SKELETON} style={{ height: 12, width: 12, borderRadius: 2 }} />
+							<div className="animate-pulse rounded bg-surface-3" style={{ height: 12, width: 12 }} />
 							<div
-								className={Classes.SKELETON}
-								style={{ height: 13, width: `${55 + (i % 3) * 8}%`, borderRadius: 3 }}
+								className="animate-pulse rounded bg-surface-3"
+								style={{ height: 13, width: `${55 + (i % 3) * 8}%` }}
 							/>
 						</div>
 					))}
@@ -232,16 +231,17 @@ export function GitCommitDiffPanel({
 
 	if (files.length === 0) {
 		return (
-			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
-				<div className="kb-empty-state-center" style={{ flex: 1 }}>
-					<NonIdealState icon="comparison" title="No changes" />
+			<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
+				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary" style={{ flex: 1 }}>
+					<GitCompare size={48} />
+					<h3 className="font-semibold text-text-primary">No changes</h3>
 				</div>
 			</div>
 		);
 	}
 
 	return (
-		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: Colors.DARK_GRAY1 }}>
+		<div style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
 			<div
 				style={{
 					display: "flex",
@@ -249,7 +249,7 @@ export function GitCommitDiffPanel({
 					flexDirection: "column",
 					minWidth: 0,
 					minHeight: 0,
-					borderRight: `1px solid ${panelSeparatorColor}`,
+					borderRight: "1px solid var(--color-divider)",
 				}}
 			>
 				{headerContent ? headerContent : null}
@@ -272,15 +272,12 @@ export function GitCommitDiffPanel({
 								}}
 								style={{ marginBottom: 12 }}
 							>
-								<Card compact interactive={false} style={{ overflow: "hidden", padding: 0 }}>
-									<Button
-										variant="minimal"
-										fill
-										alignText="left"
-										className="kb-diff-file-header"
+								<div className="rounded-md border border-border bg-surface-2" style={{ overflow: "hidden", padding: 0 }}>
+									<button
+										type="button"
+										className="kb-diff-file-header flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-3"
 										aria-expanded={isExpanded}
 										aria-current={selectedPath === path ? "true" : undefined}
-										icon={<Icon icon={isExpanded ? "chevron-down" : "chevron-right"} size={12} />}
 										onClick={() => {
 											const container = scrollContainerRef.current;
 											const sectionEl = sectionElementsRef.current[path];
@@ -296,35 +293,33 @@ export function GitCommitDiffPanel({
 												container.scrollTop += nextTop - previousTop;
 											});
 										}}
-										text={
-											<span className={Classes.TEXT_OVERFLOW_ELLIPSIS} title={path}>
-												{truncatePathMiddle(path)}
-											</span>
-										}
-										endIcon={
-											<span>
-												{stats.additions > 0 ? (
-													<span style={{ color: Colors.GREEN5 }}>+{stats.additions}</span>
-												) : null}
-												{stats.additions > 0 && stats.deletions > 0 ? " " : null}
-												{stats.deletions > 0 ? (
-													<span style={{ color: Colors.RED5 }}>-{stats.deletions}</span>
-												) : null}
-											</span>
-										}
-									/>
+									>
+										{isExpanded ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
+										<span className="truncate flex-1" title={path}>
+											{truncatePathMiddle(path)}
+										</span>
+										<span className="shrink-0 text-xs">
+											{stats.additions > 0 ? (
+											<span className="text-status-green">+{stats.additions}</span>
+											) : null}
+											{stats.additions > 0 && stats.deletions > 0 ? " " : null}
+											{stats.deletions > 0 ? (
+											<span className="text-status-red">-{stats.deletions}</span>
+											) : null}
+										</span>
+									</button>
 									{isExpanded && diffSource ? (
 										<div className="kb-diff-entry">
 											{commitFile?.status === "renamed" && commitFile.previousPath ? (
 												<div
 													style={{
 														padding: "8px 12px 0",
-														fontSize: "var(--bp-typography-size-body-small)",
-														color: "var(--bp-palette-gray-3)",
+														fontSize: 12,
+												color: "var(--color-text-tertiary)",
 													}}
 												>
 													Renamed from{" "}
-													<code style={{ fontFamily: "var(--bp-font-family-monospace)" }}>
+													<code className="font-mono">
 														{commitFile.previousPath}
 													</code>
 												</div>
@@ -335,8 +330,8 @@ export function GitCommitDiffPanel({
 												<div
 													style={{
 														padding: "12px",
-														fontSize: "var(--bp-typography-size-body-small)",
-														color: "var(--bp-palette-gray-3)",
+														fontSize: 12,
+												color: "var(--color-text-tertiary)",
 													}}
 												>
 													No textual diff available.
@@ -344,7 +339,7 @@ export function GitCommitDiffPanel({
 											)}
 										</div>
 									) : null}
-								</Card>
+								</div>
 							</section>
 						);
 					})}

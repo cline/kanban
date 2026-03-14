@@ -69,6 +69,30 @@ describe("TerminalSessionManager", () => {
 		expect(typeof updated?.lastHookAt).toBe("number");
 	});
 
+	it("tracks only the latest two turn checkpoints", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "running" }),
+		});
+
+		manager.applyTurnCheckpoint("task-1", {
+			turn: 1,
+			ref: "refs/kanban/checkpoints/task-1/turn/1",
+			commit: "1111111",
+			createdAt: 1,
+		});
+		manager.applyTurnCheckpoint("task-1", {
+			turn: 2,
+			ref: "refs/kanban/checkpoints/task-1/turn/2",
+			commit: "2222222",
+			createdAt: 2,
+		});
+
+		const summary = manager.getSummary("task-1");
+		expect(summary?.latestTurnCheckpoint?.turn).toBe(2);
+		expect(summary?.previousTurnCheckpoint?.turn).toBe(1);
+	});
+
 	it("replies to OSC 11 probe from replayed output history and hides the query", () => {
 		const manager = new TerminalSessionManager();
 		const onOutput = vi.fn();

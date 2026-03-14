@@ -1,6 +1,13 @@
-import { Alert, Classes, Pre } from "@blueprintjs/core";
 import type { ReactElement } from "react";
 
+import { Button } from "@/components/ui/button";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogDescription,
+	AlertDialogTitle,
+} from "@/components/ui/dialog";
 import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 
@@ -43,31 +50,36 @@ export function TaskTrashWarningDialog({
 	const guidance = getTrashWarningGuidance(warning?.workspaceInfo ?? null);
 
 	return (
-		<Alert
-			isOpen={open}
-			icon="warning-sign"
-			intent="danger"
-			confirmButtonText="Move to Trash Anyway"
-			cancelButtonText="Cancel"
-			onConfirm={onConfirm}
-			onCancel={onCancel}
-			canEscapeKeyCancel
-		>
-			<h4 className={Classes.HEADING}>Unsaved task changes detected</h4>
-			<p className={Classes.TEXT_MUTED} style={{ marginBottom: 12 }}>
+		<AlertDialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onCancel(); }}>
+			<AlertDialogTitle className="text-sm font-semibold text-text-primary">
+				Unsaved task changes detected
+			</AlertDialogTitle>
+			<AlertDialogDescription className="text-text-secondary mt-2 mb-3">
 				{warning
 					? `${warning.taskTitle} has ${warning.fileCount} changed file(s).`
 					: "This task has uncommitted changes."}
+			</AlertDialogDescription>
+			<p className="text-[13px] text-text-primary">
+				Moving to Trash will delete this task worktree. Preserve your work first, then trash the task.
 			</p>
-			<p>Moving to Trash will delete this task worktree. Preserve your work first, then trash the task.</p>
 			{warning?.workspaceInfo?.path ? (
-				<Pre style={{ margin: "8px 0" }}>{formatPathForDisplay(warning.workspaceInfo.path)}</Pre>
+				<pre className="rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap overflow-auto my-2">
+					{formatPathForDisplay(warning.workspaceInfo.path)}
+				</pre>
 			) : null}
 			{guidance.map((line) => (
-				<p key={line} className={Classes.TEXT_MUTED}>
+				<p key={line} className="text-[13px] text-text-secondary">
 					{line}
 				</p>
 			))}
-		</Alert>
+			<div className="flex justify-end gap-2 mt-4">
+				<AlertDialogCancel asChild>
+					<Button variant="default" onClick={onCancel}>Cancel</Button>
+				</AlertDialogCancel>
+				<AlertDialogAction asChild>
+					<Button variant="danger" onClick={onConfirm}>Move to Trash Anyway</Button>
+				</AlertDialogAction>
+			</div>
+		</AlertDialog>
 	);
 }

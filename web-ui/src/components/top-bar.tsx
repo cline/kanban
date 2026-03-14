@@ -1,24 +1,24 @@
+import * as RadixPopover from "@radix-ui/react-popover";
 import {
-	Alignment,
-	Button,
-	ButtonGroup,
-	Classes,
-	Colors,
-	Icon,
-	Menu,
-	MenuDivider,
-	MenuItem,
-	Navbar,
-	NavbarDivider,
-	NavbarGroup,
-	Popover,
-	PopoverInteractionKind,
-	Tag,
-	Tooltip,
-} from "@blueprintjs/core";
-import { type IconName, IconNames } from "@blueprintjs/icons";
+	ArrowDown,
+	ArrowLeft,
+	ArrowUp,
+	Check,
+	ChevronDown,
+	CircleArrowDown,
+	Command,
+	GitBranch,
+	Plus,
+	Settings,
+	Terminal,
+} from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
+import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
 import { OpenWorkspaceButton } from "@/components/open-workspace-button";
+import { getRuntimeShortcutIconComponent } from "@/components/shared/runtime-shortcut-icons";
 import type { RuntimeGitSyncAction, RuntimeProjectShortcut } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
@@ -28,8 +28,6 @@ import {
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 import { formatPathForDisplay } from "@/utils/path-display";
 
-const BLUEPRINT_ICON_NAMES = new Set<IconName>(Object.values(IconNames));
-
 type SettingsSection = "shortcuts";
 
 function getWorkspacePathSegments(path: string): string[] {
@@ -37,15 +35,6 @@ function getWorkspacePathSegments(path: string): string[] {
 		.replaceAll("\\", "/")
 		.split("/")
 		.filter((segment) => segment.length > 0);
-}
-
-function resolveShortcutIcon(icon: string | undefined): IconName {
-	const normalized = icon?.trim();
-	if (!normalized) {
-		return "console";
-	}
-	const candidate = normalized as IconName;
-	return BLUEPRINT_ICON_NAMES.has(candidate) ? candidate : "console";
 }
 
 function GitBranchStatusControl({
@@ -65,48 +54,23 @@ function GitBranchStatusControl({
 }): React.ReactElement {
 	if (onToggleGitHistory) {
 		return (
-			<div
-				style={{
-					display: "flex",
-					alignItems: "center",
-					minWidth: 0,
-					overflow: "hidden",
-				}}
-			>
+			<div className="flex items-center min-w-0 overflow-hidden">
 				<Button
-					icon={<Icon icon="git-branch" size={12} />}
-					alignText="start"
-					ellipsizeText
-					size="small"
-					variant="outlined"
-					intent={isGitHistoryOpen ? "primary" : undefined}
-					active={isGitHistoryOpen}
+					variant={isGitHistoryOpen ? "primary" : "default"}
+					size="sm"
+					icon={<GitBranch size={12} />}
 					onClick={onToggleGitHistory}
-					className={Classes.MONOSPACE_TEXT}
-					textClassName={Classes.FILL}
-					style={{
-						fontSize: "var(--bp-typography-size-body-small)",
-						flexShrink: 1,
-						minWidth: 0,
-						maxWidth: "100%",
-						overflow: "hidden",
-					}}
+					className={cn("font-mono text-xs shrink min-w-0 max-w-full overflow-hidden", isGitHistoryOpen ? "ring-1 ring-accent" : "kb-navbar-btn")}
 					title={branchLabel}
-					text={branchLabel}
-				/>
+				>
+					<span className="truncate w-full text-left">{branchLabel}</span>
+				</Button>
 				<span
-					className={Classes.MONOSPACE_TEXT}
-					style={{
-						fontSize: "var(--bp-typography-size-body-small)",
-						color: Colors.GRAY3,
-						marginLeft: 6,
-						flexShrink: 0,
-						whiteSpace: "nowrap",
-					}}
+					className="font-mono text-xs text-text-tertiary ml-1.5 shrink-0 whitespace-nowrap"
 				>
 					({changedFiles} {changedFiles === 1 ? "file" : "files"}
-					<span style={{ color: Colors.GREEN4 }}> +{additions}</span>
-					<span style={{ color: Colors.RED4 }}> -{deletions}</span>)
+					<span className="text-status-green"> +{additions}</span>
+					<span className="text-status-red"> -{deletions}</span>)
 				</span>
 			</div>
 		);
@@ -114,23 +78,17 @@ function GitBranchStatusControl({
 
 	return (
 		<span
-			className={Classes.MONOSPACE_TEXT}
-			style={{
-				fontSize: "var(--bp-typography-size-body-small)",
-				color: Colors.GRAY4,
-				marginRight: 4,
-				whiteSpace: "nowrap",
-			}}
+			className="font-mono text-xs text-text-secondary mr-1 whitespace-nowrap"
 		>
-			<Icon icon="git-branch" size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
-			<span style={{ color: Colors.LIGHT_GRAY5 }}>{branchLabel}</span>
-			<span style={{ marginLeft: 6 }}>
-				<span style={{ color: Colors.GRAY3 }}>
+			<GitBranch size={12} className="inline-block mr-1" style={{ verticalAlign: -1 }} />
+			<span className="text-text-primary">{branchLabel}</span>
+			<span className="ml-1.5">
+				<span className="text-text-tertiary">
 					({changedFiles} {changedFiles === 1 ? "file" : "files"}
 				</span>
-				<span style={{ color: Colors.GREEN4 }}> +{additions}</span>
-				<span style={{ color: Colors.RED4 }}> -{deletions}</span>
-				<span style={{ color: Colors.GRAY3 }}>)</span>
+				<span className="text-status-green"> +{additions}</span>
+				<span className="text-status-red"> -{deletions}</span>
+				<span className="text-text-tertiary">)</span>
 			</span>
 		</span>
 	);
@@ -175,7 +133,7 @@ function TopBarGitStatusSection({
 				: "Push local commits to upstream. No local commits are pending.";
 		return (
 			<>
-				<NavbarDivider />
+				<div className="w-px h-5 bg-border mx-1" />
 				<GitBranchStatusControl
 					branchLabel={branchLabel}
 					changedFiles={homeGitSummary.changedFiles ?? 0}
@@ -184,43 +142,45 @@ function TopBarGitStatusSection({
 					onToggleGitHistory={onToggleGitHistory}
 					isGitHistoryOpen={isGitHistoryOpen}
 				/>
-				<ButtonGroup style={{ marginLeft: 6 }}>
+				<div className="flex gap-0 ml-1">
 					<Tooltip
-						placement="bottom"
+						side="bottom"
 						content="Fetch latest refs from upstream without changing your local branch or files."
 					>
 						<Button
-							icon={<Icon icon="circle-arrow-down" size={18} />}
-							size="small"
-							variant="minimal"
+							variant="ghost"
+							size="sm"
+							icon={runningGitAction === "fetch" ? <Spinner size={14} /> : <CircleArrowDown size={18} />}
 							onClick={onGitFetch}
-							loading={runningGitAction === "fetch"}
+							disabled={runningGitAction === "fetch"}
 							aria-label="Fetch from upstream"
 						/>
 					</Tooltip>
-					<Tooltip placement="bottom" content={pullTooltip}>
+					<Tooltip side="bottom" content={pullTooltip}>
 						<Button
-							icon="download"
-							size="small"
-							text={<span style={{ color: Colors.GRAY3 }}>{pullCount}</span>}
-							variant="minimal"
+							variant="ghost"
+							size="sm"
+							icon={runningGitAction === "pull" ? <Spinner size={14} /> : <ArrowDown size={14} />}
 							onClick={onGitPull}
-							loading={runningGitAction === "pull"}
+							disabled={runningGitAction === "pull"}
 							aria-label="Pull from upstream"
-						/>
+						>
+							<span className="text-text-tertiary">{pullCount}</span>
+						</Button>
 					</Tooltip>
-					<Tooltip placement="bottom" content={pushTooltip}>
+					<Tooltip side="bottom" content={pushTooltip}>
 						<Button
-							icon="upload"
-							size="small"
-							text={<span style={{ color: Colors.GRAY3 }}>{pushCount}</span>}
-							variant="minimal"
+							variant="ghost"
+							size="sm"
+							icon={runningGitAction === "push" ? <Spinner size={14} /> : <ArrowUp size={14} />}
 							onClick={onGitPush}
-							loading={runningGitAction === "push"}
+							disabled={runningGitAction === "push"}
 							aria-label="Push to upstream"
-						/>
+						>
+							<span className="text-text-tertiary">{pushCount}</span>
+						</Button>
 					</Tooltip>
-				</ButtonGroup>
+				</div>
 			</>
 		);
 	}
@@ -228,7 +188,7 @@ function TopBarGitStatusSection({
 	if (selectedTaskId && (taskWorkspaceInfo || taskWorkspaceSnapshot)) {
 		return (
 			<>
-				<NavbarDivider />
+				<div className="w-px h-5 bg-border mx-1" />
 				<GitBranchStatusControl
 					branchLabel={
 						taskWorkspaceInfo?.branch ?? taskWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "initializing"
@@ -265,7 +225,6 @@ export function TopBar({
 	onToggleGitHistory,
 	isGitHistoryOpen,
 	onOpenSettings,
-	onOpenKeyboardShortcuts,
 	shortcuts,
 	selectedShortcutLabel,
 	onSelectShortcutLabel,
@@ -297,7 +256,6 @@ export function TopBar({
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
-	onOpenKeyboardShortcuts?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
 	selectedShortcutLabel?: string | null;
 	onSelectShortcutLabel?: (shortcutLabel: string) => void;
@@ -316,7 +274,6 @@ export function TopBar({
 	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
 	const isMacPlatform =
 		typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
-	const terminalShortcutIcon = isMacPlatform ? "key-command" : "key-control";
 	const handleAddShortcut = () => {
 		onOpenSettings?.("shortcuts");
 	};
@@ -326,69 +283,44 @@ export function TopBar({
 			? 0
 			: shortcutItems.findIndex((shortcut) => shortcut.label === selectedShortcutLabel);
 	const selectedShortcut = shortcutItems[selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0] ?? null;
+	const SelectedShortcutIcon = selectedShortcut
+		? getRuntimeShortcutIconComponent(selectedShortcut.icon)
+		: Terminal;
 
 	return (
-		<Navbar
-			fixedToTop={false}
+		<nav
+			className="flex flex-nowrap items-center h-10 min-h-[40px] min-w-0 bg-surface-1"
 			style={{
-				display: "flex",
-				flexWrap: "nowrap",
-				alignItems: "center",
-				height: 40,
-				minHeight: 40,
-				minWidth: 0,
 				paddingLeft: onBack ? 6 : 12,
 				paddingRight: 8,
-				background: Colors.DARK_GRAY3,
-				boxShadow: "none",
-				borderBottom: "1px solid rgba(255, 255, 255, 0.2)",
+				borderBottom: "1px solid var(--color-divider)",
 			}}
 		>
-			<NavbarGroup
-				align={Alignment.LEFT}
-				style={{
-					display: "flex",
-					flexWrap: "nowrap",
-					alignItems: "center",
-					height: 40,
-					flex: "1 1 auto",
-					minWidth: 0,
-					overflow: "hidden",
-				}}
+			<div
+				className="flex flex-nowrap items-center h-10 flex-1 min-w-0 overflow-hidden gap-1.5"
 			>
 				{onBack ? (
-					<div style={{ display: "flex", alignItems: "center", flexShrink: 0, overflow: "visible" }}>
+					<div className="flex items-center shrink-0 overflow-visible">
 						<Button
-							icon="arrow-left"
-							variant="minimal"
+							variant="ghost"
+							size="sm"
+							icon={<ArrowLeft size={16} />}
 							onClick={onBack}
 							aria-label="Back to board"
-							style={{ marginRight: 4, flexShrink: 0 }}
+							className="mr-1 shrink-0"
 						/>
-						<Icon icon="alignment-top" size={16} color={Colors.GRAY4} style={{ marginRight: 4 }} />
-						<NavbarDivider />
 					</div>
 				) : null}
 				{isWorkspacePathLoading ? (
 					<span
-						className={Classes.SKELETON}
-						style={{ display: "inline-block", height: 14, width: 320, borderRadius: 3 }}
+						className="kb-skeleton inline-block"
+						style={{ height: 14, width: 320, borderRadius: 3 }}
 						aria-hidden
-					>
-						.
-					</span>
+					/>
 				) : displayWorkspacePath ? (
-					<div style={{ flex: "0 1 auto", minWidth: 0, maxWidth: 640, overflow: "hidden" }}>
+					<div className="shrink min-w-0 max-w-[640px] overflow-hidden">
 						<span
-							className={`${Classes.MONOSPACE_TEXT} ${Classes.TEXT_OVERFLOW_ELLIPSIS}`}
-							style={{
-								display: "block",
-								width: "100%",
-								minWidth: 0,
-								fontSize: 12,
-								maxWidth: "100%",
-								color: Colors.GRAY4,
-							}}
+							className="font-mono truncate block w-full min-w-0 text-xs max-w-full text-text-secondary"
 							title={workspacePath}
 							data-testid="workspace-path"
 						>
@@ -398,7 +330,7 @@ export function TopBar({
 								return (
 									<span key={`${segment}-${index}`}>
 										{index === 0 ? "" : "/"}
-										<span style={isLast ? { color: Colors.LIGHT_GRAY5 } : undefined}>{segment}</span>
+										<span className={isLast ? "text-text-primary" : undefined}>{segment}</span>
 									</span>
 								);
 							})}
@@ -406,7 +338,7 @@ export function TopBar({
 					</div>
 				) : null}
 				{displayWorkspacePath && !isWorkspacePathLoading ? (
-					<div style={{ marginLeft: 8, flexShrink: 0 }}>
+					<div className="ml-2 shrink-0">
 						<OpenWorkspaceButton
 							options={openTargetOptions}
 							selectedOptionId={selectedOpenTargetId}
@@ -418,14 +350,14 @@ export function TopBar({
 					</div>
 				) : null}
 				{!hideProjectDependentActions && workspaceHint ? (
-					<Tag minimal className="kb-navbar-tag">
+					<span className="kb-navbar-tag inline-flex items-center rounded border border-border bg-surface-2 px-1.5 py-0.5 text-xs text-text-secondary">
 						{workspaceHint}
-					</Tag>
+					</span>
 				) : null}
 				{!hideProjectDependentActions && runtimeHint ? (
-					<Tag minimal intent="warning" className="kb-navbar-tag">
+					<span className="kb-navbar-tag inline-flex items-center rounded border border-status-orange/30 bg-status-orange/10 px-1.5 py-0.5 text-xs text-status-orange">
 						{runtimeHint}
-					</Tag>
+					</span>
 				) : null}
 				{!hideProjectDependentActions ? (
 					<TopBarGitStatusSection
@@ -440,109 +372,111 @@ export function TopBar({
 						onGitPush={onGitPush}
 					/>
 				) : null}
-			</NavbarGroup>
-			<NavbarGroup
-				align={Alignment.RIGHT}
-				style={{
-					display: "flex",
-					flexWrap: "nowrap",
-					alignItems: "center",
-					height: 40,
-					paddingRight: 2,
-					flexShrink: 0,
-				}}
+			</div>
+			<div
+				className="flex flex-nowrap items-center h-10 pr-0.5 shrink-0"
 			>
 				{!hideProjectDependentActions && selectedShortcut && onRunShortcut ? (
-					<ButtonGroup>
+					<div className="flex">
 						<Button
-							variant="outlined"
-							size="small"
-							icon={resolveShortcutIcon(selectedShortcut.icon)}
-							text={selectedShortcut.label}
-							loading={Boolean(runningShortcutLabel)}
-							onClick={() => onRunShortcut(selectedShortcut.label)}
+							variant="default"
+							size="sm"
+							icon={runningShortcutLabel ? <Spinner size={12} /> : <SelectedShortcutIcon size={14} />}
 							disabled={Boolean(runningShortcutLabel)}
-							style={{ fontSize: "var(--bp-typography-size-body-small)" }}
-						/>
-						<Popover
-							interactionKind={PopoverInteractionKind.CLICK}
-							placement="bottom-end"
-							content={
-								<Menu>
-									{shortcutItems.map((shortcut, shortcutIndex) => (
-										<MenuItem
-											key={`${shortcut.label}:${shortcut.command}:${shortcutIndex}`}
-											icon={resolveShortcutIcon(shortcut.icon)}
-											text={shortcut.label}
-											active={shortcutIndex === (selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0)}
-											onClick={() => onSelectShortcutLabel?.(shortcut.label)}
-											labelElement={
-												shortcutIndex === (selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0) ? (
-													<Icon icon="small-tick" />
-												) : undefined
-											}
-										/>
-									))}
-									<MenuDivider />
-									<MenuItem icon="plus" text="Add shortcut" onClick={handleAddShortcut} />
-								</Menu>
-							}
+							onClick={() => onRunShortcut(selectedShortcut.label)}
+							className="text-xs rounded-r-none kb-navbar-btn"
 						>
-							<Button
-								size="small"
-								variant="outlined"
-								icon="caret-down"
-								aria-label="Select shortcut"
-								disabled={Boolean(runningShortcutLabel)}
-							/>
-						</Popover>
-					</ButtonGroup>
+							{selectedShortcut.label}
+						</Button>
+						<RadixPopover.Root>
+							<RadixPopover.Trigger asChild>
+								<Button
+									size="sm"
+									variant="default"
+									icon={<ChevronDown size={12} />}
+									aria-label="Select shortcut"
+									disabled={Boolean(runningShortcutLabel)}
+									className="rounded-l-none border-l-0 kb-navbar-btn"
+									style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}
+								/>
+							</RadixPopover.Trigger>
+							<RadixPopover.Portal>
+								<RadixPopover.Content
+									className="z-50 rounded-lg border border-border bg-surface-2 p-1 shadow-xl"
+									style={{ animation: "kb-tooltip-show 100ms ease" }}
+									sideOffset={5}
+									align="end"
+								>
+									<div className="min-w-[180px]">
+										{shortcutItems.map((shortcut, shortcutIndex) => {
+											const ShortcutIcon = getRuntimeShortcutIconComponent(shortcut.icon);
+											const isActive = shortcutIndex === (selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0);
+											return (
+												<button
+													type="button"
+													key={`${shortcut.label}:${shortcut.command}:${shortcutIndex}`}
+													className={cn(
+														"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-text-primary rounded-md hover:bg-surface-3 text-left",
+														isActive && "bg-surface-3",
+													)}
+													onClick={() => onSelectShortcutLabel?.(shortcut.label)}
+												>
+													<ShortcutIcon size={14} />
+													<span className="flex-1">{shortcut.label}</span>
+													{isActive ? <Check size={14} className="text-text-secondary" /> : null}
+												</button>
+											);
+										})}
+										<div className="h-px bg-border my-1" />
+										<button
+											type="button"
+											className="flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-text-primary rounded-md hover:bg-surface-3 text-left"
+											onClick={handleAddShortcut}
+										>
+											<Plus size={14} />
+											<span>Add shortcut</span>
+										</button>
+									</div>
+								</RadixPopover.Content>
+							</RadixPopover.Portal>
+						</RadixPopover.Root>
+					</div>
 				) : null}
 				{onToggleTerminal ? (
 					<Tooltip
-						placement="bottom"
+						side="bottom"
 						content={
-							<span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+							<span className="inline-flex items-center gap-1.5 whitespace-nowrap">
 								<span>Toggle terminal</span>
-								<span style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
+								<span className="inline-flex items-center gap-0.5 whitespace-nowrap">
 									<span>(</span>
-									<Icon icon={terminalShortcutIcon} size={11} />
+									{isMacPlatform ? <Command size={11} /> : <span>Ctrl</span>}
 									<span>+ J)</span>
 								</span>
 							</span>
 						}
 					>
 						<Button
-							icon="console"
-							size="small"
-							variant="minimal"
+							variant="ghost"
+							size="sm"
+							icon={<Terminal size={16} />}
 							onClick={onToggleTerminal}
 							disabled={Boolean(isTerminalLoading)}
 							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
-							style={{ marginLeft: 8 }}
+							className="ml-2"
 						/>
 					</Tooltip>
 				) : null}
-				<Tooltip placement="bottom" content="Keyboard shortcuts">
-					<Button
-						icon="key-command"
-						size="small"
-						variant="minimal"
-						onClick={onOpenKeyboardShortcuts}
-						aria-label="Keyboard shortcuts"
-						style={{ marginLeft: 5 }}
-					/>
-				</Tooltip>
 				<Button
-					icon="cog"
-					size="small"
-					variant="minimal"
+					variant="ghost"
+					size="sm"
+					icon={<Settings size={16} />}
 					onClick={() => onOpenSettings?.()}
 					aria-label="Settings"
 					data-testid="open-settings-button"
-					style={{ marginLeft: 2, marginRight: 2 }}
+					className="ml-0.5 mr-0.5"
 				/>
-			</NavbarGroup>
-		</Navbar>
+			</div>
+		</nav>
 	);
 }

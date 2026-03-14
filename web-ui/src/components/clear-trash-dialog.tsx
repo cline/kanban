@@ -1,5 +1,13 @@
-import { Alert, Classes } from "@blueprintjs/core";
 import type { ReactElement } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogDescription,
+	AlertDialogTitle,
+} from "@/components/ui/dialog";
 
 export function ClearTrashDialog({
 	open,
@@ -15,21 +23,22 @@ export function ClearTrashDialog({
 	const taskLabel = taskCount === 1 ? "task" : "tasks";
 
 	return (
-		<Alert
-			isOpen={open}
-			icon="trash"
-			intent="danger"
-			confirmButtonText="Clear Trash"
-			cancelButtonText="Cancel"
-			onConfirm={onConfirm}
-			onCancel={onCancel}
-			canEscapeKeyCancel
-		>
-			<h4 className={Classes.HEADING}>Clear trash permanently?</h4>
-			<p className={Classes.TEXT_MUTED}>
+		<AlertDialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onCancel(); }}>
+			<AlertDialogTitle className="text-sm font-semibold text-text-primary">
+				Clear trash permanently?
+			</AlertDialogTitle>
+			<AlertDialogDescription className="text-text-secondary mt-2">
 				This will permanently delete {taskCount} {taskLabel} from Trash.
-			</p>
-			<p>This action cannot be undone.</p>
-		</Alert>
+			</AlertDialogDescription>
+			<p className="text-[13px] text-text-primary mt-2">This action cannot be undone.</p>
+			<div className="flex justify-end gap-2 mt-4">
+				<AlertDialogCancel asChild>
+					<Button variant="default" onClick={onCancel}>Cancel</Button>
+				</AlertDialogCancel>
+				<AlertDialogAction asChild>
+					<Button variant="danger" onClick={onConfirm}>Clear Trash</Button>
+				</AlertDialogAction>
+			</div>
+		</AlertDialog>
 	);
 }

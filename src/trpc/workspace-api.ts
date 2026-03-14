@@ -6,6 +6,7 @@ import type {
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
+	RuntimeWorkspaceChangesMode,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract.js";
@@ -16,7 +17,12 @@ import {
 } from "../core/api-validation.js";
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { getWorkspaceChanges } from "../workspace/get-workspace-changes.js";
+import {
+	createEmptyWorkspaceChangesResponse,
+	getWorkspaceChanges,
+	getWorkspaceChangesBetweenRefs,
+	getWorkspaceChangesFromRef,
+} from "../workspace/get-workspace-changes.js";
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history.js";
 import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync.js";
 import { searchWorkspaceFiles } from "../workspace/search-workspace-files.js";
@@ -52,9 +58,14 @@ function normalizeOptionalTaskWorkspaceScopeInput(
 	};
 }
 
-function normalizeRequiredTaskWorkspaceScopeInput(input: { taskId: string; baseRef: string }): {
+function normalizeRequiredTaskWorkspaceScopeInput(input: {
 	taskId: string;
 	baseRef: string;
+	mode?: RuntimeWorkspaceChangesMode;
+}): {
+	taskId: string;
+	baseRef: string;
+	mode: RuntimeWorkspaceChangesMode;
 } {
 	const taskId = input.taskId.trim();
 	const baseRef = input.baseRef.trim();
@@ -64,9 +75,11 @@ function normalizeRequiredTaskWorkspaceScopeInput(input: { taskId: string; baseR
 	if (!baseRef) {
 		throw new Error("Missing baseRef query parameter.");
 	}
+	const mode: RuntimeWorkspaceChangesMode = input.mode ?? "working_copy";
 	return {
 		taskId,
 		baseRef,
+		mode,
 	};
 }
 
@@ -228,6 +241,29 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				baseRef: normalizedInput.baseRef,
 				ensure: false,
 			});
+			if (normalizedInput.mode === "last_turn") {
+				const terminalManager = await deps.ensureTerminalManagerForWorkspace(
+					workspaceScope.workspaceId,
+					workspaceScope.workspacePath,
+				);
+				const summary = terminalManager.getSummary(normalizedInput.taskId);
+				const fromCheckpoint = summary?.previousTurnCheckpoint;
+				const toCheckpoint = summary?.latestTurnCheckpoint;
+				if (!toCheckpoint) {
+					return await createEmptyWorkspaceChangesResponse(taskCwd);
+				}
+				if (summary?.state === "running" || !fromCheckpoint) {
+					return await getWorkspaceChangesFromRef({
+						cwd: taskCwd,
+						fromRef: toCheckpoint.commit,
+					});
+				}
+				return await getWorkspaceChangesBetweenRefs({
+					cwd: taskCwd,
+					fromRef: fromCheckpoint.commit,
+					toRef: toCheckpoint.commit,
+				});
+			}
 			return await getWorkspaceChanges(taskCwd);
 		},
 		ensureWorktree: async (workspaceScope, input) => {
