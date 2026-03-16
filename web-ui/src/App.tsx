@@ -513,21 +513,6 @@ export default function App(): ReactElement {
 		setIsGitHistoryOpen(false);
 	}, []);
 
-	useAppHotkeys({
-		selectedCard,
-		isDetailTerminalOpen,
-		isHomeTerminalOpen: showHomeBottomTerminal,
-		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
-		handleToggleDetailTerminal,
-		handleToggleHomeTerminal,
-		handleToggleExpandDetailTerminal,
-		handleToggleExpandHomeTerminal: handleToggleExpandHomeTerminal,
-		handleOpenCreateTask,
-		handleOpenSettings,
-		handleToggleGitHistory,
-		handleCloseGitHistory,
-	});
-
 	const {
 		handleProgrammaticCardMoveReady,
 		handleCreateDependency,
@@ -580,6 +565,22 @@ export default function App(): ReactElement {
 		handleCreateTasks,
 		handleStartTask,
 		handleStartAllBacklogTasks,
+	});
+
+	useAppHotkeys({
+		selectedCard,
+		isDetailTerminalOpen,
+		isHomeTerminalOpen: showHomeBottomTerminal,
+		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
+		handleToggleDetailTerminal,
+		handleToggleHomeTerminal,
+		handleToggleExpandDetailTerminal,
+		handleToggleExpandHomeTerminal: handleToggleExpandHomeTerminal,
+		handleOpenCreateTask,
+		handleOpenSettings,
+		handleToggleGitHistory,
+		handleCloseGitHistory,
+		onStartAllTasks: handleStartAllBacklogTasksFromBoard,
 	});
 
 	useEffect(() => {
