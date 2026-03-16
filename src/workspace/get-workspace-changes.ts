@@ -1,17 +1,13 @@
-import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import type {
 	RuntimeWorkspaceChangesResponse,
 	RuntimeWorkspaceFileChange,
 	RuntimeWorkspaceFileStatus,
 } from "../core/api-contract.js";
-import { createGitProcessEnv } from "../core/git-process-env.js";
+import { getGitStdout } from "./git-utils.js";
 
-const execFileAsync = promisify(execFile);
-const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 128;
 
 interface WorkspaceChangesCacheEntry {
@@ -105,27 +101,6 @@ function parseTrackedChanges(output: string): NameStatusEntry[] {
 	return entries;
 }
 
-async function runGit(args: string[], cwd: string): Promise<string> {
-	try {
-		const { stdout } = await execFileAsync("git", args, {
-			cwd,
-			encoding: "utf8",
-			maxBuffer: GIT_MAX_BUFFER_BYTES,
-			env: createGitProcessEnv(),
-		});
-		return String(stdout);
-	} catch (error) {
-		const message =
-			typeof error === "object" && error !== null && "stderr" in error
-				? String((error as { stderr?: unknown }).stderr ?? "").trim()
-				: "";
-		if (message) {
-			throw new Error(message);
-		}
-		throw error;
-	}
-}
-
 async function buildFileFingerprints(repoRoot: string, paths: string[]): Promise<FileFingerprint[]> {
 	if (paths.length === 0) {
 		return [];
@@ -193,7 +168,7 @@ function pruneWorkspaceChangesCache(): void {
 
 async function readHeadFile(repoRoot: string, path: string): Promise<string | null> {
 	try {
-		return await runGit(["show", `HEAD:${path}`], repoRoot);
+		return await getGitStdout(["show", `HEAD:${path}`], repoRoot);
 	} catch {
 		return null;
 	}
@@ -201,7 +176,7 @@ async function readHeadFile(repoRoot: string, path: string): Promise<string | nu
 
 async function readFileAtRef(repoRoot: string, ref: string, path: string): Promise<string | null> {
 	try {
-		return await runGit(["show", `${ref}:${path}`], repoRoot);
+		return await getGitStdout(["show", `${ref}:${path}`], repoRoot);
 	} catch {
 		return null;
 	}
@@ -236,7 +211,7 @@ function fallbackStats(oldText: string | null, newText: string | null): DiffStat
 
 async function readDiffStat(repoRoot: string, path: string): Promise<DiffStat | null> {
 	try {
-		const output = await runGit(["diff", "--numstat", "HEAD", "--", path], repoRoot);
+		const output = await getGitStdout(["diff", "--numstat", "HEAD", "--", path], repoRoot);
 		const firstLine = output
 			.split("\n")
 			.map((line) => line.trim())
@@ -263,7 +238,7 @@ async function readDiffStatBetweenRefs(
 	path: string,
 ): Promise<DiffStat | null> {
 	try {
-		const output = await runGit(["diff", "--numstat", fromRef, toRef, "--", path], repoRoot);
+		const output = await getGitStdout(["diff", "--numstat", fromRef, toRef, "--", path], repoRoot);
 		const firstLine = output
 			.split("\n")
 			.map((line) => line.trim())
@@ -285,7 +260,7 @@ async function readDiffStatBetweenRefs(
 
 async function readDiffStatFromRef(repoRoot: string, fromRef: string, path: string): Promise<DiffStat | null> {
 	try {
-		const output = await runGit(["diff", "--numstat", fromRef, "--", path], repoRoot);
+		const output = await getGitStdout(["diff", "--numstat", fromRef, "--", path], repoRoot);
 		const firstLine = output
 			.split("\n")
 			.map((line) => line.trim())
@@ -377,7 +352,7 @@ async function buildFileChangeFromRef(
 }
 
 export async function createEmptyWorkspaceChangesResponse(cwd: string): Promise<RuntimeWorkspaceChangesResponse> {
-	const repoRoot = (await runGit(["rev-parse", "--show-toplevel"], cwd)).trim();
+	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], cwd)).trim();
 	if (!repoRoot) {
 		throw new Error("Could not resolve git repository root.");
 	}
@@ -389,15 +364,15 @@ export async function createEmptyWorkspaceChangesResponse(cwd: string): Promise<
 }
 
 export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspaceChangesResponse> {
-	const repoRoot = (await runGit(["rev-parse", "--show-toplevel"], cwd)).trim();
+	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], cwd)).trim();
 	if (!repoRoot) {
 		throw new Error("Could not resolve git repository root.");
 	}
 
 	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([
-		runGit(["diff", "--name-status", "HEAD", "--"], repoRoot),
-		runGit(["ls-files", "--others", "--exclude-standard"], repoRoot),
-		runGit(["rev-parse", "--verify", "HEAD"], repoRoot).catch(() => ""),
+		getGitStdout(["diff", "--name-status", "HEAD", "--"], repoRoot),
+		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot),
+		getGitStdout(["rev-parse", "--verify", "HEAD"], repoRoot).catch(() => ""),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	const untrackedPaths = untrackedOutput
@@ -449,12 +424,12 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 export async function getWorkspaceChangesBetweenRefs(
 	input: ChangesBetweenRefsInput,
 ): Promise<RuntimeWorkspaceChangesResponse> {
-	const repoRoot = (await runGit(["rev-parse", "--show-toplevel"], input.cwd)).trim();
+	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], input.cwd)).trim();
 	if (!repoRoot) {
 		throw new Error("Could not resolve git repository root.");
 	}
 
-	const trackedChangesOutput = await runGit(
+	const trackedChangesOutput = await getGitStdout(
 		["diff", "--name-status", "--find-renames", input.fromRef, input.toRef, "--"],
 		repoRoot,
 	);
@@ -480,14 +455,14 @@ export async function getWorkspaceChangesBetweenRefs(
 }
 
 export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkspaceChangesResponse> {
-	const repoRoot = (await runGit(["rev-parse", "--show-toplevel"], input.cwd)).trim();
+	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], input.cwd)).trim();
 	if (!repoRoot) {
 		throw new Error("Could not resolve git repository root.");
 	}
 
 	const [trackedChangesOutput, untrackedOutput] = await Promise.all([
-		runGit(["diff", "--name-status", "--find-renames", input.fromRef, "--"], repoRoot),
-		runGit(["ls-files", "--others", "--exclude-standard"], repoRoot),
+		getGitStdout(["diff", "--name-status", "--find-renames", input.fromRef, "--"], repoRoot),
+		getGitStdout(["ls-files", "--others", "--exclude-standard"], repoRoot),
 	]);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	const untrackedPaths = untrackedOutput

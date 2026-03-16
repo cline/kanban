@@ -1,36 +1,21 @@
-import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import type { RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
 import { createGitProcessEnv } from "../core/git-process-env.js";
+import { getGitStdout, RunGitOptions } from "./git-utils.js";
 
-const execFileAsync = promisify(execFile);
-const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const CHECKPOINT_AUTHOR_NAME = "kanban-checkpoint";
 const CHECKPOINT_AUTHOR_EMAIL = "kanban-checkpoint@local";
 
-interface RunGitOptions {
-	trimStdout?: boolean;
-	env?: NodeJS.ProcessEnv;
-}
-
-async function runGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<string> {
-	const { stdout } = await execFileAsync("git", args, {
-		cwd,
-		encoding: "utf8",
-		maxBuffer: GIT_MAX_BUFFER_BYTES,
-		env: options.env ?? createGitProcessEnv(),
-	});
-	const text = String(stdout ?? "");
-	return options.trimStdout === false ? text : text.trim();
+function runGit(cwd: string, args: string[], options: RunGitOptions = {}) {
+	return getGitStdout(args, cwd, options)
 }
 
 async function tryRunGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<string | null> {
 	try {
-		return await runGit(cwd, args, options);
+		return await getGitStdout(args, cwd, options)
 	} catch {
 		return null;
 	}

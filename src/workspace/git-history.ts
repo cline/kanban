@@ -1,6 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
 import type {
 	RuntimeGitCommit,
 	RuntimeGitCommitDiffResponse,
@@ -8,51 +5,14 @@ import type {
 	RuntimeGitRef,
 	RuntimeGitRefsResponse,
 } from "../core/api-contract.js";
-import { createGitProcessEnv } from "../core/git-process-env.js";
-
-const execFileAsync = promisify(execFile);
-const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+import { runGit } from "./git-utils.js";
 
 const LOG_FIELD_SEPARATOR = "\x1f";
 const LOG_RECORD_SEPARATOR = "\x1e";
 
 const LOG_FORMAT = ["%H", "%h", "%an", "%ae", "%aI", "%s", "%P"].join(LOG_FIELD_SEPARATOR);
 
-interface GitCommandResult {
-	ok: boolean;
-	stdout: string;
-	error: string | null;
-}
-
 type CommitRelation = NonNullable<RuntimeGitCommit["relation"]>;
-
-async function runGit(
-	cwd: string,
-	args: string[],
-	options?: {
-		trimStdout?: boolean;
-	},
-): Promise<GitCommandResult> {
-	try {
-		const { stdout } = await execFileAsync("git", args, {
-			cwd,
-			encoding: "utf8",
-			maxBuffer: GIT_MAX_BUFFER_BYTES,
-			env: createGitProcessEnv(),
-		});
-		const stdoutText = String(stdout ?? "");
-		return {
-			ok: true,
-			stdout: options?.trimStdout === false ? stdoutText : stdoutText.trim(),
-			error: null,
-		};
-	} catch (error) {
-		const candidate = error as { stderr?: unknown; message?: unknown };
-		const stderr = String(candidate.stderr ?? "").trim();
-		const message = String(candidate.message ?? "").trim();
-		return { ok: false, stdout: "", error: stderr || message || "Git command failed." };
-	}
-}
 
 function parseCommitRecord(record: string): RuntimeGitCommit | null {
 	const fields = record.split(LOG_FIELD_SEPARATOR);

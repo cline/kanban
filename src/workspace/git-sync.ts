@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import type {
 	RuntimeGitCheckoutResponse,
@@ -10,18 +8,7 @@ import type {
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
 } from "../core/api-contract.js";
-import { createGitProcessEnv } from "../core/git-process-env.js";
-
-const execFileAsync = promisify(execFile);
-const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
-
-interface GitCommandResult {
-	ok: boolean;
-	stdout: string;
-	stderr: string;
-	output: string;
-	error: string | null;
-}
+import { runGit } from "./git-utils.js";
 
 interface GitPathFingerprint {
 	path: string;
@@ -126,8 +113,8 @@ function parseStatusPath(line: string): string | null {
 export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceProbe> {
 	const repoRoot = await resolveRepoRoot(cwd);
 	const [statusResult, headCommitResult] = await Promise.all([
-		runGitCommand(repoRoot, ["status", "--porcelain=v2", "--branch", "--untracked-files=all"]),
-		runGitCommand(repoRoot, ["rev-parse", "--verify", "HEAD"]),
+		runGit(repoRoot, ["status", "--porcelain=v2", "--branch", "--untracked-files=all"]),
+		runGit(repoRoot, ["rev-parse", "--verify", "HEAD"]),
 	]);
 
 	if (!statusResult.ok) {
@@ -212,41 +199,8 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 	};
 }
 
-async function runGitCommand(cwd: string, args: string[]): Promise<GitCommandResult> {
-	try {
-		const { stdout, stderr } = await execFileAsync("git", args, {
-			cwd,
-			encoding: "utf8",
-			maxBuffer: GIT_MAX_BUFFER_BYTES,
-			env: createGitProcessEnv(),
-		});
-		const normalizedStdout = String(stdout ?? "").trim();
-		const normalizedStderr = String(stderr ?? "").trim();
-		return {
-			ok: true,
-			stdout: normalizedStdout,
-			stderr: normalizedStderr,
-			output: [normalizedStdout, normalizedStderr].filter(Boolean).join("\n"),
-			error: null,
-		};
-	} catch (error) {
-		const candidate = error as { stdout?: unknown; stderr?: unknown; message?: unknown };
-		const stdout = String(candidate.stdout ?? "").trim();
-		const stderr = String(candidate.stderr ?? "").trim();
-		const message = String(candidate.message ?? "").trim();
-		const resolvedError = stderr || message || "Git command failed.";
-		return {
-			ok: false,
-			stdout,
-			stderr,
-			output: [stdout, stderr].filter(Boolean).join("\n"),
-			error: resolvedError,
-		};
-	}
-}
-
 async function resolveRepoRoot(cwd: string): Promise<string> {
-	const result = await runGitCommand(cwd, ["rev-parse", "--show-toplevel"]);
+	const result = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
 	if (!result.ok || !result.stdout) {
 		throw new Error("No git repository detected for this workspace.");
 	}
@@ -268,7 +222,7 @@ async function countUntrackedAdditions(repoRoot: string, untrackedPaths: string[
 }
 
 async function hasGitRef(repoRoot: string, ref: string): Promise<boolean> {
-	const result = await runGitCommand(repoRoot, ["show-ref", "--verify", "--quiet", ref]);
+	const result = await runGit(repoRoot, ["show-ref", "--verify", "--quiet", ref]);
 	return result.ok;
 }
 
@@ -277,7 +231,7 @@ export async function getGitSyncSummary(
 	options?: { probe?: GitWorkspaceProbe },
 ): Promise<RuntimeGitSyncSummary> {
 	const probe = options?.probe ?? (await probeGitWorkspaceState(cwd));
-	const diffResult = await runGitCommand(probe.repoRoot, ["diff", "--numstat", "HEAD", "--"]);
+	const diffResult = await runGit(probe.repoRoot, ["diff", "--numstat", "HEAD", "--"]);
 	const trackedTotals = diffResult.ok ? parseNumstatTotals(diffResult.stdout) : { additions: 0, deletions: 0 };
 	const untrackedAdditions = await countUntrackedAdditions(probe.repoRoot, probe.untrackedPaths);
 
@@ -313,7 +267,7 @@ export async function runGitSyncAction(options: {
 		pull: ["pull", "--ff-only"],
 		push: ["push"],
 	};
-	const commandResult = await runGitCommand(options.cwd, argsByAction[options.action]);
+	const commandResult = await runGit(options.cwd, argsByAction[options.action]);
 	const nextSummary = await getGitSyncSummary(options.cwd);
 
 	if (!commandResult.ok) {
@@ -364,10 +318,10 @@ export async function runGitCheckoutAction(options: {
 
 	const hasLocalBranch = await hasGitRef(repoRoot, `refs/heads/${requestedBranch}`);
 	const commandResult = hasLocalBranch
-		? await runGitCommand(repoRoot, ["switch", requestedBranch])
+		? await runGit(repoRoot, ["switch", requestedBranch])
 		: (await hasGitRef(repoRoot, `refs/remotes/origin/${requestedBranch}`))
-			? await runGitCommand(repoRoot, ["switch", "--track", `origin/${requestedBranch}`])
-			: await runGitCommand(repoRoot, ["switch", requestedBranch]);
+			? await runGit(repoRoot, ["switch", "--track", `origin/${requestedBranch}`])
+			: await runGit(repoRoot, ["switch", requestedBranch]);
 	const nextSummary = await getGitSyncSummary(repoRoot);
 
 	if (!commandResult.ok) {
@@ -400,7 +354,7 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 		};
 	}
 
-	const restoreResult = await runGitCommand(repoRoot, [
+	const restoreResult = await runGit(repoRoot, [
 		"restore",
 		"--source=HEAD",
 		"--staged",
@@ -408,7 +362,7 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 		"--",
 		".",
 	]);
-	const cleanResult = restoreResult.ok ? await runGitCommand(repoRoot, ["clean", "-fd", "--", "."]) : null;
+	const cleanResult = restoreResult.ok ? await runGit(repoRoot, ["clean", "-fd", "--", "."]) : null;
 	const nextSummary = await getGitSyncSummary(repoRoot);
 	const output = [restoreResult.output, cleanResult?.output ?? ""].filter(Boolean).join("\n");
 
