@@ -7,12 +7,43 @@ import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
 import { useWindowEvent } from "@/utils/react-use";
 
 const REMOVED_PROJECT_ERROR_PREFIX = "Project no longer exists on disk and was removed:";
+const DIRECTORY_PICKER_UNAVAILABLE_MARKERS = [
+	"could not open directory picker",
+	'install "zenity" or "kdialog"',
+	'install powershell ("powershell" or "pwsh")',
+	'command "osascript" is not available',
+] as const;
+const MANUAL_PROJECT_PATH_PROMPT_MESSAGE =
+	"Kanban could not open a directory picker on this runtime. Enter a project path to add:";
 
 export function parseRemovedProjectPathFromStreamError(streamError: string | null): string | null {
 	if (!streamError || !streamError.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {
 		return null;
 	}
 	return streamError.slice(REMOVED_PROJECT_ERROR_PREFIX.length).trim();
+}
+
+export function isDirectoryPickerUnavailableErrorMessage(message: string | null | undefined): boolean {
+	if (!message) {
+		return false;
+	}
+	const normalized = message.trim().toLowerCase();
+	if (!normalized) {
+		return false;
+	}
+	return DIRECTORY_PICKER_UNAVAILABLE_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function promptForManualProjectPath(): string | null {
+	if (typeof window === "undefined") {
+		return null;
+	}
+	const rawValue = window.prompt(MANUAL_PROJECT_PATH_PROMPT_MESSAGE);
+	if (rawValue === null) {
+		return null;
+	}
+	const normalized = rawValue.trim();
+	return normalized || null;
 }
 
 interface UseProjectNavigationInput {
@@ -112,13 +143,30 @@ export function useProjectNavigation({
 		try {
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
 			const picked = await trpcClient.projects.pickDirectory.mutate();
-			if (!picked.ok || !picked.path) {
-				if (picked?.error && picked.error !== "No directory was selected.") {
-					throw new Error(picked.error);
+
+			let projectPath: string | null = null;
+			if (picked.ok && picked.path) {
+				projectPath = picked.path;
+			} else if (!picked.ok && picked.error === "No directory was selected.") {
+				return;
+			} else if (!picked.ok && isDirectoryPickerUnavailableErrorMessage(picked.error)) {
+				showAppToast({
+					intent: "warning",
+					icon: "warning-sign",
+					message: "Directory picker unavailable on this runtime. Enter the project path manually.",
+					timeout: 5000,
+				});
+				projectPath = promptForManualProjectPath();
+				if (!projectPath) {
+					return;
 				}
+			} else {
+				throw new Error(picked.error ?? "Could not pick project directory.");
+			}
+			if (!projectPath) {
 				return;
 			}
-			await addProjectByPath(picked.path);
+			await addProjectByPath(projectPath);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			showAppToast({
