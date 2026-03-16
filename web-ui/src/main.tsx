@@ -24,6 +24,7 @@ ReactDOM.createRoot(root).render(
 						border: "1px solid var(--color-border)",
 						color: "var(--color-text-primary)",
 						fontSize: "13px",
+						whiteSpace: "pre-line"
 					},
 				}}
 			/>
