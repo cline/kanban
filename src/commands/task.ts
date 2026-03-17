@@ -140,6 +140,7 @@ function formatTaskRecord(state: RuntimeWorkspaceStateResponse, task: RuntimeBoa
 		id: task.id,
 		prompt: task.prompt,
 		column: columnId,
+		agentId: task.agentId ?? null,
 		baseRef: task.baseRef,
 		startInPlanMode: task.startInPlanMode,
 		autoReviewEnabled: task.autoReviewEnabled === true,
@@ -427,6 +428,7 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 			taskId: task.id,
 			prompt: task.prompt,
 			startInPlanMode: task.startInPlanMode,
+			agentId: task.agentId,
 			baseRef: task.baseRef,
 		});
 		if (!started.ok || !started.summary) {

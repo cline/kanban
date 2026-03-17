@@ -15,11 +15,13 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
+import { TaskAgentSelect, type TaskAgentOption } from "@/components/task-agent-select";
 import type { BranchSelectOption } from "@/components/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import type { RuntimeAgentId } from "@/runtime/types";
 import type { TaskAutoReviewMode } from "@/types";
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
@@ -76,6 +78,9 @@ export function TaskCreateDialog({
 	onAutoReviewEnabledChange,
 	autoReviewMode,
 	onAutoReviewModeChange,
+	agentId,
+	agentOptions,
+	onAgentIdChange,
 	startInPlanModeDisabled = false,
 	workspaceId,
 	branchRef,
@@ -96,6 +101,9 @@ export function TaskCreateDialog({
 	onAutoReviewEnabledChange: (value: boolean) => void;
 	autoReviewMode: TaskAutoReviewMode;
 	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
+	agentId: RuntimeAgentId | null;
+	agentOptions: TaskAgentOption[];
+	onAgentIdChange: (value: RuntimeAgentId) => void;
 	startInPlanModeDisabled?: boolean;
 	workspaceId: string | null;
 	branchRef: string;
@@ -108,6 +116,7 @@ export function TaskCreateDialog({
 	const nextFocusIndexRef = useRef<number | null>(null);
 	const startInPlanModeId = useId();
 	const autoReviewEnabledId = useId();
+	const agentSelectId = useId();
 
 	const detectedItems = useMemo(() => parseListItems(prompt), [prompt]);
 	const validTaskCount = useMemo(
@@ -379,6 +388,13 @@ export function TaskCreateDialog({
 							emptyText="No branches detected"
 						/>
 					</div>
+
+					<TaskAgentSelect
+						id={agentSelectId}
+						value={agentId}
+						options={agentOptions}
+						onChange={onAgentIdChange}
+					/>
 
 					<div className="flex items-center gap-2 flex-wrap">
 						<label

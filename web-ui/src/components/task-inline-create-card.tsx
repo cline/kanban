@@ -3,9 +3,11 @@ import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-
 import type { ReactElement } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
+import { TaskAgentSelect, type TaskAgentOption } from "@/components/task-agent-select";
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
+import type { RuntimeAgentId } from "@/runtime/types";
 import type { TaskAutoReviewMode } from "@/types";
 import { useMeasure } from "@/utils/react-use";
 
@@ -51,6 +53,9 @@ export function TaskInlineCreateCard({
 	onAutoReviewEnabledChange,
 	autoReviewMode,
 	onAutoReviewModeChange,
+	agentId,
+	agentOptions,
+	onAgentIdChange,
 	startInPlanModeDisabled = false,
 	workspaceId,
 	branchRef,
@@ -71,6 +76,9 @@ export function TaskInlineCreateCard({
 	onAutoReviewEnabledChange: (value: boolean) => void;
 	autoReviewMode: TaskAutoReviewMode;
 	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
+	agentId: RuntimeAgentId | null;
+	agentOptions: TaskAgentOption[];
+	onAgentIdChange: (value: RuntimeAgentId) => void;
 	startInPlanModeDisabled?: boolean;
 	workspaceId: string | null;
 	branchRef: string;
@@ -84,6 +92,7 @@ export function TaskInlineCreateCard({
 	const planModeId = `${idPrefix}-plan-mode-toggle`;
 	const autoReviewEnabledId = `${idPrefix}-auto-review-enabled-toggle`;
 	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
+	const agentSelectId = `${idPrefix}-agent-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
 	const [cardRef, cardRect] = useMeasure<HTMLDivElement>();
@@ -167,6 +176,13 @@ export function TaskInlineCreateCard({
 						emptyText="No branches detected"
 					/>
 				</div>
+
+				<TaskAgentSelect
+					id={agentSelectId}
+					value={agentId}
+					options={agentOptions}
+					onChange={onAgentIdChange}
+				/>
 
 				<div className="flex items-center gap-2 flex-wrap">
 					<label

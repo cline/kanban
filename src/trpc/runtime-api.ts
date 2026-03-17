@@ -65,7 +65,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseTaskSessionStartRequest(input);
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
-				const resolved = resolveAgentCommand(scopedRuntimeConfig);
+				const resolved = resolveAgentCommand(scopedRuntimeConfig, body.agentId);
 				if (!resolved) {
 					return {
 						ok: false,

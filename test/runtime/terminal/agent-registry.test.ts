@@ -54,6 +54,15 @@ describe("agent-registry", () => {
 
 		expect(resolved).toBeNull();
 	});
+
+	it("prefers an explicit task agent override when it is runnable", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+
+		const resolved = resolveAgentCommand(createRuntimeConfigState({ selectedAgentId: "claude" }), "codex");
+
+		expect(resolved?.agentId).toBe("codex");
+		expect(resolved?.binary).toBe("codex");
+	});
 });
 
 describe("buildRuntimeConfigResponse", () => {

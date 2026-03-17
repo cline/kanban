@@ -39,6 +39,8 @@ export interface UseTaskEditorResult {
 	setNewTaskAutoReviewEnabled: Dispatch<SetStateAction<boolean>>;
 	newTaskAutoReviewMode: TaskAutoReviewMode;
 	setNewTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
+	newTaskAgentId: RuntimeAgentId | null;
+	setNewTaskAgentId: Dispatch<SetStateAction<RuntimeAgentId | null>>;
 	isNewTaskStartInPlanModeDisabled: boolean;
 	newTaskBranchRef: string;
 	setNewTaskBranchRef: Dispatch<SetStateAction<string>>;
@@ -51,6 +53,8 @@ export interface UseTaskEditorResult {
 	setEditTaskAutoReviewEnabled: Dispatch<SetStateAction<boolean>>;
 	editTaskAutoReviewMode: TaskAutoReviewMode;
 	setEditTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
+	editTaskAgentId: RuntimeAgentId | null;
+	setEditTaskAgentId: Dispatch<SetStateAction<RuntimeAgentId | null>>;
 	isEditTaskStartInPlanModeDisabled: boolean;
 	editTaskBranchRef: string;
 	setEditTaskBranchRef: Dispatch<SetStateAction<string>>;
@@ -90,6 +94,7 @@ export function useTaskEditor({
 		"commit",
 		normalizeStoredTaskAutoReviewMode,
 	);
+	const [newTaskAgentId, setNewTaskAgentId] = useState<RuntimeAgentId | null>(selectedAgentId);
 	const isNewTaskStartInPlanModeDisabled = newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
@@ -98,6 +103,7 @@ export function useTaskEditor({
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
 	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
 	const [editTaskAutoReviewMode, setEditTaskAutoReviewMode] = useState<TaskAutoReviewMode>("commit");
+	const [editTaskAgentId, setEditTaskAgentId] = useState<RuntimeAgentId | null>(null);
 	const isEditTaskStartInPlanModeDisabled = editTaskAutoReviewEnabled && editTaskAutoReviewMode === "move_to_trash";
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
@@ -136,6 +142,13 @@ export function useTaskEditor({
 	}, [isInlineTaskCreateOpen, newTaskBranchRef, resolvedDefaultTaskBranchRef]);
 
 	useEffect(() => {
+		if (!isInlineTaskCreateOpen || newTaskAgentId !== null || selectedAgentId === null) {
+			return;
+		}
+		setNewTaskAgentId(selectedAgentId);
+	}, [isInlineTaskCreateOpen, newTaskAgentId, selectedAgentId]);
+
+	useEffect(() => {
 		if (!isNewTaskStartInPlanModeDisabled || !newTaskStartInPlanMode) {
 			return;
 		}
@@ -171,21 +184,37 @@ export function useTaskEditor({
 			setEditTaskStartInPlanMode(false);
 			setEditTaskAutoReviewEnabled(false);
 			setEditTaskAutoReviewMode("commit");
+			setEditTaskAgentId(null);
 			setEditTaskBranchRef("");
 		}
 	}, [board, editingTaskId]);
 
+	useEffect(() => {
+		if (!editingTaskId || editTaskAgentId !== null) {
+			return;
+		}
+		const selection = findCardSelection(board, editingTaskId);
+		const fallbackAgentId = selection?.card.agentId ?? selectedAgentId ?? null;
+		if (fallbackAgentId === null) {
+			return;
+		}
+		setEditTaskAgentId(fallbackAgentId);
+	}, [board, editTaskAgentId, editingTaskId, selectedAgentId]);
+
 	const handleOpenCreateTask = useCallback(() => {
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
+		setEditTaskAgentId(null);
+		setNewTaskAgentId(selectedAgentId);
 		setIsInlineTaskCreateOpen(true);
-	}, []);
+	}, [selectedAgentId]);
 
 	const handleCancelCreateTask = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
 		setNewTaskPrompt("");
+		setNewTaskAgentId(selectedAgentId);
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
-	}, [resolvedDefaultTaskBranchRef]);
+	}, [resolvedDefaultTaskBranchRef, selectedAgentId]);
 
 	const handleOpenEditTask = useCallback(
 		(task: BoardCard, options?: OpenEditTaskOptions) => {
@@ -200,10 +229,11 @@ export function useTaskEditor({
 			setEditTaskStartInPlanMode(task.startInPlanMode);
 			setEditTaskAutoReviewEnabled(task.autoReviewEnabled === true);
 			setEditTaskAutoReviewMode(resolveTaskAutoReviewMode(task.autoReviewMode));
+			setEditTaskAgentId(task.agentId ?? selectedAgentId ?? null);
 			const fallbackBranch = task.baseRef || resolvedDefaultTaskBranchRef;
 			setEditTaskBranchRef(fallbackBranch);
 		},
-		[resolvedDefaultTaskBranchRef, setSelectedTaskId],
+		[resolvedDefaultTaskBranchRef, selectedAgentId, setSelectedTaskId],
 	);
 
 	const handleCancelEditTask = useCallback(() => {
@@ -212,6 +242,7 @@ export function useTaskEditor({
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
+		setEditTaskAgentId(null);
 		setEditTaskBranchRef("");
 	}, []);
 
@@ -236,6 +267,7 @@ export function useTaskEditor({
 				startInPlanMode: editTaskStartInPlanMode,
 				autoReviewEnabled: editTaskAutoReviewEnabled,
 				autoReviewMode: editTaskAutoReviewMode,
+				agentId: editTaskAgentId ?? undefined,
 				baseRef,
 			});
 			return updated.updated ? updated.board : currentBoard;
@@ -244,8 +276,10 @@ export function useTaskEditor({
 		setEditTaskPrompt("");
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
+		setEditTaskAgentId(null);
 		return savedTaskId;
 	}, [
+		editTaskAgentId,
 		editTaskAutoReviewEnabled,
 		editTaskAutoReviewMode,
 		editTaskBranchRef,
@@ -280,13 +314,14 @@ export function useTaskEditor({
 				startInPlanMode: newTaskStartInPlanMode,
 				autoReviewEnabled: newTaskAutoReviewEnabled,
 				autoReviewMode: newTaskAutoReviewMode,
+				agentId: newTaskAgentId ?? undefined,
 				baseRef,
 			});
 			createdTaskId = created.task.id;
 			return created.board;
 		});
 		trackTaskCreated({
-			selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
+			selected_agent_id: toTelemetrySelectedAgentId(newTaskAgentId ?? selectedAgentId),
 			start_in_plan_mode: newTaskStartInPlanMode,
 			...(newTaskAutoReviewEnabled ? { auto_review_mode: newTaskAutoReviewMode } : {}),
 			prompt_character_count: prompt.length,
@@ -298,11 +333,13 @@ export function useTaskEditor({
 			}));
 		}
 		setNewTaskPrompt("");
+		setNewTaskAgentId(selectedAgentId);
 		setNewTaskBranchRef(baseRef);
 		setIsInlineTaskCreateOpen(false);
 		return createdTaskId;
 	}, [
 		currentProjectId,
+		newTaskAgentId,
 		newTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,
 		newTaskBranchRef,
@@ -331,6 +368,7 @@ export function useTaskEditor({
 					startInPlanMode: newTaskStartInPlanMode,
 					autoReviewEnabled: newTaskAutoReviewEnabled,
 					autoReviewMode: newTaskAutoReviewMode,
+					agentId: newTaskAgentId ?? undefined,
 					baseRef,
 				});
 				updatedBoard = created.board;
@@ -340,7 +378,7 @@ export function useTaskEditor({
 		});
 		for (const prompt of validPrompts) {
 			trackTaskCreated({
-				selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
+				selected_agent_id: toTelemetrySelectedAgentId(newTaskAgentId ?? selectedAgentId),
 				start_in_plan_mode: newTaskStartInPlanMode,
 				...(newTaskAutoReviewEnabled ? { auto_review_mode: newTaskAutoReviewMode } : {}),
 				prompt_character_count: prompt.length,
@@ -353,11 +391,13 @@ export function useTaskEditor({
 			}));
 		}
 		setNewTaskPrompt("");
+		setNewTaskAgentId(selectedAgentId);
 		setNewTaskBranchRef(baseRef);
 		setIsInlineTaskCreateOpen(false);
 		return createdTaskIds;
 	}, [
 		currentProjectId,
+		newTaskAgentId,
 		newTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,
 		newTaskBranchRef,
@@ -369,11 +409,13 @@ export function useTaskEditor({
 
 	const resetTaskEditorState = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
+		setNewTaskAgentId(null);
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
+		setEditTaskAgentId(null);
 		setEditTaskBranchRef("");
 	}, []);
 
@@ -387,6 +429,8 @@ export function useTaskEditor({
 		setNewTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
+		newTaskAgentId,
+		setNewTaskAgentId,
 		isNewTaskStartInPlanModeDisabled,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
@@ -399,6 +443,8 @@ export function useTaskEditor({
 		setEditTaskAutoReviewEnabled,
 		editTaskAutoReviewMode,
 		setEditTaskAutoReviewMode,
+		editTaskAgentId,
+		setEditTaskAgentId,
 		isEditTaskStartInPlanModeDisabled,
 		editTaskBranchRef,
 		setEditTaskBranchRef,

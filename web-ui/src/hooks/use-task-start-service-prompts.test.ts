@@ -146,7 +146,8 @@ describe("isTaskStartServicePromptAlreadyConfigured", () => {
 
 describe("getTaskStartServicePromptKey", () => {
 	it("builds stable task prompt keys", () => {
-		expect(getTaskStartServicePromptKey("task-1", "linear_mcp")).toBe("task-1:linear_mcp");
+		expect(getTaskStartServicePromptKey("task-1", "linear_mcp")).toBe("task-1:linear_mcp:default");
+		expect(getTaskStartServicePromptKey("task-1", "linear_mcp", "codex")).toBe("task-1:linear_mcp:codex");
 	});
 });
 
@@ -158,10 +159,12 @@ describe("collectPendingTaskStartServicePrompts", () => {
 					{
 						taskId: "task-1",
 						prompt: "Check github issue and sync with linear",
+						agentId: null,
 					},
 					{
 						taskId: "task-2",
 						prompt: "Investigate github PR history",
+						agentId: null,
 					},
 				],
 				taskStartSetupAvailability: null,
@@ -172,10 +175,12 @@ describe("collectPendingTaskStartServicePrompts", () => {
 			{
 				promptId: "linear_mcp",
 				taskIds: ["task-1"],
+				agentId: null,
 			},
 			{
 				promptId: "github_cli",
 				taskIds: ["task-1", "task-2"],
+				agentId: null,
 			},
 		]);
 	});
@@ -187,6 +192,7 @@ describe("collectPendingTaskStartServicePrompts", () => {
 					{
 						taskId: "task-1",
 						prompt: "Use github and linear context",
+						agentId: null,
 					},
 				],
 				taskStartSetupAvailability: {
@@ -200,7 +206,6 @@ describe("collectPendingTaskStartServicePrompts", () => {
 			}),
 		).toEqual([]);
 	});
-});
 
 	it("shows agent cli prompt first when no supported agent is installed", () => {
 		expect(
@@ -209,10 +214,12 @@ describe("collectPendingTaskStartServicePrompts", () => {
 					{
 						taskId: "task-1",
 						prompt: "Use github and linear context",
+						agentId: null,
 					},
 					{
 						taskId: "task-2",
 						prompt: "No integrations needed",
+						agentId: null,
 					},
 				],
 				taskStartSetupAvailability: {
@@ -227,9 +234,49 @@ describe("collectPendingTaskStartServicePrompts", () => {
 			{
 				promptId: "agent_cli",
 				taskIds: ["task-1", "task-2"],
+				agentId: null,
 			},
 		]);
 	});
+
+	it("keeps prompt queues separate for different assigned agents", () => {
+		expect(
+			collectPendingTaskStartServicePrompts({
+				tasks: [
+					{
+						taskId: "task-1",
+						prompt: "Check github issue and sync with linear",
+						agentId: "codex",
+					},
+					{
+						taskId: "task-2",
+						prompt: "Investigate github PR history",
+						agentId: "claude",
+					},
+				],
+				taskStartSetupAvailability: null,
+				promptAcknowledgements: {},
+				isPromptDoNotShowAgainEnabled: () => false,
+			}),
+		).toEqual([
+			{
+				promptId: "linear_mcp",
+				taskIds: ["task-1"],
+				agentId: "codex",
+			},
+			{
+				promptId: "github_cli",
+				taskIds: ["task-1"],
+				agentId: "codex",
+			},
+			{
+				promptId: "github_cli",
+				taskIds: ["task-2"],
+				agentId: "claude",
+			},
+		]);
+	});
+});
 
 describe("mergeTaskStartServicePromptQueue", () => {
 	it("appends new prompt kinds and merges task ids for existing prompt kinds", () => {
@@ -239,16 +286,19 @@ describe("mergeTaskStartServicePromptQueue", () => {
 					{
 						promptId: "linear_mcp",
 						taskIds: ["task-1"],
+						agentId: null,
 					},
 				],
 				[
 					{
 						promptId: "linear_mcp",
 						taskIds: ["task-2", "task-1"],
+						agentId: null,
 					},
 					{
 						promptId: "github_cli",
 						taskIds: ["task-3"],
+						agentId: null,
 					},
 				],
 			),
@@ -256,10 +306,12 @@ describe("mergeTaskStartServicePromptQueue", () => {
 			{
 				promptId: "linear_mcp",
 				taskIds: ["task-1", "task-2"],
+				agentId: null,
 			},
 			{
 				promptId: "github_cli",
 				taskIds: ["task-3"],
+				agentId: null,
 			},
 		]);
 	});
@@ -270,12 +322,46 @@ describe("mergeTaskStartServicePromptQueue", () => {
 				{
 					promptId: "github_cli",
 					taskIds: ["task-1"],
+					agentId: null,
 				},
 			]),
 		).toEqual([
 			{
 				promptId: "github_cli",
 				taskIds: ["task-1"],
+				agentId: null,
+			},
+		]);
+	});
+
+	it("does not merge prompts for different assigned agents", () => {
+		expect(
+			mergeTaskStartServicePromptQueue(
+				[
+					{
+						promptId: "github_cli",
+						taskIds: ["task-1"],
+						agentId: "codex",
+					},
+				],
+				[
+					{
+						promptId: "github_cli",
+						taskIds: ["task-2"],
+						agentId: "claude",
+					},
+				],
+			),
+		).toEqual([
+			{
+				promptId: "github_cli",
+				taskIds: ["task-1"],
+				agentId: "codex",
+			},
+			{
+				promptId: "github_cli",
+				taskIds: ["task-2"],
+				agentId: "claude",
 			},
 		]);
 	});

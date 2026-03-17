@@ -15,12 +15,14 @@ import {
 	resolveTaskAutoReviewMode,
 	type TaskAutoReviewMode,
 } from "@/types";
+import type { RuntimeAgentId } from "@/runtime/types";
 
 export interface TaskDraft {
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: TaskAutoReviewMode;
+	agentId?: RuntimeAgentId;
 	baseRef: string;
 }
 
@@ -60,6 +62,17 @@ function normalizeColumnId(id: string): BoardColumnId | null {
 	return null;
 }
 
+function isRuntimeAgentId(value: unknown): value is RuntimeAgentId {
+	return (
+		value === "claude" ||
+		value === "codex" ||
+		value === "gemini" ||
+		value === "opencode" ||
+		value === "droid" ||
+		value === "cline"
+	);
+}
+
 function normalizeCard(rawCard: unknown): BoardCard | null {
 	if (!rawCard || typeof rawCard !== "object") {
 		return null;
@@ -71,6 +84,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		startInPlanMode?: unknown;
 		autoReviewEnabled?: unknown;
 		autoReviewMode?: unknown;
+		agentId?: unknown;
 		baseRef?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
@@ -94,6 +108,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		autoReviewMode: resolveTaskAutoReviewMode(
 			typeof card.autoReviewMode === "string" ? (card.autoReviewMode as TaskAutoReviewMode) : undefined,
 		),
+		...(isRuntimeAgentId(card.agentId) ? { agentId: card.agentId } : {}),
 		baseRef,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
@@ -238,6 +253,7 @@ export function addTaskToColumnWithResult(
 			startInPlanMode: draft.startInPlanMode,
 			autoReviewEnabled: draft.autoReviewEnabled,
 			autoReviewMode: draft.autoReviewMode,
+			agentId: draft.agentId,
 			baseRef: draft.baseRef,
 		},
 		() => crypto.randomUUID(),
@@ -426,6 +442,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 				startInPlanMode: Boolean(draft.startInPlanMode),
 				autoReviewEnabled: Boolean(draft.autoReviewEnabled),
 				autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
+				agentId: draft.agentId ?? card.agentId,
 				baseRef,
 				updatedAt: Date.now(),
 			};
@@ -450,6 +467,7 @@ export function disableTaskAutoReview(board: BoardData, taskId: string): { board
 		startInPlanMode: selection.card.startInPlanMode,
 		autoReviewEnabled: false,
 		autoReviewMode: DEFAULT_TASK_AUTO_REVIEW_MODE,
+		agentId: selection.card.agentId,
 		baseRef: selection.card.baseRef,
 	});
 }
