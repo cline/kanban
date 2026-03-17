@@ -41,8 +41,14 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Check
-        run: npm run check
+      - name: Lint
+        run: npm run lint
 
-      - name: Web UI unit tests
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Root tests
+        run: npm test
+
+      - name: Web UI tests
         run: npm --prefix web-ui run test

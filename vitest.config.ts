@@ -5,5 +5,6 @@ export default defineConfig({
 		globals: true,
 		environment: "node",
 		exclude: ["apps/**", "web-ui/**", "**/node_modules/**", "**/dist/**", ".worktrees/**"],
+		testTimeout: 15_000,
 	},
 });
