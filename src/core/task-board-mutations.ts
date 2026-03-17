@@ -1,4 +1,5 @@
 import type {
+	RuntimeAgentId,
 	RuntimeBoardCard,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
@@ -12,6 +13,7 @@ export interface RuntimeCreateTaskInput {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
+	agentId?: RuntimeAgentId;
 	baseRef: string;
 }
 
@@ -20,6 +22,7 @@ export interface RuntimeUpdateTaskInput {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
+	agentId?: RuntimeAgentId;
 	baseRef: string;
 }
 
@@ -266,6 +269,7 @@ export function addTaskToColumn(
 		startInPlanMode: Boolean(input.startInPlanMode),
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
 		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+		...(input.agentId ? { agentId: input.agentId } : {}),
 		baseRef,
 		createdAt: now,
 		updatedAt: now,
@@ -530,6 +534,7 @@ export function updateTask(
 				startInPlanMode: Boolean(input.startInPlanMode),
 				autoReviewEnabled: Boolean(input.autoReviewEnabled),
 				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+				agentId: input.agentId ?? card.agentId,
 				baseRef,
 				updatedAt: now,
 			};

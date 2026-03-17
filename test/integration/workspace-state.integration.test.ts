@@ -18,7 +18,7 @@ import {
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 
-function createBoard(title: string): RuntimeBoardData {
+function createBoard(title: string, cardOverrides: Partial<RuntimeBoardData["columns"][number]["cards"][number]> = {}): RuntimeBoardData {
 	return {
 		columns: [
 			{
@@ -32,6 +32,7 @@ function createBoard(title: string): RuntimeBoardData {
 						baseRef: "main",
 						createdAt: Date.now(),
 						updatedAt: Date.now(),
+						...cardOverrides,
 					},
 				],
 			},
@@ -170,6 +171,27 @@ describe.sequential("workspace-state integration", () => {
 				const entriesAfterRemoval = await listWorkspaceIndexEntries();
 				expect(entriesAfterRemoval).toHaveLength(1);
 				expect(entriesAfterRemoval[0]?.workspaceId).toBe(contextB.workspaceId);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("round-trips per-task agent assignments through persisted workspace state", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-agent-persistence-");
+			try {
+				const workspacePath = join(sandboxRoot, "project-agent");
+				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
+
+				await saveWorkspaceState(workspacePath, {
+					board: createBoard("Assigned task", { agentId: "codex" }),
+					sessions: {},
+				});
+
+				const loaded = await loadWorkspaceState(workspacePath);
+				expect(loaded.board.columns[0]?.cards[0]?.agentId).toBe("codex");
 			} finally {
 				cleanup();
 			}

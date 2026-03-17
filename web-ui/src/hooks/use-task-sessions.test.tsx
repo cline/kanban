@@ -30,7 +30,7 @@ interface HookSnapshot {
 	startTaskSession: ReturnType<typeof useTaskSessions>["startTaskSession"];
 }
 
-function createTask(): BoardCard {
+function createTask(overrides: Partial<BoardCard> = {}): BoardCard {
 	return {
 		id: "task-1",
 		prompt: "Resume me",
@@ -40,6 +40,7 @@ function createTask(): BoardCard {
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
+		...overrides,
 	};
 }
 
@@ -150,5 +151,34 @@ describe("useTaskSessions", () => {
 		});
 
 		expect(trackTaskResumedFromTrashMock).not.toHaveBeenCalled();
+	});
+
+	it("forwards the task agent id when starting a session", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			await latestSnapshot?.startTaskSession(createTask({ agentId: "codex" }));
+		});
+
+		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				taskId: "task-1",
+				agentId: "codex",
+			}),
+		);
 	});
 });

@@ -64,8 +64,12 @@ function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: stri
 	});
 }
 
-export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): ResolvedAgentCommand | null {
-	const selected = RUNTIME_AGENT_CATALOG.find((entry) => entry.id === runtimeConfig.selectedAgentId);
+export function resolveAgentCommand(
+	runtimeConfig: RuntimeConfigState,
+	agentIdOverride?: RuntimeAgentId | null,
+): ResolvedAgentCommand | null {
+	const selectedAgentId = agentIdOverride ?? runtimeConfig.selectedAgentId;
+	const selected = RUNTIME_AGENT_CATALOG.find((entry) => entry.id === selectedAgentId);
 	if (!selected) {
 		return null;
 	}
