@@ -20,7 +20,35 @@ export interface InlineSuffixClampResult {
 	isTruncated: boolean;
 }
 
+export interface ParseMarkdownTaskPromptsOptions {
+	sourcePath?: string;
+}
+
 export const DEFAULT_TASK_PROMPT_LABEL_MAX_CHARS = 100;
+export const IMPORTABLE_MARKDOWN_EXTENSIONS = [".md", ".markdown", ".mdx"] as const;
+
+const EXECUTION_HEADING_KEYWORDS = [
+	"plan",
+	"planned work",
+	"implementation",
+	"execution",
+	"phase",
+	"phases",
+	"task",
+	"tasks",
+	"deliverables",
+	"milestone",
+	"milestones",
+	"next steps",
+	"checklist",
+	"todo",
+] as const;
+
+const NUMBERED_LIST_REGEX = /^(\s*)\d+[.)]\s+(.+)$/;
+const BULLET_LIST_REGEX = /^(\s*)[-*+•]\s+(.+)$/;
+const UNCHECKED_CHECKLIST_REGEX = /^(\s*)[-*+]\s+\[\s\]\s+(.+)$/;
+const CHECKED_CHECKLIST_REGEX = /^(\s*)[-*+]\s+\[[xX]\]\s+(.+)$/;
+const HEADING_REGEX = /^#{1,6}\s+(.+?)\s*#*\s*$/;
 
 function normalizePromptForDisplay(prompt: string): string {
 	return prompt.replaceAll(/\s+/g, " ").trim();
@@ -123,6 +151,175 @@ function splitTextByWidth(text: string, options: TaskPromptWidthSplitOptions): {
 		title,
 		overflow,
 	};
+}
+
+function getIndentWidth(value: string): number {
+	let width = 0;
+	for (const character of value) {
+		if (character === " ") {
+			width += 1;
+			continue;
+		}
+		if (character === "\t") {
+			width += 4;
+			continue;
+		}
+		break;
+	}
+	return width;
+}
+
+function normalizeHeadingText(value: string): string {
+	return value.toLowerCase().replaceAll(/[^a-z0-9\s]+/g, " ").replaceAll(/\s+/g, " ").trim();
+}
+
+function isExecutionHeading(value: string): boolean {
+	const normalizedValue = normalizeHeadingText(value);
+	return EXECUTION_HEADING_KEYWORDS.some((keyword) => {
+		return (
+			normalizedValue === keyword ||
+			normalizedValue.startsWith(`${keyword} `) ||
+			normalizedValue.endsWith(` ${keyword}`) ||
+			normalizedValue.includes(` ${keyword} `)
+		);
+	});
+}
+
+function isFenceDelimiter(value: string): boolean {
+	return value.startsWith("```") || value.startsWith("~~~");
+}
+
+function normalizeImportedPrompt(rawValue: string): string {
+	let normalizedValue = rawValue.trim();
+	if (!normalizedValue) {
+		return "";
+	}
+
+	normalizedValue = normalizedValue.replaceAll(/!\[[^\]]*\]\([^)]*\)/g, " ");
+	normalizedValue = normalizedValue.replaceAll(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+	normalizedValue = normalizedValue.replaceAll(/`([^`]+)`/g, "$1");
+	normalizedValue = normalizedValue.replaceAll(/(^|\W)\*\*([^*]+)\*\*(?=\W|$)/g, "$1$2");
+	normalizedValue = normalizedValue.replaceAll(/(^|\W)\*([^*]+)\*(?=\W|$)/g, "$1$2");
+	normalizedValue = normalizedValue.replaceAll(/(^|\W)__([^_]+)__(?=\W|$)/g, "$1$2");
+	normalizedValue = normalizedValue.replaceAll(/(^|\W)_([^_]+)_(?=\W|$)/g, "$1$2");
+	normalizedValue = normalizedValue.replaceAll(/(^|\W)~~([^~]+)~~(?=\W|$)/g, "$1$2");
+	normalizedValue = normalizedValue.replaceAll(/`+/g, "");
+	return normalizePromptForDisplay(normalizedValue);
+}
+
+function buildImportedPrompt(prompt: string, sourcePath?: string): string {
+	if (!sourcePath) {
+		return prompt;
+	}
+	const sourceMention = `@${sourcePath}`;
+	if (prompt.includes(sourceMention)) {
+		return prompt;
+	}
+	return `${prompt} ${sourceMention}`;
+}
+
+function extractTopLevelListItem(line: string): string | null {
+	const numberedMatch = NUMBERED_LIST_REGEX.exec(line);
+	if (numberedMatch && getIndentWidth(numberedMatch[1] ?? "") <= 3) {
+		return numberedMatch[2]?.trim() ?? null;
+	}
+	const bulletMatch = BULLET_LIST_REGEX.exec(line);
+	if (bulletMatch && getIndentWidth(bulletMatch[1] ?? "") <= 3) {
+		return bulletMatch[2]?.trim() ?? null;
+	}
+	return null;
+}
+
+export function parseTaskListItems(text: string): string[] {
+	const lines = text.split("\n");
+	const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+
+	if (nonEmptyLines.length < 2) {
+		return [];
+	}
+
+	const numberedItems = nonEmptyLines.map((line) => NUMBERED_LIST_REGEX.exec(line));
+	if (numberedItems.every((match) => match !== null)) {
+		return numberedItems.map((match) => match?.[2]?.trim() ?? "");
+	}
+
+	const bulletItems = nonEmptyLines.map((line) => BULLET_LIST_REGEX.exec(line));
+	if (bulletItems.every((match) => match !== null)) {
+		return bulletItems.map((match) => match?.[2]?.trim() ?? "");
+	}
+
+	return [];
+}
+
+export function isImportableMarkdownPath(path: string): boolean {
+	const normalizedPath = path.trim().toLowerCase();
+	return IMPORTABLE_MARKDOWN_EXTENSIONS.some((extension) => normalizedPath.endsWith(extension));
+}
+
+export function parseMarkdownTaskPrompts(
+	markdown: string,
+	options: ParseMarkdownTaskPromptsOptions = {},
+): string[] {
+	const prompts: string[] = [];
+	const seenPrompts = new Set<string>();
+	const sourcePath = options.sourcePath?.trim();
+	const lines = markdown.split(/\r?\n/g);
+	let inCodeFence = false;
+	let seenHeadings = false;
+	let currentHeadingEligible = false;
+
+	const collectPrompt = (rawPrompt: string) => {
+		const normalizedPrompt = normalizeImportedPrompt(rawPrompt);
+		if (!normalizedPrompt) {
+			return;
+		}
+		if (seenPrompts.has(normalizedPrompt)) {
+			return;
+		}
+		seenPrompts.add(normalizedPrompt);
+		prompts.push(buildImportedPrompt(normalizedPrompt, sourcePath));
+	};
+
+	for (const line of lines) {
+		const trimmedLine = line.trim();
+		if (isFenceDelimiter(trimmedLine)) {
+			inCodeFence = !inCodeFence;
+			continue;
+		}
+		if (inCodeFence) {
+			continue;
+		}
+
+		const headingMatch = HEADING_REGEX.exec(trimmedLine);
+		if (headingMatch) {
+			seenHeadings = true;
+			currentHeadingEligible = isExecutionHeading(headingMatch[1] ?? "");
+			continue;
+		}
+
+		const checkedChecklistMatch = CHECKED_CHECKLIST_REGEX.exec(line);
+		if (checkedChecklistMatch && getIndentWidth(checkedChecklistMatch[1] ?? "") <= 3) {
+			continue;
+		}
+
+		const uncheckedChecklistMatch = UNCHECKED_CHECKLIST_REGEX.exec(line);
+		if (uncheckedChecklistMatch && getIndentWidth(uncheckedChecklistMatch[1] ?? "") <= 3) {
+			collectPrompt(uncheckedChecklistMatch[2] ?? "");
+			continue;
+		}
+
+		if (!currentHeadingEligible && seenHeadings) {
+			continue;
+		}
+
+		const listItem = extractTopLevelListItem(line);
+		if (!listItem) {
+			continue;
+		}
+		collectPrompt(listItem);
+	}
+
+	return prompts;
 }
 
 export function truncateTaskPromptLabel(prompt: string, maxChars = DEFAULT_TASK_PROMPT_LABEL_MAX_CHARS): string {

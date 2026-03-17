@@ -12,15 +12,16 @@ import {
 	type BoardDependency,
 	type CardSelection,
 	DEFAULT_TASK_AUTO_REVIEW_MODE,
-	resolveTaskAutoReviewMode,
 	type TaskAutoReviewMode,
 } from "@/types";
+import type { RuntimeAgentId } from "@/runtime/types";
 
 export interface TaskDraft {
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: TaskAutoReviewMode;
+	agentId?: RuntimeAgentId;
 	baseRef: string;
 }
 
@@ -60,6 +61,20 @@ function normalizeColumnId(id: string): BoardColumnId | null {
 	return null;
 }
 
+function normalizeAgentId(value: unknown): RuntimeAgentId | undefined {
+	if (
+		value === "claude" ||
+		value === "codex" ||
+		value === "gemini" ||
+		value === "opencode" ||
+		value === "droid" ||
+		value === "cline"
+	) {
+		return value;
+	}
+	return undefined;
+}
+
 function normalizeCard(rawCard: unknown): BoardCard | null {
 	if (!rawCard || typeof rawCard !== "object") {
 		return null;
@@ -71,6 +86,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		startInPlanMode?: unknown;
 		autoReviewEnabled?: unknown;
 		autoReviewMode?: unknown;
+		agentId?: unknown;
 		baseRef?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
@@ -91,9 +107,11 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		autoReviewEnabled: typeof card.autoReviewEnabled === "boolean" ? card.autoReviewEnabled : false,
-		autoReviewMode: resolveTaskAutoReviewMode(
-			typeof card.autoReviewMode === "string" ? (card.autoReviewMode as TaskAutoReviewMode) : undefined,
-		),
+		autoReviewMode:
+			card.autoReviewMode === "pr" || card.autoReviewMode === "move_to_trash" || card.autoReviewMode === "commit"
+				? card.autoReviewMode
+				: "commit",
+		...(normalizeAgentId(card.agentId) ? { agentId: normalizeAgentId(card.agentId) } : {}),
 		baseRef,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
@@ -238,6 +256,7 @@ export function addTaskToColumnWithResult(
 			startInPlanMode: draft.startInPlanMode,
 			autoReviewEnabled: draft.autoReviewEnabled,
 			autoReviewMode: draft.autoReviewMode,
+			agentId: draft.agentId,
 			baseRef: draft.baseRef,
 		},
 		() => crypto.randomUUID(),
@@ -411,32 +430,18 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 		return { board, updated: false };
 	}
 
-	let updated = false;
-	const columns = board.columns.map((column) => {
-		let columnUpdated = false;
-		const cards = column.cards.map((card) => {
-			if (card.id !== taskId) {
-				return card;
-			}
-			columnUpdated = true;
-			updated = true;
-			return {
-				...card,
-				prompt,
-				startInPlanMode: Boolean(draft.startInPlanMode),
-				autoReviewEnabled: Boolean(draft.autoReviewEnabled),
-				autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
-				baseRef,
-				updatedAt: Date.now(),
-			};
-		});
-		return columnUpdated ? { ...column, cards } : column;
+	const updated = runtimeTaskState.updateTask(board, taskId, {
+		prompt,
+		startInPlanMode: draft.startInPlanMode,
+		autoReviewEnabled: draft.autoReviewEnabled,
+		autoReviewMode: draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE,
+		agentId: draft.agentId,
+		baseRef,
 	});
-
-	if (!updated) {
-		return { board, updated: false };
-	}
-	return { board: withUpdatedColumns(board, columns), updated: true };
+	return {
+		board: updated.updated ? updated.board : board,
+		updated: updated.updated,
+	};
 }
 
 export function disableTaskAutoReview(board: BoardData, taskId: string): { board: BoardData; updated: boolean } {

@@ -87,3 +87,4 @@ Dark theme
 
 Misc. tribal knowledge
 - Kanban is launched from the user's shell and inherits its environment. For agent detection and task-agent startup, prefer direct PATH checks and direct process launches over spawning an interactive shell. Avoid `zsh -i`, shell fallback command discovery, or "launch shell then type command into it" on hot paths. On setups with heavy shell init like `conda` or `nvm`, doing that per task can freeze the runtime and even make new Terminal.app windows feel hung when several tasks start at once. It's fine to use an actual interactive shell for explicit shell terminals, not for normal agent session work.
+- In `web-ui` Vitest runs, `window.localStorage` may be an incomplete shim. Tests should use the storage helpers or install an explicit `Storage` mock instead of assuming methods like `clear()` or `removeItem()` exist.

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	parseHookIngestRequest,
 	parseTaskSessionStartRequest,
+	parseWorkspaceFileReadRequest,
 	parseWorkspaceFileSearchRequest,
 } from "../../src/core/api-validation.js";
 
@@ -33,6 +34,19 @@ describe("parseWorkspaceFileSearchRequest", () => {
 		expect(() => {
 			parseWorkspaceFileSearchRequest(new URLSearchParams({ q: "board", limit: "0" }));
 		}).toThrow("Invalid file search limit parameter.");
+	});
+});
+
+describe("parseWorkspaceFileReadRequest", () => {
+	it("trims a valid file path", () => {
+		const parsed = parseWorkspaceFileReadRequest({ path: "  docs/plan.md  " });
+		expect(parsed).toEqual({ path: "docs/plan.md" });
+	});
+
+	it("throws when the file path is empty", () => {
+		expect(() => {
+			parseWorkspaceFileReadRequest({ path: "   " });
+		}).toThrow("File path cannot be empty.");
 	});
 });
 

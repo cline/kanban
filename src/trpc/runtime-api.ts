@@ -65,12 +65,14 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseTaskSessionStartRequest(input);
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
-				const resolved = resolveAgentCommand(scopedRuntimeConfig);
+				const resolved = resolveAgentCommand(scopedRuntimeConfig, body.agentId);
 				if (!resolved) {
 					return {
 						ok: false,
 						summary: null,
-						error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
+						error: body.agentId
+							? "The runtime assigned to this task is not runnable. Install it or choose a different runtime for the task."
+							: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
 					};
 				}
 				const taskCwd = await resolveExistingTaskCwdOrEnsure({

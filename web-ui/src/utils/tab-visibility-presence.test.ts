@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { LocalStorageKey, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { hasVisibleKanbanTabForWorkspace, markTabVisible } from "@/utils/tab-visibility-presence";
 
 describe("tab visibility presence", () => {
 	beforeEach(() => {
-		window.localStorage.clear();
+		writeLocalStorageItem(LocalStorageKey.TabVisibilityPresence, JSON.stringify({}));
 	});
 
 	it("ignores the current tab when excluded", () => {

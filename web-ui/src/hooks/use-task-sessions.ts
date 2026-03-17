@@ -111,6 +111,7 @@ export function useTaskSessions({
 					prompt: kickoffPrompt,
 					startInPlanMode: options?.resumeFromTrash ? undefined : task.startInPlanMode,
 					resumeFromTrash: options?.resumeFromTrash,
+					agentId: task.agentId,
 					baseRef: task.baseRef,
 					cols: geometry.cols,
 					rows: geometry.rows,

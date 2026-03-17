@@ -6,6 +6,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
+import type { RuntimeAgentId } from "@/runtime/types";
 import type { TaskAutoReviewMode } from "@/types";
 import { useMeasure } from "@/utils/react-use";
 
@@ -51,6 +52,9 @@ export function TaskInlineCreateCard({
 	onAutoReviewEnabledChange,
 	autoReviewMode,
 	onAutoReviewModeChange,
+	agentId,
+	agentOptions,
+	onAgentIdChange,
 	startInPlanModeDisabled = false,
 	workspaceId,
 	branchRef,
@@ -71,6 +75,9 @@ export function TaskInlineCreateCard({
 	onAutoReviewEnabledChange: (value: boolean) => void;
 	autoReviewMode: TaskAutoReviewMode;
 	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
+	agentId: RuntimeAgentId | null;
+	agentOptions: Array<{ value: RuntimeAgentId; label: string; installed: boolean }>;
+	onAgentIdChange: (value: RuntimeAgentId) => void;
 	startInPlanModeDisabled?: boolean;
 	workspaceId: string | null;
 	branchRef: string;
@@ -84,6 +91,7 @@ export function TaskInlineCreateCard({
 	const planModeId = `${idPrefix}-plan-mode-toggle`;
 	const autoReviewEnabledId = `${idPrefix}-auto-review-enabled-toggle`;
 	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
+	const agentRuntimeId = `${idPrefix}-agent-runtime-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
 	const [cardRef, cardRect] = useMeasure<HTMLDivElement>();
@@ -92,6 +100,7 @@ export function TaskInlineCreateCard({
 	const hideCreateShortcut = mode === "create" && isCompactActions;
 	const cancelLabel = hideCancelShortcut ? "Cancel" : "Cancel (esc)";
 	const cardMarginBottom = mode === "create" ? 6 : 0;
+	const isAgentSelectDisabled = !enabled || agentOptions.length === 0;
 
 	useHotkeys(
 		"esc",
@@ -154,6 +163,38 @@ export function TaskInlineCreateCard({
 					</RadixCheckbox.Root>
 					<span>Start in plan mode</span>
 				</label>
+
+				<div>
+					<span className="text-[11px] text-text-secondary block mb-1">Agent runtime</span>
+					<div className="relative inline-flex max-w-full">
+						<select
+							id={agentRuntimeId}
+							value={agentId ?? ""}
+							onChange={(event) => {
+								const value = event.currentTarget.value;
+								if (!value) {
+									return;
+								}
+								onAgentIdChange(value as RuntimeAgentId);
+							}}
+							disabled={isAgentSelectDisabled}
+							className="h-7 w-[22ch] max-w-full appearance-none rounded-md border border-border-bright bg-surface-2 pl-2 pr-7 text-[12px] text-text-primary cursor-pointer focus:border-border-focus focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							<option value="">
+								{agentOptions.length === 0 ? "Loading runtimes..." : "Select runtime"}
+							</option>
+							{agentOptions.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.installed ? option.label : `${option.label} (not installed)`}
+								</option>
+							))}
+						</select>
+						<ChevronDown
+							size={14}
+							className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary"
+						/>
+					</div>
+				</div>
 
 				<div>
 					<span className="text-[11px] text-text-secondary block mb-1">Worktree base ref</span>
