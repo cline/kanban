@@ -58,6 +58,17 @@ export const runtimeWorkspaceFileSearchResponseSchema = z.object({
 });
 export type RuntimeWorkspaceFileSearchResponse = z.infer<typeof runtimeWorkspaceFileSearchResponseSchema>;
 
+export const runtimeWorkspaceFileReadRequestSchema = z.object({
+	path: z.string(),
+});
+export type RuntimeWorkspaceFileReadRequest = z.infer<typeof runtimeWorkspaceFileReadRequestSchema>;
+
+export const runtimeWorkspaceFileReadResponseSchema = z.object({
+	path: z.string(),
+	content: z.string(),
+});
+export type RuntimeWorkspaceFileReadResponse = z.infer<typeof runtimeWorkspaceFileReadResponseSchema>;
+
 export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "cline"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
@@ -73,6 +84,7 @@ export const runtimeBoardCardSchema = z.object({
 	startInPlanMode: z.boolean(),
 	autoReviewEnabled: z.boolean().optional(),
 	autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
+	agentId: runtimeAgentIdSchema.optional(),
 	baseRef: z.string(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
@@ -492,6 +504,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	prompt: z.string(),
 	startInPlanMode: z.boolean().optional(),
 	resumeFromTrash: z.boolean().optional(),
+	agentId: runtimeAgentIdSchema.optional(),
 	baseRef: z.string(),
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),

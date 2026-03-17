@@ -28,10 +28,12 @@ export interface TaskStartServicePromptContent {
 export interface TaskStartServicePromptTask {
 	taskId: string;
 	prompt: string;
+	agentId: RuntimeAgentId | null;
 }
 
 export interface CollectedTaskStartServicePrompt {
 	promptId: TaskStartSetupKind;
+	agentId: RuntimeAgentId | null;
 	taskIds: string[];
 }
 
@@ -90,9 +92,20 @@ function getGithubCliInstallCommand(platform: TaskStartServicePromptPlatform): s
 	}
 }
 
-export function getTaskStartServicePromptKey(taskId: string, promptId: TaskStartSetupKind): string {
+export function getTaskStartServicePromptKey(
+	taskId: string,
+	promptId: TaskStartSetupKind,
+	agentId: RuntimeAgentId | null = null,
+): string {
 	// Stable key used to remember a one-time dialog close for this specific task and prompt type.
-	return `${taskId}:${promptId}`;
+	return `${taskId}:${promptId}:${agentId ?? "default"}`;
+}
+
+function getCollectedTaskStartServicePromptKey(
+	promptId: TaskStartSetupKind,
+	agentId: RuntimeAgentId | null,
+): string {
+	return `${promptId}:${agentId ?? "default"}`;
 }
 
 export function detectTaskStartServicePromptIds(prompt: string): TaskStartSetupKind[] {
@@ -211,21 +224,30 @@ export function collectPendingTaskStartServicePrompts(input: {
 	isPromptDoNotShowAgainEnabled: (promptId: TaskStartSetupKind) => boolean;
 }): CollectedTaskStartServicePrompt[] {
 	if (input.hasInstalledAgent === false && !input.isPromptDoNotShowAgainEnabled("agent_cli")) {
-		const missingAgentPromptTaskIds = [...new Set(input.tasks.map((task) => task.taskId))].filter((taskId) => {
-			const promptKey = getTaskStartServicePromptKey(taskId, "agent_cli");
-			return !input.promptAcknowledgements[promptKey];
-		});
-		if (missingAgentPromptTaskIds.length > 0) {
-			return [
-				{
-					promptId: "agent_cli",
-					taskIds: missingAgentPromptTaskIds,
-				},
-			];
+		const missingAgentPrompts = new Map<string, CollectedTaskStartServicePrompt>();
+		for (const task of input.tasks) {
+			const promptKey = getTaskStartServicePromptKey(task.taskId, "agent_cli", task.agentId);
+			if (input.promptAcknowledgements[promptKey]) {
+				continue;
+			}
+			const queueKey = getCollectedTaskStartServicePromptKey("agent_cli", task.agentId);
+			const existingPrompt = missingAgentPrompts.get(queueKey);
+			if (existingPrompt) {
+				existingPrompt.taskIds.push(task.taskId);
+				continue;
+			}
+			missingAgentPrompts.set(queueKey, {
+				promptId: "agent_cli",
+				agentId: task.agentId,
+				taskIds: [task.taskId],
+			});
+		}
+		if (missingAgentPrompts.size > 0) {
+			return [...missingAgentPrompts.values()];
 		}
 	}
 
-	const promptTaskIdsByPromptId = new Map<TaskStartSetupKind, string[]>();
+	const promptTaskIdsByPromptId = new Map<string, CollectedTaskStartServicePrompt>();
 
 	for (const task of input.tasks) {
 		for (const promptId of detectTaskStartServicePromptIds(task.prompt)) {
@@ -237,24 +259,26 @@ export function collectPendingTaskStartServicePrompts(input: {
 				continue;
 			}
 
-			const promptKey = getTaskStartServicePromptKey(task.taskId, promptId);
+			const promptKey = getTaskStartServicePromptKey(task.taskId, promptId, task.agentId);
 			if (input.promptAcknowledgements[promptKey]) {
 				continue;
 			}
 
-			const taskIds = promptTaskIdsByPromptId.get(promptId);
-			if (taskIds) {
-				taskIds.push(task.taskId);
+			const queueKey = getCollectedTaskStartServicePromptKey(promptId, task.agentId);
+			const existingPrompt = promptTaskIdsByPromptId.get(queueKey);
+			if (existingPrompt) {
+				existingPrompt.taskIds.push(task.taskId);
 				continue;
 			}
-			promptTaskIdsByPromptId.set(promptId, [task.taskId]);
+			promptTaskIdsByPromptId.set(queueKey, {
+				promptId,
+				agentId: task.agentId,
+				taskIds: [task.taskId],
+			});
 		}
 	}
 
-	return Array.from(promptTaskIdsByPromptId, ([promptId, taskIds]) => ({
-		promptId,
-		taskIds,
-	}));
+	return [...promptTaskIdsByPromptId.values()];
 }
 
 export function mergeTaskStartServicePromptQueue(
@@ -267,7 +291,9 @@ export function mergeTaskStartServicePromptQueue(
 
 	const mergedQueue = [...currentQueue];
 	for (const prompt of nextQueue) {
-		const existingPromptIndex = mergedQueue.findIndex((queued) => queued.promptId === prompt.promptId);
+		const existingPromptIndex = mergedQueue.findIndex(
+			(queued) => queued.promptId === prompt.promptId && queued.agentId === prompt.agentId,
+		);
 		if (existingPromptIndex === -1) {
 			mergedQueue.push(prompt);
 			continue;
@@ -287,6 +313,7 @@ export function mergeTaskStartServicePromptQueue(
 
 interface PendingTaskStartServicePromptState {
 	promptId: TaskStartSetupKind;
+	agentId: RuntimeAgentId | null;
 	taskIds: string[];
 }
 

@@ -14,6 +14,7 @@ import {
 	type RuntimeTaskWorkspaceInfoRequest,
 	type RuntimeTerminalWsClientMessage,
 	type RuntimeWorkspaceChangesRequest,
+	type RuntimeWorkspaceFileReadRequest,
 	type RuntimeWorkspaceFileSearchRequest,
 	type RuntimeWorkspaceStateSaveRequest,
 	type RuntimeWorktreeDeleteRequest,
@@ -31,6 +32,7 @@ import {
 	runtimeTaskWorkspaceInfoRequestSchema,
 	runtimeTerminalWsClientMessageSchema,
 	runtimeWorkspaceChangesRequestSchema,
+	runtimeWorkspaceFileReadRequestSchema,
 	runtimeWorkspaceFileSearchRequestSchema,
 	runtimeWorkspaceStateSaveRequestSchema,
 	runtimeWorktreeDeleteRequestSchema,
@@ -104,6 +106,17 @@ export function parseWorkspaceFileSearchRequest(query: URLSearchParams): Runtime
 		query: normalizedQuery,
 		limit: parsedLimit.data,
 	});
+}
+
+export function parseWorkspaceFileReadRequest(value: unknown): RuntimeWorkspaceFileReadRequest {
+	const parsed = parseWithSchema(runtimeWorkspaceFileReadRequestSchema, value);
+	const path = parsed.path.trim();
+	if (!path) {
+		throw new Error("File path cannot be empty.");
+	}
+	return {
+		path,
+	};
 }
 
 export function parseGitCheckoutRequest(value: unknown): RuntimeGitCheckoutRequest {

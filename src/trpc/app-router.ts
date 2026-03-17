@@ -38,6 +38,8 @@ import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceChangesRequest,
 	RuntimeWorkspaceChangesResponse,
+	RuntimeWorkspaceFileReadRequest,
+	RuntimeWorkspaceFileReadResponse,
 	RuntimeWorkspaceFileSearchRequest,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
@@ -83,6 +85,8 @@ import {
 	runtimeTaskWorkspaceInfoResponseSchema,
 	runtimeWorkspaceChangesRequestSchema,
 	runtimeWorkspaceChangesResponseSchema,
+	runtimeWorkspaceFileReadRequestSchema,
+	runtimeWorkspaceFileReadResponseSchema,
 	runtimeWorkspaceFileSearchRequestSchema,
 	runtimeWorkspaceFileSearchResponseSchema,
 	runtimeWorkspaceStateResponseSchema,
@@ -162,6 +166,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceFileSearchRequest,
 		) => Promise<RuntimeWorkspaceFileSearchResponse>;
+		readFile: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeWorkspaceFileReadRequest,
+		) => Promise<RuntimeWorkspaceFileReadResponse>;
 		loadState: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateResponse>;
 		saveState: (
 			scope: RuntimeTrpcWorkspaceScope,
@@ -345,6 +353,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeWorkspaceFileSearchResponseSchema)
 			.query(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.searchFiles(ctx.workspaceScope, input);
+			}),
+		readFile: workspaceProcedure
+			.input(runtimeWorkspaceFileReadRequestSchema)
+			.output(runtimeWorkspaceFileReadResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.readFile(ctx.workspaceScope, input);
 			}),
 		getState: workspaceProcedure.output(runtimeWorkspaceStateResponseSchema).query(async ({ ctx }) => {
 			return await ctx.workspaceApi.loadState(ctx.workspaceScope);

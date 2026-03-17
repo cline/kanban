@@ -146,7 +146,7 @@ describe("isTaskStartServicePromptAlreadyConfigured", () => {
 
 describe("getTaskStartServicePromptKey", () => {
 	it("builds stable task prompt keys", () => {
-		expect(getTaskStartServicePromptKey("task-1", "linear_mcp")).toBe("task-1:linear_mcp");
+		expect(getTaskStartServicePromptKey("task-1", "linear_mcp")).toBe("task-1:linear_mcp:default");
 	});
 });
 
@@ -158,10 +158,12 @@ describe("collectPendingTaskStartServicePrompts", () => {
 					{
 						taskId: "task-1",
 						prompt: "Check github issue and sync with linear",
+						agentId: null,
 					},
 					{
 						taskId: "task-2",
 						prompt: "Investigate github PR history",
+						agentId: null,
 					},
 				],
 				taskStartSetupAvailability: null,
@@ -171,10 +173,12 @@ describe("collectPendingTaskStartServicePrompts", () => {
 		).toEqual([
 			{
 				promptId: "linear_mcp",
+				agentId: null,
 				taskIds: ["task-1"],
 			},
 			{
 				promptId: "github_cli",
+				agentId: null,
 				taskIds: ["task-1", "task-2"],
 			},
 		]);
@@ -187,6 +191,7 @@ describe("collectPendingTaskStartServicePrompts", () => {
 					{
 						taskId: "task-1",
 						prompt: "Use github and linear context",
+						agentId: null,
 					},
 				],
 				taskStartSetupAvailability: {
@@ -194,7 +199,7 @@ describe("collectPendingTaskStartServicePrompts", () => {
 					linearMcp: false,
 				},
 				promptAcknowledgements: {
-					[getTaskStartServicePromptKey("task-1", "linear_mcp")]: true,
+					[getTaskStartServicePromptKey("task-1", "linear_mcp", null)]: true,
 				},
 				isPromptDoNotShowAgainEnabled: () => false,
 			}),
@@ -209,10 +214,12 @@ describe("collectPendingTaskStartServicePrompts", () => {
 					{
 						taskId: "task-1",
 						prompt: "Use github and linear context",
+						agentId: null,
 					},
 					{
 						taskId: "task-2",
 						prompt: "No integrations needed",
+						agentId: null,
 					},
 				],
 				taskStartSetupAvailability: {
@@ -226,6 +233,7 @@ describe("collectPendingTaskStartServicePrompts", () => {
 		).toEqual([
 			{
 				promptId: "agent_cli",
+				agentId: null,
 				taskIds: ["task-1", "task-2"],
 			},
 		]);
@@ -238,16 +246,19 @@ describe("mergeTaskStartServicePromptQueue", () => {
 				[
 					{
 						promptId: "linear_mcp",
+						agentId: null,
 						taskIds: ["task-1"],
 					},
 				],
 				[
 					{
 						promptId: "linear_mcp",
+						agentId: null,
 						taskIds: ["task-2", "task-1"],
 					},
 					{
 						promptId: "github_cli",
+						agentId: null,
 						taskIds: ["task-3"],
 					},
 				],
@@ -255,10 +266,12 @@ describe("mergeTaskStartServicePromptQueue", () => {
 		).toEqual([
 			{
 				promptId: "linear_mcp",
+				agentId: null,
 				taskIds: ["task-1", "task-2"],
 			},
 			{
 				promptId: "github_cli",
+				agentId: null,
 				taskIds: ["task-3"],
 			},
 		]);
@@ -269,12 +282,14 @@ describe("mergeTaskStartServicePromptQueue", () => {
 			mergeTaskStartServicePromptQueue([], [
 				{
 					promptId: "github_cli",
+					agentId: null,
 					taskIds: ["task-1"],
 				},
 			]),
 		).toEqual([
 			{
 				promptId: "github_cli",
+				agentId: null,
 				taskIds: ["task-1"],
 			},
 		]);

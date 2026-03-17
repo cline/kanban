@@ -40,6 +40,7 @@ interface HookSnapshot {
 	handleOpenEditTask: (task: BoardCard) => void;
 	handleSaveEditedTask: () => string | null;
 	handleSaveAndStartEditedTask: () => void;
+	handleCreateTasks: (prompts: string[]) => string[];
 	setEditTaskPrompt: (value: string) => void;
 	setEditTaskAutoReviewEnabled: (value: boolean) => void;
 	setEditTaskAutoReviewMode: (value: TaskAutoReviewMode) => void;
@@ -50,6 +51,13 @@ function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
 		throw new Error("Expected a hook snapshot.");
 	}
 	return snapshot;
+}
+
+function requireRoot(root: Root | null): Root {
+	if (!root) {
+		throw new Error("Expected a React root.");
+	}
+	return root;
 }
 
 function HookHarness({
@@ -84,6 +92,7 @@ function HookHarness({
 			handleOpenEditTask: editor.handleOpenEditTask,
 			handleSaveEditedTask: editor.handleSaveEditedTask,
 			handleSaveAndStartEditedTask: editor.handleSaveAndStartEditedTask,
+			handleCreateTasks: editor.handleCreateTasks,
 			setEditTaskPrompt: editor.setEditTaskPrompt,
 			setEditTaskAutoReviewEnabled: editor.setEditTaskAutoReviewEnabled,
 			setEditTaskAutoReviewMode: editor.setEditTaskAutoReviewMode,
@@ -96,6 +105,7 @@ function HookHarness({
 		editor.handleOpenEditTask,
 		editor.handleSaveEditedTask,
 		editor.handleSaveAndStartEditedTask,
+		editor.handleCreateTasks,
 		editor.isEditTaskStartInPlanModeDisabled,
 		editor.setEditTaskAutoReviewEnabled,
 		editor.setEditTaskAutoReviewMode,
@@ -107,12 +117,12 @@ function HookHarness({
 }
 
 describe("useTaskEditor", () => {
-	let container: HTMLDivElement;
-	let root: Root;
+	let container: HTMLDivElement | null;
+	let root: Root | null;
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		localStorage.clear();
+		globalThis.localStorage?.clear?.();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -122,17 +132,21 @@ describe("useTaskEditor", () => {
 	});
 
 	afterEach(() => {
-		act(() => {
-			root.unmount();
-		});
-		container.remove();
+		if (root) {
+			act(() => {
+				requireRoot(root).unmount();
+			});
+			root = null;
+		}
+		container?.remove();
+		container = null;
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 		} else {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-		localStorage.clear();
+		globalThis.localStorage?.clear?.();
 	});
 
 	it("returns the edited task id when saving a task", async () => {
@@ -140,7 +154,7 @@ describe("useTaskEditor", () => {
 		const initialBoard = createBoard(createTask("task-1", "Initial prompt", 1));
 
 		await act(async () => {
-			root.render(
+			requireRoot(root).render(
 				<HookHarness
 					initialBoard={initialBoard}
 					onSnapshot={(snapshot) => {
@@ -185,7 +199,7 @@ describe("useTaskEditor", () => {
 		);
 
 		await act(async () => {
-			root.render(
+			requireRoot(root).render(
 				<HookHarness
 					initialBoard={initialBoard}
 					onSnapshot={(snapshot) => {
@@ -214,13 +228,42 @@ describe("useTaskEditor", () => {
 		expect(requireSnapshot(latestSnapshot).editTaskStartInPlanMode).toBe(false);
 	});
 
+	it("creates multiple tasks in the same order they were provided", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const initialBoard = createBoard(createTask("task-existing", "Existing task", 1));
+
+		await act(async () => {
+			requireRoot(root).render(
+				<HookHarness
+					initialBoard={initialBoard}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		let createdTaskIds: string[] = [];
+		await act(async () => {
+			createdTaskIds = latestSnapshot?.handleCreateTasks(["First task", "Second task", "Third task"]) ?? [];
+		});
+
+		expect(createdTaskIds).toHaveLength(3);
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards.map((card) => card.prompt)).toEqual([
+			"First task",
+			"Second task",
+			"Third task",
+			"Existing task",
+		]);
+	});
+
 	it("queues the saved task id when saving and starting an edited task", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const queueTaskStartAfterEdit = vi.fn();
 		const initialBoard = createBoard(createTask("task-1", "Initial prompt", 1));
 
 		await act(async () => {
-			root.render(
+			requireRoot(root).render(
 				<HookHarness
 					initialBoard={initialBoard}
 					queueTaskStartAfterEdit={queueTaskStartAfterEdit}

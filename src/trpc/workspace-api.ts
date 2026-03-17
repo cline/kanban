@@ -7,11 +7,13 @@ import type {
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeWorkspaceChangesMode,
+	RuntimeWorkspaceFileReadResponse,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract.js";
 import {
 	parseGitCheckoutRequest,
+	parseWorkspaceFileReadRequest,
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation.js";
@@ -26,6 +28,7 @@ import {
 import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history.js";
 import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync.js";
 import { searchWorkspaceFiles } from "../workspace/search-workspace-files.js";
+import { readWorkspaceMarkdownFile, WorkspaceFileReadError } from "../workspace/read-workspace-file.js";
 import {
 	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,
@@ -154,6 +157,20 @@ function createEmptyGitDiscardErrorResponse(error: unknown): RuntimeGitDiscardRe
 		output: "",
 		error: message,
 	};
+}
+
+function toWorkspaceFileReadTrpcError(error: unknown): TRPCError {
+	if (error instanceof WorkspaceFileReadError) {
+		return new TRPCError({
+			code: error.code,
+			message: error.message,
+		});
+	}
+	const message = error instanceof Error ? error.message : String(error);
+	return new TRPCError({
+		code: "INTERNAL_SERVER_ERROR",
+		message,
+	});
 }
 
 export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): RuntimeTrpcContext["workspaceApi"] {
@@ -297,6 +314,15 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				query,
 				files,
 			} satisfies RuntimeWorkspaceFileSearchResponse;
+		},
+		readFile: async (workspaceScope, input) => {
+			try {
+				const body = parseWorkspaceFileReadRequest(input);
+				const response = await readWorkspaceMarkdownFile(workspaceScope.workspacePath, body.path);
+				return response satisfies RuntimeWorkspaceFileReadResponse;
+			} catch (error) {
+				throw toWorkspaceFileReadTrpcError(error);
+			}
 		},
 		loadState: async (workspaceScope) => {
 			return await deps.buildWorkspaceStateSnapshot(workspaceScope.workspaceId, workspaceScope.workspacePath);

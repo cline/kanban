@@ -11,11 +11,24 @@ export enum LocalStorageKey {
 	TabVisibilityPresence = "kanban.tab-visibility-presence.v1",
 }
 
+function isUsableStorage(storage: unknown): storage is Storage {
+	if (typeof storage !== "object" || storage === null) {
+		return false;
+	}
+	const candidate = storage as Partial<Storage>;
+	return typeof candidate.getItem === "function" && typeof candidate.setItem === "function";
+}
+
 function getLocalStorage(): Storage | null {
 	if (typeof window === "undefined") {
 		return null;
 	}
-	return window.localStorage;
+	try {
+		const storage = window.localStorage;
+		return isUsableStorage(storage) ? storage : null;
+	} catch {
+		return null;
+	}
 }
 
 export function readLocalStorageItem(key: LocalStorageKey): string | null {

@@ -121,6 +121,15 @@ export default function App(): ReactElement {
 		}
 		return shortcuts[0]?.label ?? null;
 	}, [runtimeProjectConfig?.selectedShortcutLabel, shortcuts]);
+	const taskAgentOptions = useMemo(
+		() =>
+			(runtimeProjectConfig?.agents ?? []).map((agent) => ({
+				value: agent.id,
+				label: agent.label,
+				installed: agent.installed,
+			})),
+		[runtimeProjectConfig?.agents],
+	);
 
 	const {
 		upsertSession,
@@ -219,6 +228,8 @@ export default function App(): ReactElement {
 		setNewTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
+		newTaskAgentId,
+		setNewTaskAgentId,
 		isNewTaskStartInPlanModeDisabled,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
@@ -231,6 +242,8 @@ export default function App(): ReactElement {
 		setEditTaskAutoReviewEnabled,
 		editTaskAutoReviewMode,
 		setEditTaskAutoReviewMode,
+		editTaskAgentId,
+		setEditTaskAgentId,
 		isEditTaskStartInPlanModeDisabled,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
@@ -635,6 +648,9 @@ export default function App(): ReactElement {
 			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
 			autoReviewMode={editTaskAutoReviewMode}
 			onAutoReviewModeChange={setEditTaskAutoReviewMode}
+			agentId={editTaskAgentId}
+			agentOptions={taskAgentOptions}
+			onAgentIdChange={setEditTaskAgentId}
 			workspaceId={currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
@@ -920,6 +936,9 @@ export default function App(): ReactElement {
 				onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 				autoReviewMode={newTaskAutoReviewMode}
 				onAutoReviewModeChange={setNewTaskAutoReviewMode}
+				agentId={newTaskAgentId}
+				agentOptions={taskAgentOptions}
+				onAgentIdChange={setNewTaskAgentId}
 				workspaceId={currentProjectId}
 				branchRef={newTaskBranchRef}
 				branchOptions={createTaskBranchOptions}

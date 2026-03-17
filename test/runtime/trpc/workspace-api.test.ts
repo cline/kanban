@@ -16,6 +16,10 @@ const workspaceChangesMocks = vi.hoisted(() => ({
 	getWorkspaceChangesFromRef: vi.fn(),
 }));
 
+const readWorkspaceFileMocks = vi.hoisted(() => ({
+	readWorkspaceMarkdownFile: vi.fn(),
+}));
+
 vi.mock("../../../src/workspace/task-worktree.js", () => ({
 	deleteTaskWorktree: vi.fn(),
 	ensureTaskWorktreeIfDoesntExist: vi.fn(),
@@ -30,6 +34,20 @@ vi.mock("../../../src/workspace/get-workspace-changes.js", () => ({
 	getWorkspaceChangesFromRef: workspaceChangesMocks.getWorkspaceChangesFromRef,
 }));
 
+vi.mock("../../../src/workspace/read-workspace-file.js", () => ({
+	readWorkspaceMarkdownFile: readWorkspaceFileMocks.readWorkspaceMarkdownFile,
+	WorkspaceFileReadError: class WorkspaceFileReadError extends Error {
+		readonly code: string;
+
+		constructor(code: string, message: string) {
+			super(message);
+			this.name = "WorkspaceFileReadError";
+			this.code = code;
+		}
+	},
+}));
+
+import { WorkspaceFileReadError } from "../../../src/workspace/read-workspace-file.js";
 import { createWorkspaceApi } from "../../../src/trpc/workspace-api.js";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -67,6 +85,7 @@ describe("createWorkspaceApi loadChanges", () => {
 		workspaceChangesMocks.getWorkspaceChanges.mockReset();
 		workspaceChangesMocks.getWorkspaceChangesBetweenRefs.mockReset();
 		workspaceChangesMocks.getWorkspaceChangesFromRef.mockReset();
+		readWorkspaceFileMocks.readWorkspaceMarkdownFile.mockReset();
 
 		workspaceTaskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/worktree");
 		workspaceChangesMocks.createEmptyWorkspaceChangesResponse.mockResolvedValue(createChangesResponse());
@@ -168,5 +187,61 @@ describe("createWorkspaceApi loadChanges", () => {
 			fromRef: "2222222",
 		});
 		expect(workspaceChangesMocks.getWorkspaceChangesBetweenRefs).not.toHaveBeenCalled();
+	});
+});
+
+describe("createWorkspaceApi readFile", () => {
+	it("delegates markdown file reads to the workspace helper", async () => {
+		readWorkspaceFileMocks.readWorkspaceMarkdownFile.mockResolvedValue({
+			path: "docs/plan.md",
+			content: "# Plan",
+		});
+
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(),
+		});
+
+		await expect(
+			api.readFile(
+				{
+					workspaceId: "workspace-1",
+					workspacePath: "/tmp/repo",
+				},
+				{ path: " docs/plan.md " },
+			),
+		).resolves.toEqual({
+			path: "docs/plan.md",
+			content: "# Plan",
+		});
+		expect(readWorkspaceFileMocks.readWorkspaceMarkdownFile).toHaveBeenCalledWith("/tmp/repo", "docs/plan.md");
+	});
+
+	it("preserves typed workspace read failures as TRPC errors", async () => {
+		readWorkspaceFileMocks.readWorkspaceMarkdownFile.mockRejectedValue(
+			new WorkspaceFileReadError("BAD_REQUEST", "Workspace file not found."),
+		);
+
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(),
+		});
+
+		await expect(
+			api.readFile(
+				{
+					workspaceId: "workspace-1",
+					workspacePath: "/tmp/repo",
+				},
+				{ path: "docs/missing.md" },
+			),
+		).rejects.toMatchObject({
+			code: "BAD_REQUEST",
+			message: "Workspace file not found.",
+		});
 	});
 });
