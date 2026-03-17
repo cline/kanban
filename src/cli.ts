@@ -15,9 +15,11 @@ import { createGitProcessEnv } from "./core/git-process-env.js";
 import {
 	buildKanbanRuntimeUrl,
 	DEFAULT_KANBAN_RUNTIME_PORT,
+	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
 	parseRuntimePort,
+	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
 } from "./core/runtime-endpoint.js";
 import { resolveProjectInputPath } from "./projects/project-path.js";
@@ -39,6 +41,7 @@ interface CliOptions {
 	noOpen: boolean;
 	skipShutdownCleanup: boolean;
 	agent: RuntimeAgentId | null;
+	host: string | null;
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
 }
 
@@ -77,6 +80,7 @@ function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } |
 
 interface RootCommandOptions {
 	agent?: RuntimeAgentId;
+	host?: string;
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
 	skipShutdownCleanup?: boolean;
@@ -88,7 +92,7 @@ async function isPortAvailable(port: number): Promise<boolean> {
 		probe.once("error", () => {
 			resolve(false);
 		});
-		probe.listen(port, "127.0.0.1", () => {
+		probe.listen(port, getKanbanRuntimeHost(), () => {
 			probe.close(() => {
 				resolve(true);
 			});
@@ -371,6 +375,11 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 }
 
 async function runMainCommand(options: CliOptions): Promise<void> {
+	if (options.host) {
+		setKanbanRuntimeHost(options.host);
+		console.log(`Binding to host ${options.host}.`);
+	}
+
 	const selectedPort = await applyRuntimePortOption(options.port);
 	if (selectedPort !== null) {
 		console.log(`Using runtime port ${selectedPort}.`);
@@ -476,6 +485,7 @@ function createProgram(): Command {
 		.description("Local orchestration board for coding agents.")
 		.version(KANBAN_VERSION, "-v, --version", "Output the version number")
 		.option("--agent <id>", `Default agent ID (${CLI_AGENT_IDS.join(", ")}).`, parseCliAgentId)
+		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
@@ -495,6 +505,7 @@ function createProgram(): Command {
 	program.action(async (options: RootCommandOptions) => {
 		await runMainCommand({
 			agent: options.agent ?? null,
+			host: options.host ?? null,
 			port: options.port ?? null,
 			noOpen: options.open === false,
 			skipShutdownCleanup: options.skipShutdownCleanup === true,

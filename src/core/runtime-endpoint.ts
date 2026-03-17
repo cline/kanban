@@ -1,5 +1,16 @@
-export const KANBAN_RUNTIME_HOST = "127.0.0.1";
+export const DEFAULT_KANBAN_RUNTIME_HOST = "127.0.0.1";
 export const DEFAULT_KANBAN_RUNTIME_PORT = 3484;
+
+let runtimeHost: string = process.env.KANBAN_RUNTIME_HOST?.trim() || DEFAULT_KANBAN_RUNTIME_HOST;
+
+export function getKanbanRuntimeHost(): string {
+	return runtimeHost;
+}
+
+export function setKanbanRuntimeHost(host: string): void {
+	runtimeHost = host;
+	process.env.KANBAN_RUNTIME_HOST = host;
+}
 
 export function parseRuntimePort(rawPort: string | undefined): number {
 	if (!rawPort) {
@@ -25,11 +36,11 @@ export function setKanbanRuntimePort(port: number): void {
 }
 
 export function getKanbanRuntimeOrigin(): string {
-	return `http://${KANBAN_RUNTIME_HOST}:${getKanbanRuntimePort()}`;
+	return `http://${getKanbanRuntimeHost()}:${getKanbanRuntimePort()}`;
 }
 
 export function getKanbanRuntimeWsOrigin(): string {
-	return `ws://${KANBAN_RUNTIME_HOST}:${getKanbanRuntimePort()}`;
+	return `ws://${getKanbanRuntimeHost()}:${getKanbanRuntimePort()}`;
 }
 
 export function buildKanbanRuntimeUrl(pathname: string): string {
