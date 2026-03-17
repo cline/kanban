@@ -4,6 +4,7 @@ import type {
 	RuntimeBoardData,
 	RuntimeBoardDependency,
 	RuntimeTaskAutoReviewMode,
+	RuntimeTaskImage,
 } from "./api-contract.js";
 import { createUniqueTaskId } from "./task-id.js";
 
@@ -12,6 +13,7 @@ export interface RuntimeCreateTaskInput {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
+	images?: RuntimeTaskImage[];
 	baseRef: string;
 }
 
@@ -20,6 +22,7 @@ export interface RuntimeUpdateTaskInput {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
+	images?: RuntimeTaskImage[];
 	baseRef: string;
 }
 
@@ -266,12 +269,14 @@ export function addTaskToColumn(
 		throw new Error("Task baseRef is required.");
 	}
 	const existingIds = collectExistingTaskIds(board);
+	const images = input.images?.length ? input.images : undefined;
 	const task: RuntimeBoardCard = {
 		id: createUniqueTaskId(existingIds, randomUuid),
 		prompt,
 		startInPlanMode: Boolean(input.startInPlanMode),
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
 		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+		images,
 		baseRef,
 		createdAt: now,
 		updatedAt: now,
@@ -578,12 +583,14 @@ export function updateTask(
 				return card;
 			}
 			columnUpdated = true;
+			const updatedImages = input.images?.length ? input.images : undefined;
 			updatedTask = {
 				...card,
 				prompt,
 				startInPlanMode: Boolean(input.startInPlanMode),
 				autoReviewEnabled: Boolean(input.autoReviewEnabled),
 				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+				images: updatedImages,
 				baseRef,
 				updatedAt: now,
 			};

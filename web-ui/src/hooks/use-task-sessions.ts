@@ -131,9 +131,11 @@ export function useTaskSessions({
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const geometry =
 					getTerminalGeometry(task.id) ?? estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
+				const kickoffImages = options?.resumeFromTrash ? undefined : task.images;
 				const payload = await trpcClient.runtime.startTaskSession.mutate({
 					taskId: task.id,
 					prompt: kickoffPrompt,
+					images: kickoffImages,
 					startInPlanMode: options?.resumeFromTrash ? undefined : task.startInPlanMode,
 					resumeFromTrash: options?.resumeFromTrash,
 					baseRef: task.baseRef,
