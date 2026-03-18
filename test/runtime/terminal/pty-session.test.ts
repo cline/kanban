@@ -155,4 +155,46 @@ describe("PtySession", () => {
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("cmd.exe");
 	});
+
+	it("ignores EIO write errors", () => {
+		setPlatform("darwin");
+		const ptyProcess = createMockPtyProcess();
+		ptyProcess.write.mockImplementation(() => {
+			const error = new Error("i/o error") as NodeJS.ErrnoException;
+			error.code = "EIO";
+			throw error;
+		});
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(() => session.write("hello")).not.toThrow();
+	});
+
+	it("rethrows non-ignorable write errors", () => {
+		setPlatform("darwin");
+		const ptyProcess = createMockPtyProcess();
+		ptyProcess.write.mockImplementation(() => {
+			const error = new Error("permission denied") as NodeJS.ErrnoException;
+			error.code = "EPERM";
+			throw error;
+		});
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(() => session.write("hello")).toThrow("permission denied");
+	});
 });

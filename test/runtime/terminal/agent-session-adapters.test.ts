@@ -66,6 +66,41 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(existsSync(wrapperPath)).toBe(false);
 	});
 
+	it("appends Kanban sidebar instructions for home Claude sessions", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:claude:abc123",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const appendPromptIndex = launch.args.indexOf("--append-system-prompt");
+		expect(appendPromptIndex).toBeGreaterThanOrEqual(0);
+		expect(launch.args[appendPromptIndex + 1]).toContain("Kanban sidebar agent");
+		expect(launch.args[appendPromptIndex + 1]).toContain("kanban task create");
+	});
+
+	it("appends Kanban sidebar instructions for home Codex sessions", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:codex:abc123",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const configArgIndex = launch.args.indexOf("-c");
+		expect(configArgIndex).toBeGreaterThanOrEqual(0);
+		expect(launch.args[configArgIndex + 1]).toContain("developer_instructions=");
+		expect(launch.args[configArgIndex + 1]).toContain("Kanban sidebar agent");
+		expect(launch.args[configArgIndex + 1]).toContain("kanban task create");
+	});
+
 	it("writes Claude settings with explicit permission hook", async () => {
 		setupTempHome();
 		await prepareAgentLaunch({

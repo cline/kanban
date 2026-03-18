@@ -78,7 +78,7 @@ If you'd like to add support for a new CLI agent, open an issue first to discuss
 
 - Agent detection (checking if the CLI is installed and available on PATH)
 - Session startup and lifecycle management
-- Kanban skill installation (so the agent can interact with the board)
+- Side panel prompt injection for supported agents so the agent can interact with the board
 - Terminal integration and hook support
 - Tests covering the above
 

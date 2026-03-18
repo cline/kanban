@@ -28,11 +28,11 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	},
 	{
 		id: "cline",
-		label: "Cline CLI",
+		label: "Cline",
 		binary: "cline",
 		baseArgs: [],
 		autonomousArgs: ["--auto-approve-all"],
-		installUrl: "https://www.npmjs.com/package/cline",
+		installUrl: "https://github.com/cline/cline",
 	},
 	{
 		id: "opencode",

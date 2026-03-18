@@ -1,3 +1,6 @@
+// PTY-backed runtime for non-Cline task sessions and the workspace shell terminal.
+// It owns process lifecycle, terminal protocol filtering, and summary updates
+// for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type {
 	RuntimeTaskHookActivity,
 	RuntimeTaskSessionReviewReason,

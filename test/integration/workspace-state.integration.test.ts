@@ -176,6 +176,33 @@ describe.sequential("workspace-state integration", () => {
 		});
 	});
 
+	it("keeps all workspace index entries when projects are added concurrently", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspaces-concurrent-");
+			try {
+				const workspaceAPath = join(sandboxRoot, "alpha");
+				const workspaceBPath = join(sandboxRoot, "beta");
+				mkdirSync(workspaceAPath, { recursive: true });
+				mkdirSync(workspaceBPath, { recursive: true });
+				initGitRepository(workspaceAPath);
+				initGitRepository(workspaceBPath);
+
+				const [contextA, contextB] = await Promise.all([
+					loadWorkspaceContext(workspaceAPath),
+					loadWorkspaceContext(workspaceBPath),
+				]);
+
+				const entries = await listWorkspaceIndexEntries();
+				expect(entries).toHaveLength(2);
+				expect(entries.map((entry) => entry.workspaceId).sort()).toEqual(
+					[contextA.workspaceId, contextB.workspaceId].sort(),
+				);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("creates readable workspace ids from folder names with random suffix on collisions", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-id-format-");

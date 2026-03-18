@@ -5,6 +5,7 @@ import type {
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamTaskChatMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceMetadata,
@@ -45,6 +46,7 @@ export interface UseRuntimeStateStreamResult {
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
 	workspaceMetadata: RuntimeWorkspaceMetadata | null;
+	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -56,6 +58,7 @@ interface RuntimeStateStreamStore {
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
 	workspaceMetadata: RuntimeWorkspaceMetadata | null;
+	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -71,6 +74,7 @@ type RuntimeStateStreamAction =
 			payload: RuntimeStateStreamProjectsMessage;
 			nextProjectId: string | null;
 	  }
+	| { type: "task_chat_message"; payload: RuntimeStateStreamTaskChatMessage }
 	| { type: "workspace_metadata_updated"; workspaceMetadata: RuntimeWorkspaceMetadata }
 	| { type: "task_ready_for_review"; payload: RuntimeStateStreamTaskReadyForReviewMessage }
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
@@ -84,6 +88,7 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		projects: [],
 		workspaceState: null,
 		workspaceMetadata: null,
+		latestTaskChatMessage: null,
 		latestTaskReadyForReview: null,
 		streamError: null,
 		isRuntimeDisconnected: false,
@@ -110,6 +115,7 @@ function runtimeStateStreamReducer(
 			...state,
 			workspaceState: null,
 			workspaceMetadata: null,
+			latestTaskChatMessage: null,
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: false,
@@ -123,11 +129,21 @@ function runtimeStateStreamReducer(
 		};
 	}
 	if (action.type === "snapshot") {
+		const nextWorkspaceState = action.payload.workspaceState
+			? {
+				...action.payload.workspaceState,
+				sessions: mergeTaskSessionSummaries(
+					state.workspaceState?.sessions ?? {},
+					Object.values(action.payload.workspaceState.sessions ?? {}),
+				),
+			}
+			: null;
 		return {
 			currentProjectId: action.payload.currentProjectId,
 			projects: action.payload.projects,
-			workspaceState: action.payload.workspaceState,
+			workspaceState: nextWorkspaceState,
 			workspaceMetadata: action.payload.workspaceMetadata,
+			latestTaskChatMessage: null,
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
 			streamError: null,
 			isRuntimeDisconnected: false,
@@ -142,8 +158,15 @@ function runtimeStateStreamReducer(
 			projects: action.payload.projects,
 			workspaceState: didProjectChange ? null : state.workspaceState,
 			workspaceMetadata: didProjectChange ? null : state.workspaceMetadata,
+			latestTaskChatMessage: didProjectChange ? null : state.latestTaskChatMessage,
 			latestTaskReadyForReview: didProjectChange ? null : state.latestTaskReadyForReview,
 			hasReceivedSnapshot: true,
+		};
+	}
+	if (action.type === "task_chat_message") {
+		return {
+			...state,
+			latestTaskChatMessage: action.payload,
 		};
 	}
 	if (action.type === "workspace_metadata_updated") {
@@ -159,9 +182,16 @@ function runtimeStateStreamReducer(
 		};
 	}
 	if (action.type === "workspace_state_updated") {
+		const mergedWorkspaceState = {
+			...action.workspaceState,
+			sessions: mergeTaskSessionSummaries(
+				state.workspaceState?.sessions ?? {},
+				Object.values(action.workspaceState.sessions ?? {}),
+			),
+		};
 		return {
 			...state,
-			workspaceState: action.workspaceState,
+			workspaceState: mergedWorkspaceState,
 		};
 	}
 	if (action.type === "task_sessions_updated") {
@@ -301,6 +331,16 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 						});
 						return;
 					}
+					if (payload.type === "task_chat_message") {
+						if (payload.workspaceId !== activeWorkspaceId) {
+							return;
+						}
+						dispatch({
+							type: "task_chat_message",
+							payload,
+						});
+						return;
+					}
 					if (payload.type === "task_sessions_updated") {
 						if (payload.workspaceId !== activeWorkspaceId) {
 							return;
@@ -368,6 +408,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		projects: state.projects,
 		workspaceState: state.workspaceState,
 		workspaceMetadata: state.workspaceMetadata,
+		latestTaskChatMessage: state.latestTaskChatMessage,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,

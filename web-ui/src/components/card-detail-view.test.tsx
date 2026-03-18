@@ -16,6 +16,10 @@ vi.mock("@/components/detail-panels/agent-terminal-panel", () => ({
 	AgentTerminalPanel: () => <div data-testid="agent-terminal-panel" />,
 }));
 
+vi.mock("@/components/detail-panels/cline-agent-chat-panel", () => ({
+	ClineAgentChatPanel: () => <div data-testid="cline-agent-chat-panel" />,
+}));
+
 vi.mock("@/components/detail-panels/column-context-panel", () => ({
 	ColumnContextPanel: () => <div data-testid="column-context-panel" />,
 }));
@@ -220,5 +224,31 @@ describe("CardDetailView", () => {
 		const lastCall = mockUseRuntimeWorkspaceChanges.mock.calls.at(-1);
 		expect(lastCall?.[3]).toBe("last_turn");
 		expect(lastCall?.[7]).toBe(true);
+	});
+
+	it("renders native chat panel for cline agent", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="cline"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onBack={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeInstanceOf(HTMLDivElement);
+		expect(container.querySelector('[data-testid="agent-terminal-panel"]')).toBeNull();
 	});
 });
