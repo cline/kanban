@@ -1,21 +1,25 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
+import { Copy, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
+import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { useMeasure } from "@/utils/react-use";
-import { clampTextWithInlineSuffix, splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
+import {
+	clampTextWithInlineSuffix,
+	splitPromptToTitleDescriptionByWidth,
+	truncateTaskPromptLabel,
+} from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
-import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
-import { Tooltip } from "@/components/ui/tooltip";
-import { cn } from "@/components/ui/cn";
 
 interface CardSessionActivity {
 	dotColor: string;
@@ -142,7 +146,6 @@ export function BoardCard({
 	isDependencyLinking?: boolean;
 	workspacePath?: string | null;
 }): React.ReactElement {
-	const [isHovered, setIsHovered] = useState(false);
 	const [titleContainerRef, titleRect] = useMeasure<HTMLDivElement>();
 	const [descriptionContainerRef, descriptionRect] = useMeasure<HTMLDivElement>();
 	const titleRef = useRef<HTMLParagraphElement | null>(null);
@@ -152,6 +155,7 @@ export function BoardCard({
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [descriptionFont, setDescriptionFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+	const [isCopied, setIsCopied] = useState(false);
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
@@ -273,6 +277,14 @@ export function BoardCard({
 	const cancelAutomaticActionLabel =
 		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
 
+	const handleCopyPrompt = (event: MouseEvent<HTMLButtonElement>) => {
+		stopEvent(event);
+		navigator.clipboard.writeText(card.prompt).then(() => {
+			setIsCopied(true);
+			setTimeout(() => setIsCopied(false), 1500);
+		});
+	};
+
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
 			{(provided, snapshot) => {
@@ -328,7 +340,6 @@ export function BoardCard({
 							cursor: "grab",
 						}}
 						onMouseEnter={() => {
-							setIsHovered(true);
 							onDependencyPointerEnter?.(card.id);
 						}}
 						onMouseMove={() => {
@@ -337,22 +348,18 @@ export function BoardCard({
 							}
 							onDependencyPointerEnter?.(card.id);
 						}}
-						onMouseLeave={() => setIsHovered(false)}
 					>
 						<div
 							className={cn(
-								"rounded-md border border-border-bright bg-surface-2 p-2.5",
+								"group/card rounded-md border border-border-bright bg-surface-2 p-2.5",
 								isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
 								isDragging && "shadow-lg",
-								isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
 								isDependencySource && "kb-board-card-dependency-source",
 								isDependencyTarget && "kb-board-card-dependency-target",
 							)}
 						>
 							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
-								{statusMarker ? (
-									<div className="inline-flex items-center">{statusMarker}</div>
-								) : null}
+								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
 								<div ref={titleContainerRef} className="flex-1 min-w-0">
 									<p
 										ref={titleRef}
@@ -364,55 +371,68 @@ export function BoardCard({
 										{displayPromptSplit.title}
 									</p>
 								</div>
-								{columnId === "backlog" ? (
-									<Button
-										icon={<Play size={14} />}
-										variant="ghost"
-										size="sm"
-										aria-label="Start task"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onStart?.(card.id);
-										}}
-									/>
-								) : columnId === "review" ? (
-									<Button
-										icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
-										variant="ghost"
-										size="sm"
-										disabled={isMoveToTrashLoading}
-										aria-label="Move task to trash"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onMoveToTrash?.(card.id);
-										}}
-									/>
-								) : columnId === "trash" ? (
-									<Tooltip
-										side="bottom"
-										content={
-											<>
-												Restore session
-												<br />
-												in new worktree
-											</>
-										}
-									>
+								<div className="flex items-center">
+									<Tooltip content={isCopied ? "Copied!" : "Copy prompt"}>
 										<Button
-											icon={<RotateCcw size={12} />}
+											icon={<Copy size={14} />}
 											variant="ghost"
 											size="sm"
-											aria-label="Restore task from trash"
+											aria-label="Copy task prompt"
+											className="opacity-0 group-hover/card:opacity-100 transition-opacity duration-100"
+											onMouseDown={stopEvent}
+											onClick={handleCopyPrompt}
+										/>
+									</Tooltip>
+									{columnId === "backlog" ? (
+										<Button
+											icon={<Play size={14} />}
+											variant="ghost"
+											size="sm"
+											aria-label="Start task"
 											onMouseDown={stopEvent}
 											onClick={(event) => {
 												stopEvent(event);
-												onRestoreFromTrash?.(card.id);
+												onStart?.(card.id);
 											}}
 										/>
-									</Tooltip>
-								) : null}
+									) : columnId === "review" ? (
+										<Button
+											icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
+											variant="ghost"
+											size="sm"
+											disabled={isMoveToTrashLoading}
+											aria-label="Move task to trash"
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												onMoveToTrash?.(card.id);
+											}}
+										/>
+									) : columnId === "trash" ? (
+										<Tooltip
+											side="bottom"
+											content={
+												<>
+													Restore session
+													<br />
+													in new worktree
+												</>
+											}
+										>
+											<Button
+												icon={<RotateCcw size={12} />}
+												variant="ghost"
+												size="sm"
+												aria-label="Restore task from trash"
+												onMouseDown={stopEvent}
+												onClick={(event) => {
+													stopEvent(event);
+													onRestoreFromTrash?.(card.id);
+												}}
+											/>
+										</Tooltip>
+									) : null}
+								</div>
 							</div>
 							{displayPromptSplit.description ? (
 								<div ref={descriptionContainerRef}>
@@ -474,7 +494,7 @@ export function BoardCard({
 								<div
 									className="flex gap-1.5 items-start mt-[6px]"
 									style={{
-									color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
+										color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
 									}}
 								>
 									<span
@@ -482,7 +502,7 @@ export function BoardCard({
 										style={{
 											width: 6,
 											height: 6,
-										backgroundColor: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : sessionActivity.dotColor,
+											backgroundColor: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : sessionActivity.dotColor,
 											marginTop: 4,
 										}}
 									/>
@@ -507,13 +527,13 @@ export function BoardCard({
 										lineHeight: 1.4,
 										whiteSpace: "normal",
 										overflowWrap: "anywhere",
-									color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
+										color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
 									}}
 								>
 									{isTrashCard ? (
 										<span
 											style={{
-											color: SESSION_ACTIVITY_COLOR.muted,
+												color: SESSION_ACTIVITY_COLOR.muted,
 												textDecoration: "line-through",
 											}}
 										>
@@ -521,24 +541,26 @@ export function BoardCard({
 										</span>
 									) : reviewWorkspaceSnapshot ? (
 										<>
-										<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewWorkspacePath}</span>
+											<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewWorkspacePath}</span>
 											<GitBranch
 												size={10}
 												style={{
 													display: "inline",
-												color: SESSION_ACTIVITY_COLOR.secondary,
+													color: SESSION_ACTIVITY_COLOR.secondary,
 													margin: "0px 4px 2px",
 													verticalAlign: "middle",
 												}}
 											/>
-										<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewRefLabel}</span>
+											<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewRefLabel}</span>
 											{reviewChangeSummary ? (
 												<>
-												<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}> (</span>
-												<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>{reviewChangeSummary.filesLabel}</span>
-												<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
-												<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
-												<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>)</span>
+													<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}> (</span>
+													<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>
+														{reviewChangeSummary.filesLabel}
+													</span>
+													<span className="text-status-green"> +{reviewChangeSummary.additions}</span>
+													<span className="text-status-red"> -{reviewChangeSummary.deletions}</span>
+													<span style={{ color: SESSION_ACTIVITY_COLOR.muted }}>)</span>
 												</>
 											) : null}
 										</>
