@@ -13,7 +13,7 @@ import {
 	buildKanbanRuntimeUrl,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
-	KANBAN_RUNTIME_HOST,
+	getKanbanRuntimeHost,
 } from "../core/runtime-endpoint.js";
 import { loadWorkspaceContextById } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
@@ -252,7 +252,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	await new Promise<void>((resolveListen, rejectListen) => {
 		server.once("error", rejectListen);
-		server.listen(getKanbanRuntimePort(), KANBAN_RUNTIME_HOST, () => {
+		server.listen(getKanbanRuntimePort(), getKanbanRuntimeHost(), () => {
 			server.off("error", rejectListen);
 			resolveListen();
 		});
