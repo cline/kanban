@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
@@ -15,6 +15,7 @@ import {
 	getKanbanRuntimePort,
 	getKanbanRuntimeHost,
 } from "../core/runtime-endpoint.js";
+import { deleteSlackConfig, loadSlackConfig, saveSlackConfig } from "../integrations/slack-config.js";
 import { loadWorkspaceContextById } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { createTerminalWebSocketBridge } from "../terminal/ws-server.js";
@@ -196,12 +197,105 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		createContext: async ({ req }) => await createTrpcContext(req),
 	});
 
+	async function handleSlackStatus(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+		const config = await loadSlackConfig();
+		res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+		res.end(JSON.stringify({ connected: config !== null }));
+	}
+
+	async function handleSlackDisconnect(req: IncomingMessage, res: ServerResponse): Promise<void> {
+		if (req.method !== "POST") {
+			res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"error":"Method not allowed"}');
+			return;
+		}
+		try {
+			await deleteSlackConfig();
+			res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"ok":true}');
+		} catch (err) {
+			deps.warn(`[slack] Failed to delete Slack config: ${err instanceof Error ? err.message : String(err)}`);
+			res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"error":"Failed to remove Slack config"}');
+		}
+	}
+
+	async function handleSlackConnect(req: IncomingMessage, res: ServerResponse): Promise<void> {
+		if (req.method !== "POST") {
+			res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"error":"Method not allowed"}');
+			return;
+		}
+		const body = await new Promise<string>((resolve, reject) => {
+			let data = "";
+			req.on("data", (chunk: Buffer) => {
+				data += chunk.toString();
+			});
+			req.on("end", () => resolve(data));
+			req.on("error", reject);
+		});
+		let parsed: { slackUserId?: unknown; accessToken?: unknown; workspaceId?: unknown };
+		try {
+			parsed = JSON.parse(body) as { slackUserId?: unknown; accessToken?: unknown; workspaceId?: unknown };
+		} catch {
+			res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"error":"Invalid JSON body"}');
+			return;
+		}
+		const { slackUserId, accessToken, workspaceId } = parsed;
+		if (
+			typeof slackUserId !== "string" ||
+			!slackUserId.trim() ||
+			typeof accessToken !== "string" ||
+			!accessToken.trim()
+		) {
+			res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"error":"Missing required fields: slackUserId, accessToken"}');
+			return;
+		}
+		// workspaceId is optional in the request body; fall back to the currently active workspace.
+		const resolvedWorkspaceId =
+			(typeof workspaceId === "string" && workspaceId.trim()) ||
+			deps.workspaceRegistry.getActiveWorkspaceId();
+		if (!resolvedWorkspaceId) {
+			res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"error":"No workspaceId provided and no active workspace found. Open a project in kanban first."}');
+			return;
+		}
+		try {
+			await saveSlackConfig({
+				slackUserId: slackUserId.trim(),
+				accessToken: accessToken.trim(),
+				workspaceId: resolvedWorkspaceId,
+				kanbanUrl: getKanbanRuntimeOrigin(),
+			});
+			res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"ok":true}');
+		} catch (err) {
+			deps.warn(`[slack] Failed to save Slack config: ${err instanceof Error ? err.message : String(err)}`);
+			res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"error":"Failed to save Slack config"}');
+		}
+	}
+
 	const server = createServer(async (req, res) => {
 		try {
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
 			if (pathname.startsWith("/api/trpc")) {
 				await trpcHttpHandler(req, res);
+				return;
+			}
+			if (pathname === "/api/slack/status") {
+				await handleSlackStatus(req, res);
+				return;
+			}
+			if (pathname === "/api/slack/connect") {
+				await handleSlackConnect(req, res);
+				return;
+			}
+			if (pathname === "/api/slack/disconnect") {
+				await handleSlackDisconnect(req, res);
 				return;
 			}
 			if (pathname.startsWith("/api/")) {

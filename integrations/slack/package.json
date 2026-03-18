@@ -1,0 +1,25 @@
+{
+  "name": "@kanban/slack-integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Slack integration for Kanban — per-user task creation via @kanban mentions",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3"
+  }
+}

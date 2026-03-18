@@ -10,6 +10,7 @@ import {
 	Circle,
 	CircleDot,
 	ExternalLink,
+	LogIn,
 	Plus,
 	Settings,
 	X,
@@ -73,6 +74,9 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 	{ value: "commit", label: "Commit" },
 	{ value: "pr", label: "Make PR" },
 ];
+
+// Slack app server base URL (Cloudflare tunnel). Update here when the URL changes.
+const SLACK_APP_SERVER_URL = "https://kanban.preview.cline.bot";
 
 export type RuntimeSettingsSection = "shortcuts";
 
@@ -302,6 +306,8 @@ export function RuntimeSettingsDialog({
 	const [selectedPromptVariant, setSelectedPromptVariant] = useState<TaskGitAction>("commit");
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
+	const [slackConnected, setSlackConnected] = useState<boolean>(false);
+	const [slackConnectOutcome, setSlackConnectOutcome] = useState<"connected" | "error" | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
@@ -346,10 +352,9 @@ export function RuntimeSettingsDialog({
 			command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
 		}));
 	}, [agentAutonomousModeEnabled, config?.agents]);
-	const displayedAgents = useMemo(() => supportedAgents, [supportedAgents]);
 	const configuredAgentId = config?.selectedAgentId ?? null;
-	const firstInstalledAgentId = displayedAgents.find((agent) => agent.installed)?.id;
-	const fallbackAgentId = firstInstalledAgentId ?? displayedAgents[0]?.id ?? "claude";
+	const firstInstalledAgentId = supportedAgents.find((agent) => agent.installed)?.id;
+	const fallbackAgentId = firstInstalledAgentId ?? supportedAgents[0]?.id ?? "claude";
 	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
 	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
 	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
@@ -432,6 +437,25 @@ export function RuntimeSettingsDialog({
 		shortcuts,
 	]);
 
+	// Fetch the real Slack connection status from the backend whenever the dialog opens.
+	// The config file on disk is the source of truth; localStorage is not used.
+	useEffect(() => {
+		if (!open) {
+			return;
+		}
+		void (async () => {
+			try {
+				const res = await fetch("/api/slack/status");
+				if (res.ok) {
+					const data = (await res.json()) as { connected: boolean };
+					setSlackConnected(data.connected);
+				}
+			} catch {
+				// Non-fatal — leave the default false state; user can retry by reopening.
+			}
+		})();
+	}, [open]);
+
 	useEffect(() => {
 		if (!open) {
 			return;
@@ -443,6 +467,7 @@ export function RuntimeSettingsDialog({
 		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
 		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
 		setSaveError(null);
+		setSlackConnectOutcome(null);
 	}, [
 		config?.agentAutonomousModeEnabled,
 		config?.commitPromptTemplate,
@@ -499,6 +524,64 @@ export function RuntimeSettingsDialog({
 		}
 	});
 
+	// Handle Slack OAuth callback URL params on initial page load.
+	// The server redirects back with ?slack=connected&userId=...&token=...
+	// We POST those credentials to the local kanban runtime, which persists them
+	// to ~/.kanban/integrations/slack.json for the ws-client to read at startup.
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		const slackParam = params.get("slack");
+		if (slackParam !== "connected" && slackParam !== "error") {
+			return;
+		}
+
+		// Read credentials before stripping from URL.
+		const userId = params.get("userId");
+		const token = params.get("token");
+
+		// Strip OAuth params from URL immediately.
+		params.delete("slack");
+		params.delete("userId");
+		params.delete("token");
+		const newSearch = params.toString();
+		window.history.replaceState(
+			null,
+			"",
+			newSearch ? `${window.location.pathname}?${newSearch}` : window.location.pathname,
+		);
+
+		if (slackParam === "error") {
+			setSlackConnectOutcome("error");
+			return;
+		}
+
+		// slackParam === "connected" — POST credentials to the local runtime.
+		// If credentials are missing the OAuth flow didn't complete properly.
+		if (!userId || !token) {
+			setSlackConnectOutcome("error");
+			return;
+		}
+
+		void (async () => {
+			try {
+				// The server falls back to the active workspace if workspaceId isn't provided.
+				const res = await fetch("/api/slack/connect", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ slackUserId: userId, accessToken: token }),
+				});
+				if (res.ok) {
+					setSlackConnected(true);
+					setSlackConnectOutcome("connected");
+				} else {
+					setSlackConnectOutcome("error");
+				}
+			} catch {
+				setSlackConnectOutcome("error");
+			}
+		})();
+	}, []);
+
 	const handleCopyVariableToken = (token: string) => {
 		void (async () => {
 			try {
@@ -535,7 +618,7 @@ export function RuntimeSettingsDialog({
 			setSaveError("Runtime settings are still loading. Try again in a moment.");
 			return;
 		}
-		const selectedAgent = displayedAgents.find((agent) => agent.id === selectedAgentId);
+		const selectedAgent = supportedAgents.find((agent) => agent.id === selectedAgentId);
 		if (!selectedAgent || selectedAgent.installed !== true) {
 			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
 			return;
@@ -580,6 +663,23 @@ export function RuntimeSettingsDialog({
 		})();
 	};
 
+	const handleConnectSlack = () => {
+		window.location.href = `${SLACK_APP_SERVER_URL}/slack/install`;
+	};
+
+	const handleDisconnectSlack = () => {
+		void (async () => {
+			try {
+				await fetch("/api/slack/disconnect", { method: "POST" });
+			} catch {
+				// Best-effort — even if the request fails, clear local state so
+				// the user isn't stuck showing "Connected" in the UI.
+			}
+			setSlackConnected(false);
+			setSlackConnectOutcome(null);
+		})();
+	};
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogHeader title="Settings" icon={<Settings size={16} />} />
@@ -601,7 +701,7 @@ export function RuntimeSettingsDialog({
 				</p>
 
 				<h6 className="font-semibold text-text-primary mt-3 mb-0">Agent runtime</h6>
-				{displayedAgents.map((agent) => (
+				{supportedAgents.map((agent) => (
 					<AgentRow
 						key={agent.id}
 						agent={agent}
@@ -929,6 +1029,49 @@ export function RuntimeSettingsDialog({
 					</div>
 				))}
 				{shortcuts.length === 0 ? <p className="text-text-secondary text-[13px]">No shortcuts configured.</p> : null}
+
+				<h5 className="font-semibold text-text-primary mt-4 mb-0">
+					Integrations
+				</h5>
+
+				<div className="flex items-center gap-2 mt-3 mb-2">
+					<h6 className="font-semibold text-text-primary m-0">
+						Slack
+					</h6>
+					{slackConnected ? (
+						<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-green/10 text-status-green">
+							Connected
+						</span>
+					) : (
+						<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-3 text-text-secondary">
+							Not connected
+						</span>
+					)}
+				</div>
+
+				{slackConnectOutcome === "connected" ? (
+					<div className="flex gap-2 rounded-md border border-status-green/30 bg-status-green/5 p-3 text-[13px] mb-2">
+						<span className="text-text-primary">Successfully connected to Slack!</span>
+					</div>
+				) : slackConnectOutcome === "error" ? (
+					<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mb-2">
+						<span className="text-text-primary">Failed to connect to Slack. Please try again.</span>
+					</div>
+				) : null}
+
+				<div className="flex gap-2">
+					{!slackConnected ? (
+						<Button
+							variant="primary"
+							icon={<LogIn size={14} />}
+							onClick={handleConnectSlack}
+						>
+							Connect to Slack
+						</Button>
+					) : (
+						<Button variant="danger" onClick={handleDisconnectSlack}>Disconnect</Button>
+					)}
+				</div>
 
 				{saveError ? (
 					<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mt-3">
