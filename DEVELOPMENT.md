@@ -110,7 +110,7 @@ kanban
 
 After local code changes, run `npm run build` again before using the linked command.
 
-When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `kanban` binary points at the right `dist/cli.js`. For agent task automation guidance, inspect the generated skill file at `~/.agents/skills/kanban/SKILL.md` (and `~/.claude/skills/kanban/SKILL.md` when Claude is installed).
+When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `kanban` binary points at the right `dist/cli.js`. For sidebar agent automation guidance, inspect `src/prompts/append-system-prompt.ts`.
 
 Remove the global link:
 

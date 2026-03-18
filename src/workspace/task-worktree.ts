@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -8,13 +8,14 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract.js";
+import { createGitProcessEnv } from "../core/git-process-env.js";
+import { lockedFileSystem } from "../fs/locked-file-system.js";
+import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
 import {
-	KANBAN_TASK_WORKTREES_DIR_NAME,
 	getWorkspaceFolderLabelForWorktreePath,
+	KANBAN_TASK_WORKTREES_DIR_NAME,
 	normalizeTaskIdForWorktreePath,
 } from "./task-worktree-path.js";
-import { createGitProcessEnv } from "../core/git-process-env.js";
-import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
@@ -226,8 +227,7 @@ async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: s
 		return;
 	}
 
-	await mkdir(dirname(excludePath), { recursive: true });
-	await writeFile(excludePath, normalizedNextContent, "utf8");
+	await lockedFileSystem.writeTextFileAtomic(excludePath, normalizedNextContent);
 }
 
 async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: string): Promise<void> {

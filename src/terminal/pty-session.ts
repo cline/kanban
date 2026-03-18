@@ -28,6 +28,14 @@ function normalizeOutputChunk(data: PtyOutputChunk): Buffer {
 	return Buffer.isBuffer(data) ? data : Buffer.from(data);
 }
 
+function isIgnorablePtyWriteError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	const code = (error as NodeJS.ErrnoException).code;
+	return code === "EIO" || code === "EBADF";
+}
+
 function terminatePtyProcess(ptyProcess: pty.IPty): void {
 	const pid = ptyProcess.pid;
 	ptyProcess.kill();
@@ -143,7 +151,14 @@ export class PtySession {
 	}
 
 	write(data: string | Buffer): void {
-		this.ptyProcess.write(typeof data === "string" ? data : data.toString("utf8"));
+		try {
+			this.ptyProcess.write(typeof data === "string" ? data : data.toString("utf8"));
+		} catch (error) {
+			if (isIgnorablePtyWriteError(error)) {
+				return;
+			}
+			throw error;
+		}
 	}
 
 	resize(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void {

@@ -8,6 +8,7 @@ export interface UseRuntimeConfigResult {
 	config: RuntimeConfigResponse | null;
 	isLoading: boolean;
 	isSaving: boolean;
+	refresh: () => void;
 	save: (nextConfig: {
 		selectedAgentId?: RuntimeAgentId;
 		selectedShortcutLabel?: string | null;
@@ -78,10 +79,15 @@ export function useRuntimeConfig(
 		[setConfigData, workspaceId],
 	);
 
+	const refresh = useCallback(() => {
+		void configQuery.refetch();
+	}, [configQuery.refetch]);
+
 	return {
 		config: workspaceId ? (configQuery.data ?? initialConfig) : null,
 		isLoading: open ? configQuery.isLoading && configQuery.data === null && initialConfig === null : false,
 		isSaving,
+		refresh,
 		save,
 	};
 }

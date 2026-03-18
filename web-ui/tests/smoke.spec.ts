@@ -1,15 +1,24 @@
 import { expect, type Page, test } from "@playwright/test";
 
 async function createTaskFromBacklog(page: Page, title: string) {
-	await page.getByRole("button", { name: "Create task" }).click();
-	await page.getByPlaceholder("Describe the task").fill(title);
-	await page.getByPlaceholder("Describe the task").press("Enter");
+	const backlogColumn = page.locator('[data-column-id="backlog"]').first();
+	await backlogColumn.getByRole("button", { name: "Create task" }).click();
+	const prompt = page.getByPlaceholder("Describe the task");
+	await prompt.fill(title);
+	await prompt.press("Control+Enter");
+}
+
+async function openTaskFromBoard(page: Page, title: string) {
+	const card = page.locator("[data-task-id]").filter({ hasText: title }).first();
+	await expect(card).toBeVisible();
+	await card.click();
 }
 
 test("renders kanban top bar and columns", async ({ page }) => {
 	await page.goto("/");
-	await expect(page.getByText("Kanban", { exact: true })).toBeVisible();
 	await expect(page).toHaveTitle(/Kanban/);
+	await expect(page.getByRole("button", { name: "Projects" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Agent" })).toBeVisible();
 	await expect(page.getByText("Backlog", { exact: true })).toBeVisible();
 	await expect(page.getByText("In Progress", { exact: true })).toBeVisible();
 	await expect(page.getByText("Review", { exact: true })).toBeVisible();
@@ -17,28 +26,30 @@ test("renders kanban top bar and columns", async ({ page }) => {
 	await expect(page.getByRole("button", { name: "Create task" })).toBeVisible();
 });
 
-test("creating and opening a task shows the detail view", async ({ page }) => {
+test("creating and opening a backlog task shows the inline editor", async ({ page }) => {
 	await page.goto("/");
-	const taskTitle = "Smoke task";
+	const taskTitle = `smoke-${Date.now()}`;
 	await createTaskFromBacklog(page, taskTitle);
-	await page.getByText(taskTitle, { exact: true }).click();
-	await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
-	await expect(page.getByText("No diff yet for this task.")).toBeVisible();
-	await expect(page.getByText("Changed files will appear here.")).toBeVisible();
+	await openTaskFromBoard(page, taskTitle);
+	await expect(page.getByPlaceholder("Describe the task")).toHaveValue(taskTitle);
+	await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
 });
 
-test("escape key returns to board from detail view", async ({ page }) => {
+test("escape key closes the backlog inline editor", async ({ page }) => {
 	await page.goto("/");
-	const taskTitle = "Escape task";
+	const taskTitle = `escape-${Date.now()}`;
 	await createTaskFromBacklog(page, taskTitle);
-	await page.getByText(taskTitle, { exact: true }).click();
-	await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
+	await openTaskFromBoard(page, taskTitle);
+	await expect(page.getByPlaceholder("Describe the task")).toHaveValue(taskTitle);
 	await page.keyboard.press("Escape");
+	await expect(page.getByPlaceholder("Describe the task")).toHaveCount(0);
 	await expect(page.getByText("Backlog", { exact: true })).toBeVisible();
+	await expect(page.locator("[data-task-id]").filter({ hasText: taskTitle }).first()).toBeVisible();
 });
 
 test("settings button opens runtime settings dialog", async ({ page }) => {
 	await page.goto("/");
 	await page.getByTestId("open-settings-button").click();
-	await expect(page.getByText("Agent Runtime Setup", { exact: true })).toBeVisible();
+	await expect(page.getByRole("dialog").getByText("Settings", { exact: true })).toBeVisible();
 });

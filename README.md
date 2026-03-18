@@ -46,7 +46,7 @@ kanban
 Run this from the root of any git repo. Kanban will detect your installed CLI agent and launch a local running webserver in your browser. No account or setup required, it works right out of the box.
 
 ### 2. Create tasks
-Create a task card manually, or open the built-in terminal (<kbd>⌘</kbd> + <kbd>J</kbd>) and ask your agent to break work down into tasks for you. A `kanban` skill is automatically added to your CLI agent so it knows how to create, edit, start, and link tasks on your kanban board. Use `/kanban` or `$kanban`, or simply ask your agent to "add tasks to kanban..."
+Create a task card manually, or open the sidebar chat and ask your agent to break work down into tasks for you. Kanban injects board-management instructions into that session so you can simply ask it to add tasks, link tasks, or start work on your board.
 
 ### 3. Link and automate
 <kbd>⌘</kbd> + click a card to link it to another task. When a card is completed and moved to trash, linked tasks auto-start. Combine with auto-commit for fully autonomous dependency chains: one task completes → commits → kicks off the next → repeat. It’s a pretty magical experience asking your agent to decompose a big task into subtasks that auto-commit - he’ll cleverly do it in a way that parallelizes for maximum efficiency and links tasks together for end-to-end autonomy.

@@ -41,7 +41,7 @@ const LINEAR_WORD_PATTERN = /\blinear\b/i;
 const GITHUB_WORD_PATTERN = /\bgithub\b/i;
 const DEFAULT_LINEAR_INSTALL_COMMAND = "claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp";
 const CLINE_CLI_INSTALL_COMMAND = "npm install -g cline";
-const SUPPORTED_AGENT_LABELS = "Claude Code, OpenAI Codex, Cline CLI, OpenCode, Droid CLI, or Gemini CLI";
+const SUPPORTED_AGENT_LABELS = "Claude Code, OpenAI Codex, Cline, OpenCode, Droid CLI, or Gemini CLI";
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {

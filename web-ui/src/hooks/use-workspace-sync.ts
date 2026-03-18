@@ -34,6 +34,20 @@ interface UseWorkspaceSyncResult {
 	resetWorkspaceSyncState: () => void;
 }
 
+function mergeTaskSessionSummaries(
+	currentSessions: Record<string, RuntimeTaskSessionSummary>,
+	nextSessions: Record<string, RuntimeTaskSessionSummary>,
+): Record<string, RuntimeTaskSessionSummary> {
+	const mergedSessions = { ...currentSessions };
+	for (const [taskId, summary] of Object.entries(nextSessions)) {
+		const currentSummary = mergedSessions[taskId];
+		if (!currentSummary || currentSummary.updatedAt <= summary.updatedAt) {
+			mergedSessions[taskId] = summary;
+		}
+	}
+	return mergedSessions;
+}
+
 export function useWorkspaceSync({
 	currentProjectId,
 	streamedWorkspaceState,
@@ -91,7 +105,7 @@ export function useWorkspaceSync({
 			}
 			setWorkspacePath(nextWorkspaceState.repoPath);
 			setWorkspaceGit(nextWorkspaceState.git);
-			setSessions(nextWorkspaceState.sessions ?? {});
+			setSessions((currentSessions) => mergeTaskSessionSummaries(currentSessions, nextWorkspaceState.sessions ?? {}));
 			const shouldHydrateBoard = !isSameProject || currentRevision !== nextWorkspaceState.revision;
 			if (shouldHydrateBoard) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();

@@ -1,0 +1,3 @@
+`"__home_agent__:"` where {
+	register_diagnostic(message="Use src/core/home-agent-session.ts helpers instead of duplicating the raw home agent session prefix.")
+}

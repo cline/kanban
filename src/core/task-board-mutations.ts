@@ -64,6 +64,12 @@ export interface RuntimeTrashTaskResult extends RuntimeMoveTaskResult {
 	readyTaskIds: string[];
 }
 
+export interface RuntimeDeleteTasksResult {
+	board: RuntimeBoardData;
+	deleted: boolean;
+	deletedTaskIds: string[];
+}
+
 function collectExistingTaskIds(board: RuntimeBoardData): Set<string> {
 	const existingIds = new Set<string>();
 	for (const column of board.columns) {
@@ -382,6 +388,54 @@ export function trashTaskAndGetReadyLinkedTaskIds(
 	return {
 		...movedToTrash,
 		readyTaskIds: movedToTrash.moved ? readyTaskIds : [],
+	};
+}
+
+export function deleteTasksFromBoard(board: RuntimeBoardData, taskIds: Iterable<string>): RuntimeDeleteTasksResult {
+	const normalizedTaskIds = new Set(
+		Array.from(taskIds, (taskId) => taskId.trim()).filter((taskId) => taskId.length > 0),
+	);
+	if (normalizedTaskIds.size === 0) {
+		return {
+			board,
+			deleted: false,
+			deletedTaskIds: [],
+		};
+	}
+
+	const deletedTaskIds: string[] = [];
+	const columns = board.columns.map((column) => {
+		const remainingCards = column.cards.filter((card) => {
+			if (!normalizedTaskIds.has(card.id)) {
+				return true;
+			}
+			deletedTaskIds.push(card.id);
+			return false;
+		});
+		return remainingCards.length === column.cards.length ? column : { ...column, cards: remainingCards };
+	});
+
+	if (deletedTaskIds.length === 0) {
+		return {
+			board,
+			deleted: false,
+			deletedTaskIds: [],
+		};
+	}
+
+	const deletedTaskIdSet = new Set(deletedTaskIds);
+	const dependencies = board.dependencies.filter(
+		(dependency) => !deletedTaskIdSet.has(dependency.fromTaskId) && !deletedTaskIdSet.has(dependency.toTaskId),
+	);
+
+	return {
+		board: {
+			...board,
+			columns,
+			dependencies,
+		},
+		deleted: true,
+		deletedTaskIds,
 	};
 }
 

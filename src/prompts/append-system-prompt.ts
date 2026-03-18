@@ -1,21 +1,23 @@
 import { realpathSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 
+import packageJson from "../../package.json" with { type: "json" };
+
+import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update.js";
 
-const SKILL_NAME = "kanban";
 const DEFAULT_COMMAND_PREFIX = "kanban";
+const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
-export interface ResolveKanbanSkillCommandPrefixOptions {
-	currentVersion: string;
+export interface ResolveAppendSystemPromptCommandPrefixOptions {
+	currentVersion?: string;
 	argv?: string[];
 	cwd?: string;
 	resolveRealPath?: (path: string) => string;
 }
 
-export function resolveKanbanSkillCommandPrefix(options: ResolveKanbanSkillCommandPrefixOptions): string {
+export function resolveAppendSystemPromptCommandPrefix(
+	options: ResolveAppendSystemPromptCommandPrefixOptions = {},
+): string {
 	const argv = options.argv ?? process.argv;
 	const entrypointArg = argv[1];
 	if (!entrypointArg) {
@@ -31,7 +33,7 @@ export function resolveKanbanSkillCommandPrefix(options: ResolveKanbanSkillComma
 	}
 
 	const installation = detectAutoUpdateInstallation({
-		currentVersion: options.currentVersion,
+		currentVersion: options.currentVersion ?? KANBAN_VERSION,
 		packageName: "kanban",
 		entrypointPath,
 		cwd: options.cwd ?? process.cwd(),
@@ -57,21 +59,17 @@ export function resolveKanbanSkillCommandPrefix(options: ResolveKanbanSkillComma
 	return DEFAULT_COMMAND_PREFIX;
 }
 
-export function renderKanbanSkillMarkdown(commandPrefix: string): string {
+export function renderAppendSystemPrompt(commandPrefix: string): string {
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
-	return `---
-name: kanban
-description: Manage tasks on the user's Kanban, a tool for orchestrating coding agents in worktrees via a kanban board. This skill helps you create, edit, link, and start tasks using the kanban CLI. The user first launches kanban with e.g. npx kanban, then may ask you to help 'add tasks to kanban' or something to that effect (e.g. link / port over / break work down / split into kanban tasks). Only use this skill when the user mentions kanban.
----
+	return `# Kanban Sidebar
 
-# Kanban
+You are the Kanban sidebar agent for this workspace. Help the user interact with their Kanban board directly from this side panel. When the user asks to add tasks, create tasks, break work down, link tasks, or start tasks, prefer using the Kanban CLI yourself instead of describing manual steps.
 
 Kanban is a CLI tool for orchestrating multiple coding agents working on tasks in parallel on a kanban board. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree.
 
-- If the user asks to add tasks to kb, ask kb, kanban, or says add tasks without other context, they likely want to add tasks in Kanban. This includes phrases like "create tasks", "make 3 tasks", "add a task", "break down into tasks", "split into tasks", "decompose into tasks", "turn into tasks", etc.
+- If the user asks to add tasks to kb, ask kb, kanban, or says add tasks without other context, they likely want to add tasks in Kanban. This includes phrases like "create tasks", "make 3 tasks", "add a task", "break down into tasks", "split into tasks", "decompose into tasks", and "turn into tasks".
 - Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start.
 - Tasks can also enable automatic review actions: auto-commit, auto-open-pr, or auto-move-to-trash once completed, sending the task to trash and kicking off any linked tasks.
-- There is a special case where the user may create a Kanban task to create new Kanban tasks. If the current working directory contains .kanban/worktrees/ in its path, you are running inside an ephemeral Kanban worktree. In this case, pass the main worktree path with \`--project-path\` so the new tasks are created under the correct workspace, not the ephemeral worktree path.
 - If a task command fails because the runtime is unavailable, tell the user to start Kanban in that workspace first with \`${kanbanCommand}\`, then retry the task command.
 
 # Command Prefix
@@ -88,11 +86,11 @@ All commands return JSON.
 Purpose: list Kanban tasks for a workspace, including auto-review settings and dependency links.
 
 Command:
-\`${kanbanCommand} task list [--project-path <path>] [--column backlog|in_progress|review]\`
+\`${kanbanCommand} task list [--project-path <path>] [--column backlog|in_progress|review|trash]\`
 
 Parameters:
 - \`--project-path <path>\` optional workspace path. If omitted, uses the current working directory workspace.
-- \`--column <value>\` optional filter. Allowed values: \`backlog\`, \`in_progress\`, \`review\`.
+- \`--column <value>\` optional filter. Allowed values: \`backlog\`, \`in_progress\`, \`review\`, \`trash\`.
 
 ## task create
 
@@ -127,6 +125,38 @@ Parameters:
 
 Notes:
 - Provide at least one field to change in addition to \`--task-id\`.
+
+## task trash
+
+Purpose: move a task or an entire column to \`trash\`, stop active sessions if needed, clean up task worktrees, and auto-start any linked backlog tasks that become ready.
+
+Command:
+\`${kanbanCommand} task trash (--task-id <task_id> | --column backlog|in_progress|review|trash) [--project-path <path>]\`
+
+Parameters:
+- \`--task-id <task_id>\` optional single-task target.
+- \`--column <value>\` optional bulk target. Allowed values: \`backlog\`, \`in_progress\`, \`review\`, \`trash\`.
+- \`--project-path <path>\` optional workspace path. If not already registered in Kanban, it is auto-added for git repos.
+
+Notes:
+- Provide exactly one of \`--task-id\` or \`--column\`.
+- \`task trash --column trash\` is a no-op for tasks already in trash.
+
+## task delete
+
+Purpose: permanently delete a task or every task in a column, removing cards, dependency links, and task worktrees.
+
+Command:
+\`${kanbanCommand} task delete (--task-id <task_id> | --column backlog|in_progress|review|trash) [--project-path <path>]\`
+
+Parameters:
+- \`--task-id <task_id>\` optional single-task target.
+- \`--column <value>\` optional bulk target. Allowed values: \`backlog\`, \`in_progress\`, \`review\`, \`trash\`.
+- \`--project-path <path>\` optional workspace path. If not already registered in Kanban, it is auto-added for git repos.
+
+Notes:
+- Provide exactly one of \`--task-id\` or \`--column\`.
+- \`task delete --column trash\` is the way to clear the trash column.
 
 ## task link
 
@@ -166,33 +196,15 @@ Parameters:
 
 - Prefer \`task list\` first when task IDs or dependency IDs are needed.
 - To create multiple linked tasks, create tasks first, then call \`task link\` for each dependency edge.
-- If \`pwd\` includes \`/.kanban/worktrees/\`, set \`--project-path\` to the main workspace path. You can derive it with:
-\`main_path="\${PWD%%/.kanban/worktrees/*}"\`
 `;
 }
 
-function getSkillInstallPaths(homePath: string, includeClaudeSkill: boolean): string[] {
-	const paths = [join(homePath, ".agents", "skills", SKILL_NAME, "SKILL.md")];
-	if (includeClaudeSkill) {
-		paths.push(join(homePath, ".claude", "skills", SKILL_NAME, "SKILL.md"));
+export function resolveHomeAgentAppendSystemPrompt(
+	taskId: string,
+	options: ResolveAppendSystemPromptCommandPrefixOptions = {},
+): string | null {
+	if (!isHomeAgentSessionId(taskId)) {
+		return null;
 	}
-	return paths;
-}
-
-export interface InstallKanbanSkillFilesOptions {
-	commandPrefix: string;
-	installClaudeSkill?: boolean;
-	homePath?: string;
-}
-
-export async function installKanbanSkillFiles(options: InstallKanbanSkillFilesOptions): Promise<string[]> {
-	const skillContent = renderKanbanSkillMarkdown(options.commandPrefix);
-	const installPaths = getSkillInstallPaths(options.homePath ?? homedir(), options.installClaudeSkill === true);
-
-	for (const installPath of installPaths) {
-		await mkdir(dirname(installPath), { recursive: true });
-		await writeFile(installPath, skillContent, "utf8");
-	}
-
-	return installPaths;
+	return renderAppendSystemPrompt(resolveAppendSystemPromptCommandPrefix(options));
 }

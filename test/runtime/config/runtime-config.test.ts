@@ -258,11 +258,70 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
 				expect(globalPayload.commitPromptTemplate).toBeUndefined();
 				expect(globalPayload.openPrPromptTemplate).toBeUndefined();
+				expect(existsSync(join(tempProject, ".kanban", "config.json"))).toBe(false);
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
 
-				const projectPayload = JSON.parse(readFileSync(join(tempProject, ".kanban", "config.json"), "utf8")) as {
-					shortcuts?: unknown[];
-				};
-				expect(projectPayload.shortcuts).toBeUndefined();
+	it("removes an existing empty project config file when no shortcuts are saved", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-cleanup-empty-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanban-project-runtime-config-cleanup-empty-",
+		);
+
+		try {
+			const runtimeProjectConfigDir = join(tempProject, ".kanban");
+			mkdirSync(runtimeProjectConfigDir, { recursive: true });
+			writeFileSync(join(runtimeProjectConfigDir, "config.json"), "{}", "utf8");
+
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const current = await loadRuntimeConfig(tempProject);
+				await saveRuntimeConfig(tempProject, {
+					selectedAgentId: "cline",
+					selectedShortcutLabel: null,
+					agentAutonomousModeEnabled: true,
+					readyForReviewNotificationsEnabled: true,
+					shortcuts: [],
+					commitPromptTemplate: current.commitPromptTemplateDefault,
+					openPrPromptTemplate: current.openPrPromptTemplateDefault,
+				});
+
+				expect(existsSync(join(tempProject, ".kanban", "config.json"))).toBe(false);
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("removes the project config file when the last shortcut is deleted", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-remove-last-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanban-project-runtime-config-remove-last-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const current = await loadRuntimeConfig(tempProject);
+				await saveRuntimeConfig(tempProject, {
+					selectedAgentId: "cline",
+					selectedShortcutLabel: null,
+					agentAutonomousModeEnabled: true,
+					readyForReviewNotificationsEnabled: true,
+					shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
+					commitPromptTemplate: current.commitPromptTemplateDefault,
+					openPrPromptTemplate: current.openPrPromptTemplateDefault,
+				});
+				expect(existsSync(join(tempProject, ".kanban", "config.json"))).toBe(true);
+
+				await updateRuntimeConfig(tempProject, {
+					shortcuts: [],
+				});
+
+				expect(existsSync(join(tempProject, ".kanban", "config.json"))).toBe(false);
 			});
 		} finally {
 			cleanupProject();
@@ -319,6 +378,36 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(globalPayload.agentAutonomousModeEnabled).toBe(false);
 
 				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.agentAutonomousModeEnabled).toBe(false);
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("preserves concurrent config updates across processes", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-concurrent-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-concurrent-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				await loadRuntimeConfig(tempProject);
+
+				const [selectedAgentState, autonomousModeState] = await Promise.all([
+					updateRuntimeConfig(tempProject, {
+						selectedAgentId: "codex",
+					}),
+					updateRuntimeConfig(tempProject, {
+						agentAutonomousModeEnabled: false,
+					}),
+				]);
+
+				expect(selectedAgentState.selectedAgentId).toBe("codex");
+				expect(autonomousModeState.agentAutonomousModeEnabled).toBe(false);
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.selectedAgentId).toBe("codex");
 				expect(reloaded.agentAutonomousModeEnabled).toBe(false);
 			});
 		} finally {

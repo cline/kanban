@@ -3,6 +3,13 @@ import { z } from "zod";
 import {
 	type RuntimeCommandRunRequest,
 	type RuntimeConfigSaveRequest,
+	type RuntimeClineOauthLoginRequest,
+	type RuntimeClineProviderModelsRequest,
+	type RuntimeClineProviderSettingsSaveRequest,
+	type RuntimeTaskChatAbortRequest,
+	type RuntimeTaskChatCancelRequest,
+	type RuntimeTaskChatMessagesRequest,
+	type RuntimeTaskChatSendRequest,
 	type RuntimeGitCheckoutRequest,
 	type RuntimeHookIngestRequest,
 	type RuntimeProjectAddRequest,
@@ -20,6 +27,13 @@ import {
 	type RuntimeWorktreeEnsureRequest,
 	runtimeCommandRunRequestSchema,
 	runtimeConfigSaveRequestSchema,
+	runtimeClineOauthLoginRequestSchema,
+	runtimeClineProviderModelsRequestSchema,
+	runtimeClineProviderSettingsSaveRequestSchema,
+	runtimeTaskChatAbortRequestSchema,
+	runtimeTaskChatCancelRequestSchema,
+	runtimeTaskChatMessagesRequestSchema,
+	runtimeTaskChatSendRequestSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeProjectAddRequestSchema,
@@ -222,6 +236,86 @@ export function parseTaskSessionInputRequest(value: unknown): RuntimeTaskSession
 	return {
 		...parsed,
 		taskId,
+	};
+}
+
+export function parseTaskChatMessagesRequest(value: unknown): RuntimeTaskChatMessagesRequest {
+	const parsed = parseWithSchema(runtimeTaskChatMessagesRequestSchema, value);
+	const taskId = parsed.taskId.trim();
+	if (!taskId) {
+		throw new Error("Task chat taskId cannot be empty.");
+	}
+	return {
+		taskId,
+	};
+}
+
+export function parseTaskChatSendRequest(value: unknown): RuntimeTaskChatSendRequest {
+	const parsed = parseWithSchema(runtimeTaskChatSendRequestSchema, value);
+	const taskId = parsed.taskId.trim();
+	if (!taskId) {
+		throw new Error("Task chat taskId cannot be empty.");
+	}
+	const text = parsed.text.trim();
+	if (!text) {
+		throw new Error("Task chat text cannot be empty.");
+	}
+	return {
+		taskId,
+		text,
+	};
+}
+
+export function parseTaskChatAbortRequest(value: unknown): RuntimeTaskChatAbortRequest {
+	const parsed = parseWithSchema(runtimeTaskChatAbortRequestSchema, value);
+	const taskId = parsed.taskId.trim();
+	if (!taskId) {
+		throw new Error("Task chat taskId cannot be empty.");
+	}
+	return {
+		taskId,
+	};
+}
+
+export function parseTaskChatCancelRequest(value: unknown): RuntimeTaskChatCancelRequest {
+	const parsed = parseWithSchema(runtimeTaskChatCancelRequestSchema, value);
+	const taskId = parsed.taskId.trim();
+	if (!taskId) {
+		throw new Error("Task chat taskId cannot be empty.");
+	}
+	return {
+		taskId,
+	};
+}
+
+export function parseClineProviderModelsRequest(value: unknown): RuntimeClineProviderModelsRequest {
+	const parsed = parseWithSchema(runtimeClineProviderModelsRequestSchema, value);
+	const providerId = parsed.providerId.trim();
+	if (!providerId) {
+		throw new Error("Provider ID cannot be empty.");
+	}
+	return {
+		providerId,
+	};
+}
+
+export function parseClineProviderSettingsSaveRequest(value: unknown): RuntimeClineProviderSettingsSaveRequest {
+	const parsed = parseWithSchema(runtimeClineProviderSettingsSaveRequestSchema, value);
+	const providerId = parsed.providerId.trim();
+	if (!providerId) {
+		throw new Error("Provider ID cannot be empty.");
+	}
+	return {
+		...parsed,
+		providerId,
+	};
+}
+
+export function parseClineOauthLoginRequest(value: unknown): RuntimeClineOauthLoginRequest {
+	const parsed = parseWithSchema(runtimeClineOauthLoginRequestSchema, value);
+	return {
+		...parsed,
+		baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl.trim() || null : parsed.baseUrl,
 	};
 }
 

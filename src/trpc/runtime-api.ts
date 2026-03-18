@@ -1,11 +1,25 @@
+// Coordinates the runtime-side TRPC handlers used by the browser.
+// This is the main backend entrypoint for sessions, settings, git, and
+// workspace actions, but detailed Cline, terminal, and config behavior
+// should stay in focused services instead of accumulating here.
 import { TRPCError } from "@trpc/server";
+import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
+import { createClineProviderService } from "../cline-sdk/cline-provider-service.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
+import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { updateRuntimeConfig } from "../config/runtime-config.js";
 import type { RuntimeCommandRunResponse } from "../core/api-contract.js";
 import {
+	parseClineOauthLoginRequest,
+	parseClineProviderModelsRequest,
+	parseClineProviderSettingsSaveRequest,
 	parseCommandRunRequest,
 	parseRuntimeConfigSaveRequest,
 	parseShellSessionStartRequest,
+	parseTaskChatAbortRequest,
+	parseTaskChatCancelRequest,
+	parseTaskChatMessagesRequest,
+	parseTaskChatSendRequest,
 	parseTaskSessionInputRequest,
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
@@ -21,6 +35,7 @@ export interface CreateRuntimeApiDependencies {
 	loadScopedRuntimeConfig: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeConfigState>;
 	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
+	getScopedClineTaskSessionService: (scope: RuntimeTrpcWorkspaceScope) => Promise<ClineTaskSessionService>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 }
@@ -48,10 +63,15 @@ async function resolveExistingTaskCwdOrEnsure(options: {
 }
 
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
+	const clineProviderService = createClineProviderService();
+
+	const buildConfigResponse = (runtimeConfig: RuntimeConfigState) =>
+		buildRuntimeConfigResponse(runtimeConfig, clineProviderService.getProviderSettingsSummary());
+
 	return {
 		loadConfig: async (workspaceScope) => {
 			const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
-			return buildRuntimeConfigResponse(scopedRuntimeConfig);
+			return buildConfigResponse(scopedRuntimeConfig);
 		},
 		saveConfig: async (workspaceScope, input) => {
 			const parsed = parseRuntimeConfigSaveRequest(input);
@@ -59,12 +79,60 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			if (workspaceScope.workspaceId === deps.getActiveWorkspaceId()) {
 				deps.setActiveRuntimeConfig(nextRuntimeConfig);
 			}
-			return buildRuntimeConfigResponse(nextRuntimeConfig);
+			return buildConfigResponse(nextRuntimeConfig);
+		},
+		saveClineProviderSettings: async (_workspaceScope, input) => {
+			const body = parseClineProviderSettingsSaveRequest(input);
+			return clineProviderService.saveProviderSettings(body);
 		},
 		startTaskSession: async (workspaceScope, input) => {
 			try {
 				const body = parseTaskSessionStartRequest(input);
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+				const taskCwd = isHomeAgentSessionId(body.taskId)
+					? workspaceScope.workspacePath
+					: await resolveExistingTaskCwdOrEnsure({
+							cwd: workspaceScope.workspacePath,
+							taskId: body.taskId,
+							baseRef: body.baseRef,
+						});
+				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeAgentSessionId(body.taskId);
+
+				if (scopedRuntimeConfig.selectedAgentId === "cline") {
+					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
+					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+					const summary = await clineTaskSessionService.startTaskSession({
+						taskId: body.taskId,
+						cwd: taskCwd,
+						prompt: body.prompt,
+						resumeFromTrash: body.resumeFromTrash,
+						providerId: clineLaunchConfig.providerId,
+						modelId: clineLaunchConfig.modelId,
+						apiKey: clineLaunchConfig.apiKey,
+						baseUrl: clineLaunchConfig.baseUrl,
+					});
+
+					let nextSummary = summary;
+					if (shouldCaptureTurnCheckpoint) {
+						try {
+							const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
+							const checkpoint = await captureTaskTurnCheckpoint({
+								cwd: taskCwd,
+								taskId: body.taskId,
+								turn: nextTurn,
+							});
+							nextSummary = clineTaskSessionService.applyTurnCheckpoint(body.taskId, checkpoint) ?? summary;
+						} catch {
+							// Best effort checkpointing only.
+						}
+					}
+
+					return {
+						ok: true,
+						summary: nextSummary,
+					};
+				}
+
 				const resolved = resolveAgentCommand(scopedRuntimeConfig);
 				if (!resolved) {
 					return {
@@ -73,11 +141,6 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
 					};
 				}
-				const taskCwd = await resolveExistingTaskCwdOrEnsure({
-					cwd: workspaceScope.workspacePath,
-					taskId: body.taskId,
-					baseRef: body.baseRef,
-				});
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = await terminalManager.startTaskSession({
 					taskId: body.taskId,
@@ -95,7 +158,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				});
 
 				let nextSummary = summary;
-				if (!body.resumeFromTrash) {
+				if (shouldCaptureTurnCheckpoint) {
 					try {
 						const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
 						const checkpoint = await captureTaskTurnCheckpoint({
@@ -124,6 +187,14 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		stopTaskSession: async (workspaceScope, input) => {
 			try {
 				const body = parseTaskSessionStopRequest(input);
+				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				const clineSummary = await clineTaskSessionService.stopTaskSession(body.taskId);
+				if (clineSummary) {
+					return {
+						ok: true,
+						summary: clineSummary,
+					};
+				}
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = terminalManager.stopTaskSession(body.taskId);
 				return {
@@ -142,8 +213,16 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		sendTaskSessionInput: async (workspaceScope, input) => {
 			try {
 				const body = parseTaskSessionInputRequest(input);
-				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const payloadText = body.appendNewline ? `${body.text}\n` : body.text;
+				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				const clineSummary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, payloadText);
+				if (clineSummary) {
+					return {
+						ok: true,
+						summary: clineSummary,
+					};
+				}
+				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
 				if (!summary) {
 					return {
@@ -155,6 +234,135 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				return {
 					ok: true,
 					summary,
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					summary: null,
+					error: message,
+				};
+			}
+		},
+		getTaskChatMessages: async (workspaceScope, input) => {
+			try {
+				const body = parseTaskChatMessagesRequest(input);
+				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				const summary = clineTaskSessionService.getSummary(body.taskId);
+				const messages = await clineTaskSessionService.loadTaskSessionMessages(body.taskId);
+				if (!summary && messages.length === 0) {
+					return {
+						ok: false,
+						messages: [],
+						error: "Task chat session is not available.",
+					};
+				}
+				return {
+					ok: true,
+					messages,
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					messages: [],
+					error: message,
+				};
+			}
+		},
+		abortTaskChatTurn: async (workspaceScope, input) => {
+			try {
+				const body = parseTaskChatAbortRequest(input);
+				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				const summary = await clineTaskSessionService.abortTaskSession(body.taskId);
+				if (!summary) {
+					return {
+						ok: false,
+						summary: null,
+						error: "Task chat session is not running.",
+					};
+				}
+				return {
+					ok: true,
+					summary,
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					summary: null,
+					error: message,
+				};
+			}
+		},
+		cancelTaskChatTurn: async (workspaceScope, input) => {
+			try {
+				const body = parseTaskChatCancelRequest(input);
+				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				const summary = await clineTaskSessionService.cancelTaskTurn(body.taskId);
+				if (!summary) {
+					return {
+						ok: false,
+						summary: null,
+						error: "Task chat session turn is not running.",
+					};
+				}
+				return {
+					ok: true,
+					summary,
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					summary: null,
+					error: message,
+				};
+			}
+		},
+		getClineProviderCatalog: async (_workspaceScope) => {
+			return await clineProviderService.getProviderCatalog();
+		},
+		getClineProviderModels: async (_workspaceScope, input) => {
+			const body = parseClineProviderModelsRequest(input);
+			return await clineProviderService.getProviderModels(body.providerId);
+		},
+		runClineProviderOAuthLogin: async (_workspaceScope, input) => {
+			const body = parseClineOauthLoginRequest(input);
+			return await clineProviderService.runOauthLogin({
+				providerId: body.provider,
+				baseUrl: body.baseUrl,
+			});
+		},
+		sendTaskChatMessage: async (workspaceScope, input) => {
+			try {
+				const body = parseTaskChatSendRequest(input);
+				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				let summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text);
+				if (!summary) {
+					if (!isHomeAgentSessionId(body.taskId)) {
+						return {
+							ok: false,
+							summary: null,
+							error: "Task chat session is not running.",
+						};
+					}
+					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
+					summary = await clineTaskSessionService.startTaskSession({
+						taskId: body.taskId,
+						cwd: workspaceScope.workspacePath,
+						prompt: body.text,
+						providerId: clineLaunchConfig.providerId,
+						modelId: clineLaunchConfig.modelId,
+						apiKey: clineLaunchConfig.apiKey,
+						baseUrl: clineLaunchConfig.baseUrl,
+					});
+				}
+				const latestMessage = clineTaskSessionService.listMessages(body.taskId).at(-1) ?? null;
+				return {
+					ok: true,
+					summary,
+					message: latestMessage,
 				};
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

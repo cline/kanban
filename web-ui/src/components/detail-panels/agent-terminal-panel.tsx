@@ -164,8 +164,8 @@ function AgentTerminalPanelLayout({
 	autoFocus: _autoFocus = false,
 	minimalHeaderTitle = "Terminal",
 	minimalHeaderSubtitle = null,
-	panelBackgroundColor = "var(--color-surface-0)",
-	terminalBackgroundColor = "var(--color-surface-0)",
+	panelBackgroundColor = "var(--color-surface-1)",
+	terminalBackgroundColor = "var(--color-surface-1)",
 	cursorColor: _cursorColor = "var(--color-text-primary)",
 	showRightBorder = true,
 	isVisible: _isVisible = true,
@@ -372,7 +372,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		autoFocus: props.autoFocus,
 		isVisible: props.isVisible,
 		sessionStartedAt: props.summary?.startedAt ?? null,
-		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-0)",
+		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
 	});
 

@@ -54,6 +54,49 @@ function createWorkspaceState(taskId: string, revision: number): RuntimeWorkspac
 	};
 }
 
+function createSessionSummary(
+	taskId: string,
+	updatedAt: number,
+	finalMessage: string | null,
+): RuntimeTaskSessionSummary {
+	return {
+		taskId,
+		state: finalMessage ? "awaiting_review" : "running",
+		agentId: "cline",
+		workspacePath: "/tmp/project-a",
+		pid: null,
+		startedAt: updatedAt - 100,
+		updatedAt,
+		lastOutputAt: updatedAt,
+		reviewReason: finalMessage ? "hook" : null,
+		exitCode: null,
+		lastHookAt: updatedAt,
+		latestHookActivity: finalMessage
+			? {
+					activityText: `Final: ${finalMessage}`,
+					toolName: null,
+					finalMessage,
+					hookEventName: "agent_end",
+					notificationType: null,
+					source: "cline-sdk",
+				}
+			: null,
+		latestTurnCheckpoint: null,
+		previousTurnCheckpoint: null,
+	};
+}
+
+function createWorkspaceStateWithSessions(
+	taskId: string,
+	revision: number,
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+): RuntimeWorkspaceStateResponse {
+	return {
+		...createWorkspaceState(taskId, revision),
+		sessions,
+	};
+}
+
 function createDeferred<T>() {
 	let resolve!: (value: T) => void;
 	let reject!: (reason?: unknown) => void;
@@ -66,6 +109,7 @@ function createDeferred<T>() {
 
 interface HookSnapshot {
 	board: BoardData;
+	sessions: Record<string, RuntimeTaskSessionSummary>;
 	canPersistWorkspaceState: boolean;
 	refreshWorkspaceState: () => Promise<void>;
 	resetWorkspaceSyncState: () => void;
@@ -79,7 +123,7 @@ function HookHarness({
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
-	const [, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
+	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const { refreshWorkspaceState, resetWorkspaceSyncState } = useWorkspaceSync({
 		currentProjectId: "project-a",
@@ -94,11 +138,12 @@ function HookHarness({
 	useEffect(() => {
 		onSnapshot({
 			board,
+			sessions,
 			canPersistWorkspaceState,
 			refreshWorkspaceState,
 			resetWorkspaceSyncState,
 		});
-	}, [board, canPersistWorkspaceState, onSnapshot, refreshWorkspaceState, resetWorkspaceSyncState]);
+	}, [board, canPersistWorkspaceState, onSnapshot, refreshWorkspaceState, resetWorkspaceSyncState, sessions]);
 
 	return null;
 }
@@ -175,5 +220,39 @@ describe("useWorkspaceSync", () => {
 		const snapshot: HookSnapshot = latestSnapshot;
 		expect(snapshot.board.columns[0]?.cards[0]?.id).toBe("persisted-task");
 		expect(snapshot.board.columns[0]?.cards[0]?.id).not.toBe("stale-task");
+	});
+
+	it("preserves newer in-memory task session summaries when refreshed workspace state lacks them", async () => {
+		const existingSummary = createSessionSummary("task-1", 1000, "All done");
+		fetchWorkspaceStateMock.mockResolvedValue(createWorkspaceState("persisted-task", 2));
+
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedWorkspaceState={createWorkspaceStateWithSessions("persisted-task", 1, { "task-1": existingSummary })}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected an initial hook snapshot.");
+		}
+		const initialSnapshot: HookSnapshot = latestSnapshot;
+		expect(initialSnapshot.sessions["task-1"]?.latestHookActivity?.finalMessage).toBe("All done");
+
+		await act(async () => {
+			await initialSnapshot.refreshWorkspaceState();
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot after refresh.");
+		}
+		const refreshedSnapshot: HookSnapshot = latestSnapshot;
+		expect(refreshedSnapshot.sessions["task-1"]?.latestHookActivity?.finalMessage).toBe("All done");
 	});
 });

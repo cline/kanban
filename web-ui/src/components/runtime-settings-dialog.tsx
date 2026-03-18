@@ -1,3 +1,6 @@
+// Settings dialog composition for Kanban.
+// Generic app settings live here, while Cline-specific provider state and
+// side effects should stay in use-runtime-settings-cline-controller.ts.
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
@@ -15,6 +18,7 @@ import { getRuntimeAgentCatalogEntry, RUNTIME_AGENT_CATALOG } from "@runtime-age
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -26,7 +30,11 @@ import {
 	type RuntimeShortcutPickerIconId,
 } from "@/components/shared/runtime-shortcut-icons";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
+import type {
+	RuntimeAgentId,
+	RuntimeConfigResponse,
+	RuntimeProjectShortcut,
+} from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import {
 	type BrowserNotificationPermission,
@@ -347,6 +355,12 @@ export function RuntimeSettingsDialog({
 	const initialShortcuts = config?.shortcuts ?? [];
 	const initialCommitPromptTemplate = config?.commitPromptTemplate ?? "";
 	const initialOpenPrPromptTemplate = config?.openPrPromptTemplate ?? "";
+	const clineSettings = useRuntimeSettingsClineController({
+		open,
+		workspaceId,
+		selectedAgentId,
+		config,
+	});
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
 			return false;
@@ -358,6 +372,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
+			return true;
+		}
+		if (clineSettings.hasUnsavedChanges) {
 			return true;
 		}
 		if (!areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts)) {
@@ -375,6 +392,7 @@ export function RuntimeSettingsDialog({
 		);
 	}, [
 		agentAutonomousModeEnabled,
+		clineSettings.hasUnsavedChanges,
 		commitPromptTemplate,
 		config,
 		initialAgentAutonomousModeEnabled,
@@ -505,6 +523,15 @@ export function RuntimeSettingsDialog({
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
 		}
+		if (selectedAgentId === "cline" && clineSettings.providerId.trim().length === 0) {
+			setSaveError("Choose a Cline provider before saving.");
+			return;
+		}
+		const clineSaveResult = await clineSettings.saveProviderSettings();
+		if (!clineSaveResult.ok) {
+			setSaveError(clineSaveResult.message ?? "Could not save Cline provider settings.");
+			return;
+		}
 		const saved = await save({
 			selectedAgentId,
 			agentAutonomousModeEnabled,
@@ -581,6 +608,126 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
 					Allows agents to use tools without stopping for permission. Use at your own risk.
 				</p>
+
+				{selectedAgentId === "cline" ? (
+					<>
+						<h6 className="font-semibold text-text-primary mt-4 mb-2">Cline setup</h6>
+						<div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">Provider</p>
+								<select
+									value={clineSettings.providerId}
+									onChange={(event) => clineSettings.setProviderId(event.target.value)}
+									disabled={controlsDisabled || clineSettings.isLoadingProviderCatalog}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
+								>
+									<option value="">{clineSettings.isLoadingProviderCatalog ? "Loading providers..." : "Select provider"}</option>
+									{clineSettings.providerCatalog.map((provider) => (
+										<option key={provider.id} value={provider.id}>
+											{provider.name} {provider.oauthSupported ? "(OAuth)" : "(API key)"}
+										</option>
+									))}
+									{clineSettings.providerId.trim().length > 0 &&
+									!clineSettings.providerCatalog.some(
+										(provider) => provider.id.trim().toLowerCase() === clineSettings.normalizedProviderId,
+									) ? (
+										<option value={clineSettings.providerId}>{clineSettings.providerId} (custom)</option>
+									) : null}
+								</select>
+							</div>
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">Model</p>
+								<input
+									value={clineSettings.modelId}
+									onChange={(event) => clineSettings.setModelId(event.target.value)}
+									placeholder={clineSettings.isLoadingProviderModels ? "Loading models..." : "claude-sonnet-4-6"}
+									list="cline-model-options"
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+						</div>
+						<datalist id="cline-model-options">
+							{clineSettings.providerModels.map((model) => (
+								<option key={model.id} value={model.id}>
+									{model.name}
+								</option>
+							))}
+						</datalist>
+						{clineSettings.isLoadingProviderCatalog || clineSettings.isLoadingProviderModels ? (
+							<p className="text-text-secondary text-[12px] mt-1 mb-0">
+								{clineSettings.isLoadingProviderCatalog ? "Fetching Cline providers..." : "Fetching Cline models..."}
+							</p>
+						) : null}
+						<p className="text-text-secondary text-[12px] mt-2 mb-0">
+							Authentication: {clineSettings.isOauthProviderSelected ? "OAuth" : "API key"}
+						</p>
+						<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: clineSettings.isOauthProviderSelected ? "1fr" : "1fr 1fr" }}>
+							{clineSettings.isOauthProviderSelected ? null : (
+								<div className="min-w-0">
+									<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
+									<input
+										type="password"
+										value={clineSettings.apiKey}
+										onChange={(event) => clineSettings.setApiKey(event.target.value)}
+										placeholder={clineSettings.apiKeyConfigured ? "Saved" : "Enter API key"}
+										disabled={controlsDisabled}
+										className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+									/>
+								</div>
+							)}
+							<div className="min-w-0">
+								<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
+								<input
+									value={clineSettings.baseUrl}
+									onChange={(event) => clineSettings.setBaseUrl(event.target.value)}
+									placeholder="https://api.cline.bot"
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+							</div>
+						</div>
+						{clineSettings.isOauthProviderSelected ? (
+							<>
+								<p className="text-text-secondary text-[12px] mt-2 mb-0">
+									Status: {clineSettings.oauthConfigured ? "Signed in" : "Not signed in"}
+								</p>
+								{clineSettings.oauthAccountId ? (
+									<p className="text-text-secondary text-[12px] mt-1 mb-0">
+										Account ID: <span className="text-text-primary">{clineSettings.oauthAccountId}</span>
+									</p>
+								) : null}
+								{clineSettings.oauthExpiresAt ? (
+									<p className="text-text-secondary text-[12px] mt-1 mb-0">
+										Expiry: <span className="text-text-primary">{clineSettings.oauthExpiresAt}</span>
+									</p>
+								) : null}
+								<div className="mt-2">
+									<Button
+										variant="default"
+										size="sm"
+										disabled={controlsDisabled || clineSettings.isRunningOauthLogin}
+										onClick={() => {
+											void (async () => {
+												setSaveError(null);
+												const result = await clineSettings.runOauthLogin();
+												if (!result.ok) {
+													setSaveError(result.message ?? "OAuth login failed.");
+												}
+											})();
+										}}
+									>
+										{clineSettings.isRunningOauthLogin
+											? "Signing in..."
+											: clineSettings.oauthConfigured
+												? `Sign in again with ${clineSettings.managedOauthProvider ?? "OAuth"}`
+												: `Sign in with ${clineSettings.managedOauthProvider ?? "OAuth"}`}
+									</Button>
+								</div>
+							</>
+						) : null}
+					</>
+				) : null}
 
 				<div className="flex items-center justify-between mt-4 mb-1">
 					<h6 className="font-semibold text-text-primary m-0">Git button prompts</h6>

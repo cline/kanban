@@ -1,0 +1,197 @@
+import { act, useCallback, useEffect } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+
+interface HookSnapshot {
+	draft: string;
+	messageIds: string[];
+	lastMessageContent: string | null;
+	canSend: boolean;
+	canCancel: boolean;
+	showReviewActions: boolean;
+	showActionFooter: boolean;
+	showCancelAutomaticAction: boolean;
+	setDraft: (draft: string) => void;
+	handleSendDraft: () => Promise<void>;
+}
+
+function createSummary(state: RuntimeTaskSessionSummary["state"]): RuntimeTaskSessionSummary {
+	return {
+		taskId: "task-1",
+		state,
+		agentId: "cline",
+		workspacePath: "/tmp/worktree",
+		pid: null,
+		startedAt: 1,
+		updatedAt: 1,
+		lastOutputAt: 1,
+		reviewReason: null,
+		exitCode: null,
+		lastHookAt: null,
+		latestHookActivity: null,
+		latestTurnCheckpoint: null,
+		previousTurnCheckpoint: null,
+	};
+}
+
+function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
+	if (!snapshot) {
+		throw new Error("Expected hook snapshot.");
+	}
+	return snapshot;
+}
+
+function HookHarness({
+	summary,
+	taskColumnId,
+	onSendMessage,
+	onSnapshot,
+}: {
+	summary: RuntimeTaskSessionSummary | null;
+	taskColumnId?: string;
+	onSendMessage?: (taskId: string, text: string) => Promise<{
+		ok: boolean;
+		message?: string;
+		chatMessage?: {
+			id: string;
+			role: "user" | "assistant" | "system" | "tool" | "reasoning" | "status";
+			content: string;
+			createdAt: number;
+		} | null;
+	}>;
+	onSnapshot: (snapshot: HookSnapshot) => void;
+}): null {
+	const loadMessages = useCallback(async () => [], []);
+	const handleCommit = useCallback(() => {}, []);
+	const handleOpenPr = useCallback(() => {}, []);
+	const handleMoveToTrash = useCallback(() => {}, []);
+	const handleCancelAutomaticAction = useCallback(() => {}, []);
+	const state = useClineChatPanelController({
+		taskId: "task-1",
+		summary,
+		taskColumnId,
+		onSendMessage,
+		onLoadMessages: loadMessages,
+		onCommit: handleCommit,
+		onOpenPr: handleOpenPr,
+		onMoveToTrash: handleMoveToTrash,
+		onCancelAutomaticAction: handleCancelAutomaticAction,
+		cancelAutomaticActionLabel: "Cancel auto review",
+		showMoveToTrash: true,
+	});
+
+	useEffect(() => {
+		const lastMessage = state.messages.at(-1);
+		onSnapshot({
+			draft: state.draft,
+			messageIds: state.messages.map((message) => message.id),
+			lastMessageContent: lastMessage?.content ?? null,
+			canSend: state.canSend,
+			canCancel: state.canCancel,
+			showReviewActions: state.showReviewActions,
+			showActionFooter: state.showActionFooter,
+			showCancelAutomaticAction: state.showCancelAutomaticAction,
+			setDraft: state.setDraft,
+			handleSendDraft: state.handleSendDraft,
+		});
+	}, [onSnapshot, state]);
+
+	return null;
+}
+
+describe("useClineChatPanelController", () => {
+	let container: HTMLDivElement;
+	let root: Root;
+	let previousActEnvironment: boolean | undefined;
+
+	beforeEach(() => {
+		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+	});
+
+	afterEach(() => {
+		act(() => {
+			root.unmount();
+		});
+		container.remove();
+		if (previousActEnvironment === undefined) {
+			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+		} else {
+			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+				previousActEnvironment;
+		}
+	});
+
+	it("clears the draft and appends the returned chat message after send", async () => {
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-1",
+				role: "user" as const,
+				content: "Ship it",
+				createdAt: 2,
+			},
+		}));
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					summary={null}
+					onSendMessage={onSendMessage}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setDraft("Ship it");
+			await Promise.resolve();
+		});
+
+		expect(requireSnapshot(latestSnapshot).draft).toBe("Ship it");
+
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).handleSendDraft();
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it");
+		expect(requireSnapshot(latestSnapshot).draft).toBe("");
+		expect(requireSnapshot(latestSnapshot).messageIds).toEqual(["sent-1"]);
+		expect(requireSnapshot(latestSnapshot).lastMessageContent).toBe("Ship it");
+	});
+
+	it("derives footer and action flags from the panel inputs", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					summary={createSummary("running")}
+					taskColumnId="review"
+					onSendMessage={async () => ({ ok: true })}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(requireSnapshot(latestSnapshot).canSend).toBe(true);
+		expect(requireSnapshot(latestSnapshot).canCancel).toBe(false);
+		expect(requireSnapshot(latestSnapshot).showReviewActions).toBe(true);
+		expect(requireSnapshot(latestSnapshot).showActionFooter).toBe(true);
+		expect(requireSnapshot(latestSnapshot).showCancelAutomaticAction).toBe(true);
+	});
+});

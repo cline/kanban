@@ -1,10 +1,9 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, ChevronUp, Heart, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import { Kbd } from "@/components/ui/kbd";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -12,6 +11,7 @@ import {
 	AlertDialogDescription,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
+import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
@@ -31,6 +31,10 @@ export function ProjectNavigationPanel({
 	isLoadingProjects = false,
 	currentProjectId,
 	removingProjectId,
+	activeSection,
+	onActiveSectionChange,
+	canShowAgentSection,
+	agentSectionContent,
 	onSelectProject,
 	onRemoveProject,
 	onAddProject,
@@ -39,6 +43,10 @@ export function ProjectNavigationPanel({
 	isLoadingProjects?: boolean;
 	currentProjectId: string | null;
 	removingProjectId: string | null;
+	activeSection: "projects" | "agent";
+	onActiveSectionChange: (section: "projects" | "agent") => void;
+	canShowAgentSection: boolean;
+	agentSectionContent?: ReactNode;
 	onSelectProject: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onAddProject: () => void;
@@ -64,10 +72,7 @@ export function ProjectNavigationPanel({
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base">
-						kanban{" "}
-						<span className="text-text-secondary font-normal text-xs">
-							v{__APP_VERSION__}
-						</span>
+						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
 					<a
 						href={GITHUB_URL}
@@ -78,58 +83,100 @@ export function ProjectNavigationPanel({
 						View on GitHub
 					</a>
 				</div>
+				<div className="mt-2 rounded-md bg-surface-2 p-1">
+					<div className="grid grid-cols-2 gap-1">
+						<button
+							type="button"
+							onClick={() => onActiveSectionChange("projects")}
+							className={cn(
+								"cursor-pointer rounded-sm px-2 py-1 text-xs font-medium",
+								activeSection === "projects"
+									? "bg-surface-4 text-text-primary"
+									: "text-text-secondary hover:text-text-primary",
+							)}
+						>
+							Projects
+						</button>
+						<button
+							type="button"
+							onClick={() => onActiveSectionChange("agent")}
+							disabled={!canShowAgentSection}
+							className={cn(
+								"cursor-pointer rounded-sm px-2 py-1 text-xs font-medium",
+								activeSection === "agent"
+									? "bg-surface-4 text-text-primary"
+									: "text-text-secondary hover:text-text-primary",
+								!canShowAgentSection ? "cursor-not-allowed opacity-50" : null,
+							)}
+						>
+							Agent
+						</button>
+					</div>
+				</div>
 			</div>
 
-			<div className="flex items-center justify-between" style={{ padding: "4px 12px" }}>
-				<span className="text-text-tertiary text-xs font-medium uppercase tracking-wide">
-					Projects
-				</span>
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={<Plus size={14} />}
-					onClick={onAddProject}
-					aria-label="Add project"
-					disabled={removingProjectId !== null}
-				/>
-			</div>
+			{activeSection === "projects" ? (
+				<>
+					<div className="flex items-center justify-between" style={{ padding: "4px 12px" }}>
+						<span className="text-text-tertiary text-xs font-medium uppercase tracking-wide">Projects</span>
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Plus size={14} />}
+							onClick={onAddProject}
+							aria-label="Add project"
+							disabled={removingProjectId !== null}
+						/>
+					</div>
 
-			<div
-				className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1"
-				style={{ padding: "4px 0" }}
-			>
-				{sortedProjects.length === 0 ? (
-					isLoadingProjects ? (
-						<div style={{ padding: "4px 0" }}>
-							{Array.from({ length: 3 }).map((_, index) => (
-								<ProjectRowSkeleton key={`project-skeleton-${index}`} />
-							))}
-						</div>
-					) : (
-						<div className="text-center" style={{ padding: "24px 12px" }}>
-							<span className="text-text-secondary">No projects yet</span>
-						</div>
-					)
-				) : null}
+					<div
+						className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1"
+						style={{ padding: "4px 0" }}
+					>
+						{sortedProjects.length === 0 ? (
+							isLoadingProjects ? (
+								<div style={{ padding: "4px 0" }}>
+									{Array.from({ length: 3 }).map((_, index) => (
+										<ProjectRowSkeleton key={`project-skeleton-${index}`} />
+									))}
+								</div>
+							) : (
+								<div className="text-center" style={{ padding: "24px 12px" }}>
+									<span className="text-text-secondary">No projects yet</span>
+								</div>
+							)
+						) : null}
 
-				{sortedProjects.map((project) => (
-					<ProjectRow
-						key={project.id}
-						project={project}
-						isCurrent={currentProjectId === project.id}
-						removingProjectId={removingProjectId}
-						onSelect={onSelectProject}
-						onRemove={(projectId) => {
-							const found = sortedProjects.find((item) => item.id === projectId);
-							if (!found) {
-								return;
-							}
-							setPendingProjectRemoval(found);
-						}}
-					/>
-				))}
-			</div>
-			<ShortcutsCard />
+						{sortedProjects.map((project) => (
+							<ProjectRow
+								key={project.id}
+								project={project}
+								isCurrent={currentProjectId === project.id}
+								removingProjectId={removingProjectId}
+								onSelect={onSelectProject}
+								onRemove={(projectId) => {
+									const found = sortedProjects.find((item) => item.id === projectId);
+									if (!found) {
+										return;
+									}
+									setPendingProjectRemoval(found);
+								}}
+							/>
+						))}
+					</div>
+					<ShortcutsCard />
+				</>
+			) : (
+				<div className="flex flex-1 min-h-0 flex-col">
+					<div className="flex flex-1 min-h-0 overflow-hidden bg-surface-1 px-2 pb-2 pt-1">
+						{agentSectionContent ?? (
+							<div className="flex w-full items-center justify-center rounded-md border border-border bg-surface-2 px-3 text-center text-sm text-text-secondary">
+								Select a project to use the agent.
+							</div>
+						)}
+					</div>
+				</div>
+			)}
 			<a
 				href="https://cline.bot"
 				target="_blank"
@@ -156,8 +203,8 @@ export function ProjectNavigationPanel({
 							{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}
 						</p>
 						<p className="text-text-primary mb-2">
-							This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces/worktrees, and
-							stop any running processes for this project.
+							This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces/worktrees,
+							and stop any running processes for this project.
 						</p>
 						<p className="text-text-primary">This action cannot be undone.</p>
 					</div>
@@ -206,7 +253,8 @@ export function ProjectNavigationPanel({
 	);
 }
 
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+const isMac =
+	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 const MOD = isMac ? "\u2318" : "Ctrl";
 
 const ESSENTIAL_SHORTCUTS = [
@@ -368,10 +416,7 @@ function ProjectRow({
 					onSelect(project.id);
 				}
 			}}
-			className={cn(
-				"kb-project-row cursor-pointer rounded-md mx-2",
-				isCurrent && "kb-project-row-selected",
-			)}
+			className={cn("kb-project-row cursor-pointer rounded-md mx-2", isCurrent && "kb-project-row-selected")}
 			style={{
 				display: "flex",
 				alignItems: "center",
