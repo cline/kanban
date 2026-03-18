@@ -6,10 +6,6 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type {
-	RuntimeCommandRunRequest,
-	RuntimeCommandRunResponse,
-	RuntimeConfigResponse,
-	RuntimeConfigSaveRequest,
 	RuntimeClineOauthLoginRequest,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineProviderCatalogResponse,
@@ -17,6 +13,10 @@ import type {
 	RuntimeClineProviderModelsResponse,
 	RuntimeClineProviderSettingsSaveRequest,
 	RuntimeClineProviderSettingsSaveResponse,
+	RuntimeCommandRunRequest,
+	RuntimeCommandRunResponse,
+	RuntimeConfigResponse,
+	RuntimeConfigSaveRequest,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitDiffRequest,
@@ -38,12 +38,12 @@ import type {
 	RuntimeProjectsResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
-	RuntimeTaskChatMessagesRequest,
-	RuntimeTaskChatMessagesResponse,
 	RuntimeTaskChatAbortRequest,
 	RuntimeTaskChatAbortResponse,
 	RuntimeTaskChatCancelRequest,
 	RuntimeTaskChatCancelResponse,
+	RuntimeTaskChatMessagesRequest,
+	RuntimeTaskChatMessagesResponse,
 	RuntimeTaskChatSendRequest,
 	RuntimeTaskChatSendResponse,
 	RuntimeTaskSessionInputRequest,
@@ -66,10 +66,6 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract.js";
 import {
-	runtimeCommandRunRequestSchema,
-	runtimeCommandRunResponseSchema,
-	runtimeConfigResponseSchema,
-	runtimeConfigSaveRequestSchema,
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineOauthLoginResponseSchema,
 	runtimeClineProviderCatalogResponseSchema,
@@ -77,6 +73,10 @@ import {
 	runtimeClineProviderModelsResponseSchema,
 	runtimeClineProviderSettingsSaveRequestSchema,
 	runtimeClineProviderSettingsSaveResponseSchema,
+	runtimeCommandRunRequestSchema,
+	runtimeCommandRunResponseSchema,
+	runtimeConfigResponseSchema,
+	runtimeConfigSaveRequestSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
@@ -98,12 +98,12 @@ import {
 	runtimeProjectsResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
-	runtimeTaskChatMessagesRequestSchema,
-	runtimeTaskChatMessagesResponseSchema,
 	runtimeTaskChatAbortRequestSchema,
 	runtimeTaskChatAbortResponseSchema,
 	runtimeTaskChatCancelRequestSchema,
 	runtimeTaskChatCancelResponseSchema,
+	runtimeTaskChatMessagesRequestSchema,
+	runtimeTaskChatMessagesResponseSchema,
 	runtimeTaskChatSendRequestSchema,
 	runtimeTaskChatSendResponseSchema,
 	runtimeTaskSessionInputRequestSchema,
@@ -224,6 +224,18 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceFileSearchRequest,
 		) => Promise<RuntimeWorkspaceFileSearchResponse>;
+		listDirectory: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { dirPath: string },
+		) => Promise<{ entries: { name: string; path: string; type: "file" | "directory" }[] }>;
+		readFile: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { filePath: string },
+		) => Promise<{ path: string; content: string | null; size: number; isBinary: boolean; error?: string }>;
+		writeFile: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: { filePath: string; content: string },
+		) => Promise<{ ok: boolean; error?: string }>;
 		loadState: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateResponse>;
 		saveState: (
 			scope: RuntimeTrpcWorkspaceScope,
@@ -454,6 +466,20 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeWorkspaceFileSearchResponseSchema)
 			.query(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.searchFiles(ctx.workspaceScope, input);
+			}),
+		listDirectory: workspaceProcedure.input(z.object({ path: z.string() })).query(async ({ ctx, input }) => {
+			return await ctx.workspaceApi.listDirectory(ctx.workspaceScope, { dirPath: input.path });
+		}),
+		readFile: workspaceProcedure.input(z.object({ path: z.string() })).query(async ({ ctx, input }) => {
+			return await ctx.workspaceApi.readFile(ctx.workspaceScope, { filePath: input.path });
+		}),
+		writeFile: workspaceProcedure
+			.input(z.object({ path: z.string(), content: z.string() }))
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.writeFile(ctx.workspaceScope, {
+					filePath: input.path,
+					content: input.content,
+				});
 			}),
 		getState: workspaceProcedure.output(runtimeWorkspaceStateResponseSchema).query(async ({ ctx }) => {
 			return await ctx.workspaceApi.loadState(ctx.workspaceScope);

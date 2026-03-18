@@ -1,6 +1,6 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, ChevronUp, Heart, Plus, Trash2 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -61,14 +61,98 @@ export function ProjectNavigationPanel({
 			pendingProjectRemoval.taskCounts.trash
 		: 0;
 
+	const [sidebarWidth, setSidebarWidth] = useState(260);
+	const [isCollapsed, setIsCollapsed] = useState(false);
+	const [isDragging, setIsDragging] = useState(false);
+	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+	const COLLAPSED_WIDTH = 48;
+	const COLLAPSE_THRESHOLD = 120;
+	const MIN_EXPANDED = 180;
+	const MAX_WIDTH = 400;
+	const startDrag = useCallback((e: ReactMouseEvent) => {
+		e.preventDefault();
+		dragRef.current = { startX: e.clientX, startWidth: isCollapsed ? COLLAPSED_WIDTH : sidebarWidth };
+		setIsDragging(true);
+		document.body.style.userSelect = "none";
+		document.body.style.cursor = "ew-resize";
+	}, [sidebarWidth, isCollapsed]);
+	useEffect(() => {
+		if (!isDragging) return;
+		const onMouseMove = (e: MouseEvent) => {
+			if (!dragRef.current) return;
+			const delta = e.clientX - dragRef.current.startX;
+			const newWidth = dragRef.current.startWidth + delta;
+			if (newWidth < COLLAPSE_THRESHOLD) {
+				setIsCollapsed(true);
+			} else {
+				setIsCollapsed(false);
+				setSidebarWidth(Math.max(MIN_EXPANDED, Math.min(MAX_WIDTH, newWidth)));
+			}
+		};
+		const onMouseUp = () => {
+			setIsDragging(false);
+			document.body.style.userSelect = "";
+			document.body.style.cursor = "";
+			dragRef.current = null;
+		};
+		window.addEventListener("mousemove", onMouseMove);
+		window.addEventListener("mouseup", onMouseUp);
+		return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
+	}, [isDragging]);
+
+	if (isCollapsed) {
+		return (
+			<aside
+				className="flex flex-col items-center min-h-0 overflow-hidden bg-surface-1 relative shrink-0 py-2 gap-1.5"
+				style={{
+					width: COLLAPSED_WIDTH,
+					minWidth: COLLAPSED_WIDTH,
+					borderRight: "1px solid var(--color-divider)",
+				}}
+			>
+				<div onMouseDown={startDrag} className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20" />
+				{sortedProjects.map((project) => {
+					const isCurrent = currentProjectId === project.id;
+					const letter = project.name.charAt(0).toUpperCase();
+					return (
+						<button
+							key={project.id}
+							type="button"
+							title={project.name}
+							onClick={() => onSelectProject(project.id)}
+							className={cn(
+								"w-8 h-8 rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
+								isCurrent ? "bg-accent text-white" : "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
+							)}
+						>
+							{letter}
+						</button>
+					);
+				})}
+				<button
+					type="button"
+					title="Add project"
+					onClick={onAddProject}
+					disabled={removingProjectId !== null}
+					className="w-8 h-8 rounded-md text-xs shrink-0 border-0 cursor-pointer flex items-center justify-center bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 mt-auto"
+				>
+					<Plus size={16} />
+				</button>
+			</aside>
+		);
+	}
+
 	return (
 		<aside
-			className="flex flex-col min-h-0 overflow-hidden bg-surface-1"
+			className="flex flex-col min-h-0 overflow-hidden bg-surface-1 relative shrink-0"
 			style={{
-				width: "20%",
+				width: sidebarWidth,
+				minWidth: MIN_EXPANDED,
+				maxWidth: MAX_WIDTH,
 				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
+			<div onMouseDown={startDrag} className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20" />
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base">

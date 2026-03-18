@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
+import { CodeBrowserPanel } from "@/components/code-browser/code-browser-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
 import { KanbanBoard } from "@/components/kanban-board";
@@ -69,6 +70,7 @@ export default function App(): ReactElement {
 	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [isCodeBrowserOpen, setIsCodeBrowserOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
@@ -479,6 +481,7 @@ export default function App(): ReactElement {
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
+		setIsCodeBrowserOpen(false);
 	}, []);
 
 	const handleOpenSettings = useCallback((section?: RuntimeSettingsSection) => {
@@ -763,7 +766,27 @@ export default function App(): ReactElement {
 					onOpenWorkspace={onOpenWorkspace}
 					canOpenWorkspace={canOpenWorkspace}
 					isOpeningWorkspace={isOpeningWorkspace}
-					onToggleGitHistory={hasNoProjects ? undefined : () => setIsGitHistoryOpen((prev) => !prev)}
+					onToggleCodeBrowser={
+						hasNoProjects
+							? undefined
+							: () => {
+									setIsCodeBrowserOpen((prev) => {
+										if (!prev) setIsGitHistoryOpen(false);
+										return !prev;
+									});
+								}
+					}
+					isCodeBrowserOpen={isCodeBrowserOpen}
+					onToggleGitHistory={
+						hasNoProjects
+							? undefined
+							: () => {
+									setIsGitHistoryOpen((prev) => {
+										if (!prev) setIsCodeBrowserOpen(false);
+										return !prev;
+									});
+								}
+					}
 					isGitHistoryOpen={isGitHistoryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
@@ -798,7 +821,9 @@ export default function App(): ReactElement {
 						) : (
 							<div className="flex flex-1 flex-col min-h-0 min-w-0">
 								<div className="flex flex-1 min-h-0 min-w-0">
-									{isGitHistoryOpen ? (
+									{isCodeBrowserOpen ? (
+										<CodeBrowserPanel workspaceId={currentProjectId} />
+									) : isGitHistoryOpen ? (
 										<GitHistoryView
 											workspaceId={currentProjectId}
 											gitHistory={gitHistory}

@@ -6,19 +6,19 @@ import {
 	Check,
 	ChevronDown,
 	CircleArrowDown,
+	Code,
 	Command,
 	GitBranch,
 	Plus,
 	Settings,
 	Terminal,
 } from "lucide-react";
-
+import { OpenWorkspaceButton } from "@/components/open-workspace-button";
+import { getRuntimeShortcutIconComponent } from "@/components/shared/runtime-shortcut-icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
-import { OpenWorkspaceButton } from "@/components/open-workspace-button";
-import { getRuntimeShortcutIconComponent } from "@/components/shared/runtime-shortcut-icons";
 import type { RuntimeGitSyncAction, RuntimeProjectShortcut } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
@@ -60,14 +60,15 @@ function GitBranchStatusControl({
 					size="sm"
 					icon={<GitBranch size={12} />}
 					onClick={onToggleGitHistory}
-					className={cn("font-mono text-xs shrink min-w-0 max-w-full overflow-hidden", isGitHistoryOpen ? "ring-1 ring-accent" : "kb-navbar-btn")}
+					className={cn(
+						"font-mono text-xs shrink min-w-0 max-w-full overflow-hidden",
+						isGitHistoryOpen ? "ring-1 ring-accent" : "kb-navbar-btn",
+					)}
 					title={branchLabel}
 				>
 					<span className="truncate w-full text-left">{branchLabel}</span>
 				</Button>
-				<span
-					className="font-mono text-xs text-text-tertiary ml-1.5 shrink-0 whitespace-nowrap"
-				>
+				<span className="font-mono text-xs text-text-tertiary ml-1.5 shrink-0 whitespace-nowrap">
 					({changedFiles} {changedFiles === 1 ? "file" : "files"}
 					<span className="text-status-green"> +{additions}</span>
 					<span className="text-status-red"> -{deletions}</span>)
@@ -77,9 +78,7 @@ function GitBranchStatusControl({
 	}
 
 	return (
-		<span
-			className="font-mono text-xs text-text-secondary mr-1 whitespace-nowrap"
-		>
+		<span className="font-mono text-xs text-text-secondary mr-1 whitespace-nowrap">
 			<GitBranch size={12} className="inline-block mr-1" style={{ verticalAlign: -1 }} />
 			<span className="text-text-primary">{branchLabel}</span>
 			<span className="ml-1.5">
@@ -222,6 +221,8 @@ export function TopBar({
 	onToggleTerminal,
 	isTerminalOpen,
 	isTerminalLoading,
+	onToggleCodeBrowser,
+	isCodeBrowserOpen,
 	onToggleGitHistory,
 	isGitHistoryOpen,
 	onOpenSettings,
@@ -253,6 +254,8 @@ export function TopBar({
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
+	onToggleCodeBrowser?: () => void;
+	isCodeBrowserOpen?: boolean;
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
@@ -283,9 +286,7 @@ export function TopBar({
 			? 0
 			: shortcutItems.findIndex((shortcut) => shortcut.label === selectedShortcutLabel);
 	const selectedShortcut = shortcutItems[selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0] ?? null;
-	const SelectedShortcutIcon = selectedShortcut
-		? getRuntimeShortcutIconComponent(selectedShortcut.icon)
-		: Terminal;
+	const SelectedShortcutIcon = selectedShortcut ? getRuntimeShortcutIconComponent(selectedShortcut.icon) : Terminal;
 
 	return (
 		<nav
@@ -296,9 +297,7 @@ export function TopBar({
 				borderBottom: "1px solid var(--color-divider)",
 			}}
 		>
-			<div
-				className="flex flex-nowrap items-center h-10 flex-1 min-w-0 overflow-hidden gap-1.5"
-			>
+			<div className="flex flex-nowrap items-center h-10 flex-1 min-w-0 overflow-hidden gap-1.5">
 				{onBack ? (
 					<div className="flex items-center shrink-0 overflow-visible">
 						<Button
@@ -337,8 +336,20 @@ export function TopBar({
 						</span>
 					</div>
 				) : null}
+				{!hideProjectDependentActions && onToggleCodeBrowser ? (
+					<Tooltip side="bottom" content="Toggle code browser">
+						<Button
+							variant={isCodeBrowserOpen ? "primary" : "ghost"}
+							size="sm"
+							icon={<Code size={16} />}
+							onClick={onToggleCodeBrowser}
+							aria-label={isCodeBrowserOpen ? "Close code browser" : "Open code browser"}
+							className={isCodeBrowserOpen ? "ring-1 ring-accent ml-1" : "ml-1"}
+						/>
+					</Tooltip>
+				) : null}
 				{displayWorkspacePath && !isWorkspacePathLoading ? (
-					<div className="ml-2 shrink-0">
+					<div className="ml-1 shrink-0">
 						<OpenWorkspaceButton
 							options={openTargetOptions}
 							selectedOptionId={selectedOpenTargetId}
@@ -373,9 +384,7 @@ export function TopBar({
 					/>
 				) : null}
 			</div>
-			<div
-				className="flex flex-nowrap items-center h-10 pr-0.5 shrink-0"
-			>
+			<div className="flex flex-nowrap items-center h-10 pr-0.5 shrink-0">
 				{!hideProjectDependentActions && selectedShortcut && onRunShortcut ? (
 					<div className="flex">
 						<Button
@@ -410,7 +419,8 @@ export function TopBar({
 									<div className="min-w-[180px]">
 										{shortcutItems.map((shortcut, shortcutIndex) => {
 											const ShortcutIcon = getRuntimeShortcutIconComponent(shortcut.icon);
-											const isActive = shortcutIndex === (selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0);
+											const isActive =
+												shortcutIndex === (selectedShortcutIndex >= 0 ? selectedShortcutIndex : 0);
 											return (
 												<button
 													type="button"

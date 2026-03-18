@@ -17,6 +17,7 @@ import {
 } from "../core/api-validation.js";
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
+import { listDirectoryEntries, readWorkspaceFile, writeWorkspaceFile } from "../workspace/browse-workspace-files.js";
 import {
 	createEmptyWorkspaceChangesResponse,
 	getWorkspaceChanges,
@@ -297,6 +298,15 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				query,
 				files,
 			} satisfies RuntimeWorkspaceFileSearchResponse;
+		},
+		listDirectory: async (workspaceScope, input) => {
+			return await listDirectoryEntries(workspaceScope.workspacePath, input.dirPath);
+		},
+		readFile: async (workspaceScope, input) => {
+			return await readWorkspaceFile(workspaceScope.workspacePath, input.filePath);
+		},
+		writeFile: async (workspaceScope, input) => {
+			return await writeWorkspaceFile(workspaceScope.workspacePath, input.filePath, input.content);
 		},
 		loadState: async (workspaceScope) => {
 			return await deps.buildWorkspaceStateSnapshot(workspaceScope.workspaceId, workspaceScope.workspacePath);
