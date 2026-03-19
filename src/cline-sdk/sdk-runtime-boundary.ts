@@ -3,11 +3,16 @@
 // flow through this boundary so the rest of Kanban stays decoupled from the
 // SDK package layout.
 
+import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
 import { getClineDefaultSystemPrompt } from "@clinebot/agents";
 import {
 	buildWorkspaceMetadata,
 	createSessionHost,
+	createUserInstructionConfigWatcher,
+	loadRulesForSystemPromptFromWatcher,
+	resolveWorkflowSlashCommandFromWatcher,
 	type SessionHost,
+	type UserInstructionConfigWatcher,
 } from "@clinebot/core/node";
 import type { providers as ClineSdkProviders } from "@clinebot/llms";
 
@@ -181,6 +186,9 @@ export type ClineSdkSessionRecord = Awaited<
 	ReturnType<ClineSdkSessionHost["list"]>
 >[number];
 export type ClineSdkPersistedMessage = ClineSdkProviders.Message;
+export type ClineSdkUserInstructionWatcher = UserInstructionConfigWatcher;
+export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
+export type ClineSdkToolApprovalResult = ToolApprovalResult;
 
 export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
 	return await createSessionHost({
@@ -193,6 +201,22 @@ export async function buildClineSdkWorkspaceMetadata(
 	cwd: string,
 ): Promise<string> {
 	return await buildWorkspaceMetadata(cwd);
+}
+
+export function createClineSdkUserInstructionWatcher(workspacePath: string): ClineSdkUserInstructionWatcher {
+	return createUserInstructionConfigWatcher({
+		skills: { workspacePath },
+		rules: { workspacePath },
+		workflows: { workspacePath },
+	});
+}
+
+export function resolveClineSdkWorkflowSlashCommand(prompt: string, watcher: ClineSdkUserInstructionWatcher): string {
+	return resolveWorkflowSlashCommandFromWatcher(prompt, watcher);
+}
+
+export function loadClineSdkRulesForSystemPrompt(watcher: ClineSdkUserInstructionWatcher): string {
+	return loadRulesForSystemPromptFromWatcher(watcher);
 }
 
 export async function resolveClineSdkSystemPrompt(input: {

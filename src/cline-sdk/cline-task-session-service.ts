@@ -12,6 +12,7 @@ import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-pro
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints.js";
 import { applyClineSessionEvent } from "./cline-event-adapter.js";
 import { type ClineMessageRepository, createInMemoryClineMessageRepository } from "./cline-message-repository.js";
+import { type ClineRuntimeSetup, createClineRuntimeSetup } from "./cline-runtime-setup.js";
 import {
 	type ClineSessionRuntime,
 	type CreateInMemoryClineSessionRuntimeOptions,
@@ -68,6 +69,7 @@ export interface ClineTaskSessionService {
 export interface CreateInMemoryClineTaskSessionServiceOptions {
 	createSessionRuntime?: (options: CreateInMemoryClineSessionRuntimeOptions) => ClineSessionRuntime;
 	createMessageRepository?: () => ClineMessageRepository;
+	createRuntimeSetup?: (workspacePath: string) => Promise<ClineRuntimeSetup>;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -99,10 +101,13 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 	private readonly pendingTurnCancelTaskIds = new Set<string>();
 	private readonly sessionRuntime: ClineSessionRuntime;
 	private readonly messageRepository: ClineMessageRepository;
+	private readonly createRuntimeSetup: (workspacePath: string) => Promise<ClineRuntimeSetup>;
+	private readonly runtimeSetupByWorkspacePath = new Map<string, Promise<ClineRuntimeSetup>>();
 
 	constructor(options: CreateInMemoryClineTaskSessionServiceOptions = {}) {
 		const createSessionRuntime = options.createSessionRuntime ?? createInMemoryClineSessionRuntime;
 		const createMessageRepository = options.createMessageRepository ?? createInMemoryClineMessageRepository;
+		this.createRuntimeSetup = options.createRuntimeSetup ?? createClineRuntimeSetup;
 		this.sessionRuntime = createSessionRuntime({
 			onTaskEvent: (taskId: string, event: unknown) => {
 				this.handleTaskEvent(taskId, event);
@@ -201,9 +206,12 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		void (async () => {
 			const assistantCountBeforeStart = entry.messages.filter((message) => message.role === "assistant").length;
 			try {
+				const runtimeSetup = await this.ensureRuntimeSetup(request.cwd);
+				const runtimePrompt = runtimeSetup.resolvePrompt(request.prompt);
 				let systemPrompt = await resolveClineSdkSystemPrompt({
 					cwd: request.cwd,
 					providerId,
+					rules: runtimeSetup.loadRules(),
 				});
 				const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(request.taskId);
 				if (appendedSystemPrompt) {
@@ -213,13 +221,15 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				const startResult = await this.sessionRuntime.startTaskSession({
 					taskId: request.taskId,
 					cwd: request.cwd,
-					prompt: request.prompt,
+					prompt: runtimePrompt,
 					providerId,
 					modelId,
 					mode: request.mode,
 					apiKey: request.apiKey,
 					baseUrl: request.baseUrl,
 					systemPrompt,
+					userInstructionWatcher: runtimeSetup.watcher,
+					requestToolApproval: runtimeSetup.requestToolApproval,
 				});
 
 				const initialAgentText = readAgentResultText(startResult.result);
@@ -349,8 +359,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			});
 			this.emitSummary(waitingSummary);
 			const assistantCountBeforeSend = entry.messages.filter((message) => message.role === "assistant").length;
-			void this.sessionRuntime
-				.sendTaskSessionInput(taskId, normalized, mode)
+			void this.ensureRuntimeSetup(entry.summary.workspacePath ?? "")
+				.then((runtimeSetup) =>
+					this.sessionRuntime.sendTaskSessionInput(taskId, runtimeSetup.resolvePrompt(normalized), mode),
+				)
 				.then((result: unknown) => {
 					const agentText = readAgentResultText(result);
 					if (agentText) {
@@ -409,6 +421,15 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 	async dispose(): Promise<void> {
 		await this.sessionRuntime.dispose();
 		this.pendingTurnCancelTaskIds.clear();
+		for (const setupPromise of this.runtimeSetupByWorkspacePath.values()) {
+			try {
+				const setup = await setupPromise;
+				await setup.dispose();
+			} catch {
+				// Ignore runtime setup disposal failures.
+			}
+		}
+		this.runtimeSetupByWorkspacePath.clear();
 		this.messageRepository.dispose();
 	}
 
@@ -453,9 +474,18 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					// Best effort cleanup only.
 				});
 			})
-			.catch(() => {
-				// Best effort checkpointing only.
-			});
+				.catch(() => {
+					// Best effort checkpointing only.
+				});
+
+	private async ensureRuntimeSetup(workspacePath: string): Promise<ClineRuntimeSetup> {
+		const normalizedWorkspacePath = workspacePath.trim();
+		let setupPromise = this.runtimeSetupByWorkspacePath.get(normalizedWorkspacePath);
+		if (!setupPromise) {
+			setupPromise = this.createRuntimeSetup(normalizedWorkspacePath);
+			this.runtimeSetupByWorkspacePath.set(normalizedWorkspacePath, setupPromise);
+		}
+		return await setupPromise;
 	}
 
 	private handleTaskEvent(taskId: string, event: unknown): void {

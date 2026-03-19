@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
 import { applyClineSessionEvent } from "../../../src/cline-sdk/cline-event-adapter.js";
 import {
-	createDefaultSummary,
 	type ClineTaskMessage,
 	type ClineTaskSessionEntry,
+	createDefaultSummary,
 } from "../../../src/cline-sdk/cline-session-state.js";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
 
 function createEntry(taskId: string): ClineTaskSessionEntry {
 	return {
@@ -90,6 +89,7 @@ describe("applyClineSessionEvent", () => {
 		expect(entry.messages[0]?.content).toBe("Hello world");
 		expect(secondPass.summaries.at(-1)?.state).toBe("running");
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.hookEventName).toBe("assistant_delta");
+		expect(secondPass.summaries.at(-1)?.latestHookActivity?.finalMessage).toBe("world");
 	});
 
 	it("transitions into and back out of awaiting review around user-attention tools", () => {

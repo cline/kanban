@@ -5,10 +5,11 @@ import type { RuntimeTaskSessionMode } from "../core/api-contract.js";
 import { extractClineSessionId } from "./cline-event-adapter.js";
 import { createSessionId } from "./cline-session-state.js";
 import {
-	createClineSdkSessionHost,
 	type ClineSdkPersistedMessage,
 	type ClineSdkSessionHost,
 	type ClineSdkSessionRecord,
+	type ClineSdkUserInstructionWatcher,
+	createClineSdkSessionHost,
 } from "./sdk-runtime-boundary.js";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 3;
@@ -23,6 +24,8 @@ export interface StartClineSessionRuntimeRequest {
 	apiKey?: string | null;
 	baseUrl?: string | null;
 	systemPrompt: string;
+	userInstructionWatcher?: ClineSdkUserInstructionWatcher;
+	requestToolApproval?: (request: unknown) => Promise<unknown>;
 }
 
 export interface StartClineSessionRuntimeResult {
@@ -85,6 +88,8 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			},
 			prompt: request.prompt,
 			interactive: true,
+			userInstructionWatcher: request.userInstructionWatcher,
+			requestToolApproval: request.requestToolApproval,
 		});
 
 		this.bindTaskSession(request.taskId, startResult.sessionId);

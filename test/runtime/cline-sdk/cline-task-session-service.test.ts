@@ -1,5 +1,6 @@
+import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-
+import type { ClineRuntimeSetup } from "../../../src/cline-sdk/cline-runtime-setup.js";
 import type {
 	ClinePersistedTaskSessionSnapshot,
 	ClineSessionRuntime,
@@ -8,8 +9,8 @@ import type {
 	StartClineSessionRuntimeResult,
 } from "../../../src/cline-sdk/cline-session-runtime.js";
 import { createSessionId } from "../../../src/cline-sdk/cline-session-state.js";
-import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
 import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
+import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
 
 const turnCheckpointMocks = vi.hoisted(() => ({
 	captureTaskTurnCheckpoint: vi.fn(),
@@ -63,6 +64,14 @@ interface FakeClineSessionRuntimeController {
 interface TaskSessionServiceHarness {
 	service: ClineTaskSessionService;
 	runtime: FakeClineSessionRuntimeController;
+}
+
+interface FakeRuntimeSetupController {
+	setup: ClineRuntimeSetup;
+	resolvePromptMock: Mock<(prompt: string) => string>;
+	loadRulesMock: Mock<() => string>;
+	requestToolApprovalMock: Mock<(request: ToolApprovalRequest) => Promise<ToolApprovalResult>>;
+	disposeMock: Mock<() => Promise<void>>;
 }
 
 function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
@@ -184,6 +193,37 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 	};
 }
 
+function createFakeRuntimeSetup(): FakeRuntimeSetupController {
+	const resolvePromptMock = vi.fn((prompt: string) => `resolved:${prompt}`);
+	const loadRulesMock = vi.fn(() => "Workspace rule");
+	const requestToolApprovalMock = vi.fn(async (_request: ToolApprovalRequest) => ({
+		approved: true,
+		reason: "approved in test",
+	}));
+	const disposeMock = vi.fn(async () => {});
+
+	return {
+		setup: {
+			watcher: {} as ClineRuntimeSetup["watcher"],
+			resolvePrompt: resolvePromptMock,
+			loadRules: loadRulesMock,
+			requestToolApproval: requestToolApprovalMock,
+			dispose: disposeMock,
+		},
+		resolvePromptMock,
+		loadRulesMock,
+		requestToolApprovalMock,
+		disposeMock,
+	};
+}
+
+async function waitForTaskSessionId(runtime: FakeClineSessionRuntimeController, taskId: string): Promise<string> {
+	await vi.waitFor(() => {
+		expect(runtime.getTaskSessionId(taskId)).toBeTruthy();
+	});
+	return runtime.getTaskSessionId(taskId) ?? "session-1";
+}
+
 describe("InMemoryClineTaskSessionService", () => {
 	const services: ClineTaskSessionService[] = [];
 
@@ -287,6 +327,38 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("mirrors runtime prompt resolution, rules, and approval wiring into the SDK start call", async () => {
+		const runtime = createFakeClineSessionRuntime();
+		const runtimeSetup = createFakeRuntimeSetup();
+		const createRuntimeSetupMock = vi.fn(async (_workspacePath: string) => runtimeSetup.setup);
+		const service = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtime.createRuntime(options),
+			createRuntimeSetup: createRuntimeSetupMock,
+		});
+		services.push(service);
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "/fix issue",
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		expect(createRuntimeSetupMock).toHaveBeenCalledWith("/tmp/worktree");
+		expect(runtimeSetup.resolvePromptMock).toHaveBeenCalledWith("/fix issue");
+		expect(runtimeSetup.loadRulesMock).toHaveBeenCalledTimes(1);
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				prompt: "resolved:/fix issue",
+				userInstructionWatcher: runtimeSetup.setup.watcher,
+				requestToolApproval: runtimeSetup.setup.requestToolApproval,
+				systemPrompt: expect.stringContaining("Workspace rule"),
+			}),
+		);
+	});
+
 	it("stores follow-up user input and keeps session running", async () => {
 		const { service } = createTrackedService();
 		await service.startTaskSession({
@@ -299,6 +371,29 @@ describe("InMemoryClineTaskSessionService", () => {
 
 		expect(nextSummary?.state).toBe("running");
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual(["Initial prompt", "Continue"]);
+	});
+
+	it("resolves workflow prompts for follow-up input before sending to the SDK runtime", async () => {
+		const runtime = createFakeClineSessionRuntime();
+		const runtimeSetup = createFakeRuntimeSetup();
+		const createRuntimeSetupMock = vi.fn(async (_workspacePath: string) => runtimeSetup.setup);
+		const service = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtime.createRuntime(options),
+			createRuntimeSetup: createRuntimeSetupMock,
+		});
+		services.push(service);
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+
+		runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
+		await service.sendTaskSessionInput("task-1", "/continue");
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "workflow:/continue");
+		});
 	});
 
 	it("marks session interrupted when stopped", async () => {
@@ -329,7 +424,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(canceled?.reviewReason).toBeNull();
 		expect(canceled?.latestHookActivity?.activityText).toBe("Turn canceled");
 
-		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
 		runtime.emitAgentEvent(sessionId, {
 			type: "done",
 			reason: "aborted",
@@ -347,7 +442,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "",
 		});
 
-		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
 		runtime.emitAgentEvent(sessionId, {
 			type: "content_start",
 			contentType: "text",
@@ -380,7 +475,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "",
 		});
 
-		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
 
 		runtime.emitAgentEvent(sessionId, {
 			type: "content_start",
@@ -429,7 +524,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "",
 		});
 
-		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
 
 		runtime.emitAgentEvent(sessionId, {
 			type: "content_start",
@@ -468,7 +563,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			createdAt: 1,
 		});
 
-		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
 
 		runtime.emitAgentEvent(sessionId, {
 			type: "done",
@@ -506,8 +601,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		expect(summary.state).toBe("running");
-		const mappedSessionId = runtime.getTaskSessionId("task-1");
-		expect(mappedSessionId).toBeTruthy();
+		const mappedSessionId = await waitForTaskSessionId(runtime, "task-1");
 
 		runtime.emitAgentEvent(mappedSessionId ?? "session-1", {
 			type: "content_start",
@@ -547,7 +641,9 @@ describe("InMemoryClineTaskSessionService", () => {
 		]);
 
 		expect(response).not.toBeNull();
-		expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledTimes(1);
+		});
 		sendDeferred.resolve({ text: "done" });
 	});
 
@@ -585,7 +681,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 
 		await service.sendTaskSessionInput("task-1", "Continue");
-		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
 
 		runtime.emitAgentEvent(sessionId, {
 			type: "content_start",
@@ -612,7 +708,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "",
 		});
 
-		const sessionId = runtime.getTaskSessionId("task-1") ?? "session-1";
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
 
 		runtime.emitAgentEvent(sessionId, {
 			type: "content_start",

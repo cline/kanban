@@ -7,6 +7,8 @@ import type { ClineSdkAgentEvent, ClineSdkSessionEvent } from "./sdk-runtime-bou
 import {
 	appendAssistantChunk,
 	appendReasoningChunk,
+	type ClineTaskMessage,
+	type ClineTaskSessionEntry,
 	canReturnToRunning,
 	clearActiveTurnState,
 	createAssistantMessage,
@@ -19,10 +21,19 @@ import {
 	setOrCreateAssistantMessage,
 	setOrCreateReasoningMessage,
 	startToolCallMessage,
-	type ClineTaskMessage,
-	type ClineTaskSessionEntry,
 	updateSummary,
 } from "./cline-session-state.js";
+
+function toPreviewText(value: string | null | undefined, maxLength = 160): string | null {
+	if (typeof value !== "string") {
+		return null;
+	}
+	const normalized = value.replace(/\s+/g, " ").trim();
+	if (!normalized) {
+		return null;
+	}
+	return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1).trimEnd()}…` : normalized;
+}
 
 export interface ApplyClineSessionEventInput {
 	event: unknown;
@@ -203,21 +214,23 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		const text = typeof agentEvent.text === "string" ? agentEvent.text : null;
 		if (typeof accumulated === "string") {
 			const message =
-				setOrCreateAssistantMessage(entry, taskId, accumulated) ?? createAssistantMessage(entry, taskId, accumulated);
+				setOrCreateAssistantMessage(entry, taskId, accumulated) ??
+				createAssistantMessage(entry, taskId, accumulated);
 			input.emitMessage(taskId, message);
 		} else if (typeof text === "string" && text.length > 0) {
 			input.emitMessage(taskId, appendAssistantChunk(entry, taskId, text));
 		}
+		const previewText = toPreviewText(accumulated ?? text);
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		emitSummary(input, {
 			state: "running",
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
-				activityText: "Agent active",
+				activityText: previewText ?? "Agent active",
 				toolName: retainedToolActivity.toolName,
 				toolInputSummary: retainedToolActivity.toolInputSummary,
-				finalMessage: null,
+				finalMessage: previewText,
 				hookEventName: "assistant_delta",
 				notificationType: null,
 				source: "cline-sdk",
@@ -418,16 +431,17 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			return;
 		}
 		input.emitMessage(taskId, appendAssistantChunk(entry, taskId, chunk));
+		const previewText = toPreviewText(chunk);
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		emitSummary(input, {
 			state: "running",
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
-				activityText: "Agent active",
+				activityText: previewText ?? "Agent active",
 				toolName: retainedToolActivity.toolName,
 				toolInputSummary: retainedToolActivity.toolInputSummary,
-				finalMessage: null,
+				finalMessage: previewText,
 				hookEventName: "assistant_delta",
 				notificationType: null,
 				source: "cline-sdk",
