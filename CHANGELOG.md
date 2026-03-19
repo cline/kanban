@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.27]
+
+- Upgraded Cline SDK to stable v0.0.4, replacing nightly builds for more reliable native Cline sessions
+
 ## [0.1.26]
 
 - Trashing a task now saves a git patch of any uncommitted work, and restoring it from trash automatically reapplies those changes so nothing gets lost
