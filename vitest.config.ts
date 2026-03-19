@@ -39,11 +39,7 @@ export default defineConfig({
 		// Serializing files there helps distinguish worker-pool shutdown issues
 		// from test-level leaks while keeping local runs and Node 20 unchanged.
 		fileParallelism: !shouldSerializeNode22CiFiles(),
-		poolOptions: {
-			forks: {
-				singleFork: shouldSerializeNode22CiFiles(),
-			},
-		},
+		maxWorkers: shouldSerializeNode22CiFiles() ? 1 : undefined,
 		exclude: ["apps/**", "web-ui/**", "third_party/**", "**/node_modules/**", "**/dist/**", ".worktrees/**"],
 		testTimeout: 15_000,
 	},

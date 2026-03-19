@@ -61,6 +61,9 @@
     "format": "biome check --write .",
     "check": "npm run lint && npm run typecheck && npm run test",
     "test": "vitest run",
+    "test:root:main": "vitest run --exclude test/integration/runtime-state-stream.integration.test.ts --exclude test/integration/task-command-exit.integration.test.ts",
+    "test:root:runtime-state-stream": "vitest run test/integration/runtime-state-stream.integration.test.ts",
+    "test:root:task-command-exit": "vitest run test/integration/task-command-exit.integration.test.ts",
     "test:watch": "vitest",
     "prepare": "husky",
     "prepublishOnly": "npm run build && npm run check"
@@ -75,7 +78,7 @@
     "shx": "^0.4.0",
     "tsx": "^4.20.3",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.0"
   },
   "dependencies": {
     "@clinebot/agents": "nightly",

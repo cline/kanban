@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
@@ -29,7 +29,7 @@ describe("ClineAgentChatPanel", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
-	let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+	let scrollIntoViewMock: Mock<typeof HTMLElement.prototype.scrollIntoView>;
 	let originalScrollIntoView: typeof HTMLElement.prototype.scrollIntoView;
 
 	beforeEach(() => {
@@ -40,7 +40,7 @@ describe("ClineAgentChatPanel", () => {
 		document.body.appendChild(container);
 		root = createRoot(container);
 		originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-		scrollIntoViewMock = vi.fn();
+		scrollIntoViewMock = vi.fn<typeof HTMLElement.prototype.scrollIntoView>();
 		HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 	});
 
