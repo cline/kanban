@@ -20,5 +20,6 @@ export async function teardown(): Promise<void> {
 	});
 	if (shouldLogNode22CiDiagnostics()) {
 		logActiveResources("after esbuild.stop()");
+		process.exit(process.exitCode ?? 0);
 	}
 }
