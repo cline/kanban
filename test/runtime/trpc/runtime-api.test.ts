@@ -50,7 +50,7 @@ vi.mock("../../../src/workspace/turn-checkpoints.js", () => ({
 	captureTaskTurnCheckpoint: turnCheckpointMocks.captureTaskTurnCheckpoint,
 }));
 
-vi.mock("@clinebot/core/server", () => ({
+vi.mock("@clinebot/core/node", () => ({
 	getValidClineCredentials: oauthMocks.getValidClineCredentials,
 	getValidOcaCredentials: oauthMocks.getValidOcaCredentials,
 	getValidOpenAICodexCredentials: oauthMocks.getValidOpenAICodexCredentials,
@@ -114,20 +114,18 @@ function createRuntimeConfigState(): RuntimeConfigState {
 }
 
 function setSelectedProviderSettings(
-	settings:
-		| {
-				provider: string;
-				model?: string;
-				baseUrl?: string;
-				apiKey?: string;
-				auth?: {
-					accessToken?: string;
-					refreshToken?: string;
-					accountId?: string;
-					expiresAt?: number;
-				};
-		  }
-		| null,
+	settings: {
+		provider: string;
+		model?: string;
+		baseUrl?: string;
+		apiKey?: string;
+		auth?: {
+			accessToken?: string;
+			refreshToken?: string;
+			accountId?: string;
+			expiresAt?: number;
+		};
+	} | null,
 ): void {
 	oauthMocks.getLastUsedProviderSettings.mockReturnValue(settings ?? undefined);
 	oauthMocks.getProviderSettings.mockImplementation((providerId: string) =>

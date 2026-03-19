@@ -2,12 +2,9 @@
 // All native Cline session-host creation and persisted artifact reads should
 // flow through this boundary so the rest of Kanban stays decoupled from the
 // SDK package layout.
-import {
-	buildWorkspaceMetadata,
-	createSessionHost,
-	type SessionHost,
-} from "@clinebot/core/server";
+
 import { getClineDefaultSystemPrompt } from "@clinebot/agents";
+import { buildWorkspaceMetadata, createSessionHost, type SessionHost } from "@clinebot/core/node";
 import type { providers as ClineSdkProviders } from "@clinebot/llms/node";
 
 export type ClineSdkSessionHost = SessionHost;
