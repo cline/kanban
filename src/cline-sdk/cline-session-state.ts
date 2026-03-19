@@ -111,7 +111,7 @@ export function isClineUserAttentionTool(toolName: string | null): boolean {
 }
 
 export function canReturnToRunning(reviewReason: RuntimeTaskSessionSummary["reviewReason"]): boolean {
-	return reviewReason === "attention" || reviewReason === "hook";
+	return reviewReason === "attention" || reviewReason === "hook" || reviewReason === "error";
 }
 
 export function latestAssistantMessageMatches(entry: ClineTaskSessionEntry, content: string): boolean {

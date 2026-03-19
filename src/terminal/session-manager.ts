@@ -600,7 +600,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (
 			entry.summary.agentId === "codex" &&
 			entry.summary.state === "awaiting_review" &&
-			(entry.summary.reviewReason === "hook" || entry.summary.reviewReason === "attention") &&
+			(entry.summary.reviewReason === "hook" ||
+				entry.summary.reviewReason === "attention" ||
+				entry.summary.reviewReason === "error") &&
 			(data.includes(13) || data.includes(10))
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;

@@ -147,7 +147,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			summaryPatch.state = "interrupted";
 			summaryPatch.reviewReason = "interrupted";
 		} else if (doneReason === "error") {
-			summaryPatch.state = "failed";
+			summaryPatch.state = "awaiting_review";
 			summaryPatch.reviewReason = "error";
 		} else {
 			summaryPatch.state = "awaiting_review";
