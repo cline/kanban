@@ -78,9 +78,9 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@clinebot/agents": "^0.0.4",
-    "@clinebot/core": "^0.0.4",
-    "@clinebot/llms": "^0.0.4",
+    "@clinebot/agents": "^0.0.5",
+    "@clinebot/core": "^0.0.5",
+    "@clinebot/llms": "^0.0.5",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
     "close-with-grace": "^2.5.0",
