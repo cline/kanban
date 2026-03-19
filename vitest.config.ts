@@ -42,5 +42,6 @@ export default defineConfig({
 		maxWorkers: shouldSerializeNode22CiFiles() ? 1 : undefined,
 		exclude: ["apps/**", "web-ui/**", "third_party/**", "**/node_modules/**", "**/dist/**", ".worktrees/**"],
 		testTimeout: 15_000,
+		detectAsyncLeaks: true
 	},
 });
