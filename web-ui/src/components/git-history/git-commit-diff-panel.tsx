@@ -14,6 +14,12 @@ export type GitCommitDiffSource =
 	| { type: "commit"; files: RuntimeGitCommitDiffFile[] }
 	| { type: "working-copy"; files: RuntimeWorkspaceFileChange[] };
 
+function getSectionTopWithinScrollContainer(container: HTMLElement, section: HTMLElement): number {
+	const containerRect = container.getBoundingClientRect();
+	const sectionRect = section.getBoundingClientRect();
+	return container.scrollTop + sectionRect.top - (containerRect.top + container.clientTop);
+}
+
 function getFileRows(source: GitCommitDiffSource, path: string): UnifiedDiffRow[] {
 	if (source.type === "commit") {
 		const file = source.files.find((f) => f.path === path);
@@ -120,7 +126,7 @@ export function GitCommitDiffPanel({
 			if (!section) {
 				continue;
 			}
-			if (section.offsetTop <= probeOffset) {
+			if (getSectionTopWithinScrollContainer(container, section) <= probeOffset) {
 				activePath = path;
 				continue;
 			}
@@ -153,7 +159,7 @@ export function GitCommitDiffPanel({
 		programmaticScrollUntilRef.current = Date.now() + 320;
 		const containerStyle = window.getComputedStyle(container);
 		const paddingTop = Number.parseFloat(containerStyle.paddingTop) || 0;
-		const targetScrollTop = Math.max(0, section.offsetTop - paddingTop);
+		const targetScrollTop = Math.max(0, getSectionTopWithinScrollContainer(container, section) - paddingTop);
 		container.scrollTop = targetScrollTop;
 	}, []);
 
@@ -272,7 +278,7 @@ export function GitCommitDiffPanel({
 								}}
 								style={{ marginBottom: 12 }}
 							>
-								<div className="rounded-md border border-border bg-surface-2" style={{ overflow: "hidden", padding: 0 }}>
+								<div className="rounded-md border border-border bg-surface-1" style={{ overflow: "hidden", padding: 0 }}>
 									<button
 										type="button"
 										className="kb-diff-file-header flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-3"

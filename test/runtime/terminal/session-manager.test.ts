@@ -69,6 +69,21 @@ describe("TerminalSessionManager", () => {
 		expect(typeof updated?.lastHookAt).toBe("number");
 	});
 
+	it("resets stale running sessions without active processes", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "running" }),
+		});
+
+		const recovered = manager.recoverStaleSession("task-1");
+
+		expect(recovered?.state).toBe("idle");
+		expect(recovered?.pid).toBeNull();
+		expect(recovered?.agentId).toBeNull();
+		expect(recovered?.workspacePath).toBeNull();
+		expect(recovered?.reviewReason).toBeNull();
+	});
+
 	it("tracks only the latest two turn checkpoints", () => {
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({

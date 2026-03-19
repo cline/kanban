@@ -1,10 +1,15 @@
-# kanban (Research Preview)
+## npx kanban (Research Preview)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/deabc452-a340-4210-b42f-f8696be04ee9" width="100%" />
+  <img src="https://github.com/user-attachments/assets/83de5f2f-1d97-4380-949b-516e2afa782e" width="100%" />
 </p>
 
-<div align="center">
+A replacement for your IDE better suited for running many agents in parallel and reviewing diffs. Each task card gets its own terminal and worktree, all handled for you automatically. Enable auto-commit and link cards together to create dependency chains that complete large amounts of work autonomously.
+
+> [!WARNING]
+> Kanban is a research preview and uses experimental features of CLI agents like bypassing permissions and runtime hooks for more autonomy. We'd love your feedback in #kanban on our [discord](https://discord.gg/cline).
+
+<div align="left">
 <table>
 <tbody>
 <td align="center">
@@ -29,37 +34,42 @@
 </table>
 </div>
 
-A Human-in-the-Loop Agent Swarm Orchestration layer that gives more autonomy to your CLI agents with task dependency linking and automatic commits and pull requests. Each task runs in its own branchless worktree with .gitignore'd files like node_modules symlinked so your filesystem and git don't get polluted, letting you run hundreds of tasks in parallel on any computer. It also comes with a visualizer for your git branches and commit history, so you can keep track of the work your agents do.
-
-```
+### 1. Open kanban
+```bash
+# Run directly (no install required)
 npx kanban
+
+# Or install globally
+npm i -g kanban
+kanban
 ```
+Run this from the root of any git repo. Kanban will detect your installed CLI agent and launch a local running webserver in your browser. No account or setup required, it works right out of the box.
 
-## Getting Started
+### 2. Create tasks
+Create a task card manually, or open the sidebar chat and ask your agent to break work down into tasks for you. Kanban injects board-management instructions into that session so you can simply ask it to add tasks, link tasks, or start work on your board.
 
-1. Install an agent like Claude Code, Codex, Gemini, OpenCode, Cline
-2. Run `kanban` (install with `npm i -g kanban`) in your repo to launch a web GUI
-3. Create tasks, link dependencies, hit the play button, and watch agents work in parallel. You can also ask your agent to manage tasks through Kanban's built-in skill and task CLI.
-4. When they finish, you review diffs, leave comments, and commit or make a PR.
+### 3. Link and automate
+<kbd>⌘</kbd> + click a card to link it to another task. When a card is completed and moved to trash, linked tasks auto-start. Combine with auto-commit for fully autonomous dependency chains: one task completes → commits → kicks off the next → repeat. It’s a pretty magical experience asking your agent to decompose a big task into subtasks that auto-commit - he’ll cleverly do it in a way that parallelizes for maximum efficiency and links tasks together for end-to-end autonomy.
 
-## Agent Skill Setup
+### 4. Start tasks
+Hit the play button on a card. Kanban creates an ephemeral worktree just for that task so agents work in parallel without merge conflicts. Under the hood, it also symlinks gitignored files like `node_modules` so you don't have to worry about slow `npm install`s for each copy of your project.
 
-Kanban writes a `kanban` skill file on every launch so your agent can add, update, link, and start tasks using `kanban task` commands.
+> [!NOTE]
+> [Symlinks (symbolic links)](https://en.wikipedia.org/wiki/Symbolic_link) are special "shortcuts" pointing to another file or directory, allowing access to the target from a new location without duplicating data. They work great in this case since you typically don't modify gitignored files in day-to-day work, but for when you do then don't use Kanban.
 
-Generated skill paths:
+As agents work, Kanban uses hooks to display the latest message or tool call on each card, so you can monitor hundreds of agents at a glance without opening each one.
 
-- `~/.agents/skills/kanban/SKILL.md`
-- `~/.claude/skills/kanban/SKILL.md` (written when Claude is installed)
+### 5. Review changes
+Click a card to view the agent's TUI and a diff of all the changes in that worktree. Kanban includes its own checkpointing system so you can also see a diff from the last messages you've sent. Click on lines to leave comments and send them back to the agent.
 
-The file is regenerated each launch so new Kanban releases can update the instructions automatically.
+To easily test and debug your app, create a Script Shortcut in settings. Use a command like `npm run dev` so that all you have to do is hit a play button in the navbar instead of remembering commands or asking your agent to do it.
 
-The skill includes:
+### 6. Ship it
+When the work looks good, hit **Commit** or **Open PR**. Kanban sends a dynamic prompt to the agent to convert the worktree into a commit on your base ref or a new PR branch, and work through any merge conflicts intelligently. Or skip review by enabling auto-commit / auto-PR and the agent ships as soon as it's done. Move the card to trash to clean up the worktree (you can always resume later since Kanban tracks the resume ID).
 
-- command reference for `kanban task list|create|update|link|unlink|start`
-- parameter guidance for each command
-- dependency and auto-review workflow notes
-- ephemeral worktree handling (`.kanban/worktrees`) so commands target the main workspace
+### 7. Keep track with git interface
+Click the branch name in the navbar to open a full git interface to browse commit history, switch branches, fetch, pull, push, and visualize your git all without leaving Kanban. Keep track of everything your agents are doing across branches as work is completed.
 
-## License
+---
 
-[Apache 2.0 (c) 2026 Cline Bot Inc.](./LICENSE)
+[Apache 2.0 © 2026 Cline Bot Inc.](./LICENSE)

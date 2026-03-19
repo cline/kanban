@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { notifyError } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import type {
 	RuntimeGitRepositoryInfo,
@@ -19,7 +20,6 @@ interface UseWorkspaceSyncInput {
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	setCanPersistWorkspaceState: Dispatch<SetStateAction<boolean>>;
-	onWorktreeError: (message: string | null) => void;
 }
 
 interface UseWorkspaceSyncResult {
@@ -34,6 +34,20 @@ interface UseWorkspaceSyncResult {
 	resetWorkspaceSyncState: () => void;
 }
 
+function mergeTaskSessionSummaries(
+	currentSessions: Record<string, RuntimeTaskSessionSummary>,
+	nextSessions: Record<string, RuntimeTaskSessionSummary>,
+): Record<string, RuntimeTaskSessionSummary> {
+	const mergedSessions = { ...currentSessions };
+	for (const [taskId, summary] of Object.entries(nextSessions)) {
+		const currentSummary = mergedSessions[taskId];
+		if (!currentSummary || currentSummary.updatedAt <= summary.updatedAt) {
+			mergedSessions[taskId] = summary;
+		}
+	}
+	return mergedSessions;
+}
+
 export function useWorkspaceSync({
 	currentProjectId,
 	streamedWorkspaceState,
@@ -42,7 +56,6 @@ export function useWorkspaceSync({
 	setBoard,
 	setSessions,
 	setCanPersistWorkspaceState,
-	onWorktreeError,
 }: UseWorkspaceSyncInput): UseWorkspaceSyncResult {
 	const [workspacePath, setWorkspacePath] = useState<string | null>(null);
 	const [workspaceGit, setWorkspaceGit] = useState<RuntimeGitRepositoryInfo | null>(null);
@@ -92,7 +105,7 @@ export function useWorkspaceSync({
 			}
 			setWorkspacePath(nextWorkspaceState.repoPath);
 			setWorkspaceGit(nextWorkspaceState.git);
-			setSessions(nextWorkspaceState.sessions ?? {});
+			setSessions((currentSessions) => mergeTaskSessionSummaries(currentSessions, nextWorkspaceState.sessions ?? {}));
 			const shouldHydrateBoard = !isSameProject || currentRevision !== nextWorkspaceState.revision;
 			if (shouldHydrateBoard) {
 				const normalized = normalizeBoardData(nextWorkspaceState.board) ?? createInitialBoardData();
@@ -127,7 +140,6 @@ export function useWorkspaceSync({
 				return;
 			}
 			applyWorkspaceState(refreshed);
-			onWorktreeError(null);
 		} catch (error) {
 			if (
 				workspaceRefreshRequestIdRef.current !== requestId ||
@@ -136,13 +148,13 @@ export function useWorkspaceSync({
 				return;
 			}
 			const message = error instanceof Error ? error.message : String(error);
-			onWorktreeError(message);
+			notifyError(message);
 		} finally {
 			if (workspaceRefreshRequestIdRef.current === requestId) {
 				setIsWorkspaceStateRefreshing(false);
 			}
 		}
-	}, [applyWorkspaceState, currentProjectId, onWorktreeError]);
+	}, [applyWorkspaceState, currentProjectId]);
 
 	const resetWorkspaceSyncState = useCallback(() => {
 		workspaceRefreshRequestIdRef.current += 1;

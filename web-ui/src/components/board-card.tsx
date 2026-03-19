@@ -1,15 +1,17 @@
 import { Draggable } from "@hello-pangea/dnd";
 import { GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
+import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { useMeasure } from "@/utils/react-use";
-import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
+import { clampTextWithInlineSuffix, splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -30,14 +32,20 @@ const SESSION_ACTIVITY_COLOR = {
 	secondary: "var(--color-text-secondary)",
 } as const;
 
-function formatToolLabel(toolName: string, activityText: string): string {
-	const marker = `${toolName}: `;
-	const markerIndex = activityText.indexOf(marker);
-	if (markerIndex >= 0) {
-		const detail = activityText.slice(markerIndex + marker.length);
-		return `${toolName}(${detail})`;
+const DESCRIPTION_COLLAPSE_LINES = 3;
+const DESCRIPTION_EXPAND_LABEL = "See more";
+const DESCRIPTION_COLLAPSE_LABEL = "Less";
+const DESCRIPTION_COLLAPSE_SUFFIX = `… ${DESCRIPTION_EXPAND_LABEL}`;
+
+function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: string | null | undefined): string | null {
+	if (!workspacePath) {
+		return null;
 	}
-	return toolName;
+	try {
+		return buildTaskWorktreeDisplayPath(taskId, workspacePath);
+	} catch {
+		return null;
+	}
 }
 
 function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
@@ -47,6 +55,8 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	const hookActivity = summary.latestHookActivity;
 	const activityText = hookActivity?.activityText?.trim();
 	const toolName = hookActivity?.toolName?.trim() ?? null;
+	const toolInputSummary = hookActivity?.toolInputSummary?.trim() ?? null;
+	const source = hookActivity?.source?.trim() ?? null;
 	const finalMessage = hookActivity?.finalMessage?.trim();
 	if (summary.state === "awaiting_review" && finalMessage) {
 		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: finalMessage };
@@ -54,6 +64,15 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	if (activityText) {
 		let dotColor: string = SESSION_ACTIVITY_COLOR.thinking;
 		let text = activityText;
+		if (source === "cline-sdk" && toolName) {
+			if (text.startsWith("Failed ")) {
+				dotColor = SESSION_ACTIVITY_COLOR.error;
+			}
+			return {
+				dotColor,
+				text: formatClineToolCallLabel(toolName, toolInputSummary),
+			};
+		}
 		if (text.startsWith("Final: ")) {
 			dotColor = SESSION_ACTIVITY_COLOR.success;
 			text = text.slice(7);
@@ -65,9 +84,6 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 			dotColor = SESSION_ACTIVITY_COLOR.error;
 		} else if (text === "Agent active" || text === "Working on task" || text.startsWith("Resumed")) {
 			return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
-		}
-		if (toolName && (text.startsWith("Using ") || text.startsWith("Completed ") || text.startsWith("Failed "))) {
-			text = formatToolLabel(toolName, activityText);
 		}
 		return { dotColor, text };
 	}
@@ -101,6 +117,7 @@ export function BoardCard({
 	isDependencySource = false,
 	isDependencyTarget = false,
 	isDependencyLinking = false,
+	workspacePath,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -122,14 +139,23 @@ export function BoardCard({
 	isDependencySource?: boolean;
 	isDependencyTarget?: boolean;
 	isDependencyLinking?: boolean;
+	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const [titleContainerRef, titleRect] = useMeasure<HTMLDivElement>();
+	const [descriptionContainerRef, descriptionRect] = useMeasure<HTMLDivElement>();
 	const titleRef = useRef<HTMLParagraphElement | null>(null);
+	const descriptionRef = useRef<HTMLParagraphElement | null>(null);
+	const [titleWidthFallback, setTitleWidthFallback] = useState(0);
+	const [descriptionWidthFallback, setDescriptionWidthFallback] = useState(0);
 	const [titleFont, setTitleFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
+	const [descriptionFont, setDescriptionFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
+	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
+	const titleWidth = titleRect.width > 0 ? titleRect.width : titleWidthFallback;
+	const descriptionWidth = descriptionRect.width > 0 ? descriptionRect.width : descriptionWidthFallback;
 	const displayPrompt = useMemo(() => {
 		return card.prompt.trim();
 	}, [card.prompt]);
@@ -141,30 +167,81 @@ export function BoardCard({
 				description: "",
 			};
 		}
-		if (titleRect.width <= 0) {
+		if (titleWidth <= 0) {
 			return {
 				title: fallbackTitle,
 				description: "",
 			};
 		}
 		const split = splitPromptToTitleDescriptionByWidth(displayPrompt, {
-			maxTitleWidthPx: titleRect.width,
+			maxTitleWidthPx: titleWidth,
 			measureText: (value) => measureTextWidth(value, titleFont),
 		});
 		return {
 			title: split.title || fallbackTitle,
 			description: split.description,
 		};
-	}, [card.prompt, displayPrompt, titleFont, titleRect.width]);
+	}, [card.prompt, displayPrompt, titleFont, titleWidth]);
+
+	useLayoutEffect(() => {
+		if (titleRect.width > 0) {
+			return;
+		}
+		const nextWidth = titleRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
+		if (nextWidth > 0 && nextWidth !== titleWidthFallback) {
+			setTitleWidthFallback(nextWidth);
+		}
+	}, [titleRect.width, titleWidthFallback]);
+
+	useLayoutEffect(() => {
+		if (descriptionRect.width > 0 || !displayPromptSplit.description) {
+			return;
+		}
+		const nextWidth = descriptionRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
+		if (nextWidth > 0 && nextWidth !== descriptionWidthFallback) {
+			setDescriptionWidthFallback(nextWidth);
+		}
+	}, [descriptionRect.width, descriptionWidthFallback, displayPromptSplit.description]);
+
+	useLayoutEffect(() => {
+		setTitleFont(readElementFontShorthand(titleRef.current, DEFAULT_TEXT_MEASURE_FONT));
+	}, [titleWidth]);
+
+	useLayoutEffect(() => {
+		setDescriptionFont(readElementFontShorthand(descriptionRef.current, DEFAULT_TEXT_MEASURE_FONT));
+	}, [descriptionWidth, displayPromptSplit.description]);
 
 	useEffect(() => {
-		setTitleFont(readElementFontShorthand(titleRef.current, DEFAULT_TEXT_MEASURE_FONT));
-	}, [titleRect.width]);
+		setIsDescriptionExpanded(false);
+	}, [card.id, displayPromptSplit.description]);
 
 	const stopEvent = (event: MouseEvent<HTMLElement>) => {
 		event.preventDefault();
 		event.stopPropagation();
 	};
+
+	const isDescriptionMeasured = descriptionRect.width > 0;
+
+	const descriptionDisplay = useMemo(() => {
+		if (!displayPromptSplit.description) {
+			return {
+				text: "",
+				isTruncated: false,
+			};
+		}
+		if (descriptionWidth <= 0) {
+			return {
+				text: displayPromptSplit.description,
+				isTruncated: false,
+			};
+		}
+		return clampTextWithInlineSuffix(displayPromptSplit.description, {
+			maxWidthPx: descriptionWidth,
+			maxLines: DESCRIPTION_COLLAPSE_LINES,
+			suffix: DESCRIPTION_COLLAPSE_SUFFIX,
+			measureText: (value) => measureTextWidth(value, descriptionFont),
+		});
+	}, [descriptionFont, descriptionWidth, displayPromptSplit.description]);
 
 	const renderStatusMarker = () => {
 		if (columnId === "in_progress") {
@@ -174,7 +251,11 @@ export function BoardCard({
 	};
 	const statusMarker = renderStatusMarker();
 	const showWorkspaceStatus = columnId === "in_progress" || columnId === "review" || isTrashCard;
-	const reviewWorkspacePath = reviewWorkspaceSnapshot ? formatPathForDisplay(reviewWorkspaceSnapshot.path) : null;
+	const reviewWorkspacePath = reviewWorkspaceSnapshot
+		? formatPathForDisplay(reviewWorkspaceSnapshot.path)
+		: isTrashCard
+			? reconstructTaskWorktreeDisplayPath(card.id, workspacePath)
+			: null;
 	const reviewRefLabel = reviewWorkspaceSnapshot?.branch ?? reviewWorkspaceSnapshot?.headCommit?.slice(0, 8) ?? "HEAD";
 	const reviewChangeSummary = reviewWorkspaceSnapshot
 		? reviewWorkspaceSnapshot.changedFiles == null
@@ -333,25 +414,64 @@ export function BoardCard({
 								) : null}
 							</div>
 							{displayPromptSplit.description ? (
-								<p
-									className={cn(
-										"text-sm leading-[1.4]",
-										isTrashCard ? "text-text-tertiary" : "text-text-secondary",
-									)}
-									style={{
-										margin: "4px 0 0",
-										display: "-webkit-box",
-										WebkitLineClamp: 3,
-										WebkitBoxOrient: "vertical",
-										overflow: "hidden",
-									}}
-								>
-									{displayPromptSplit.description}
-								</p>
+								<div ref={descriptionContainerRef}>
+									<p
+										ref={descriptionRef}
+										className={cn(
+											"text-sm leading-[1.4]",
+											isTrashCard ? "text-text-tertiary" : "text-text-secondary",
+											!isDescriptionMeasured && !isDescriptionExpanded && "line-clamp-3",
+										)}
+										style={{
+											margin: "2px 0 0",
+										}}
+									>
+										{isDescriptionExpanded || !descriptionDisplay.isTruncated
+											? displayPromptSplit.description
+											: descriptionDisplay.text}
+										{descriptionDisplay.isTruncated ? (
+											isDescriptionExpanded ? (
+												<>
+													{" "}
+													<button
+														type="button"
+														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+														aria-expanded={isDescriptionExpanded}
+														aria-label="Collapse task description"
+														onMouseDown={stopEvent}
+														onClick={(event) => {
+															stopEvent(event);
+															setIsDescriptionExpanded(false);
+														}}
+													>
+														{DESCRIPTION_COLLAPSE_LABEL}
+													</button>
+												</>
+											) : (
+												<>
+													{"… "}
+													<button
+														type="button"
+														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+														aria-expanded={isDescriptionExpanded}
+														aria-label="Expand task description"
+														onMouseDown={stopEvent}
+														onClick={(event) => {
+															stopEvent(event);
+															setIsDescriptionExpanded(true);
+														}}
+													>
+														{DESCRIPTION_EXPAND_LABEL}
+													</button>
+												</>
+											)
+										) : null}
+									</p>
+								</div>
 							) : null}
 							{sessionActivity ? (
 								<div
-									className="flex gap-1.5 items-start mt-1"
+									className="flex gap-1.5 items-start mt-[6px]"
 									style={{
 									color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
 									}}
@@ -366,7 +486,7 @@ export function BoardCard({
 										}}
 									/>
 									<span
-										className="font-mono"
+										className="font-mono line-clamp-6"
 										style={{
 											fontSize: 12,
 											whiteSpace: "normal",
@@ -377,7 +497,7 @@ export function BoardCard({
 									</span>
 								</div>
 							) : null}
-							{showWorkspaceStatus && reviewWorkspaceSnapshot ? (
+							{showWorkspaceStatus && reviewWorkspacePath ? (
 								<p
 									className="font-mono"
 									style={{
@@ -398,7 +518,7 @@ export function BoardCard({
 										>
 											{reviewWorkspacePath}
 										</span>
-									) : (
+									) : reviewWorkspaceSnapshot ? (
 										<>
 										<span style={{ color: SESSION_ACTIVITY_COLOR.secondary }}>{reviewWorkspacePath}</span>
 											<GitBranch
@@ -421,7 +541,7 @@ export function BoardCard({
 												</>
 											) : null}
 										</>
-									)}
+									) : null}
 								</p>
 							) : null}
 							{showReviewGitActions ? (

@@ -22,12 +22,15 @@ interface UseTaskEditorInput {
 	defaultTaskBranchRef: string;
 	selectedAgentId: RuntimeAgentId | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
-	onClearWorktreeError: () => void;
 	queueTaskStartAfterEdit?: (taskId: string) => void;
 }
 
 interface OpenEditTaskOptions {
 	preserveDetailSelection?: boolean;
+}
+
+interface CreateTaskOptions {
+	keepDialogOpen?: boolean;
 }
 
 export interface UseTaskEditorResult {
@@ -61,7 +64,8 @@ export interface UseTaskEditorResult {
 	handleCancelEditTask: () => void;
 	handleSaveEditedTask: () => string | null;
 	handleSaveAndStartEditedTask: () => void;
-	handleCreateTask: () => string | null;
+	handleCreateTask: (options?: CreateTaskOptions) => string | null;
+	handleCreateTasks: (prompts: string[], options?: CreateTaskOptions) => string[];
 	resetTaskEditorState: () => void;
 }
 
@@ -73,7 +77,6 @@ export function useTaskEditor({
 	defaultTaskBranchRef,
 	selectedAgentId,
 	setSelectedTaskId,
-	onClearWorktreeError,
 	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
@@ -245,7 +248,6 @@ export function useTaskEditor({
 		setEditTaskPrompt("");
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
-		onClearWorktreeError();
 		return savedTaskId;
 	}, [
 		editTaskAutoReviewEnabled,
@@ -254,7 +256,6 @@ export function useTaskEditor({
 		editTaskPrompt,
 		editTaskStartInPlanMode,
 		editingTaskId,
-		onClearWorktreeError,
 		resolvedDefaultTaskBranchRef,
 		setBoard,
 	]);
@@ -267,7 +268,7 @@ export function useTaskEditor({
 		queueTaskStartAfterEdit?.(taskId);
 	}, [handleSaveEditedTask, queueTaskStartAfterEdit]);
 
-	const handleCreateTask = useCallback((): string | null => {
+	const handleCreateTask = useCallback((options?: CreateTaskOptions): string | null => {
 		const prompt = newTaskPrompt.trim();
 		if (!prompt) {
 			return null;
@@ -276,18 +277,14 @@ export function useTaskEditor({
 			return null;
 		}
 		const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
-		let createdTaskId: string | null = null;
-		setBoard((currentBoard) => {
-			const created = addTaskToColumnWithResult(currentBoard, "backlog", {
-				prompt,
-				startInPlanMode: newTaskStartInPlanMode,
-				autoReviewEnabled: newTaskAutoReviewEnabled,
-				autoReviewMode: newTaskAutoReviewMode,
-				baseRef,
-			});
-			createdTaskId = created.task.id;
-			return created.board;
+		const created = addTaskToColumnWithResult(board, "backlog", {
+			prompt,
+			startInPlanMode: newTaskStartInPlanMode,
+			autoReviewEnabled: newTaskAutoReviewEnabled,
+			autoReviewMode: newTaskAutoReviewMode,
+			baseRef,
 		});
+		setBoard(created.board);
 		trackTaskCreated({
 			selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
 			start_in_plan_mode: newTaskStartInPlanMode,
@@ -302,17 +299,73 @@ export function useTaskEditor({
 		}
 		setNewTaskPrompt("");
 		setNewTaskBranchRef(baseRef);
-		setIsInlineTaskCreateOpen(false);
-		onClearWorktreeError();
-		return createdTaskId;
+		if (!options?.keepDialogOpen) {
+			setIsInlineTaskCreateOpen(false);
+		}
+		return created.task.id;
 	}, [
+		board,
 		currentProjectId,
 		newTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,
 		newTaskBranchRef,
 		newTaskPrompt,
 		newTaskStartInPlanMode,
-		onClearWorktreeError,
+		resolvedDefaultTaskBranchRef,
+		selectedAgentId,
+		setBoard,
+	]);
+
+	const handleCreateTasks = useCallback((prompts: string[], options?: CreateTaskOptions): string[] => {
+		const validPrompts = prompts.map((p) => p.trim()).filter(Boolean);
+		if (validPrompts.length === 0) {
+			return [];
+		}
+		if (!(newTaskBranchRef || resolvedDefaultTaskBranchRef)) {
+			return [];
+		}
+		const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
+		const createdTaskIds: string[] = [];
+		let updatedBoard = board;
+		for (const prompt of validPrompts) {
+			const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
+				prompt,
+				startInPlanMode: newTaskStartInPlanMode,
+				autoReviewEnabled: newTaskAutoReviewEnabled,
+				autoReviewMode: newTaskAutoReviewMode,
+				baseRef,
+			});
+			updatedBoard = created.board;
+			createdTaskIds.push(created.task.id);
+		}
+		setBoard(updatedBoard);
+		for (const prompt of validPrompts) {
+			trackTaskCreated({
+				selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
+				start_in_plan_mode: newTaskStartInPlanMode,
+				...(newTaskAutoReviewEnabled ? { auto_review_mode: newTaskAutoReviewMode } : {}),
+				prompt_character_count: prompt.length,
+			});
+		}
+		if (currentProjectId) {
+			setLastCreatedTaskBranchByProjectId((current) => ({
+				...current,
+				[currentProjectId]: baseRef,
+			}));
+		}
+		setNewTaskPrompt("");
+		setNewTaskBranchRef(baseRef);
+		if (!options?.keepDialogOpen) {
+			setIsInlineTaskCreateOpen(false);
+		}
+		return createdTaskIds;
+	}, [
+		board,
+		currentProjectId,
+		newTaskAutoReviewEnabled,
+		newTaskAutoReviewMode,
+		newTaskBranchRef,
+		newTaskStartInPlanMode,
 		resolvedDefaultTaskBranchRef,
 		selectedAgentId,
 		setBoard,
@@ -360,6 +413,7 @@ export function useTaskEditor({
 		handleSaveEditedTask,
 		handleSaveAndStartEditedTask,
 		handleCreateTask,
+		handleCreateTasks,
 		resetTaskEditorState,
 	};
 }

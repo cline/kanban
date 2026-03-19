@@ -3,27 +3,16 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
 import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
-import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import {
 	addTaskDependency,
 	findCardSelection,
-	getTaskColumnId,
 	moveTaskToColumn,
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 } from "@/state/board-state";
-import { getTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import { trackTaskDependencyCreated, trackTasksAutoStartedFromDependency } from "@/telemetry/events";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
-import { truncateTaskPromptLabel } from "@/utils/task-prompt";
-
-export interface PendingTrashWarningState {
-	taskId: string;
-	fileCount: number;
-	taskTitle: string;
-	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
-}
 
 interface RequestMoveTaskToTrashOptions {
 	optimisticMoveApplied?: boolean;
@@ -34,11 +23,8 @@ export function useLinkedBacklogTaskActions({
 	board,
 	setBoard,
 	setSelectedTaskId,
-	setPendingTrashWarning,
 	stopTaskSession,
 	cleanupTaskWorkspace,
-	fetchTaskWorkingChangeCount,
-	fetchTaskWorkspaceInfo,
 	maybeRequestNotificationPermissionForTaskStart,
 	kickoffTaskInProgress,
 	startBacklogTaskWithAnimation,
@@ -47,11 +33,8 @@ export function useLinkedBacklogTaskActions({
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
-	setPendingTrashWarning: Dispatch<SetStateAction<PendingTrashWarningState | null>>;
 	stopTaskSession: (taskId: string) => Promise<void>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
-	fetchTaskWorkingChangeCount: (task: BoardCard) => Promise<number | null>;
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	maybeRequestNotificationPermissionForTaskStart: () => void;
 	kickoffTaskInProgress: (
 		task: BoardCard,
@@ -199,7 +182,7 @@ export function useLinkedBacklogTaskActions({
 	);
 
 	const requestMoveTaskToTrash = useCallback(
-		async (taskId: string, fromColumnId: BoardColumnId, options?: RequestMoveTaskToTrashOptions): Promise<void> => {
+		async (taskId: string, _fromColumnId: BoardColumnId, options?: RequestMoveTaskToTrashOptions): Promise<void> => {
 			const boardSnapshot = boardRef.current;
 			const selection = findCardSelection(boardSnapshot, taskId);
 			if (!selection) {
@@ -223,47 +206,10 @@ export function useLinkedBacklogTaskActions({
 				return;
 			}
 
-			const changeCount = await fetchTaskWorkingChangeCount(selection.card);
-			if (changeCount == null) {
-				moveSelectionIfOptimisticMoveIsConfirmed();
-				await performMoveTaskToTrash(selection.card, boardSnapshot);
-				return;
-			}
-
-			if (changeCount > 0) {
-				if (options?.optimisticMoveApplied) {
-					setBoard((currentBoardState) => {
-						const currentColumnId = getTaskColumnId(currentBoardState, taskId);
-						if (currentColumnId !== "trash") {
-							return currentBoardState;
-						}
-						const reverted = moveTaskToColumn(currentBoardState, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoardState;
-					});
-				}
-				const workspaceInfo =
-					getTaskWorkspaceInfo(selection.card.id, selection.card.baseRef) ??
-					(await fetchTaskWorkspaceInfo(selection.card));
-				setPendingTrashWarning({
-					taskId,
-					fileCount: changeCount,
-					taskTitle: truncateTaskPromptLabel(selection.card.prompt) || `Task ${taskId}`,
-					workspaceInfo,
-				});
-				return;
-			}
-
 			moveSelectionIfOptimisticMoveIsConfirmed();
 			await performMoveTaskToTrash(selection.card, boardSnapshot);
 		},
-		[
-			fetchTaskWorkingChangeCount,
-			fetchTaskWorkspaceInfo,
-			performMoveTaskToTrash,
-			setBoard,
-			setPendingTrashWarning,
-			setSelectedTaskId,
-		],
+		[performMoveTaskToTrash, setSelectedTaskId],
 	);
 
 	return {

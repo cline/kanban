@@ -5,7 +5,7 @@ import { isTelemetryEnabled } from "@/telemetry/posthog-config";
 import type { TaskAutoReviewMode } from "@/types";
 
 export type TelemetrySelectedAgentId = RuntimeAgentId | "unknown";
-export type TaskStartSetupKind = "linear_mcp" | "github_cli";
+export type TaskStartSetupKind = "linear_mcp" | "github_cli" | "agent_cli";
 
 interface TelemetryEventMap {
 	task_created: {

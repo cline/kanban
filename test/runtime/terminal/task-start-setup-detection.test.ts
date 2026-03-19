@@ -11,14 +11,24 @@ function withTemporaryEnv<T>(
 		home: string;
 		pathPrefix?: string;
 		replacePath?: boolean;
+		appData?: string;
+		localAppData?: string;
 	},
 	run: () => T,
 ): T {
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	const previousPath = process.env.PATH;
+	const previousAppData = process.env.APPDATA;
+	const previousLocalAppData = process.env.LOCALAPPDATA;
 	process.env.HOME = input.home;
 	process.env.USERPROFILE = input.home;
+	if (input.appData !== undefined) {
+		process.env.APPDATA = input.appData;
+	}
+	if (input.localAppData !== undefined) {
+		process.env.LOCALAPPDATA = input.localAppData;
+	}
 	if (input.pathPrefix) {
 		process.env.PATH = input.replacePath
 			? input.pathPrefix
@@ -44,6 +54,20 @@ function withTemporaryEnv<T>(
 				delete process.env.PATH;
 			} else {
 				process.env.PATH = previousPath;
+			}
+		}
+		if (input.appData !== undefined) {
+			if (previousAppData === undefined) {
+				delete process.env.APPDATA;
+			} else {
+				process.env.APPDATA = previousAppData;
+			}
+		}
+		if (input.localAppData !== undefined) {
+			if (previousLocalAppData === undefined) {
+				delete process.env.LOCALAPPDATA;
+			} else {
+				process.env.LOCALAPPDATA = previousLocalAppData;
 			}
 		}
 	}
@@ -136,6 +160,49 @@ describe.sequential("detectTaskStartSetupAvailability", () => {
 			});
 		} finally {
 			cleanupBin();
+			cleanupHome();
+		}
+	});
+
+	it("detects OpenCode MCP from APPDATA config path", () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-task-start-setup-home-");
+		const { path: tempAppData, cleanup: cleanupAppData } = createTempDir("kanban-task-start-setup-appdata-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-task-start-setup-bin-");
+
+		try {
+			mkdirSync(join(tempAppData, "opencode"), { recursive: true });
+			writeFileSync(
+				join(tempAppData, "opencode", "opencode.json"),
+				JSON.stringify(
+					{
+						mcp: {
+							linear: { type: "remote" },
+						},
+					},
+					null,
+					2,
+				),
+				"utf8",
+			);
+
+			const availability = withTemporaryEnv(
+				{
+					home: tempHome,
+					appData: tempAppData,
+					localAppData: tempAppData,
+					pathPrefix: tempBin,
+					replacePath: true,
+				},
+				() => detectTaskStartSetupAvailability("opencode"),
+			);
+
+			expect(availability).toEqual({
+				githubCli: false,
+				linearMcp: true,
+			});
+		} finally {
+			cleanupBin();
+			cleanupAppData();
 			cleanupHome();
 		}
 	});

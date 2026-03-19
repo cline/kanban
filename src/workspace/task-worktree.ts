@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { access, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { access, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
+import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
 import type {
@@ -9,13 +9,20 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract.js";
 import { createGitProcessEnv } from "../core/git-process-env.js";
+import { lockedFileSystem } from "../fs/locked-file-system.js";
 import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
+import {
+	getWorkspaceFolderLabelForWorktreePath,
+	KANBAN_TASK_WORKTREES_DIR_NAME,
+	normalizeTaskIdForWorktreePath,
+} from "./task-worktree-path.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
-const WORKTREES_DIR = "worktrees";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
+const KANBAN_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
+const TASK_PATCH_FILE_SUFFIX = ".patch";
 
 const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".git",
@@ -27,33 +34,27 @@ const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
 	".Trashes",
 ]);
 
-function normalizeTaskId(taskId: string): string {
-	const normalized = taskId.trim();
-	if (!normalized || normalized.includes("/") || normalized.includes("\\") || normalized.includes("..")) {
-		throw new Error("Invalid task id for worktree path.");
-	}
-	return normalized;
-}
+type CreateSymlink = (target: string, path: string, type: "dir" | "file") => Promise<void>;
 
-function getWorkspaceFolderLabel(repoPath: string): string {
-	const trimmed = repoPath.trim().replace(/[\\/]+$/g, "");
-	const folder = basename(trimmed);
-	if (!folder) {
-		return "workspace";
+export async function mirrorIgnoredPath(options: {
+	sourcePath: string;
+	targetPath: string;
+	isDirectory: boolean;
+	createSymlink?: CreateSymlink;
+}): Promise<"mirrored" | "skipped"> {
+	const createSymlink = options.createSymlink ?? symlink;
+	try {
+		await createSymlink(options.sourcePath, options.targetPath, options.isDirectory ? "dir" : "file");
+		return "mirrored";
+	} catch {
+		return "skipped";
 	}
-	const cleaned = [...folder]
-		.filter((char) => {
-			const code = char.charCodeAt(0);
-			return code >= 32 && code !== 127;
-		})
-		.join("")
-		.trim();
-	return cleaned || "workspace";
 }
 
 function toPlatformRelativePath(path: string): string {
 	return path
 		.trim()
+		.replaceAll("\\", "/")
 		.replace(/\/+$/g, "")
 		.split("/")
 		.filter((segment) => segment.length > 0)
@@ -70,12 +71,37 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function runGit(args: string[]): Promise<string> {
+	const stdout = await runGitRaw(args);
+	return stdout.trim();
+}
+
+async function runGitRaw(args: string[]): Promise<string> {
 	const { stdout } = await execFileAsync("git", args, {
 		encoding: "utf8",
 		maxBuffer: GIT_MAX_BUFFER_BYTES,
 		env: createGitProcessEnv(),
 	});
-	return String(stdout).trim();
+	return String(stdout);
+}
+
+function getExecExitCode(error: unknown): number | null {
+	if (error && typeof error === "object" && "code" in error) {
+		const code = (error as { code?: unknown }).code;
+		return typeof code === "number" ? code : null;
+	}
+	return null;
+}
+
+async function runGitRawAllowExitCodes(args: string[], allowedExitCodes: number[]): Promise<string> {
+	try {
+		return await runGitRaw(args);
+	} catch (error) {
+		const exitCode = getExecExitCode(error);
+		if (exitCode !== null && allowedExitCodes.includes(exitCode)) {
+			return String((error as { stdout?: unknown }).stdout ?? "");
+		}
+		throw error;
+	}
 }
 
 function getGitCommandErrorMessage(error: unknown): string {
@@ -111,17 +137,116 @@ async function readGitHeadInfo(cwd: string): Promise<{
 }
 
 function getWorktreesRootPath(taskId: string): string {
-	const normalizedTaskId = normalizeTaskId(taskId);
-	return join(getRuntimeHomePath(), WORKTREES_DIR, normalizedTaskId);
+	const normalizedTaskId = normalizeTaskIdForWorktreePath(taskId);
+	return join(getRuntimeHomePath(), KANBAN_TASK_WORKTREES_DIR_NAME, normalizedTaskId);
 }
 
 function getWorktreesBaseRootPath(): string {
-	return join(getRuntimeHomePath(), WORKTREES_DIR);
+	return join(getRuntimeHomePath(), KANBAN_TASK_WORKTREES_DIR_NAME);
+}
+
+function getTrashedTaskPatchesRootPath(): string {
+	return join(getRuntimeHomePath(), KANBAN_TRASHED_TASK_PATCHES_DIR_NAME);
 }
 
 function getTaskWorktreePath(repoPath: string, taskId: string): string {
-	const workspaceLabel = getWorkspaceFolderLabel(repoPath);
+	const workspaceLabel = getWorkspaceFolderLabelForWorktreePath(repoPath);
 	return join(getWorktreesRootPath(taskId), workspaceLabel);
+}
+
+function getTaskPatchFilePrefix(taskId: string): string {
+	return `${normalizeTaskIdForWorktreePath(taskId)}.`;
+}
+
+function parseTaskPatchCommit(taskId: string, filename: string): string | null {
+	const prefix = getTaskPatchFilePrefix(taskId);
+	if (!filename.startsWith(prefix) || !filename.endsWith(TASK_PATCH_FILE_SUFFIX)) {
+		return null;
+	}
+	const commit = filename.slice(prefix.length, -TASK_PATCH_FILE_SUFFIX.length).trim();
+	return commit.length > 0 ? commit : null;
+}
+
+async function listTaskPatchFiles(taskId: string): Promise<string[]> {
+	const patchesRootPath = getTrashedTaskPatchesRootPath();
+	try {
+		const entries = await readdir(patchesRootPath);
+		return entries.filter((entry) => parseTaskPatchCommit(taskId, entry) !== null);
+	} catch {
+		return [];
+	}
+}
+
+async function deleteTaskPatchFiles(taskId: string): Promise<void> {
+	const patchesRootPath = getTrashedTaskPatchesRootPath();
+	const filenames = await listTaskPatchFiles(taskId);
+	await Promise.all(filenames.map((filename) => rm(join(patchesRootPath, filename), { force: true })));
+}
+
+async function findTaskPatch(taskId: string): Promise<{ path: string; commit: string } | null> {
+	const patchesRootPath = getTrashedTaskPatchesRootPath();
+	const filenames = await listTaskPatchFiles(taskId);
+	const filename = filenames.sort().at(-1);
+	if (!filename) {
+		return null;
+	}
+	const commit = parseTaskPatchCommit(taskId, filename);
+	if (!commit) {
+		return null;
+	}
+	return {
+		path: join(patchesRootPath, filename),
+		commit,
+	};
+}
+
+function ensureTrailingNewline(value: string): string {
+	return value.endsWith("\n") ? value : `${value}\n`;
+}
+
+async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
+	const output = await runGitRaw(["-C", worktreePath, "ls-files", "--others", "--exclude-standard", "-z"]);
+	return output
+		.split("\0")
+		.map((path) => path.trim())
+		.filter((path) => path.length > 0);
+}
+
+async function captureTaskPatch(options: { repoPath: string; taskId: string; worktreePath: string }): Promise<void> {
+	const headCommit = await runGit(["-C", options.worktreePath, "rev-parse", "--verify", "HEAD"]);
+	const trackedPatch = await runGitRawAllowExitCodes(["-C", options.worktreePath, "diff", "--binary", "HEAD", "--"], [1]);
+	const patchChunks = trackedPatch.trim().length > 0 ? [ensureTrailingNewline(trackedPatch)] : [];
+
+	for (const relativePath of await listUntrackedPaths(options.worktreePath)) {
+		const untrackedPatch = await runGitRawAllowExitCodes(
+			["-C", options.worktreePath, "diff", "--binary", "--no-index", "--", "/dev/null", relativePath],
+			[1],
+		);
+		if (untrackedPatch.trim().length > 0) {
+			patchChunks.push(ensureTrailingNewline(untrackedPatch));
+		}
+	}
+
+	await deleteTaskPatchFiles(options.taskId);
+	if (patchChunks.length === 0) {
+		return;
+	}
+
+	const patchesRootPath = getTrashedTaskPatchesRootPath();
+	await mkdir(patchesRootPath, { recursive: true });
+	const patchPath = join(
+		patchesRootPath,
+		`${normalizeTaskIdForWorktreePath(options.taskId)}.${headCommit}${TASK_PATCH_FILE_SUFFIX}`,
+	);
+	await lockedFileSystem.writeTextFileAtomic(patchPath, patchChunks.join(""));
+}
+
+async function applyTaskPatch(patchPath: string, worktreePath: string): Promise<void> {
+	await execFileAsync("git", ["-C", worktreePath, "apply", "--binary", "--whitespace=nowarn", patchPath], {
+		encoding: "utf8",
+		maxBuffer: GIT_MAX_BUFFER_BYTES,
+		env: createGitProcessEnv(),
+	});
 }
 
 function shouldSkipSymlink(relativePath: string): boolean {
@@ -172,6 +297,24 @@ async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 		.split("\n")
 		.map((line) => toPlatformRelativePath(line))
 		.filter((line) => line.length > 0);
+}
+
+async function worktreeHasConfiguredSubmodules(worktreePath: string): Promise<boolean> {
+	const gitmodulesPath = join(worktreePath, ".gitmodules");
+	if (!(await pathExists(gitmodulesPath))) {
+		return false;
+	}
+
+	const output = await tryRunGit([
+		"-C",
+		worktreePath,
+		"config",
+		"--file",
+		gitmodulesPath,
+		"--get-regexp",
+		"^submodule\\..*\\.path$",
+	]);
+	return output !== null && output.trim().length > 0;
 }
 
 function escapeGitIgnoreLiteral(path: string): string {
@@ -228,8 +371,7 @@ async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: s
 		return;
 	}
 
-	await mkdir(dirname(excludePath), { recursive: true });
-	await writeFile(excludePath, normalizedNextContent, "utf8");
+	await lockedFileSystem.writeTextFileAtomic(excludePath, normalizedNextContent);
 }
 
 async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: string): Promise<void> {
@@ -254,7 +396,29 @@ async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: stri
 
 		const sourceStat = await lstat(sourcePath);
 		await mkdir(dirname(targetPath), { recursive: true });
-		await symlink(sourcePath, targetPath, sourceStat.isDirectory() ? "dir" : "file");
+		await mirrorIgnoredPath({
+			sourcePath,
+			targetPath,
+			isDirectory: sourceStat.isDirectory(),
+		});
+	}
+}
+
+async function initializeSubmodulesIfNeeded(worktreePath: string): Promise<void> {
+	if (!(await worktreeHasConfiguredSubmodules(worktreePath))) {
+		return;
+	}
+
+	await runGit(["-C", worktreePath, "submodule", "update", "--init", "--recursive"]);
+}
+
+async function prepareNewTaskWorktree(repoPath: string, worktreePath: string): Promise<void> {
+	try {
+		await initializeSubmodulesIfNeeded(worktreePath);
+		await syncIgnoredPathsIntoWorktree(repoPath, worktreePath);
+	} catch (error) {
+		await removeTaskWorktreeInternal(repoPath, worktreePath).catch(() => {});
+		throw error;
 	}
 }
 
@@ -288,7 +452,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 }): Promise<RuntimeWorktreeEnsureResponse> {
 	try {
 		const context = await loadWorkspaceContext(options.cwd);
-		const taskId = normalizeTaskId(options.taskId);
+		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const worktreePath = getTaskWorktreePath(context.repoPath, taskId);
 		// Investigation note: ensure is called on every task start. The previous implementation
 		// compared the worktree HEAD to the latest baseRef commit and recreated the worktree
@@ -316,9 +480,9 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			};
 		}
 
-		let baseCommit: string;
+		let requestedBaseCommit: string;
 		try {
-			baseCommit = await runGit(["-C", context.repoPath, "rev-parse", "--verify", `${requestedBaseRef}^{commit}`]);
+			requestedBaseCommit = await runGit(["-C", context.repoPath, "rev-parse", "--verify", `${requestedBaseRef}^{commit}`]);
 		} catch (error) {
 			return {
 				ok: false,
@@ -329,19 +493,49 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			};
 		}
 
+		const storedPatch = await findTaskPatch(taskId);
+		let baseCommit = storedPatch?.commit ?? requestedBaseCommit;
+		let warning: string | undefined;
+
 		if (await pathExists(worktreePath)) {
 			await removeTaskWorktreeInternal(context.repoPath, worktreePath);
 		}
 
 		await mkdir(dirname(worktreePath), { recursive: true });
-		await runGit(["-C", context.repoPath, "worktree", "add", "--detach", worktreePath, baseCommit]);
-		await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
+		try {
+			await runGit(["-C", context.repoPath, "worktree", "add", "--detach", worktreePath, baseCommit]);
+		} catch (error) {
+			if (!storedPatch) {
+				return {
+					ok: false,
+					path: null,
+					baseRef: requestedBaseRef,
+					baseCommit: null,
+					error: getGitCommandErrorMessage(error),
+				};
+			}
+
+			baseCommit = requestedBaseCommit;
+			warning = "Could not restore the saved task patch onto its original commit. Started from the task base ref instead.";
+			await runGit(["-C", context.repoPath, "worktree", "add", "--detach", worktreePath, baseCommit]);
+		}
+		await prepareNewTaskWorktree(context.repoPath, worktreePath);
+
+		if (storedPatch && baseCommit === storedPatch.commit) {
+			try {
+				await applyTaskPatch(storedPatch.path, worktreePath);
+				await rm(storedPatch.path, { force: true });
+			} catch (error) {
+				warning = `Saved task changes could not be reapplied automatically. ${getGitCommandErrorMessage(error)}`;
+			}
+		}
 
 		return {
 			ok: true,
 			path: worktreePath,
 			baseRef: requestedBaseRef,
 			baseCommit,
+			warning,
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -360,9 +554,28 @@ export async function deleteTaskWorktree(options: {
 	taskId: string;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
-		const taskId = normalizeTaskId(options.taskId);
+		const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 		const rootPath = getWorktreesBaseRootPath();
 		const worktreePath = getTaskWorktreePath(options.repoPath, taskId);
+		if (!(await pathExists(worktreePath))) {
+			await deleteTaskPatchFiles(taskId);
+			await pruneEmptyParents(rootPath, dirname(worktreePath));
+			return {
+				ok: true,
+				removed: false,
+			};
+		}
+
+		try {
+			await captureTaskPatch({
+				repoPath: options.repoPath,
+				taskId,
+				worktreePath,
+			});
+		} catch {
+			// Patch capture is best-effort. A corrupted or partially-created
+			// worktree (e.g. plain directory, no git init) should still be removed.
+		}
 		const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 		await pruneEmptyParents(rootPath, dirname(worktreePath));
 
@@ -417,7 +630,7 @@ export async function getTaskWorkspacePathInfo(options: {
 	taskId: string;
 	baseRef: string;
 }): Promise<Pick<RuntimeTaskWorkspaceInfoResponse, "taskId" | "path" | "exists" | "baseRef">> {
-	const taskId = normalizeTaskId(options.taskId);
+	const taskId = normalizeTaskIdForWorktreePath(options.taskId);
 	const normalizedBaseRef = options.baseRef.trim();
 	const repoPath = options.cwd.trim();
 

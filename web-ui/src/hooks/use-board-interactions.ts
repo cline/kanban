@@ -1,9 +1,9 @@
 import type { DropResult } from "@hello-pangea/dnd";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { showAppToast } from "@/components/app-toaster";
+import { notifyError, showAppToast } from "@/components/app-toaster";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import { type PendingTrashWarningState, useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
+import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
@@ -54,21 +54,18 @@ interface UseBoardInteractionsInput {
 	selectedTaskId: string | null;
 	currentProjectId: string | null;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
-	setPendingTrashWarning: Dispatch<SetStateAction<PendingTrashWarningState | null>>;
 	setIsClearTrashDialogOpen: Dispatch<SetStateAction<boolean>>;
 	setIsGitHistoryOpen: Dispatch<SetStateAction<boolean>>;
 	stopTaskSession: (taskId: string) => Promise<void>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<unknown>;
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
-	fetchTaskWorkingChangeCount: (task: BoardCard) => Promise<number | null>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	sendTaskSessionInput: (
 		taskId: string,
 		input: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	onWorktreeError: (message: string | null) => void;
 	readyForReviewNotificationsEnabled: boolean;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
@@ -105,17 +102,14 @@ export function useBoardInteractions({
 	selectedTaskId,
 	currentProjectId,
 	setSelectedTaskId,
-	setPendingTrashWarning,
 	setIsClearTrashDialogOpen,
 	setIsGitHistoryOpen,
 	stopTaskSession,
 	cleanupTaskWorkspace,
 	ensureTaskWorkspace,
 	startTaskSession,
-	fetchTaskWorkingChangeCount,
 	fetchTaskWorkspaceInfo,
 	sendTaskSessionInput,
-	onWorktreeError,
 	readyForReviewNotificationsEnabled,
 	taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction,
@@ -249,7 +243,7 @@ export function useBoardInteractions({
 			const optimisticMove = options?.optimisticMove ?? true;
 			const ensured = await ensureTaskWorkspace(task);
 			if (!ensured.ok) {
-				onWorktreeError(ensured.message ?? "Could not set up task workspace.");
+				notifyError(ensured.message ?? "Could not set up task workspace.");
 				if (optimisticMove) {
 					setBoard((currentBoard) => {
 						const currentColumnId = getTaskColumnId(currentBoard, taskId);
@@ -261,6 +255,14 @@ export function useBoardInteractions({
 					});
 				}
 				return false;
+			}
+			if (ensured.response?.warning) {
+				showAppToast({
+					intent: "warning",
+					icon: "warning-sign",
+					message: ensured.response.warning,
+					timeout: 7000,
+				});
 			}
 			if (selectedTaskId === taskId) {
 				if (ensured.response) {
@@ -281,7 +283,7 @@ export function useBoardInteractions({
 			}
 			const started = await startTaskSession(task);
 			if (!started.ok) {
-				onWorktreeError(started.message ?? "Could not start task session.");
+				notifyError(started.message ?? "Could not start task session.");
 				if (optimisticMove) {
 					setBoard((currentBoard) => {
 						const currentColumnId = getTaskColumnId(currentBoard, taskId);
@@ -304,10 +306,9 @@ export function useBoardInteractions({
 					return moved.moved ? moved.board : currentBoard;
 				});
 			}
-			onWorktreeError(null);
 			return true;
 		},
-		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, onWorktreeError, selectedTaskId, setBoard, startTaskSession],
+		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, setBoard, startTaskSession],
 	);
 
 	const startBacklogTaskWithAnimation = useCallback(
@@ -318,23 +319,9 @@ export function useBoardInteractions({
 				return startBacklogTaskWithAnimation(task);
 			}
 			if (programmaticMoveAttempt === "unavailable") {
-				let movedTask: BoardCard | null = null;
-				setBoard((currentBoard) => {
-					const selection = findCardSelection(currentBoard, task.id);
-					if (!selection || selection.column.id !== "backlog") {
-						return currentBoard;
-					}
-					const moved = moveTaskToColumn(currentBoard, task.id, "in_progress", { insertAtTop: true });
-					if (!moved.moved) {
-						return currentBoard;
-					}
-					movedTask = findCardSelection(moved.board, task.id)?.card ?? null;
-					return moved.board;
+				return kickoffTaskInProgress(task, task.id, "backlog", {
+					optimisticMove: false,
 				});
-				if (!movedTask) {
-					return false;
-				}
-				return kickoffTaskInProgress(movedTask, task.id, "backlog");
 			}
 
 			let resolveCompletion: ((started: boolean) => void) | null = null;
@@ -444,11 +431,8 @@ export function useBoardInteractions({
 			board,
 			setBoard,
 			setSelectedTaskId,
-			setPendingTrashWarning,
 			stopTaskSession,
 			cleanupTaskWorkspace,
-			fetchTaskWorkingChangeCount,
-			fetchTaskWorkspaceInfo,
 			maybeRequestNotificationPermissionForTaskStart,
 			kickoffTaskInProgress,
 			startBacklogTaskWithAnimation,
@@ -469,17 +453,42 @@ export function useBoardInteractions({
 
 	const resumeTaskFromTrash = useCallback(
 		async (task: BoardCard, taskId: string, options?: { optimisticMoveApplied?: boolean }): Promise<void> => {
+			const ensured = await ensureTaskWorkspace(task);
+			if (!ensured.ok) {
+				notifyError(ensured.message ?? "Could not set up task workspace.");
+				if (!options?.optimisticMoveApplied) {
+					return;
+				}
+				setBoard((currentBoard) => {
+					const currentColumnId = getTaskColumnId(currentBoard, taskId);
+					if (currentColumnId !== "review") {
+						return currentBoard;
+					}
+					const reverted = moveTaskToColumn(currentBoard, taskId, "trash", {
+						insertAtTop: true,
+					});
+					return reverted.moved ? reverted.board : currentBoard;
+				});
+				return;
+			}
+			if (ensured.response?.warning) {
+				showAppToast({
+					intent: "warning",
+					icon: "warning-sign",
+					message: ensured.response.warning,
+					timeout: 7000,
+				});
+			}
 			const resumed = await startTaskSession(task, { resumeFromTrash: true });
 			if (resumed.ok) {
 				setBoard((currentBoard) => {
 					const disabledAutoReview = disableTaskAutoReview(currentBoard, taskId);
 					return disabledAutoReview.updated ? disabledAutoReview.board : currentBoard;
 				});
-				onWorktreeError(null);
 				return;
 			}
 
-			onWorktreeError(resumed.message ?? "Could not resume task session.");
+			notifyError(resumed.message ?? "Could not resume task session.");
 			if (!options?.optimisticMoveApplied) {
 				return;
 			}
@@ -494,7 +503,7 @@ export function useBoardInteractions({
 				return reverted.moved ? reverted.board : currentBoard;
 			});
 		},
-		[onWorktreeError, setBoard, startTaskSession],
+		[ensureTaskWorkspace, setBoard, startTaskSession],
 	);
 
 	const handleDragEnd = useCallback(
@@ -758,9 +767,6 @@ export function useBoardInteractions({
 			}
 			return nextSessions;
 		});
-		setPendingTrashWarning((currentWarning) =>
-			currentWarning && taskIds.includes(currentWarning.taskId) ? null : currentWarning,
-		);
 		if (selectedTaskId && taskIds.includes(selectedTaskId)) {
 			setSelectedTaskId(null);
 			clearTaskWorkspaceInfo(selectedTaskId);
@@ -779,7 +785,6 @@ export function useBoardInteractions({
 		selectedTaskId,
 		setBoard,
 		setIsClearTrashDialogOpen,
-		setPendingTrashWarning,
 		setSelectedTaskId,
 		setSessions,
 		stopTaskSession,

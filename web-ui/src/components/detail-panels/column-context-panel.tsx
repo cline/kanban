@@ -20,7 +20,6 @@ function ColumnSection({
 	onStartTask,
 	onStartAllTasks,
 	onClearTrash,
-	inlineTaskCreator,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
@@ -32,6 +31,7 @@ function ColumnSection({
 	openPrTaskLoadingById,
 	moveToTrashLoadingById,
 	activeDragSourceColumnId,
+	workspacePath,
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
@@ -42,7 +42,6 @@ function ColumnSection({
 	onStartTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
-	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
@@ -54,6 +53,7 @@ function ColumnSection({
 	openPrTaskLoadingById?: Record<string, boolean>;
 	moveToTrashLoadingById?: Record<string, boolean>;
 	activeDragSourceColumnId?: BoardColumnId | null;
+	workspacePath?: string | null;
 }): React.ReactElement {
 	const [open, setOpen] = useState(defaultOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
@@ -150,7 +150,7 @@ function ColumnSection({
 									padding: 8,
 								}}
 							>
-								{canCreate && !inlineTaskCreator ? (
+								{canCreate ? (
 									<Button
 										icon={<span style={{ fontSize: 16, lineHeight: 1 }}>+</span>}
 										aria-label="Create task"
@@ -166,7 +166,6 @@ function ColumnSection({
 										</span>
 									</Button>
 								) : null}
-								{inlineTaskCreator}
 								{(() => {
 									const items: ReactNode[] = [];
 									let draggableIndex = 0;
@@ -195,6 +194,7 @@ function ColumnSection({
 												isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
 												isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
 												isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
+											workspacePath={workspacePath}
 												onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);
@@ -225,6 +225,7 @@ function ColumnSection({
 
 export function ColumnContextPanel({
 	selection,
+	workspacePath,
 	onCardSelect,
 	taskSessions,
 	onTaskDragEnd,
@@ -232,7 +233,6 @@ export function ColumnContextPanel({
 	onStartTask,
 	onStartAllTasks,
 	onClearTrash,
-	inlineTaskCreator,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
@@ -245,6 +245,7 @@ export function ColumnContextPanel({
 	moveToTrashLoadingById,
 }: {
 	selection: CardSelection;
+	workspacePath?: string | null;
 	onCardSelect: (taskId: string) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onTaskDragEnd: (result: DropResult) => void;
@@ -252,7 +253,6 @@ export function ColumnContextPanel({
 	onStartTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
-	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
@@ -320,7 +320,13 @@ export function ColumnContextPanel({
 				<div
 					ref={scrollContainerRef}
 					className="flex flex-col gap-2 p-2"
-					style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}
+					style={{
+						flex: "1 1 0",
+						minHeight: 0,
+						overflowY: "auto",
+						overscrollBehavior: "contain",
+						overflowAnchor: "none",
+					}}
 				>
 					{selection.allColumns.map((column) => (
 						<ColumnSection
@@ -334,7 +340,6 @@ export function ColumnContextPanel({
 							onStartTask={column.id === "backlog" ? onStartTask : undefined}
 							onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 							onClearTrash={column.id === "trash" ? onClearTrash : undefined}
-							inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
 							editingTaskId={column.id === "backlog" ? editingTaskId : null}
 							inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
 							onEditTask={column.id === "backlog" ? onEditTask : undefined}
@@ -346,6 +351,7 @@ export function ColumnContextPanel({
 							openPrTaskLoadingById={column.id === "review" ? openPrTaskLoadingById : undefined}
 							moveToTrashLoadingById={column.id === "review" ? moveToTrashLoadingById : undefined}
 							activeDragSourceColumnId={activeDragSourceColumnId}
+							workspacePath={workspacePath}
 						/>
 					))}
 				</div>

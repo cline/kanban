@@ -1,9 +1,18 @@
+// Frontend facade for task-scoped runtime actions.
+// It owns how the board and detail view start, stop, resize, and route task
+// sessions across native Cline and PTY-backed agents.
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 
+import { notifyError } from "@/components/app-toaster";
+import {
+	type ClineChatActionResult,
+	useClineChatRuntimeActions,
+} from "@/hooks/use-cline-chat-runtime-actions";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
+	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
@@ -18,7 +27,6 @@ import type { BoardCard } from "@/types";
 interface UseTaskSessionsInput {
 	currentProjectId: string | null;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
-	onWorktreeError: (message: string | null) => void;
 }
 
 interface EnsureTaskWorkspaceResult {
@@ -51,15 +59,17 @@ export interface UseTaskSessionsResult {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<SendTaskSessionInputResult>;
+	sendTaskChatMessage: (taskId: string, text: string) => Promise<ClineChatActionResult>;
+	abortTaskChatTurn: (taskId: string) => Promise<ClineChatActionResult>;
+	cancelTaskChatTurn: (taskId: string) => Promise<ClineChatActionResult>;
+	fetchTaskChatMessages: (taskId: string) => Promise<RuntimeTaskChatMessage[] | null>;
 	cleanupTaskWorkspace: (taskId: string) => Promise<RuntimeWorktreeDeleteResponse | null>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
-	fetchTaskWorkingChangeCount: (task: BoardCard) => Promise<number | null>;
 }
 
 export function useTaskSessions({
 	currentProjectId,
 	setSessions,
-	onWorktreeError,
 }: UseTaskSessionsInput): UseTaskSessionsResult {
 	const upsertSession = useCallback(
 		(summary: RuntimeTaskSessionSummary) => {
@@ -70,6 +80,15 @@ export function useTaskSessions({
 		},
 		[setSessions],
 	);
+	const {
+		sendTaskChatMessage,
+		loadTaskChatMessages: fetchTaskChatMessages,
+		abortTaskChatTurn,
+		cancelTaskChatTurn,
+	} = useClineChatRuntimeActions({
+		currentProjectId,
+		onSessionSummary: upsertSession,
+	});
 
 	const ensureTaskWorkspace = useCallback(
 		async (task: BoardCard): Promise<EnsureTaskWorkspaceResult> => {
@@ -225,37 +244,13 @@ export function useTaskSessions({
 				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				onWorktreeError(message);
-				return null;
-			}
-		},
-		[currentProjectId, onWorktreeError],
-	);
-
-	const fetchTaskWorkingChangeCount = useCallback(
-		async (task: BoardCard): Promise<number | null> => {
-			if (!currentProjectId) {
-				return null;
-			}
-			try {
-				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				const payload = await trpcClient.workspace.getGitSummary.query({
-					taskId: task.id,
-					baseRef: task.baseRef,
-				});
-				if (!payload.ok) {
-					console.error(`[fetchTaskWorkingChangeCount] ${payload.error ?? "Workspace summary request failed."}`);
-					return null;
-				}
-				return payload.summary.changedFiles;
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				console.error(`[fetchTaskWorkingChangeCount] ${message}`);
+				notifyError(message);
 				return null;
 			}
 		},
 		[currentProjectId],
 	);
+
 
 	return {
 		upsertSession,
@@ -263,8 +258,11 @@ export function useTaskSessions({
 		startTaskSession,
 		stopTaskSession,
 		sendTaskSessionInput,
+		sendTaskChatMessage,
+		abortTaskChatTurn,
+		cancelTaskChatTurn,
+		fetchTaskChatMessages,
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
-		fetchTaskWorkingChangeCount,
 	};
 }

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters.js";
 
 const originalHome = process.env.HOME;
+const originalAppData = process.env.APPDATA;
+const originalLocalAppData = process.env.LOCALAPPDATA;
 let tempHome: string | null = null;
 
 function setupTempHome(): string {
@@ -24,6 +26,16 @@ afterEach(() => {
 	if (tempHome) {
 		rmSync(tempHome, { recursive: true, force: true });
 		tempHome = null;
+	}
+	if (originalAppData === undefined) {
+		delete process.env.APPDATA;
+	} else {
+		process.env.APPDATA = originalAppData;
+	}
+	if (originalLocalAppData === undefined) {
+		delete process.env.LOCALAPPDATA;
+	} else {
+		process.env.LOCALAPPDATA = originalLocalAppData;
 	}
 });
 
@@ -52,6 +64,41 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		const wrapperPath = join(homedir(), ".kanban", "hooks", "codex", "codex-wrapper.mjs");
 		expect(existsSync(wrapperPath)).toBe(false);
+	});
+
+	it("appends Kanban sidebar instructions for home Claude sessions", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:claude:abc123",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const appendPromptIndex = launch.args.indexOf("--append-system-prompt");
+		expect(appendPromptIndex).toBeGreaterThanOrEqual(0);
+		expect(launch.args[appendPromptIndex + 1]).toContain("Kanban sidebar agent");
+		expect(launch.args[appendPromptIndex + 1]).toContain("kanban task create");
+	});
+
+	it("appends Kanban sidebar instructions for home Codex sessions", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:codex:abc123",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const configArgIndex = launch.args.indexOf("-c");
+		expect(configArgIndex).toBeGreaterThanOrEqual(0);
+		expect(launch.args[configArgIndex + 1]).toContain("developer_instructions=");
+		expect(launch.args[configArgIndex + 1]).toContain("Kanban sidebar agent");
+		expect(launch.args[configArgIndex + 1]).toContain("kanban task create");
 	});
 
 	it("writes Claude settings with explicit permission hook", async () => {
@@ -115,8 +162,64 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const plugin = readFileSync(pluginPath, "utf8");
 		expect(plugin).toContain("parentID");
 		expect(plugin).toContain('"permission.ask"');
+		expect(plugin).toContain('"tool.execute.before"');
+		expect(plugin).toContain('"tool.execute.after"');
 		expect(plugin).toContain("session.status");
+		expect(plugin).toContain("message.part.updated");
+		expect(plugin).toContain("last_assistant_message");
+		expect(plugin).toContain("--metadata-base64");
+		expect(plugin).toContain('if (kind === "review")');
 		expect(plugin).toContain('currentState = "idle"');
+	});
+
+	it("loads OpenCode preferred model from LOCALAPPDATA state and auth paths", async () => {
+		const homePath = setupTempHome();
+		const localAppDataPath = join(homePath, "AppData", "Local");
+		process.env.LOCALAPPDATA = localAppDataPath;
+
+		const statePath = join(localAppDataPath, "opencode", "state");
+		mkdirSync(statePath, { recursive: true });
+		writeFileSync(
+			join(statePath, "model.json"),
+			JSON.stringify(
+				{
+					recent: [
+						{ providerID: "anthropic", modelID: "claude-3-7-sonnet" },
+						{ providerID: "openai", modelID: "gpt-4o" },
+					],
+				},
+				null,
+				2,
+			),
+			"utf8",
+		);
+
+		const authPath = join(localAppDataPath, "opencode");
+		mkdirSync(authPath, { recursive: true });
+		writeFileSync(
+			join(authPath, "auth.json"),
+			JSON.stringify(
+				{
+					openai: { key: "sk-test" },
+				},
+				null,
+				2,
+			),
+			"utf8",
+		);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-opencode-model",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const modelIndex = launch.args.indexOf("--model");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe("openai/gpt-4o");
 	});
 
 	it("writes Droid settings with hook transitions and runtime autonomy mode", async () => {
@@ -220,10 +323,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const preToolUseScript = readFileSync(preToolUseHookPath, "utf8");
 		expect(preToolUseScript).toContain("hooks");
 		expect(preToolUseScript).toContain("activity");
+		expect(preToolUseScript).toContain("to_in_progress");
+		expect(preToolUseScript).toContain("to_review");
+		expect(preToolUseScript).toContain("ask_followup_question");
+		expect(preToolUseScript).toContain("plan_mode_respond");
 
 		const postToolUseScript = readFileSync(postToolUseHookPath, "utf8");
 		expect(postToolUseScript).toContain("hooks");
 		expect(postToolUseScript).toContain("activity");
+		expect(postToolUseScript).toContain("to_in_progress");
+		expect(postToolUseScript).toContain("ask_followup_question");
+		expect(postToolUseScript).toContain("plan_mode_respond");
 	});
 
 	it("adds resume flags for each agent", async () => {

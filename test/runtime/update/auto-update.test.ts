@@ -8,6 +8,15 @@ import {
 	runPendingAutoUpdateOnShutdown,
 } from "../../../src/update/auto-update.js";
 
+function normalizePath(value: string): string {
+	return value.replaceAll("\\", "/");
+}
+
+function expectPathEndsWith(actualPath: string | undefined, expectedSuffix: string): void {
+	expect(actualPath).toBeDefined();
+	expect(normalizePath(actualPath ?? "").endsWith(expectedSuffix)).toBe(true);
+}
+
 afterEach(() => {
 	runPendingAutoUpdateOnShutdown({
 		spawnUpdate: () => {},
@@ -48,10 +57,29 @@ describe("detectAutoUpdateInstallation", () => {
 
 		expect(installation.packageManager).toBe(AutoUpdatePackageManager.NPX);
 		expect(installation.updateTiming).toBe("shutdown");
-		expect(installation.updateCommand).toEqual({
-			command: process.execPath,
-			args: ["-e", expect.any(String), "/Users/saoud/.npm/_npx/593b71878a7c70f2"],
+		expect(installation.updateCommand?.command).toBe(process.execPath);
+		expect(installation.updateCommand?.args[0]).toBe("-e");
+		expect(typeof installation.updateCommand?.args[1]).toBe("string");
+		expectPathEndsWith(installation.updateCommand?.args[2], "/Users/saoud/.npm/_npx/593b71878a7c70f2");
+	});
+
+	it("marks npm-cache npx installs for shutdown-time cache refresh", () => {
+		const installation = detectAutoUpdateInstallation({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			entrypointPath: "/Users/saoud/AppData/Local/npm-cache/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js",
+			cwd: "/Users/saoud/projects/work",
 		});
+
+		expect(installation.packageManager).toBe(AutoUpdatePackageManager.NPX);
+		expect(installation.updateTiming).toBe("shutdown");
+		expect(installation.updateCommand?.command).toBe(process.execPath);
+		expect(installation.updateCommand?.args[0]).toBe("-e");
+		expect(typeof installation.updateCommand?.args[1]).toBe("string");
+		expectPathEndsWith(
+			installation.updateCommand?.args[2],
+			"/Users/saoud/AppData/Local/npm-cache/_npx/593b71878a7c70f2",
+		);
 	});
 
 	it("marks pnpm dlx installs for shutdown-time cache refresh", () => {
@@ -65,14 +93,13 @@ describe("detectAutoUpdateInstallation", () => {
 
 		expect(installation.packageManager).toBe(AutoUpdatePackageManager.PNPM);
 		expect(installation.updateTiming).toBe("shutdown");
-		expect(installation.updateCommand).toEqual({
-			command: process.execPath,
-			args: [
-				"-e",
-				expect.any(String),
-				"/Users/saoud/Library/Caches/pnpm/dlx/82fa34f6d8482ef2103aa281bbfd9bc42aeec4c8b99d8b1d6bc4653f9d4d179d/19cd9b46385-11271",
-			],
-		});
+		expect(installation.updateCommand?.command).toBe(process.execPath);
+		expect(installation.updateCommand?.args[0]).toBe("-e");
+		expect(typeof installation.updateCommand?.args[1]).toBe("string");
+		expectPathEndsWith(
+			installation.updateCommand?.args[2],
+			"/Users/saoud/Library/Caches/pnpm/dlx/82fa34f6d8482ef2103aa281bbfd9bc42aeec4c8b99d8b1d6bc4653f9d4d179d/19cd9b46385-11271",
+		);
 	});
 
 	it("marks bunx installs for shutdown-time cache refresh", () => {
@@ -85,10 +112,10 @@ describe("detectAutoUpdateInstallation", () => {
 
 		expect(installation.packageManager).toBe(AutoUpdatePackageManager.BUN);
 		expect(installation.updateTiming).toBe("shutdown");
-		expect(installation.updateCommand).toEqual({
-			command: process.execPath,
-			args: ["-e", expect.any(String), "/private/tmp/bunx-501-kanban@1.0.0"],
-		});
+		expect(installation.updateCommand?.command).toBe(process.execPath);
+		expect(installation.updateCommand?.args[0]).toBe("-e");
+		expect(typeof installation.updateCommand?.args[1]).toBe("string");
+		expectPathEndsWith(installation.updateCommand?.args[2], "/private/tmp/bunx-501-kanban@1.0.0");
 	});
 
 	it("marks yarn dlx installs for shutdown-time cache refresh", () => {
@@ -102,14 +129,13 @@ describe("detectAutoUpdateInstallation", () => {
 
 		expect(installation.packageManager).toBe(AutoUpdatePackageManager.YARN);
 		expect(installation.updateTiming).toBe("shutdown");
-		expect(installation.updateCommand).toEqual({
-			command: process.execPath,
-			args: [
-				"-e",
-				expect.any(String),
-				"/private/var/folders/v5/vpxh_439455fv8f_y_55m8q00000gn/T/xfs-bf17b212/dlx-39615",
-			],
-		});
+		expect(installation.updateCommand?.command).toBe(process.execPath);
+		expect(installation.updateCommand?.args[0]).toBe("-e");
+		expect(typeof installation.updateCommand?.args[1]).toBe("string");
+		expectPathEndsWith(
+			installation.updateCommand?.args[2],
+			"/private/var/folders/v5/vpxh_439455fv8f_y_55m8q00000gn/T/xfs-bf17b212/dlx-39615",
+		);
 	});
 
 	it("treats workspace-local paths as local before transient heuristics", () => {
@@ -130,6 +156,19 @@ describe("detectAutoUpdateInstallation", () => {
 			currentVersion: "1.0.0",
 			packageName: "kanban",
 			entrypointPath: "/Users/saoud/.npm/_npx/node_modules/kanban/dist/cli.js",
+			cwd: "/Users/saoud/projects/work",
+		});
+
+		expect(installation.packageManager).toBe(AutoUpdatePackageManager.UNKNOWN);
+		expect(installation.updateCommand).toBeNull();
+		expect(installation.updateTiming).toBe("startup");
+	});
+
+	it("fails closed for malformed npm-cache npx-style paths", () => {
+		const installation = detectAutoUpdateInstallation({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			entrypointPath: "/Users/saoud/AppData/Local/npm-cache/_npx/node_modules/kanban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -236,12 +275,11 @@ describe("runAutoUpdateCheck", () => {
 		});
 
 		expect(messages).toEqual(["New version 1.1.0 detected. Refreshing cached Kanban for next launch."]);
-		expect(spawnedUpdates).toEqual([
-			{
-				command: process.execPath,
-				args: ["-e", expect.any(String), "/Users/saoud/.npm/_npx/593b71878a7c70f2"],
-			},
-		]);
+		expect(spawnedUpdates).toHaveLength(1);
+		expect(spawnedUpdates[0]?.command).toBe(process.execPath);
+		expect(spawnedUpdates[0]?.args[0]).toBe("-e");
+		expect(typeof spawnedUpdates[0]?.args[1]).toBe("string");
+		expectPathEndsWith(spawnedUpdates[0]?.args[2], "/Users/saoud/.npm/_npx/593b71878a7c70f2");
 	});
 
 	it("checks for updates on each startup without persisted state", async () => {

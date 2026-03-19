@@ -21,6 +21,8 @@ interface PromptSuggestion {
 	insertText: string;
 }
 
+const TEXTAREA_MAX_HEIGHT = 200;
+
 interface TaskPromptComposerProps {
 	id?: string;
 	value: string;
@@ -94,6 +96,19 @@ export function TaskPromptComposer({
 	const [isMentionSearchLoading, setIsMentionSearchLoading] = useState(false);
 	const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
 	const [isSuggestionPickerOpen, setIsSuggestionPickerOpen] = useState(true);
+
+	const autoResizeTextarea = useCallback(() => {
+		const textarea = textareaRef.current;
+		if (!textarea) {
+			return;
+		}
+		textarea.style.height = "auto";
+		textarea.style.height = `${Math.min(textarea.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
+	}, []);
+
+	useEffect(() => {
+		autoResizeTextarea();
+	}, [autoResizeTextarea, value]);
 
 	const activeToken = useMemo(() => detectActivePromptToken(value, cursorIndex), [cursorIndex, value]);
 
@@ -309,14 +324,15 @@ export function TaskPromptComposer({
 					placeholder={placeholder}
 					disabled={disabled}
 					className="w-full rounded-md border border-border-bright bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-					style={{ minHeight: 80, resize: "vertical" }}
+					style={{ minHeight: 80, maxHeight: TEXTAREA_MAX_HEIGHT, resize: "none", overflowY: "auto" }}
 				/>
 			</RadixPopover.Anchor>
 			<RadixPopover.Portal>
 				<RadixPopover.Content
 					className="z-50 rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
-					style={{ width: "var(--radix-popover-anchor-width)" }}
+					style={{ width: "var(--radix-popover-trigger-width, var(--radix-popover-anchor-width))" }}
 					sideOffset={4}
+					align="start"
 					onOpenAutoFocus={(event) => event.preventDefault()}
 					onCloseAutoFocus={(event) => event.preventDefault()}
 				>

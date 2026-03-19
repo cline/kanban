@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
+import { clampTextWithInlineSuffix, splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
 
 describe("truncateTaskPromptLabel", () => {
 	it("normalizes whitespace and truncates when needed", () => {
@@ -40,6 +40,37 @@ describe("splitPromptToTitleDescriptionByWidth", () => {
 		expect(measured).toEqual({
 			title: "abcd",
 			description: "efghij line two",
+		});
+	});
+});
+
+describe("clampTextWithInlineSuffix", () => {
+	it("returns the full text when it fits within the available lines", () => {
+		const measured = clampTextWithInlineSuffix("short description", {
+			maxWidthPx: 20,
+			maxLines: 3,
+			suffix: "… See more",
+			measureText: (value) => value.length,
+		});
+		expect(measured).toEqual({
+			text: "short description",
+			isTruncated: false,
+		});
+	});
+
+	it("truncates text to leave room for the inline suffix", () => {
+		const measured = clampTextWithInlineSuffix(
+			"alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron",
+			{
+				maxWidthPx: 18,
+				maxLines: 3,
+				suffix: "… See more",
+				measureText: (value) => value.length,
+			},
+		);
+		expect(measured).toEqual({
+			text: "alpha beta gamma delta epsilon zeta",
+			isTruncated: true,
 		});
 	});
 });

@@ -86,8 +86,14 @@ jobs:
           POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
           POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
 
+      # npm publish re-triggers prepublishOnly as a lifecycle hook, which
+      # rebuilds the web-ui from scratch. Without these env vars, the
+      # rebuild produces a bundle with no PostHog key baked in.
       - name: Publish to npm (OIDC trusted publishing)
         run: npm publish --access public
+        env:
+          POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
+          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
 
       - name: Extract changelog entry for release
         id: changelog

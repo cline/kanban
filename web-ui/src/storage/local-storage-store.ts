@@ -4,6 +4,7 @@ export enum LocalStorageKey {
 	TaskAutoReviewMode = "kanban.task-auto-review-mode",
 	TaskStartLinearSetupPromptDoNotShowAgain = "kanban.task-start-service-setup.linear.do-not-show-again",
 	TaskStartGithubSetupPromptDoNotShowAgain = "kanban.task-start-service-setup.github.do-not-show-again",
+	TaskStartAgentCliSetupPromptDoNotShowAgain = "kanban.task-start-service-setup.agent-cli.do-not-show-again",
 	NotificationPermissionPrompted = "kanban.notifications.permission-prompted",
 	PreferredOpenTarget = "kanban.preferred-open-target",
 	NotificationBadgeClearEvent = "kanban.notification-badge-clear.v1",

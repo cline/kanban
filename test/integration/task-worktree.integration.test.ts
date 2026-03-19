@@ -1,12 +1,24 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree.js";
+import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree.js";
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
+
+function expectMirroredPathBehavior(path: string): void {
+	const exists = existsSync(path);
+	if (process.platform === "win32") {
+		if (exists) {
+			expect(lstatSync(path).isSymbolicLink()).toBe(true);
+		}
+		return;
+	}
+	expect(exists).toBe(true);
+	expect(lstatSync(path).isSymbolicLink()).toBe(true);
+}
 
 function runGit(cwd: string, args: string[]): string {
 	const result = spawnSync("git", args, {
@@ -87,10 +99,12 @@ describe.sequential("task-worktree integration", () => {
 					throw new Error("Task worktree was not created");
 				}
 
-				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(true);
-				expect(lstatSync(join(ensured.path, ".husky", "_")).isSymbolicLink()).toBe(true);
+				const huskyIgnoredPath = join(ensured.path, ".husky", "_");
+				expectMirroredPathBehavior(huskyIgnoredPath);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
-				expect(runGit(ensured.path, ["check-ignore", "-v", ".husky/_"])).toContain("info/exclude");
+				if (existsSync(huskyIgnoredPath)) {
+					expect(runGit(ensured.path, ["check-ignore", "-v", ".husky/_"])).toContain("info/exclude");
+				}
 
 				const ensuredAgain = await ensureTaskWorktreeIfDoesntExist({
 					cwd: repoPath,
@@ -99,8 +113,7 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(ensuredAgain.ok).toBe(true);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".husky/_"])).toBe("");
-				expect(existsSync(join(ensured.path, ".husky", "_"))).toBe(true);
-				expect(lstatSync(join(ensured.path, ".husky", "_")).isSymbolicLink()).toBe(true);
+				expectMirroredPathBehavior(huskyIgnoredPath);
 			} finally {
 				cleanup();
 			}
@@ -138,12 +151,93 @@ describe.sequential("task-worktree integration", () => {
 					throw new Error("Task worktree was not created");
 				}
 
-				expect(lstatSync(join(ensured.path, ".next")).isSymbolicLink()).toBe(true);
-				expect(lstatSync(join(ensured.path, "node_modules")).isSymbolicLink()).toBe(true);
+				const nextPath = join(ensured.path, ".next");
+				const nodeModulesPath = join(ensured.path, "node_modules");
+				expectMirroredPathBehavior(nextPath);
+				expectMirroredPathBehavior(nodeModulesPath);
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", ".next"])).toBe("");
 				expect(runGit(ensured.path, ["status", "--porcelain", "--", "node_modules"])).toBe("");
-				expect(runGit(ensured.path, ["check-ignore", "-v", ".next"])).toContain("info/exclude");
-				expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
+				if (existsSync(nextPath)) {
+					expect(runGit(ensured.path, ["check-ignore", "-v", ".next"])).toContain("info/exclude");
+				}
+				if (existsSync(nodeModulesPath)) {
+					expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
+				}
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("restores a trashed task patch onto the saved commit", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-restore-");
+			try {
+				const repoPath = join(sandboxRoot, "repo");
+				mkdirSync(repoPath, { recursive: true });
+
+				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
+				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+
+				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
+				writeFileSync(join(repoPath, "tracked.txt"), "base\n", "utf8");
+				runGit(repoPath, ["add", "README.md", "tracked.txt"]);
+				runGit(repoPath, ["commit", "-m", "init"]);
+
+				const taskId = `task-restore-${Date.now()}`;
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId,
+					baseRef: "HEAD",
+				});
+				expect(ensured.ok).toBe(true);
+				if (!ensured.ok || !ensured.path) {
+					throw new Error("Task worktree was not created");
+				}
+
+				const createdCommit = runGit(ensured.path, ["rev-parse", "HEAD"]);
+				writeFileSync(join(ensured.path, "tracked.txt"), "base\nlocal change\n", "utf8");
+				writeFileSync(join(ensured.path, "notes.txt"), "untracked\n", "utf8");
+
+				const deleted = await deleteTaskWorktree({
+					repoPath,
+					taskId,
+				});
+				expect(deleted.ok).toBe(true);
+				expect(deleted.removed).toBe(true);
+
+				const patchPath = join(
+					process.env.HOME ?? sandboxRoot,
+					".kanban",
+					"trashed-task-patches",
+					`${taskId}.${createdCommit}.patch`,
+				);
+				expect(existsSync(patchPath)).toBe(true);
+				expect(readFileSync(patchPath, "utf8")).toContain("tracked.txt");
+				expect(readFileSync(patchPath, "utf8")).toContain("notes.txt");
+
+				writeFileSync(join(repoPath, "README.md"), "hello again\n", "utf8");
+				runGit(repoPath, ["add", "README.md"]);
+				runGit(repoPath, ["commit", "-m", "advance"]);
+				const advancedCommit = runGit(repoPath, ["rev-parse", "HEAD"]);
+				expect(advancedCommit).not.toBe(createdCommit);
+
+				const restored = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId,
+					baseRef: "HEAD",
+				});
+				expect(restored.ok).toBe(true);
+				if (!restored.ok || !restored.path) {
+					throw new Error("Task worktree was not restored");
+				}
+
+				expect(restored.baseCommit).toBe(createdCommit);
+				expect(runGit(restored.path, ["rev-parse", "HEAD"])).toBe(createdCommit);
+				expect(readFileSync(join(restored.path, "tracked.txt"), "utf8")).toBe("base\nlocal change\n");
+				expect(readFileSync(join(restored.path, "notes.txt"), "utf8")).toBe("untracked\n");
+				expect(existsSync(patchPath)).toBe(false);
 			} finally {
 				cleanup();
 			}

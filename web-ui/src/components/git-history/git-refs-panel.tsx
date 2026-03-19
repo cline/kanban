@@ -1,5 +1,5 @@
-import { AlertCircle, ArrowDown, ArrowUp, FileText, GitBranch, Info, Locate, Search } from "lucide-react";
 import { Fzf } from "fzf";
+import { AlertCircle, ArrowDown, ArrowUp, Cloud, FileText, GitBranch, Info, Locate, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
@@ -8,13 +8,27 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeGitRef } from "@/runtime/types";
 
 const ROW_HEIGHT = 30;
+const SELECTED_SUBTLE_TEXT_COLOR = "rgba(255, 255, 255, 0.64)";
 const MATCHED_TEXT_STYLE = {
 	color: "var(--color-status-blue)",
 	fontWeight: 600,
 } as const;
+const MATCHED_TEXT_STYLE_SELECTED = {
+	color: "rgba(255, 255, 255, 0.92)",
+	fontWeight: 600,
+} as const;
 const HEAD_BADGE_BACKGROUND = "color-mix(in srgb, var(--color-status-blue) 15%, transparent)";
+const HEAD_BADGE_BACKGROUND_SELECTED = "color-mix(in srgb, white 18%, transparent)";
 
-function AheadBehindIndicator({ ahead, behind }: { ahead?: number; behind?: number }): React.ReactElement | null {
+function AheadBehindIndicator({
+	ahead,
+	behind,
+	isSelected = false,
+}: {
+	ahead?: number;
+	behind?: number;
+	isSelected?: boolean;
+}): React.ReactElement | null {
 	if (!ahead && !behind) {
 		return null;
 	}
@@ -25,7 +39,7 @@ function AheadBehindIndicator({ ahead, behind }: { ahead?: number; behind?: numb
 				alignItems: "center",
 				gap: 3,
 				fontSize: 10,
-				color: "var(--color-text-tertiary)",
+				color: isSelected ? SELECTED_SUBTLE_TEXT_COLOR : "var(--color-text-tertiary)",
 				flexShrink: 0,
 			}}
 		>
@@ -70,28 +84,35 @@ export function GitRefsPanel({
 
 	const detachedRef = refs.find((r) => r.type === "detached");
 	const branchRefs = refs.filter((r) => r.type === "branch");
+	const remoteRefs = refs.filter((r) => r.type === "remote");
 	const headBranch = branchRefs.find((r) => r.isHead);
 	const otherBranches = branchRefs.filter((r) => !r.isHead);
-	const branchFinder = useMemo(() => new Fzf(otherBranches, { selector: (ref) => ref.name }), [otherBranches]);
+	const searchableRefs = useMemo(() => [...otherBranches, ...remoteRefs], [otherBranches, remoteRefs]);
+	const branchFinder = useMemo(() => new Fzf(searchableRefs, { selector: (ref) => ref.name }), [searchableRefs]);
 
 	const fuzzyBranchResults = useMemo(() => {
 		if (!searchQuery.trim()) {
-			return [] as ReturnType<Fzf<typeof otherBranches>["find"]>;
+			return [] as ReturnType<Fzf<typeof searchableRefs>["find"]>;
 		}
 		return branchFinder.find(searchQuery);
 	}, [branchFinder, searchQuery]);
-	const filteredOtherBranches = useMemo(() => {
+	const filteredRefs = useMemo(() => {
 		if (!searchQuery.trim()) {
-			return otherBranches;
+			return searchableRefs;
 		}
 		return fuzzyBranchResults.map((result) => result.item);
-	}, [fuzzyBranchResults, otherBranches, searchQuery]);
+	}, [fuzzyBranchResults, searchableRefs, searchQuery]);
+	const filteredOtherBranches = useMemo(() => filteredRefs.filter((ref) => ref.type === "branch"), [filteredRefs]);
+	const filteredRemoteRefs = useMemo(() => filteredRefs.filter((ref) => ref.type === "remote"), [filteredRefs]);
 	const fuzzyBranchResultsByName = useMemo(
 		() => new Map(fuzzyBranchResults.map((result) => [result.item.name, result])),
 		[fuzzyBranchResults],
 	);
 
-	const showSearch = otherBranches.length > 0;
+	const showSearch = searchableRefs.length > 0;
+	const isHeadBranchSelected =
+		!isWorkingCopySelected &&
+		(selectedRefName === headBranch?.name || (selectedRefName === null && headBranch?.isHead === true));
 
 	return (
 		<div
@@ -126,8 +147,9 @@ export function GitRefsPanel({
 				<Tooltip
 					content={
 						<div style={{ maxWidth: 260, whiteSpace: "normal", lineHeight: 1.4 }}>
-							Click the branch button in the navbar to close this view. Double-click a branch to switch the
-							workspace branch.
+							Press Esc, use Cmd/Ctrl+G, or click the branch button in the navbar to close this view.
+							 Double-click a branch to switch the workspace branch. Remote refs show fetched upstream positions
+							 and can be opened to inspect incoming commits.
 						</div>
 					}
 					side="bottom"
@@ -152,7 +174,10 @@ export function GitRefsPanel({
 						/>
 					</div>
 				) : errorMessage ? (
-					<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary" style={{ minHeight: 180, padding: 12 }}>
+					<div
+						className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary"
+						style={{ minHeight: 180, padding: 12 }}
+					>
 						<AlertCircle size={48} />
 						<h3 className="font-semibold text-text-primary">Could not load refs</h3>
 						<p className="text-text-secondary">{errorMessage}</p>
@@ -167,7 +192,10 @@ export function GitRefsPanel({
 							>
 								<FileText size={12} style={{ color: "var(--color-status-gold)" }} />
 								<span style={{ flex: 1 }}>Working Copy</span>
-								<span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs bg-surface-3 text-text-secondary" style={{ fontSize: 10 }}>
+								<span
+									className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs bg-surface-3 text-text-secondary"
+									style={{ fontSize: 10 }}
+								>
 									{workingCopyChanges}
 								</span>
 							</RefRow>
@@ -186,24 +214,24 @@ export function GitRefsPanel({
 						) : null}
 
 						{headBranch ? (
-							<RefRow
-								isSelected={
-									!isWorkingCopySelected &&
-									(selectedRefName === headBranch.name || (selectedRefName === null && headBranch.isHead))
-								}
-								onSelect={() => onSelectRef(headBranch)}
-							>
+							<RefRow isSelected={isHeadBranchSelected} onSelect={() => onSelectRef(headBranch)}>
 								<GitBranch size={12} />
 								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
 									{headBranch.name}
 								</span>
-								<AheadBehindIndicator ahead={headBranch.ahead} behind={headBranch.behind} />
+								<AheadBehindIndicator
+									ahead={headBranch.ahead}
+									behind={headBranch.behind}
+									isSelected={isHeadBranchSelected}
+								/>
 								<span
 									className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium"
 									style={{
 										fontSize: 10,
-										backgroundColor: HEAD_BADGE_BACKGROUND,
-										color: "var(--color-status-blue)",
+										backgroundColor: isHeadBranchSelected
+											? HEAD_BADGE_BACKGROUND_SELECTED
+											: HEAD_BADGE_BACKGROUND,
+										color: isHeadBranchSelected ? SELECTED_SUBTLE_TEXT_COLOR : "var(--color-status-blue)",
 									}}
 								>
 									HEAD
@@ -214,10 +242,13 @@ export function GitRefsPanel({
 						{showSearch ? (
 							<div style={{ padding: "6px 0 4px" }}>
 								<div className="relative">
-									<Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
+									<Search
+										size={14}
+										className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary"
+									/>
 									<input
 										className="h-7 w-full rounded-md border border-border bg-surface-2 pl-8 pr-3 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-										placeholder="Filter branches..."
+										placeholder="Filter refs..."
 										value={searchQuery}
 										onChange={(e) => setSearchQuery(e.target.value)}
 									/>
@@ -225,22 +256,50 @@ export function GitRefsPanel({
 							</div>
 						) : null}
 
-						{filteredOtherBranches.map((ref) => (
-							<RefRow
-								key={ref.name}
-								isSelected={!isWorkingCopySelected && selectedRefName === ref.name}
-								onSelect={() => onSelectRef(ref)}
-								onDoubleClick={onCheckoutRef ? () => onCheckoutRef(ref.name) : undefined}
-							>
-								<GitBranch size={12} />
-								<span className="kb-line-clamp-1" style={{ flex: 1 }}>
-									{renderFuzzyHighlightedText(ref.name, fuzzyBranchResultsByName.get(ref.name)?.positions, MATCHED_TEXT_STYLE)}
-								</span>
-								<AheadBehindIndicator ahead={ref.ahead} behind={ref.behind} />
-							</RefRow>
-						))}
+						{filteredOtherBranches.map((ref) => {
+							const isSelected = !isWorkingCopySelected && selectedRefName === ref.name;
+							return (
+								<RefRow
+									key={ref.name}
+									isSelected={isSelected}
+									onSelect={() => onSelectRef(ref)}
+									onDoubleClick={onCheckoutRef ? () => onCheckoutRef(ref.name) : undefined}
+								>
+									<GitBranch size={12} />
+									<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+										{renderFuzzyHighlightedText(
+											ref.name,
+											fuzzyBranchResultsByName.get(ref.name)?.positions,
+											isSelected ? MATCHED_TEXT_STYLE_SELECTED : MATCHED_TEXT_STYLE,
+										)}
+									</span>
+									<AheadBehindIndicator ahead={ref.ahead} behind={ref.behind} isSelected={isSelected} />
+								</RefRow>
+							);
+						})}
 
-						{searchQuery && filteredOtherBranches.length === 0 ? (
+						{filteredRemoteRefs.length > 0 ? (
+							<>
+								<SectionLabel>Remotes</SectionLabel>
+								{filteredRemoteRefs.map((ref) => {
+									const isSelected = !isWorkingCopySelected && selectedRefName === ref.name;
+									return (
+										<RefRow key={ref.name} isSelected={isSelected} onSelect={() => onSelectRef(ref)}>
+											<Cloud size={12} />
+											<span className="kb-line-clamp-1" style={{ flex: 1 }}>
+												{renderFuzzyHighlightedText(
+													ref.name,
+													fuzzyBranchResultsByName.get(ref.name)?.positions,
+													isSelected ? MATCHED_TEXT_STYLE_SELECTED : MATCHED_TEXT_STYLE,
+												)}
+											</span>
+										</RefRow>
+									);
+								})}
+							</>
+						) : null}
+
+						{searchQuery && filteredRefs.length === 0 ? (
 							<div
 								style={{
 									padding: "8px 8px",
@@ -255,6 +314,23 @@ export function GitRefsPanel({
 					</>
 				)}
 			</div>
+		</div>
+	);
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }): React.ReactElement {
+	return (
+		<div
+			style={{
+				padding: "10px 8px 4px",
+				fontSize: 10,
+				fontWeight: 600,
+				letterSpacing: "0.05em",
+				textTransform: "uppercase",
+				color: "var(--color-text-tertiary)",
+			}}
+		>
+			{children}
 		</div>
 	);
 }

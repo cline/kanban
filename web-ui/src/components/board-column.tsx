@@ -16,7 +16,6 @@ export function BoardColumn({
 	onStartTask,
 	onStartAllTasks,
 	onClearTrash,
-	inlineTaskCreator,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
@@ -37,6 +36,7 @@ export function BoardColumn({
 	dependencySourceTaskId,
 	dependencyTargetTaskId,
 	isDependencyLinking,
+	workspacePath,
 }: {
 	column: BoardColumnModel;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -44,7 +44,6 @@ export function BoardColumn({
 	onStartTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
-	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCardModel) => void;
@@ -65,6 +64,7 @@ export function BoardColumn({
 	dependencySourceTaskId?: string | null;
 	dependencyTargetTaskId?: string | null;
 	isDependencyLinking?: boolean;
+	workspacePath?: string | null;
 }): React.ReactElement {
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
@@ -136,7 +136,7 @@ export function BoardColumn({
 				<Droppable droppableId={column.id} type={cardDropType} isDropDisabled={isDropDisabled}>
 					{(cardProvided) => (
 						<div ref={cardProvided.innerRef} {...cardProvided.droppableProps} className="kb-column-cards">
-							{canCreate && !inlineTaskCreator ? (
+							{canCreate ? (
 								<Button
 									icon={<Plus size={14} />}
 									aria-label="Create task"
@@ -147,7 +147,6 @@ export function BoardColumn({
 									{createTaskButtonText}
 								</Button>
 							) : null}
-							{inlineTaskCreator}
 
 							{(() => {
 								const items: ReactNode[] = [];
@@ -187,6 +186,7 @@ export function BoardColumn({
 											isDependencySource={dependencySourceTaskId === card.id}
 											isDependencyTarget={dependencyTargetTaskId === card.id}
 											isDependencyLinking={isDependencyLinking}
+											workspacePath={workspacePath}
 											onClick={() => {
 												if (column.id === "backlog") {
 													onEditTask?.(card);

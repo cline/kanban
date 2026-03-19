@@ -51,6 +51,10 @@ interface HookSnapshot {
 	board: BoardData;
 	handleCreateDependency: (fromTaskId: string, toTaskId: string) => void;
 	confirmMoveTaskToTrash: (task: BoardCard, currentBoard?: BoardData) => Promise<void>;
+	requestMoveTaskToTrash: (
+		taskId: string,
+		fromColumnId: "backlog" | "in_progress" | "review" | "trash",
+	) => Promise<void>;
 }
 
 interface Deferred<T> {
@@ -73,6 +77,7 @@ function HookHarness({
 	startBacklogTaskWithAnimation,
 	waitForBacklogStartAnimationAvailability,
 	stopTaskSession,
+	cleanupTaskWorkspace,
 }: {
 	boardFactory?: () => BoardData;
 	onSnapshot: (snapshot: HookSnapshot) => void;
@@ -85,17 +90,15 @@ function HookHarness({
 	startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean>;
 	waitForBacklogStartAnimationAvailability?: () => Promise<void>;
 	stopTaskSession?: (taskId: string) => Promise<void>;
+	cleanupTaskWorkspace?: (taskId: string) => Promise<unknown>;
 }): null {
 	const [board, setBoard] = useState<BoardData>(() => (boardFactory ? boardFactory() : createBoard()));
 	const actions = useLinkedBacklogTaskActions({
 		board,
 		setBoard,
 		setSelectedTaskId: () => {},
-		setPendingTrashWarning: () => {},
 		stopTaskSession: stopTaskSession ?? (async () => {}),
-		cleanupTaskWorkspace: async () => null,
-		fetchTaskWorkingChangeCount: async () => null,
-		fetchTaskWorkspaceInfo: async () => null,
+		cleanupTaskWorkspace: cleanupTaskWorkspace ?? (async () => null),
 		maybeRequestNotificationPermissionForTaskStart: () => {},
 		kickoffTaskInProgress: kickoffTaskInProgress ?? (async (_task: BoardCard, _taskId: string) => true),
 		startBacklogTaskWithAnimation,
@@ -107,8 +110,9 @@ function HookHarness({
 			board,
 			handleCreateDependency: actions.handleCreateDependency,
 			confirmMoveTaskToTrash: actions.confirmMoveTaskToTrash,
+			requestMoveTaskToTrash: actions.requestMoveTaskToTrash,
 		});
-	}, [actions.confirmMoveTaskToTrash, actions.handleCreateDependency, board, onSnapshot]);
+	}, [actions.confirmMoveTaskToTrash, actions.handleCreateDependency, actions.requestMoveTaskToTrash, board, onSnapshot]);
 
 	return null;
 }
@@ -292,6 +296,39 @@ describe("useLinkedBacklogTaskActions", () => {
 		expect(stopTaskSession).toHaveBeenCalledTimes(2);
 		expect(stopTaskSession).toHaveBeenNthCalledWith(1, reviewTask.id);
 		expect(stopTaskSession).toHaveBeenNthCalledWith(2, getDetailTerminalTaskId(reviewTask.id));
+	});
+
+	it("trashes tasks directly through the request handler", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const cleanupTaskWorkspace = vi.fn(async (_taskId: string) => null);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+		const initialSnapshot = latestSnapshot as HookSnapshot;
+
+		await act(async () => {
+			await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected an updated hook snapshot.");
+		}
+		const nextSnapshot = latestSnapshot as HookSnapshot;
+		expect(nextSnapshot.board.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
+		expect(nextSnapshot.board.columns.find((column) => column.id === "trash")?.cards[0]?.id).toBe("task-2");
+		expect(cleanupTaskWorkspace).toHaveBeenCalledWith("task-2");
 	});
 
 	it("can queue the next dependency-unblocked animation before the previous start resolves", async () => {

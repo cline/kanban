@@ -4,7 +4,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
@@ -156,21 +157,12 @@ function commitAll(cwd: string, message: string): string {
 	return runGit(cwd, ["rev-parse", "HEAD"]);
 }
 
-function resolveTsxCliEntrypoint(): string {
-	const packageJsonPath = requireFromHere.resolve("tsx/package.json");
-	const packageJson = requireFromHere(packageJsonPath) as {
-		bin?: string | Record<string, string>;
-	};
-	const binValue =
-		typeof packageJson.bin === "string"
-			? packageJson.bin
-			: packageJson.bin && typeof packageJson.bin === "object"
-				? (packageJson.bin.tsx ?? Object.values(packageJson.bin)[0])
-				: null;
-	if (!binValue) {
-		throw new Error("Could not resolve tsx CLI entrypoint from package metadata.");
-	}
-	return resolve(dirname(packageJsonPath), binValue);
+function resolveShutdownIpcHookPath(): string {
+	return resolve(process.cwd(), "test/integration/shutdown-ipc-hook.cjs");
+}
+
+function resolveTsxLoaderImportSpecifier(): string {
+	return pathToFileURL(requireFromHere.resolve("tsx")).href;
 }
 
 async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): Promise<{ runtimeUrl: string }> {
@@ -229,21 +221,77 @@ async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): P
 	});
 }
 
-async function startKanbanServer(input: { cwd: string; homeDir: string; port: number }): Promise<{
+function getShutdownSignal(): NodeJS.Signals {
+	return process.platform === "win32" ? "SIGTERM" : "SIGINT";
+}
+
+async function requestGracefulShutdown(childProcess: ChildProcess): Promise<void> {
+	if (typeof childProcess.send !== "function" || !childProcess.connected) {
+		childProcess.kill(getShutdownSignal());
+		return;
+	}
+
+	await new Promise<void>((resolveSend) => {
+		childProcess.send({ type: "kanban.shutdown" }, (error) => {
+			if (error) {
+				childProcess.kill(getShutdownSignal());
+			}
+			resolveSend();
+		});
+	});
+}
+
+async function waitForExit(childProcess: ChildProcess, timeoutMs: number): Promise<boolean> {
+	if (childProcess.exitCode !== null) {
+		return true;
+	}
+
+	return await new Promise<boolean>((resolveExit) => {
+		const handleExit = () => {
+			clearTimeout(timeoutId);
+			resolveExit(true);
+		};
+		const timeoutId = setTimeout(() => {
+			childProcess.removeListener("exit", handleExit);
+			resolveExit(false);
+		}, timeoutMs);
+		childProcess.once("exit", handleExit);
+	});
+}
+
+async function startKanbanServer(input: {
+	cwd: string;
+	homeDir: string;
+	port: number;
+	extraArgs?: string[];
+}): Promise<{
 	runtimeUrl: string;
 	stop: () => Promise<void>;
 }> {
-	const tsxEntrypoint = resolveTsxCliEntrypoint();
 	const cliEntrypoint = resolve(process.cwd(), "src/cli.ts");
-	const child = spawn(process.execPath, [tsxEntrypoint, cliEntrypoint, "--no-open"], {
+	const shutdownIpcHookPath = resolveShutdownIpcHookPath();
+	const tsxLoaderImportSpecifier = resolveTsxLoaderImportSpecifier();
+	const child = spawn(
+		process.execPath,
+		[
+			"--require",
+			shutdownIpcHookPath,
+			"--import",
+			tsxLoaderImportSpecifier,
+			cliEntrypoint,
+			"--no-open",
+			...(input.extraArgs ?? []),
+		],
+		{
 		cwd: input.cwd,
 		env: createGitTestEnv({
 			HOME: input.homeDir,
 			USERPROFILE: input.homeDir,
 			KANBAN_RUNTIME_PORT: String(input.port),
 		}),
-		stdio: ["ignore", "pipe", "pipe"],
-	});
+		stdio: ["ignore", "pipe", "pipe", "ipc"],
+		},
+	);
 	const { runtimeUrl } = await waitForProcessStart(child);
 	return {
 		runtimeUrl,
@@ -251,23 +299,17 @@ async function startKanbanServer(input: { cwd: string; homeDir: string; port: nu
 			if (child.exitCode !== null) {
 				return;
 			}
-			const exitPromise = new Promise<void>((resolveExit) => {
-				child.once("exit", () => {
-					resolveExit();
-				});
-			});
-			child.kill("SIGINT");
-			await Promise.race([
-				exitPromise,
-				new Promise<void>((resolveTimeout) => {
-					setTimeout(() => {
-						if (child.exitCode === null) {
-							child.kill("SIGKILL");
-						}
-						resolveTimeout();
-					}, 5_000);
-				}),
-			]);
+			await requestGracefulShutdown(child);
+			const didExitGracefully = await waitForExit(child, 5_000);
+			if (didExitGracefully) {
+				return;
+			}
+
+			child.kill("SIGKILL");
+			const didExitAfterForce = await waitForExit(child, 5_000);
+			if (!didExitAfterForce) {
+				throw new Error("Timed out stopping kanban test server process.");
+			}
 		},
 	};
 }
@@ -985,7 +1027,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 	}, 45_000);
 
-	it("moves stale hook-review cards to trash on shutdown after hydration", async () => {
+	it("moves stale hook-review cards to trash on shutdown", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-review-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-stale-review-");
 
@@ -1060,33 +1102,8 @@ describe.sequential("runtime state stream integration", () => {
 			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
 			expect(workspaceId).not.toBe("");
 
-			const hydratedState = await requestJson<RuntimeWorkspaceStateResponse>({
-				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "workspace.getState",
-				type: "query",
-				workspaceId,
-			});
-			expect(hydratedState.status).toBe(200);
-			expect(hydratedState.payload.sessions[taskId]?.state).toBe("awaiting_review");
-			expect(hydratedState.payload.sessions[taskId]?.reviewReason).toBe("hook");
-		} finally {
-			await secondServer.stop();
-		}
-
-		const thirdPort = await getAvailablePort();
-		const thirdServer = await startKanbanServer({
-			cwd: projectPath,
-			homeDir: tempHome,
-			port: thirdPort,
-		});
-
-		try {
-			const thirdRuntimeUrl = new URL(thirdServer.runtimeUrl);
-			const workspaceId = decodeURIComponent(thirdRuntimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
-
 			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
-				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "workspace.getState",
 				type: "query",
 				workspaceId,
@@ -1102,13 +1119,13 @@ describe.sequential("runtime state stream integration", () => {
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
 		} finally {
-			await thirdServer.stop();
+			await secondServer.stop();
 			cleanupProject();
 			cleanupHome();
 		}
 	}, 45_000);
 
-	it("moves stale completed review cards to trash on shutdown after hydration", async () => {
+	it("moves stale completed review cards to trash on shutdown", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-exit-review-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-stale-exit-review-");
 
@@ -1194,33 +1211,8 @@ describe.sequential("runtime state stream integration", () => {
 			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
 			expect(workspaceId).not.toBe("");
 
-			const hydratedState = await requestJson<RuntimeWorkspaceStateResponse>({
-				baseUrl: `http://127.0.0.1:${secondPort}`,
-				procedure: "workspace.getState",
-				type: "query",
-				workspaceId,
-			});
-			expect(hydratedState.status).toBe(200);
-			expect(hydratedState.payload.sessions[taskId]?.state).toBe("awaiting_review");
-			expect(hydratedState.payload.sessions[taskId]?.reviewReason).toBe("exit");
-		} finally {
-			await secondServer.stop();
-		}
-
-		const thirdPort = await getAvailablePort();
-		const thirdServer = await startKanbanServer({
-			cwd: projectPath,
-			homeDir: tempHome,
-			port: thirdPort,
-		});
-
-		try {
-			const thirdRuntimeUrl = new URL(thirdServer.runtimeUrl);
-			const workspaceId = decodeURIComponent(thirdRuntimeUrl.pathname.slice(1));
-			expect(workspaceId).not.toBe("");
-
 			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
-				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "workspace.getState",
 				type: "query",
 				workspaceId,
@@ -1234,7 +1226,7 @@ describe.sequential("runtime state stream integration", () => {
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
 			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
-				baseUrl: `http://127.0.0.1:${thirdPort}`,
+				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "workspace.getTaskContext",
 				type: "query",
 				workspaceId,
@@ -1246,7 +1238,129 @@ describe.sequential("runtime state stream integration", () => {
 			expect(workspaceInfo.status).toBe(200);
 			expect(workspaceInfo.payload.exists).toBe(false);
 		} finally {
-			await thirdServer.stop();
+			await secondServer.stop();
+			cleanupProject();
+			cleanupHome();
+		}
+	}, 45_000);
+
+	it("skips stale session shutdown cleanup when --skip-shutdown-cleanup is enabled", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-skip-cleanup-flag-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-skip-cleanup-flag-");
+
+		mkdirSync(projectPath, { recursive: true });
+		initGitRepository(projectPath);
+
+		const taskId = "skip-cleanup-flag-review-task";
+		const taskTitle = "Keep review task when cleanup flag is enabled";
+		const now = Date.now();
+
+		const firstPort = await getAvailablePort();
+		const firstServer = await startKanbanServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: firstPort,
+			extraArgs: ["--skip-shutdown-cleanup"],
+		});
+
+		try {
+			const firstRuntimeUrl = new URL(firstServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(firstRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const currentState = await requestJson<RuntimeWorkspaceStateResponse>({
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.getState",
+				type: "query",
+				workspaceId,
+			});
+			expect(currentState.status).toBe(200);
+
+			const seedResponse = await requestJson<RuntimeWorkspaceStateResponse>({
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.saveState",
+				type: "mutation",
+				workspaceId,
+				payload: {
+					board: createReviewBoard(taskId, taskTitle),
+					sessions: {
+						[taskId]: {
+							taskId,
+							state: "awaiting_review",
+							agentId: "codex",
+							workspacePath: projectPath,
+							pid: null,
+							startedAt: now - 2_000,
+							updatedAt: now,
+							lastOutputAt: now,
+							reviewReason: "hook",
+							exitCode: null,
+							lastHookAt: null,
+							latestHookActivity: null,
+						},
+					},
+					expectedRevision: currentState.payload.revision,
+				},
+			});
+			expect(seedResponse.status).toBe(200);
+
+			const taskWorkspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+				baseUrl: `http://127.0.0.1:${firstPort}`,
+				procedure: "workspace.getTaskContext",
+				type: "query",
+				workspaceId,
+				payload: {
+					taskId,
+					baseRef: "HEAD",
+				},
+			});
+			expect(taskWorkspaceInfo.status).toBe(200);
+			mkdirSync(taskWorkspaceInfo.payload.path, { recursive: true });
+		} finally {
+			await firstServer.stop();
+		}
+
+		const secondPort = await getAvailablePort();
+		const secondServer = await startKanbanServer({
+			cwd: projectPath,
+			homeDir: tempHome,
+			port: secondPort,
+		});
+
+		try {
+			const secondRuntimeUrl = new URL(secondServer.runtimeUrl);
+			const workspaceId = decodeURIComponent(secondRuntimeUrl.pathname.slice(1));
+			expect(workspaceId).not.toBe("");
+
+			const finalState = await requestJson<RuntimeWorkspaceStateResponse>({
+				baseUrl: `http://127.0.0.1:${secondPort}`,
+				procedure: "workspace.getState",
+				type: "query",
+				workspaceId,
+			});
+			expect(finalState.status).toBe(200);
+
+			const reviewCards = finalState.payload.board.columns.find((column) => column.id === "review")?.cards ?? [];
+			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
+			expect(reviewCards.some((card) => card.id === taskId)).toBe(true);
+			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
+			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
+			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("hook");
+
+			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
+				baseUrl: `http://127.0.0.1:${secondPort}`,
+				procedure: "workspace.getTaskContext",
+				type: "query",
+				workspaceId,
+				payload: {
+					taskId,
+					baseRef: "HEAD",
+				},
+			});
+			expect(workspaceInfo.status).toBe(200);
+			expect(workspaceInfo.payload.exists).toBe(true);
+		} finally {
+			await secondServer.stop();
 			cleanupProject();
 			cleanupHome();
 		}

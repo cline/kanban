@@ -40,6 +40,8 @@ type TaskStartServicePromptPlatform = "mac" | "windows" | "other";
 const LINEAR_WORD_PATTERN = /\blinear\b/i;
 const GITHUB_WORD_PATTERN = /\bgithub\b/i;
 const DEFAULT_LINEAR_INSTALL_COMMAND = "claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp";
+const CLINE_CLI_INSTALL_COMMAND = "npm install -g cline";
+const SUPPORTED_AGENT_LABELS = "Claude Code, OpenAI Codex, Cline, OpenCode, Droid CLI, or Gemini CLI";
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {
@@ -115,8 +117,14 @@ export function detectTaskStartServicePromptIds(prompt: string): TaskStartSetupK
 export function isTaskStartServicePromptAlreadyConfigured(
 	promptId: TaskStartSetupKind,
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined,
+	options?: {
+		isTaskAgentSetupSatisfied?: boolean | null;
+	},
 ): boolean {
 	if (!taskStartSetupAvailability) {
+		if (promptId === "agent_cli") {
+			return options?.isTaskAgentSetupSatisfied === true;
+		}
 		return false;
 	}
 
@@ -125,6 +133,8 @@ export function isTaskStartServicePromptAlreadyConfigured(
 			return taskStartSetupAvailability.linearMcp;
 		case "github_cli":
 			return taskStartSetupAvailability.githubCli;
+		case "agent_cli":
+			return options?.isTaskAgentSetupSatisfied === true;
 		default:
 			return false;
 	}
@@ -173,6 +183,17 @@ export function buildTaskStartServicePromptContent(
 					: {}),
 			};
 		}
+		case "agent_cli": {
+			return {
+				id: promptId,
+				title: "Set up a CLI agent before starting this task?",
+				description: `No supported CLI agent was detected on your PATH. Kanban can run tasks with ${SUPPORTED_AGENT_LABELS}.`,
+				installCommand: CLINE_CLI_INSTALL_COMMAND,
+				installButtonLabel: "Run install command",
+				installCommandDescription: "Install Cline CLI:",
+				authenticationNote: "After installing, try starting the task again.",
+			};
+		}
 		default:
 			return {
 				id: promptId,
@@ -213,9 +234,25 @@ export function getStartableBacklogTaskIds(board: BoardData): string[] {
 export function collectPendingTaskStartServicePrompts(input: {
 	tasks: TaskStartServicePromptTask[];
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
+	isTaskAgentSetupSatisfied?: boolean | null;
 	promptAcknowledgements: Record<string, true>;
 	isPromptDoNotShowAgainEnabled: (promptId: TaskStartSetupKind) => boolean;
 }): CollectedTaskStartServicePrompt[] {
+	if (input.isTaskAgentSetupSatisfied === false && !input.isPromptDoNotShowAgainEnabled("agent_cli")) {
+		const missingAgentPromptTaskIds = [...new Set(input.tasks.map((task) => task.taskId))].filter((taskId) => {
+			const promptKey = getTaskStartServicePromptKey(taskId, "agent_cli");
+			return !input.promptAcknowledgements[promptKey];
+		});
+		if (missingAgentPromptTaskIds.length > 0) {
+			return [
+				{
+					promptId: "agent_cli",
+					taskIds: missingAgentPromptTaskIds,
+				},
+			];
+		}
+	}
+
 	const promptTaskIdsByPromptId = new Map<TaskStartSetupKind, string[]>();
 
 	for (const task of input.tasks) {
@@ -248,6 +285,34 @@ export function collectPendingTaskStartServicePrompts(input: {
 	}));
 }
 
+export function mergeTaskStartServicePromptQueue(
+	currentQueue: CollectedTaskStartServicePrompt[],
+	nextQueue: CollectedTaskStartServicePrompt[],
+): CollectedTaskStartServicePrompt[] {
+	if (currentQueue.length === 0) {
+		return nextQueue;
+	}
+
+	const mergedQueue = [...currentQueue];
+	for (const prompt of nextQueue) {
+		const existingPromptIndex = mergedQueue.findIndex((queued) => queued.promptId === prompt.promptId);
+		if (existingPromptIndex === -1) {
+			mergedQueue.push(prompt);
+			continue;
+		}
+		const existingPrompt = mergedQueue[existingPromptIndex];
+		if (!existingPrompt) {
+			continue;
+		}
+		mergedQueue[existingPromptIndex] = {
+			...existingPrompt,
+			taskIds: [...new Set([...existingPrompt.taskIds, ...prompt.taskIds])],
+		};
+	}
+
+	return mergedQueue;
+}
+
 interface PendingTaskStartServicePromptState {
 	promptId: TaskStartSetupKind;
 	taskIds: string[];
@@ -264,7 +329,9 @@ interface UseTaskStartServicePromptsInput {
 	currentProjectId: string | null;
 	selectedAgentId: RuntimeAgentId | null | undefined;
 	taskStartSetupAvailability: RuntimeTaskStartSetupAvailability | null | undefined;
-	handleCreateTask: () => string | null;
+	isTaskAgentSetupSatisfied: boolean | null | undefined;
+	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
+	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	handleStartTask: (taskId: string) => void;
 	handleStartAllBacklogTasks: (taskIds?: string[]) => void;
 	prepareTerminalForShortcut: (input: {
@@ -279,7 +346,8 @@ interface UseTaskStartServicePromptsInput {
 }
 
 export interface UseTaskStartServicePromptsResult {
-	handleCreateAndStartTask: () => void;
+	handleCreateAndStartTask: (options?: { keepDialogOpen?: boolean }) => string | null;
+	handleCreateAndStartTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	handleStartTaskWithServiceSetupPrompt: (taskId: string) => void;
 	handleStartAllBacklogTasksWithServiceSetupPrompt: () => void;
 	taskStartServicePromptDialogOpen: boolean;
@@ -295,7 +363,9 @@ export function useTaskStartServicePrompts({
 	currentProjectId,
 	selectedAgentId,
 	taskStartSetupAvailability,
+	isTaskAgentSetupSatisfied,
 	handleCreateTask,
+	handleCreateTasks,
 	handleStartTask,
 	handleStartAllBacklogTasks,
 	prepareTerminalForShortcut,
@@ -306,10 +376,12 @@ export function useTaskStartServicePrompts({
 		useBooleanLocalStorageValue(LocalStorageKey.TaskStartLinearSetupPromptDoNotShowAgain, false);
 	const [isGithubTaskStartPromptDoNotShowAgain, setIsGithubTaskStartPromptDoNotShowAgain] =
 		useBooleanLocalStorageValue(LocalStorageKey.TaskStartGithubSetupPromptDoNotShowAgain, false);
+	const [isAgentCliTaskStartPromptDoNotShowAgain, setIsAgentCliTaskStartPromptDoNotShowAgain] =
+		useBooleanLocalStorageValue(LocalStorageKey.TaskStartAgentCliSetupPromptDoNotShowAgain, false);
 	const [pendingTaskStartServicePromptQueue, setPendingTaskStartServicePromptQueue] = useState<
 		PendingTaskStartServicePromptState[]
 	>([]);
-	const [pendingTaskStartAfterCreateId, setPendingTaskStartAfterCreateId] = useState<string | null>(null);
+	const [pendingTaskStartAfterCreateIds, setPendingTaskStartAfterCreateIds] = useState<string[] | null>(null);
 	const [taskStartServicePromptDoNotShowAgain, setTaskStartServicePromptDoNotShowAgain] = useState(false);
 	const [taskStartServicePromptAcknowledgements, setTaskStartServicePromptAcknowledgements] = useState<
 		Record<string, true>
@@ -317,7 +389,7 @@ export function useTaskStartServicePrompts({
 
 	useEffect(() => {
 		setPendingTaskStartServicePromptQueue([]);
-		setPendingTaskStartAfterCreateId(null);
+		setPendingTaskStartAfterCreateIds(null);
 		setTaskStartServicePromptDoNotShowAgain(false);
 		setTaskStartServicePromptAcknowledgements({});
 	}, [currentProjectId]);
@@ -345,11 +417,17 @@ export function useTaskStartServicePrompts({
 					return isLinearTaskStartPromptDoNotShowAgain;
 				case "github_cli":
 					return isGithubTaskStartPromptDoNotShowAgain;
+				case "agent_cli":
+					return isAgentCliTaskStartPromptDoNotShowAgain;
 				default:
 					return false;
 			}
 		},
-		[isGithubTaskStartPromptDoNotShowAgain, isLinearTaskStartPromptDoNotShowAgain],
+		[
+			isAgentCliTaskStartPromptDoNotShowAgain,
+			isGithubTaskStartPromptDoNotShowAgain,
+			isLinearTaskStartPromptDoNotShowAgain,
+		],
 	);
 
 	const setTaskStartServicePromptDoNotShowAgainPreference = useCallback(
@@ -361,11 +439,18 @@ export function useTaskStartServicePrompts({
 				case "github_cli":
 					setIsGithubTaskStartPromptDoNotShowAgain(value);
 					return;
+				case "agent_cli":
+					setIsAgentCliTaskStartPromptDoNotShowAgain(value);
+					return;
 				default:
 					return;
 			}
 		},
-		[setIsGithubTaskStartPromptDoNotShowAgain, setIsLinearTaskStartPromptDoNotShowAgain],
+		[
+			setIsAgentCliTaskStartPromptDoNotShowAgain,
+			setIsGithubTaskStartPromptDoNotShowAgain,
+			setIsLinearTaskStartPromptDoNotShowAgain,
+		],
 	);
 
 	const acknowledgeTaskStartServicePrompt = useCallback(
@@ -511,7 +596,11 @@ export function useTaskStartServicePrompts({
 					if (!selection) {
 						continue;
 					}
-					for (const promptId of detectTaskStartServicePromptIds(selection.card.prompt)) {
+					const promptIds = detectTaskStartServicePromptIds(selection.card.prompt);
+					if (isTaskAgentSetupSatisfied === false) {
+						promptIds.push("agent_cli");
+					}
+					for (const promptId of promptIds) {
 						const promptKey = getTaskStartServicePromptKey(taskId, promptId);
 						if (!(promptKey in next)) {
 							continue;
@@ -525,42 +614,79 @@ export function useTaskStartServicePrompts({
 				return next;
 			});
 		},
-		[board],
+		[board, isTaskAgentSetupSatisfied],
 	);
 
 	const queueTaskStartServicePrompts = useCallback(
 		(taskIds: string[]): boolean => {
-			const queuedPrompts = collectPendingTaskStartServicePrompts({
-				tasks: [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))]
-					.map((taskId) => {
+				const queuedPrompts = collectPendingTaskStartServicePrompts({
+					tasks: [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))]
+						.map((taskId) => {
 						const selection = findCardSelection(board, taskId);
 						if (!selection || selection.column.id !== "backlog") {
 							return null;
 						}
-						return {
-							taskId,
-							prompt: selection.card.prompt,
-						};
-					})
-					.filter((task): task is TaskStartServicePromptTask => task !== null),
-				taskStartSetupAvailability,
-				promptAcknowledgements: taskStartServicePromptAcknowledgements,
-				isPromptDoNotShowAgainEnabled: isTaskStartServicePromptDoNotShowAgainEnabled,
-			});
+							return {
+								taskId,
+								prompt: selection.card.prompt,
+							};
+						})
+						.filter((task): task is TaskStartServicePromptTask => task !== null),
+					taskStartSetupAvailability,
+					isTaskAgentSetupSatisfied,
+					promptAcknowledgements: taskStartServicePromptAcknowledgements,
+					isPromptDoNotShowAgainEnabled: isTaskStartServicePromptDoNotShowAgainEnabled,
+				});
 
 			if (queuedPrompts.length === 0) {
 				return false;
 			}
 
 			setTaskStartServicePromptDoNotShowAgain(false);
-			setPendingTaskStartServicePromptQueue(queuedPrompts);
+			setPendingTaskStartServicePromptQueue((currentQueue) => mergeTaskStartServicePromptQueue(currentQueue, queuedPrompts));
 			return true;
 		},
 		[
 			board,
+			isTaskAgentSetupSatisfied,
 			isTaskStartServicePromptDoNotShowAgainEnabled,
 			taskStartSetupAvailability,
 			taskStartServicePromptAcknowledgements,
+		],
+	);
+
+	const startTasksWithServiceSetupPrompt = useCallback(
+		(taskIds: string[]) => {
+			const backlogTaskIds = [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))].filter((taskId) => {
+				const selection = findCardSelection(board, taskId);
+				return selection?.column.id === "backlog";
+			});
+
+			if (backlogTaskIds.length === 0) {
+				return;
+			}
+
+			if (queueTaskStartServicePrompts(backlogTaskIds)) {
+				return;
+			}
+
+			clearTaskStartServicePromptAcknowledgements(backlogTaskIds);
+			if (backlogTaskIds.length === 1) {
+				const firstTaskId = backlogTaskIds[0];
+				if (!firstTaskId) {
+					return;
+				}
+				handleStartTask(firstTaskId);
+				return;
+			}
+			handleStartAllBacklogTasks(backlogTaskIds);
+		},
+		[
+			board,
+			clearTaskStartServicePromptAcknowledgements,
+			handleStartAllBacklogTasks,
+			handleStartTask,
+			queueTaskStartServicePrompts,
 		],
 	);
 
@@ -571,14 +697,9 @@ export function useTaskStartServicePrompts({
 				handleStartTask(taskId);
 				return;
 			}
-
-			if (queueTaskStartServicePrompts([taskId])) {
-				return;
-			}
-			clearTaskStartServicePromptAcknowledgements([taskId]);
-			handleStartTask(taskId);
+			startTasksWithServiceSetupPrompt([taskId]);
 		},
-		[board, clearTaskStartServicePromptAcknowledgements, handleStartTask, queueTaskStartServicePrompts],
+		[board, handleStartTask, startTasksWithServiceSetupPrompt],
 	);
 
 	const handleStartAllBacklogTasksWithServiceSetupPrompt = useCallback(() => {
@@ -587,36 +708,48 @@ export function useTaskStartServicePrompts({
 		if (backlogTaskIds.length === 0) {
 			return;
 		}
+		startTasksWithServiceSetupPrompt(backlogTaskIds);
+	}, [board, startTasksWithServiceSetupPrompt]);
 
-		if (queueTaskStartServicePrompts(backlogTaskIds)) {
-			return;
-		}
-		clearTaskStartServicePromptAcknowledgements(backlogTaskIds);
-		handleStartAllBacklogTasks(backlogTaskIds);
-	}, [board, clearTaskStartServicePromptAcknowledgements, handleStartAllBacklogTasks, queueTaskStartServicePrompts]);
-
-	const handleCreateAndStartTask = useCallback(() => {
-		const taskId = handleCreateTask();
+	const handleCreateAndStartTask = useCallback((options?: { keepDialogOpen?: boolean }): string | null => {
+		const taskId = handleCreateTask(options);
 		if (!taskId) {
-			return;
+			return null;
 		}
-		setPendingTaskStartAfterCreateId(taskId);
+		setPendingTaskStartAfterCreateIds([taskId]);
+		return taskId;
 	}, [handleCreateTask]);
 
+	const handleCreateAndStartTasks = useCallback(
+		(prompts: string[], options?: { keepDialogOpen?: boolean }): string[] => {
+			const taskIds = handleCreateTasks(prompts, options);
+			if (taskIds.length === 0) {
+				return [];
+			}
+			setPendingTaskStartAfterCreateIds(taskIds);
+			return taskIds;
+		},
+		[handleCreateTasks],
+	);
+
 	useEffect(() => {
-		if (!pendingTaskStartAfterCreateId) {
+		if (!pendingTaskStartAfterCreateIds || pendingTaskStartAfterCreateIds.length === 0) {
 			return;
 		}
-		const selection = findCardSelection(board, pendingTaskStartAfterCreateId);
-		if (!selection || selection.column.id !== "backlog") {
+		const allInBacklog = pendingTaskStartAfterCreateIds.every((taskId) => {
+			const selection = findCardSelection(board, taskId);
+			return selection?.column.id === "backlog";
+		});
+		if (!allInBacklog) {
 			return;
 		}
-		handleStartTaskWithServiceSetupPrompt(pendingTaskStartAfterCreateId);
-		setPendingTaskStartAfterCreateId(null);
-	}, [board, handleStartTaskWithServiceSetupPrompt, pendingTaskStartAfterCreateId]);
+		startTasksWithServiceSetupPrompt(pendingTaskStartAfterCreateIds);
+		setPendingTaskStartAfterCreateIds(null);
+	}, [board, pendingTaskStartAfterCreateIds, startTasksWithServiceSetupPrompt]);
 
 	return {
 		handleCreateAndStartTask,
+		handleCreateAndStartTasks,
 		handleStartTaskWithServiceSetupPrompt,
 		handleStartAllBacklogTasksWithServiceSetupPrompt,
 		taskStartServicePromptDialogOpen: pendingTaskStartServicePromptQueue.length > 0,

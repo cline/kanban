@@ -7,13 +7,12 @@ import {
 	getOpenTargetOption,
 	getOpenTargetOptions,
 	normalizeOpenTargetId,
+	resolveOpenTargetPlatform,
 	type OpenTargetId,
 	type OpenTargetOption,
 	PREFERRED_OPEN_TARGET_STORAGE_KEY,
 } from "@/utils/open-targets";
 import { useRawLocalStorageValue } from "@/utils/react-use";
-
-const OPEN_TARGET_OPTIONS = getOpenTargetOptions();
 
 interface UseOpenWorkspaceParams {
 	currentProjectId: string | null;
@@ -39,20 +38,29 @@ function getFirstOutputLine(output: string): string | null {
 }
 
 export function useOpenWorkspace({ currentProjectId, workspacePath }: UseOpenWorkspaceParams): UseOpenWorkspaceResult {
+	const openTargetPlatform = resolveOpenTargetPlatform();
+	const openTargetOptions = useMemo(() => getOpenTargetOptions(openTargetPlatform), [openTargetPlatform]);
+	const fallbackTargetId = openTargetOptions[0]?.id ?? "vscode";
 	const [preferredOpenTargetId, setPreferredOpenTargetId] = useRawLocalStorageValue<OpenTargetId>(
 		PREFERRED_OPEN_TARGET_STORAGE_KEY,
-		"vscode",
+		fallbackTargetId,
 		(value) => normalizeOpenTargetId(value),
 	);
 	const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
-	const selectedOpenTarget = useMemo(() => getOpenTargetOption(preferredOpenTargetId), [preferredOpenTargetId]);
+	const selectedOpenTarget = useMemo(
+		() => getOpenTargetOption(preferredOpenTargetId, openTargetPlatform),
+		[openTargetPlatform, preferredOpenTargetId],
+	);
 	const canOpenWorkspace = Boolean(currentProjectId && workspacePath);
 
 	const onSelectOpenTarget = useCallback(
 		(targetId: OpenTargetId) => {
+			if (!openTargetOptions.some((option) => option.id === targetId)) {
+				return;
+			}
 			setPreferredOpenTargetId(targetId);
 		},
-		[setPreferredOpenTargetId],
+		[openTargetOptions, setPreferredOpenTargetId],
 	);
 
 	const showOpenFailureToast = useCallback(
@@ -80,7 +88,7 @@ export function useOpenWorkspace({ currentProjectId, workspacePath }: UseOpenWor
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.runtime.runCommand.mutate({
-					command: buildOpenCommand(preferredOpenTargetId, workspacePath),
+					command: buildOpenCommand(selectedOpenTarget.id, workspacePath, openTargetPlatform),
 				});
 				if (payload.exitCode !== 0) {
 					const details = getFirstOutputLine(payload.combinedOutput) ?? `Exited with code ${payload.exitCode}.`;
@@ -93,10 +101,10 @@ export function useOpenWorkspace({ currentProjectId, workspacePath }: UseOpenWor
 				setIsOpeningWorkspace(false);
 			}
 		})();
-	}, [currentProjectId, isOpeningWorkspace, preferredOpenTargetId, showOpenFailureToast, workspacePath]);
+	}, [currentProjectId, isOpeningWorkspace, openTargetPlatform, selectedOpenTarget.id, showOpenFailureToast, workspacePath]);
 
 	return {
-		openTargetOptions: OPEN_TARGET_OPTIONS,
+		openTargetOptions,
 		selectedOpenTargetId: selectedOpenTarget.id,
 		onSelectOpenTarget,
 		onOpenWorkspace,

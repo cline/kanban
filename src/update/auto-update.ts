@@ -209,6 +209,7 @@ function looksLikeTransientCachePath(path: string): boolean {
 	return (
 		normalizedPath.includes("/.npm/_npx/") ||
 		normalizedPath.includes("/npm/_npx/") ||
+		normalizedPath.includes("/npm-cache/_npx/") ||
 		normalizedPath.includes("/.npx/") ||
 		normalizedPath.includes("/pnpm/dlx/") ||
 		normalizedPath.includes("/.yarn/cache/") ||
@@ -230,7 +231,7 @@ function detectTransientAutoUpdateInstallation(options: {
 
 	const npxCacheDirectory = extractDirectoryForSegmentSequence(
 		options.entrypointPath,
-		[[".npm", "_npx"], ["npm", "_npx"], [".npx"]],
+		[[".npm", "_npx"], ["npm", "_npx"], ["npm-cache", "_npx"], [".npx"]],
 		1,
 	);
 	if (npxCacheDirectory) {

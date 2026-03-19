@@ -24,6 +24,7 @@ Code quality
 - Prioritize maintainability and clean architecture over speed. 
 - Follow DRY principles and maintain clean architecture with clear separation of concerns.
 - In `web-ui`, prefer `react-use` hooks (via `@/kanban/utils/react-use`) whenever possible
+- Before adding custom utility code, evaluate whether a well-maintained third-party package can reduce complexity and long-term maintenance cost.
 
 Architecture opinions
 - Avoid thin shell wrappers that only forward props or relocate JSX for a single call site.
@@ -42,14 +43,6 @@ When reading issues:
 When closing issues via commit:
 - Include fixes #<number> or closes #<number> in the commit message. This automatically closes the issue when the commit is merged.
 
----
-
-Agent Client Protocol (ACP)
-- ACP is a protocol that lets us interface with CLI agents like codex. When working on anything ACP related, you can use:
-- .plan/docs/ACP-docs.md for all of ACP's documentation
-- .plan/docs/ACP-SDK-notes.md for a reference to how the ACP SDK is implemented
-- .plan/docs/ACP-reference-project.md for notes on ~/Repositories/kanban/vscode-acp, a client that implements ACP
-
 web-ui Stack
 - Kanban web-ui uses Tailwind CSS v4 for styling, Radix UI for accessible headless primitives, and Lucide React for icons.
 - Custom UI primitives live in `src/components/ui/` (button, dialog, tooltip, kbd, spinner, cn utility).
@@ -57,8 +50,8 @@ web-ui Stack
 
 Styling mental model
 - Use Tailwind utility classes as the primary styling system. Prefer `className` over inline `style={{}}`.
+- Prefer Tailwind classes over adding custom CSS in `globals.css` when possible. Conditional Tailwind classes via `cn()` are better than CSS overrides for state-driven styling (e.g. selected/active variants). Reserve `globals.css` for things Tailwind can't express: complex selectors (sibling combinators, attribute selectors), app-level layout glue, or styles that genuinely need to cascade.
 - Only use inline `style={{}}` for truly dynamic values (colors from props/variables, computed positions from drag-and-drop, runtime-dependent dimensions).
-- App-level layout glue and complex CSS selectors (`:hover`, sibling selectors, attribute selectors) live in `globals.css` with `kb-` prefixed classes.
 - The design system tokens are defined in `globals.css` inside `@theme { ... }`. Use Tailwind utilities that reference them: `bg-surface-0`, `text-text-primary`, `border-border`, etc.
 
 Design tokens (defined in globals.css @theme)
@@ -91,3 +84,7 @@ Dark theme
 - The app is always in dark theme. Colors are set via CSS custom properties in `globals.css`.
 - Surface hierarchy: `bg-surface-0` (app background) -> `bg-surface-1` (raised panels) -> `bg-surface-2` (cards/inputs) -> `bg-surface-3` (hover) -> `bg-surface-4` (pressed).
 - Do NOT use Blueprint, Tailwind's light-mode defaults, or any `dark:` prefix. The theme is always dark.
+
+Misc. tribal knowledge
+- Kanban is launched from the user's shell and inherits its environment. For agent detection and task-agent startup, prefer direct PATH checks and direct process launches over spawning an interactive shell. Avoid `zsh -i`, shell fallback command discovery, or "launch shell then type command into it" on hot paths. On setups with heavy shell init like `conda` or `nvm`, doing that per task can freeze the runtime and even make new Terminal.app windows feel hung when several tasks start at once. It's fine to use an actual interactive shell for explicit shell terminals, not for normal agent session work.
+- If CI hangs on Node 22 after tests seem to finish, suspect a live subprocess or SDK-host startup path before assuming a slow test body. Read `.plan/docs/node22-ci-hanging-tests-investigation.md` before repeating that investigation. `test/runtime/cline-sdk/cline-task-session-service.test.ts` was the big prior culprit because a unit-style suite was still booting the real Cline SDK host.

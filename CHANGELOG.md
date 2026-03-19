@@ -1,5 +1,108 @@
 # Changelog
 
+## [0.1.27]
+
+- Upgraded Cline SDK to stable v0.0.4, replacing nightly builds for more reliable native Cline sessions
+
+## [0.1.26]
+
+- Trashing a task now saves a git patch of any uncommitted work, and restoring it from trash automatically reapplies those changes so nothing gets lost
+- "Create more" toggle in the new task dialog lets you create multiple tasks in a row without reopening the dialog each time
+- New keyboard shortcuts: Cmd/Ctrl+G toggles the git history view, Cmd/Ctrl+Shift+S opens settings, and Esc closes git history from the home screen
+- Shortcut commands now safely interrupt any running terminal process before executing, so commands no longer get jumbled with whatever was previously running
+- Agent file-read activity now shows the full list of files being accessed instead of truncating with "(+N more)"
+- Expanding the diff view now automatically closes the terminal panel to avoid overlapping views
+- Task worktree cleanup no longer gets stuck when patch capture fails
+- Fixed the "Thinking..." indicator incorrectly appearing while the agent is actively streaming a response
+- Native Cline sessions now correctly capture their latest changes when entering review
+- Removed the redundant "Projects" label below the sidebar segment tabs
+- Consistent spacing and alignment across all alert dialogs
+- Fixed terminal background color in the detail view to match the rest of the overlay
+
+## [0.1.25]
+
+- Added a chat view to the home sidebar for project-scoped agent conversations. What used to be the project column is now a sidebar that can switch between projects and chat.
+- The agent can now trash and delete tasks on your behalf using new task management commands
+- When no CLI agent is detected, a guided setup flow walks you through getting started
+- Replaced the Kanban skill system with `--append-system-prompt` -- since the board now has a dedicated agent, we just append context to its prompt instead of maintaining a separate skill
+- Native Cline SDK chat runtime with cancelable turns
+- `--host` flag to bind the server to a custom IP address
+- Submodules are now initialized automatically in new task worktrees
+- Fix Escape key unexpectedly closing the detail view
+- Increased shortcut label and footer font sizes
+- Capped agent preview lines in task cards
+
+## [0.1.24]
+
+- Fixed multiline prompt arguments being broken on Windows cmd.exe
+
+## [0.1.23]
+
+- Fix Windows terminal launches incorrectly escaping arguments with spaces, parentheses, and other special characters
+
+## [0.1.22]
+
+- Fix Windows terminal launch failing for bare executables (e.g. `cline`) due to unnecessary quoting
+
+## [0.1.21]
+
+- Fix Windows agent commands failing to launch
+- Fix update detection for Windows npm-cache npx transient installs
+- Reduce false-positive triggering of the kanban skill
+- Show worktree errors in toasts
+
+## [0.1.20]
+
+- Fix branch picker showing remote tracking refs instead of just local branches, and enable trackpad scrolling in the picker
+- Fix task card activity not updating when Opencode completes hook actions
+- Fix Cline tasks getting stuck instead of returning to in-progress when asking follow-up questions during review
+
+## [0.1.19]
+
+- Fixed a race condition where navigating to a task's detail view could trigger an unintended auto-start
+- Fixed shutdown cleanup to reliably stop all running tasks across projects
+
+## [0.1.18]
+
+- Fix layout stability when moving cards between columns programmatically
+- Improve checkbox contrast on dialog footers
+- Reduce dialog header/footer side padding to match vertical padding
+- Fix description briefly flashing on card mount
+
+## [0.1.17]
+
+- Fix keyboard shortcuts (Cmd+Enter) not working when focus is on dialog inputs
+
+## [0.1.16]
+
+- Fixed agent startup reliability and command detection
+- Fixed path handling on Windows and Linux for cross-platform support
+
+## [0.1.15]
+
+- Fix diff view syntax highlighting colors in git history
+- Improve graceful shutdown handling for CLI processes
+- Fix worktree symlink mirroring for ignored paths to avoid blocking operations
+- Fix process cleanup on Windows when tasks time out
+- Support Windows AppData path discovery for Opencode integration
+- Make "Open in Editor" workspace actions work correctly across platforms
+- Add directory picker support on Windows
+- Fix transcript path detection in hooks
+- Handle Linux directory picker fallbacks and errors gracefully
+
+## [0.1.14]
+
+- Fixed a crash on Linux systems where no browser opener (xdg-open, etc.) was available
+
+## [0.1.13]
+
+- New task creation dialog with list detection for quickly creating multiple tasks at once
+- Git history now shows remote refs and branch divergence so you know if you need to pull
+- Expandable task card descriptions -- click to reveal the full description inline
+- Notifications now show the latest agent message
+- Improved split diff rendering by consolidating same hunk changes
+- Fixed issue where cards in the kanban column updating content would cause scroll jumps
+
 ## [0.1.12]
 
 - Redesigned the web UI with a refined dark theme, custom UI primitives, and polished controls for a more professional look and feel

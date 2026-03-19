@@ -16,6 +16,8 @@ export type GitHistoryViewMode = "working-copy" | "commit";
 
 const INITIAL_COMMIT_PAGE_SIZE = 150;
 const COMMIT_PAGE_SIZE = 150;
+const EMPTY_REFS: RuntimeGitRef[] = [];
+const EMPTY_LOG_REFS: string[] = [];
 
 interface GitHistoryTaskScope {
 	taskId: string;
@@ -131,7 +133,7 @@ export function useGitHistoryData({
 		}
 	}, [enabled, gitSummary?.currentBranch, refsQuery.refetch]);
 
-	const refs = isScopeTransitioning ? [] : (refsQuery.data?.refs ?? []);
+	const refs = isScopeTransitioning ? EMPTY_REFS : (refsQuery.data?.refs ?? EMPTY_REFS);
 	const isRefsLoadingVisible =
 		isScopeTransitioning ||
 		(enabled && workspaceId !== null && refsQuery.data === null && !refsQuery.isError) ||
@@ -149,12 +151,27 @@ export function useGitHistoryData({
 		return headRef ?? null;
 	}, [headRef, refs, selectedRefName]);
 
-	const logRef = activeRef?.type === "detached" ? activeRef.hash : (activeRef?.name ?? null);
-	const logKey = `${scopeKey}:${logRef ?? "__no_ref__"}`;
+	const logRefs = useMemo(() => {
+		if (!activeRef) {
+			return EMPTY_LOG_REFS;
+		}
+		if (activeRef.type === "detached") {
+			return [activeRef.hash];
+		}
+		if (activeRef.type === "branch") {
+			const resolvedRefs = [activeRef.name];
+			if (activeRef.upstreamName && refs.some((ref) => ref.name === activeRef.upstreamName)) {
+				resolvedRefs.push(activeRef.upstreamName);
+			}
+			return resolvedRefs;
+		}
+		return [activeRef.name];
+	}, [activeRef, refs]);
+	const logKey = `${scopeKey}:${logRefs.length > 0 ? logRefs.join("|") : "__no_ref__"}`;
 
 	const loadCommits = useCallback(
 		async (options: { skip: number; maxCount: number; append: boolean; silent?: boolean }) => {
-			if (!enabled || !workspaceId || !logRef) {
+			if (!enabled || !workspaceId || logRefs.length === 0) {
 				abortInFlightLogRequest();
 				setCommits([]);
 				setTotalCommitCount(0);
@@ -182,7 +199,8 @@ export function useGitHistoryData({
 				const trpc = getRuntimeTrpcClient(workspaceId);
 				const payload = await trpc.workspace.getGitLog.query(
 					{
-						ref: logRef,
+						ref: logRefs[0] ?? null,
+						refs: logRefs,
 						maxCount: options.maxCount,
 						skip: options.skip,
 						taskScope: taskScope ?? null,
@@ -247,7 +265,7 @@ export function useGitHistoryData({
 				}
 			}
 		},
-		[abortInFlightLogRequest, enabled, isAbortError, logKey, logRef, taskScope, workspaceId],
+		[abortInFlightLogRequest, enabled, isAbortError, logKey, logRefs, taskScope, workspaceId],
 	);
 
 	useEffect(() => {
@@ -258,7 +276,7 @@ export function useGitHistoryData({
 		setIsLoadingMoreCommits(false);
 		setLogErrorMessage(null);
 		setResolvedLogKey(null);
-		if (!enabled || !workspaceId || !logRef) {
+		if (!enabled || !workspaceId || logRefs.length === 0) {
 			return;
 		}
 		void loadCommits({
@@ -266,7 +284,7 @@ export function useGitHistoryData({
 			maxCount: INITIAL_COMMIT_PAGE_SIZE,
 			append: false,
 		});
-	}, [abortInFlightLogRequest, enabled, loadCommits, logRef, workspaceId]);
+	}, [abortInFlightLogRequest, enabled, loadCommits, logRefs, workspaceId]);
 
 	useEffect(() => {
 		return () => {
@@ -275,7 +293,7 @@ export function useGitHistoryData({
 	}, [abortInFlightLogRequest]);
 
 	const loadMoreCommits = useCallback(() => {
-		if (!enabled || !workspaceId || !logRef || isLogLoading || isLoadingMoreCommits) {
+		if (!enabled || !workspaceId || logRefs.length === 0 || isLogLoading || isLoadingMoreCommits) {
 			return;
 		}
 		if (commits.length >= totalCommitCount) {
@@ -292,14 +310,14 @@ export function useGitHistoryData({
 		isLoadingMoreCommits,
 		isLogLoading,
 		loadCommits,
-		logRef,
+		logRefs,
 		totalCommitCount,
 		workspaceId,
 	]);
 
 	const refreshCommits = useCallback(
 		(options?: { silent?: boolean }) => {
-			if (!enabled || !workspaceId || !logRef) {
+			if (!enabled || !workspaceId || logRefs.length === 0) {
 				return;
 			}
 			void loadCommits({
@@ -309,7 +327,7 @@ export function useGitHistoryData({
 				silent: options?.silent ?? false,
 			});
 		},
-		[commits.length, enabled, loadCommits, logRef, workspaceId],
+		[commits.length, enabled, loadCommits, logRefs, workspaceId],
 	);
 
 	const resolvedLogErrorMessage = refsErrorMessage ?? logErrorMessage;
@@ -321,10 +339,12 @@ export function useGitHistoryData({
 		if (selectedCommitHash && commits.some((commit) => commit.hash === selectedCommitHash)) {
 			return;
 		}
-		const firstCommit = commits[0];
-		setSelectedCommitHash(firstCommit?.hash ?? null);
+		const preferredCommit = activeRef
+			? commits.find((commit) => commit.hash === activeRef.hash) ?? commits[0]
+			: commits[0];
+		setSelectedCommitHash(preferredCommit?.hash ?? null);
 		setSelectedDiffPath(null);
-	}, [commits, selectedCommitHash, viewMode]);
+	}, [activeRef, commits, selectedCommitHash, viewMode]);
 
 	const diffQueryFn = useCallback(async () => {
 		if (!workspaceId || !selectedCommitHash) {
@@ -405,7 +425,7 @@ export function useGitHistoryData({
 		isScopeTransitioning ||
 		isRefsLoadingVisible ||
 		isLogLoading ||
-		(enabled && workspaceId !== null && logRef !== null && resolvedLogKey !== logKey);
+		(enabled && workspaceId !== null && logRefs.length > 0 && resolvedLogKey !== logKey);
 	const previousStateVersionRef = useRef(stateVersion);
 
 	useEffect(() => {

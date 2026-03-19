@@ -140,6 +140,7 @@ export function usePersistentTerminalSession({
 		return registerTerminalController(taskId, {
 			input: (text) => terminalRef.current?.input(text) ?? false,
 			paste: (text) => terminalRef.current?.paste(text) ?? false,
+			waitForLikelyPrompt: async (timeoutMs) => await (terminalRef.current?.waitForLikelyPrompt(timeoutMs) ?? false),
 		});
 	}, [taskId]);
 

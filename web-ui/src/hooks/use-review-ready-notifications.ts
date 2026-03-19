@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RuntimeStateStreamTaskReadyForReviewMessage } from "@/runtime/types";
+import type { RuntimeStateStreamTaskReadyForReviewMessage, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import type { BoardData } from "@/types";
 import {
@@ -22,6 +22,7 @@ interface UseReviewReadyNotificationsOptions {
 	board: BoardData;
 	isDocumentVisible: boolean;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
+	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	readyForReviewNotificationsEnabled: boolean;
 	workspacePath: string | null;
 }
@@ -40,13 +41,22 @@ function isDocumentCurrentlyVisible(fallbackValue: boolean): boolean {
 	return document.visibilityState === "visible";
 }
 
-function showReadyForReviewNotification(taskId: string, notificationTitle: string, taskTitle: string): void {
+function resolveReviewReadyNotificationBody(
+	taskId: string,
+	taskTitle: string,
+	taskSessions: Record<string, RuntimeTaskSessionSummary>,
+): string {
+	const finalMessage = taskSessions[taskId]?.latestHookActivity?.finalMessage?.trim();
+	return finalMessage || taskTitle;
+}
+
+function showReadyForReviewNotification(taskId: string, notificationTitle: string, notificationBody: string): void {
 	if (!canShowBrowserNotifications()) {
 		return;
 	}
 	try {
 		const notification = new Notification(notificationTitle, {
-			body: taskTitle,
+			body: notificationBody,
 			tag: `task-ready-for-review-${taskId}`,
 		});
 		notification.onclick = () => {
@@ -65,6 +75,7 @@ export function useReviewReadyNotifications({
 	board,
 	isDocumentVisible,
 	latestTaskReadyForReview,
+	taskSessions,
 	readyForReviewNotificationsEnabled,
 	workspacePath,
 }: UseReviewReadyNotificationsOptions): void {
@@ -170,9 +181,14 @@ export function useReviewReadyNotifications({
 		const taskTitle = selection
 			? truncateTaskPromptLabel(selection.card.prompt) || `Task ${latestTaskReadyForReview.taskId}`
 			: `Task ${latestTaskReadyForReview.taskId}`;
+		const notificationBody = resolveReviewReadyNotificationBody(
+			latestTaskReadyForReview.taskId,
+			taskTitle,
+			taskSessions,
+		);
 		setPendingReviewReadyNotificationCount((current) => current + 1);
 		const notificationTitle = workspaceTitle ? `${workspaceTitle} ready for review` : "Ready for review";
-		showReadyForReviewNotification(latestTaskReadyForReview.taskId, notificationTitle, taskTitle);
+		showReadyForReviewNotification(latestTaskReadyForReview.taskId, notificationTitle, notificationBody);
 	}, [
 		activeWorkspaceId,
 		board,
@@ -180,6 +196,7 @@ export function useReviewReadyNotifications({
 		isWindowFocused,
 		latestTaskReadyForReview,
 		readyForReviewNotificationsEnabled,
+		taskSessions,
 		workspaceTitle,
 	]);
 
@@ -213,7 +230,7 @@ export function useReviewReadyNotifications({
 		setPendingReviewReadyNotificationCount(0);
 	}, [activeWorkspaceId]);
 
-	const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanban` : "Kanban";
+	const baseTitle = workspaceTitle || "cline";
 	const documentTitle =
 		pendingReviewReadyNotificationCount > 0 ? `(${pendingReviewReadyNotificationCount}) ${baseTitle}` : baseTitle;
 	useDocumentTitle(documentTitle);

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import type { RuntimeAgentId } from "../core/api-contract.js";
+import { KANBAN_TASK_WORKTREES_DIR_NAME } from "../workspace/task-worktree-path.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 
 export const WORKSPACE_TRUST_CONFIRM_DELAY_MS = 100;
@@ -64,7 +65,7 @@ export function hasClaudeWorkspaceTrustPrompt(text: string): boolean {
 }
 
 function isTaskWorktreePath(path: string): boolean {
-	const worktreesRoot = `${join(getRuntimeHomePath(), "worktrees").replace(/\\/gu, "/").replace(/\/+$/u, "")}/`;
+	const worktreesRoot = `${join(getRuntimeHomePath(), KANBAN_TASK_WORKTREES_DIR_NAME).replace(/\\/gu, "/").replace(/\/+$/u, "")}/`;
 	const normalizedPath = `${path.replace(/\\/gu, "/").replace(/\/+$/u, "")}/`;
 	if (process.platform === "win32") {
 		return normalizedPath.toLowerCase().startsWith(worktreesRoot.toLowerCase());

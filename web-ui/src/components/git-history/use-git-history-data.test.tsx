@@ -61,7 +61,11 @@ function createGitSummary(branch: string): RuntimeGitSyncSummary {
 	};
 }
 
-function createRefsResponse(branch: string, hash: string): RuntimeGitRefsResponse {
+function createRefsResponse(
+	branch: string,
+	hash: string,
+	options?: { includeRemote?: boolean; remoteHash?: string },
+): RuntimeGitRefsResponse {
 	return {
 		ok: true,
 		refs: [
@@ -70,28 +74,51 @@ function createRefsResponse(branch: string, hash: string): RuntimeGitRefsRespons
 				type: "branch",
 				hash,
 				isHead: true,
+				upstreamName: options?.includeRemote ? `origin/${branch}` : undefined,
 				ahead: 0,
 				behind: 0,
 			},
+			...(options?.includeRemote
+				? [
+						{
+							name: `origin/${branch}`,
+							type: "remote" as const,
+							hash: options.remoteHash ?? hash,
+							isHead: false,
+						},
+					]
+				: []),
 		],
 	};
 }
 
-function createLogResponse(hash: string, message: string): RuntimeGitLogResponse {
+function createLogResponse(
+	hashOrCommits: string | Array<{ hash: string; message: string; relation?: "selected" | "upstream" | "shared" }>,
+	message?: string,
+): RuntimeGitLogResponse {
+	const commits =
+		typeof hashOrCommits === "string"
+			? [
+					{
+						hash: hashOrCommits,
+						message: message ?? "Test commit",
+					},
+				]
+			: hashOrCommits;
+
 	return {
 		ok: true,
-		totalCount: 1,
-		commits: [
-			{
-				hash,
-				shortHash: hash.slice(0, 8),
-				authorName: "Test User",
-				authorEmail: "test@example.com",
-				date: "2026-03-12T00:00:00.000Z",
-				message,
-				parentHashes: [],
-			},
-		],
+		totalCount: commits.length,
+		commits: commits.map((commit) => ({
+			hash: commit.hash,
+			shortHash: commit.hash.slice(0, 8),
+			authorName: "Test User",
+			authorEmail: "test@example.com",
+			date: "2026-03-12T00:00:00.000Z",
+			message: commit.message,
+			parentHashes: [],
+			relation: commit.relation,
+		})),
 	};
 }
 
@@ -263,6 +290,59 @@ describe("useGitHistoryData", () => {
 			isRefsLoading: true,
 			isLogLoading: true,
 			isDiffLoading: true,
+		});
+	});
+
+	it("loads the active branch together with its upstream remote when both refs are available", async () => {
+		getGitRefsQueryMock.mockResolvedValue(createRefsResponse("main", "homehash1", { includeRemote: true }));
+
+		await act(async () => {
+			root.render(<HookHarness taskScope={null} onRender={() => {}} />);
+			await flushPromises();
+		});
+
+		expect(getGitLogQueryMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				ref: "main",
+				refs: ["main", "origin/main"],
+			}),
+			expect.anything(),
+		);
+	});
+
+	it("selects the checked out branch head by default when the remote has newer commits", async () => {
+		const snapshots: HookSnapshot[] = [];
+
+		getGitRefsQueryMock.mockResolvedValue(
+			createRefsResponse("main", "homehash1", {
+				includeRemote: true,
+				remoteHash: "remotehash1",
+			}),
+		);
+		getGitLogQueryMock.mockResolvedValue(
+			createLogResponse([
+				{ hash: "remotehash1", message: "Remote commit", relation: "upstream" },
+				{ hash: "homehash1", message: "Local head", relation: "selected" },
+				{ hash: "basehash1", message: "Base commit", relation: "shared" },
+			]),
+		);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskScope={null}
+					onRender={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+
+		expect(snapshots.at(-1)).toMatchObject({
+			activeRefName: "main",
+			commits: ["remotehash1", "homehash1", "basehash1"],
+			selectedCommitHash: "homehash1",
 		});
 	});
 });

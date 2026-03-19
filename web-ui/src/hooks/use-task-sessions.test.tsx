@@ -47,7 +47,6 @@ function HookHarness({ onSnapshot }: { onSnapshot: (snapshot: HookSnapshot) => v
 	const sessions = useTaskSessions({
 		currentProjectId: "project-1",
 		setSessions: () => {},
-		onWorktreeError: () => {},
 	});
 
 	useEffect(() => {

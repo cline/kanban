@@ -44,6 +44,7 @@
 	--radius-md: 6px;
 	--radius-lg: 8px;
 	--radius-xl: 12px;
+
 }
 
 html,
@@ -85,6 +86,11 @@ body,
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	padding: 6px;
+}
+
+.kb-board[data-programmatic-card-move="true"] [data-rfd-draggable-context-id],
+.kb-board[data-programmatic-card-move="true"] [data-rfd-placeholder-context-id] {
+	transition: none !important;
 }
 
 /* -- Scrollbars -- */
@@ -472,17 +478,6 @@ body.kb-dependency-link-mode {
 	background: transparent;
 }
 
-.kb-diff-row-placeholder {
-	height: 100%;
-	background: transparent;
-	pointer-events: none;
-	user-select: none;
-}
-
-.kb-diff-row-placeholder:hover {
-	background: transparent;
-}
-
 .kb-diff-segment-added {
 	background: rgba(63, 185, 80, 0.3);
 	border-radius: 2px;
@@ -755,3 +750,19 @@ body.kb-dependency-link-mode {
 	background: var(--color-surface-3);
 	border-radius: var(--radius-sm);
 }
+
+/* -- Chat markdown -- */
+
+.kb-markdown > * {
+	margin: 0;
+}
+
+.kb-markdown > :first-child {
+	margin-top: 0 !important;
+}
+
+.kb-markdown > * + * {
+	margin-top: 0.5em;
+}
+
+

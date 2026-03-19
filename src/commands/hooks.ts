@@ -49,6 +49,7 @@ interface CodexWatcherState {
 	approvalFallbackSeq: number;
 	offset: number;
 	remainder: string;
+	currentSessionScope: "unknown" | "root" | "descendant";
 }
 
 interface CodexEventPayload {
@@ -328,6 +329,21 @@ function inferActivityText(
 	return null;
 }
 
+export function inferHookSourceFromPayload(payload: Record<string, unknown> | null): string | null {
+	const transcriptPath = payload ? readStringField(payload, "transcript_path") : null;
+	const normalizedTranscriptPath = transcriptPath?.replaceAll("\\", "/").toLowerCase() ?? null;
+	if (normalizedTranscriptPath?.includes("/.claude/")) {
+		return "claude";
+	}
+	if (normalizedTranscriptPath?.includes("/.factory/")) {
+		return "droid";
+	}
+	if (payload && readStringField(payload, "type") === "agent-turn-complete") {
+		return "codex";
+	}
+	return null;
+}
+
 function normalizeHookMetadata(
 	event: RuntimeHookEvent,
 	payload: Record<string, unknown> | null,
@@ -358,15 +374,7 @@ function normalizeHookMetadata(
 			readNestedString(payload, ["taskComplete", "result"]))
 		: null;
 
-	const transcriptPath = payload ? readStringField(payload, "transcript_path") : null;
-	let inferredSource: string | null = null;
-	if (transcriptPath?.includes("/.claude/")) {
-		inferredSource = "claude";
-	} else if (transcriptPath?.includes("/.factory/")) {
-		inferredSource = "droid";
-	} else if (payload && readStringField(payload, "type") === "agent-turn-complete") {
-		inferredSource = "codex";
-	}
+	const inferredSource = inferHookSourceFromPayload(payload);
 
 	const activityText = inferActivityText(event, payload, toolName, finalMessage, notificationType);
 	const merged: Partial<RuntimeTaskHookActivity> = {
@@ -595,7 +603,29 @@ function extractJsonStringField(line: string, field: string): string {
 	}
 }
 
-function parseCodexEventLine(
+function isCodexDescendantSession(message: unknown): boolean {
+	const messageRecord = asRecord(message);
+	const payload = messageRecord ? asRecord(messageRecord.payload) : null;
+	const source = payload ? asRecord(payload.source) : null;
+	const subagent = source ? asRecord(source.subagent) : null;
+	const threadSpawn = subagent ? asRecord(subagent.thread_spawn) : null;
+	return threadSpawn !== null;
+}
+
+export function createCodexWatcherState(): CodexWatcherState {
+	return {
+		lastTurnId: "",
+		lastApprovalId: "",
+		lastExecCallId: "",
+		lastActivityFingerprint: "",
+		approvalFallbackSeq: 0,
+		offset: 0,
+		remainder: "",
+		currentSessionScope: "unknown",
+	};
+}
+
+export function parseCodexEventLine(
 	line: string,
 	state: CodexWatcherState,
 ): { event: RuntimeHookEvent; metadata?: Partial<RuntimeTaskHookActivity> } | null {
@@ -612,6 +642,16 @@ function parseCodexEventLine(
 		return null;
 	}
 	const normalizedType = type.toLowerCase();
+	if (normalizedType === "session_meta") {
+		state.currentSessionScope = isCodexDescendantSession(message) ? "descendant" : "root";
+		return null;
+	}
+	if (state.currentSessionScope === "descendant") {
+		if (normalizedType === "task_complete" || normalizedType === "turn_aborted") {
+			state.currentSessionScope = "unknown";
+		}
+		return null;
+	}
 	const command = extractCodexCommandSnippet(message, line);
 	const messageText = typeof message.message === "string" ? normalizeWhitespace(message.message) : "";
 	const lastAgentMessage =
@@ -808,15 +848,7 @@ async function waitForFile(path: string): Promise<boolean> {
 }
 
 async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
-	const state: CodexWatcherState = {
-		lastTurnId: "",
-		lastApprovalId: "",
-		lastExecCallId: "",
-		lastActivityFingerprint: "",
-		approvalFallbackSeq: 0,
-		offset: 0,
-		remainder: "",
-	};
+	const state = createCodexWatcherState();
 
 	const poll = async () => {
 		let fileStat: Stats;

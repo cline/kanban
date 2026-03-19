@@ -4,12 +4,16 @@ import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 
+import {
+	createInMemoryClineTaskSessionService,
+	type ClineTaskSessionService,
+} from "../cline-sdk/cline-task-session-service.js";
 import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import {
 	buildKanbanRuntimeUrl,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
-	KANBAN_RUNTIME_HOST,
+	getKanbanRuntimeHost,
 } from "../core/runtime-endpoint.js";
 import { loadWorkspaceContextById } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
@@ -113,6 +117,26 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	const getScopedTerminalManager = async (scope: RuntimeTrpcWorkspaceScope): Promise<TerminalSessionManager> =>
 		await deps.ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
+	const clineTaskSessionServiceByWorkspaceId = new Map<string, ClineTaskSessionService>();
+	const getScopedClineTaskSessionService = async (
+		scope: RuntimeTrpcWorkspaceScope,
+	): Promise<ClineTaskSessionService> => {
+		let service = clineTaskSessionServiceByWorkspaceId.get(scope.workspaceId);
+		if (!service) {
+			service = createInMemoryClineTaskSessionService();
+			clineTaskSessionServiceByWorkspaceId.set(scope.workspaceId, service);
+			deps.runtimeStateHub.trackClineTaskSessionService(scope.workspaceId, scope.workspacePath, service);
+		}
+		return service;
+	};
+	const disposeClineTaskSessionService = (workspaceId: string): void => {
+		const service = clineTaskSessionServiceByWorkspaceId.get(workspaceId);
+		if (!service) {
+			return;
+		}
+		clineTaskSessionServiceByWorkspaceId.delete(workspaceId);
+		void service.dispose();
+	};
 
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
@@ -125,11 +149,13 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				loadScopedRuntimeConfig: deps.workspaceRegistry.loadScopedRuntimeConfig,
 				setActiveRuntimeConfig: deps.workspaceRegistry.setActiveRuntimeConfig,
 				getScopedTerminalManager,
+					getScopedClineTaskSessionService,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
 			}),
 			workspaceApi: createWorkspaceApi({
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
+				getScopedClineTaskSessionService,
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
 				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
 				buildWorkspaceStateSnapshot: deps.workspaceRegistry.buildWorkspaceStateSnapshot,
@@ -147,7 +173,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				createProjectSummary: deps.workspaceRegistry.createProjectSummary,
 				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
 				getTerminalManagerForWorkspace: deps.workspaceRegistry.getTerminalManagerForWorkspace,
-				disposeWorkspace: deps.disposeWorkspace,
+				disposeWorkspace: (workspaceId, options) => {
+					disposeClineTaskSessionService(workspaceId);
+					return deps.disposeWorkspace(workspaceId, options);
+				},
 				collectProjectWorktreeTaskIdsForRemoval: deps.collectProjectWorktreeTaskIdsForRemoval,
 				warn: deps.warn,
 				buildProjectsPayload: deps.workspaceRegistry.buildProjectsPayload,
@@ -224,7 +253,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	await new Promise<void>((resolveListen, rejectListen) => {
 		server.once("error", rejectListen);
-		server.listen(getKanbanRuntimePort(), KANBAN_RUNTIME_HOST, () => {
+		server.listen(getKanbanRuntimePort(), getKanbanRuntimeHost(), () => {
 			server.off("error", rejectListen);
 			resolveListen();
 		});
@@ -242,6 +271,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	return {
 		url,
 		close: async () => {
+			await Promise.all(
+				Array.from(clineTaskSessionServiceByWorkspaceId.values()).map(async (service) => {
+					await service.dispose();
+				}),
+			);
+			clineTaskSessionServiceByWorkspaceId.clear();
 			await deps.runtimeStateHub.close();
 			await terminalWebSocketBridge.close();
 			await new Promise<void>((resolveClose, rejectClose) => {

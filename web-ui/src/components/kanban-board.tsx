@@ -35,7 +35,6 @@ export function KanbanBoard({
 	onStartTask,
 	onStartAllTasks,
 	onClearTrash,
-	inlineTaskCreator,
 	editingTaskId,
 	inlineTaskEditor,
 	onEditTask,
@@ -52,6 +51,7 @@ export function KanbanBoard({
 	onDeleteDependency,
 	onDragEnd,
 	onRequestProgrammaticCardMoveReady,
+	workspacePath,
 }: {
 	data: BoardData;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -60,7 +60,6 @@ export function KanbanBoard({
 	onStartTask?: (taskId: string) => void;
 	onStartAllTasks?: () => void;
 	onClearTrash?: () => void;
-	inlineTaskCreator?: ReactNode;
 	editingTaskId?: string | null;
 	inlineTaskEditor?: ReactNode;
 	onEditTask?: (card: BoardCard) => void;
@@ -77,6 +76,7 @@ export function KanbanBoard({
 	onDeleteDependency?: (dependencyId: string) => void;
 	onDragEnd: (result: DropResult) => void;
 	onRequestProgrammaticCardMoveReady?: (requestMove: RequestProgrammaticCardMove | null) => void;
+	workspacePath?: string | null;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
 	const boardRef = useRef<HTMLElement>(null);
@@ -161,9 +161,11 @@ export function KanbanBoard({
 			const firstTargetCardElement = targetCardsElement.querySelector<HTMLElement>("[data-task-id]");
 			if (firstTargetCardElement) {
 				const targetRect = firstTargetCardElement.getBoundingClientRect();
+				const desiredCenterY = targetRect.top + sourceCardRect.height / 2;
+				const maxTopInsertCenterY = targetRect.top + targetRect.height / 2 - 1;
 				return {
 					x: targetRect.left + sourceCardRect.width / 2,
-					y: targetRect.top + sourceCardRect.height / 2,
+					y: Math.min(desiredCenterY, maxTopInsertCenterY),
 				};
 			}
 			const targetRect = targetCardsElement.getBoundingClientRect();
@@ -368,7 +370,11 @@ export function KanbanBoard({
 			onDragEnd={handleDragEnd}
 			sensors={[programmaticSensor]}
 		>
-			<section ref={boardRef} className="kb-board kb-dependency-surface">
+			<section
+				ref={boardRef}
+				className="kb-board kb-dependency-surface"
+				data-programmatic-card-move={programmaticCardMoveInFlight ? "true" : undefined}
+			>
 				{data.columns.map((column) => (
 					<BoardColumn
 						key={column.id}
@@ -378,7 +384,6 @@ export function KanbanBoard({
 						onStartTask={column.id === "backlog" ? onStartTask : undefined}
 						onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
-						inlineTaskCreator={column.id === "backlog" ? inlineTaskCreator : undefined}
 						editingTaskId={column.id === "backlog" ? editingTaskId : null}
 						inlineTaskEditor={column.id === "backlog" ? inlineTaskEditor : undefined}
 						onEditTask={column.id === "backlog" ? onEditTask : undefined}
@@ -398,6 +403,7 @@ export function KanbanBoard({
 						dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}
 						dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId ?? null}
 						isDependencyLinking={dependencyLinking.draft !== null}
+						workspacePath={workspacePath}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
 								onCardSelect(card.id);

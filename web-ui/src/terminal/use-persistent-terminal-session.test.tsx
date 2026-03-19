@@ -24,6 +24,7 @@ function createPersistentTerminalMock() {
 		unmount: vi.fn(),
 		input: vi.fn(() => true),
 		paste: vi.fn(() => true),
+		waitForLikelyPrompt: vi.fn(async () => true),
 		clear: vi.fn(),
 		stop: vi.fn(async () => {}),
 	};

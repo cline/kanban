@@ -24,6 +24,8 @@ interface GitCommandResult {
 	error: string | null;
 }
 
+type CommitRelation = NonNullable<RuntimeGitCommit["relation"]>;
+
 async function runGit(
 	cwd: string,
 	args: string[],
@@ -75,26 +77,30 @@ function parseCommitRecord(record: string): RuntimeGitCommit | null {
 export async function getGitLog(options: {
 	cwd: string;
 	ref?: string | null;
+	refs?: string[] | null;
 	maxCount?: number;
 	skip?: number;
 }): Promise<RuntimeGitLogResponse> {
-	const { cwd, ref, maxCount = 200, skip = 0 } = options;
+	const { cwd, ref, refs, maxCount = 200, skip = 0 } = options;
 
 	const repoRootResult = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
 	if (!repoRootResult.ok || !repoRootResult.stdout) {
 		return { ok: false, commits: [], totalCount: 0, error: "No git repository detected." };
 	}
 	const repoRoot = repoRootResult.stdout;
+	const requestedRefs = normalizeRequestedRefs(refs, ref);
 
 	const logArgs = [
 		"log",
+		"--topo-order",
+		"--date-order",
 		`--format=${LOG_RECORD_SEPARATOR}${LOG_FORMAT}`,
 		`--max-count=${maxCount}`,
 		`--skip=${skip}`,
 	];
 
-	if (ref) {
-		logArgs.push(ref);
+	if (requestedRefs.length > 0) {
+		logArgs.push(...requestedRefs);
 	}
 
 	const logResult = await runGit(repoRoot, logArgs);
@@ -111,7 +117,25 @@ export async function getGitLog(options: {
 		}
 	}
 
-	const countResult = await runGit(repoRoot, ["rev-list", "--count", ref || "HEAD"]);
+	const relationMap = await buildCommitRelationMap(repoRoot, requestedRefs);
+	if (relationMap) {
+		for (let index = 0; index < commits.length; index += 1) {
+			const commit = commits[index];
+			if (!commit) {
+				continue;
+			}
+			commits[index] = {
+				...commit,
+				relation: relationMap.get(commit.hash) ?? "shared",
+			};
+		}
+	}
+
+	const countResult = await runGit(repoRoot, [
+		"rev-list",
+		"--count",
+		...(requestedRefs.length > 0 ? requestedRefs : ["HEAD"]),
+	]);
 	const totalCount = countResult.ok ? Number.parseInt(countResult.stdout, 10) || commits.length : commits.length;
 
 	return { ok: true, commits, totalCount };
@@ -142,8 +166,9 @@ export async function getGitRefs(cwd: string): Promise<RuntimeGitRefsResponse> {
 		runGit(repoRoot, ["rev-parse", "HEAD"]),
 		runGit(repoRoot, [
 			"for-each-ref",
-			"--format=%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track)",
+			"--format=%(refname)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track)",
 			"refs/heads/",
+			"refs/remotes/",
 		]),
 		runGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
 	]);
@@ -170,7 +195,9 @@ export async function getGitRefs(cwd: string): Promise<RuntimeGitRefsResponse> {
 	}
 
 	interface BranchEntry {
+		fullName: string;
 		name: string;
+		type: "branch" | "remote";
 		hash: string;
 		upstream: string | null;
 		ahead?: number;
@@ -185,14 +212,26 @@ export async function getGitRefs(cwd: string): Promise<RuntimeGitRefsResponse> {
 				continue;
 			}
 			const parts = trimmed.split("\x1f");
-			const name = parts[0];
-			const hash = parts[1];
-			const upstream = parts[2] || null;
-			const trackDescriptor = parts[3] || null;
-			if (!name || !hash) {
+			const fullName = parts[0];
+			const name = parts[1];
+			const hash = parts[2];
+			const upstream = parts[3] || null;
+			const trackDescriptor = parts[4] || null;
+			if (!fullName || !name || !hash) {
 				continue;
 			}
-			branches.push({ name, hash, upstream, ...parseTrackCounts(trackDescriptor) });
+			if (fullName.endsWith("/HEAD")) {
+				continue;
+			}
+			const type = fullName.startsWith("refs/remotes/") ? "remote" : "branch";
+			branches.push({
+				fullName,
+				name,
+				type,
+				hash,
+				upstream,
+				...parseTrackCounts(type === "branch" ? trackDescriptor : null),
+			});
 		}
 	}
 
@@ -203,15 +242,56 @@ export async function getGitRefs(cwd: string): Promise<RuntimeGitRefsResponse> {
 		}
 		refs.push({
 			name: branch.name,
-			type: "branch",
+			type: branch.type,
 			hash: branch.hash,
-			isHead: branch.name === currentBranch,
+			isHead: branch.type === "branch" && branch.name === currentBranch,
+			upstreamName: branch.type === "branch" ? (branch.upstream ?? undefined) : undefined,
 			ahead: branch.ahead,
 			behind: branch.behind,
 		});
 	}
 
 	return { ok: true, refs };
+}
+
+function normalizeRequestedRefs(refs: string[] | null | undefined, fallbackRef?: string | null): string[] {
+	const candidates = refs && refs.length > 0 ? refs : fallbackRef ? [fallbackRef] : [];
+	return Array.from(new Set(candidates.map((candidate) => candidate.trim()).filter(Boolean)));
+}
+
+async function buildCommitRelationMap(repoRoot: string, refs: string[]): Promise<Map<string, CommitRelation> | null> {
+	if (refs.length !== 2) {
+		return null;
+	}
+
+	const [selectedRef, upstreamRef] = refs;
+	if (!selectedRef || !upstreamRef) {
+		return null;
+	}
+
+	const [selectedOnlyResult, upstreamOnlyResult] = await Promise.all([
+		runGit(repoRoot, ["rev-list", selectedRef, "--not", upstreamRef]),
+		runGit(repoRoot, ["rev-list", upstreamRef, "--not", selectedRef]),
+	]);
+
+	if (!selectedOnlyResult.ok || !upstreamOnlyResult.ok) {
+		return null;
+	}
+
+	const relationMap = new Map<string, CommitRelation>();
+	for (const hash of selectedOnlyResult.stdout.split("\n")) {
+		const trimmedHash = hash.trim();
+		if (trimmedHash) {
+			relationMap.set(trimmedHash, "selected");
+		}
+	}
+	for (const hash of upstreamOnlyResult.stdout.split("\n")) {
+		const trimmedHash = hash.trim();
+		if (trimmedHash) {
+			relationMap.set(trimmedHash, "upstream");
+		}
+	}
+	return relationMap;
 }
 
 export interface CommitDiffFile {

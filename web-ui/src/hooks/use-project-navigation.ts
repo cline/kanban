@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { showAppToast } from "@/components/app-toaster";
+import { notifyError, showAppToast } from "@/components/app-toaster";
 import { buildProjectPathname, parseProjectIdFromPathname } from "@/hooks/app-utils";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
@@ -17,7 +17,6 @@ export function parseRemovedProjectPathFromStreamError(streamError: string | nul
 
 interface UseProjectNavigationInput {
 	onProjectSwitchStart: () => void;
-	onProjectRemoveError: (message: string) => void;
 }
 
 export interface UseProjectNavigationResult {
@@ -28,6 +27,7 @@ export interface UseProjectNavigationResult {
 	projects: ReturnType<typeof useRuntimeStateStream>["projects"];
 	workspaceState: ReturnType<typeof useRuntimeStateStream>["workspaceState"];
 	workspaceMetadata: ReturnType<typeof useRuntimeStateStream>["workspaceMetadata"];
+	latestTaskChatMessage: ReturnType<typeof useRuntimeStateStream>["latestTaskChatMessage"];
 	latestTaskReadyForReview: ReturnType<typeof useRuntimeStateStream>["latestTaskReadyForReview"];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -42,7 +42,6 @@ export interface UseProjectNavigationResult {
 
 export function useProjectNavigation({
 	onProjectSwitchStart,
-	onProjectRemoveError,
 }: UseProjectNavigationInput): UseProjectNavigationResult {
 	const [requestedProjectId, setRequestedProjectId] = useState<string | null>(() => {
 		if (typeof window === "undefined") {
@@ -58,6 +57,7 @@ export function useProjectNavigation({
 		projects,
 		workspaceState,
 		workspaceMetadata,
+		latestTaskChatMessage,
 		latestTaskReadyForReview,
 		streamError,
 		isRuntimeDisconnected,
@@ -126,13 +126,13 @@ export function useProjectNavigation({
 				return true;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				onProjectRemoveError(message);
+				notifyError(message);
 				return false;
 			} finally {
 				setRemovingProjectId((current) => (current === projectId ? null : current));
 			}
 		},
-		[currentProjectId, onProjectRemoveError, onProjectSwitchStart, removingProjectId],
+		[currentProjectId, onProjectSwitchStart, removingProjectId],
 	);
 
 	const handlePopState = useCallback(() => {
@@ -210,6 +210,7 @@ export function useProjectNavigation({
 		projects,
 		workspaceState,
 		workspaceMetadata,
+		latestTaskChatMessage,
 		latestTaskReadyForReview,
 		streamError,
 		isRuntimeDisconnected,

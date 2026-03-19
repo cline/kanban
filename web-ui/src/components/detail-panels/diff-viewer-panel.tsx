@@ -76,6 +76,12 @@ function flattenFilePathsForDisplay(paths: string[]): string[] {
 	return ordered;
 }
 
+function getSectionTopWithinScrollContainer(container: HTMLElement, section: HTMLElement): number {
+	const containerRect = container.getBoundingClientRect();
+	const sectionRect = section.getBoundingClientRect();
+	return container.scrollTop + sectionRect.top - (containerRect.top + container.clientTop);
+}
+
 function InlineComment({
 	comment,
 	onChange,
@@ -344,25 +350,14 @@ function SplitDiff({
 		}));
 	}, []);
 
-	const renderSide = (row: UnifiedDiffRow | null, side: "left" | "right"): React.ReactElement => {
-		if (!row || row.lineNumber == null) {
-			return (
-				<div className="kb-diff-row kb-diff-row-context kb-diff-row-noncommentable kb-diff-row-placeholder">
-					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
-						<span className="kb-diff-line-number-text" />
-					</span>
-					<DiffRowText
-						row={{ key: `empty-${side}`, lineNumber: null, variant: "context", text: "" }}
-						highlightedLineHtml={null}
-						grammar={prismGrammar}
-						language={prismLanguage}
-					/>
-				</div>
-			);
+	const renderSide = (row: UnifiedDiffRow, side: "left" | "right"): React.ReactElement => {
+		const rowLineNumber = row.lineNumber;
+		if (rowLineNumber == null) {
+			return <></>;
 		}
 
 		const canCommentOnSide = isCommentableOnSplitSide(row, side);
-		const rowKey = canCommentOnSide ? commentKey(path, row.lineNumber, row.variant) : null;
+		const rowKey = canCommentOnSide ? commentKey(path, rowLineNumber, row.variant) : null;
 		const existingComment = rowKey ? comments.get(rowKey) : null;
 		const hasComment = existingComment != null;
 		const baseClass =
@@ -385,13 +380,13 @@ function SplitDiff({
 					onClick={
 						canClickRow
 							? () => {
-								onAddComment(row.lineNumber!, row.text, row.variant);
+								onAddComment(rowLineNumber, row.text, row.variant);
 							}
 							: undefined
 					}
 				>
 					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
-						<span className="kb-diff-line-number-text">{row.lineNumber}</span>
+						<span className="kb-diff-line-number-text">{rowLineNumber}</span>
 						{canCommentOnSide ? (
 							<span
 								className="kb-diff-comment-gutter"
@@ -399,7 +394,7 @@ function SplitDiff({
 									hasComment
 										? (event) => {
 											event.stopPropagation();
-											onDeleteComment(row.lineNumber!, row.variant);
+											onDeleteComment(rowLineNumber, row.variant);
 										}
 										: undefined
 								}
@@ -424,8 +419,8 @@ function SplitDiff({
 				{existingComment ? (
 					<InlineComment
 						comment={existingComment}
-						onChange={(text) => onUpdateComment(row.lineNumber!, row.variant, text)}
-						onDelete={() => onDeleteComment(row.lineNumber!, row.variant)}
+						onChange={(text) => onUpdateComment(rowLineNumber, row.variant, text)}
+						onDelete={() => onDeleteComment(rowLineNumber, row.variant)}
 					/>
 				) : null}
 			</div>
@@ -439,34 +434,41 @@ function SplitDiff({
 				<div
 					className={`kb-diff-split-cell ${pair.left ? "kb-diff-split-cell-filled" : "kb-diff-split-cell-placeholder"}`}
 				>
-					{renderSide(pair.left, "left")}
+					{pair.left ? renderSide(pair.left, "left") : null}
 				</div>
 				<div
 					className={`kb-diff-split-cell kb-diff-split-cell-right ${pair.right ? "kb-diff-split-cell-filled" : "kb-diff-split-cell-placeholder"}`}
 				>
-					{renderSide(pair.right, "right")}
+					{pair.right ? renderSide(pair.right, "right") : null}
 				</div>
 			</div>
 		));
 	};
 
-	return (
-		<div className="kb-diff-split-grid-shell">
-			<div className="kb-diff-split-grid-backgrounds" aria-hidden>
-				<div className="kb-diff-split-grid-background-column" />
-				<div className="kb-diff-split-grid-background-column kb-diff-split-grid-background-column-right" />
-			</div>
-			<div className="kb-diff-split-grid-content">
-			{displayItems.map((item) => {
-				if (item.type === "row") {
-					return renderPairs([item.row]);
-				}
+	const renderDisplayItems = (): React.ReactElement[] => {
+		const renderedItems: React.ReactElement[] = [];
+		let pendingRows: UnifiedDiffRow[] = [];
 
-				return (
-					<div key={item.block.id}>
-						<div className="kb-diff-split-grid-row">
-							<div className="kb-diff-split-cell kb-diff-split-cell-filled">
-								<Button
+		const flushPendingRows = (): void => {
+			if (pendingRows.length === 0) {
+				return;
+			}
+			renderedItems.push(...renderPairs(pendingRows));
+			pendingRows = [];
+		};
+
+		for (const item of displayItems) {
+			if (item.type === "row") {
+				pendingRows.push(item.row);
+				continue;
+			}
+
+			flushPendingRows();
+			renderedItems.push(
+				<div key={item.block.id}>
+					<div className="kb-diff-split-grid-row">
+						<div className="kb-diff-split-cell kb-diff-split-cell-filled">
+							<Button
 								variant="ghost"
 								size="sm"
 								fill
@@ -476,25 +478,36 @@ function SplitDiff({
 							>
 								{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
 							</Button>
-							</div>
-							<div className="kb-diff-split-cell kb-diff-split-cell-filled kb-diff-split-cell-right">
-								<Button
-									variant="ghost"
-									size="sm"
-									fill
-									className="justify-start text-xs rounded-none my-0.5"
-									icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-									onClick={() => toggleBlock(item.block.id)}
-								>
-									{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
-								</Button>
-							</div>
 						</div>
-						{item.block.expanded ? renderPairs(item.block.rows) : null}
+						<div className="kb-diff-split-cell kb-diff-split-cell-filled kb-diff-split-cell-right">
+							<Button
+								variant="ghost"
+								size="sm"
+								fill
+								className="justify-start text-xs rounded-none my-0.5"
+								icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+								onClick={() => toggleBlock(item.block.id)}
+							>
+								{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
+							</Button>
+						</div>
 					</div>
-				);
-			})}
+					{item.block.expanded ? renderPairs(item.block.rows) : null}
+				</div>,
+			);
+		}
+
+		flushPendingRows();
+		return renderedItems;
+	};
+
+	return (
+		<div className="kb-diff-split-grid-shell">
+			<div className="kb-diff-split-grid-backgrounds" aria-hidden>
+				<div className="kb-diff-split-grid-background-column" />
+				<div className="kb-diff-split-grid-background-column kb-diff-split-grid-background-column-right" />
 			</div>
+			<div className="kb-diff-split-grid-content">{renderDisplayItems()}</div>
 		</div>
 	);
 }
@@ -585,7 +598,7 @@ export function DiffViewerPanel({
 			if (!section) {
 				continue;
 			}
-			if (section.offsetTop <= probeOffset) {
+			if (getSectionTopWithinScrollContainer(container, section) <= probeOffset) {
 				activePath = group.path;
 				continue;
 			}
@@ -630,7 +643,7 @@ export function DiffViewerPanel({
 		}, 320);
 		const containerStyle = window.getComputedStyle(container);
 		const paddingTop = Number.parseFloat(containerStyle.paddingTop) || 0;
-		const targetScrollTop = Math.max(0, section.offsetTop - paddingTop);
+		const targetScrollTop = Math.max(0, getSectionTopWithinScrollContainer(container, section) - paddingTop);
 		container.scrollTop = targetScrollTop;
 	}, []);
 

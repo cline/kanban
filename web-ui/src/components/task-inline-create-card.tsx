@@ -7,6 +7,7 @@ import { BranchSelectDropdown, type BranchSelectOption } from "@/components/bran
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import type { TaskAutoReviewMode } from "@/types";
+import { useMeasure } from "@/utils/react-use";
 
 export type TaskInlineCardMode = "create" | "edit";
 
@@ -18,6 +19,7 @@ const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string
 	{ value: "move_to_trash", label: "Move to Trash" },
 ];
 const AUTO_REVIEW_MODE_SELECT_WIDTH_CH = 16;
+const COMPACT_ACTIONS_WIDTH_THRESHOLD_PX = 280;
 
 function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): ReactElement {
 	return (
@@ -84,7 +86,11 @@ export function TaskInlineCreateCard({
 	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
-	const cancelLabel = "Cancel (esc)";
+	const [cardRef, cardRect] = useMeasure<HTMLDivElement>();
+	const isCompactActions = cardRect.width > 0 && cardRect.width < COMPACT_ACTIONS_WIDTH_THRESHOLD_PX;
+	const hideCancelShortcut = isCompactActions;
+	const hideCreateShortcut = mode === "create" && isCompactActions;
+	const cancelLabel = hideCancelShortcut ? "Cancel" : "Cancel (esc)";
 	const cardMarginBottom = mode === "create" ? 6 : 0;
 
 	useHotkeys(
@@ -106,7 +112,11 @@ export function TaskInlineCreateCard({
 	);
 
 	return (
-		<div className="rounded-md border border-border-bright bg-surface-2 p-3" style={{ flexShrink: 0, marginBottom: cardMarginBottom, fontSize: 12 }}>
+		<div
+			ref={cardRef}
+			className="rounded-md border border-border-bright bg-surface-2 p-3"
+			style={{ flexShrink: 0, marginBottom: cardMarginBottom, fontSize: 12 }}
+		>
 			<div>
 				<TaskPromptComposer
 					id={promptId}
@@ -120,12 +130,16 @@ export function TaskInlineCreateCard({
 					workspaceId={workspaceId}
 				/>
 				<p className="text-[11px] text-text-tertiary mt-1 mb-0">
-					Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference files.
+					Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference
+					files.
 				</p>
 			</div>
 
 			<div className="flex flex-col gap-2 mt-3">
-				<label htmlFor={planModeId} className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none">
+				<label
+					htmlFor={planModeId}
+					className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+				>
 					<RadixCheckbox.Root
 						id={planModeId}
 						aria-label="Start in plan mode"
@@ -155,7 +169,10 @@ export function TaskInlineCreateCard({
 				</div>
 
 				<div className="flex items-center gap-2 flex-wrap">
-					<label htmlFor={autoReviewEnabledId} className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none">
+					<label
+						htmlFor={autoReviewEnabledId}
+						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+					>
 						<RadixCheckbox.Root
 							id={autoReviewEnabledId}
 							aria-label="Enable automatic review action"
@@ -186,28 +203,35 @@ export function TaskInlineCreateCard({
 								</option>
 							))}
 						</select>
-						<ChevronDown size={14} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+						<ChevronDown
+							size={14}
+							className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary"
+						/>
 					</div>
 				</div>
 			</div>
 
 			<div className="flex justify-between gap-2 mt-3">
-				<Button variant="default" size="sm" onClick={onCancel}>{cancelLabel}</Button>
+				<Button variant="default" size="sm" className="whitespace-nowrap" onClick={onCancel}>
+					{cancelLabel}
+				</Button>
 				<div className="flex gap-2">
 					<Button
 						size="sm"
+						className="whitespace-nowrap"
 						onClick={onCreate}
 						disabled={!prompt.trim() || !branchRef}
 					>
 						<span className="inline-flex items-center">
 							<span>{actionLabel}</span>
-							<ButtonShortcut />
+							{hideCreateShortcut ? null : <ButtonShortcut />}
 						</span>
 					</Button>
 					{onCreateAndStart ? (
 						<Button
 							variant="primary"
 							size="sm"
+							className="whitespace-nowrap"
 							onClick={onCreateAndStart}
 							disabled={!prompt.trim() || !branchRef}
 						>

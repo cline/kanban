@@ -95,7 +95,6 @@ function HookHarness({
 		agentCommand: null,
 		upsertSession: () => {},
 		sendTaskSessionInput: async () => ({ ok: true }),
-		onWorktreeError: () => {},
 	});
 
 	useEffect(() => {

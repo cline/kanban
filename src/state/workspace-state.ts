@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, realpath, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 
 import {
@@ -18,6 +18,7 @@ import {
 } from "../core/api-contract.js";
 import { createGitProcessEnv } from "../core/git-process-env.js";
 import { updateTaskDependencies } from "../core/task-board-mutations.js";
+import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
 
 const RUNTIME_HOME_DIR = ".kanban";
 const WORKSPACES_DIR = "workspaces";
@@ -183,6 +184,29 @@ function getWorkspaceMetaPath(workspaceId: string): string {
 	return join(getWorkspaceDirectoryPath(workspaceId), META_FILENAME);
 }
 
+function getWorkspaceIndexLockRequest(): LockRequest {
+	return {
+		path: getWorkspaceIndexPath(),
+		type: "file",
+	};
+}
+
+function getWorkspaceDirectoryLockRequest(workspaceId: string): LockRequest {
+	return {
+		path: getWorkspaceDirectoryPath(workspaceId),
+		type: "directory",
+		lockfilePath: join(getWorkspacesRootPath(), `${workspaceId}.lock`),
+	};
+}
+
+function getWorkspacesRootLockRequest(): LockRequest {
+	return {
+		path: getWorkspacesRootPath(),
+		type: "directory",
+		lockfileName: ".workspaces.lock",
+	};
+}
+
 function isNodeErrorWithCode(error: unknown, code: string): boolean {
 	return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
 }
@@ -203,13 +227,6 @@ async function readJsonFile(path: string): Promise<unknown | null> {
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(`Could not read JSON file at ${path}. ${message}`);
 	}
-}
-
-async function writeJsonFileAtomic(path: string, payload: unknown): Promise<void> {
-	await mkdir(dirname(path), { recursive: true });
-	const tempPath = `${path}.tmp.${process.pid}.${Date.now()}`;
-	await writeFile(tempPath, JSON.stringify(payload, null, 2), "utf8");
-	await rename(tempPath, path);
 }
 
 function formatSchemaIssuePath(pathSegments: PropertyKey[]): string {
@@ -298,7 +315,9 @@ async function readWorkspaceIndex(): Promise<WorkspaceIndexFile> {
 }
 
 async function writeWorkspaceIndex(index: WorkspaceIndexFile): Promise<void> {
-	await writeJsonFileAtomic(getWorkspaceIndexPath(), index);
+	await lockedFileSystem.writeJsonFileAtomic(getWorkspaceIndexPath(), index, {
+		lock: null,
+	});
 }
 
 function toWorkspaceIdBase(repoPath: string): string {
@@ -418,12 +437,9 @@ function detectGitCurrentBranch(repoPath: string): string | null {
 }
 
 function detectGitBranches(repoPath: string): string[] {
-	const output = runGitCapture(repoPath, [
-		"for-each-ref",
-		"--format=%(refname:short)",
-		"refs/heads",
-		"refs/remotes/origin",
-	]);
+	// TODO: support showing remote branches again once worktree creation can safely fetch/pull
+	// and resolve missing local tracking branches automatically.
+	const output = runGitCapture(repoPath, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
 	if (!output) {
 		return [];
 	}
@@ -431,14 +447,10 @@ function detectGitBranches(repoPath: string): string[] {
 	const unique = new Set<string>();
 	for (const line of output.split("\n")) {
 		const trimmed = line.trim();
-		if (!trimmed || trimmed === "origin/HEAD" || trimmed === "HEAD") {
+		if (!trimmed || trimmed === "HEAD") {
 			continue;
 		}
-		const normalized = trimmed.startsWith("origin/") ? trimmed.slice("origin/".length) : trimmed;
-		if (!normalized || normalized === "HEAD") {
-			continue;
-		}
-		unique.add(normalized);
+		unique.add(trimmed);
 	}
 	return Array.from(unique).sort((left, right) => left.localeCompare(right));
 }
@@ -532,9 +544,9 @@ export async function loadWorkspaceContext(
 ): Promise<RuntimeWorkspaceContext> {
 	const repoPath = await resolveWorkspacePath(cwd);
 	const autoCreateIfMissing = options.autoCreateIfMissing ?? true;
-	let index = await readWorkspaceIndex();
-	const existingEntry = findWorkspaceEntry(index, repoPath);
 	if (!autoCreateIfMissing) {
+		const index = await readWorkspaceIndex();
+		const existingEntry = findWorkspaceEntry(index, repoPath);
 		if (!existingEntry) {
 			throw new Error(`Project ${repoPath} is not added to Kanban yet.`);
 		}
@@ -546,20 +558,24 @@ export async function loadWorkspaceContext(
 		};
 	}
 
-	const ensured = existingEntry
-		? { index, entry: existingEntry, changed: false }
-		: ensureWorkspaceEntry(index, repoPath);
-	index = ensured.index;
-	if (ensured.changed) {
-		await writeWorkspaceIndex(index);
-	}
+	return await lockedFileSystem.withLock(getWorkspaceIndexLockRequest(), async () => {
+		let index = await readWorkspaceIndex();
+		const existingEntry = findWorkspaceEntry(index, repoPath);
+		const ensured = existingEntry
+			? { index, entry: existingEntry, changed: false }
+			: ensureWorkspaceEntry(index, repoPath);
+		index = ensured.index;
+		if (ensured.changed) {
+			await writeWorkspaceIndex(index);
+		}
 
-	return {
-		repoPath,
-		workspaceId: ensured.entry.workspaceId,
-		statePath: getWorkspaceDirectoryPath(ensured.entry.workspaceId),
-		git: detectGitRepositoryInfo(repoPath),
-	};
+		return {
+			repoPath,
+			workspaceId: ensured.entry.workspaceId,
+			statePath: getWorkspaceDirectoryPath(ensured.entry.workspaceId),
+			git: detectGitRepositoryInfo(repoPath),
+		};
+	});
 }
 
 export async function loadWorkspaceContextById(workspaceId: string): Promise<RuntimeWorkspaceContext | null> {
@@ -586,22 +602,29 @@ export async function listWorkspaceIndexEntries(): Promise<RuntimeWorkspaceIndex
 }
 
 export async function removeWorkspaceIndexEntry(workspaceId: string): Promise<boolean> {
-	const index = await readWorkspaceIndex();
-	const entry = index.entries[workspaceId];
-	if (!entry) {
-		return false;
-	}
-	delete index.entries[workspaceId];
-	delete index.repoPathToId[entry.repoPath];
-	await writeWorkspaceIndex(index);
-	return true;
+	return await lockedFileSystem.withLock(getWorkspaceIndexLockRequest(), async () => {
+		const index = await readWorkspaceIndex();
+		const entry = index.entries[workspaceId];
+		if (!entry) {
+			return false;
+		}
+		delete index.entries[workspaceId];
+		delete index.repoPathToId[entry.repoPath];
+		await writeWorkspaceIndex(index);
+		return true;
+	});
 }
 
 export async function removeWorkspaceStateFiles(workspaceId: string): Promise<void> {
-	await rm(getWorkspaceDirectoryPath(workspaceId), {
-		recursive: true,
-		force: true,
-	});
+	await lockedFileSystem.withLocks(
+		[getWorkspacesRootLockRequest(), getWorkspaceDirectoryLockRequest(workspaceId)],
+		async () => {
+			await rm(getWorkspaceDirectoryPath(workspaceId), {
+				recursive: true,
+				force: true,
+			});
+		},
+	);
 }
 
 export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceStateResponse> {
@@ -618,28 +641,36 @@ export async function saveWorkspaceState(
 ): Promise<RuntimeWorkspaceStateResponse> {
 	const parsedPayload = parseWorkspaceStateSavePayload(payload);
 	const context = await loadWorkspaceContext(cwd);
-	const metaPath = getWorkspaceMetaPath(context.workspaceId);
-	const currentMeta = await readWorkspaceMeta(context.workspaceId);
-	const expectedRevision = parsedPayload.expectedRevision;
-	if (
-		typeof expectedRevision === "number" &&
-		Number.isInteger(expectedRevision) &&
-		expectedRevision >= 0 &&
-		expectedRevision !== currentMeta.revision
-	) {
-		throw new WorkspaceStateConflictError(expectedRevision, currentMeta.revision);
-	}
-	const board = parsedPayload.board;
-	const sessions = parsedPayload.sessions;
-	const nextRevision = currentMeta.revision + 1;
-	const nextMeta: WorkspaceStateMeta = {
-		revision: nextRevision,
-		updatedAt: Date.now(),
-	};
+	return await lockedFileSystem.withLock(getWorkspaceDirectoryLockRequest(context.workspaceId), async () => {
+		const metaPath = getWorkspaceMetaPath(context.workspaceId);
+		const currentMeta = await readWorkspaceMeta(context.workspaceId);
+		const expectedRevision = parsedPayload.expectedRevision;
+		if (
+			typeof expectedRevision === "number" &&
+			Number.isInteger(expectedRevision) &&
+			expectedRevision >= 0 &&
+			expectedRevision !== currentMeta.revision
+		) {
+			throw new WorkspaceStateConflictError(expectedRevision, currentMeta.revision);
+		}
+		const board = parsedPayload.board;
+		const sessions = parsedPayload.sessions;
+		const nextRevision = currentMeta.revision + 1;
+		const nextMeta: WorkspaceStateMeta = {
+			revision: nextRevision,
+			updatedAt: Date.now(),
+		};
 
-	await writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), board);
-	await writeJsonFileAtomic(getWorkspaceSessionsPath(context.workspaceId), sessions);
-	await writeJsonFileAtomic(metaPath, nextMeta);
+		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), board, {
+			lock: null,
+		});
+		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceSessionsPath(context.workspaceId), sessions, {
+			lock: null,
+		});
+		await lockedFileSystem.writeJsonFileAtomic(metaPath, nextMeta, {
+			lock: null,
+		});
 
-	return toWorkspaceStateResponse(context, board, sessions, nextRevision);
+		return toWorkspaceStateResponse(context, board, sessions, nextRevision);
+	});
 }

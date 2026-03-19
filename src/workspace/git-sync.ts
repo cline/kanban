@@ -74,8 +74,8 @@ function parseNumstatTotals(output: string): { additions: number; deletions: num
 
 function parseAheadBehindCounts(output: string): { aheadCount: number; behindCount: number } {
 	const [aheadRaw, behindRaw] = output.trim().split(/\s+/, 2);
-	const ahead = Number.parseInt(aheadRaw ?? "", 10);
-	const behind = Number.parseInt(behindRaw ?? "", 10);
+	const ahead = Math.abs(Number.parseInt(aheadRaw ?? "", 10));
+	const behind = Math.abs(Number.parseInt(behindRaw ?? "", 10));
 	return {
 		aheadCount: Number.isFinite(ahead) ? ahead : 0,
 		behindCount: Number.isFinite(behind) ? behind : 0,

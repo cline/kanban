@@ -7,6 +7,7 @@ import {
 	getStartableBacklogTaskIds,
 	getTaskStartServicePromptKey,
 	isTaskStartServicePromptAlreadyConfigured,
+	mergeTaskStartServicePromptQueue,
 } from "@/hooks/use-task-start-service-prompts";
 import type { BoardCard, BoardData, BoardDependency } from "@/types";
 
@@ -107,6 +108,13 @@ describe("buildTaskStartServicePromptContent", () => {
 		expect(content.installCommand).toBeUndefined();
 	});
 
+	it("returns agent cli setup guidance with cline install command", () => {
+		const content = buildTaskStartServicePromptContent("agent_cli");
+		expect(content.installCommand).toBe("npm install -g cline");
+		expect(content.installButtonLabel).toBe("Run install command");
+		expect(content.description).toContain("No supported CLI agent was detected");
+	});
+
 	it("returns opencode-specific linear guidance with oauth", () => {
 		const content = buildTaskStartServicePromptContent("linear_mcp", {
 			selectedAgentId: "opencode",
@@ -130,6 +138,11 @@ describe("isTaskStartServicePromptAlreadyConfigured", () => {
 
 		expect(isTaskStartServicePromptAlreadyConfigured("linear_mcp", availability)).toBe(false);
 		expect(isTaskStartServicePromptAlreadyConfigured("github_cli", availability)).toBe(true);
+	});
+
+	it("maps agent cli prompt to installed-agent state", () => {
+		expect(isTaskStartServicePromptAlreadyConfigured("agent_cli", null, { isTaskAgentSetupSatisfied: false })).toBe(false);
+		expect(isTaskStartServicePromptAlreadyConfigured("agent_cli", null, { isTaskAgentSetupSatisfied: true })).toBe(true);
 	});
 });
 
@@ -312,5 +325,83 @@ describe("getStartableBacklogTaskIds", () => {
 			dependencies: [{ id: "dep-1", fromTaskId: "task-a", toTaskId: "ghost", createdAt: 1 }],
 		});
 		expect(getStartableBacklogTaskIds(board)).toEqual(["task-a"]);
+	it("shows agent cli prompt first when no supported agent is installed", () => {
+		expect(
+			collectPendingTaskStartServicePrompts({
+				tasks: [
+					{
+						taskId: "task-1",
+						prompt: "Use github and linear context",
+					},
+					{
+						taskId: "task-2",
+						prompt: "No integrations needed",
+					},
+				],
+				taskStartSetupAvailability: {
+					githubCli: true,
+					linearMcp: true,
+				},
+				isTaskAgentSetupSatisfied: false,
+				promptAcknowledgements: {},
+				isPromptDoNotShowAgainEnabled: () => false,
+			}),
+		).toEqual([
+			{
+				promptId: "agent_cli",
+				taskIds: ["task-1", "task-2"],
+			},
+		]);
+	});
+});
+});
+
+describe("mergeTaskStartServicePromptQueue", () => {
+	it("appends new prompt kinds and merges task ids for existing prompt kinds", () => {
+		expect(
+			mergeTaskStartServicePromptQueue(
+				[
+					{
+						promptId: "linear_mcp",
+						taskIds: ["task-1"],
+					},
+				],
+				[
+					{
+						promptId: "linear_mcp",
+						taskIds: ["task-2", "task-1"],
+					},
+					{
+						promptId: "github_cli",
+						taskIds: ["task-3"],
+					},
+				],
+			),
+		).toEqual([
+			{
+				promptId: "linear_mcp",
+				taskIds: ["task-1", "task-2"],
+			},
+			{
+				promptId: "github_cli",
+				taskIds: ["task-3"],
+			},
+		]);
+	});
+
+	it("returns next queue directly when current queue is empty", () => {
+		expect(
+			mergeTaskStartServicePromptQueue([], [
+				{
+					promptId: "github_cli",
+					taskIds: ["task-1"],
+				},
+			]),
+		).toEqual([
+			{
+				promptId: "github_cli",
+				taskIds: ["task-1"],
+			},
+		]);
 	});
 });

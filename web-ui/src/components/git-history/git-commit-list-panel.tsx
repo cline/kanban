@@ -1,4 +1,4 @@
-import { GitBranch, Locate } from "lucide-react";
+import { ArrowDown, ArrowUp, Cloud, GitBranch, Locate } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Virtuoso } from "react-virtuoso";
@@ -51,9 +51,11 @@ const GRAPH_LANE_COLORS = [
 	"var(--color-status-lime)",
 	"var(--color-status-gold)",
 ];
+const REMOTE_LANE_COLOR = "color-mix(in srgb, var(--color-status-blue) 75%, white 10%)";
 
 const REF_BADGE_BACKGROUND_SELECTED = "color-mix(in srgb, white 20%, transparent)";
 const REF_BADGE_BACKGROUND_HEAD = "color-mix(in srgb, var(--color-status-blue) 15%, transparent)";
+const REF_BADGE_BACKGROUND_REMOTE = "color-mix(in srgb, var(--color-status-blue) 12%, transparent)";
 const REF_BADGE_BACKGROUND_DEFAULT = "color-mix(in srgb, white 6%, transparent)";
 
 interface GraphLane {
@@ -62,9 +64,13 @@ interface GraphLane {
 }
 
 interface GraphRow {
+	commit: RuntimeGitCommit;
 	commitLane: number;
 	lanes: GraphLane[];
 	mergeFromLanes: number[];
+	convergingLanes: number[];
+	splitFromLane: number | null;
+	commitStartsLane: boolean;
 	isFirst: boolean;
 }
 
@@ -81,17 +87,30 @@ function buildGraph(commits: RuntimeGitCommit[]): GraphRow[] {
 
 	for (let ci = 0; ci < commits.length; ci++) {
 		const commit = commits[ci]!;
+		let commitStartsLane = false;
 		let commitLane = lanes.findIndex((l) => l.hash === commit.hash);
 		if (commitLane === -1) {
+			commitStartsLane = true;
 			commitLane = lanes.length;
-			lanes.push({ hash: commit.hash, color: nextColor() });
+			lanes.push({
+				hash: commit.hash,
+				color: commit.relation === "upstream" ? REMOTE_LANE_COLOR : nextColor(),
+			});
 		}
 
 		const currentLanes = lanes.map((l) => ({ ...l }));
 		const mergeFromLanes: number[] = [];
+		const convergingLanes = currentLanes
+			.map((lane, laneIndex) => (lane.hash === commit.hash && laneIndex !== commitLane ? laneIndex : -1))
+			.filter((laneIndex) => laneIndex !== -1);
+		let splitFromLane: number | null = null;
 
 		const firstParent = commit.parentHashes[0];
 		const otherParents = commit.parentHashes.slice(1);
+		const firstParentLane = firstParent ? currentLanes.findIndex((lane) => lane.hash === firstParent) : -1;
+		if (commitLane === currentLanes.length - 1 && firstParentLane !== -1 && firstParentLane !== commitLane) {
+			splitFromLane = firstParentLane;
+		}
 
 		if (firstParent) {
 			lanes[commitLane] = { hash: firstParent, color: currentLanes[commitLane]?.color ?? nextColor() };
@@ -110,10 +129,18 @@ function buildGraph(commits: RuntimeGitCommit[]): GraphRow[] {
 			}
 		}
 
+		lanes = lanes.filter((lane, laneIndex, currentLanesAfterUpdate) => {
+			return currentLanesAfterUpdate.findIndex((candidate) => candidate.hash === lane.hash) === laneIndex;
+		});
+
 		rows.push({
+			commit,
 			commitLane,
 			lanes: currentLanes,
 			mergeFromLanes,
+			convergingLanes,
+			splitFromLane,
+			commitStartsLane,
 			isFirst: ci === 0,
 		});
 	}
@@ -146,17 +173,28 @@ function GraphSvg({ row, maxLanes }: { row: GraphRow; maxLanes: number }): React
 	const centerY = ROW_HEIGHT / 2;
 	const commitX = laneX(row.commitLane);
 	const commitColor = row.lanes[row.commitLane]?.color ?? GRAPH_LANE_COLORS[0]!;
+	const isUpstreamCommit = row.commit.relation === "upstream";
 
 	return (
 		<svg width={width} height={ROW_HEIGHT} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}>
 			{row.lanes.map((lane, i) => {
 				const x = laneX(i);
-				const isCommitLane = i === row.commitLane;
-				const y1 = isCommitLane && row.isFirst ? centerY : 0;
-				return (
-					<line key={`pass-${i}`} x1={x} y1={y1} x2={x} y2={ROW_HEIGHT} stroke={lane.color} strokeWidth={2.5} />
-				);
+				const isConvergingLane = row.convergingLanes.includes(i);
+				const isSplitCommitLane = row.splitFromLane !== null && i === row.commitLane;
+				const isCommitStartLane = row.commitStartsLane && i === row.commitLane;
+				const y1 = row.isFirst || (isCommitStartLane && !isSplitCommitLane) ? centerY : 0;
+				const y2 = isConvergingLane || isSplitCommitLane ? centerY : ROW_HEIGHT;
+				return <line key={`pass-${i}`} x1={x} y1={y1} x2={x} y2={y2} stroke={lane.color} strokeWidth={2.5} />;
 			})}
+			{row.splitFromLane !== null ? (
+				<path
+					key={`split-${row.splitFromLane}`}
+					d={`M ${laneX(row.splitFromLane)} ${ROW_HEIGHT} C ${laneX(row.splitFromLane)} ${ROW_HEIGHT - 10}, ${commitX} ${centerY + 10}, ${commitX} ${centerY}`}
+					fill="none"
+					stroke={row.lanes[row.splitFromLane]?.color ?? commitColor}
+					strokeWidth={2.5}
+				/>
+			) : null}
 			{row.mergeFromLanes.map((fromLane) => (
 				<path
 					key={`merge-${fromLane}`}
@@ -166,9 +204,61 @@ function GraphSvg({ row, maxLanes }: { row: GraphRow; maxLanes: number }): React
 					strokeWidth={2.5}
 				/>
 			))}
-			<circle cx={commitX} cy={centerY} r={NODE_RADIUS} fill={commitColor} />
+			{row.convergingLanes.map((fromLane) => (
+				<path
+					key={`converge-${fromLane}`}
+					d={`M ${laneX(fromLane)} ${centerY} C ${laneX(fromLane)} ${centerY + 8}, ${commitX} ${centerY + 8}, ${commitX} ${centerY}`}
+					fill="none"
+					stroke={row.lanes[fromLane]?.color ?? commitColor}
+					strokeWidth={2.5}
+				/>
+			))}
+			<circle
+				cx={commitX}
+				cy={centerY}
+				r={isUpstreamCommit ? NODE_RADIUS + 0.5 : NODE_RADIUS}
+				fill={isUpstreamCommit ? "var(--color-surface-0)" : commitColor}
+				stroke={commitColor}
+				strokeWidth={isUpstreamCommit ? 2 : 0}
+			/>
 		</svg>
 	);
+}
+
+function getRefDisplayOrder(ref: RuntimeGitRef): number {
+	if (ref.isHead) {
+		return 0;
+	}
+	if (ref.type === "detached") {
+		return 1;
+	}
+	if (ref.type === "branch") {
+		return 2;
+	}
+	return 3;
+}
+
+function getRefBadgeBackground(ref: RuntimeGitRef, isSelected: boolean): string {
+	if (isSelected) {
+		return REF_BADGE_BACKGROUND_SELECTED;
+	}
+	if (ref.isHead) {
+		return REF_BADGE_BACKGROUND_HEAD;
+	}
+	if (ref.type === "remote") {
+		return REF_BADGE_BACKGROUND_REMOTE;
+	}
+	return REF_BADGE_BACKGROUND_DEFAULT;
+}
+
+function getRefBadgeColor(ref: RuntimeGitRef, isSelected: boolean): string {
+	if (isSelected) {
+		return "var(--color-text-primary)";
+	}
+	if (ref.isHead) {
+		return "var(--color-status-blue)";
+	}
+	return "var(--color-text-secondary)";
 }
 
 export function GitCommitListPanel({
@@ -347,6 +437,13 @@ export function GitCommitListPanel({
 							const isSelected = commit.hash === selectedCommitHash;
 							const commitRefs = refsByHash.get(commit.hash);
 							const graphRow = graphRows[index];
+							const sortedCommitRefs = commitRefs
+								? [...commitRefs].sort((left, right) => {
+										const orderDifference = getRefDisplayOrder(left) - getRefDisplayOrder(right);
+										return orderDifference !== 0 ? orderDifference : left.name.localeCompare(right.name);
+									})
+								: null;
+							const isUpstreamCommit = commit.relation === "upstream";
 
 							return (
 								<button
@@ -370,6 +467,7 @@ export function GitCommitListPanel({
 										cursor: "pointer",
 										gap: 6,
 										borderBottom: "1px solid var(--color-border)",
+										opacity: isSelected || !isUpstreamCommit ? 1 : 0.82,
 									}}
 								>
 									{graphRow ? <GraphSvg row={graphRow} maxLanes={maxLanes} /> : null}
@@ -416,25 +514,44 @@ export function GitCommitListPanel({
 											>
 												{commit.authorName}
 											</span>
-											{commitRefs && commitRefs.length > 0
-												? commitRefs.map((ref) => (
+											{commit.relation === "selected" ? (
+												<span
+													className="inline-flex items-center shrink-0"
+													style={{
+														color: isSelected
+															? "var(--color-text-primary)"
+															: "var(--color-text-tertiary)",
+													}}
+												>
+													<ArrowUp size={12} />
+												</span>
+											) : commit.relation === "upstream" ? (
+												<span
+													className="inline-flex items-center shrink-0"
+													style={{
+														color: isSelected
+															? "var(--color-text-primary)"
+															: "var(--color-text-tertiary)",
+													}}
+												>
+													<ArrowDown size={12} />
+												</span>
+											) : null}
+											{sortedCommitRefs && sortedCommitRefs.length > 0
+												? sortedCommitRefs.map((ref) => (
 														<span
 															key={ref.name}
 															className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs shrink-0"
 															style={{
 																fontSize: 9,
-																backgroundColor: isSelected
-																	? REF_BADGE_BACKGROUND_SELECTED
-																	: ref.isHead
-																		? REF_BADGE_BACKGROUND_HEAD
-																		: REF_BADGE_BACKGROUND_DEFAULT,
-																color: isSelected
-																				? "var(--color-text-primary)"
-																				: ref.isHead ? "var(--color-status-blue)" : "var(--color-text-secondary)",
+																backgroundColor: getRefBadgeBackground(ref, isSelected),
+																color: getRefBadgeColor(ref, isSelected),
 															}}
 														>
 															{ref.type === "detached" ? (
 																<Locate size={10} />
+															) : ref.type === "remote" ? (
+																<Cloud size={10} />
 															) : (
 																<GitBranch size={10} />
 															)}
@@ -445,6 +562,8 @@ export function GitCommitListPanel({
 											<span
 												className="kb-git-commit-row-meta"
 												style={{
+													display: "inline-flex",
+													alignItems: "center",
 													flexShrink: 0,
 													marginLeft: "auto",
 													color: "var(--color-text-tertiary)",
@@ -475,7 +594,9 @@ export function GitCommitListPanel({
 												style={{
 													color: isSelected
 														? "var(--color-text-primary)"
-														: "var(--color-text-secondary)",
+														: isUpstreamCommit
+															? "var(--color-text-secondary)"
+															: "var(--color-text-primary)",
 												}}
 											>
 												{commit.message}
@@ -500,9 +621,7 @@ export function GitCommitListPanel({
 											}}
 										>
 											<Spinner size={16} />
-											<span style={{ fontSize: 12 }}>
-												Loading more commits...
-											</span>
+											<span style={{ fontSize: 12 }}>Loading more commits...</span>
 										</div>
 									);
 								}
@@ -515,7 +634,7 @@ export function GitCommitListPanel({
 												justifyContent: "space-between",
 												gap: 8,
 												padding: "10px 12px",
-											color: "var(--color-text-tertiary)",
+												color: "var(--color-text-tertiary)",
 											}}
 										>
 											<span
@@ -527,11 +646,7 @@ export function GitCommitListPanel({
 												{errorMessage}
 											</span>
 											{canLoadMore ? (
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => onLoadMore?.()}
-												>
+												<Button size="sm" variant="ghost" onClick={() => onLoadMore?.()}>
 													Retry
 												</Button>
 											) : null}

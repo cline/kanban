@@ -67,7 +67,7 @@ export function TaskStartServicePromptDialog({
 						aria-label="Do not show service setup prompt again"
 						checked={doNotShowAgain}
 						onCheckedChange={(checked) => onDoNotShowAgainChange(checked === true)}
-						className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+						className="flex h-4 w-4 items-center justify-center rounded border border-border-bright bg-surface-1 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
 					>
 						<RadixCheckbox.Indicator>
 							<Check size={12} className="text-white" />

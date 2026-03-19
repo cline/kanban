@@ -13,6 +13,8 @@ import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/
 
 export const PREFERRED_OPEN_TARGET_STORAGE_KEY = LocalStorageKey.PreferredOpenTarget;
 
+export type OpenTargetPlatform = "mac" | "windows" | "linux" | "other";
+
 export type OpenTargetId =
 	| "vscode"
 	| "cursor"
@@ -92,9 +94,67 @@ const OPEN_TARGET_OPTIONS: readonly OpenTargetOption[] = [
 	},
 ];
 
+const OPEN_TARGET_IDS_BY_PLATFORM: Record<OpenTargetPlatform, readonly OpenTargetId[]> = {
+	mac: [
+		"vscode",
+		"cursor",
+		"windsurf",
+		"finder",
+		"terminal",
+		"iterm2",
+		"ghostty",
+		"warp",
+		"xcode",
+		"intellijidea",
+		"zed",
+	],
+	windows: ["vscode", "cursor", "windsurf", "finder", "zed"],
+	linux: ["vscode", "cursor", "windsurf", "finder", "zed"],
+	other: ["vscode", "finder"],
+};
+
 const openTargetById = new Map<OpenTargetId, OpenTargetOption>(
 	OPEN_TARGET_OPTIONS.map((option) => [option.id, option]),
 );
+
+export function resolveOpenTargetPlatform(): OpenTargetPlatform {
+	if (typeof navigator === "undefined") {
+		return "other";
+	}
+	const source = `${navigator.userAgent} ${navigator.platform}`.toLowerCase();
+	if (source.includes("mac") || source.includes("darwin")) {
+		return "mac";
+	}
+	if (source.includes("win")) {
+		return "windows";
+	}
+	if (source.includes("linux") || source.includes("x11")) {
+		return "linux";
+	}
+	return "other";
+}
+
+function getDefaultOpenTargetId(platform: OpenTargetPlatform): OpenTargetId {
+	const firstId = OPEN_TARGET_IDS_BY_PLATFORM[platform][0];
+	return firstId ?? DEFAULT_OPEN_TARGET.id;
+}
+
+function getOpenTargetLabel(targetId: OpenTargetId, platform: OpenTargetPlatform): string {
+	if (targetId === "finder") {
+		if (platform === "windows") {
+			return "File Explorer";
+		}
+		if (platform === "linux" || platform === "other") {
+			return "File Manager";
+		}
+	}
+	const option = openTargetById.get(targetId);
+	return option?.label ?? DEFAULT_OPEN_TARGET.label;
+}
+
+function isOpenTargetSupported(targetId: OpenTargetId, platform: OpenTargetPlatform): boolean {
+	return OPEN_TARGET_IDS_BY_PLATFORM[platform].includes(targetId);
+}
 
 function isOpenTargetId(value: string | null): value is OpenTargetId {
 	if (!value) {
@@ -123,6 +183,10 @@ function quoteShellArgument(value: string): string {
 	return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
+function quoteWindowsShellArgument(value: string): string {
+	return `"${value.replaceAll('"', '""')}"`;
+}
+
 function buildOpenAppCommand(path: string, ...appNames: string[]): string {
 	const quotedPath = quoteShellArgument(path);
 	if (appNames.length === 0) {
@@ -136,31 +200,96 @@ function buildOpenAppCommand(path: string, ...appNames: string[]): string {
 	return `(${openAttempts.join(" || ")})`;
 }
 
-export function getOpenTargetOptions(): readonly OpenTargetOption[] {
-	return OPEN_TARGET_OPTIONS;
+function buildOpenLinuxCommand(targetId: OpenTargetId, path: string): string {
+	const quotedPath = quoteShellArgument(path);
+	if (targetId === "finder") {
+		return `xdg-open ${quotedPath}`;
+	}
+	if (targetId === "vscode") {
+		return `code ${quotedPath}`;
+	}
+	if (targetId === "cursor") {
+		return `cursor ${quotedPath}`;
+	}
+	if (targetId === "windsurf") {
+		return `windsurf ${quotedPath}`;
+	}
+	if (targetId === "zed") {
+		return `zed ${quotedPath}`;
+	}
+	return `xdg-open ${quotedPath}`;
 }
 
-export function getOpenTargetOption(targetId: OpenTargetId): OpenTargetOption {
-	return openTargetById.get(targetId) ?? DEFAULT_OPEN_TARGET;
+function buildOpenWindowsCommand(targetId: OpenTargetId, path: string): string {
+	const quotedPath = quoteWindowsShellArgument(path);
+	if (targetId === "finder") {
+		return `explorer ${quotedPath}`;
+	}
+	if (targetId === "vscode") {
+		return `code ${quotedPath}`;
+	}
+	if (targetId === "cursor") {
+		return `cursor ${quotedPath}`;
+	}
+	if (targetId === "windsurf") {
+		return `windsurf ${quotedPath}`;
+	}
+	if (targetId === "zed") {
+		return `zed ${quotedPath}`;
+	}
+	return `explorer ${quotedPath}`;
 }
 
-export function loadPersistedOpenTarget(): OpenTargetId {
+export function getOpenTargetOptions(platform: OpenTargetPlatform): readonly OpenTargetOption[] {
+	return OPEN_TARGET_IDS_BY_PLATFORM[platform].map((targetId) => {
+		const option = openTargetById.get(targetId) ?? DEFAULT_OPEN_TARGET;
+		return {
+			...option,
+			label: getOpenTargetLabel(targetId, platform),
+		};
+	});
+}
+
+export function getOpenTargetOption(targetId: OpenTargetId, platform: OpenTargetPlatform): OpenTargetOption {
+	const fallbackId = getDefaultOpenTargetId(platform);
+	const resolvedTargetId = isOpenTargetSupported(targetId, platform) ? targetId : fallbackId;
+	const option = openTargetById.get(resolvedTargetId) ?? DEFAULT_OPEN_TARGET;
+	return {
+		...option,
+		label: getOpenTargetLabel(resolvedTargetId, platform),
+	};
+}
+
+export function loadPersistedOpenTarget(platform: OpenTargetPlatform): OpenTargetId {
+	const defaultTargetId = getDefaultOpenTargetId(platform);
 	if (typeof window === "undefined") {
-		return DEFAULT_OPEN_TARGET.id;
+		return defaultTargetId;
 	}
 	const value = readLocalStorageItem(PREFERRED_OPEN_TARGET_STORAGE_KEY);
 	const normalized = normalizeOpenTargetId(value);
-	if (normalized) {
+	if (normalized && isOpenTargetSupported(normalized, platform)) {
 		return normalized;
 	}
-	return DEFAULT_OPEN_TARGET.id;
+	return defaultTargetId;
 }
 
 export function persistOpenTarget(targetId: OpenTargetId): void {
 	writeLocalStorageItem(PREFERRED_OPEN_TARGET_STORAGE_KEY, targetId);
 }
 
-export function buildOpenCommand(targetId: OpenTargetId, path: string): string {
+export function buildOpenCommand(targetId: OpenTargetId, path: string, platform: OpenTargetPlatform): string {
+	if (!isOpenTargetSupported(targetId, platform)) {
+		return buildOpenCommand(getDefaultOpenTargetId(platform), path, platform);
+	}
+
+	if (platform === "windows") {
+		return buildOpenWindowsCommand(targetId, path);
+	}
+
+	if (platform === "linux" || platform === "other") {
+		return buildOpenLinuxCommand(targetId, path);
+	}
+
 	if (targetId === "vscode") {
 		return buildOpenAppCommand(path, "Visual Studio Code");
 	}

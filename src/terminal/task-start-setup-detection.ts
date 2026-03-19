@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { RuntimeAgentId, RuntimeTaskStartSetupAvailability } from "../core/api-contract.js";
-import { isCommandAvailable } from "./command-discovery.js";
+import { isBinaryAvailableOnPath } from "./command-discovery.js";
+import { getOpenCodeConfigPathCandidates } from "./opencode-paths.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -138,22 +139,6 @@ function hasClaudeMcpServer(serverName: string): boolean {
 	return false;
 }
 
-function getOpenCodeConfigPaths(): string[] {
-	const paths: string[] = [];
-	const explicitPath = process.env.OPENCODE_CONFIG?.trim();
-	if (explicitPath) {
-		paths.push(explicitPath);
-	}
-	paths.push(
-		join(homedir(), ".config", "opencode", "config.json"),
-		join(homedir(), ".config", "opencode", "opencode.jsonc"),
-		join(homedir(), ".config", "opencode", "opencode.json"),
-		join(homedir(), ".opencode", "opencode.jsonc"),
-		join(homedir(), ".opencode", "opencode.json"),
-	);
-	return paths;
-}
-
 function hasAgentMcpServer(agentId: RuntimeAgentId, serverName: "linear"): boolean {
 	switch (agentId) {
 		case "claude":
@@ -179,7 +164,7 @@ function hasAgentMcpServer(agentId: RuntimeAgentId, serverName: "linear"): boole
 				serverName,
 			);
 		case "opencode":
-			return hasJsonObjectKey(readFirstExistingFile(getOpenCodeConfigPaths()), "mcp", serverName);
+			return hasJsonObjectKey(readFirstExistingFile(getOpenCodeConfigPathCandidates()), "mcp", serverName);
 		default:
 			return false;
 	}
@@ -187,7 +172,7 @@ function hasAgentMcpServer(agentId: RuntimeAgentId, serverName: "linear"): boole
 
 export function detectTaskStartSetupAvailability(selectedAgentId: RuntimeAgentId): RuntimeTaskStartSetupAvailability {
 	return {
-		githubCli: isCommandAvailable("gh"),
+		githubCli: isBinaryAvailableOnPath("gh"),
 		linearMcp: hasAgentMcpServer(selectedAgentId, "linear"),
 	};
 }

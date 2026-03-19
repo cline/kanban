@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { notifyError } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
@@ -52,7 +53,6 @@ interface UseTerminalPanelsInput {
 		text: string,
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
-	onWorktreeError: (message: string | null) => void;
 }
 
 interface PrepareTerminalForShortcutInput {
@@ -62,6 +62,7 @@ interface PrepareTerminalForShortcutInput {
 interface PrepareTerminalForShortcutResult {
 	ok: boolean;
 	targetTaskId?: string;
+	usedExistingTerminal?: boolean;
 	message?: string;
 }
 
@@ -110,7 +111,6 @@ export function useTerminalPanels({
 	agentCommand,
 	upsertSession,
 	sendTaskSessionInput,
-	onWorktreeError,
 }: UseTerminalPanelsInput): UseTerminalPanelsResult {
 	const homeTerminalProjectIdRef = useRef<string | null>(null);
 	const detailTerminalSelectionKeyRef = useRef<string | null>(null);
@@ -213,12 +213,12 @@ export function useTerminalPanels({
 			return true;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			onWorktreeError(message);
+			notifyError(message);
 			return false;
 		} finally {
 			setIsHomeTerminalStarting(false);
 		}
-	}, [currentProjectId, onWorktreeError, upsertSession, workspaceGit?.currentBranch, workspaceGit?.defaultBranch]);
+	}, [currentProjectId, upsertSession, workspaceGit?.currentBranch, workspaceGit?.defaultBranch]);
 
 	const handleToggleHomeTerminal = useCallback(() => {
 		if (isHomeTerminalOpen) {
@@ -260,7 +260,7 @@ export function useTerminalPanels({
 				return true;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				onWorktreeError(message);
+				notifyError(message);
 				return false;
 			} finally {
 				if (showLoading) {
@@ -268,7 +268,7 @@ export function useTerminalPanels({
 				}
 			}
 		},
-		[currentProjectId, onWorktreeError, upsertSession],
+		[currentProjectId, upsertSession],
 	);
 
 	const handleToggleDetailTerminal = useCallback(() => {
@@ -348,6 +348,7 @@ export function useTerminalPanels({
 	const prepareTerminalForShortcut = useCallback(
 		async ({ prepareWaitForTerminalConnectionReady }: PrepareTerminalForShortcutInput) => {
 			let targetTaskId = HOME_TERMINAL_TASK_ID;
+			let usedExistingTerminal = false;
 			let shouldWaitForConnection = false;
 			let waitForTerminalConnectionReady: (() => Promise<void>) | null = null;
 			const activeSelection = selectedCard;
@@ -356,6 +357,7 @@ export function useTerminalPanels({
 				const selectionKey = `${activeSelection.card.id}:${activeSelection.card.baseRef}`;
 				const detailWasAlreadyOpenForSelection =
 					isDetailTerminalOpen && detailTerminalSelectionKeyRef.current === selectionKey;
+				usedExistingTerminal = detailWasAlreadyOpenForSelection;
 				shouldWaitForConnection = !detailWasAlreadyOpenForSelection;
 				if (shouldWaitForConnection) {
 					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(targetTaskId);
@@ -378,6 +380,7 @@ export function useTerminalPanels({
 			} else {
 				const homeWasAlreadyOpenForProject =
 					isHomeTerminalOpen && homeTerminalProjectIdRef.current === currentProjectId;
+				usedExistingTerminal = homeWasAlreadyOpenForProject;
 				shouldWaitForConnection = !homeWasAlreadyOpenForProject;
 				if (shouldWaitForConnection) {
 					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(HOME_TERMINAL_TASK_ID);
@@ -401,6 +404,7 @@ export function useTerminalPanels({
 			return {
 				ok: true,
 				targetTaskId,
+				usedExistingTerminal,
 			} satisfies PrepareTerminalForShortcutResult;
 		},
 		[

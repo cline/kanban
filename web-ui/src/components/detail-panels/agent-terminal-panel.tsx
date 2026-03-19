@@ -5,6 +5,7 @@ import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
@@ -163,8 +164,8 @@ function AgentTerminalPanelLayout({
 	autoFocus: _autoFocus = false,
 	minimalHeaderTitle = "Terminal",
 	minimalHeaderSubtitle = null,
-	panelBackgroundColor = "var(--color-surface-0)",
-	terminalBackgroundColor = "var(--color-surface-0)",
+	panelBackgroundColor = "var(--color-surface-1)",
+	terminalBackgroundColor = "var(--color-surface-1)",
 	cursorColor: _cursorColor = "var(--color-text-primary)",
 	showRightBorder = true,
 	isVisible: _isVisible = true,
@@ -351,7 +352,7 @@ function AgentTerminalPanelLayout({
 						disabled={isMoveToTrashLoading}
 						onClick={onMoveToTrash}
 					>
-						{isMoveToTrashLoading ? "..." : "Move Card To Trash"}
+						{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
 					</Button>
 				</div>
 			) : null}
@@ -371,7 +372,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		autoFocus: props.autoFocus,
 		isVisible: props.isVisible,
 		sessionStartedAt: props.summary?.startedAt ?? null,
-		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-0)",
+		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
 	});
 

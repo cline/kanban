@@ -1,13 +1,19 @@
-import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { access, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskSessionSummary } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { quoteShellArg } from "../core/shell.js";
+import { lockedFileSystem } from "../fs/locked-file-system.js";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
 import { createHookRuntimeEnv } from "./hook-runtime-context.js";
+import {
+	getOpenCodeAuthPathCandidates,
+	getOpenCodeConfigPathCandidates,
+	getOpenCodeModelStatePathCandidates,
+} from "./opencode-paths.js";
 import { stripAnsi } from "./output-utils.js";
 import type { SessionTransitionEvent } from "./session-state-machine.js";
 
@@ -111,6 +117,24 @@ function hasCliOption(args: string[], optionName: string): boolean {
 	return false;
 }
 
+function hasCodexConfigOverride(args: string[], key: string): boolean {
+	for (let i = 0; i < args.length; i += 1) {
+		const arg = args[i];
+		if (arg === "-c" || arg === "--config") {
+			const next = args[i + 1];
+			if (typeof next === "string" && next.startsWith(`${key}=`)) {
+				return true;
+			}
+			i += 1;
+			continue;
+		}
+		if (arg.startsWith(`-c${key}=`) || arg.startsWith(`--config=${key}=`)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function getClineHookScriptPath(
 	hooksDir: string,
 	hookName: "Notification" | "TaskComplete" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse",
@@ -171,36 +195,173 @@ echo '{"cancel":false}'
 `;
 }
 
+function buildClinePreToolUseHookScriptContent(): string {
+	const activityCommand = buildHooksCommandParts(["notify", "--event", "activity", "--source", "cline"]);
+	const reviewCommand = buildHooksCommandParts(["notify", "--event", "to_review", "--source", "cline"]);
+	const inProgressCommand = buildHooksCommandParts(["notify", "--event", "to_in_progress", "--source", "cline"]);
+	if (process.platform === "win32") {
+		const activity = activityCommand.map(powerShellQuote).join(" ");
+		const review = reviewCommand.map(powerShellQuote).join(" ");
+		const inProgress = inProgressCommand.map(powerShellQuote).join(" ");
+		return `$inputText = [Console]::In.ReadToEnd()
+$isUserQuestionTool = $inputText -match '"(toolName|tool)"\\s*:\\s*"(ask_followup_question|plan_mode_respond)"'
+try {
+  $inputText | & ${activity} | Out-Null
+} catch {
+}
+if ($isUserQuestionTool) {
+  try {
+    $inputText | & ${review} | Out-Null
+  } catch {
+  }
+} else {
+  try {
+    $inputText | & ${inProgress} | Out-Null
+  } catch {
+  }
+}
+Write-Output '{"cancel":false}'
+exit 0
+`;
+	}
+	const activity = activityCommand.map(quoteShellArg).join(" ");
+	const review = reviewCommand.map(quoteShellArg).join(" ");
+	const inProgress = inProgressCommand.map(quoteShellArg).join(" ");
+	return `#!/usr/bin/env bash
+INPUT="$(cat || true)"
+printf '%s' "$INPUT" | ${activity} >/dev/null 2>&1 || true
+if printf '%s' "$INPUT" | grep -Eq '"(toolName|tool)"[[:space:]]*:[[:space:]]*"(ask_followup_question|plan_mode_respond)"'; then
+  printf '%s' "$INPUT" | ${review} >/dev/null 2>&1 || true
+else
+  printf '%s' "$INPUT" | ${inProgress} >/dev/null 2>&1 || true
+fi
+echo '{"cancel":false}'
+`;
+}
+
+function buildClinePostToolUseHookScriptContent(): string {
+	const activityCommand = buildHooksCommandParts(["notify", "--event", "activity", "--source", "cline"]);
+	const inProgressCommand = buildHooksCommandParts(["notify", "--event", "to_in_progress", "--source", "cline"]);
+	if (process.platform === "win32") {
+		const activity = activityCommand.map(powerShellQuote).join(" ");
+		const inProgress = inProgressCommand.map(powerShellQuote).join(" ");
+		return `$inputText = [Console]::In.ReadToEnd()
+$isUserQuestionTool = $inputText -match '"(toolName|tool)"\\s*:\\s*"(ask_followup_question|plan_mode_respond)"'
+try {
+  $inputText | & ${activity} | Out-Null
+} catch {
+}
+if ($isUserQuestionTool) {
+  try {
+    $inputText | & ${inProgress} | Out-Null
+  } catch {
+  }
+}
+Write-Output '{"cancel":false}'
+exit 0
+`;
+	}
+	const activity = activityCommand.map(quoteShellArg).join(" ");
+	const inProgress = inProgressCommand.map(quoteShellArg).join(" ");
+	return `#!/usr/bin/env bash
+INPUT="$(cat || true)"
+printf '%s' "$INPUT" | ${activity} >/dev/null 2>&1 || true
+if printf '%s' "$INPUT" | grep -Eq '"(toolName|tool)"[[:space:]]*:[[:space:]]*"(ask_followup_question|plan_mode_respond)"'; then
+  printf '%s' "$INPUT" | ${inProgress} >/dev/null 2>&1 || true
+fi
+echo '{"cancel":false}'
+`;
+}
+
 function buildOpenCodePluginContent(
 	reviewCommand: string,
 	toInProgressCommand: string,
+	activityCommand: string,
 ): string {
 	const reviewCmd = escapeForTemplateLiteral(reviewCommand);
 	const toInProgressCmd = escapeForTemplateLiteral(toInProgressCommand);
+	const activityCmd = escapeForTemplateLiteral(activityCommand);
 	return `export const KanbanPlugin = async ({ $, client }) => {
-  if (globalThis.__kanbanOpencodePluginV2) return {};
-  globalThis.__kanbanOpencodePluginV2 = true;
+  if (globalThis.__kanbanOpencodePluginV3) return {};
+  globalThis.__kanbanOpencodePluginV3 = true;
 
   if (!process?.env?.KANBAN_HOOK_TASK_ID) return {};
 
   let currentState = "idle";
   let rootSessionID = null;
   const childSessionCache = new Map();
+  const messageRoleByID = new Map();
+  const assistantTextByMessageID = new Map();
+  const latestAssistantBySessionID = new Map();
+  const toolInputByCallID = new Map();
 
-  const notifyReview = async () => {
+  const asRecord = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    return value;
+  };
+
+  const getMessageKey = (sessionID, messageID) => String(sessionID) + ":" + String(messageID);
+  const getToolCallKey = (sessionID, callID) => String(sessionID) + ":" + String(callID);
+
+  const encodePayload = (payload) => {
+    if (!payload || typeof payload !== "object") {
+      return "";
+    }
     try {
-      await $\`${reviewCmd}\`;
+      return Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
     } catch {
-      // Best effort: hook errors should never break OpenCode event handling.
+      return "";
     }
   };
 
-  const notifyInprogress = async () => {
-    try {
-      await $\`${toInProgressCmd}\`;
-    } catch {
-      // Best effort: hook errors should never break OpenCode event handling.
-    }
+	const notify = async (kind, payload) => {
+		try {
+			const encoded = encodePayload(payload);
+			if (kind === "review") {
+				if (encoded) {
+					await $\`${reviewCmd} --metadata-base64 \${encoded}\`;
+				} else {
+					await $\`${reviewCmd}\`;
+				}
+				return;
+			}
+			if (kind === "in_progress") {
+				if (encoded) {
+					await $\`${toInProgressCmd} --metadata-base64 \${encoded}\`;
+				} else {
+					await $\`${toInProgressCmd}\`;
+				}
+				return;
+			}
+			if (encoded) {
+				await $\`${activityCmd} --metadata-base64 \${encoded}\`;
+			} else {
+				await $\`${activityCmd}\`;
+			}
+		} catch {
+			// Best effort: hook errors should never break OpenCode event handling.
+		}
+	};
+
+  const notifyReview = async (sessionID, payload = {}) => {
+    const mergedPayload = {
+      ...payload,
+      last_assistant_message:
+        typeof payload.last_assistant_message === "string"
+          ? payload.last_assistant_message
+          : (latestAssistantBySessionID.get(sessionID) ?? undefined),
+    };
+		await notify("review", mergedPayload);
+  };
+
+  const notifyInProgress = async (payload = {}) => {
+		await notify("in_progress", payload);
+  };
+
+  const notifyActivity = async (payload = {}) => {
+		await notify("activity", payload);
   };
 
   const isChildSession = async (sessionID) => {
@@ -221,6 +382,9 @@ function buildOpenCodePluginContent(
   };
 
   const handleBusy = async (sessionID) => {
+    if (!sessionID) {
+      return;
+    }
     if (!rootSessionID) {
       rootSessionID = sessionID;
     }
@@ -229,23 +393,90 @@ function buildOpenCodePluginContent(
     }
     if (currentState === "idle") {
       currentState = "busy";
-      await notifyInprogress();
+      await notifyInProgress({
+        hook_event_name: "session.status",
+      });
     }
   };
 
-  const handleReview = async (sessionID) => {
+  const handleReview = async (sessionID, payload = {}, force = false) => {
+    if (!sessionID) {
+      return;
+    }
+    if (!rootSessionID) {
+      rootSessionID = sessionID;
+    }
     if (rootSessionID && sessionID !== rootSessionID) {
       return;
     }
-    if (currentState === "busy") {
+
+    const shouldNotify = force || currentState === "busy";
+    if (shouldNotify) {
       currentState = "idle";
-      await notifyReview();
+      await notifyReview(sessionID, payload);
       rootSessionID = null;
     }
   };
 
   return {
     event: async ({ event }) => {
+      if (event.type === "message.updated") {
+        const info = asRecord(event.properties?.info);
+        const sessionID = typeof info?.sessionID === "string" ? info.sessionID : null;
+        if (await isChildSession(sessionID)) {
+          return;
+        }
+
+        const messageID = typeof info?.id === "string" ? info.id : null;
+        const role = typeof info?.role === "string" ? info.role : null;
+        if (messageID && role) {
+          messageRoleByID.set(getMessageKey(sessionID, messageID), role);
+          if (role === "assistant" && !assistantTextByMessageID.has(getMessageKey(sessionID, messageID))) {
+            assistantTextByMessageID.set(getMessageKey(sessionID, messageID), "");
+          }
+        }
+        return;
+      }
+
+      if (event.type === "message.part.updated") {
+        const part = asRecord(event.properties?.part);
+        if (!part) {
+          return;
+        }
+
+        const sessionID = typeof part.sessionID === "string" ? part.sessionID : null;
+        if (await isChildSession(sessionID)) {
+          return;
+        }
+
+        if (part.type !== "text") {
+          return;
+        }
+
+        const messageID = typeof part.messageID === "string" ? part.messageID : null;
+        if (!messageID) {
+          return;
+        }
+
+        const messageKey = getMessageKey(sessionID, messageID);
+        if (messageRoleByID.get(messageKey) !== "assistant") {
+          return;
+        }
+
+        const delta = typeof event.properties?.delta === "string" ? event.properties.delta : "";
+        const fullText = typeof part.text === "string" ? part.text : "";
+        const previousText = assistantTextByMessageID.get(messageKey) ?? "";
+        const nextText = delta ? previousText + delta : (fullText || previousText);
+        const normalized = nextText.trim();
+        if (!normalized) {
+          return;
+        }
+
+        assistantTextByMessageID.set(messageKey, normalized);
+        latestAssistantBySessionID.set(sessionID, normalized);
+        return;
+      }
+
       const sessionID = event.properties?.sessionID;
       if (await isChildSession(sessionID)) {
         return;
@@ -256,21 +487,84 @@ function buildOpenCodePluginContent(
         if (status?.type === "busy") {
           await handleBusy(sessionID);
         } else if (status?.type === "idle") {
-          await handleReview(sessionID);
+          await handleReview(sessionID, {
+            hook_event_name: "session.status",
+          });
         }
       }
 
       if (event.type === "session.busy") {
         await handleBusy(sessionID);
       }
-      if (event.type === "session.idle" || event.type === "session.error") {
-        await handleReview(sessionID);
+      if (event.type === "session.idle") {
+        await handleReview(sessionID, {
+          hook_event_name: "session.idle",
+        });
       }
+      if (event.type === "session.error") {
+        await handleReview(
+          sessionID,
+          {
+            hook_event_name: "session.error",
+          },
+          true,
+        );
+      }
+    },
+    "tool.execute.before": async (input, output) => {
+      const sessionID = typeof input?.sessionID === "string" ? input.sessionID : null;
+      if (await isChildSession(sessionID)) {
+        return;
+      }
+
+      await handleBusy(sessionID);
+
+      const toolName = typeof input?.tool === "string" ? input.tool : undefined;
+      const callID = typeof input?.callID === "string" ? input.callID : "";
+      const toolInput = asRecord(output?.args);
+      if (callID) {
+        toolInputByCallID.set(getToolCallKey(sessionID, callID), toolInput);
+      }
+
+      await notifyActivity({
+        hook_event_name: "BeforeTool",
+        tool_name: toolName,
+        tool_input: toolInput ?? undefined,
+      });
+    },
+    "tool.execute.after": async (input) => {
+      const sessionID = typeof input?.sessionID === "string" ? input.sessionID : null;
+      if (await isChildSession(sessionID)) {
+        return;
+      }
+
+      const toolName = typeof input?.tool === "string" ? input.tool : undefined;
+      const callID = typeof input?.callID === "string" ? input.callID : "";
+      const toolInput = callID ? toolInputByCallID.get(getToolCallKey(sessionID, callID)) : null;
+      if (callID) {
+        toolInputByCallID.delete(getToolCallKey(sessionID, callID));
+      }
+
+      await notifyActivity({
+        hook_event_name: "AfterTool",
+        tool_name: toolName,
+        tool_input: toolInput ?? undefined,
+      });
     },
     "permission.ask": async (_permission, output) => {
       if (output?.status === "ask") {
-        await notifyReview();
-        currentState = "idle";
+        const sessionID = typeof _permission?.sessionID === "string" ? _permission.sessionID : null;
+        if (await isChildSession(sessionID)) {
+          return;
+        }
+        await handleReview(
+          sessionID,
+          {
+            hook_event_name: "PermissionRequest",
+            notification_type: "permission.asked",
+          },
+          true,
+        );
       }
     },
   };
@@ -282,26 +576,10 @@ function getHookAgentDirectory(agentId: RuntimeAgentId): string {
 	return join(getRuntimeHomePath(), "hooks", agentId);
 }
 
-async function readFileIfExists(filePath: string): Promise<string | null> {
-	try {
-		return await readFile(filePath, "utf8");
-	} catch (error) {
-		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-			return null;
-		}
-		throw error;
-	}
-}
-
 async function ensureTextFile(filePath: string, content: string, executable = false): Promise<void> {
-	await mkdir(dirname(filePath), { recursive: true });
-	const existing = await readFileIfExists(filePath);
-	if (existing !== content) {
-		await writeFile(filePath, content, "utf8");
-	}
-	if (executable) {
-		await chmod(filePath, 0o755);
-	}
+	await lockedFileSystem.writeTextFileAtomic(filePath, content, {
+		executable,
+	});
 }
 
 function withPrompt(args: string[], prompt: string, mode: "append" | "flag", flag?: string): PreparedAgentLaunch {
@@ -327,6 +605,7 @@ const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 		if (
 			input.autonomousModeEnabled &&
 			!input.startInPlanMode &&
@@ -392,9 +671,7 @@ const claudeAdapter: AgentSessionAdapter = {
 					],
 					UserPromptSubmit: [
 						{
-							hooks: [
-								{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) },
-							],
+							hooks: [{ type: "command", command: buildHookCommand("to_in_progress", { source: "claude" }) }],
 						},
 					],
 				},
@@ -408,6 +685,14 @@ const claudeAdapter: AgentSessionAdapter = {
 					workspaceId: hooks.workspaceId,
 				}),
 			);
+		}
+
+		if (
+			appendedSystemPrompt &&
+			!hasCliOption(args, "--append-system-prompt") &&
+			!hasCliOption(args, "--system-prompt")
+		) {
+			args.push("--append-system-prompt", appendedSystemPrompt);
 		}
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
@@ -446,6 +731,7 @@ const codexAdapter: AgentSessionAdapter = {
 		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
 		let binary = input.binary;
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 
 		if (input.autonomousModeEnabled && !hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox")) {
 			codexArgs.push("--dangerously-bypass-approvals-and-sandbox");
@@ -458,6 +744,10 @@ const codexAdapter: AgentSessionAdapter = {
 			if (!hasCliOption(codexArgs, "--last")) {
 				codexArgs.push("--last");
 			}
+		}
+
+		if (appendedSystemPrompt && !hasCodexConfigOverride(codexArgs, "developer_instructions")) {
+			codexArgs.push("-c", `developer_instructions=${JSON.stringify(appendedSystemPrompt)}`);
 		}
 
 		const hooks = resolveHookContext(input);
@@ -585,22 +875,7 @@ const geminiAdapter: AgentSessionAdapter = {
 };
 
 async function resolveOpenCodeBaseConfigPath(explicitPath: string | undefined): Promise<string | null> {
-	const candidates: string[] = [];
-	const explicit = explicitPath?.trim();
-	if (explicit) {
-		candidates.push(explicit);
-	}
-	const processExplicit = process.env.OPENCODE_CONFIG?.trim();
-	if (processExplicit) {
-		candidates.push(processExplicit);
-	}
-	candidates.push(
-		join(homedir(), ".config", "opencode", "config.json"),
-		join(homedir(), ".config", "opencode", "opencode.jsonc"),
-		join(homedir(), ".config", "opencode", "opencode.json"),
-		join(homedir(), ".opencode", "opencode.jsonc"),
-		join(homedir(), ".opencode", "opencode.json"),
-	);
+	const candidates = getOpenCodeConfigPathCandidates({ explicitPath });
 	for (const candidate of candidates) {
 		try {
 			await access(candidate);
@@ -756,35 +1031,42 @@ async function resolveOpenCodePreferredModelArg(configPath: string | null): Prom
 		}
 	}
 
-	const modelStatePath = join(homedir(), ".local", "state", "opencode", "model.json");
-	const authPath = join(homedir(), ".local", "share", "opencode", "auth.json");
-
+	const modelStateCandidates = getOpenCodeModelStatePathCandidates();
 	let recentModels: Array<{ providerID?: unknown; modelID?: unknown }> = [];
-	try {
-		const raw = await readFile(modelStatePath, "utf8");
-		const parsed = JSON.parse(raw) as { recent?: Array<{ providerID?: unknown; modelID?: unknown }> };
-		if (Array.isArray(parsed.recent)) {
-			recentModels = parsed.recent;
+	for (const modelStatePath of modelStateCandidates) {
+		try {
+			const raw = await readFile(modelStatePath, "utf8");
+			const parsed = JSON.parse(raw) as { recent?: Array<{ providerID?: unknown; modelID?: unknown }> };
+			if (Array.isArray(parsed.recent)) {
+				recentModels = parsed.recent;
+				break;
+			}
+		} catch {
+			// Keep searching through candidate state paths.
 		}
-	} catch {
+	}
+	if (recentModels.length === 0) {
 		return null;
 	}
 
 	const configuredProviders = new Set<string>();
-	try {
-		const raw = await readFile(authPath, "utf8");
-		const parsed = JSON.parse(raw) as Record<string, unknown>;
-		for (const [provider, value] of Object.entries(parsed)) {
-			if (!value || typeof value !== "object" || Array.isArray(value)) {
-				continue;
+	for (const authPath of getOpenCodeAuthPathCandidates()) {
+		try {
+			const raw = await readFile(authPath, "utf8");
+			const parsed = JSON.parse(raw) as Record<string, unknown>;
+			for (const [provider, value] of Object.entries(parsed)) {
+				if (!value || typeof value !== "object" || Array.isArray(value)) {
+					continue;
+				}
+				const key = (value as Record<string, unknown>).key;
+				if (typeof key === "string" && key.trim()) {
+					configuredProviders.add(provider);
+				}
 			}
-			const key = (value as Record<string, unknown>).key;
-			if (typeof key === "string" && key.trim()) {
-				configuredProviders.add(provider);
-			}
+			break;
+		} catch {
+			// Keep searching through candidate auth paths.
 		}
-	} catch {
-		// If auth cannot be read, fall back to recent model order.
 	}
 
 	const candidates: Array<{ providerId: string; model: string }> = [];
@@ -841,8 +1123,9 @@ const opencodeAdapter: AgentSessionAdapter = {
 			const configPath = join(getHookAgentDirectory("opencode"), "opencode.json");
 
 			const pluginContent = buildOpenCodePluginContent(
-				buildHookCommand("to_review", { source: "opencode", activityText: "Waiting for review" }),
-				buildHookCommand("to_in_progress", { source: "opencode", activityText: "Agent active" }),
+				buildHookCommand("to_review", { source: "opencode" }),
+				buildHookCommand("to_in_progress", { source: "opencode" }),
+				buildHookCommand("activity", { source: "opencode" }),
 			);
 			await ensureTextFile(pluginPath, pluginContent);
 			const pluginFileUrl = pathToFileURL(pluginPath).href;
@@ -988,8 +1271,8 @@ const clineAdapter: AgentSessionAdapter = {
 			await ensureTextFile(notificationHookPath, buildClineNotificationHookScriptContent(), executable);
 			await ensureTextFile(taskCompleteHookPath, buildClineHookScriptContent("to_review"), executable);
 			await ensureTextFile(userPromptSubmitHookPath, buildClineHookScriptContent("to_in_progress"), executable);
-			await ensureTextFile(preToolUseHookPath, buildClineHookScriptContent("activity"), executable);
-			await ensureTextFile(postToolUseHookPath, buildClineHookScriptContent("activity"), executable);
+			await ensureTextFile(preToolUseHookPath, buildClinePreToolUseHookScriptContent(), executable);
+			await ensureTextFile(postToolUseHookPath, buildClinePostToolUseHookScriptContent(), executable);
 
 			if (!hasCliOption(args, "--hooks-dir")) {
 				args.push("--hooks-dir", hooksDir);
