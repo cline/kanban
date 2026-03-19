@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "@/runtime/types";
+import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 
 function createSummary(
 	state: RuntimeTaskSessionSummary["state"],
@@ -38,6 +39,7 @@ describe("ClineAgentChatPanel", () => {
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+		resetWorkspaceMetadataStore();
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
@@ -52,6 +54,7 @@ describe("ClineAgentChatPanel", () => {
 		act(() => {
 			root.unmount();
 		});
+		resetWorkspaceMetadataStore();
 		container.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -330,6 +333,16 @@ describe("ClineAgentChatPanel", () => {
 				createdAt: 1,
 			},
 		];
+		setTaskWorkspaceSnapshot({
+			taskId: "task-1",
+			path: "/tmp/worktree",
+			branch: "task-1",
+			isDetached: false,
+			headCommit: "abc1234",
+			changedFiles: 2,
+			additions: 3,
+			deletions: 1,
+		});
 
 		await act(async () => {
 			root.render(
@@ -362,5 +375,38 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		expect(scrollIntoViewMock).toHaveBeenCalled();
+	});
+
+	it("does not show commit actions when the review workspace is clean", async () => {
+		setTaskWorkspaceSnapshot({
+			taskId: "task-1",
+			path: "/tmp/worktree",
+			branch: "task-1",
+			isDetached: false,
+			headCommit: "def5678",
+			changedFiles: 0,
+			additions: 0,
+			deletions: 0,
+		});
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("awaiting_review")}
+					onLoadMessages={async () => []}
+					taskColumnId="review"
+					onCommit={() => {}}
+					onOpenPr={() => {}}
+					onMoveToTrash={() => {}}
+					showMoveToTrash
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).not.toContain("Commit");
+		expect(container.textContent).not.toContain("Open PR");
+		expect(container.textContent).toContain("Move Card To Trash");
 	});
 });
