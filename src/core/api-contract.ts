@@ -838,3 +838,65 @@ export const runtimeHookIngestResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeHookIngestResponse = z.infer<typeof runtimeHookIngestResponseSchema>;
+
+// ── Webhook event types ──────────────────────────────────────────────
+
+export const webhookEventTypeSchema = z.enum(["task.created", "task.moved", "task.completed"]);
+export type WebhookEventType = z.infer<typeof webhookEventTypeSchema>;
+
+export const webhookEventTaskSchema = z.object({
+	id: z.string(),
+	title: z.string(),
+	columnId: runtimeBoardColumnIdSchema,
+	previousColumnId: runtimeBoardColumnIdSchema.optional(),
+});
+export type WebhookEventTask = z.infer<typeof webhookEventTaskSchema>;
+
+export const webhookEventSchema = z.object({
+	id: z.string(),
+	type: webhookEventTypeSchema,
+	timestamp: z.number(),
+	workspaceId: z.string(),
+	task: webhookEventTaskSchema,
+});
+export type WebhookEvent = z.infer<typeof webhookEventSchema>;
+
+// ── Webhook registration ─────────────────────────────────────────────
+
+export const webhookRegistrationRequestSchema = z.object({
+	url: z.string().min(1, "Webhook URL is required."),
+	events: z.array(webhookEventTypeSchema).nonempty().optional(),
+	secret: z.string().optional(),
+});
+export type WebhookRegistrationRequest = z.infer<typeof webhookRegistrationRequestSchema>;
+
+export const webhookRegistrationSchema = z.object({
+	id: z.string(),
+	url: z.string(),
+	events: z.array(webhookEventTypeSchema).nullable(),
+	createdAt: z.number(),
+});
+export type WebhookRegistration = z.infer<typeof webhookRegistrationSchema>;
+
+export const webhookRegistrationResponseSchema = z.object({
+	ok: z.boolean(),
+	registration: webhookRegistrationSchema.nullable(),
+	error: z.string().optional(),
+});
+export type WebhookRegistrationResponse = z.infer<typeof webhookRegistrationResponseSchema>;
+
+export const webhookUnregisterRequestSchema = z.object({
+	id: z.string(),
+});
+export type WebhookUnregisterRequest = z.infer<typeof webhookUnregisterRequestSchema>;
+
+export const webhookUnregisterResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type WebhookUnregisterResponse = z.infer<typeof webhookUnregisterResponseSchema>;
+
+export const webhookListResponseSchema = z.object({
+	registrations: z.array(webhookRegistrationSchema),
+});
+export type WebhookListResponse = z.infer<typeof webhookListResponseSchema>;

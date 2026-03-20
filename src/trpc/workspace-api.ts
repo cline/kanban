@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 
 import type {
+	RuntimeBoardData,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitSummaryResponse,
@@ -10,6 +11,7 @@ import type {
 	RuntimeWorkspaceChangesMode,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
+	WebhookEvent,
 } from "../core/api-contract.js";
 import {
 	parseGitCheckoutRequest,
@@ -17,6 +19,7 @@ import {
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation.js";
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state.js";
+import { diffBoard } from "../webhooks/board-diff.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import {
@@ -45,6 +48,7 @@ export interface CreateWorkspaceApiDependencies {
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void> | void;
 	buildWorkspaceStateSnapshot: (workspaceId: string, workspacePath: string) => Promise<RuntimeWorkspaceStateResponse>;
+	dispatchWebhookEvents?: (events: WebhookEvent[]) => void;
 }
 
 function normalizeOptionalTaskWorkspaceScopeInput(
@@ -348,9 +352,37 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				for (const summary of terminalManager.listSummaries()) {
 					input.sessions[summary.taskId] = summary;
 				}
+
+				// Capture old board for webhook diffing before the atomic write.
+				let oldBoard: RuntimeBoardData | null = null;
+				if (deps.dispatchWebhookEvents) {
+					try {
+						const snapshot = await deps.buildWorkspaceStateSnapshot(
+							workspaceScope.workspaceId,
+							workspaceScope.workspacePath,
+						);
+						oldBoard = snapshot.board;
+					} catch {
+						// First save for a new workspace — no previous board to diff against.
+					}
+				}
+
 				const response = await saveWorkspaceState(workspaceScope.workspacePath, input);
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
 				void deps.broadcastRuntimeProjectsUpdated(workspaceScope.workspaceId);
+
+				// Diff board and dispatch webhook events (fire-and-forget).
+				if (deps.dispatchWebhookEvents && oldBoard) {
+					try {
+						const events = diffBoard(oldBoard, input.board, workspaceScope.workspaceId);
+						if (events.length > 0) {
+							deps.dispatchWebhookEvents(events);
+						}
+					} catch {
+						// Webhook diffing errors should never block saveState.
+					}
+				}
+
 				return response;
 			} catch (error) {
 				if (error instanceof WorkspaceStateConflictError) {

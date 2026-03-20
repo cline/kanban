@@ -23,6 +23,7 @@ import { createHooksApi } from "../trpc/hooks-api.js";
 import { createProjectsApi } from "../trpc/projects-api.js";
 import { createRuntimeApi } from "../trpc/runtime-api.js";
 import { createWorkspaceApi } from "../trpc/workspace-api.js";
+import { createWebhookService } from "../webhooks/webhook-service.js";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
 import type { RuntimeStateHub } from "./runtime-state-hub.js";
 import type { WorkspaceRegistry } from "./workspace-registry.js";
@@ -138,6 +139,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		void service.dispose();
 	};
 
+	const webhookService = createWebhookService({ warn: deps.warn });
+
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
@@ -159,6 +162,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
 				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
 				buildWorkspaceStateSnapshot: deps.workspaceRegistry.buildWorkspaceStateSnapshot,
+				dispatchWebhookEvents: (events) => webhookService.dispatch(events),
 			}),
 			projectsApi: createProjectsApi({
 				getActiveWorkspacePath: deps.workspaceRegistry.getActiveWorkspacePath,
@@ -188,6 +192,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
 				broadcastTaskReadyForReview: deps.runtimeStateHub.broadcastTaskReadyForReview,
 			}),
+			webhookService,
 		};
 	};
 
