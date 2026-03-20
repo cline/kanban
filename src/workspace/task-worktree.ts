@@ -114,6 +114,29 @@ function getGitCommandErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+function isMissingInitialCommitError(message: string): boolean {
+	const normalizedMessage = message.trim().toLowerCase();
+	if (!normalizedMessage) {
+		return false;
+	}
+
+	return (
+		normalizedMessage.includes("needed a single revision") ||
+		normalizedMessage.includes("ambiguous argument") ||
+		normalizedMessage.includes("unknown revision or path not in the working tree") ||
+		normalizedMessage.includes("bad revision")
+	);
+}
+
+function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, error: unknown): string {
+	const gitMessage = getGitCommandErrorMessage(error);
+	if (!isMissingInitialCommitError(gitMessage)) {
+		return gitMessage;
+	}
+
+	return `This repository does not have an initial commit yet, so Kanban cannot create a task worktree from base ref "${baseRef}". Create an initial commit, then try moving the task to in progress again.`;
+}
+
 async function tryRunGit(args: string[]): Promise<string | null> {
 	try {
 		return await runGit(args);
@@ -489,7 +512,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				path: null,
 				baseRef: requestedBaseRef,
 				baseCommit: null,
-				error: getGitCommandErrorMessage(error),
+				error: getWorktreeBaseRefResolutionErrorMessage(requestedBaseRef, error),
 			};
 		}
 

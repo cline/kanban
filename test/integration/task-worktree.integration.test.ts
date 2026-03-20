@@ -60,6 +60,33 @@ async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 }
 
 describe.sequential("task-worktree integration", () => {
+	it("returns a friendly error when the repository has no initial commit", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-unborn-");
+			try {
+				const repoPath = join(sandboxRoot, "repo");
+				mkdirSync(repoPath, { recursive: true });
+
+				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
+				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+
+				const currentBranch = runGit(repoPath, ["symbolic-ref", "--short", "HEAD"]);
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId: "task-no-initial-commit",
+					baseRef: currentBranch,
+				});
+
+				expect(ensured.ok).toBe(false);
+				expect(ensured.error).toContain("does not have an initial commit yet");
+				expect(ensured.error).toContain(`base ref "${currentBranch}"`);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("keeps symlinked ignored paths ignored in task worktrees", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-");
