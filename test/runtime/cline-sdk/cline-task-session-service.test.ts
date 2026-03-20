@@ -313,6 +313,8 @@ describe("InMemoryClineTaskSessionService", () => {
 				status: "completed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				cwd: "task-1-persisted-cwd",
+				workspaceRoot: "/tmp/workspace-root",
 			},
 			messages: [
 				{
@@ -326,12 +328,10 @@ describe("InMemoryClineTaskSessionService", () => {
 			],
 		});
 
-		const reboundSummary = await service.rebindPersistedTaskSession("task-1", {
-			workspacePath: "/tmp/worktree",
-		});
+		const reboundSummary = await service.rebindPersistedTaskSession("task-1");
 
 		expect(reboundSummary?.state).toBe("idle");
-		expect(reboundSummary?.workspacePath).toBe("/tmp/worktree");
+		expect(reboundSummary?.workspacePath).toBe("task-1-persisted-cwd");
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
 			"Recovered prompt",
 			"Recovered answer",

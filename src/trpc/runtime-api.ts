@@ -344,9 +344,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				let summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text, requestedMode);
 				if (!summary) {
 					if (!isHomeAgentSessionId(body.taskId)) {
-						const reboundSummary = await clineTaskSessionService.rebindPersistedTaskSession(body.taskId, {
-							workspacePath: workspaceScope.workspacePath,
-						});
+						const reboundSummary = await clineTaskSessionService.rebindPersistedTaskSession(body.taskId);
 						if (reboundSummary) {
 							summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text, requestedMode);
 						}

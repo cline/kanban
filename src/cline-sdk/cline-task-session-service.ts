@@ -61,12 +61,7 @@ export interface ClineTaskSessionService {
 		text: string,
 		mode?: RuntimeTaskSessionMode,
 	): Promise<RuntimeTaskSessionSummary | null>;
-	rebindPersistedTaskSession(
-		taskId: string,
-		options?: {
-			workspacePath?: string | null;
-		},
-	): Promise<RuntimeTaskSessionSummary | null>;
+	rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
 	listSummaries(): RuntimeTaskSessionSummary[];
 	listMessages(taskId: string): ClineTaskMessage[];
@@ -389,12 +384,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return summary;
 	}
 
-	async rebindPersistedTaskSession(
-		taskId: string,
-		options?: {
-			workspacePath?: string | null;
-		},
-	): Promise<RuntimeTaskSessionSummary | null> {
+	async rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
 		const existingEntry = this.messageRepository.getTaskEntry(taskId);
 		if (existingEntry) {
 			return cloneSummary(existingEntry.summary);
@@ -405,11 +395,14 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		}
 		const startedAt = Date.parse(snapshot.record.startedAt);
 		const updatedAt = Date.parse(snapshot.record.updatedAt || snapshot.record.startedAt);
+		const persistedCwd = typeof snapshot.record.cwd === "string" ? snapshot.record.cwd.trim() : "";
+		const persistedWorkspaceRoot =
+			typeof snapshot.record.workspaceRoot === "string" ? snapshot.record.workspaceRoot.trim() : "";
 		const entry = createTaskEntryFromPersistedSession(taskId, snapshot.messages, {
 			agentId: "cline",
 			state: "idle",
 			reviewReason: null,
-			workspacePath: options?.workspacePath ?? null,
+			workspacePath: persistedCwd || persistedWorkspaceRoot || null,
 			startedAt: Number.isFinite(startedAt) ? startedAt : null,
 			lastOutputAt: Number.isFinite(updatedAt) ? updatedAt : null,
 		});

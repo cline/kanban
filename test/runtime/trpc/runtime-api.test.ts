@@ -911,9 +911,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 
 		expect(response.ok).toBe(true);
-		expect(clineTaskSessionService.rebindPersistedTaskSession).toHaveBeenCalledWith("task-1", {
-			workspacePath: "/tmp/repo",
-		});
+		expect(clineTaskSessionService.rebindPersistedTaskSession).toHaveBeenCalledWith("task-1");
 		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "continue", "act");
 		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "continue", "act");
 		expect(response.message).toEqual(latestMessage);
