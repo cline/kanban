@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -121,11 +121,15 @@ function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactEl
 function DiffToolbar({
 	mode,
 	onModeChange,
+	onCollapse,
+	modeButtonsDisabled = false,
 	isExpanded,
 	onToggleExpand,
 }: {
 	mode: RuntimeWorkspaceChangesMode;
 	onModeChange: (mode: RuntimeWorkspaceChangesMode) => void;
+	onCollapse: () => void;
+	modeButtonsDisabled?: boolean;
 	isExpanded: boolean;
 	onToggleExpand: () => void;
 }): React.ReactElement {
@@ -146,6 +150,7 @@ function DiffToolbar({
 					variant="ghost"
 					size="sm"
 					onClick={() => onModeChange("working_copy")}
+					disabled={modeButtonsDisabled}
 					className="h-5 rounded-sm text-xs"
 					style={
 						mode === "working_copy"
@@ -159,6 +164,7 @@ function DiffToolbar({
 					variant="ghost"
 					size="sm"
 					onClick={() => onModeChange("last_turn")}
+					disabled={modeButtonsDisabled}
 					className="h-5 rounded-sm text-xs"
 					style={
 						mode === "last_turn"
@@ -172,9 +178,17 @@ function DiffToolbar({
 			<Button
 				variant="ghost"
 				size="sm"
+				icon={<ChevronRight size={14} />}
+				onClick={onCollapse}
+				className="ml-auto h-5"
+				aria-label="Collapse diff panel"
+			/>
+			<Button
+				variant="ghost"
+				size="sm"
 				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
 				onClick={onToggleExpand}
-				className="ml-auto h-5"
+				className="h-5"
 				aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
 			/>
 		</div>
@@ -298,6 +312,7 @@ export function CardDetailView({
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
+	const [isDiffCollapsed, setIsDiffCollapsed] = useState(false);
 	const [agentPanelRatio, setAgentPanelRatio] = useState(DEFAULT_AGENT_PANEL_RATIO);
 	const [isResizing, setIsResizing] = useState(false);
 	const resizeDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
@@ -487,12 +502,24 @@ export function CardDetailView({
 		setDiffMode("working_copy");
 	}, [selection.card.id]);
 
+	const handleCollapseDiffPanel = useCallback(() => {
+		setIsDiffExpanded(false);
+		setIsDiffCollapsed(true);
+	}, []);
+
+	const handleShowDiffPanel = useCallback(() => {
+		setIsDiffCollapsed(false);
+	}, []);
+
 	const handleToggleDiffExpand = useCallback(() => {
+		if (isDiffCollapsed) {
+			setIsDiffCollapsed(false);
+		}
 		if (!isDiffExpanded && bottomTerminalOpen) {
 			onBottomTerminalClose();
 		}
 		setIsDiffExpanded((previous) => !previous);
-	}, [bottomTerminalOpen, isDiffExpanded, onBottomTerminalClose]);
+	}, [bottomTerminalOpen, isDiffCollapsed, isDiffExpanded, onBottomTerminalClose]);
 
 	return (
 		<div
@@ -541,9 +568,19 @@ export function CardDetailView({
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
 				) : (
 					<>
-						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+						<div
+							ref={mainRowRef}
+							style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", position: "relative" }}
+						>
 							{!isDiffExpanded ? (
-								<div style={{ display: "flex", width: agentPanelPercent, minWidth: 0, minHeight: 0 }}>
+								<div
+									style={{
+										display: "flex",
+										width: isDiffCollapsed ? "100%" : agentPanelPercent,
+										minWidth: 0,
+										minHeight: 0,
+									}}
+								>
 									{showClineAgentChatPanel ? (
 										<ClineAgentChatPanel
 											taskId={selection.card.id}
@@ -609,7 +646,7 @@ export function CardDetailView({
 									)}
 								</div>
 							) : null}
-							{!isDiffExpanded ? (
+							{!isDiffExpanded && !isDiffCollapsed ? (
 								<div
 									role="separator"
 									aria-orientation="vertical"
@@ -634,61 +671,76 @@ export function CardDetailView({
 									/>
 								</div>
 							) : null}
-							<div
-								style={{
-									display: "flex",
-									width: isDiffExpanded ? "100%" : diffPanelPercent,
-									minWidth: 0,
-									minHeight: 0,
-									flexDirection: "column",
-								}}
-							>
-								{isRuntimeAvailable ? (
-								<DiffToolbar
-									mode={diffMode}
-									onModeChange={setDiffMode}
-									isExpanded={isDiffExpanded}
-									onToggleExpand={handleToggleDiffExpand}
-								/>
-							) : null}
-								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
-									{isWorkspaceChangesPending ? (
-										<WorkspaceChangesLoadingPanel panelFlex={fileTreePanelFlex} />
-									) : hasNoWorkspaceFileChanges ? (
-										<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
-									) : (
-										<>
-											<DiffViewerPanel
-												workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-												selectedPath={selectedPath}
-												onSelectedPathChange={setSelectedPath}
-												viewMode={isDiffExpanded ? "split" : "unified"}
-												onAddToTerminal={
-													onAddReviewComments
-														? (formatted) => onAddReviewComments(selection.card.id, formatted)
-														: undefined
-												}
-												onSendToTerminal={
-													onSendReviewComments
-														? (formatted) => {
-																onSendReviewComments(selection.card.id, formatted);
-																setIsDiffExpanded(false);
-															}
-														: undefined
-												}
-												comments={diffComments}
-												onCommentsChange={setDiffComments}
-											/>
-											<FileTreePanel
-												workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-												selectedPath={selectedPath}
-												onSelectPath={setSelectedPath}
-												panelFlex={fileTreePanelFlex}
-											/>
-										</>
-									)}
+							{isDiffCollapsed ? (
+								<div style={{ position: "absolute", top: 8, right: 8, zIndex: 3 }}>
+									<Button
+										variant="default"
+										size="sm"
+										icon={<ChevronLeft size={14} />}
+										onClick={handleShowDiffPanel}
+										className="h-7"
+										aria-label="Show diff panel"
+									>
+										Diff View
+									</Button>
 								</div>
-							</div>
+							) : (
+								<div
+									style={{
+										display: "flex",
+										width: isDiffExpanded ? "100%" : diffPanelPercent,
+										minWidth: 0,
+										minHeight: 0,
+										flexDirection: "column",
+									}}
+								>
+									<DiffToolbar
+										mode={diffMode}
+										onModeChange={setDiffMode}
+										onCollapse={handleCollapseDiffPanel}
+										modeButtonsDisabled={!isRuntimeAvailable}
+										isExpanded={isDiffExpanded}
+										onToggleExpand={handleToggleDiffExpand}
+									/>
+									<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+										{isWorkspaceChangesPending ? (
+											<WorkspaceChangesLoadingPanel panelFlex={fileTreePanelFlex} />
+										) : hasNoWorkspaceFileChanges ? (
+											<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
+										) : (
+											<>
+												<DiffViewerPanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectedPathChange={setSelectedPath}
+													viewMode={isDiffExpanded ? "split" : "unified"}
+													onAddToTerminal={
+														onAddReviewComments
+															? (formatted) => onAddReviewComments(selection.card.id, formatted)
+															: undefined
+													}
+													onSendToTerminal={
+														onSendReviewComments
+															? (formatted) => {
+																	onSendReviewComments(selection.card.id, formatted);
+																	setIsDiffExpanded(false);
+																}
+															: undefined
+													}
+													comments={diffComments}
+													onCommentsChange={setDiffComments}
+												/>
+												<FileTreePanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectPath={setSelectedPath}
+													panelFlex={fileTreePanelFlex}
+												/>
+											</>
+										)}
+									</div>
+								</div>
+							)}
 						</div>
 						{bottomTerminalOpen && bottomTerminalTaskId ? (
 							<ResizableBottomPane
