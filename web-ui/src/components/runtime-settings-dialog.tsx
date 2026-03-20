@@ -922,6 +922,7 @@ export function RuntimeSettingsDialog({
 							variant="ghost"
 							size="sm"
 							icon={<X size={14} />}
+							aria-label={`Remove shortcut ${shortcut.label}`}
 							onClick={() =>
 								setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))
 							}
