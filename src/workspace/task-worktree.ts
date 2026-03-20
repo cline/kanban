@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { access, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
+import { promisify } from "node:util";
 
 import type {
 	RuntimeTaskWorkspaceInfoResponse,
@@ -16,6 +17,8 @@ import {
 	normalizeTaskIdForWorktreePath,
 } from "./task-worktree-path.js";
 
+const execFileAsync = promisify(execFile);
+const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
 const KANBAN_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
@@ -136,7 +139,7 @@ function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, error: unknow
 
 async function tryRunGit(args: string[]): Promise<string | null> {
 	try {
-		return await getGitStdout(args, cwd);
+		return await runGit(args);
 	} catch {
 		return null;
 	}
@@ -147,8 +150,8 @@ async function readGitHeadInfo(cwd: string): Promise<{
 	headCommit: string | null;
 	isDetached: boolean;
 }> {
-	const headCommit = await tryGetGitStdout(cwd, ["rev-parse", "--verify", "HEAD"]);
-	const branch = await tryGetGitStdout(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+	const headCommit = await tryRunGit(["-C", cwd, "rev-parse", "--verify", "HEAD"]);
+	const branch = await tryRunGit(["-C", cwd, "symbolic-ref", "--quiet", "--short", "HEAD"]);
 	return {
 		branch,
 		headCommit,
@@ -304,10 +307,15 @@ function getUniquePaths(relativePaths: string[]): string[] {
 }
 
 async function listIgnoredPaths(repoPath: string): Promise<string[]> {
-	const output = await getGitStdout(
-		["ls-files", "--others", "--ignored", "--exclude-per-directory=.gitignore", "--directory"],
+	const output = await runGit([
+		"-C",
 		repoPath,
-	);
+		"ls-files",
+		"--others",
+		"--ignored",
+		"--exclude-per-directory=.gitignore",
+		"--directory",
+	]);
 	return output
 		.split("\n")
 		.map((line) => toPlatformRelativePath(line))
@@ -361,7 +369,7 @@ function stripManagedExcludeBlock(content: string): string {
 }
 
 async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: string[]): Promise<void> {
-	const excludePathOutput = (await getGitStdout(["rev-parse", "--git-path", "info/exclude"], repoPath)).trim();
+	const excludePathOutput = (await runGit(["-C", repoPath, "rev-parse", "--git-path", "info/exclude"])).trim();
 	if (!excludePathOutput) {
 		return;
 	}
@@ -439,7 +447,7 @@ async function prepareNewTaskWorktree(repoPath: string, worktreePath: string): P
 
 async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
-	await runGit(repoPath, ["worktree", "remove", "--force", worktreePath]);
+	await tryRunGit(["-C", repoPath, "worktree", "remove", "--force", worktreePath]);
 	await rm(worktreePath, { recursive: true, force: true });
 	return existed;
 }
@@ -473,7 +481,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 		// compared the worktree HEAD to the latest baseRef commit and recreated the worktree
 		// when the base branch advanced, which could destroy valid task progress. Existing
 		// worktrees are now treated as authoritative and only missing worktrees are created.
-		const existingCommit = await tryGetGitStdout(worktreePath, ["rev-parse", "HEAD"]);
+		const existingCommit = await tryRunGit(["-C", worktreePath, "rev-parse", "HEAD"]);
 		if (existingCommit) {
 			await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
 			return {
@@ -507,7 +515,6 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				error: getWorktreeBaseRefResolutionErrorMessage(requestedBaseRef, error),
 			};
 		}
-		const baseCommit = resolveResult.stdout;
 
 		const storedPatch = await findTaskPatch(taskId);
 		let baseCommit = storedPatch?.commit ?? requestedBaseCommit;
