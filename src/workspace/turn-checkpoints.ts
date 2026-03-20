@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import type { RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
 import { createGitProcessEnv } from "../core/git-process-env.js";
-import { getGitStdout, RunGitOptions } from "./git-utils.js";
+import { getGitStdout, type RunGitOptions } from "./git-utils.js";
 
 const CHECKPOINT_AUTHOR_NAME = "kanban-checkpoint";
 const CHECKPOINT_AUTHOR_EMAIL = "kanban-checkpoint@local";
