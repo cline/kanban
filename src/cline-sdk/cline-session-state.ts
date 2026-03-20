@@ -255,9 +255,7 @@ export function finishToolCallMessage(
 		durationMs: number | null;
 	},
 ): ClineTaskMessage {
-	const existingMessageId = input.toolCallId
-		? entry.toolMessageIdByToolCallId.get(input.toolCallId) ?? null
-		: null;
+	const existingMessageId = input.toolCallId ? (entry.toolMessageIdByToolCallId.get(input.toolCallId) ?? null) : null;
 	const toolInput = input.toolCallId ? entry.toolInputByToolCallId.get(input.toolCallId) : undefined;
 	const content = buildToolCallContent({
 		toolName: input.toolName,

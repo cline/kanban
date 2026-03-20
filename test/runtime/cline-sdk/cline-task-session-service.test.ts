@@ -109,6 +109,9 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 			async sendTaskSessionInput(taskId: string, prompt: string): Promise<unknown> {
 				return await sendTaskSessionInputMock(taskId, prompt);
 			},
+			async resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
+				return await readPersistedTaskSessionMock(taskId);
+			},
 			async stopTaskSession(taskId: string): Promise<void> {
 				await stopTaskSessionMock(taskId);
 			},
@@ -253,7 +256,28 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
 				providerId: "anthropic",
+				mode: "act",
 				systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
+			}),
+		);
+	});
+
+	it("starts the SDK runtime in plan mode when requested", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			startInPlanMode: true,
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mode: "plan",
 			}),
 		);
 	});
@@ -299,6 +323,49 @@ describe("InMemoryClineTaskSessionService", () => {
 
 		expect(nextSummary?.state).toBe("running");
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual(["Initial prompt", "Continue"]);
+	});
+
+	it("rebinds a persisted session after restart and resumes chat on the next message", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.readPersistedTaskSessionMock.mockResolvedValue({
+			record: {
+				sessionId: "task-1-persisted",
+				status: "completed",
+				startedAt: "2026-03-17T10:00:00.000Z",
+				updatedAt: "2026-03-17T10:05:00.000Z",
+			},
+			messages: [
+				{
+					role: "user",
+					content: "Recovered prompt",
+				},
+				{
+					role: "assistant",
+					content: "Recovered answer",
+				},
+			],
+		});
+
+		const reboundSummary = await service.rebindPersistedTaskSession("task-1", {
+			workspacePath: "/tmp/worktree",
+		});
+
+		expect(reboundSummary?.state).toBe("idle");
+		expect(reboundSummary?.workspacePath).toBe("/tmp/worktree");
+		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
+			"Recovered prompt",
+			"Recovered answer",
+		]);
+
+		const nextSummary = await service.sendTaskSessionInput("task-1", "Continue");
+
+		expect(nextSummary?.state).toBe("running");
+		expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "Continue");
+		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
+			"Recovered prompt",
+			"Recovered answer",
+			"Continue",
+		]);
 	});
 
 	it("marks session interrupted when stopped", async () => {

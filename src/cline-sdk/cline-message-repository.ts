@@ -141,6 +141,24 @@ export function createInMemoryClineMessageRepository(): ClineMessageRepository {
 	return new InMemoryClineMessageRepository();
 }
 
+export function createTaskEntryFromPersistedSession(
+	taskId: string,
+	messages: ClineSdkPersistedMessage[],
+	summaryPatch: Partial<RuntimeTaskSessionSummary> = {},
+): ClineTaskSessionEntry {
+	const entry = createHydrationEntry(taskId);
+	for (const message of messages) {
+		hydratePersistedMessage(entry, taskId, message);
+	}
+	entry.summary = {
+		...entry.summary,
+		...summaryPatch,
+		taskId,
+		updatedAt: Date.now(),
+	};
+	return entry;
+}
+
 function hydratePersistedSessionMessages(taskId: string, messages: ClineSdkPersistedMessage[]): ClineTaskMessage[] {
 	const entry = createHydrationEntry(taskId);
 	for (const message of messages) {

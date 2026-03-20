@@ -143,18 +143,17 @@ export async function listSdkProviderModels(providerId: string): Promise<SdkProv
 	return await llmsModels.getModelsForProvider(providerId);
 }
 
+const providerManager = new ProviderSettingsManager();
+
 export function getSdkProviderSettings(providerId: string): SdkProviderSettings | null {
-	const manager = new ProviderSettingsManager();
-	return (manager.getProviderSettings(providerId) as SdkProviderSettings | undefined) ?? null;
+	return (providerManager.getProviderSettings(providerId) as SdkProviderSettings | undefined) ?? null;
 }
 
 export function getLastUsedSdkProviderSettings(): SdkProviderSettings | null {
-	const manager = new ProviderSettingsManager();
-	return (manager.getLastUsedProviderSettings() as SdkProviderSettings | undefined) ?? null;
+	return (providerManager.getLastUsedProviderSettings() as SdkProviderSettings | undefined) ?? null;
 }
 
 export function saveSdkProviderSettings(input: SaveSdkProviderSettingsInput): void {
-	const manager = new ProviderSettingsManager();
 	const settings: SdkProviderSettings = {
 		...input.settings,
 		provider: input.settings.provider.trim(),
@@ -197,7 +196,7 @@ export function saveSdkProviderSettings(input: SaveSdkProviderSettingsInput): vo
 		settings.auth = auth;
 	}
 
-	manager.saveProviderSettings(settings, {
+	providerManager.saveProviderSettings(settings, {
 		setLastUsed: input.setLastUsed,
 		tokenSource: input.tokenSource,
 	});

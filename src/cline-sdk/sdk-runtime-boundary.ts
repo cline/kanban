@@ -12,7 +12,7 @@ export type ClineSdkSessionRecord = Awaited<ReturnType<ClineSdkSessionHost["list
 export type ClineSdkPersistedMessage = ClineSdkProviders.Message;
 
 export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
-	return await createSessionHost({ backendMode: "local" });
+	return await createSessionHost({ backendMode: "auto", autoStartRpcServer: true });
 }
 
 export async function buildClineSdkWorkspaceMetadata(cwd: string): Promise<string> {
@@ -29,5 +29,5 @@ export async function resolveClineSdkSystemPrompt(input: {
 	// its repo-aware behavior in the same way the official CLI does.
 	const shouldAppendWorkspaceMetadata = input.providerId === "cline";
 	const workspaceMetadata = shouldAppendWorkspaceMetadata ? await buildWorkspaceMetadata(input.cwd) : "";
-	return getClineDefaultSystemPrompt("Terminal Shell", input.cwd, workspaceMetadata, input.rules ?? "");
+	return getClineDefaultSystemPrompt("Kanban", input.cwd, workspaceMetadata, input.rules ?? "");
 }
