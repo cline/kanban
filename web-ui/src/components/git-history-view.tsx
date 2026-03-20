@@ -9,8 +9,11 @@ import { Button } from "@/components/ui/button";
 import {
 	AlertDialog,
 	AlertDialogAction,
+	AlertDialogBody,
 	AlertDialogCancel,
 	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -77,7 +80,10 @@ export function GitHistoryView({
 
 	if (!workspaceId) {
 		return (
-			<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary" style={{ flex: 1, background: "var(--color-surface-0)" }}>
+			<div
+				className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary"
+				style={{ flex: 1, background: "var(--color-surface-0)" }}
+			>
 				<GitBranch size={48} />
 				<h3 className="font-semibold text-text-primary">No project selected</h3>
 			</div>
@@ -85,7 +91,15 @@ export function GitHistoryView({
 	}
 
 	return (
-		<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden", background: "var(--color-surface-0)" }}>
+		<div
+			style={{
+				display: "flex",
+				flex: "1 1 0",
+				minHeight: 0,
+				overflow: "hidden",
+				background: "var(--color-surface-0)",
+			}}
+		>
 			<GitRefsPanel
 				refs={gitHistory.refs}
 				selectedRefName={gitHistory.viewMode === "working-copy" ? null : (gitHistory.activeRef?.name ?? null)}
@@ -151,15 +165,19 @@ export function GitHistoryView({
 			/>
 			<AlertDialog
 				open={isDiscardAlertOpen}
-				onOpenChange={(open) => { if (!open) setIsDiscardAlertOpen(false); }}
+				onOpenChange={(open) => {
+					if (!open) setIsDiscardAlertOpen(false);
+				}}
 			>
-				<AlertDialogTitle className="text-sm font-semibold text-text-primary">
-					Discard all changes?
-				</AlertDialogTitle>
-				<AlertDialogDescription className="text-text-secondary mt-2">
-					Are you sure you want to discard all working copy changes? This cannot be undone.
-				</AlertDialogDescription>
-				<div className="flex justify-end gap-2 mt-4">
+				<AlertDialogHeader>
+					<AlertDialogTitle>Discard all changes?</AlertDialogTitle>
+				</AlertDialogHeader>
+				<AlertDialogBody>
+					<AlertDialogDescription>
+						Are you sure you want to discard all working copy changes? This cannot be undone.
+					</AlertDialogDescription>
+				</AlertDialogBody>
+				<AlertDialogFooter>
 					<AlertDialogCancel asChild>
 						<Button
 							variant="default"
@@ -182,7 +200,7 @@ export function GitHistoryView({
 							Discard All
 						</Button>
 					</AlertDialogAction>
-				</div>
+				</AlertDialogFooter>
 			</AlertDialog>
 		</div>
 	);

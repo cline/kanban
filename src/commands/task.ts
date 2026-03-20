@@ -6,18 +6,31 @@ import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-e
 import {
 	addTaskDependency,
 	addTaskToColumn,
+	deleteTasksFromBoard,
 	getTaskColumnId,
 	moveTaskToColumn,
 	type RuntimeAddTaskDependencyResult,
 	removeTaskDependency,
+	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "../core/task-board-mutations.js";
 import { resolveProjectInputPath } from "../projects/project-path.js";
 import { loadWorkspaceContext } from "../state/workspace-state.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 
-const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review"] as const;
+const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review", "trash"] as const;
 type ListTaskColumn = (typeof LIST_TASK_COLUMNS)[number];
+type TaskCommandTarget = { taskId?: string; column?: ListTaskColumn };
+
+type ResolvedTaskCommandTarget =
+	| {
+			kind: "task";
+			taskId: string;
+	  }
+	| {
+			kind: "column";
+			column: ListTaskColumn;
+	  };
 
 interface RuntimeWorkspaceMutationResult<T> {
 	board: RuntimeWorkspaceStateResponse["board"];
@@ -41,7 +54,7 @@ function parseListColumn(value: string | undefined): ListTaskColumn | undefined 
 	if (value === undefined) {
 		return undefined;
 	}
-	if (value === "backlog" || value === "in_progress" || value === "review") {
+	if (value === "backlog" || value === "in_progress" || value === "review" || value === "trash") {
 		return value;
 	}
 	throw new Error(`Invalid column "${value}". Expected one of: ${LIST_TASK_COLUMNS.join(", ")}.`);
@@ -55,6 +68,27 @@ function parseAutoReviewMode(value: string | undefined): "commit" | "pr" | "move
 		return value;
 	}
 	throw new Error(`Invalid auto review mode "${value}". Expected: commit, pr, move_to_trash.`);
+}
+
+function resolveTaskCommandTarget(input: TaskCommandTarget, commandName: string): ResolvedTaskCommandTarget {
+	const taskId = input.taskId?.trim();
+	const column = input.column;
+	if (taskId && column) {
+		throw new Error(`${commandName} accepts exactly one of --task-id or --column.`);
+	}
+	if (taskId) {
+		return {
+			kind: "task",
+			taskId,
+		};
+	}
+	if (column) {
+		return {
+			kind: "column",
+			column,
+		};
+	}
+	throw new Error(`${commandName} requires either --task-id or --column.`);
 }
 
 function createRuntimeTrpcClient(workspaceId: string | null) {
@@ -191,6 +225,20 @@ function getLinkFailureMessage(reason: RuntimeAddTaskDependencyResult["reason"])
 	return "One or both tasks could not be found.";
 }
 
+function findTasksInColumn(
+	state: RuntimeWorkspaceStateResponse,
+	columnId: ListTaskColumn,
+): Array<{ task: RuntimeBoardCard; columnId: string }> {
+	const column = state.board.columns.find((candidate) => candidate.id === columnId);
+	if (!column) {
+		return [];
+	}
+	return column.cards.map((task) => ({
+		task,
+		columnId: column.id,
+	}));
+}
+
 async function listTasks(input: { cwd: string; projectPath?: string; column?: ListTaskColumn }): Promise<JsonRecord> {
 	const workspace = await resolveRuntimeWorkspace(input.projectPath, input.cwd, {
 		autoCreateIfMissing: false,
@@ -199,7 +247,7 @@ async function listTasks(input: { cwd: string; projectPath?: string; column?: Li
 	const state = await runtimeClient.workspace.getState.query();
 
 	const tasks = state.board.columns.flatMap((boardColumn) => {
-		if (boardColumn.id === "trash") {
+		if (!input.column && boardColumn.id === "trash") {
 			return [];
 		}
 		if (input.column && boardColumn.id !== input.column) {
@@ -216,6 +264,37 @@ async function listTasks(input: { cwd: string; projectPath?: string; column?: Li
 		dependencies: state.board.dependencies.map((dependency) => formatDependencyRecord(state, dependency)),
 		count: tasks.length,
 	};
+}
+
+async function stopTaskRuntimeSession(
+	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
+	taskId: string,
+): Promise<void> {
+	await runtimeClient.runtime.stopTaskSession
+		.mutate({
+			taskId,
+		})
+		.catch(() => null);
+}
+
+async function deleteTaskWorkspace(
+	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
+	taskId: string,
+): Promise<{ removed: boolean; error?: string }> {
+	try {
+		const deleted = await runtimeClient.workspace.deleteWorktree.mutate({
+			taskId,
+		});
+		return {
+			removed: deleted.removed,
+			error: deleted.ok ? undefined : deleted.error,
+		};
+	} catch (error) {
+		return {
+			removed: false,
+			error: toErrorMessage(error),
+		};
+	}
 }
 
 async function createTask(input: {
@@ -466,6 +545,258 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 	};
 }
 
+interface TrashTaskExecutionResult {
+	task: JsonRecord;
+	taskId: string;
+	readyTaskIds: string[];
+	autoStartedTasks: JsonRecord[];
+	worktreeDeleted: boolean;
+	worktreeDeleteError?: string;
+	alreadyInTrash: boolean;
+}
+
+async function trashTaskById(input: {
+	cwd: string;
+	taskId: string;
+	projectPath?: string;
+	workspaceRepoPath: string;
+	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
+}): Promise<TrashTaskExecutionResult> {
+	const initialState = await input.runtimeClient.workspace.getState.query();
+	const initialRecord = findTaskRecord(initialState, input.taskId);
+	if (!initialRecord) {
+		throw new Error(`Task "${input.taskId}" was not found in workspace ${input.workspaceRepoPath}.`);
+	}
+	if (initialRecord.columnId === "trash") {
+		return {
+			task: formatTaskRecord(initialState, initialRecord.task, initialRecord.columnId),
+			taskId: input.taskId,
+			readyTaskIds: [],
+			autoStartedTasks: [],
+			worktreeDeleted: false,
+			alreadyInTrash: true,
+		};
+	}
+
+	await stopTaskRuntimeSession(input.runtimeClient, input.taskId);
+	const latestState = await input.runtimeClient.workspace.getState.query();
+	const latestRecord = findTaskRecord(latestState, input.taskId);
+	if (!latestRecord) {
+		throw new Error(`Task "${input.taskId}" was not found in workspace ${input.workspaceRepoPath}.`);
+	}
+
+	const trashed = trashTaskAndGetReadyLinkedTaskIds(latestState.board, input.taskId);
+	if (!trashed.moved || !trashed.task) {
+		throw new Error(`Task "${input.taskId}" could not be moved to trash.`);
+	}
+
+	await input.runtimeClient.workspace.saveState.mutate({
+		board: trashed.board,
+		sessions: latestState.sessions,
+		expectedRevision: latestState.revision,
+	});
+
+	const autoStartedTasks: JsonRecord[] = [];
+	for (const readyTaskId of trashed.readyTaskIds) {
+		const started = await startTask({
+			cwd: input.cwd,
+			taskId: readyTaskId,
+			projectPath: input.projectPath,
+		});
+		autoStartedTasks.push(started);
+	}
+
+	const deletedWorkspace = await deleteTaskWorkspace(input.runtimeClient, input.taskId);
+	const nextState: RuntimeWorkspaceStateResponse = {
+		...latestState,
+		board: trashed.board,
+	};
+
+	return {
+		task: formatTaskRecord(nextState, trashed.task, "trash"),
+		taskId: input.taskId,
+		readyTaskIds: trashed.readyTaskIds,
+		autoStartedTasks,
+		worktreeDeleted: deletedWorkspace.removed,
+		worktreeDeleteError: deletedWorkspace.error,
+		alreadyInTrash: false,
+	};
+}
+
+async function trashTask(input: {
+	cwd: string;
+	taskId?: string;
+	column?: ListTaskColumn;
+	projectPath?: string;
+}): Promise<JsonRecord> {
+	const target = resolveTaskCommandTarget(input, "task trash");
+	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
+	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
+	const runtimeClient = createRuntimeTrpcClient(workspaceId);
+
+	if (target.kind === "task") {
+		const trashed = await trashTaskById({
+			cwd: input.cwd,
+			taskId: target.taskId,
+			projectPath: input.projectPath,
+			workspaceRepoPath,
+			runtimeClient,
+		});
+		if (trashed.alreadyInTrash) {
+			return {
+				ok: true,
+				message: `Task "${target.taskId}" is already in trash.`,
+				task: trashed.task,
+				workspacePath: workspaceRepoPath,
+				readyTaskIds: [],
+				autoStartedTasks: [],
+			};
+		}
+		return {
+			ok: true,
+			task: trashed.task,
+			workspacePath: workspaceRepoPath,
+			readyTaskIds: trashed.readyTaskIds,
+			autoStartedTasks: trashed.autoStartedTasks,
+			worktreeDeleted: trashed.worktreeDeleted,
+			worktreeDeleteError: trashed.worktreeDeleteError,
+		};
+	}
+
+	const initialState = await runtimeClient.workspace.getState.query();
+	const targetTasks = findTasksInColumn(initialState, target.column);
+	if (targetTasks.length === 0) {
+		return {
+			ok: true,
+			column: target.column,
+			workspacePath: workspaceRepoPath,
+			trashedTasks: [],
+			alreadyTrashedTasks: [],
+			readyTaskIds: [],
+			autoStartedTasks: [],
+			worktreeCleanup: [],
+			count: 0,
+		};
+	}
+
+	const results: TrashTaskExecutionResult[] = [];
+	for (const { task } of targetTasks) {
+		results.push(
+			await trashTaskById({
+				cwd: input.cwd,
+				taskId: task.id,
+				projectPath: input.projectPath,
+				workspaceRepoPath,
+				runtimeClient,
+			}),
+		);
+	}
+
+	const trashedTasks = results.filter((result) => !result.alreadyInTrash);
+	const alreadyTrashedTasks = results.filter((result) => result.alreadyInTrash);
+
+	return {
+		ok: true,
+		column: target.column,
+		workspacePath: workspaceRepoPath,
+		trashedTasks: trashedTasks.map((result) => result.task),
+		alreadyTrashedTasks: alreadyTrashedTasks.map((result) => result.task),
+		readyTaskIds: [...new Set(trashedTasks.flatMap((result) => result.readyTaskIds))],
+		autoStartedTasks: trashedTasks.flatMap((result) => result.autoStartedTasks),
+		worktreeCleanup: trashedTasks.map((result) => ({
+			taskId: result.taskId,
+			removed: result.worktreeDeleted,
+			error: result.worktreeDeleteError,
+		})),
+		count: trashedTasks.length,
+	};
+}
+
+async function deleteTaskCommand(input: {
+	cwd: string;
+	taskId?: string;
+	column?: ListTaskColumn;
+	projectPath?: string;
+}): Promise<JsonRecord> {
+	const target = resolveTaskCommandTarget(input, "task delete");
+	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
+	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
+	const runtimeClient = createRuntimeTrpcClient(workspaceId);
+
+	const initialState = await runtimeClient.workspace.getState.query();
+	const initialTargetRecords =
+		target.kind === "task"
+			? (() => {
+					const record = findTaskRecord(initialState, target.taskId);
+					if (!record) {
+						throw new Error(`Task "${target.taskId}" was not found in workspace ${workspaceRepoPath}.`);
+					}
+					return [record];
+				})()
+			: findTasksInColumn(initialState, target.column);
+	const targetTaskIds = initialTargetRecords.map(({ task }) => task.id);
+	if (targetTaskIds.length === 0) {
+		return {
+			ok: true,
+			workspacePath: workspaceRepoPath,
+			column: target.kind === "column" ? target.column : null,
+			deletedTasks: [],
+			count: 0,
+		};
+	}
+
+	await Promise.all(targetTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)));
+
+	const latestState = await runtimeClient.workspace.getState.query();
+	const latestTargetRecords =
+		target.kind === "task"
+			? (() => {
+					const record = findTaskRecord(latestState, target.taskId);
+					if (!record) {
+						throw new Error(`Task "${target.taskId}" was not found in workspace ${workspaceRepoPath}.`);
+					}
+					return [record];
+				})()
+			: findTasksInColumn(latestState, target.column);
+
+	const deleted = deleteTasksFromBoard(
+		latestState.board,
+		latestTargetRecords.map(({ task }) => task.id),
+	);
+	if (!deleted.deleted) {
+		return {
+			ok: true,
+			workspacePath: workspaceRepoPath,
+			column: target.kind === "column" ? target.column : null,
+			deletedTasks: [],
+			count: 0,
+		};
+	}
+
+	await runtimeClient.workspace.saveState.mutate({
+		board: deleted.board,
+		sessions: latestState.sessions,
+		expectedRevision: latestState.revision,
+	});
+
+	const deletedTasks = latestTargetRecords.map(({ task, columnId }) => formatTaskRecord(latestState, task, columnId));
+	const workspaceCleanupResults = await Promise.all(
+		deleted.deletedTaskIds.map(async (taskId) => ({
+			taskId,
+			...(await deleteTaskWorkspace(runtimeClient, taskId)),
+		})),
+	);
+
+	return {
+		ok: true,
+		workspacePath: workspaceRepoPath,
+		column: target.kind === "column" ? target.column : null,
+		deletedTasks,
+		count: deleted.deletedTaskIds.length,
+		worktreeCleanup: workspaceCleanupResults,
+	};
+}
+
 function parseOptionalBooleanOption(value: unknown, flagName: string): boolean | undefined {
 	if (value === undefined) {
 		return undefined;
@@ -505,7 +836,7 @@ export function registerTaskCommand(program: Command): void {
 		.command("list")
 		.description("List Kanban tasks for a workspace.")
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
-		.option("--column <column>", "Filter column: backlog | in_progress | review.", parseListColumn)
+		.option("--column <column>", "Filter column: backlog | in_progress | review | trash.", parseListColumn)
 		.action(async (options: { projectPath?: string; column?: ListTaskColumn }) => {
 			await runTaskCommand(
 				async () =>
@@ -585,6 +916,42 @@ export function registerTaskCommand(program: Command): void {
 				);
 			},
 		);
+
+	task
+		.command("trash")
+		.description("Move a task or an entire column to trash and clean up task workspaces.")
+		.option("--task-id <id>", "Task ID.")
+		.option("--column <column>", "Column to bulk-trash: backlog | in_progress | review | trash.", parseListColumn)
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.action(async (options: { taskId?: string; column?: ListTaskColumn; projectPath?: string }) => {
+			await runTaskCommand(
+				async () =>
+					await trashTask({
+						cwd: process.cwd(),
+						taskId: options.taskId,
+						column: options.column,
+						projectPath: options.projectPath,
+					}),
+			);
+		});
+
+	task
+		.command("delete")
+		.description("Permanently delete a task or every task in a column.")
+		.option("--task-id <id>", "Task ID to permanently delete.")
+		.option("--column <column>", "Column to bulk-delete: backlog | in_progress | review | trash.", parseListColumn)
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.action(async (options: { taskId?: string; column?: ListTaskColumn; projectPath?: string }) => {
+			await runTaskCommand(
+				async () =>
+					await deleteTaskCommand({
+						cwd: process.cwd(),
+						taskId: options.taskId,
+						column: options.column,
+						projectPath: options.projectPath,
+					}),
+			);
+		});
 
 	task
 		.command("link")

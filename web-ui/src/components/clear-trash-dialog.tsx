@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import {
 	AlertDialog,
 	AlertDialogAction,
+	AlertDialogBody,
 	AlertDialogCancel,
 	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 
@@ -23,22 +26,33 @@ export function ClearTrashDialog({
 	const taskLabel = taskCount === 1 ? "task" : "tasks";
 
 	return (
-		<AlertDialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onCancel(); }}>
-			<AlertDialogTitle className="text-sm font-semibold text-text-primary">
-				Clear trash permanently?
-			</AlertDialogTitle>
-			<AlertDialogDescription className="text-text-secondary mt-2">
-				This will permanently delete {taskCount} {taskLabel} from Trash.
-			</AlertDialogDescription>
-			<p className="text-[13px] text-text-primary mt-2">This action cannot be undone.</p>
-			<div className="flex justify-end gap-2 mt-4">
+		<AlertDialog
+			open={open}
+			onOpenChange={(isOpen) => {
+				if (!isOpen) onCancel();
+			}}
+		>
+			<AlertDialogHeader>
+				<AlertDialogTitle>Clear trash permanently?</AlertDialogTitle>
+			</AlertDialogHeader>
+			<AlertDialogBody>
+				<AlertDialogDescription>
+					This will permanently delete {taskCount} {taskLabel} from Trash.
+				</AlertDialogDescription>
+				<p className="text-text-primary">This action cannot be undone.</p>
+			</AlertDialogBody>
+			<AlertDialogFooter>
 				<AlertDialogCancel asChild>
-					<Button variant="default" onClick={onCancel}>Cancel</Button>
+					<Button variant="default" onClick={onCancel}>
+						Cancel
+					</Button>
 				</AlertDialogCancel>
 				<AlertDialogAction asChild>
-					<Button variant="danger" onClick={onConfirm}>Clear Trash</Button>
+					<Button variant="danger" onClick={onConfirm}>
+						Clear Trash
+					</Button>
 				</AlertDialogAction>
-			</div>
+			</AlertDialogFooter>
 		</AlertDialog>
 	);
 }

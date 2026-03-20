@@ -1,3 +1,6 @@
+// Streams live runtime state to browser clients over websocket.
+// It listens to terminal and native Cline updates, normalizes them into the
+// shared API contract, and fans out workspace-scoped snapshots and deltas.
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 
@@ -6,12 +9,14 @@ import type {
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamTaskChatMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
 	RuntimeStateStreamWorkspaceMetadataMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract.js";
+import type { ClineTaskMessage, ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor.js";
 import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry.js";
@@ -32,6 +37,8 @@ export interface CreateRuntimeStateHubDependencies {
 
 export interface RuntimeStateHub {
 	trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => void;
+	trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => void;
+	broadcastTaskChatMessage: (workspaceId: string, taskId: string, message: ClineTaskMessage) => void;
 	handleUpgrade: (
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
@@ -49,6 +56,9 @@ export interface RuntimeStateHub {
 
 export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): RuntimeStateHub {
 	const terminalSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
+	const clineSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
+	const clineMessageUnsubscribeByWorkspaceId = new Map<string, () => void>();
+	const clinePreviousSummaryByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const pendingTaskSessionSummariesByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const taskSessionBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
 	const runtimeStateClientsByWorkspaceId = new Map<string, Set<WebSocket>>();
@@ -138,6 +148,22 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		taskSessionBroadcastTimersByWorkspaceId.set(workspaceId, timer);
 	};
 
+	const broadcastTaskChatMessage = (workspaceId: string, taskId: string, message: ClineTaskMessage) => {
+		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+		if (!runtimeClients || runtimeClients.size === 0) {
+			return;
+		}
+		const payload: RuntimeStateStreamTaskChatMessage = {
+			type: "task_chat_message",
+			workspaceId,
+			taskId,
+			message,
+		};
+		for (const client of runtimeClients) {
+			sendRuntimeStateMessage(client, payload);
+		}
+	};
+
 	const disposeTaskSessionSummaryBroadcast = (workspaceId: string) => {
 		const timer = taskSessionBroadcastTimersByWorkspaceId.get(workspaceId);
 		if (timer) {
@@ -173,6 +199,25 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			}
 		}
 		terminalSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
+		const unsubscribeClineSummary = clineSummaryUnsubscribeByWorkspaceId.get(workspaceId);
+		if (unsubscribeClineSummary) {
+			try {
+				unsubscribeClineSummary();
+			} catch {
+				// Ignore listener cleanup errors during project removal.
+			}
+		}
+		clineSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
+		clinePreviousSummaryByWorkspaceId.delete(workspaceId);
+		const unsubscribeClineMessage = clineMessageUnsubscribeByWorkspaceId.get(workspaceId);
+		if (unsubscribeClineMessage) {
+			try {
+				unsubscribeClineMessage();
+			} catch {
+				// Ignore listener cleanup errors during project removal.
+			}
+		}
+		clineMessageUnsubscribeByWorkspaceId.delete(workspaceId);
 		disposeTaskSessionSummaryBroadcast(workspaceId);
 		workspaceMetadataMonitor.disposeWorkspace(workspaceId);
 
@@ -357,6 +402,16 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					workspaceClients.add(client);
 					runtimeStateClientsByWorkspaceId.set(monitorWorkspaceId, workspaceClients);
 					runtimeStateWorkspaceIdByClient.set(client, monitorWorkspaceId);
+					const clineSummaries = Array.from(
+						clinePreviousSummaryByWorkspaceId.get(monitorWorkspaceId)?.values() ?? [],
+					);
+					if (clineSummaries.length > 0) {
+						sendRuntimeStateMessage(client, {
+							type: "task_sessions_updated",
+							workspaceId: monitorWorkspaceId,
+							summaries: clineSummaries,
+						} satisfies RuntimeStateStreamTaskSessionsMessage);
+					}
 				}
 				if (workspace.removedRequestedWorkspacePath) {
 					sendRuntimeStateMessage(client, {
@@ -397,6 +452,44 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			});
 			terminalSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
 		},
+		trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => {
+			if (clineSummaryUnsubscribeByWorkspaceId.has(workspaceId)) {
+				return;
+			}
+			const previousSummariesByTaskId = new Map<string, RuntimeTaskSessionSummary>();
+			clinePreviousSummaryByWorkspaceId.set(workspaceId, previousSummariesByTaskId);
+			for (const summary of service.listSummaries()) {
+				previousSummariesByTaskId.set(summary.taskId, summary);
+				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+			}
+			const unsubscribe = service.onSummary((summary) => {
+				const previousSummary = previousSummariesByTaskId.get(summary.taskId);
+				previousSummariesByTaskId.set(summary.taskId, summary);
+				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+				const didCheckpointChange =
+					previousSummary?.latestTurnCheckpoint?.commit !== summary.latestTurnCheckpoint?.commit ||
+					previousSummary?.previousTurnCheckpoint?.commit !== summary.previousTurnCheckpoint?.commit;
+				if (didCheckpointChange) {
+					void broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
+				}
+				if (
+					previousSummary &&
+					previousSummary.state !== "awaiting_review" &&
+					summary.state === "awaiting_review" &&
+					(summary.reviewReason === "hook" ||
+						summary.reviewReason === "attention" ||
+						summary.reviewReason === "error")
+				) {
+					broadcastTaskReadyForReview(workspaceId, summary.taskId);
+				}
+			});
+			clineSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
+			const unsubscribeMessage = service.onMessage((taskId, message) => {
+				broadcastTaskChatMessage(workspaceId, taskId, message);
+			});
+			clineMessageUnsubscribeByWorkspaceId.set(workspaceId, unsubscribeMessage);
+		},
+		broadcastTaskChatMessage,
 		handleUpgrade: (request, socket, head, context) => {
 			runtimeStateWebSocketServer.handleUpgrade(request, socket, head, (ws) => {
 				runtimeStateWebSocketServer.emit("connection", ws, context);
@@ -420,6 +513,23 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				}
 			}
 			terminalSummaryUnsubscribeByWorkspaceId.clear();
+			for (const unsubscribe of clineSummaryUnsubscribeByWorkspaceId.values()) {
+				try {
+					unsubscribe();
+				} catch {
+					// Ignore listener cleanup errors during shutdown.
+				}
+			}
+			clineSummaryUnsubscribeByWorkspaceId.clear();
+			clinePreviousSummaryByWorkspaceId.clear();
+			for (const unsubscribe of clineMessageUnsubscribeByWorkspaceId.values()) {
+				try {
+					unsubscribe();
+				} catch {
+					// Ignore listener cleanup errors during shutdown.
+				}
+			}
+			clineMessageUnsubscribeByWorkspaceId.clear();
 			workspaceMetadataMonitor.close();
 			for (const client of runtimeStateClients) {
 				try {

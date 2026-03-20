@@ -28,6 +28,14 @@ function normalizeOutputChunk(data: PtyOutputChunk): Buffer {
 	return Buffer.isBuffer(data) ? data : Buffer.from(data);
 }
 
+function isIgnorablePtyWriteError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	const code = (error as NodeJS.ErrnoException).code;
+	return code === "EIO" || code === "EBADF";
+}
+
 function terminatePtyProcess(ptyProcess: pty.IPty): void {
 	const pid = ptyProcess.pid;
 	ptyProcess.kill();
@@ -49,8 +57,12 @@ function escapeWindowsCommand(value: string): string {
 	return value.replace(WINDOWS_CMD_META_CHARS_REGEXP, "^$1");
 }
 
+function normalizeWindowsCmdArgument(value: string): string {
+	return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").replaceAll("\n", "\\n");
+}
+
 function escapeWindowsArgument(value: string): string {
-	let escaped = `${value}`;
+	let escaped = normalizeWindowsCmdArgument(`${value}`);
 	escaped = escaped.replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"");
 	escaped = escaped.replace(/(?=(\\+?)?)\1$/g, "$1$1");
 	escaped = `"${escaped}"`;
@@ -139,7 +151,14 @@ export class PtySession {
 	}
 
 	write(data: string | Buffer): void {
-		this.ptyProcess.write(typeof data === "string" ? data : data.toString("utf8"));
+		try {
+			this.ptyProcess.write(typeof data === "string" ? data : data.toString("utf8"));
+		} catch (error) {
+			if (isIgnorablePtyWriteError(error)) {
+				return;
+			}
+			throw error;
+		}
 	}
 
 	resize(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void {

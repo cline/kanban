@@ -104,7 +104,7 @@ describe("PtySession", () => {
 
 		PtySession.spawn({
 			binary: "cline",
-			args: ["add comment to random file"],
+			args: ["add comment to random file\nwith more context"],
 			cwd: "C:/repo",
 			cols: 120,
 			rows: 40,
@@ -116,7 +116,9 @@ describe("PtySession", () => {
 		expect(cmdArgs).toContain("add^");
 		expect(cmdArgs).toContain("comment^");
 		expect(cmdArgs).toContain("random^");
-		expect(cmdArgs).toContain("file");
+		expect(cmdArgs).toContain("file\\nwith^");
+		expect(cmdArgs).toContain("more^");
+		expect(cmdArgs).toContain("context");
 	});
 
 	it("does not use cmd shell outside Windows", () => {
@@ -152,5 +154,47 @@ describe("PtySession", () => {
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("cmd.exe");
+	});
+
+	it("ignores EIO write errors", () => {
+		setPlatform("darwin");
+		const ptyProcess = createMockPtyProcess();
+		ptyProcess.write.mockImplementation(() => {
+			const error = new Error("i/o error") as NodeJS.ErrnoException;
+			error.code = "EIO";
+			throw error;
+		});
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(() => session.write("hello")).not.toThrow();
+	});
+
+	it("rethrows non-ignorable write errors", () => {
+		setPlatform("darwin");
+		const ptyProcess = createMockPtyProcess();
+		ptyProcess.write.mockImplementation(() => {
+			const error = new Error("permission denied") as NodeJS.ErrnoException;
+			error.code = "EPERM";
+			throw error;
+		});
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(() => session.write("hello")).toThrow("permission denied");
 	});
 });

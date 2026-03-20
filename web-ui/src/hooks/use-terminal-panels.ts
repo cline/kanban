@@ -62,6 +62,7 @@ interface PrepareTerminalForShortcutInput {
 interface PrepareTerminalForShortcutResult {
 	ok: boolean;
 	targetTaskId?: string;
+	usedExistingTerminal?: boolean;
 	message?: string;
 }
 
@@ -347,6 +348,7 @@ export function useTerminalPanels({
 	const prepareTerminalForShortcut = useCallback(
 		async ({ prepareWaitForTerminalConnectionReady }: PrepareTerminalForShortcutInput) => {
 			let targetTaskId = HOME_TERMINAL_TASK_ID;
+			let usedExistingTerminal = false;
 			let shouldWaitForConnection = false;
 			let waitForTerminalConnectionReady: (() => Promise<void>) | null = null;
 			const activeSelection = selectedCard;
@@ -355,6 +357,7 @@ export function useTerminalPanels({
 				const selectionKey = `${activeSelection.card.id}:${activeSelection.card.baseRef}`;
 				const detailWasAlreadyOpenForSelection =
 					isDetailTerminalOpen && detailTerminalSelectionKeyRef.current === selectionKey;
+				usedExistingTerminal = detailWasAlreadyOpenForSelection;
 				shouldWaitForConnection = !detailWasAlreadyOpenForSelection;
 				if (shouldWaitForConnection) {
 					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(targetTaskId);
@@ -377,6 +380,7 @@ export function useTerminalPanels({
 			} else {
 				const homeWasAlreadyOpenForProject =
 					isHomeTerminalOpen && homeTerminalProjectIdRef.current === currentProjectId;
+				usedExistingTerminal = homeWasAlreadyOpenForProject;
 				shouldWaitForConnection = !homeWasAlreadyOpenForProject;
 				if (shouldWaitForConnection) {
 					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(HOME_TERMINAL_TASK_ID);
@@ -400,6 +404,7 @@ export function useTerminalPanels({
 			return {
 				ok: true,
 				targetTaskId,
+				usedExistingTerminal,
 			} satisfies PrepareTerminalForShortcutResult;
 		},
 		[

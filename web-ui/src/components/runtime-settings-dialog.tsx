@@ -1,3 +1,6 @@
+// Settings dialog composition for Kanban.
+// Generic app settings live here, while Cline-specific provider state and
+// side effects should stay in use-runtime-settings-cline-controller.ts.
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
@@ -11,10 +14,15 @@ import {
 	Settings,
 	X,
 } from "lucide-react";
-import { getRuntimeAgentCatalogEntry, RUNTIME_AGENT_CATALOG } from "@runtime-agent-catalog";
+import {
+	getRuntimeAgentCatalogEntry,
+	getRuntimeLaunchSupportedAgentCatalog,
+} from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
+import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -26,7 +34,11 @@ import {
 	type RuntimeShortcutPickerIconId,
 } from "@/components/shared/runtime-shortcut-icons";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
+import type {
+	RuntimeAgentId,
+	RuntimeConfigResponse,
+	RuntimeProjectShortcut,
+} from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import {
 	type BrowserNotificationPermission,
@@ -52,6 +64,9 @@ function quoteCommandPartForDisplay(part: string): string {
 }
 
 function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, autonomousModeEnabled: boolean): string {
+	if (agentId === "cline") {
+		return "";
+	}
 	const args = autonomousModeEnabled ? (getRuntimeAgentCatalogEntry(agentId)?.autonomousArgs ?? []) : [];
 	return [binary, ...args.map(quoteCommandPartForDisplay)].join(" ");
 }
@@ -66,6 +81,8 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 ];
 
 export type RuntimeSettingsSection = "shortcuts";
+
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex"];
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -111,8 +128,9 @@ function AgentRow({
 	disabled: boolean;
 }): React.ReactElement {
 	const installUrl = getRuntimeAgentCatalogEntry(agent.id)?.installUrl;
+	const isNativeCline = agent.id === "cline";
 	const isInstalled = agent.installed === true;
-	const isInstallStatusPending = agent.installed === null;
+	const isInstallStatusPending = !isNativeCline && agent.installed === null;
 
 	return (
 		<div
@@ -140,7 +158,7 @@ function AgentRow({
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
 						<span className="text-[13px] text-text-primary">{agent.label}</span>
-						{isInstalled ? (
+						{!isNativeCline && isInstalled ? (
 							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-green/10 text-status-green">
 								Installed
 							</span>
@@ -157,7 +175,7 @@ function AgentRow({
 					) : null}
 				</div>
 			</div>
-			{agent.installed === false && installUrl ? (
+			{!isNativeCline && agent.installed === false && installUrl ? (
 				<a
 					href={installUrl}
 					target="_blank"
@@ -167,7 +185,7 @@ function AgentRow({
 				>
 					Install
 				</a>
-			) : agent.installed === false ? (
+			) : !isNativeCline && agent.installed === false ? (
 				<Button size="sm" disabled>Install</Button>
 			) : null}
 		</div>
@@ -324,15 +342,23 @@ export function RuntimeSettingsDialog({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,
-				installed: agent.installed,
+				installed: agent.id === "cline" ? true : agent.installed,
 			})) ??
-			RUNTIME_AGENT_CATALOG.map((agent) => ({
+			getRuntimeLaunchSupportedAgentCatalog().map((agent) => ({
 				id: agent.id,
 				label: agent.label,
 				binary: agent.binary,
-				installed: null,
+				installed: agent.id === "cline" ? true : null,
 			}));
-		return agents.map((agent) => ({
+		const orderIndexByAgentId = new Map(
+			SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const),
+		);
+		const orderedAgents = [...agents].sort((left, right) => {
+			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+			return leftOrderIndex - rightOrderIndex;
+		});
+		return orderedAgents.map((agent) => ({
 			...agent,
 			command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
 		}));
@@ -347,6 +373,12 @@ export function RuntimeSettingsDialog({
 	const initialShortcuts = config?.shortcuts ?? [];
 	const initialCommitPromptTemplate = config?.commitPromptTemplate ?? "";
 	const initialOpenPrPromptTemplate = config?.openPrPromptTemplate ?? "";
+	const clineSettings = useRuntimeSettingsClineController({
+		open,
+		workspaceId,
+		selectedAgentId,
+		config,
+	});
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
 			return false;
@@ -358,6 +390,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
+			return true;
+		}
+		if (clineSettings.hasUnsavedChanges) {
 			return true;
 		}
 		if (!areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts)) {
@@ -375,6 +410,7 @@ export function RuntimeSettingsDialog({
 		);
 	}, [
 		agentAutonomousModeEnabled,
+		clineSettings.hasUnsavedChanges,
 		commitPromptTemplate,
 		config,
 		initialAgentAutonomousModeEnabled,
@@ -505,6 +541,15 @@ export function RuntimeSettingsDialog({
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
 		}
+		if (selectedAgentId === "cline" && clineSettings.providerId.trim().length === 0) {
+			setSaveError("Choose a Cline provider before saving.");
+			return;
+		}
+		const clineSaveResult = await clineSettings.saveProviderSettings();
+		if (!clineSaveResult.ok) {
+			setSaveError(clineSaveResult.message ?? "Could not save Cline provider settings.");
+			return;
+		}
 		const saved = await save({
 			selectedAgentId,
 			agentAutonomousModeEnabled,
@@ -581,6 +626,14 @@ export function RuntimeSettingsDialog({
 				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
 					Allows agents to use tools without stopping for permission. Use at your own risk.
 				</p>
+
+				{selectedAgentId === "cline" ? (
+					<ClineSetupSection
+						controller={clineSettings}
+						controlsDisabled={controlsDisabled}
+						onError={setSaveError}
+					/>
+				) : null}
 
 				<div className="flex items-center justify-between mt-4 mb-1">
 					<h6 className="font-semibold text-text-primary m-0">Git button prompts</h6>
@@ -750,6 +803,7 @@ export function RuntimeSettingsDialog({
 							variant="ghost"
 							size="sm"
 							icon={<X size={14} />}
+							aria-label={`Remove shortcut ${shortcut.label}`}
 							onClick={() =>
 								setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))
 							}

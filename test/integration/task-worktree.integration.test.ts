@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree.js";
+import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree.js";
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 
@@ -60,6 +60,33 @@ async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 }
 
 describe.sequential("task-worktree integration", () => {
+	it("returns a friendly error when the repository has no initial commit", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-unborn-");
+			try {
+				const repoPath = join(sandboxRoot, "repo");
+				mkdirSync(repoPath, { recursive: true });
+
+				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
+				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+
+				const currentBranch = runGit(repoPath, ["symbolic-ref", "--short", "HEAD"]);
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId: "task-no-initial-commit",
+					baseRef: currentBranch,
+				});
+
+				expect(ensured.ok).toBe(false);
+				expect(ensured.error).toContain("does not have an initial commit yet");
+				expect(ensured.error).toContain(`base ref "${currentBranch}"`);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("keeps symlinked ignored paths ignored in task worktrees", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-");
@@ -163,6 +190,81 @@ describe.sequential("task-worktree integration", () => {
 				if (existsSync(nodeModulesPath)) {
 					expect(runGit(ensured.path, ["check-ignore", "-v", "node_modules"])).toContain("info/exclude");
 				}
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("restores a trashed task patch onto the saved commit", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-restore-");
+			try {
+				const repoPath = join(sandboxRoot, "repo");
+				mkdirSync(repoPath, { recursive: true });
+
+				runGit(repoPath, ["init"]);
+				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
+				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+
+				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
+				writeFileSync(join(repoPath, "tracked.txt"), "base\n", "utf8");
+				runGit(repoPath, ["add", "README.md", "tracked.txt"]);
+				runGit(repoPath, ["commit", "-m", "init"]);
+
+				const taskId = `task-restore-${Date.now()}`;
+				const ensured = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId,
+					baseRef: "HEAD",
+				});
+				expect(ensured.ok).toBe(true);
+				if (!ensured.ok || !ensured.path) {
+					throw new Error("Task worktree was not created");
+				}
+
+				const createdCommit = runGit(ensured.path, ["rev-parse", "HEAD"]);
+				writeFileSync(join(ensured.path, "tracked.txt"), "base\nlocal change\n", "utf8");
+				writeFileSync(join(ensured.path, "notes.txt"), "untracked\n", "utf8");
+
+				const deleted = await deleteTaskWorktree({
+					repoPath,
+					taskId,
+				});
+				expect(deleted.ok).toBe(true);
+				expect(deleted.removed).toBe(true);
+
+				const patchPath = join(
+					process.env.HOME ?? sandboxRoot,
+					".kanban",
+					"trashed-task-patches",
+					`${taskId}.${createdCommit}.patch`,
+				);
+				expect(existsSync(patchPath)).toBe(true);
+				expect(readFileSync(patchPath, "utf8")).toContain("tracked.txt");
+				expect(readFileSync(patchPath, "utf8")).toContain("notes.txt");
+
+				writeFileSync(join(repoPath, "README.md"), "hello again\n", "utf8");
+				runGit(repoPath, ["add", "README.md"]);
+				runGit(repoPath, ["commit", "-m", "advance"]);
+				const advancedCommit = runGit(repoPath, ["rev-parse", "HEAD"]);
+				expect(advancedCommit).not.toBe(createdCommit);
+
+				const restored = await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId,
+					baseRef: "HEAD",
+				});
+				expect(restored.ok).toBe(true);
+				if (!restored.ok || !restored.path) {
+					throw new Error("Task worktree was not restored");
+				}
+
+				expect(restored.baseCommit).toBe(createdCommit);
+				expect(runGit(restored.path, ["rev-parse", "HEAD"])).toBe(createdCommit);
+				expect(readFileSync(join(restored.path, "tracked.txt"), "utf8")).toBe("base\nlocal change\n");
+				expect(readFileSync(join(restored.path, "notes.txt"), "utf8")).toBe("untracked\n");
+				expect(existsSync(patchPath)).toBe(false);
 			} finally {
 				cleanup();
 			}

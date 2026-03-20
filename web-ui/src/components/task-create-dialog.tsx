@@ -1,4 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import * as RadixSwitch from "@radix-ui/react-switch";
 import {
 	ArrowBigUp,
 	ArrowLeft,
@@ -86,10 +87,10 @@ export function TaskCreateDialog({
 	onOpenChange: (open: boolean) => void;
 	prompt: string;
 	onPromptChange: (value: string) => void;
-	onCreate: () => void;
-	onCreateAndStart?: () => void;
-	onCreateMultiple: (prompts: string[]) => void;
-	onCreateAndStartMultiple?: (prompts: string[]) => void;
+	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
+	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
+	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
+	onCreateAndStartMultiple?: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	startInPlanMode: boolean;
 	onStartInPlanModeChange: (value: boolean) => void;
 	autoReviewEnabled: boolean;
@@ -103,11 +104,14 @@ export function TaskCreateDialog({
 	onBranchRefChange: (value: string) => void;
 }): ReactElement {
 	const [mode, setMode] = useState<"single" | "multi">("single");
+	const [createMore, setCreateMore] = useState(false);
+	const [composerResetKey, setComposerResetKey] = useState(0);
 	const [taskPrompts, setTaskPrompts] = useState<string[]>([]);
 	const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 	const nextFocusIndexRef = useRef<number | null>(null);
 	const startInPlanModeId = useId();
 	const autoReviewEnabledId = useId();
+	const createMoreId = useId();
 
 	const detectedItems = useMemo(() => parseListItems(prompt), [prompt]);
 	const validTaskCount = useMemo(
@@ -119,6 +123,8 @@ export function TaskCreateDialog({
 	useEffect(() => {
 		if (!open) {
 			setMode("single");
+			setCreateMore(false);
+			setComposerResetKey(0);
 			setTaskPrompts([]);
 			inputRefs.current = [];
 			nextFocusIndexRef.current = null;
@@ -184,21 +190,50 @@ export function TaskCreateDialog({
 		return taskPrompts.filter((p) => p.trim());
 	}, [taskPrompts]);
 
+	const resetForCreateMore = useCallback(() => {
+		onPromptChange("");
+		setMode("single");
+		setTaskPrompts([]);
+		inputRefs.current = [];
+		nextFocusIndexRef.current = null;
+		setComposerResetKey((current) => current + 1);
+	}, [onPromptChange]);
+
+	const handleCreateSingle = useCallback(() => {
+		const createdTaskId = onCreate({ keepDialogOpen: createMore });
+		if (createMore && createdTaskId) {
+			resetForCreateMore();
+		}
+	}, [createMore, onCreate, resetForCreateMore]);
+
+	const handleCreateAndStartSingle = useCallback(() => {
+		const createdTaskId = onCreateAndStart?.({ keepDialogOpen: createMore });
+		if (createMore && createdTaskId) {
+			resetForCreateMore();
+		}
+	}, [createMore, onCreateAndStart, resetForCreateMore]);
+
 	const handleCreateAll = useCallback(() => {
 		const validPrompts = getValidPrompts();
 		if (validPrompts.length === 0) {
 			return;
 		}
-		onCreateMultiple(validPrompts);
-	}, [getValidPrompts, onCreateMultiple]);
+		const createdTaskIds = onCreateMultiple(validPrompts, { keepDialogOpen: createMore });
+		if (createMore && createdTaskIds.length > 0) {
+			resetForCreateMore();
+		}
+	}, [createMore, getValidPrompts, onCreateMultiple, resetForCreateMore]);
 
 	const handleCreateAndStartAll = useCallback(() => {
 		const validPrompts = getValidPrompts();
 		if (validPrompts.length === 0) {
 			return;
 		}
-		onCreateAndStartMultiple?.(validPrompts);
-	}, [getValidPrompts, onCreateAndStartMultiple]);
+		const createdTaskIds = onCreateAndStartMultiple?.(validPrompts, { keepDialogOpen: createMore }) ?? [];
+		if (createMore && createdTaskIds.length > 0) {
+			resetForCreateMore();
+		}
+	}, [createMore, getValidPrompts, onCreateAndStartMultiple, resetForCreateMore]);
 
 	const handleInputKeyDown = useCallback(
 		(index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -241,10 +276,10 @@ export function TaskCreateDialog({
 				return;
 			}
 			if (event.shiftKey) {
-				onCreateAndStart?.();
+				handleCreateAndStartSingle();
 				return;
 			}
-			onCreate();
+			handleCreateSingle();
 		},
 		{
 			enabled: open,
@@ -260,7 +295,7 @@ export function TaskCreateDialog({
 			},
 			preventDefault: true,
 		},
-		[open, mode, onCreate, onCreateAndStart, handleCreateAll, handleCreateAndStartAll],
+		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateAndStartSingle, handleCreateSingle],
 	);
 
 	const dialogTitle = mode === "multi"
@@ -276,10 +311,11 @@ export function TaskCreateDialog({
 				{mode === "single" ? (
 					<div>
 						<TaskPromptComposer
+							key={composerResetKey}
 							value={prompt}
 							onValueChange={onPromptChange}
-							onSubmit={onCreate}
-							onSubmitAndStart={onCreateAndStart}
+							onSubmit={handleCreateSingle}
+							onSubmitAndStart={handleCreateAndStartSingle}
 							placeholder="Describe the task..."
 							autoFocus
 							workspaceId={workspaceId}
@@ -419,14 +455,25 @@ export function TaskCreateDialog({
 				</div>
 			</DialogBody>
 			<DialogFooter>
+				<label
+					htmlFor={createMoreId}
+					className="mr-auto flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+				>
+					<RadixSwitch.Root
+						id={createMoreId}
+						checked={createMore}
+						onCheckedChange={setCreateMore}
+						className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer"
+					>
+						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+					</RadixSwitch.Root>
+					<span>Create more</span>
+				</label>
 				{mode === "single" ? (
 					<>
-						<Button variant="default" size="sm" onClick={() => onOpenChange(false)} className="mr-auto">
-							Cancel (esc)
-						</Button>
 						<Button
 							size="sm"
-							onClick={onCreate}
+							onClick={handleCreateSingle}
 							disabled={!prompt.trim() || !branchRef}
 						>
 							<span className="inline-flex items-center">
@@ -438,7 +485,7 @@ export function TaskCreateDialog({
 							<Button
 								variant="primary"
 								size="sm"
-								onClick={onCreateAndStart}
+								onClick={handleCreateAndStartSingle}
 								disabled={!prompt.trim() || !branchRef}
 							>
 								<span className="inline-flex items-center">
@@ -450,9 +497,6 @@ export function TaskCreateDialog({
 					</>
 				) : (
 					<>
-						<Button variant="default" size="sm" onClick={() => onOpenChange(false)} className="mr-auto">
-							Cancel (esc)
-						</Button>
 						<Button
 							size="sm"
 							onClick={handleCreateAll}

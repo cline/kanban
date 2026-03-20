@@ -1,3 +1,6 @@
+// PTY-backed runtime for non-Cline task sessions and the workspace shell terminal.
+// It owns process lifecycle, terminal protocol filtering, and summary updates
+// for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type {
 	RuntimeTaskHookActivity,
 	RuntimeTaskSessionReviewReason,
@@ -597,7 +600,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (
 			entry.summary.agentId === "codex" &&
 			entry.summary.state === "awaiting_review" &&
-			(entry.summary.reviewReason === "hook" || entry.summary.reviewReason === "attention") &&
+			(entry.summary.reviewReason === "hook" ||
+				entry.summary.reviewReason === "attention" ||
+				entry.summary.reviewReason === "error") &&
 			(data.includes(13) || data.includes(10))
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;
@@ -671,6 +676,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const hasActivityUpdate =
 			typeof activity.activityText === "string" ||
 			typeof activity.toolName === "string" ||
+			typeof activity.toolInputSummary === "string" ||
 			typeof activity.finalMessage === "string" ||
 			typeof activity.hookEventName === "string" ||
 			typeof activity.notificationType === "string" ||
@@ -684,6 +690,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			activityText:
 				typeof activity.activityText === "string" ? activity.activityText : (previous?.activityText ?? null),
 			toolName: typeof activity.toolName === "string" ? activity.toolName : (previous?.toolName ?? null),
+			toolInputSummary:
+				typeof activity.toolInputSummary === "string"
+					? activity.toolInputSummary
+					: (previous?.toolInputSummary ?? null),
 			finalMessage:
 				typeof activity.finalMessage === "string" ? activity.finalMessage : (previous?.finalMessage ?? null),
 			hookEventName:
@@ -698,6 +708,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const didChange =
 			next.activityText !== (previous?.activityText ?? null) ||
 			next.toolName !== (previous?.toolName ?? null) ||
+			next.toolInputSummary !== (previous?.toolInputSummary ?? null) ||
 			next.finalMessage !== (previous?.finalMessage ?? null) ||
 			next.hookEventName !== (previous?.hookEventName ?? null) ||
 			next.notificationType !== (previous?.notificationType ?? null) ||

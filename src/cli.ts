@@ -10,50 +10,51 @@ import packageJson from "../package.json" with { type: "json" };
 import { registerHooksCommand } from "./commands/hooks.js";
 import { registerTaskCommand } from "./commands/task.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
+import { isRuntimeAgentLaunchSupported } from "./core/agent-catalog.js";
 import type { RuntimeAgentId, RuntimeCommandRunResponse } from "./core/api-contract.js";
 import { createGitProcessEnv } from "./core/git-process-env.js";
 import {
 	buildKanbanRuntimeUrl,
 	DEFAULT_KANBAN_RUNTIME_PORT,
+	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
 	parseRuntimePort,
+	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
 } from "./core/runtime-endpoint.js";
-import { resolveProjectInputPath } from "./projects/project-path.js";
-import { openInBrowser } from "./server/browser.js";
-import { pickDirectoryPathFromSystemDialog } from "./server/directory-picker.js";
 import { terminateProcessForTimeout } from "./server/process-termination.js";
-import { createRuntimeServer } from "./server/runtime-server.js";
-import { createRuntimeStateHub } from "./server/runtime-state-hub.js";
-import { resolveInteractiveShellCommand } from "./server/shell.js";
-import { shutdownRuntimeServer } from "./server/shutdown-coordinator.js";
-import { collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry } from "./server/workspace-registry.js";
-import { installKanbanSkillFiles, resolveKanbanSkillCommandPrefix } from "./skills/kanban-skill.js";
-import { loadWorkspaceContext } from "./state/workspace-state.js";
-import { detectInstalledCommands } from "./terminal/agent-registry.js";
+import type { RuntimeStateHub } from "./server/runtime-state-hub.js";
 import type { TerminalSessionManager } from "./terminal/session-manager.js";
-import { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown } from "./update/auto-update.js";
 
 interface CliOptions {
 	noOpen: boolean;
 	skipShutdownCleanup: boolean;
 	agent: RuntimeAgentId | null;
+	host: string | null;
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
 }
 
-const CLI_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode", "droid", "cline"];
+const CLI_AGENT_IDS: readonly RuntimeAgentId[] = [
+	"claude",
+	"codex",
+	"cline",
+	// "opencode",
+	// "droid",
+	// "gemini",
+];
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 function parseCliAgentId(value: string): RuntimeAgentId {
 	const normalized = value.trim().toLowerCase();
 	if (
-		normalized === "claude" ||
-		normalized === "codex" ||
-		normalized === "gemini" ||
-		normalized === "opencode" ||
-		normalized === "droid" ||
-		normalized === "cline"
+		(normalized === "claude" ||
+			normalized === "codex" ||
+			normalized === "gemini" ||
+			normalized === "opencode" ||
+			normalized === "droid" ||
+			normalized === "cline") &&
+		isRuntimeAgentLaunchSupported(normalized)
 	) {
 		return normalized;
 	}
@@ -77,6 +78,7 @@ function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } |
 
 interface RootCommandOptions {
 	agent?: RuntimeAgentId;
+	host?: string;
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
 	skipShutdownCleanup?: boolean;
@@ -88,7 +90,7 @@ async function isPortAvailable(port: number): Promise<boolean> {
 		probe.once("error", () => {
 			resolve(false);
 		});
-		probe.listen(port, "127.0.0.1", () => {
+		probe.listen(port, getKanbanRuntimeHost(), () => {
 			probe.close(() => {
 				resolve(true);
 			});
@@ -189,6 +191,7 @@ async function canReachKanbanServer(workspaceId: string | null): Promise<boolean
 async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
 	let workspaceId: string | null = null;
 	if (hasGitRepository(process.cwd())) {
+		const { loadWorkspaceContext } = await import("./state/workspace-state.js");
 		const context = await loadWorkspaceContext(process.cwd());
 		workspaceId = context.workspaceId;
 	}
@@ -202,6 +205,7 @@ async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
 	console.log(`Kanban already running at ${getKanbanRuntimeOrigin()}`);
 	if (!noOpen) {
 		try {
+			const { openInBrowser } = await import("./server/browser.js");
 			openInBrowser(projectUrl, {
 				warn: (message) => {
 					console.warn(message);
@@ -280,7 +284,35 @@ async function startServer(): Promise<{
 	close: () => Promise<void>;
 	shutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
 }> {
-	let runtimeStateHub: ReturnType<typeof createRuntimeStateHub> | undefined;
+	/*
+		Server-only modules are loaded lazily because task-oriented subcommands like
+		`kanban task create` and `kanban hooks ingest` do not need the runtime server.
+
+		A regression in 25ba59f showed that eagerly importing the runtime stack here
+		could leave the source CLI process alive after the command had already printed
+		its JSON result. The issue first appeared after the native Cline SDK runtime
+		was added to the server import graph. We have not yet isolated the deepest
+		handle creator inside that graph, so we keep command-style subcommands on the
+		lightweight path and only load the server stack when we actually start Kanban.
+	*/
+	const [
+		{ resolveProjectInputPath },
+		{ pickDirectoryPathFromSystemDialog },
+		{ createRuntimeServer },
+		{ createRuntimeStateHub },
+		{ resolveInteractiveShellCommand },
+		{ shutdownRuntimeServer },
+		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+	] = await Promise.all([
+		import("./projects/project-path.js"),
+		import("./server/directory-picker.js"),
+		import("./server/runtime-server.js"),
+		import("./server/runtime-state-hub.js"),
+		import("./server/shell.js"),
+		import("./server/shutdown-coordinator.js"),
+		import("./server/workspace-registry.js"),
+	]);
+	let runtimeStateHub: RuntimeStateHub | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
 		loadRuntimeConfig,
@@ -371,6 +403,16 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 }
 
 async function runMainCommand(options: CliOptions): Promise<void> {
+	if (options.host) {
+		setKanbanRuntimeHost(options.host);
+		console.log(`Binding to host ${options.host}.`);
+	}
+
+	const [{ openInBrowser }, { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown }] = await Promise.all([
+		import("./server/browser.js"),
+		import("./update/auto-update.js"),
+	]);
+
 	const selectedPort = await applyRuntimePortOption(options.port);
 	if (selectedPort !== null) {
 		console.log(`Using runtime port ${selectedPort}.`);
@@ -385,20 +427,6 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 		if (didChange) {
 			console.log(`Default agent set to ${options.agent}.`);
 		}
-	}
-
-	try {
-		const detectedCommands = detectInstalledCommands();
-		const commandPrefix = resolveKanbanSkillCommandPrefix({
-			currentVersion: KANBAN_VERSION,
-		});
-		await installKanbanSkillFiles({
-			commandPrefix,
-			installClaudeSkill: detectedCommands.includes("claude"),
-		});
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.warn(`Could not install Kanban skill files: ${message}`);
 	}
 
 	let runtime: Awaited<ReturnType<typeof startServer>>;
@@ -476,6 +504,7 @@ function createProgram(): Command {
 		.description("Local orchestration board for coding agents.")
 		.version(KANBAN_VERSION, "-v, --version", "Output the version number")
 		.option("--agent <id>", `Default agent ID (${CLI_AGENT_IDS.join(", ")}).`, parseCliAgentId)
+		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
@@ -495,6 +524,7 @@ function createProgram(): Command {
 	program.action(async (options: RootCommandOptions) => {
 		await runMainCommand({
 			agent: options.agent ?? null,
+			host: options.host ?? null,
 			port: options.port ?? null,
 			noOpen: options.open === false,
 			skipShutdownCleanup: options.skipShutdownCleanup === true,

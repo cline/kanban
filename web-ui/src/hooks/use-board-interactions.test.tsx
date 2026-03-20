@@ -1,15 +1,21 @@
-import { act, type Dispatch, type SetStateAction, useState } from "react";
+import { act, type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
-import type { PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, BoardData } from "@/types";
 
+const notifyErrorMock = vi.hoisted(() => vi.fn());
+const showAppToastMock = vi.hoisted(() => vi.fn());
 const useLinkedBacklogTaskActionsMock = vi.hoisted(() => vi.fn());
 const useProgrammaticCardMovesMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/components/app-toaster", () => ({
+	notifyError: notifyErrorMock,
+	showAppToast: showAppToastMock,
+}));
 
 vi.mock("@/hooks/use-linked-backlog-task-actions", () => ({
 	useLinkedBacklogTaskActions: useLinkedBacklogTaskActionsMock,
@@ -20,7 +26,7 @@ vi.mock("@/hooks/use-programmatic-card-moves", () => ({
 }));
 
 vi.mock("@/hooks/use-review-auto-actions", () => ({
-	useReviewAutoActions: () => {},
+	useReviewAutoActions: () => ({}) as ReturnType<typeof useBoardInteractions>,
 }));
 
 function createTask(taskId: string, prompt: string, createdAt: number): BoardCard {
@@ -54,29 +60,33 @@ function createBoard(): BoardData {
 
 const NOOP_STOP_SESSION = async (): Promise<void> => {};
 const NOOP_CLEANUP_WORKSPACE = async (): Promise<null> => null;
-const NOOP_FETCH_WORKING_CHANGE_COUNT = async (): Promise<number | null> => null;
 const NOOP_FETCH_WORKSPACE_INFO = async (): Promise<null> => null;
 const NOOP_SEND_TASK_INPUT = async (): Promise<{ ok: boolean }> => ({ ok: true });
 const NOOP_RUN_AUTO_REVIEW = async (): Promise<boolean> => false;
+
+interface HookSnapshot {
+	handleRestoreTaskFromTrash: (taskId: string) => void;
+}
 
 function HookHarness({
 	board,
 	setBoard,
 	ensureTaskWorkspace,
 	startTaskSession,
+	onSnapshot,
 }: {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
+	onSnapshot?: (snapshot: HookSnapshot) => void;
 }): null {
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [, setSelectedTaskId] = useState<string | null>(null);
-	const [, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [, setIsClearTrashDialogOpen] = useState(false);
 	const [, setIsGitHistoryOpen] = useState(false);
 
-	useBoardInteractions({
+	const actions = useBoardInteractions({
 		board,
 		setBoard,
 		sessions,
@@ -85,20 +95,24 @@ function HookHarness({
 		selectedTaskId: null,
 		currentProjectId: "project-1",
 		setSelectedTaskId,
-		setPendingTrashWarning,
 		setIsClearTrashDialogOpen,
 		setIsGitHistoryOpen,
 		stopTaskSession: NOOP_STOP_SESSION,
 		cleanupTaskWorkspace: NOOP_CLEANUP_WORKSPACE,
 		ensureTaskWorkspace,
 		startTaskSession,
-		fetchTaskWorkingChangeCount: NOOP_FETCH_WORKING_CHANGE_COUNT,
 		fetchTaskWorkspaceInfo: NOOP_FETCH_WORKSPACE_INFO,
 		sendTaskSessionInput: NOOP_SEND_TASK_INPUT,
 		readyForReviewNotificationsEnabled: false,
 		taskGitActionLoadingByTaskId: {},
 		runAutoReviewGitAction: NOOP_RUN_AUTO_REVIEW,
 	});
+
+	useEffect(() => {
+		onSnapshot?.({
+			handleRestoreTaskFromTrash: actions.handleRestoreTaskFromTrash,
+		});
+	}, [actions.handleRestoreTaskFromTrash, onSnapshot]);
 
 	return null;
 }
@@ -109,6 +123,8 @@ describe("useBoardInteractions", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		notifyErrorMock.mockReset();
+		showAppToastMock.mockReset();
 		useLinkedBacklogTaskActionsMock.mockReset();
 		useProgrammaticCardMovesMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -147,15 +163,17 @@ describe("useBoardInteractions", () => {
 			programmaticCardMoveCycle: 0,
 		});
 
-		useLinkedBacklogTaskActionsMock.mockImplementation((input: { startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean> }) => {
-			startBacklogTaskWithAnimation = input.startBacklogTaskWithAnimation ?? null;
-			return {
-				handleCreateDependency: () => {},
-				handleDeleteDependency: () => {},
-				confirmMoveTaskToTrash: async () => {},
-				requestMoveTaskToTrash: async () => {},
-			};
-		});
+		useLinkedBacklogTaskActionsMock.mockImplementation(
+			(input: { startBacklogTaskWithAnimation?: (task: BoardCard) => Promise<boolean> }) => {
+				startBacklogTaskWithAnimation = input.startBacklogTaskWithAnimation ?? null;
+				return {
+					handleCreateDependency: () => {},
+					handleDeleteDependency: () => {},
+					confirmMoveTaskToTrash: async () => {},
+					requestMoveTaskToTrash: async () => {},
+				};
+			},
+		);
 
 		const board = createBoard();
 		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((_nextBoard) => {
@@ -200,5 +218,96 @@ describe("useBoardInteractions", () => {
 		expect(started).toBe(true);
 		expect(ensureTaskWorkspace).toHaveBeenCalledWith(backlogTask);
 		expect(startTaskSession).toHaveBeenCalledWith(backlogTask);
+	});
+
+	it("shows a warning toast when restoring a trashed task with a saved patch warning", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		const trashTask = createTask("task-trash", "Trash task", 2);
+		const board: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [trashTask] },
+			],
+			dependencies: [],
+		};
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((_nextBoard) => {
+			// The optimistic move is not part of this assertion.
+		});
+		const ensureTaskWorkspace = vi.fn(async () => ({
+			ok: true as const,
+			response: {
+				ok: true as const,
+				path: "/tmp/task-trash",
+				baseRef: "main",
+				baseCommit: "abc123",
+				warning: "Saved task changes could not be reapplied automatically.",
+			},
+		}));
+		const startTaskSession = vi.fn(async () => ({ ok: true as const }));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={board}
+					setBoard={setBoard}
+					ensureTaskWorkspace={ensureTaskWorkspace}
+					startTaskSession={startTaskSession}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleRestoreTaskFromTrash("task-trash");
+			// resumeTaskFromTrash is fire-and-forget (void), so flush enough
+			// microtasks for ensureTaskWorkspace and startTaskSession to resolve.
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		});
+
+		// moveTaskToColumn updates updatedAt with Date.now(), so match fields except updatedAt.
+		const expectedTask = expect.objectContaining({
+			id: trashTask.id,
+			prompt: trashTask.prompt,
+			baseRef: trashTask.baseRef,
+			createdAt: trashTask.createdAt,
+		});
+		expect(ensureTaskWorkspace).toHaveBeenCalledWith(expectedTask);
+		expect(startTaskSession).toHaveBeenCalledWith(expectedTask, { resumeFromTrash: true });
+		expect(showAppToastMock).toHaveBeenCalledWith({
+			intent: "warning",
+			icon: "warning-sign",
+			message: "Saved task changes could not be reapplied automatically.",
+			timeout: 7000,
+		});
 	});
 });

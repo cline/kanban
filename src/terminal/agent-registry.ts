@@ -1,6 +1,14 @@
 import type { RuntimeConfigState } from "../config/runtime-config.js";
-import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog.js";
-import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeConfigResponse } from "../core/api-contract.js";
+import {
+	getRuntimeLaunchSupportedAgentCatalog,
+	RUNTIME_AGENT_CATALOG,
+} from "../core/agent-catalog.js";
+import type {
+	RuntimeAgentDefinition,
+	RuntimeAgentId,
+	RuntimeClineProviderSettings,
+	RuntimeConfigResponse,
+} from "../core/api-contract.js";
 import { isBinaryAvailableOnPath } from "./command-discovery.js";
 import { detectTaskStartSetupAvailability } from "./task-start-setup-detection.js";
 
@@ -49,23 +57,24 @@ export function detectInstalledCommands(): string[] {
 
 function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: string[]): RuntimeAgentDefinition[] {
 	const detectedSet = new Set(detected);
-	return RUNTIME_AGENT_CATALOG.map((entry) => {
+	return getRuntimeLaunchSupportedAgentCatalog().map((entry) => {
 		const defaultArgs = getDefaultArgs(entry.id);
 		const command = joinCommand(entry.binary, defaultArgs);
+		const isInstalled = entry.id === "cline" ? true : detectedSet.has(entry.binary);
 		return {
 			id: entry.id,
 			label: entry.label,
 			binary: entry.binary,
 			command,
 			defaultArgs,
-			installed: detectedSet.has(entry.binary),
+			installed: isInstalled,
 			configured: runtimeConfig.selectedAgentId === entry.id,
 		};
 	});
 }
 
 export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): ResolvedAgentCommand | null {
-	const selected = RUNTIME_AGENT_CATALOG.find((entry) => entry.id === runtimeConfig.selectedAgentId);
+	const selected = getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === runtimeConfig.selectedAgentId);
 	if (!selected) {
 		return null;
 	}
@@ -83,7 +92,10 @@ export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Resolved
 	return null;
 }
 
-export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): RuntimeConfigResponse {
+export function buildRuntimeConfigResponse(
+	runtimeConfig: RuntimeConfigState,
+	clineProviderSettings: RuntimeClineProviderSettings,
+): RuntimeConfigResponse {
 	const detectedCommands = detectInstalledCommands();
 	const agents = getCuratedDefinitions(runtimeConfig, detectedCommands);
 	const resolved = resolveAgentCommand(runtimeConfig);
@@ -101,6 +113,7 @@ export function buildRuntimeConfigResponse(runtimeConfig: RuntimeConfigState): R
 		agents,
 		taskStartSetupAvailability: detectTaskStartSetupAvailability(runtimeConfig.selectedAgentId),
 		shortcuts: runtimeConfig.shortcuts,
+		clineProviderSettings,
 		commitPromptTemplate: runtimeConfig.commitPromptTemplate,
 		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
 		commitPromptTemplateDefault: runtimeConfig.commitPromptTemplateDefault,

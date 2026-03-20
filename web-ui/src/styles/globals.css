@@ -44,6 +44,7 @@
 	--radius-md: 6px;
 	--radius-lg: 8px;
 	--radius-xl: 12px;
+
 }
 
 html,
@@ -749,3 +750,19 @@ body.kb-dependency-link-mode {
 	background: var(--color-surface-3);
 	border-radius: var(--radius-sm);
 }
+
+/* -- Chat markdown -- */
+
+.kb-markdown > * {
+	margin: 0;
+}
+
+.kb-markdown > :first-child {
+	margin-top: 0 !important;
+}
+
+.kb-markdown > * + * {
+	margin-top: 0.5em;
+}
+
+

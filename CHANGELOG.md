@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.1.27]
+
+- Upgraded Cline SDK to stable v0.0.4, replacing nightly builds for more reliable native Cline sessions
+
+## [0.1.26]
+
+- Trashing a task now saves a git patch of any uncommitted work, and restoring it from trash automatically reapplies those changes so nothing gets lost
+- "Create more" toggle in the new task dialog lets you create multiple tasks in a row without reopening the dialog each time
+- New keyboard shortcuts: Cmd/Ctrl+G toggles the git history view, Cmd/Ctrl+Shift+S opens settings, and Esc closes git history from the home screen
+- Shortcut commands now safely interrupt any running terminal process before executing, so commands no longer get jumbled with whatever was previously running
+- Agent file-read activity now shows the full list of files being accessed instead of truncating with "(+N more)"
+- Expanding the diff view now automatically closes the terminal panel to avoid overlapping views
+- Task worktree cleanup no longer gets stuck when patch capture fails
+- Fixed the "Thinking..." indicator incorrectly appearing while the agent is actively streaming a response
+- Native Cline sessions now correctly capture their latest changes when entering review
+- Removed the redundant "Projects" label below the sidebar segment tabs
+- Consistent spacing and alignment across all alert dialogs
+- Fixed terminal background color in the detail view to match the rest of the overlay
+
+## [0.1.25]
+
+- Added a chat view to the home sidebar for project-scoped agent conversations. What used to be the project column is now a sidebar that can switch between projects and chat.
+- The agent can now trash and delete tasks on your behalf using new task management commands
+- When no CLI agent is detected, a guided setup flow walks you through getting started
+- Replaced the Kanban skill system with `--append-system-prompt` -- since the board now has a dedicated agent, we just append context to its prompt instead of maintaining a separate skill
+- Native Cline SDK chat runtime with cancelable turns
+- `--host` flag to bind the server to a custom IP address
+- Submodules are now initialized automatically in new task worktrees
+- Fix Escape key unexpectedly closing the detail view
+- Increased shortcut label and footer font sizes
+- Capped agent preview lines in task cards
+
+## [0.1.24]
+
+- Fixed multiline prompt arguments being broken on Windows cmd.exe
+
 ## [0.1.23]
 
 - Fix Windows terminal launches incorrectly escaping arguments with spaces, parentheses, and other special characters

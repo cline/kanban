@@ -13,7 +13,7 @@ export interface SessionTransitionResult {
 }
 
 function canReturnToRunning(reason: RuntimeTaskSessionReviewReason): boolean {
-	return reason === "attention" || reason === "hook";
+	return reason === "attention" || reason === "hook" || reason === "error";
 }
 
 function asReviewState(reason: RuntimeTaskSessionReviewReason): RuntimeTaskSessionSummary["state"] {

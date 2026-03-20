@@ -11,6 +11,7 @@ interface GitCommandResult {
 	stderr: string;
 	output: string;
 	error: string | null;
+	exitCode: number
 }
 
 export interface RunGitOptions {
@@ -34,14 +35,16 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			stderr: normalizedStderr,
 			output: [normalizedStdout, normalizedStderr].filter(Boolean).join("\n"),
 			error: null,
+			exitCode: 0,
 		};
 	} catch (error) {
-		const candidate = error as { stdout?: unknown; stderr?: unknown; message?: unknown };
+		const candidate = error as { code?: string | number | null; stdout?: unknown; stderr?: unknown; message?: unknown };
 		const stdout = String(candidate.stdout ?? "").trim();
 		const stderr = String(candidate.stderr ?? "").trim();
 		const message = String(candidate.message ?? "").trim();
 		const command = `git ${args.join(" ")} failed`
 		const errorMessage = `Failed to run Git Command: \n Command: \n ${command} \n ${stderr || message}`
+		const exitCode = typeof candidate.code === "number" ? candidate.code : 1;
 
 		return {
 			ok: false,
@@ -49,6 +52,7 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			stderr,
 			output: [stdout, stderr].filter(Boolean).join("\n"),
 			error: errorMessage,
+			exitCode,
 		};
 	}
 }

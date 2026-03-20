@@ -36,11 +36,43 @@
 			"!.worktrees/**/*"
 		]
 	},
-	"plugins": ["grit/no-process-env-destructure.grit"],
+	"plugins": ["grit/no-process-env-destructure.grit", "grit/no-home-agent-prefix-literal.grit"],
 	"overrides": [
 		{
 			"includes": ["src/**/*.ts", "src/**/*.tsx", "!src/cli.ts"],
 			"plugins": ["grit/no-console.grit", "grit/no-process-exit.grit"]
+		},
+		{
+			"includes": [
+				"src/**/*.ts",
+				"src/**/*.tsx",
+				"!src/cline-sdk/sdk-provider-boundary.ts",
+				"!src/cline-sdk/sdk-runtime-boundary.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"@clinebot/agents",
+											"@clinebot/agents/**",
+											"@clinebot/core",
+											"@clinebot/core/**",
+											"@clinebot/llms",
+											"@clinebot/llms/**"
+										],
+										"message": "Import Cline SDK packages only through src/cline-sdk/sdk-provider-boundary.ts or src/cline-sdk/sdk-runtime-boundary.ts."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
 		},
 		{
 			"includes": ["web-ui/src/**/*.ts", "web-ui/src/**/*.tsx", "web-ui/tests/**/*.ts"],
@@ -69,6 +101,31 @@
 					},
 					"suspicious": {
 						"noArrayIndexKey": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": [
+				"web-ui/src/**/*.ts",
+				"web-ui/src/**/*.tsx",
+				"!web-ui/src/runtime/runtime-config-query.ts",
+				"!web-ui/src/runtime/workspace-state-query.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+											"@/runtime/trpc-client": {
+												"importNames": ["createWorkspaceTrpcClient"],
+												"message": "Use getRuntimeTrpcClient in components and hooks. Reserve createWorkspaceTrpcClient for the runtime query helpers."
+									}
+								}
+							}
+						}
 					}
 				}
 			}

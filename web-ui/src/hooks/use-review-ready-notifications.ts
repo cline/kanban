@@ -230,7 +230,7 @@ export function useReviewReadyNotifications({
 		setPendingReviewReadyNotificationCount(0);
 	}, [activeWorkspaceId]);
 
-	const baseTitle = workspaceTitle ? `${workspaceTitle} | Kanban` : "Kanban";
+	const baseTitle = workspaceTitle || "cline";
 	const documentTitle =
 		pendingReviewReadyNotificationCount > 0 ? `(${pendingReviewReadyNotificationCount}) ${baseTitle}` : baseTitle;
 	useDocumentTitle(documentTitle);

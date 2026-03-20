@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import {
 	AlertDialog,
 	AlertDialogAction,
+	AlertDialogBody,
 	AlertDialogCancel,
 	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
@@ -50,38 +53,45 @@ export function TaskTrashWarningDialog({
 	const guidance = getTrashWarningGuidance(warning?.workspaceInfo ?? null);
 
 	return (
-		<AlertDialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onCancel(); }}>
-			<AlertDialogTitle className="text-sm font-semibold text-text-primary">
-				Unsaved task changes detected
-			</AlertDialogTitle>
-			<AlertDialogDescription className="text-[13px] text-text-secondary mt-2">
-				{warning
-					? `${warning.taskTitle} has ${warning.fileCount} changed file(s).`
-					: "This task has uncommitted changes."}
-			</AlertDialogDescription>
-			<p className="text-[13px] text-text-secondary mt-3">
-				Moving to Trash will delete this task worktree. Preserve your work first, then trash the task.
-			</p>
-			{warning?.workspaceInfo?.path ? (
-				<pre className="rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap overflow-auto mt-3">
-					{formatPathForDisplay(warning.workspaceInfo.path)}
-				</pre>
-			) : null}
-			<div className="mt-3 flex flex-col gap-1">
-				{guidance.map((line) => (
-					<p key={line} className="text-[13px] text-text-secondary">
-						{line}
-					</p>
-				))}
-			</div>
-			<div className="flex justify-end gap-2 mt-4">
+		<AlertDialog
+			open={open}
+			onOpenChange={(isOpen) => {
+				if (!isOpen) onCancel();
+			}}
+		>
+			<AlertDialogHeader>
+				<AlertDialogTitle>Unsaved task changes detected</AlertDialogTitle>
+			</AlertDialogHeader>
+			<AlertDialogBody>
+				<AlertDialogDescription>
+					{warning
+						? `${warning.taskTitle} has ${warning.fileCount} changed file(s).`
+						: "This task has uncommitted changes."}
+				</AlertDialogDescription>
+				<p>Moving to Trash will delete this task worktree. Preserve your work first, then trash the task.</p>
+				{warning?.workspaceInfo?.path ? (
+					<pre className="overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
+						{formatPathForDisplay(warning.workspaceInfo.path)}
+					</pre>
+				) : null}
+				<div className="flex flex-col gap-1">
+					{guidance.map((line) => (
+						<p key={line}>{line}</p>
+					))}
+				</div>
+			</AlertDialogBody>
+			<AlertDialogFooter>
 				<AlertDialogCancel asChild>
-					<Button variant="default" onClick={onCancel}>Cancel</Button>
+					<Button variant="default" onClick={onCancel}>
+						Cancel
+					</Button>
 				</AlertDialogCancel>
 				<AlertDialogAction asChild>
-					<Button variant="danger" onClick={onConfirm}>Move to Trash Anyway</Button>
+					<Button variant="danger" onClick={onConfirm}>
+						Move to Trash Anyway
+					</Button>
 				</AlertDialogAction>
-			</div>
+			</AlertDialogFooter>
 		</AlertDialog>
 	);
 }
