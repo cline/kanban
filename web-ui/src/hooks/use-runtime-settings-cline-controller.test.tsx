@@ -82,6 +82,11 @@ function createRuntimeConfigResponse(clineOverrides: Partial<RuntimeConfigRespon
 	};
 }
 
+function createLegacyRuntimeConfigResponse(): RuntimeConfigResponse {
+	const { clineProviderSettings: _clineProviderSettings, ...legacyConfig } = createRuntimeConfigResponse();
+	return legacyConfig as RuntimeConfigResponse;
+}
+
 function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
 	if (!snapshot) {
 		throw new Error("Expected hook snapshot.");
@@ -223,6 +228,47 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).providerCatalogIds).toEqual(["cline"]);
 		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["claude-sonnet-4-6"]);
 		expect(requireSnapshot(latestSnapshot).isOauthProviderSelected).toBe(true);
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("falls back to empty provider settings when the config omits cline settings", async () => {
+		const config = createLegacyRuntimeConfigResponse();
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "cline",
+				name: "Cline",
+				oauthSupported: true,
+				enabled: true,
+				defaultModelId: "claude-sonnet-4-6",
+			},
+		]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		expect(fetchClineProviderCatalogMock).toHaveBeenCalledWith("workspace-1");
+		expect(fetchClineProviderModelsMock).not.toHaveBeenCalled();
+		expect(requireSnapshot(latestSnapshot).providerId).toBe("");
+		expect(requireSnapshot(latestSnapshot).modelId).toBe("");
+		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("");
+		expect(requireSnapshot(latestSnapshot).isOauthProviderSelected).toBe(false);
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
 	});
 

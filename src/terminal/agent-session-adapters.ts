@@ -722,7 +722,10 @@ function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): 
 
 function shouldInspectCodexOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
 	return (
-		summary.state === "awaiting_review" && (summary.reviewReason === "attention" || summary.reviewReason === "hook")
+		summary.state === "awaiting_review" &&
+		(summary.reviewReason === "attention" ||
+			summary.reviewReason === "hook" ||
+			summary.reviewReason === "error")
 	);
 }
 

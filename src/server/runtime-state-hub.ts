@@ -476,7 +476,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					previousSummary &&
 					previousSummary.state !== "awaiting_review" &&
 					summary.state === "awaiting_review" &&
-					(summary.reviewReason === "hook" || summary.reviewReason === "attention")
+					(summary.reviewReason === "hook" ||
+						summary.reviewReason === "attention" ||
+						summary.reviewReason === "error")
 				) {
 					broadcastTaskReadyForReview(workspaceId, summary.taskId);
 				}

@@ -159,7 +159,7 @@ describe("useClineChatRuntimeActions", () => {
 		}
 
 		await act(async () => {
-			expect(await latestSnapshot?.sendTaskChatMessage("task-1", "hello")).toEqual({
+			expect(await latestSnapshot?.sendTaskChatMessage("task-1", "hello", { mode: "plan" })).toEqual({
 				ok: true,
 				chatMessage: {
 					id: "message-2",
@@ -183,6 +183,7 @@ describe("useClineChatRuntimeActions", () => {
 		expect(sendTaskChatMessageMutateMock).toHaveBeenCalledWith({
 			taskId: "task-1",
 			text: "hello",
+			mode: "plan",
 		});
 		expect(getTaskChatMessagesQueryMock).toHaveBeenCalledWith({ taskId: "task-1" });
 		expect(abortTaskChatTurnMutateMock).toHaveBeenCalledWith({ taskId: "task-1" });

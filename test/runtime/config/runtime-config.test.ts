@@ -67,11 +67,11 @@ function writeFakeCommand(binDir: string, command: string): void {
 describe.sequential("runtime-config auto agent selection", () => {
 	it("selects agents using the configured priority order", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["codex", "opencode", "gemini"])).toBe("codex");
-		expect(pickBestInstalledAgentIdFromDetected(["opencode", "droid", "gemini"])).toBe("opencode");
-		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini", "cline"])).toBe("cline");
-		expect(pickBestInstalledAgentIdFromDetected(["gemini", "cline"])).toBe("cline");
-		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex", "cline"])).toBe("cline");
-		expect(pickBestInstalledAgentIdFromDetected(["cline"])).toBe("cline");
+		expect(pickBestInstalledAgentIdFromDetected(["opencode", "droid", "gemini"])).toBeNull();
+		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini", "cline"])).toBeNull();
+		expect(pickBestInstalledAgentIdFromDetected(["gemini", "cline"])).toBeNull();
+		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex", "cline"])).toBe("claude");
+		expect(pickBestInstalledAgentIdFromDetected(["cline"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected([])).toBeNull();
 	});
 
@@ -156,7 +156,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 		}
 	});
 
-	it("does not override a previously configured agent", async () => {
+	it("normalizes unsupported configured agents to the default launch agent", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-set-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-set-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-set-");
@@ -181,7 +181,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
 				const state = await loadRuntimeConfig(tempProject);
-				expect(state.selectedAgentId).toBe("gemini");
+				expect(state.selectedAgentId).toBe("cline");
 			});
 		} finally {
 			cleanupBin();

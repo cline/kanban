@@ -10,6 +10,7 @@ import packageJson from "../package.json" with { type: "json" };
 import { registerHooksCommand } from "./commands/hooks.js";
 import { registerTaskCommand } from "./commands/task.js";
 import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
+import { isRuntimeAgentLaunchSupported } from "./core/agent-catalog.js";
 import type { RuntimeAgentId, RuntimeCommandRunResponse } from "./core/api-contract.js";
 import { createGitProcessEnv } from "./core/git-process-env.js";
 import {
@@ -34,18 +35,26 @@ interface CliOptions {
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
 }
 
-const CLI_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "gemini", "opencode", "droid", "cline"];
+const CLI_AGENT_IDS: readonly RuntimeAgentId[] = [
+	"claude",
+	"codex",
+	"cline",
+	// "opencode",
+	// "droid",
+	// "gemini",
+];
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 function parseCliAgentId(value: string): RuntimeAgentId {
 	const normalized = value.trim().toLowerCase();
 	if (
-		normalized === "claude" ||
-		normalized === "codex" ||
-		normalized === "gemini" ||
-		normalized === "opencode" ||
-		normalized === "droid" ||
-		normalized === "cline"
+		(normalized === "claude" ||
+			normalized === "codex" ||
+			normalized === "gemini" ||
+			normalized === "opencode" ||
+			normalized === "droid" ||
+			normalized === "cline") &&
+		isRuntimeAgentLaunchSupported(normalized)
 	) {
 		return normalized;
 	}
