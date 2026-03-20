@@ -264,7 +264,10 @@ describe("applyClineSessionEvent", () => {
 		expect(result.entry.summary.reviewReason).toBeNull();
 		expect(result.entry.summary.latestHookActivity?.hookEventName).toBe("agent_error");
 		expect(result.entry.summary.latestHookActivity?.activityText).toContain("Retrying after error");
-		expect(result.messages).toHaveLength(0);
+		expect(result.messages).toHaveLength(1);
+		expect(result.messages[0]?.role).toBe("system");
+		expect(result.messages[0]?.content).toContain("Retrying:");
+		expect(result.messages[0]?.content).toContain("Missing API key");
 	});
 
 	it("marks unrecoverable agent errors as failed", () => {

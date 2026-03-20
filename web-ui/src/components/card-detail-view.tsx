@@ -13,7 +13,13 @@ import { Button } from "@/components/ui/button";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { isNativeClineAgentSelected } from "@/runtime/native-agent";
-import type { RuntimeAgentId, RuntimeTaskSessionSummary, RuntimeWorkspaceChangesMode } from "@/runtime/types";
+import type {
+	RuntimeAgentId,
+	RuntimeConfigResponse,
+	RuntimeTaskSessionMode,
+	RuntimeTaskSessionSummary,
+	RuntimeWorkspaceChangesMode,
+} from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
@@ -180,6 +186,7 @@ export function CardDetailView({
 	currentProjectId,
 	workspacePath,
 	selectedAgentId = null,
+	runtimeConfig = null,
 	sessionSummary,
 	taskSessions,
 	onSessionSummary,
@@ -227,11 +234,13 @@ export function CardDetailView({
 	isBottomTerminalExpanded,
 	onBottomTerminalToggleExpand,
 	isDocumentVisible = true,
+	onClineSettingsSaved,
 }: {
 	selection: CardSelection;
 	currentProjectId: string | null;
 	workspacePath?: string | null;
 	selectedAgentId?: RuntimeAgentId | null;
+	runtimeConfig?: RuntimeConfigResponse | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
@@ -258,7 +267,11 @@ export function CardDetailView({
 	moveToTrashLoadingById?: Record<string, boolean>;
 	onAddReviewComments?: (taskId: string, text: string) => void;
 	onSendReviewComments?: (taskId: string, text: string) => void;
-	onSendClineChatMessage?: (taskId: string, text: string) => Promise<ClineChatActionResult>;
+	onSendClineChatMessage?: (
+		taskId: string,
+		text: string,
+		options?: { mode?: RuntimeTaskSessionMode },
+	) => Promise<ClineChatActionResult>;
 	onCancelClineChatTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadClineChatMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	latestClineChatMessage?: ClineChatMessage | null;
@@ -279,6 +292,7 @@ export function CardDetailView({
 	isBottomTerminalExpanded?: boolean;
 	onBottomTerminalToggleExpand?: () => void;
 	isDocumentVisible?: boolean;
+	onClineSettingsSaved?: () => void;
 }): React.ReactElement {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
@@ -535,6 +549,10 @@ export function CardDetailView({
 											taskId={selection.card.id}
 											summary={sessionSummary}
 											taskColumnId={selection.column.id}
+											defaultMode={selection.card.startInPlanMode ? "plan" : "act"}
+											workspaceId={currentProjectId}
+											runtimeConfig={runtimeConfig}
+											onClineSettingsSaved={onClineSettingsSaved}
 											onSendMessage={onSendClineChatMessage}
 											onCancelTurn={onCancelClineChatTurn}
 											onLoadMessages={onLoadClineChatMessages}

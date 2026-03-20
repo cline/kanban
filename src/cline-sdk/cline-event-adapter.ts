@@ -105,6 +105,11 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		if (!recoverable) {
 			clearActiveTurnState(entry);
 		}
+		if (recoverable && errorMessage) {
+			const retryMsg = createMessage(taskId, "system", `Retrying: ${errorMessage}`);
+			entry.messages.push(retryMsg);
+			input.emitMessage(taskId, retryMsg);
+		}
 		emitSummary(input, {
 			...(recoverable
 				? {}

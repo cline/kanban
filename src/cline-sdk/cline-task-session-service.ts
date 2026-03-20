@@ -2,7 +2,11 @@
 // runtime-api.ts uses this service to start sessions, send messages, load
 // history, and subscribe to summaries and chat events without knowing SDK
 // host, repository, or event-adapter details.
-import type { RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
+import type {
+	RuntimeTaskSessionMode,
+	RuntimeTaskSessionSummary,
+	RuntimeTaskTurnCheckpoint,
+} from "../core/api-contract.js";
 import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints.js";
@@ -36,6 +40,7 @@ export interface StartClineTaskSessionRequest {
 	resumeFromTrash?: boolean;
 	providerId?: string | null;
 	modelId?: string | null;
+	mode?: RuntimeTaskSessionMode;
 	apiKey?: string | null;
 	baseUrl?: string | null;
 }
@@ -47,7 +52,11 @@ export interface ClineTaskSessionService {
 	stopTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	abortTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	cancelTaskTurn(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
-	sendTaskSessionInput(taskId: string, text: string): Promise<RuntimeTaskSessionSummary | null>;
+	sendTaskSessionInput(
+		taskId: string,
+		text: string,
+		mode?: RuntimeTaskSessionMode,
+	): Promise<RuntimeTaskSessionSummary | null>;
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
 	listSummaries(): RuntimeTaskSessionSummary[];
 	listMessages(taskId: string): ClineTaskMessage[];
@@ -207,6 +216,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					prompt: request.prompt,
 					providerId,
 					modelId,
+					mode: request.mode,
 					apiKey: request.apiKey,
 					baseUrl: request.baseUrl,
 					systemPrompt,
@@ -299,7 +309,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return summary;
 	}
 
-	async sendTaskSessionInput(taskId: string, text: string): Promise<RuntimeTaskSessionSummary | null> {
+	async sendTaskSessionInput(
+		taskId: string,
+		text: string,
+		mode?: RuntimeTaskSessionMode,
+	): Promise<RuntimeTaskSessionSummary | null> {
 		const entry = this.messageRepository.getTaskEntry(taskId);
 		if (!entry) {
 			return null;
@@ -336,7 +350,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			this.emitSummary(waitingSummary);
 			const assistantCountBeforeSend = entry.messages.filter((message) => message.role === "assistant").length;
 			void this.sessionRuntime
-				.sendTaskSessionInput(taskId, normalized)
+				.sendTaskSessionInput(taskId, normalized, mode)
 				.then((result: unknown) => {
 					const agentText = readAgentResultText(result);
 					if (agentText) {

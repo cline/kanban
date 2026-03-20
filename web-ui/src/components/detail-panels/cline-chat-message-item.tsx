@@ -3,6 +3,7 @@ import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 
 import { ClineMarkdownContent } from "@/components/detail-panels/cline-markdown-content";
 import {
+	formatToolInputForDisplay,
 	getToolSummary,
 	parseToolMessageContent,
 	parseToolOutput,
@@ -19,7 +20,8 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 
 	const summary = useMemo(() => getToolSummary(parsed.toolName, parsed.input), [parsed.toolName, parsed.input]);
 	const toolOutput = useMemo(() => (parsed.output ? parseToolOutput(parsed.output) : null), [parsed.output]);
-	const hasExpandableContent = Boolean(parsed.output || parsed.error);
+	const fullInput = useMemo(() => formatToolInputForDisplay(parsed.toolName, parsed.input), [parsed.toolName, parsed.input]);
+	const hasExpandableContent = Boolean(parsed.output || parsed.error || fullInput);
 
 	return (
 		<div className="w-full">
@@ -58,6 +60,16 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 
 			{expanded ? (
 				<div className="mt-1 space-y-1.5 pr-1.5 pl-[24px] pb-1">
+					{/* Full tool input (e.g. complete run_commands commands) */}
+					{fullInput ? (
+						<div>
+							<div className="mb-0.5 text-xs text-text-tertiary">Command</div>
+							<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+								{fullInput}
+							</pre>
+						</div>
+					) : null}
+
 					{/* Parsed ToolOperationResult output */}
 					{toolOutput
 						? toolOutput.results.map((result, i) => (

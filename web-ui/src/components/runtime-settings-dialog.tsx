@@ -22,7 +22,7 @@ import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
-import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
+import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -379,30 +379,6 @@ export function RuntimeSettingsDialog({
 		selectedAgentId,
 		config,
 	});
-	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
-		const items: SearchSelectOption[] = clineSettings.providerCatalog.map((provider) => ({
-			value: provider.id,
-			label: `${provider.name} ${provider.oauthSupported ? "(OAuth)" : "(API key)"}`,
-		}));
-		const trimmedId = clineSettings.providerId.trim();
-		if (
-			trimmedId.length > 0 &&
-			!clineSettings.providerCatalog.some(
-				(provider) => provider.id.trim().toLowerCase() === clineSettings.normalizedProviderId,
-			)
-		) {
-			items.push({ value: trimmedId, label: `${trimmedId} (custom)` });
-		}
-		return items;
-	}, [clineSettings.providerCatalog, clineSettings.providerId, clineSettings.normalizedProviderId]);
-	const clineModelOptions = useMemo(
-		(): SearchSelectOption[] =>
-			clineSettings.providerModels.map((model) => ({
-				value: model.id,
-				label: model.name,
-			})),
-		[clineSettings.providerModels],
-	);
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
 			return false;
@@ -652,123 +628,11 @@ export function RuntimeSettingsDialog({
 				</p>
 
 				{selectedAgentId === "cline" ? (
-					<>
-						<h6 className="font-semibold text-text-primary mt-4 mb-2">Cline setup</h6>
-						<div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-							<div className="min-w-0">
-								<p className="text-text-secondary text-[12px] mt-0 mb-1">Provider</p>
-								<SearchSelectDropdown
-									options={clineProviderOptions}
-									selectedValue={clineSettings.providerId}
-									onSelect={(value) => clineSettings.setProviderId(value)}
-									disabled={controlsDisabled || clineSettings.isLoadingProviderCatalog}
-									fill
-									size="sm"
-									buttonText={
-										clineSettings.isLoadingProviderCatalog
-											? "Loading providers..."
-											: clineProviderOptions.find((o) => o.value === clineSettings.providerId)?.label
-									}
-									emptyText="Select provider"
-									noResultsText="No matching providers"
-									placeholder="Search providers..."
-									showSelectedIndicator
-								/>
-							</div>
-							<div className="min-w-0">
-								<p className="text-text-secondary text-[12px] mt-0 mb-1">Model</p>
-								<SearchSelectDropdown
-									options={clineModelOptions}
-									selectedValue={clineSettings.modelId}
-									onSelect={(value) => clineSettings.setModelId(value)}
-									disabled={controlsDisabled || clineSettings.isLoadingProviderModels}
-									fill
-									size="sm"
-									buttonText={
-										clineSettings.isLoadingProviderModels
-											? "Loading models..."
-											: clineModelOptions.find((o) => o.value === clineSettings.modelId)?.label
-									}
-									emptyText="Select model"
-									noResultsText="No matching models"
-									placeholder="Search models..."
-									showSelectedIndicator
-								/>
-							</div>
-						</div>
-						{clineSettings.isLoadingProviderCatalog || clineSettings.isLoadingProviderModels ? (
-							<p className="text-text-secondary text-[12px] mt-1 mb-0">
-								{clineSettings.isLoadingProviderCatalog ? "Fetching Cline providers..." : "Fetching Cline models..."}
-							</p>
-						) : null}
-						<p className="text-text-secondary text-[12px] mt-2 mb-0">
-							Authentication: {clineSettings.isOauthProviderSelected ? "OAuth" : "API key"}
-						</p>
-						<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: clineSettings.isOauthProviderSelected ? "1fr" : "1fr 1fr" }}>
-							{clineSettings.isOauthProviderSelected ? null : (
-								<div className="min-w-0">
-									<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
-									<input
-										type="password"
-										value={clineSettings.apiKey}
-										onChange={(event) => clineSettings.setApiKey(event.target.value)}
-										placeholder={clineSettings.apiKeyConfigured ? "Saved" : "Enter API key"}
-										disabled={controlsDisabled}
-										className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-									/>
-								</div>
-							)}
-							<div className="min-w-0">
-								<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
-								<input
-									value={clineSettings.baseUrl}
-									onChange={(event) => clineSettings.setBaseUrl(event.target.value)}
-									placeholder="https://api.cline.bot"
-									disabled={controlsDisabled}
-									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-								/>
-							</div>
-						</div>
-						{clineSettings.isOauthProviderSelected ? (
-							<>
-								<p className="text-text-secondary text-[12px] mt-2 mb-0">
-									Status: {clineSettings.oauthConfigured ? "Signed in" : "Not signed in"}
-								</p>
-								{clineSettings.oauthAccountId ? (
-									<p className="text-text-secondary text-[12px] mt-1 mb-0">
-										Account ID: <span className="text-text-primary">{clineSettings.oauthAccountId}</span>
-									</p>
-								) : null}
-								{clineSettings.oauthExpiresAt ? (
-									<p className="text-text-secondary text-[12px] mt-1 mb-0">
-										Expiry: <span className="text-text-primary">{clineSettings.oauthExpiresAt}</span>
-									</p>
-								) : null}
-								<div className="mt-2">
-									<Button
-										variant="default"
-										size="sm"
-										disabled={controlsDisabled || clineSettings.isRunningOauthLogin}
-										onClick={() => {
-											void (async () => {
-												setSaveError(null);
-												const result = await clineSettings.runOauthLogin();
-												if (!result.ok) {
-													setSaveError(result.message ?? "OAuth login failed.");
-												}
-											})();
-										}}
-									>
-										{clineSettings.isRunningOauthLogin
-											? "Signing in..."
-											: clineSettings.oauthConfigured
-												? `Sign in again with ${clineSettings.managedOauthProvider ?? "OAuth"}`
-												: `Sign in with ${clineSettings.managedOauthProvider ?? "OAuth"}`}
-									</Button>
-								</div>
-							</>
-						) : null}
-					</>
+					<ClineSetupSection
+						controller={clineSettings}
+						controlsDisabled={controlsDisabled}
+						onError={setSaveError}
+					/>
 				) : null}
 
 				<div className="flex items-center justify-between mt-4 mb-1">

@@ -155,6 +155,15 @@ export function ProjectNavigationPanel({
 						) : null}
 					</div>
 					<ShortcutsCard />
+					<a
+						href="https://cline.bot"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-text-tertiary hover:text-text-primary text-center block text-xs"
+						style={{ padding: "6px 12px" }}
+					>
+						Made with <Heart size={10} fill="currentColor" className="inline-block" /> by Cline
+					</a>
 				</>
 			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
@@ -167,15 +176,6 @@ export function ProjectNavigationPanel({
 					</div>
 				</div>
 			)}
-			<a
-				href="https://cline.bot"
-				target="_blank"
-				rel="noopener noreferrer"
-				className="text-text-tertiary hover:text-text-primary text-center block text-xs"
-				style={{ padding: "6px 12px" }}
-			>
-				Made with <Heart size={10} fill="currentColor" className="inline-block" /> by Cline
-			</a>
 			<AlertDialog
 				open={pendingProjectRemoval !== null}
 				onOpenChange={(open) => {
@@ -256,6 +256,7 @@ const ESSENTIAL_SHORTCUTS = [
 ];
 
 const MORE_SHORTCUTS = [
+	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
 	{ keys: ["Esc"], label: "Close / back" },
 ];
