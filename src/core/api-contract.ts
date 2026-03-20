@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveTaskTitle } from "./task-title.js";
 
 export const runtimeWorkspaceFileStatusSchema = z.enum([
 	"modified",
@@ -69,6 +70,7 @@ export type RuntimeTaskAutoReviewMode = z.infer<typeof runtimeTaskAutoReviewMode
 
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
+	title: z.string().optional(),
 	prompt: z.string(),
 	startInPlanMode: z.boolean(),
 	autoReviewEnabled: z.boolean().optional(),
@@ -76,7 +78,10 @@ export const runtimeBoardCardSchema = z.object({
 	baseRef: z.string(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
-});
+}).transform((card) => ({
+	...card,
+	title: resolveTaskTitle(card.title, card.prompt),
+}));
 export type RuntimeBoardCard = z.infer<typeof runtimeBoardCardSchema>;
 
 export const runtimeBoardColumnSchema = z.object({

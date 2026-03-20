@@ -32,6 +32,7 @@ vi.mock("@/hooks/use-review-auto-actions", () => ({
 function createTask(taskId: string, prompt: string, createdAt: number): BoardCard {
 	return {
 		id: taskId,
+		title: prompt,
 		prompt,
 		startInPlanMode: false,
 		autoReviewEnabled: false,

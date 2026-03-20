@@ -733,6 +733,7 @@ export function useBoardInteractions({
 					return currentBoard;
 				}
 				const updated = updateTask(currentBoard, taskId, {
+					title: selection.card.title,
 					prompt: selection.card.prompt,
 					startInPlanMode: selection.card.startInPlanMode,
 					autoReviewEnabled: false,

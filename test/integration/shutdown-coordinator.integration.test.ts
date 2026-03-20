@@ -48,6 +48,7 @@ function initGitRepository(path: string): void {
 function createCard(taskId: string) {
 	return {
 		id: taskId,
+		title: `Task ${taskId}`,
 		prompt: `Task ${taskId}`,
 		startInPlanMode: false,
 		baseRef: "main",

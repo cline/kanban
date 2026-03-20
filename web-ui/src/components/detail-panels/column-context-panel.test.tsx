@@ -11,12 +11,12 @@ vi.mock("@/components/board-card", () => ({
 		card,
 		selected,
 	}: {
-		card: { id: string; prompt: string };
+		card: { id: string; title: string; prompt: string };
 		selected?: boolean;
 	}): React.ReactElement => {
 		return (
 			<div data-task-id={card.id} data-selected={selected ? "true" : "false"}>
-				{card.prompt}
+				{card.title}
 			</div>
 		);
 	},
@@ -36,6 +36,7 @@ vi.mock("@hello-pangea/dnd", () => ({
 function createCard(id: string, prompt: string) {
 	return {
 		id,
+		title: prompt,
 		prompt,
 		startInPlanMode: false,
 		autoReviewEnabled: false,

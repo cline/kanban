@@ -21,6 +21,7 @@ function createBacklogBoard(taskPrompts: string[]): {
 	let board = createInitialBoardData();
 	for (const taskPrompt of taskPrompts) {
 		board = addTaskToColumn(board, "backlog", {
+			title: taskPrompt,
 			prompt: taskPrompt,
 			baseRef: "main",
 		});
@@ -504,13 +505,13 @@ describe("board dependency state", () => {
 				{
 					id: "backlog",
 					cards: [
-						{ id: "b", prompt: "Task B", startInPlanMode: false, baseRef: "main" },
-						{ id: "c", prompt: "Task C", startInPlanMode: false, baseRef: "main" },
+						{ id: "b", title: "Task B", prompt: "Task B", startInPlanMode: false, baseRef: "main" },
+						{ id: "c", title: "Task C", prompt: "Task C", startInPlanMode: false, baseRef: "main" },
 					],
 				},
 				{
 					id: "in_progress",
-					cards: [{ id: "a", prompt: "Task A", startInPlanMode: false, baseRef: "main" }],
+					cards: [{ id: "a", title: "Task A", prompt: "Task A", startInPlanMode: false, baseRef: "main" }],
 				},
 				{ id: "review", cards: [] },
 				{ id: "trash", cards: [] },
@@ -537,6 +538,7 @@ describe("board dependency state", () => {
 	it("disables auto-review settings for a task", () => {
 		let board = createInitialBoardData();
 		board = addTaskToColumn(board, "review", {
+			title: "Task A",
 			prompt: "Task A",
 			autoReviewEnabled: true,
 			autoReviewMode: "move_to_trash",

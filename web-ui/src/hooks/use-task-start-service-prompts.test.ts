@@ -238,6 +238,7 @@ describe("getStartableBacklogTaskIds", () => {
 	function createCard(id: string, prompt = "Do something"): BoardCard {
 		return {
 			id,
+			title: prompt,
 			prompt,
 			startInPlanMode: false,
 			autoReviewEnabled: false,

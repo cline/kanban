@@ -1,6 +1,7 @@
 import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { deriveTaskTitleFromPrompt } from "@runtime-task-title";
 
 import { useTaskEditor } from "@/hooks/use-task-editor";
 import type { BoardCard, BoardData, TaskAutoReviewMode } from "@/types";
@@ -8,6 +9,7 @@ import type { BoardCard, BoardData, TaskAutoReviewMode } from "@/types";
 function createTask(taskId: string, prompt: string, createdAt: number, overrides: Partial<BoardCard> = {}): BoardCard {
 	return {
 		id: taskId,
+		title: prompt,
 		prompt,
 		startInPlanMode: false,
 		autoReviewEnabled: false,
@@ -34,18 +36,22 @@ function createBoard(tasks: BoardCard[] = []): BoardData {
 interface HookSnapshot {
 	board: BoardData;
 	isInlineTaskCreateOpen: boolean;
+	newTaskTitle: string;
 	newTaskPrompt: string;
 	newTaskBranchRef: string;
 	editingTaskId: string | null;
+	editTaskTitle: string;
 	editTaskPrompt: string;
 	editTaskStartInPlanMode: boolean;
 	isEditTaskStartInPlanModeDisabled: boolean;
 	handleOpenCreateTask: () => void;
 	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
+	setNewTaskTitle: (value: string) => void;
 	setNewTaskPrompt: (value: string) => void;
 	handleOpenEditTask: (task: BoardCard) => void;
 	handleSaveEditedTask: () => string | null;
 	handleSaveAndStartEditedTask: () => void;
+	setEditTaskTitle: (value: string) => void;
 	setEditTaskPrompt: (value: string) => void;
 	setEditTaskAutoReviewEnabled: (value: boolean) => void;
 	setEditTaskAutoReviewMode: (value: TaskAutoReviewMode) => void;
@@ -84,18 +90,22 @@ function HookHarness({
 		onSnapshot({
 			board,
 			isInlineTaskCreateOpen: editor.isInlineTaskCreateOpen,
+			newTaskTitle: editor.newTaskTitle,
 			newTaskPrompt: editor.newTaskPrompt,
 			newTaskBranchRef: editor.newTaskBranchRef,
 			editingTaskId: editor.editingTaskId,
+			editTaskTitle: editor.editTaskTitle,
 			editTaskPrompt: editor.editTaskPrompt,
 			editTaskStartInPlanMode: editor.editTaskStartInPlanMode,
 			isEditTaskStartInPlanModeDisabled: editor.isEditTaskStartInPlanModeDisabled,
 			handleOpenCreateTask: editor.handleOpenCreateTask,
 			handleCreateTask: editor.handleCreateTask,
+			setNewTaskTitle: editor.setNewTaskTitle,
 			setNewTaskPrompt: editor.setNewTaskPrompt,
 			handleOpenEditTask: editor.handleOpenEditTask,
 			handleSaveEditedTask: editor.handleSaveEditedTask,
 			handleSaveAndStartEditedTask: editor.handleSaveAndStartEditedTask,
+			setEditTaskTitle: editor.setEditTaskTitle,
 			setEditTaskPrompt: editor.setEditTaskPrompt,
 			setEditTaskAutoReviewEnabled: editor.setEditTaskAutoReviewEnabled,
 			setEditTaskAutoReviewMode: editor.setEditTaskAutoReviewMode,
@@ -104,6 +114,7 @@ function HookHarness({
 		board,
 		editor.handleCreateTask,
 		editor.handleOpenCreateTask,
+		editor.editTaskTitle,
 		editor.editTaskPrompt,
 		editor.editTaskStartInPlanMode,
 		editor.editingTaskId,
@@ -112,11 +123,14 @@ function HookHarness({
 		editor.handleSaveAndStartEditedTask,
 		editor.isEditTaskStartInPlanModeDisabled,
 		editor.isInlineTaskCreateOpen,
+		editor.newTaskTitle,
 		editor.newTaskPrompt,
 		editor.newTaskBranchRef,
 		editor.setEditTaskAutoReviewEnabled,
 		editor.setEditTaskAutoReviewMode,
+		editor.setEditTaskTitle,
 		editor.setEditTaskPrompt,
+		editor.setNewTaskTitle,
 		editor.setNewTaskPrompt,
 		onSnapshot,
 	]);
@@ -130,7 +144,7 @@ describe("useTaskEditor", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		localStorage.clear();
+		window.localStorage?.clear?.();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -140,17 +154,19 @@ describe("useTaskEditor", () => {
 	});
 
 	afterEach(() => {
-		act(() => {
-			root.unmount();
-		});
-		container.remove();
+		if (root) {
+			act(() => {
+				root.unmount();
+			});
+		}
+		container?.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 		} else {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-		localStorage.clear();
+		window.localStorage?.clear?.();
 	});
 
 	it("returns the edited task id when saving a task", async () => {
@@ -191,6 +207,7 @@ describe("useTaskEditor", () => {
 
 		expect(savedTaskId).toBe("task-1");
 		expect(requireSnapshot(latestSnapshot).editingTaskId).toBeNull();
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.title).toBe("Initial prompt");
 		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.prompt).toBe("Updated prompt");
 	});
 
@@ -268,6 +285,7 @@ describe("useTaskEditor", () => {
 		});
 
 		expect(queueTaskStartAfterEdit).toHaveBeenCalledWith("task-1");
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.title).toBe("Initial prompt");
 		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.prompt).toBe("Updated prompt");
 	});
 
@@ -310,5 +328,43 @@ describe("useTaskEditor", () => {
 		expect(snapshot.newTaskPrompt).toBe("");
 		expect(snapshot.newTaskBranchRef).toBe("main");
 		expect(snapshot.board.columns[0]?.cards.some((card) => card.prompt === "Create another task")).toBe(true);
+		expect(snapshot.board.columns[0]?.cards[0]?.title).toBe(deriveTaskTitleFromPrompt("Create another task"));
+	});
+
+	it("persists a custom title separately from the prompt", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard([createTask("task-1", "Initial prompt", 1)])}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		const task = requireSnapshot(latestSnapshot).board.columns[0]?.cards[0];
+		if (!task) {
+			throw new Error("Expected a backlog task.");
+		}
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleOpenEditTask(task);
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setEditTaskTitle("Custom title");
+			requireSnapshot(latestSnapshot).setEditTaskPrompt("Rewritten prompt");
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleSaveEditedTask();
+		});
+
+		const updatedTask = requireSnapshot(latestSnapshot).board.columns[0]?.cards[0];
+		expect(updatedTask?.title).toBe("Custom title");
+		expect(updatedTask?.prompt).toBe("Rewritten prompt");
 	});
 });

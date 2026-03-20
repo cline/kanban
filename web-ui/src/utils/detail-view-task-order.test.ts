@@ -20,22 +20,22 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 						id: "backlog",
 						title: "Backlog",
 						cards: [
-							{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "b1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{
 						id: "in_progress",
 						title: "In Progress",
 						cards: [
-							{ id: "i1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
-							{ id: "i2", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "i1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "i2", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{
 						id: "review",
 						title: "Review",
 						cards: [
-							{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "r1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{ id: "trash", title: "Trash", cards: [] },
@@ -57,14 +57,14 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 						id: "in_progress",
 						title: "In Progress",
 						cards: [
-							{ id: "i1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "i1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{
 						id: "review",
 						title: "Review",
 						cards: [
-							{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "r1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{ id: "trash", title: "Trash", cards: [] },
@@ -85,21 +85,21 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 						id: "backlog",
 						title: "Backlog",
 						cards: [
-							{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "b1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{
 						id: "in_progress",
 						title: "In Progress",
 						cards: [
-							{ id: "i1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "i1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{
 						id: "review",
 						title: "Review",
 						cards: [
-							{ id: "r1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "r1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{ id: "trash", title: "Trash", cards: [] },
@@ -120,7 +120,7 @@ describe("getNextDetailTaskIdAfterTrashMove", () => {
 						id: "backlog",
 						title: "Backlog",
 						cards: [
-							{ id: "b1", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
+							{ id: "b1", title: "", prompt: "", startInPlanMode: false, baseRef: "main", createdAt: 1, updatedAt: 1 },
 						],
 					},
 					{ id: "in_progress", title: "In Progress", cards: [] },

@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { deriveTaskTitleFromPrompt } from "@runtime-task-title";
 
 import {
 	normalizeStoredTaskAutoReviewMode,
@@ -35,6 +36,8 @@ interface CreateTaskOptions {
 
 export interface UseTaskEditorResult {
 	isInlineTaskCreateOpen: boolean;
+	newTaskTitle: string;
+	setNewTaskTitle: Dispatch<SetStateAction<string>>;
 	newTaskPrompt: string;
 	setNewTaskPrompt: Dispatch<SetStateAction<string>>;
 	newTaskStartInPlanMode: boolean;
@@ -47,6 +50,8 @@ export interface UseTaskEditorResult {
 	newTaskBranchRef: string;
 	setNewTaskBranchRef: Dispatch<SetStateAction<string>>;
 	editingTaskId: string | null;
+	editTaskTitle: string;
+	setEditTaskTitle: Dispatch<SetStateAction<string>>;
 	editTaskPrompt: string;
 	setEditTaskPrompt: Dispatch<SetStateAction<string>>;
 	editTaskStartInPlanMode: boolean;
@@ -80,6 +85,7 @@ export function useTaskEditor({
 	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
+	const [newTaskTitle, setNewTaskTitle] = useState("");
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskStartInPlanMode, setNewTaskStartInPlanMode] = useBooleanLocalStorageValue(
 		TASK_START_IN_PLAN_MODE_STORAGE_KEY,
@@ -98,6 +104,7 @@ export function useTaskEditor({
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+	const [editTaskTitle, setEditTaskTitle] = useState("");
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
 	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
@@ -171,6 +178,7 @@ export function useTaskEditor({
 		const selection = findCardSelection(board, editingTaskId);
 		if (!selection || selection.column.id !== "backlog") {
 			setEditingTaskId(null);
+			setEditTaskTitle("");
 			setEditTaskPrompt("");
 			setEditTaskStartInPlanMode(false);
 			setEditTaskAutoReviewEnabled(false);
@@ -181,12 +189,14 @@ export function useTaskEditor({
 
 	const handleOpenCreateTask = useCallback(() => {
 		setEditingTaskId(null);
+		setEditTaskTitle("");
 		setEditTaskPrompt("");
 		setIsInlineTaskCreateOpen(true);
 	}, []);
 
 	const handleCancelCreateTask = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
+		setNewTaskTitle("");
 		setNewTaskPrompt("");
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
 	}, [resolvedDefaultTaskBranchRef]);
@@ -197,9 +207,11 @@ export function useTaskEditor({
 				setSelectedTaskId(null);
 			}
 			setIsInlineTaskCreateOpen(false);
+			setNewTaskTitle("");
 			setNewTaskPrompt("");
 			const taskPrompt = task.prompt.trim();
 			setEditingTaskId(task.id);
+			setEditTaskTitle(task.title);
 			setEditTaskPrompt(taskPrompt);
 			setEditTaskStartInPlanMode(task.startInPlanMode);
 			setEditTaskAutoReviewEnabled(task.autoReviewEnabled === true);
@@ -212,6 +224,7 @@ export function useTaskEditor({
 
 	const handleCancelEditTask = useCallback(() => {
 		setEditingTaskId(null);
+		setEditTaskTitle("");
 		setEditTaskPrompt("");
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
@@ -227,6 +240,7 @@ export function useTaskEditor({
 		if (!prompt) {
 			return null;
 		}
+		const title = editTaskTitle.trim();
 		if (!(editTaskBranchRef || resolvedDefaultTaskBranchRef)) {
 			return null;
 		}
@@ -236,6 +250,7 @@ export function useTaskEditor({
 
 		setBoard((currentBoard) => {
 			const updated = updateTask(currentBoard, savedTaskId, {
+				title,
 				prompt,
 				startInPlanMode: editTaskStartInPlanMode,
 				autoReviewEnabled: editTaskAutoReviewEnabled,
@@ -245,6 +260,7 @@ export function useTaskEditor({
 			return updated.updated ? updated.board : currentBoard;
 		});
 		setEditingTaskId(null);
+		setEditTaskTitle("");
 		setEditTaskPrompt("");
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
@@ -255,6 +271,7 @@ export function useTaskEditor({
 		editTaskBranchRef,
 		editTaskPrompt,
 		editTaskStartInPlanMode,
+		editTaskTitle,
 		editingTaskId,
 		resolvedDefaultTaskBranchRef,
 		setBoard,
@@ -273,11 +290,13 @@ export function useTaskEditor({
 		if (!prompt) {
 			return null;
 		}
+		const title = newTaskTitle.trim();
 		if (!(newTaskBranchRef || resolvedDefaultTaskBranchRef)) {
 			return null;
 		}
 		const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
 		const created = addTaskToColumnWithResult(board, "backlog", {
+			title,
 			prompt,
 			startInPlanMode: newTaskStartInPlanMode,
 			autoReviewEnabled: newTaskAutoReviewEnabled,
@@ -298,6 +317,7 @@ export function useTaskEditor({
 			}));
 		}
 		setNewTaskPrompt("");
+		setNewTaskTitle("");
 		setNewTaskBranchRef(baseRef);
 		if (!options?.keepDialogOpen) {
 			setIsInlineTaskCreateOpen(false);
@@ -311,6 +331,7 @@ export function useTaskEditor({
 		newTaskBranchRef,
 		newTaskPrompt,
 		newTaskStartInPlanMode,
+		newTaskTitle,
 		resolvedDefaultTaskBranchRef,
 		selectedAgentId,
 		setBoard,
@@ -329,6 +350,7 @@ export function useTaskEditor({
 		let updatedBoard = board;
 		for (const prompt of validPrompts) {
 			const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
+				title: deriveTaskTitleFromPrompt(prompt),
 				prompt,
 				startInPlanMode: newTaskStartInPlanMode,
 				autoReviewEnabled: newTaskAutoReviewEnabled,
@@ -354,6 +376,7 @@ export function useTaskEditor({
 			}));
 		}
 		setNewTaskPrompt("");
+		setNewTaskTitle("");
 		setNewTaskBranchRef(baseRef);
 		if (!options?.keepDialogOpen) {
 			setIsInlineTaskCreateOpen(false);
@@ -374,7 +397,10 @@ export function useTaskEditor({
 	const resetTaskEditorState = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
 		setEditingTaskId(null);
+		setNewTaskTitle("");
+		setNewTaskPrompt("");
 		setEditTaskPrompt("");
+		setEditTaskTitle("");
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
@@ -383,6 +409,8 @@ export function useTaskEditor({
 
 	return {
 		isInlineTaskCreateOpen,
+		newTaskTitle,
+		setNewTaskTitle,
 		newTaskPrompt,
 		setNewTaskPrompt,
 		newTaskStartInPlanMode,
@@ -395,6 +423,8 @@ export function useTaskEditor({
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
+		editTaskTitle,
+		setEditTaskTitle,
 		editTaskPrompt,
 		setEditTaskPrompt,
 		editTaskStartInPlanMode,

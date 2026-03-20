@@ -1,6 +1,7 @@
 import type { DropResult } from "@hello-pangea/dnd";
 import { createShortTaskId } from "@runtime-task-id";
 import * as runtimeTaskState from "@runtime-task-state";
+import { resolveTaskTitle } from "@runtime-task-title";
 
 import { createInitialBoardData } from "@/data/board-data";
 import { isAllowedCrossColumnCardMove, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
@@ -17,6 +18,7 @@ import {
 } from "@/types";
 
 export interface TaskDraft {
+	title?: string;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
@@ -67,6 +69,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	const card = rawCard as {
 		id?: unknown;
+		title?: unknown;
 		prompt?: unknown;
 		startInPlanMode?: unknown;
 		autoReviewEnabled?: unknown;
@@ -88,6 +91,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(() => crypto.randomUUID()),
+		title: resolveTaskTitle(typeof card.title === "string" ? card.title : undefined, prompt),
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		autoReviewEnabled: typeof card.autoReviewEnabled === "boolean" ? card.autoReviewEnabled : false,
@@ -234,6 +238,7 @@ export function addTaskToColumnWithResult(
 		board,
 		columnId,
 		{
+			title: draft.title,
 			prompt,
 			startInPlanMode: draft.startInPlanMode,
 			autoReviewEnabled: draft.autoReviewEnabled,
@@ -422,6 +427,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 			updated = true;
 			return {
 				...card,
+				title: resolveTaskTitle(draft.title, prompt),
 				prompt,
 				startInPlanMode: Boolean(draft.startInPlanMode),
 				autoReviewEnabled: Boolean(draft.autoReviewEnabled),
@@ -446,6 +452,7 @@ export function disableTaskAutoReview(board: BoardData, taskId: string): { board
 	}
 
 	return updateTask(board, taskId, {
+		title: selection.card.title,
 		prompt: selection.card.prompt,
 		startInPlanMode: selection.card.startInPlanMode,
 		autoReviewEnabled: false,

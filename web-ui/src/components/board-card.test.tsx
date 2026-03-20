@@ -65,12 +65,13 @@ vi.mock("@/utils/task-prompt", async () => {
 	return {
 		...actual,
 		truncateTaskPromptLabel: (prompt: string) => prompt.split("||")[0]?.trim() ?? "",
-		splitPromptToTitleDescriptionByWidth: (prompt: string) => {
-			const [title, ...descriptionParts] = prompt.split("||");
-			return {
-				title: title?.trim() ?? "",
-				description: descriptionParts.join("||").trim(),
-			};
+		normalizeTaskTextForDisplay: (value: string) => value.split("||")[0]?.trim() ?? value.trim(),
+		getTaskPromptDescription: (prompt: string, title: string) => {
+			const normalized = prompt.trim();
+			if (!normalized.startsWith(title)) {
+				return normalized;
+			}
+			return normalized.slice(title.length).replace(/^\|\|/, "").trim();
 		},
 	};
 });
@@ -78,6 +79,7 @@ vi.mock("@/utils/task-prompt", async () => {
 function createCard(overrides?: Partial<Parameters<typeof BoardCard>[0]["card"]>) {
 	return {
 		id: "task-1",
+		title: "Review API changes",
 		prompt: "Review API changes",
 		startInPlanMode: false,
 		autoReviewEnabled: false,
@@ -109,6 +111,30 @@ function Harness(): React.ReactElement {
 				}));
 			}}
 		/>
+	);
+}
+
+function TitleEditHarness(): React.ReactElement {
+	const [card, setCard] = useState(createCard());
+
+	return (
+		<TooltipProvider>
+			<BoardCard
+				card={card}
+				index={0}
+				columnId="review"
+				onSaveTitle={(taskId, title) => {
+					setCard((currentCard) =>
+						currentCard.id === taskId
+							? {
+									...currentCard,
+									title,
+								}
+							: currentCard,
+					);
+				}}
+			/>
+		</TooltipProvider>
 	);
 }
 
@@ -192,7 +218,13 @@ describe("BoardCard", () => {
 			"Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau final hidden segment";
 
 		await act(async () => {
-			root.render(<BoardCard card={createCard({ prompt: `Task title||${description}` })} index={0} columnId="backlog" />);
+			root.render(
+				<BoardCard
+					card={createCard({ title: "Task title", prompt: `Task title||${description}` })}
+					index={0}
+					columnId="backlog"
+				/>,
+			);
 		});
 
 		const findButton = (label: string) =>
@@ -323,7 +355,7 @@ describe("BoardCard", () => {
 		await act(async () => {
 			root.render(
 				<BoardCard
-					card={createCard({ prompt: "Task title||Freshly created task description" })}
+					card={createCard({ title: "Task title", prompt: "Task title||Freshly created task description" })}
 					index={0}
 					columnId="backlog"
 				/>,
@@ -331,5 +363,45 @@ describe("BoardCard", () => {
 		});
 
 		expect(container.textContent).toContain("Freshly created task description");
+	});
+
+	it("edits the title inline and saves on blur", async () => {
+		await act(async () => {
+			root.render(<TitleEditHarness />);
+		});
+
+		const titleButton = container.querySelector('button[aria-label="Edit task title"]');
+		expect(titleButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			if (!(titleButton instanceof HTMLButtonElement)) {
+				throw new Error("Expected a clickable title button.");
+			}
+			titleButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			titleButton.click();
+		});
+
+		const input = container.querySelector("input");
+		expect(input).toBeInstanceOf(HTMLInputElement);
+		if (!(input instanceof HTMLInputElement)) {
+			throw new Error("Expected an inline title input.");
+		}
+
+		await act(async () => {
+			input.focus();
+		});
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+			valueSetter?.call(input, "Renamed title");
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+
+		await act(async () => {
+			input.blur();
+		});
+
+		expect(container.querySelector("input")).toBeNull();
+		expect(container.textContent).toContain("Renamed title");
 	});
 });

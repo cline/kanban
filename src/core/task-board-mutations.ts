@@ -6,8 +6,10 @@ import type {
 	RuntimeTaskAutoReviewMode,
 } from "./api-contract.js";
 import { createUniqueTaskId } from "./task-id.js";
+import { resolveTaskTitle } from "./task-title.js";
 
 export interface RuntimeCreateTaskInput {
+	title?: string;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
@@ -16,6 +18,7 @@ export interface RuntimeCreateTaskInput {
 }
 
 export interface RuntimeUpdateTaskInput {
+	title?: string;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
@@ -266,6 +269,7 @@ export function addTaskToColumn(
 	const existingIds = collectExistingTaskIds(board);
 	const task: RuntimeBoardCard = {
 		id: createUniqueTaskId(existingIds, randomUuid),
+		title: resolveTaskTitle(input.title, prompt),
 		prompt,
 		startInPlanMode: Boolean(input.startInPlanMode),
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
@@ -578,6 +582,7 @@ export function updateTask(
 			columnUpdated = true;
 			updatedTask = {
 				...card,
+				title: resolveTaskTitle(input.title, prompt),
 				prompt,
 				startInPlanMode: Boolean(input.startInPlanMode),
 				autoReviewEnabled: Boolean(input.autoReviewEnabled),

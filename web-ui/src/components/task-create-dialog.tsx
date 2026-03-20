@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { deriveTaskTitleFromPrompt } from "@runtime-task-title";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import type { BranchSelectOption } from "@/components/branch-select-dropdown";
@@ -65,6 +66,8 @@ function parseListItems(text: string): string[] {
 export function TaskCreateDialog({
 	open,
 	onOpenChange,
+	title,
+	onTitleChange,
 	prompt,
 	onPromptChange,
 	onCreate,
@@ -85,6 +88,8 @@ export function TaskCreateDialog({
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	title: string;
+	onTitleChange: (value: string) => void;
 	prompt: string;
 	onPromptChange: (value: string) => void;
 	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
@@ -112,6 +117,7 @@ export function TaskCreateDialog({
 	const startInPlanModeId = useId();
 	const autoReviewEnabledId = useId();
 	const createMoreId = useId();
+	const titleInputId = useId();
 
 	const detectedItems = useMemo(() => parseListItems(prompt), [prompt]);
 	const validTaskCount = useMemo(
@@ -310,6 +316,18 @@ export function TaskCreateDialog({
 			<DialogBody>
 				{mode === "single" ? (
 					<div>
+						<div className="mb-3">
+							<label htmlFor={titleInputId} className="mb-1 block text-[12px] text-text-secondary">
+								Title
+							</label>
+							<input
+								id={titleInputId}
+								value={title}
+								onChange={(event) => onTitleChange(event.currentTarget.value)}
+								placeholder={deriveTaskTitleFromPrompt(prompt) || "Auto-generated from prompt"}
+								className="h-9 w-full rounded-md border border-border-bright bg-surface-2 px-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
 						<TaskPromptComposer
 							key={composerResetKey}
 							value={prompt}

@@ -51,6 +51,7 @@ function createBoard(title: string): RuntimeBoardData {
 				cards: [
 					{
 						id: "task-1",
+						title,
 						prompt: title,
 						startInPlanMode: false,
 						baseRef: "main",
@@ -73,6 +74,7 @@ function createReviewBoard(taskId: string, title: string, existingTrashTaskId?: 
 		? [
 				{
 					id: existingTrashTaskId,
+					title: "Already trashed task",
 					prompt: "Already trashed task",
 					startInPlanMode: false,
 					baseRef: "main",
@@ -91,6 +93,7 @@ function createReviewBoard(taskId: string, title: string, existingTrashTaskId?: 
 				cards: [
 					{
 						id: taskId,
+						title,
 						prompt: title,
 						startInPlanMode: false,
 						baseRef: "main",

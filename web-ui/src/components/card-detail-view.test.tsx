@@ -51,6 +51,7 @@ vi.mock("@/stores/workspace-metadata-store", () => ({
 function createCard(id: string): BoardCard {
 	return {
 		id,
+		title: `Task ${id}`,
 		prompt: `Task ${id}`,
 		startInPlanMode: false,
 		autoReviewEnabled: false,

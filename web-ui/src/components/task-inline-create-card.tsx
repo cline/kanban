@@ -1,6 +1,7 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
 import { useCallback, useRef, useState, type ReactElement } from "react";
+import { deriveTaskTitleFromPrompt } from "@runtime-task-title";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
@@ -40,6 +41,8 @@ function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): R
 }
 
 export function TaskInlineCreateCard({
+	title,
+	onTitleChange,
 	prompt,
 	onPromptChange,
 	onCreate,
@@ -60,6 +63,8 @@ export function TaskInlineCreateCard({
 	mode = "create",
 	idPrefix = "inline-task",
 }: {
+	title: string;
+	onTitleChange: (value: string) => void;
 	prompt: string;
 	onPromptChange: (value: string) => void;
 	onCreate: () => void;
@@ -85,6 +90,7 @@ export function TaskInlineCreateCard({
 	const autoReviewEnabledId = `${idPrefix}-auto-review-enabled-toggle`;
 	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
+	const titleInputId = `${idPrefix}-title-input`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
 	const [measureRef, cardRect] = useMeasure<HTMLDivElement>();
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -150,6 +156,18 @@ export function TaskInlineCreateCard({
 			style={{ flexShrink: 0, marginBottom: cardMarginBottom, fontSize: 12 }}
 		>
 			<div>
+				<div className="mb-2">
+					<label htmlFor={titleInputId} className="mb-1 block text-[11px] text-text-secondary">
+						Title
+					</label>
+					<input
+						id={titleInputId}
+						value={title}
+						onChange={(event) => onTitleChange(event.currentTarget.value)}
+						placeholder={deriveTaskTitleFromPrompt(prompt) || "Auto-generated from prompt"}
+						className="h-8 w-full rounded-md border border-border-bright bg-surface-2 px-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+					/>
+				</div>
 				<TaskPromptComposer
 					id={promptId}
 					value={prompt}

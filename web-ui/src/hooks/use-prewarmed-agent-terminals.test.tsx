@@ -47,6 +47,7 @@ function createBoard(input?: {
 	const trashTaskIds = input?.trashTaskIds ?? [];
 	const createCard = (taskId: string, index: number) => ({
 		id: taskId,
+		title: taskId,
 		prompt: taskId,
 		startInPlanMode: false,
 		autoReviewEnabled: false,
