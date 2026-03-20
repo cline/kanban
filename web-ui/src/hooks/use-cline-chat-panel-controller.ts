@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import { type ClineChatMessage, useClineChatSession } from "@/hooks/use-cline-chat-session";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 
 interface UseClineChatPanelControllerInput {
 	taskId: string;
@@ -78,6 +79,7 @@ export function useClineChatPanelController({
 	showMoveToTrash = false,
 }: UseClineChatPanelControllerInput): UseClineChatPanelControllerResult {
 	const [draft, setDraft] = useState("");
+	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(taskId);
 	const { messages, isSending, isCanceling, error, sendMessage, cancelTurn } = useClineChatSession({
 		taskId,
 		onSendMessage,
@@ -87,7 +89,11 @@ export function useClineChatPanelController({
 	});
 	const canSend = Boolean(onSendMessage) && !isSending && !isCanceling;
 	const canCancel = Boolean(onCancelTurn) && summary?.state === "running" && !isCanceling;
-	const showReviewActions = taskColumnId === "review" && Boolean(onCommit) && Boolean(onOpenPr);
+	const showReviewActions =
+		taskColumnId === "review" &&
+		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0 &&
+		Boolean(onCommit) &&
+		Boolean(onOpenPr);
 	const showAgentProgressIndicator =
 		summary?.state === "running" && !hasVisibleStreamingMessage(summary, messages, incomingMessage);
 	const showActionFooter = showMoveToTrash && Boolean(onMoveToTrash);
