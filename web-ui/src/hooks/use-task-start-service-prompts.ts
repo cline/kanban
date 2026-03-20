@@ -41,7 +41,7 @@ const LINEAR_WORD_PATTERN = /\blinear\b/i;
 const GITHUB_WORD_PATTERN = /\bgithub\b/i;
 const DEFAULT_LINEAR_INSTALL_COMMAND = "claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp";
 const CLINE_CLI_INSTALL_COMMAND = "npm install -g cline";
-const SUPPORTED_AGENT_LABELS = "Claude Code, OpenAI Codex, or Cline";
+const SUPPORTED_AGENT_LABELS = "Cline, Claude Code, or OpenAI Codex";
 
 function getLinearMcpInstallCommand(selectedAgentId: RuntimeAgentId | null | undefined): string {
 	switch (selectedAgentId) {
@@ -186,12 +186,12 @@ export function buildTaskStartServicePromptContent(
 		case "agent_cli": {
 			return {
 				id: promptId,
-				title: "Set up a CLI agent before starting this task?",
-				description: `No supported CLI agent was detected on your PATH. Kanban can run tasks with ${SUPPORTED_AGENT_LABELS}.`,
+				title: "Get started with Cline",
+				description: `No authenticated agent is ready yet. Cline Kanban can run tasks with ${SUPPORTED_AGENT_LABELS}.`,
 				installCommand: CLINE_CLI_INSTALL_COMMAND,
 				installButtonLabel: "Run install command",
 				installCommandDescription: "Install Cline CLI:",
-				authenticationNote: "After installing, try starting the task again.",
+				authenticationNote: "Authenticate Cline in Settings, or install Claude Code or OpenAI Codex and select it in onboarding.",
 			};
 		}
 		default:

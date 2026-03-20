@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 
 interface HookSnapshot {
@@ -17,10 +17,13 @@ interface HookSnapshot {
 	showActionFooter: boolean;
 	showCancelAutomaticAction: boolean;
 	setDraft: (draft: string) => void;
-	handleSendDraft: () => Promise<void>;
+	handleSendDraft: (mode?: RuntimeTaskSessionMode) => Promise<void>;
 }
 
-function createSummary(state: RuntimeTaskSessionSummary["state"]): RuntimeTaskSessionSummary {
+function createSummary(
+	state: RuntimeTaskSessionSummary["state"],
+	overrides: Partial<RuntimeTaskSessionSummary> = {},
+): RuntimeTaskSessionSummary {
 	return {
 		taskId: "task-1",
 		state,
@@ -28,14 +31,27 @@ function createSummary(state: RuntimeTaskSessionSummary["state"]): RuntimeTaskSe
 		workspacePath: "/tmp/worktree",
 		pid: null,
 		startedAt: 1,
-		updatedAt: 1,
-		lastOutputAt: 1,
+		updatedAt: Date.now(),
+		lastOutputAt: Date.now(),
 		reviewReason: null,
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		...overrides,
+	};
+}
+
+function createHookActivity(hookEventName: string): RuntimeTaskHookActivity {
+	return {
+		activityText: "Agent active",
+		toolName: null,
+		toolInputSummary: null,
+		finalMessage: null,
+		hookEventName,
+		notificationType: null,
+		source: "cline-sdk",
 	};
 }
 
@@ -55,7 +71,7 @@ function HookHarness({
 }: {
 	summary: RuntimeTaskSessionSummary | null;
 	taskColumnId?: string;
-	onSendMessage?: (taskId: string, text: string) => Promise<{
+	onSendMessage?: (taskId: string, text: string, options?: { mode?: RuntimeTaskSessionMode }) => Promise<{
 		ok: boolean;
 		message?: string;
 		chatMessage?: {
@@ -125,6 +141,7 @@ describe("useClineChatPanelController", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		vi.useFakeTimers();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -146,6 +163,7 @@ describe("useClineChatPanelController", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+		vi.useRealTimers();
 	});
 
 	it("clears the draft and appends the returned chat message after send", async () => {
@@ -181,10 +199,10 @@ describe("useClineChatPanelController", () => {
 		expect(requireSnapshot(latestSnapshot).draft).toBe("Ship it");
 
 		await act(async () => {
-			await requireSnapshot(latestSnapshot).handleSendDraft();
+			await requireSnapshot(latestSnapshot).handleSendDraft("plan");
 		});
 
-		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it");
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it", { mode: "plan" });
 		expect(requireSnapshot(latestSnapshot).draft).toBe("");
 		expect(requireSnapshot(latestSnapshot).messageIds).toEqual(["sent-1"]);
 		expect(requireSnapshot(latestSnapshot).lastMessageContent).toBe("Ship it");
@@ -276,7 +294,9 @@ describe("useClineChatPanelController", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					summary={createSummary("running")}
+					summary={createSummary("running", {
+						latestHookActivity: createHookActivity("assistant_delta"),
+					})}
 					incomingMessage={{
 						id: "assistant-1",
 						role: "assistant",
@@ -289,6 +309,72 @@ describe("useClineChatPanelController", () => {
 				/>,
 			);
 			await Promise.resolve();
+		});
+
+		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(false);
+	});
+
+	it("shows the thinking indicator after assistant activity goes quiet", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					summary={createSummary("running", {
+						latestHookActivity: createHookActivity("assistant_delta"),
+					})}
+					incomingMessage={{
+						id: "assistant-1",
+						role: "assistant",
+						content: "Let me edit this file",
+						createdAt: 2,
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(false);
+
+		await act(async () => {
+			vi.advanceTimersByTime(501);
+		});
+
+		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(true);
+	});
+
+	it("keeps the thinking indicator hidden while a tool call row is visible", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					summary={createSummary("running", {
+						latestHookActivity: createHookActivity("tool_call"),
+					})}
+					incomingMessage={{
+						id: "tool-1",
+						role: "tool",
+						content: "Tool: Edit",
+						createdAt: 3,
+						meta: {
+							hookEventName: "tool_call_start",
+							toolName: "Edit",
+						},
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1_000);
 		});
 
 		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(false);

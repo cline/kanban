@@ -101,8 +101,8 @@ export function useHomeSidebarAgentPanel({
 	const latestHomeTaskChatMessage = selectLatestTaskChatMessageForTask(taskId, latestTaskChatMessage);
 
 	const handleSendHomeClineChatMessage = useCallback(
-		async (messageTaskId: string, text: string) => {
-			const result = await sendTaskChatMessage(messageTaskId, text);
+		async (messageTaskId: string, text: string, options?: { mode?: "act" | "plan" }) => {
+			const result = await sendTaskChatMessage(messageTaskId, text, options);
 			if (!result.ok) {
 				return result;
 			}
@@ -144,12 +144,15 @@ export function useHomeSidebarAgentPanel({
 				key={taskId}
 				taskId={taskId}
 				summary={homeAgentPanelSummary ?? createIdleTaskSession(taskId)}
+				defaultMode="act"
+				workspaceId={currentProjectId}
+				runtimeConfig={runtimeProjectConfig}
 				onSendMessage={handleSendHomeClineChatMessage}
 				onCancelTurn={handleCancelHomeClineChatTurn}
 				onLoadMessages={handleLoadHomeClineChatMessages}
 				incomingMessage={latestHomeTaskChatMessage}
 				showRightBorder={false}
-				composerPlaceholder="Ask Cline anything about this repository"
+				composerPlaceholder="Ask Cline to add, edit, start, or link tasks"
 			/>
 		);
 	}

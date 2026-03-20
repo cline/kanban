@@ -29,14 +29,33 @@ export function getRuntimeClineProviderSettings(
 	);
 }
 
+export function isClineProviderAuthenticated(
+	settings: RuntimeClineProviderSettings | null | undefined,
+): boolean {
+	if (!settings) {
+		return false;
+	}
+	const hasProviderSelection =
+		(settings.providerId?.trim().length ?? 0) > 0 || (settings.oauthProvider?.trim().length ?? 0) > 0;
+	if (!hasProviderSelection) {
+		return false;
+	}
+	return settings.apiKeyConfigured || settings.oauthAccessTokenConfigured;
+}
+
 export function isTaskAgentSetupSatisfied(
-	config: Pick<RuntimeConfigResponse, "selectedAgentId" | "agents"> | null | undefined,
+	config: Pick<RuntimeConfigResponse, "selectedAgentId" | "agents" | "clineProviderSettings"> | null | undefined,
 ): boolean | null {
 	if (!config) {
 		return null;
 	}
 	if (isNativeClineAgentSelected(config.selectedAgentId)) {
-		return true;
+		if (isClineProviderAuthenticated(getRuntimeClineProviderSettings(config))) {
+			return true;
+		}
+		return config.agents.some(
+			(agent) => agent.id !== "cline" && isRuntimeAgentLaunchSupported(agent.id) && agent.installed,
+		);
 	}
 	return config.agents.some((agent) => isRuntimeAgentLaunchSupported(agent.id) && agent.installed);
 }

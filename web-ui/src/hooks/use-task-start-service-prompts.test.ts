@@ -110,7 +110,8 @@ describe("buildTaskStartServicePromptContent", () => {
 		const content = buildTaskStartServicePromptContent("agent_cli");
 		expect(content.installCommand).toBe("npm install -g cline");
 		expect(content.installButtonLabel).toBe("Run install command");
-		expect(content.description).toContain("No supported CLI agent was detected");
+		expect(content.title).toBe("Get started with Cline");
+		expect(content.description).toContain("No authenticated agent is ready yet");
 	});
 
 	it("returns opencode-specific linear guidance with oauth", () => {
