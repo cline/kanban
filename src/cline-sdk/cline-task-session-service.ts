@@ -110,6 +110,35 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return this.messageRepository.onMessage(listener);
 	}
 
+	private emitTaskFailure(
+		taskId: string,
+		entry: ClineTaskSessionEntry,
+		context: "start" | "send",
+		error: unknown,
+	): void {
+		const errorMessage = toErrorMessage(error);
+		const systemMessage = createMessage(taskId, "system", `Cline SDK ${context} failed: ${errorMessage}.`);
+		entry.messages.push(systemMessage);
+		this.emitMessage(taskId, systemMessage);
+		clearActiveTurnState(entry);
+		const failedSummary = updateSummary(entry, {
+			state: "failed",
+			reviewReason: "error",
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText: `${context === "start" ? "Start" : "Send"} failed: ${errorMessage}`,
+				toolName: null,
+				toolInputSummary: null,
+				finalMessage: errorMessage,
+				hookEventName: "agent_error",
+				notificationType: null,
+				source: "cline-sdk",
+			},
+		});
+		this.emitSummary(failedSummary);
+	}
+
 	async startTaskSession(request: StartClineTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const existing = this.messageRepository.getTaskEntry(request.taskId);
 		if (existing && (existing.summary.state === "running" || existing.summary.state === "awaiting_review")) {
@@ -195,19 +224,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					this.emitMessage(request.taskId, agentMessage);
 				}
 			} catch (error) {
-				const failedMessage = createMessage(
-					request.taskId,
-					"system",
-					`Cline SDK start failed: ${toErrorMessage(error)}.`,
-				);
-				entry.messages.push(failedMessage);
-				this.emitMessage(request.taskId, failedMessage);
-				const failedSummary = updateSummary(entry, {
-					state: "failed",
-					reviewReason: "exit",
-					lastOutputAt: now(),
-				});
-				this.emitSummary(failedSummary);
+				this.emitTaskFailure(request.taskId, entry, "start", error);
 			}
 		})();
 
@@ -336,13 +353,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					}
 				})
 				.catch((error: unknown) => {
-					const systemMessage = createMessage(
-						taskId,
-						"system",
-						`Cline SDK send failed: ${toErrorMessage(error)}.`,
-					);
-					entry.messages.push(systemMessage);
-					this.emitMessage(taskId, systemMessage);
+					this.emitTaskFailure(taskId, entry, "send", error);
 				});
 		}
 		const summary = updateSummary(entry, {

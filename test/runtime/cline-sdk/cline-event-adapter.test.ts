@@ -239,4 +239,58 @@ describe("applyClineSessionEvent", () => {
 		expect(result.messages[0]?.role).toBe("assistant");
 		expect(result.messages[0]?.content).toBe("Done. Added the comment.");
 	});
+
+	it("surfaces recoverable agent errors in the summary without failing the task", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "error",
+						error: new Error("Missing API key for provider \"cline\"."),
+						recoverable: true,
+						iteration: 1,
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("running");
+		expect(result.entry.summary.reviewReason).toBeNull();
+		expect(result.entry.summary.latestHookActivity?.hookEventName).toBe("agent_error");
+		expect(result.entry.summary.latestHookActivity?.activityText).toContain("Retrying after error");
+		expect(result.messages).toHaveLength(0);
+	});
+
+	it("marks unrecoverable agent errors as failed", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+		entry.activeAssistantMessageId = "assistant-1";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "error",
+						error: new Error("Unauthorized"),
+						recoverable: false,
+						iteration: 1,
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("failed");
+		expect(result.entry.summary.reviewReason).toBe("error");
+		expect(result.entry.summary.latestHookActivity?.finalMessage).toBe("Unauthorized");
+		expect(result.entry.activeAssistantMessageId).toBeNull();
+	});
 });

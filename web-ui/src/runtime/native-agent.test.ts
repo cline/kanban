@@ -86,6 +86,22 @@ describe("native-agent helpers", () => {
 		expect(isTaskAgentSetupSatisfied(null)).toBeNull();
 	});
 
+	it("ignores non-launch agents when checking native CLI availability", () => {
+		const config = createRuntimeConfigResponse("claude");
+		config.agents = [
+			{
+				id: "gemini",
+				label: "Gemini CLI",
+				binary: "gemini",
+				command: "gemini",
+				defaultArgs: [],
+				installed: true,
+				configured: false,
+			},
+		];
+		expect(isTaskAgentSetupSatisfied(config)).toBe(false);
+	});
+
 	it("selects the latest incoming chat message only for the matching task", () => {
 		const messageEvent = createLatestTaskChatMessage("task-1");
 		expect(selectLatestTaskChatMessageForTask("task-1", messageEvent)).toEqual(messageEvent.message);

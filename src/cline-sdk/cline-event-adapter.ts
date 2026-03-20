@@ -50,6 +50,22 @@ function getRetainedClineToolActivity(entry: ClineTaskSessionEntry): {
 	};
 }
 
+function extractAgentErrorMessage(error: unknown): string | null {
+	if (typeof error === "string") {
+		const normalized = error.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	if (error instanceof Error) {
+		const normalized = error.message.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+		const normalized = error.message.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	return null;
+}
+
 export function extractClineSessionId(event: unknown): string | null {
 	if (!event || typeof event !== "object" || !("payload" in event)) {
 		return null;
@@ -64,6 +80,54 @@ export function extractClineSessionId(event: unknown): string | null {
 // Translate raw SDK events into Kanban summary and chat mutations so the session service can stay focused on host ownership.
 export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void {
 	const { entry, event, taskId } = input;
+
+	if (
+		event &&
+		typeof event === "object" &&
+		"type" in event &&
+		event.type === "agent_event" &&
+		"payload" in event &&
+		event.payload &&
+		typeof event.payload === "object" &&
+		"event" in event.payload &&
+		event.payload.event &&
+		typeof event.payload.event === "object" &&
+		"type" in event.payload.event &&
+		event.payload.event.type === "error"
+	) {
+		const errorMessage =
+			"error" in event.payload.event ? extractAgentErrorMessage(event.payload.event.error) : null;
+		const recoverable =
+			"recoverable" in event.payload.event && typeof event.payload.event.recoverable === "boolean"
+				? event.payload.event.recoverable
+				: false;
+		const retainedToolActivity = getRetainedClineToolActivity(entry);
+		if (!recoverable) {
+			clearActiveTurnState(entry);
+		}
+		emitSummary(input, {
+			...(recoverable
+				? {}
+				: {
+						state: "failed",
+						reviewReason: "error",
+					}),
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText: recoverable
+					? `Retrying after error: ${errorMessage ?? "Unknown agent error"}`
+					: `Agent error: ${errorMessage ?? "Unknown agent error"}`,
+				toolName: retainedToolActivity.toolName,
+				toolInputSummary: retainedToolActivity.toolInputSummary,
+				finalMessage: recoverable ? null : (errorMessage ?? "Unknown agent error"),
+				hookEventName: "agent_error",
+				notificationType: null,
+				source: "cline-sdk",
+			},
+		});
+		return;
+	}
 
 	if (
 		event &&

@@ -10,6 +10,8 @@ import {
 	type ClineSdkSessionRecord,
 } from "./sdk-runtime-boundary.js";
 
+const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 3;
+
 export interface StartClineSessionRuntimeRequest {
 	taskId: string;
 	cwd: string;
@@ -75,6 +77,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 				enableTools: true,
 				enableSpawnAgent: false,
 				enableAgentTeams: false,
+				maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
 				systemPrompt: request.systemPrompt,
 			},
 			prompt: request.prompt,

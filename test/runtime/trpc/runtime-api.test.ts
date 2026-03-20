@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config.js";
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
@@ -133,6 +133,14 @@ function setSelectedProviderSettings(
 	);
 }
 
+function restoreEnvVar(name: "CLINE_API_KEY" | "OCA_API_KEY", value: string | undefined): void {
+	if (value === undefined) {
+		delete process.env[name];
+		return;
+	}
+	process.env[name] = value;
+}
+
 function createClineTaskSessionServiceMock() {
 	return {
 		startTaskSession: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary>>(async () =>
@@ -153,6 +161,9 @@ function createClineTaskSessionServiceMock() {
 }
 
 describe("createRuntimeApi startTaskSession", () => {
+	const originalClineApiKey = process.env.CLINE_API_KEY;
+	const originalOcaApiKey = process.env.OCA_API_KEY;
+
 	beforeEach(() => {
 		agentRegistryMocks.resolveAgentCommand.mockReset();
 		agentRegistryMocks.buildRuntimeConfigResponse.mockReset();
@@ -247,6 +258,11 @@ describe("createRuntimeApi startTaskSession", () => {
 				},
 			};
 		});
+	});
+
+	afterEach(() => {
+		restoreEnvVar("CLINE_API_KEY", originalClineApiKey);
+		restoreEnvVar("OCA_API_KEY", originalOcaApiKey);
 	});
 
 	it("reuses an existing worktree path before falling back to ensure", async () => {
@@ -344,6 +360,11 @@ describe("createRuntimeApi startTaskSession", () => {
 	it("routes cline start sessions to cline task session service", async () => {
 		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
+		setSelectedProviderSettings({
+			provider: "anthropic",
+			model: "claude-sonnet-4-6",
+			apiKey: "anthropic-api-key",
+		});
 
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary()),
@@ -384,10 +405,111 @@ describe("createRuntimeApi startTaskSession", () => {
 				taskId: "task-1",
 				cwd: "/tmp/existing-worktree",
 				prompt: "Continue task",
+				providerId: "anthropic",
+				apiKey: "anthropic-api-key",
 				resumeFromTrash: undefined,
 			}),
 		);
 		expect(terminalManager.startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("fails early when the cline provider is selected without cline credentials", async () => {
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
+		delete process.env.CLINE_API_KEY;
+		setSelectedProviderSettings({
+			provider: "cline",
+			model: "anthropic/claude-opus-4.6",
+		});
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => {
+				const runtimeConfigState = createRuntimeConfigState();
+				runtimeConfigState.selectedAgentId = "cline";
+				return runtimeConfigState;
+			}),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.startTaskSession(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "Continue task",
+			},
+		);
+
+		expect(response.ok).toBe(false);
+		expect(response.summary).toBeNull();
+		expect(response.error).toContain("no Cline credentials are configured");
+		expect(clineTaskSessionService.startTaskSession).not.toHaveBeenCalled();
+		expect(terminalManager.startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("allows the cline provider to launch when CLINE_API_KEY is present in the environment", async () => {
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
+		process.env.CLINE_API_KEY = "env-cline-api-key";
+		setSelectedProviderSettings({
+			provider: "cline",
+			model: "anthropic/claude-opus-4.6",
+		});
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => {
+				const runtimeConfigState = createRuntimeConfigState();
+				runtimeConfigState.selectedAgentId = "cline";
+				return runtimeConfigState;
+			}),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.startTaskSession(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "Continue task",
+			},
+		);
+
+		expect(response.ok).toBe(true);
+		expect(clineTaskSessionService.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				providerId: "cline",
+				apiKey: "env-cline-api-key",
+			}),
+		);
 	});
 
 	it("starts home agent sessions in the workspace root without resolving a task worktree", async () => {

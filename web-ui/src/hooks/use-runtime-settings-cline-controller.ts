@@ -9,6 +9,7 @@ import {
 	runClineProviderOauthLogin,
 	saveClineProviderSettings,
 } from "@/runtime/runtime-config-query";
+import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeClineOauthProvider,
@@ -68,7 +69,7 @@ function getEffectiveProviderSettings(
 	config: RuntimeConfigResponse | null,
 	override: RuntimeClineProviderSettings | null,
 ): RuntimeClineProviderSettings | null {
-	return override ?? config?.clineProviderSettings ?? null;
+	return override ?? getRuntimeClineProviderSettings(config);
 }
 
 export function useRuntimeSettingsClineController(
@@ -87,6 +88,7 @@ export function useRuntimeSettingsClineController(
 	const [isRunningOauthLogin, setIsRunningOauthLogin] = useState(false);
 
 	const effectiveProviderSettings = getEffectiveProviderSettings(config, providerSettingsOverride);
+	const configProviderSettings = getRuntimeClineProviderSettings(config);
 	const initialProviderId = effectiveProviderSettings?.providerId ?? effectiveProviderSettings?.oauthProvider ?? "";
 	const initialModelId = effectiveProviderSettings?.modelId ?? "";
 	const initialBaseUrl = effectiveProviderSettings?.baseUrl ?? "";
@@ -118,16 +120,16 @@ export function useRuntimeSettingsClineController(
 		if (!open) {
 			return;
 		}
-		setProviderId(config?.clineProviderSettings.providerId ?? config?.clineProviderSettings.oauthProvider ?? "");
-		setModelId(config?.clineProviderSettings.modelId ?? "");
+		setProviderId(configProviderSettings.providerId ?? configProviderSettings.oauthProvider ?? "");
+		setModelId(configProviderSettings.modelId ?? "");
 		setApiKey("");
-		setBaseUrl(config?.clineProviderSettings.baseUrl ?? "");
+		setBaseUrl(configProviderSettings.baseUrl ?? "");
 		setProviderSettingsOverride(null);
 	}, [
-		config?.clineProviderSettings.baseUrl,
-		config?.clineProviderSettings.modelId,
-		config?.clineProviderSettings.oauthProvider,
-		config?.clineProviderSettings.providerId,
+		configProviderSettings.baseUrl,
+		configProviderSettings.modelId,
+		configProviderSettings.oauthProvider,
+		configProviderSettings.providerId,
 		open,
 	]);
 
