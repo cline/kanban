@@ -202,6 +202,35 @@ describe("collectPendingTaskStartServicePrompts", () => {
 			}),
 		).toEqual([]);
 	});
+
+	it("shows agent cli prompt first when no supported agent is installed", () => {
+		expect(
+			collectPendingTaskStartServicePrompts({
+				tasks: [
+					{
+						taskId: "task-1",
+						prompt: "Use github and linear context",
+					},
+					{
+						taskId: "task-2",
+						prompt: "No integrations needed",
+					},
+				],
+				taskStartSetupAvailability: {
+					githubCli: true,
+					linearMcp: true,
+				},
+				isTaskAgentSetupSatisfied: false,
+				promptAcknowledgements: {},
+				isPromptDoNotShowAgainEnabled: () => false,
+			}),
+		).toEqual([
+			{
+				promptId: "agent_cli",
+				taskIds: ["task-1", "task-2"],
+			},
+		]);
+	});
 });
 
 describe("getStartableBacklogTaskIds", () => {
@@ -325,35 +354,7 @@ describe("getStartableBacklogTaskIds", () => {
 			dependencies: [{ id: "dep-1", fromTaskId: "task-a", toTaskId: "ghost", createdAt: 1 }],
 		});
 		expect(getStartableBacklogTaskIds(board)).toEqual(["task-a"]);
-	it("shows agent cli prompt first when no supported agent is installed", () => {
-		expect(
-			collectPendingTaskStartServicePrompts({
-				tasks: [
-					{
-						taskId: "task-1",
-						prompt: "Use github and linear context",
-					},
-					{
-						taskId: "task-2",
-						prompt: "No integrations needed",
-					},
-				],
-				taskStartSetupAvailability: {
-					githubCli: true,
-					linearMcp: true,
-				},
-				isTaskAgentSetupSatisfied: false,
-				promptAcknowledgements: {},
-				isPromptDoNotShowAgainEnabled: () => false,
-			}),
-		).toEqual([
-			{
-				promptId: "agent_cli",
-				taskIds: ["task-1", "task-2"],
-			},
-		]);
 	});
-});
 });
 
 describe("mergeTaskStartServicePromptQueue", () => {
