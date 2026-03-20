@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
+import type { RuntimeTaskSessionMode } from "../../../src/core/api-contract.js";
 import type {
 	ClinePersistedTaskSessionSnapshot,
 	ClineSessionRuntime,
@@ -38,7 +39,7 @@ function createDeferred<T>() {
 type StartTaskSessionMock = Mock<
 	(request: StartClineSessionRuntimeRequest & { sessionId: string }) => Promise<StartClineSessionRuntimeResult>
 >;
-type SendTaskSessionInputMock = Mock<(taskId: string, prompt: string) => Promise<unknown>>;
+type SendTaskSessionInputMock = Mock<(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode) => Promise<unknown>>;
 type StopTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type AbortTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type ReadPersistedTaskSessionMock = Mock<(taskId: string) => Promise<ClinePersistedTaskSessionSnapshot | null>>;
@@ -106,8 +107,8 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 				bindTaskSession(request.taskId, startResult.sessionId);
 				return startResult;
 			},
-			async sendTaskSessionInput(taskId: string, prompt: string): Promise<unknown> {
-				return await sendTaskSessionInputMock(taskId, prompt);
+			async sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown> {
+				return await sendTaskSessionInputMock(taskId, prompt, mode);
 			},
 			async resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
 				return await readPersistedTaskSessionMock(taskId);
@@ -256,28 +257,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
 				providerId: "anthropic",
-				mode: "act",
 				systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
-			}),
-		);
-	});
-
-	it("starts the SDK runtime in plan mode when requested", async () => {
-		const { service, runtime } = createTrackedService();
-
-		await service.startTaskSession({
-			taskId: "task-1",
-			cwd: "/tmp/worktree",
-			prompt: "Investigate startup",
-			startInPlanMode: true,
-		});
-		await vi.waitFor(() => {
-			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
-		});
-
-		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
-			expect.objectContaining({
-				mode: "plan",
 			}),
 		);
 	});
@@ -360,7 +340,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		const nextSummary = await service.sendTaskSessionInput("task-1", "Continue");
 
 		expect(nextSummary?.state).toBe("running");
-		expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "Continue");
+		expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "Continue", undefined);
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
 			"Recovered prompt",
 			"Recovered answer",

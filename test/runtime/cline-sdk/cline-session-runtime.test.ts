@@ -173,45 +173,6 @@ describe("InMemoryClineSessionRuntime", () => {
 		);
 	});
 
-	it("starts SDK sessions in plan mode when requested", async () => {
-		const fakeHost = {
-			start: vi.fn(async (input: { config?: { mode?: string; sessionId?: string } }) => ({
-				sessionId: input.config?.sessionId ?? "session-1",
-				result: {},
-			})),
-			send: vi.fn(async () => ({})),
-			stop: vi.fn(async () => {}),
-			abort: vi.fn(async () => {}),
-			dispose: vi.fn(async () => {}),
-			get: vi.fn(async () => undefined),
-			list: vi.fn(async () => []),
-			readMessages: vi.fn(async () => []),
-			subscribe: vi.fn(() => () => {}),
-		};
-
-		const runtime = createInMemoryClineSessionRuntime({
-			createSessionHost: async () => fakeHost,
-		});
-
-		await runtime.startTaskSession({
-			taskId: "task-1",
-			cwd: "/tmp/worktree",
-			prompt: "Investigate startup",
-			providerId: "anthropic",
-			modelId: "claude-sonnet-4-6",
-			mode: "plan",
-			systemPrompt: "You are a helpful coding assistant.",
-		});
-
-		expect(fakeHost.start).toHaveBeenCalledWith(
-			expect.objectContaining({
-				config: expect.objectContaining({
-					mode: "plan",
-				}),
-			}),
-		);
-	});
-
 	it("reads persisted task history by scanning task-prefixed SDK session ids", async () => {
 		const fakeHost = {
 			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({

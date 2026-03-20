@@ -411,7 +411,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				prompt: "Continue task",
 				providerId: "anthropic",
 				apiKey: "anthropic-api-key",
-				startInPlanMode: true,
+				mode: "plan",
 				resumeFromTrash: undefined,
 			}),
 		);
@@ -914,8 +914,8 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(clineTaskSessionService.rebindPersistedTaskSession).toHaveBeenCalledWith("task-1", {
 			workspacePath: "/tmp/repo",
 		});
-		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "continue");
-		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "continue");
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "continue", "act");
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "continue", "act");
 		expect(response.message).toEqual(latestMessage);
 	});
 
