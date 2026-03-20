@@ -632,6 +632,9 @@ export const runtimeTaskChatMessageSchema = z.object({
 			hookEventName: z.string().nullable().optional(),
 			toolCallId: z.string().nullable().optional(),
 			streamType: z.string().nullable().optional(),
+			messageKind: z.string().nullable().optional(),
+			displayRole: z.string().nullable().optional(),
+			reason: z.string().nullable().optional(),
 		})
 		.nullable()
 		.optional(),

@@ -165,13 +165,30 @@ function hydratePersistedMessage(
 	taskId: string,
 	message: ClineSdkPersistedMessage,
 ): void {
+	const record =
+		message && typeof message === "object" ? (message as Record<string, unknown>) : null;
+	const persistedMetadata =
+		record?.metadata && typeof record.metadata === "object" && !Array.isArray(record.metadata)
+			? (record.metadata as Record<string, unknown>)
+			: null;
+	const persistedDisplayRole =
+		typeof persistedMetadata?.displayRole === "string" ? persistedMetadata.displayRole.trim().toLowerCase() : "";
+	const persistedReason =
+		typeof persistedMetadata?.reason === "string" ? persistedMetadata.reason.trim() : null;
+	const persistedMessageKind =
+		typeof persistedMetadata?.kind === "string" ? persistedMetadata.kind.trim() : null;
+	const hydratedRole =
+		persistedDisplayRole === "system" || persistedDisplayRole === "status"
+			? (persistedDisplayRole as "system" | "status")
+			: message.role;
+
 	if (typeof message.content === "string") {
-		appendPersistedTextMessage(entry, taskId, message.role, message.content);
+		appendPersistedTextMessage(entry, taskId, hydratedRole, message.content, persistedMetadata, persistedReason, persistedMessageKind);
 		return;
 	}
 	for (const block of message.content) {
 		if (block.type === "text") {
-			appendPersistedTextMessage(entry, taskId, message.role, block.text);
+			appendPersistedTextMessage(entry, taskId, hydratedRole, block.text, persistedMetadata, persistedReason, persistedMessageKind);
 			continue;
 		}
 		if (block.type === "thinking") {
@@ -214,13 +231,25 @@ function hydratePersistedMessage(
 function appendPersistedTextMessage(
 	entry: ClineTaskSessionEntry,
 	taskId: string,
-	role: "user" | "assistant",
+	role: "user" | "assistant" | "system" | "status",
 	content: string,
+	metadata?: Record<string, unknown> | null,
+	reason?: string | null,
+	messageKind?: string | null,
 ): void {
 	if (content.trim().length === 0) {
 		return;
 	}
-	entry.messages.push(createMessage(taskId, role, content));
+	const meta =
+		metadata || reason || messageKind
+			? {
+					hookEventName: metadata ? "history_notice" : null,
+					messageKind: messageKind ?? null,
+					displayRole: typeof metadata?.displayRole === "string" ? metadata.displayRole : null,
+					reason: reason ?? null,
+			  }
+			: null;
+	entry.messages.push(meta ? createMessageWithMeta(taskId, role, content, meta) : createMessage(taskId, role, content));
 }
 
 function appendPersistedReasoningMessage(entry: ClineTaskSessionEntry, taskId: string, content: string): void {

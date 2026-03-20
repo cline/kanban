@@ -16,6 +16,7 @@ interface UseClineChatSessionInput {
 	) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
+	incomingMessages?: ClineChatMessage[] | null;
 	incomingMessage?: ClineChatMessage | null;
 }
 
@@ -66,6 +67,7 @@ export function useClineChatSession({
 	onSendMessage,
 	onCancelTurn,
 	onLoadMessages,
+	incomingMessages = null,
 	incomingMessage = null,
 }: UseClineChatSessionInput): UseClineChatSessionResult {
 	const [messages, setMessages] = useState<ClineChatMessage[]>([]);
@@ -110,6 +112,13 @@ export function useClineChatSession({
 			cancelled = true;
 		};
 	}, [onLoadMessages, taskId]);
+
+	useEffect(() => {
+		if (!incomingMessages || incomingMessages.length === 0) {
+			return;
+		}
+		setMessages((currentMessages) => mergeMessages(currentMessages, incomingMessages));
+	}, [incomingMessages]);
 
 	useEffect(() => {
 		if (!incomingMessage) {

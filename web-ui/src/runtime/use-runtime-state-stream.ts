@@ -7,6 +7,7 @@ import type {
 	RuntimeStateStreamSnapshotMessage,
 	RuntimeStateStreamTaskChatMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
+	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceMetadata,
 	RuntimeWorkspaceStateResponse,
@@ -47,6 +48,7 @@ export interface UseRuntimeStateStreamResult {
 	workspaceState: RuntimeWorkspaceStateResponse | null;
 	workspaceMetadata: RuntimeWorkspaceMetadata | null;
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
+	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -59,6 +61,7 @@ interface RuntimeStateStreamStore {
 	workspaceState: RuntimeWorkspaceStateResponse | null;
 	workspaceMetadata: RuntimeWorkspaceMetadata | null;
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
+	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
@@ -89,11 +92,35 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		workspaceState: null,
 		workspaceMetadata: null,
 		latestTaskChatMessage: null,
+		taskChatMessagesByTaskId: {},
 		latestTaskReadyForReview: null,
 		streamError: null,
 		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
 	};
+}
+
+function upsertTaskChatMessage(
+	currentMessages: RuntimeTaskChatMessage[],
+	nextMessage: RuntimeTaskChatMessage,
+): RuntimeTaskChatMessage[] {
+	const existingIndex = currentMessages.findIndex((message) => message.id === nextMessage.id);
+	if (existingIndex < 0) {
+		return [...currentMessages, nextMessage];
+	}
+	const existingMessage = currentMessages[existingIndex];
+	if (
+		existingMessage &&
+		existingMessage.content === nextMessage.content &&
+		existingMessage.role === nextMessage.role &&
+		existingMessage.createdAt === nextMessage.createdAt &&
+		JSON.stringify(existingMessage.meta ?? null) === JSON.stringify(nextMessage.meta ?? null)
+	) {
+		return currentMessages;
+	}
+	const nextMessages = [...currentMessages];
+	nextMessages[existingIndex] = nextMessage;
+	return nextMessages;
 }
 
 function resolveProjectIdAfterProjectsUpdate(
@@ -116,6 +143,7 @@ function runtimeStateStreamReducer(
 			workspaceState: null,
 			workspaceMetadata: null,
 			latestTaskChatMessage: null,
+			taskChatMessagesByTaskId: {},
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: false,
@@ -144,6 +172,7 @@ function runtimeStateStreamReducer(
 			workspaceState: nextWorkspaceState,
 			workspaceMetadata: action.payload.workspaceMetadata,
 			latestTaskChatMessage: null,
+			taskChatMessagesByTaskId: {},
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
 			streamError: null,
 			isRuntimeDisconnected: false,
@@ -159,14 +188,20 @@ function runtimeStateStreamReducer(
 			workspaceState: didProjectChange ? null : state.workspaceState,
 			workspaceMetadata: didProjectChange ? null : state.workspaceMetadata,
 			latestTaskChatMessage: didProjectChange ? null : state.latestTaskChatMessage,
+			taskChatMessagesByTaskId: didProjectChange ? {} : state.taskChatMessagesByTaskId,
 			latestTaskReadyForReview: didProjectChange ? null : state.latestTaskReadyForReview,
 			hasReceivedSnapshot: true,
 		};
 	}
 	if (action.type === "task_chat_message") {
+		const currentTaskMessages = state.taskChatMessagesByTaskId[action.payload.taskId] ?? [];
 		return {
 			...state,
 			latestTaskChatMessage: action.payload,
+			taskChatMessagesByTaskId: {
+				...state.taskChatMessagesByTaskId,
+				[action.payload.taskId]: upsertTaskChatMessage(currentTaskMessages, action.payload.message),
+			},
 		};
 	}
 	if (action.type === "workspace_metadata_updated") {
@@ -409,6 +444,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		workspaceState: state.workspaceState,
 		workspaceMetadata: state.workspaceMetadata,
 		latestTaskChatMessage: state.latestTaskChatMessage,
+		taskChatMessagesByTaskId: state.taskChatMessagesByTaskId,
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,

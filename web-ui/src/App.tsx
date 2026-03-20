@@ -49,7 +49,7 @@ import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
 import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-prompts";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
-import { isTaskAgentSetupSatisfied, selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
+import { isTaskAgentSetupSatisfied, selectTaskChatMessagesForTask } from "@/runtime/native-agent";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -90,7 +90,7 @@ export default function App(): ReactElement {
 		projects,
 		workspaceState: streamedWorkspaceState,
 		workspaceMetadata,
-		latestTaskChatMessage,
+		taskChatMessagesByTaskId,
 		latestTaskReadyForReview,
 		streamError,
 		isRuntimeDisconnected,
@@ -378,7 +378,7 @@ export default function App(): ReactElement {
 		runtimeProjectConfig,
 		taskSessions: sessions,
 		workspaceGit,
-		latestTaskChatMessage,
+		taskChatMessagesByTaskId,
 	});
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut } = useShortcutActions({
 		currentProjectId,
@@ -673,9 +673,9 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
-	const latestSelectedTaskChatMessage = selectLatestTaskChatMessageForTask(
+	const selectedTaskChatMessages = selectTaskChatMessagesForTask(
 		selectedCard?.card.id,
-		latestTaskChatMessage,
+		taskChatMessagesByTaskId,
 	);
 	const handleCreateDialogOpenChange = useCallback(
 		(open: boolean) => {
@@ -946,7 +946,8 @@ export default function App(): ReactElement {
 								onSendClineChatMessage={sendTaskChatMessage}
 								onCancelClineChatTurn={cancelTaskChatTurn}
 								onLoadClineChatMessages={fetchTaskChatMessages}
-								latestClineChatMessage={latestSelectedTaskChatMessage}
+								latestClineChatMessage={null}
+								streamedClineChatMessages={selectedTaskChatMessages}
 								onMoveToTrash={handleMoveToTrash}
 								isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}
 								gitHistoryPanel={

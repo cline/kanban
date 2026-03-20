@@ -19,6 +19,7 @@ interface UseClineChatPanelControllerInput {
 	) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
+	incomingMessages?: ClineChatMessage[] | null;
 	incomingMessage?: ClineChatMessage | null;
 	onCommit?: () => void;
 	onOpenPr?: () => void;
@@ -136,6 +137,7 @@ export function useClineChatPanelController({
 	onSendMessage,
 	onCancelTurn,
 	onLoadMessages,
+	incomingMessages = null,
 	incomingMessage = null,
 	onCommit,
 	onOpenPr,
@@ -151,6 +153,7 @@ export function useClineChatPanelController({
 		onSendMessage,
 		onCancelTurn,
 		onLoadMessages,
+		incomingMessages,
 		incomingMessage,
 	});
 	const canSend = Boolean(onSendMessage) && !isSending && !isCanceling;
