@@ -1,4 +1,5 @@
 import { getClineToolCallDisplay } from "@runtime-cline-tool-call-display";
+import { stripAnsi } from "@/utils/strip-ansi";
 
 export interface ParsedToolMessageContent {
 	toolName: string;
@@ -79,8 +80,8 @@ function toToolOutputResult(item: {
 }): ToolOutputResult {
 	return {
 		query: String(item.query ?? ""),
-		content: item.result,
-		error: typeof item.error === "string" ? item.error : null,
+		content: stripAnsi(item.result),
+		error: typeof item.error === "string" ? stripAnsi(item.error) : null,
 		success: item.success,
 	};
 }
@@ -157,11 +158,14 @@ export function parseToolMessageContent(content: string): ParsedToolMessageConte
 		}
 	}
 
+	const rawOutput = normalizeSectionValue(sections.output);
+	const rawError = normalizeSectionValue(sections.error);
+
 	return {
 		toolName,
 		input: normalizeSectionValue(sections.input),
-		output: normalizeSectionValue(sections.output),
-		error: normalizeSectionValue(sections.error),
+		output: rawOutput !== null ? stripAnsi(rawOutput) : null,
+		error: rawError !== null ? stripAnsi(rawError) : null,
 		durationMs,
 	};
 }

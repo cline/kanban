@@ -551,6 +551,28 @@ describe("InMemoryClineTaskSessionService", () => {
 		sendDeferred.resolve({ text: "done" });
 	});
 
+	it("marks the task failed when native Cline startup throws", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.startTaskSessionMock.mockRejectedValueOnce(new Error("Missing API key for provider \"cline\"."));
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+
+		await vi.waitFor(() => {
+			expect(service.getSummary("task-1")?.state).toBe("failed");
+		});
+
+		expect(service.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(service.getSummary("task-1")?.latestHookActivity?.hookEventName).toBe("agent_error");
+		expect(service.getSummary("task-1")?.latestHookActivity?.finalMessage).toContain("Missing API key");
+		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK start failed"))).toBe(
+			true,
+		);
+	});
+
 	it("does not duplicate assistant output when stream and send result both include final text", async () => {
 		const { service, runtime } = createTrackedService();
 		const sendDeferred = createDeferred<unknown>();

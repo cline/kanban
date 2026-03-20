@@ -40,6 +40,35 @@ describe("parseToolMessageContent", () => {
 		expect(parsed.error).toBe("Command failed");
 		expect(parsed.durationMs).toBeNull();
 	});
+
+	it("strips ANSI escape codes from output", () => {
+		const parsed = parseToolMessageContent(
+			[
+				"Tool: Bash",
+				"Input:",
+				"npm test",
+				"Output:",
+				"\x1b[1m\x1b[46m RUN \x1b[49m\x1b[22m src/app.test.ts",
+				"\x1b[32m ✓\x1b[39m should work",
+			].join("\n"),
+		);
+
+		expect(parsed.output).toBe(" RUN  src/app.test.ts\n ✓ should work");
+	});
+
+	it("strips ANSI escape codes from error", () => {
+		const parsed = parseToolMessageContent(
+			[
+				"Tool: Bash",
+				"Input:",
+				"npm test",
+				"Error:",
+				"\x1b[31mFailed\x1b[39m: test suite crashed",
+			].join("\n"),
+		);
+
+		expect(parsed.error).toBe("Failed: test suite crashed");
+	});
 });
 
 describe("getToolSummary", () => {
