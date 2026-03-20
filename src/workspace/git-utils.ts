@@ -65,3 +65,30 @@ export async function getGitStdout(args: string[], cwd: string, options: RunGitO
 
 	return result.stdout
 }
+
+// ---------------------------------------------------------------------------
+// Git HEAD helpers
+// ---------------------------------------------------------------------------
+
+export interface GitHeadInfo {
+	branch: string | null;
+	headCommit: string | null;
+	isDetached: boolean;
+}
+
+/**
+ * Read the current HEAD commit, branch name, and detached state for a
+ * repository (or worktree) at `cwd`.
+ */
+export async function readGitHeadInfo(cwd: string): Promise<GitHeadInfo> {
+	const headResult = await runGit(cwd, ["rev-parse", "--verify", "HEAD"]);
+	const headCommit = headResult.ok ? headResult.stdout : null;
+	const branchResult = await runGit(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+	const branch = branchResult.ok ? branchResult.stdout : null;
+	return {
+		branch,
+		headCommit,
+		isDetached: headCommit !== null && branch === null,
+	};
+}
+

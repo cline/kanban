@@ -1,14 +1,11 @@
-import { execFile } from "node:child_process";
 import { access, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
 
 import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract.js";
-import { createGitProcessEnv } from "../core/git-process-env.js";
 import { lockedFileSystem } from "../fs/locked-file-system.js";
 import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
 import {
@@ -16,9 +13,8 @@ import {
 	KANBAN_TASK_WORKTREES_DIR_NAME,
 	normalizeTaskIdForWorktreePath,
 } from "./task-worktree-path.js";
+import { getGitStdout, readGitHeadInfo, runGit } from "./git-utils.js";
 
-const execFileAsync = promisify(execFile);
-const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
 const KANBAN_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
@@ -70,50 +66,6 @@ async function pathExists(path: string): Promise<boolean> {
 	}
 }
 
-async function runGit(args: string[]): Promise<string> {
-	const stdout = await runGitRaw(args);
-	return stdout.trim();
-}
-
-async function runGitRaw(args: string[]): Promise<string> {
-	const { stdout } = await execFileAsync("git", args, {
-		encoding: "utf8",
-		maxBuffer: GIT_MAX_BUFFER_BYTES,
-		env: createGitProcessEnv(),
-	});
-	return String(stdout);
-}
-
-function getExecExitCode(error: unknown): number | null {
-	if (error && typeof error === "object" && "code" in error) {
-		const code = (error as { code?: unknown }).code;
-		return typeof code === "number" ? code : null;
-	}
-	return null;
-}
-
-async function runGitRawAllowExitCodes(args: string[], allowedExitCodes: number[]): Promise<string> {
-	try {
-		return await runGitRaw(args);
-	} catch (error) {
-		const exitCode = getExecExitCode(error);
-		if (exitCode !== null && allowedExitCodes.includes(exitCode)) {
-			return String((error as { stdout?: unknown }).stdout ?? "");
-		}
-		throw error;
-	}
-}
-
-function getGitCommandErrorMessage(error: unknown): string {
-	if (error && typeof error === "object" && "stderr" in error) {
-		const stderr = (error as { stderr?: unknown }).stderr;
-		if (typeof stderr === "string" && stderr.trim()) {
-			return stderr.trim();
-		}
-	}
-	return error instanceof Error ? error.message : String(error);
-}
-
 function isMissingInitialCommitError(message: string): boolean {
 	const normalizedMessage = message.trim().toLowerCase();
 	if (!normalizedMessage) {
@@ -128,35 +80,12 @@ function isMissingInitialCommitError(message: string): boolean {
 	);
 }
 
-function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, error: unknown): string {
-	const gitMessage = getGitCommandErrorMessage(error);
-	if (!isMissingInitialCommitError(gitMessage)) {
-		return gitMessage;
+function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, errorMessage: string): string {
+	if (!isMissingInitialCommitError(errorMessage)) {
+		return errorMessage;
 	}
 
 	return `This repository does not have an initial commit yet, so Kanban cannot create a task worktree from base ref "${baseRef}". Create an initial commit, then try moving the task to in progress again.`;
-}
-
-async function tryRunGit(args: string[]): Promise<string | null> {
-	try {
-		return await runGit(args);
-	} catch {
-		return null;
-	}
-}
-
-async function readGitHeadInfo(cwd: string): Promise<{
-	branch: string | null;
-	headCommit: string | null;
-	isDetached: boolean;
-}> {
-	const headCommit = await tryRunGit(["-C", cwd, "rev-parse", "--verify", "HEAD"]);
-	const branch = await tryRunGit(["-C", cwd, "symbolic-ref", "--quiet", "--short", "HEAD"]);
-	return {
-		branch,
-		headCommit,
-		isDetached: headCommit !== null && branch === null,
-	};
 }
 
 function getWorktreesRootPath(taskId: string): string {
@@ -228,7 +157,8 @@ function ensureTrailingNewline(value: string): string {
 }
 
 async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
-	const output = await runGitRaw(["-C", worktreePath, "ls-files", "--others", "--exclude-standard", "-z"]);
+	// Original used runGitRaw (throws on failure).
+	const output = await getGitStdout(["ls-files", "--others", "--exclude-standard", "-z"], worktreePath, { trimStdout: false });
 	return output
 		.split("\0")
 		.map((path) => path.trim())
@@ -236,15 +166,25 @@ async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
 }
 
 async function captureTaskPatch(options: { repoPath: string; taskId: string; worktreePath: string }): Promise<void> {
-	const headCommit = await runGit(["-C", options.worktreePath, "rev-parse", "--verify", "HEAD"]);
-	const trackedPatch = await runGitRawAllowExitCodes(["-C", options.worktreePath, "diff", "--binary", "HEAD", "--"], [1]);
+	const headCommit = await getGitStdout(["rev-parse", "--verify", "HEAD"], options.worktreePath);
+
+	const trackedResult = await runGit(options.worktreePath, ["diff", "--binary", "HEAD", "--"], { trimStdout: false });
+	if (!trackedResult.ok && trackedResult.exitCode !== 1) {
+		throw new Error(trackedResult.error ?? "Failed to capture tracked diff.");
+	}
+	const trackedPatch = trackedResult.stdout;
 	const patchChunks = trackedPatch.trim().length > 0 ? [ensureTrailingNewline(trackedPatch)] : [];
 
 	for (const relativePath of await listUntrackedPaths(options.worktreePath)) {
-		const untrackedPatch = await runGitRawAllowExitCodes(
-			["-C", options.worktreePath, "diff", "--binary", "--no-index", "--", "/dev/null", relativePath],
-			[1],
+		const untrackedResult = await runGit(
+			options.worktreePath,
+			["diff", "--binary", "--no-index", "--", "/dev/null", relativePath],
+			{ trimStdout: false },
 		);
+		if (!untrackedResult.ok && untrackedResult.exitCode !== 1) {
+			throw new Error(untrackedResult.error ?? "Failed to capture untracked diff.");
+		}
+		const untrackedPatch = untrackedResult.stdout;
 		if (untrackedPatch.trim().length > 0) {
 			patchChunks.push(ensureTrailingNewline(untrackedPatch));
 		}
@@ -265,11 +205,7 @@ async function captureTaskPatch(options: { repoPath: string; taskId: string; wor
 }
 
 async function applyTaskPatch(patchPath: string, worktreePath: string): Promise<void> {
-	await execFileAsync("git", ["-C", worktreePath, "apply", "--binary", "--whitespace=nowarn", patchPath], {
-		encoding: "utf8",
-		maxBuffer: GIT_MAX_BUFFER_BYTES,
-		env: createGitProcessEnv(),
-	});
+	await getGitStdout(["apply", "--binary", "--whitespace=nowarn", patchPath], worktreePath);
 }
 
 function shouldSkipSymlink(relativePath: string): boolean {
@@ -307,15 +243,13 @@ function getUniquePaths(relativePaths: string[]): string[] {
 }
 
 async function listIgnoredPaths(repoPath: string): Promise<string[]> {
-	const output = await runGit([
-		"-C",
-		repoPath,
+	const output = await getGitStdout([
 		"ls-files",
 		"--others",
 		"--ignored",
 		"--exclude-per-directory=.gitignore",
 		"--directory",
-	]);
+	], repoPath);
 	return output
 		.split("\n")
 		.map((line) => toPlatformRelativePath(line))
@@ -328,16 +262,14 @@ async function worktreeHasConfiguredSubmodules(worktreePath: string): Promise<bo
 		return false;
 	}
 
-	const output = await tryRunGit([
-		"-C",
-		worktreePath,
+	const result = await runGit(worktreePath, [
 		"config",
 		"--file",
 		gitmodulesPath,
 		"--get-regexp",
 		"^submodule\\..*\\.path$",
 	]);
-	return output !== null && output.trim().length > 0;
+	return result.ok && result.stdout.length > 0;
 }
 
 function escapeGitIgnoreLiteral(path: string): string {
@@ -369,7 +301,7 @@ function stripManagedExcludeBlock(content: string): string {
 }
 
 async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: string[]): Promise<void> {
-	const excludePathOutput = (await runGit(["-C", repoPath, "rev-parse", "--git-path", "info/exclude"])).trim();
+	const excludePathOutput = await getGitStdout(["rev-parse", "--git-path", "info/exclude"], repoPath);
 	if (!excludePathOutput) {
 		return;
 	}
@@ -432,7 +364,7 @@ async function initializeSubmodulesIfNeeded(worktreePath: string): Promise<void>
 		return;
 	}
 
-	await runGit(["-C", worktreePath, "submodule", "update", "--init", "--recursive"]);
+	await getGitStdout(["submodule", "update", "--init", "--recursive"], worktreePath);
 }
 
 async function prepareNewTaskWorktree(repoPath: string, worktreePath: string): Promise<void> {
@@ -447,7 +379,7 @@ async function prepareNewTaskWorktree(repoPath: string, worktreePath: string): P
 
 async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
-	await tryRunGit(["-C", repoPath, "worktree", "remove", "--force", worktreePath]);
+	await runGit(repoPath, ["worktree", "remove", "--force", worktreePath]);
 	await rm(worktreePath, { recursive: true, force: true });
 	return existed;
 }
@@ -481,14 +413,14 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 		// compared the worktree HEAD to the latest baseRef commit and recreated the worktree
 		// when the base branch advanced, which could destroy valid task progress. Existing
 		// worktrees are now treated as authoritative and only missing worktrees are created.
-		const existingCommit = await tryRunGit(["-C", worktreePath, "rev-parse", "HEAD"]);
-		if (existingCommit) {
+		const existingResult = await runGit(worktreePath, ["rev-parse", "HEAD"]);
+		if (existingResult.ok && existingResult.stdout) {
 			await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
 			return {
 				ok: true,
 				path: worktreePath,
 				baseRef: options.baseRef.trim(),
-				baseCommit: existingCommit,
+				baseCommit: existingResult.stdout,
 			};
 		}
 
@@ -503,18 +435,17 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			};
 		}
 
-		let requestedBaseCommit: string;
-		try {
-			requestedBaseCommit = await runGit(["-C", context.repoPath, "rev-parse", "--verify", `${requestedBaseRef}^{commit}`]);
-		} catch (error) {
+		const baseRefResult = await runGit(context.repoPath, ["rev-parse", "--verify", `${requestedBaseRef}^{commit}`]);
+		if (!baseRefResult.ok) {
 			return {
 				ok: false,
 				path: null,
 				baseRef: requestedBaseRef,
 				baseCommit: null,
-				error: getWorktreeBaseRefResolutionErrorMessage(requestedBaseRef, error),
+				error: getWorktreeBaseRefResolutionErrorMessage(requestedBaseRef, baseRefResult.stderr || baseRefResult.output),
 			};
 		}
+		const requestedBaseCommit = baseRefResult.stdout;
 
 		const storedPatch = await findTaskPatch(taskId);
 		let baseCommit = storedPatch?.commit ?? requestedBaseCommit;
@@ -525,22 +456,21 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 		}
 
 		await mkdir(dirname(worktreePath), { recursive: true });
-		try {
-			await runGit(["-C", context.repoPath, "worktree", "add", "--detach", worktreePath, baseCommit]);
-		} catch (error) {
+		const addResult = await runGit(context.repoPath, ["worktree", "add", "--detach", worktreePath, baseCommit]);
+		if (!addResult.ok) {
 			if (!storedPatch) {
 				return {
 					ok: false,
 					path: null,
 					baseRef: requestedBaseRef,
 					baseCommit: null,
-					error: getGitCommandErrorMessage(error),
+					error: addResult.stderr || addResult.output,
 				};
 			}
 
 			baseCommit = requestedBaseCommit;
 			warning = "Could not restore the saved task patch onto its original commit. Started from the task base ref instead.";
-			await runGit(["-C", context.repoPath, "worktree", "add", "--detach", worktreePath, baseCommit]);
+			await getGitStdout(["worktree", "add", "--detach", worktreePath, baseCommit], context.repoPath);
 		}
 		await prepareNewTaskWorktree(context.repoPath, worktreePath);
 
@@ -549,7 +479,8 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				await applyTaskPatch(storedPatch.path, worktreePath);
 				await rm(storedPatch.path, { force: true });
 			} catch (error) {
-				warning = `Saved task changes could not be reapplied automatically. ${getGitCommandErrorMessage(error)}`;
+				const patchError = error instanceof Error ? error.message : String(error);
+				warning = `Saved task changes could not be reapplied automatically. ${patchError}`;
 			}
 		}
 
