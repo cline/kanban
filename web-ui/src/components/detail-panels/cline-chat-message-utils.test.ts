@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getToolSummary, parseToolMessageContent } from "@/components/detail-panels/cline-chat-message-utils";
+import { formatToolInputForDisplay, getToolSummary, parseToolMessageContent } from "@/components/detail-panels/cline-chat-message-utils";
 import { getClineToolCallDisplay } from "@runtime-cline-tool-call-display";
 
 describe("parseToolMessageContent", () => {
@@ -68,5 +68,46 @@ describe("getToolSummary", () => {
 		expect(getToolSummary("readfiles", JSON.stringify(["/tmp/a.ts", "/tmp/b.ts"]))).toBe(
 			"/tmp/a.ts, /tmp/b.ts",
 		);
+	});
+});
+
+describe("formatToolInputForDisplay", () => {
+	it("returns the full command list for run_commands", () => {
+		const input = JSON.stringify({
+			commands: [
+				"find /some/very/long/path -type f -name '*.ts' | head -80",
+				"cat /some/other/file.txt",
+			],
+		});
+		expect(formatToolInputForDisplay("run_commands", input)).toBe(
+			"find /some/very/long/path -type f -name '*.ts' | head -80\ncat /some/other/file.txt",
+		);
+	});
+
+	it("returns the full command for a single run_commands entry", () => {
+		const input = JSON.stringify({
+			commands: ["git log --oneline --all --graph --decorate | head -50"],
+		});
+		expect(formatToolInputForDisplay("run_commands", input)).toBe(
+			"git log --oneline --all --graph --decorate | head -50",
+		);
+	});
+
+	it("returns null for non-run_commands tools", () => {
+		const input = JSON.stringify({ file_paths: ["/tmp/a.ts"] });
+		expect(formatToolInputForDisplay("read_files", input)).toBeNull();
+	});
+
+	it("returns null for null input", () => {
+		expect(formatToolInputForDisplay("run_commands", null)).toBeNull();
+	});
+
+	it("returns null for invalid JSON input", () => {
+		expect(formatToolInputForDisplay("run_commands", "not json")).toBeNull();
+	});
+
+	it("returns null for empty commands array", () => {
+		const input = JSON.stringify({ commands: [] });
+		expect(formatToolInputForDisplay("run_commands", input)).toBeNull();
 	});
 });

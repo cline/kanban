@@ -16,6 +16,41 @@ export function getToolSummary(toolName: string, input: string | null): string |
 	return getClineToolCallDisplay(toolName, input).inputSummary;
 }
 
+/**
+ * Formats the raw tool input into a human-readable string for the expanded view.
+ * For tools like run_commands, this extracts the full command list so users can
+ * see the complete commands that were executed.
+ * Returns null when the input adds no value beyond the collapsed summary.
+ */
+export function formatToolInputForDisplay(toolName: string, input: string | null): string | null {
+	if (!input) {
+		return null;
+	}
+
+	try {
+		const parsed: unknown = JSON.parse(input);
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+			return null;
+		}
+		const record = parsed as Record<string, unknown>;
+		const normalized = toolName.toLowerCase().replace(/[^a-z]/g, "");
+
+		if (normalized === "runcommands" && Array.isArray(record.commands)) {
+			const commands = record.commands
+				.map((cmd) => String(cmd))
+				.filter((cmd) => cmd.length > 0);
+			if (commands.length === 0) {
+				return null;
+			}
+			return commands.join("\n");
+		}
+	} catch {
+		return null;
+	}
+
+	return null;
+}
+
 export interface ToolOutputResult {
 	query: string;
 	content: string;
