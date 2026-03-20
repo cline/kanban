@@ -147,9 +147,9 @@ export function GitRefsPanel({
 				<Tooltip
 					content={
 						<div style={{ maxWidth: 260, whiteSpace: "normal", lineHeight: 1.4 }}>
-							Click the branch button in the navbar to close this view. Double-click a branch to switch the
-							workspace branch. Remote refs show fetched upstream positions and can be opened to inspect incoming
-							commits.
+							Press Esc, use Cmd/Ctrl+G, or click the branch button in the navbar to close this view.
+							 Double-click a branch to switch the workspace branch. Remote refs show fetched upstream positions
+							 and can be opened to inspect incoming commits.
 						</div>
 					}
 					side="bottom"

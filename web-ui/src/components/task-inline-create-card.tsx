@@ -1,13 +1,13 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
-import type { ReactElement } from "react";
+import { useCallback, useRef, useState, type ReactElement } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import type { TaskAutoReviewMode } from "@/types";
-import { useMeasure } from "@/utils/react-use";
+import { useDocumentEvent, useMeasure } from "@/utils/react-use";
 
 export type TaskInlineCardMode = "create" | "edit";
 
@@ -64,7 +64,7 @@ export function TaskInlineCreateCard({
 	onPromptChange: (value: string) => void;
 	onCreate: () => void;
 	onCreateAndStart?: () => void;
-	onCancel: () => void;
+	onCancel?: () => void;
 	startInPlanMode: boolean;
 	onStartInPlanModeChange: (value: boolean) => void;
 	autoReviewEnabled: boolean;
@@ -86,7 +86,18 @@ export function TaskInlineCreateCard({
 	const autoReviewModeId = `${idPrefix}-auto-review-mode-select`;
 	const branchSelectId = `${idPrefix}-branch-select`;
 	const actionLabel = mode === "edit" ? "Save" : "Create";
-	const [cardRef, cardRect] = useMeasure<HTMLDivElement>();
+	const [measureRef, cardRect] = useMeasure<HTMLDivElement>();
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const [isBranchPopoverOpen, setIsBranchPopoverOpen] = useState(false);
+	const setCardRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			containerRef.current = node;
+			if (node) {
+				measureRef(node);
+			}
+		},
+		[measureRef],
+	);
 	const isCompactActions = cardRect.width > 0 && cardRect.width < COMPACT_ACTIONS_WIDTH_THRESHOLD_PX;
 	const hideCancelShortcut = isCompactActions;
 	const hideCreateShortcut = mode === "create" && isCompactActions;
@@ -96,24 +107,45 @@ export function TaskInlineCreateCard({
 	useHotkeys(
 		"esc",
 		(event) => {
+			if (!onCancel || mode === "edit") {
+				return;
+			}
 			if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
 				return;
 			}
 			onCancel();
 		},
 		{
-			enabled,
+			enabled: enabled && Boolean(onCancel) && mode !== "edit",
 			enableOnFormTags: true,
 			enableOnContentEditable: true,
 			ignoreEventWhen: (event) => event.defaultPrevented,
 			preventDefault: true,
 		},
-		[enabled, onCancel],
+		[enabled, mode, onCancel],
+	);
+
+	useDocumentEvent(
+		"pointerdown",
+		(event) => {
+			if (!enabled || mode !== "edit" || isBranchPopoverOpen) {
+				return;
+			}
+			const container = containerRef.current;
+			if (!container) {
+				return;
+			}
+			if (event.target instanceof Node && container.contains(event.target)) {
+				return;
+			}
+			onCreate();
+		},
+		true,
 	);
 
 	return (
 		<div
-			ref={cardRef}
+			ref={setCardRef}
 			className="rounded-md border border-border-bright bg-surface-2 p-3"
 			style={{ flexShrink: 0, marginBottom: cardMarginBottom, fontSize: 12 }}
 		>
@@ -162,6 +194,7 @@ export function TaskInlineCreateCard({
 						options={branchOptions}
 						selectedValue={branchRef}
 						onSelect={onBranchRefChange}
+						onPopoverOpenChange={setIsBranchPopoverOpen}
 						fill
 						size="sm"
 						emptyText="No branches detected"
@@ -211,10 +244,12 @@ export function TaskInlineCreateCard({
 				</div>
 			</div>
 
-			<div className="flex justify-between gap-2 mt-3">
-				<Button variant="default" size="sm" className="whitespace-nowrap" onClick={onCancel}>
-					{cancelLabel}
-				</Button>
+			<div className={`flex gap-2 mt-3 ${mode === "edit" ? "justify-end" : "justify-between"}`}>
+				{mode === "create" && onCancel ? (
+					<Button variant="default" size="sm" className="whitespace-nowrap" onClick={onCancel}>
+						{cancelLabel}
+					</Button>
+				) : null}
 				<div className="flex gap-2">
 					<Button
 						size="sm"

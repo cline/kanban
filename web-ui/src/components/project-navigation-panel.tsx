@@ -8,8 +8,11 @@ import { cn } from "@/components/ui/cn";
 import {
 	AlertDialog,
 	AlertDialogAction,
+	AlertDialogBody,
 	AlertDialogCancel,
 	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
@@ -109,34 +112,16 @@ export function ProjectNavigationPanel({
 
 			{activeSection === "projects" ? (
 				<>
-					<div className="flex items-center justify-between" style={{ padding: "4px 12px" }}>
-						<span className="text-text-tertiary text-xs font-medium uppercase tracking-wide">Projects</span>
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={<Plus size={14} />}
-							onClick={onAddProject}
-							aria-label="Add project"
-							disabled={removingProjectId !== null}
-						/>
-					</div>
-
 					<div
 						className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1"
-						style={{ padding: "4px 0" }}
+						style={{ padding: "4px 12px" }}
 					>
-						{sortedProjects.length === 0 ? (
-							isLoadingProjects ? (
-								<div style={{ padding: "4px 0" }}>
-									{Array.from({ length: 3 }).map((_, index) => (
-										<ProjectRowSkeleton key={`project-skeleton-${index}`} />
-									))}
-								</div>
-							) : (
-								<div className="text-center" style={{ padding: "24px 12px" }}>
-									<span className="text-text-secondary">No projects yet</span>
-								</div>
-							)
+						{sortedProjects.length === 0 && isLoadingProjects ? (
+							<div style={{ padding: "4px 0" }}>
+								{Array.from({ length: 3 }).map((_, index) => (
+									<ProjectRowSkeleton key={`project-skeleton-${index}`} />
+								))}
+							</div>
 						) : null}
 
 						{sortedProjects.map((project) => (
@@ -155,8 +140,30 @@ export function ProjectNavigationPanel({
 								}}
 							/>
 						))}
+
+						{!isLoadingProjects ? (
+							<button
+								type="button"
+								className="kb-project-row flex cursor-pointer items-center gap-1.5 rounded-md text-text-secondary hover:text-text-primary"
+								style={{ padding: "6px 8px" }}
+								onClick={onAddProject}
+								disabled={removingProjectId !== null}
+							>
+								<Plus size={14} className="shrink-0" />
+								<span className="text-sm">Add project</span>
+							</button>
+						) : null}
 					</div>
 					<ShortcutsCard />
+					<a
+						href="https://cline.bot"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-text-tertiary hover:text-text-primary text-center block text-xs"
+						style={{ padding: "6px 12px" }}
+					>
+						Made with <Heart size={10} fill="currentColor" className="inline-block" /> by Cline
+					</a>
 				</>
 			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
@@ -169,15 +176,6 @@ export function ProjectNavigationPanel({
 					</div>
 				</div>
 			)}
-			<a
-				href="https://cline.bot"
-				target="_blank"
-				rel="noopener noreferrer"
-				className="text-text-tertiary hover:text-text-primary text-center block text-xs"
-				style={{ padding: "6px 12px" }}
-			>
-				Made with <Heart size={10} fill="currentColor" className="inline-block" /> by Cline
-			</a>
 			<AlertDialog
 				open={pendingProjectRemoval !== null}
 				onOpenChange={(open) => {
@@ -186,22 +184,22 @@ export function ProjectNavigationPanel({
 					}
 				}}
 			>
-				<AlertDialogTitle className="text-sm font-semibold text-text-primary mb-2">
-					Delete project permanently?
-				</AlertDialogTitle>
-				<AlertDialogDescription asChild>
-					<div>
-						<p className="text-text-secondary mb-2">
-							{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}
-						</p>
-						<p className="text-text-primary mb-2">
-							This will delete all project tasks ({pendingProjectTaskCount}), remove task workspaces/worktrees,
-							and stop any running processes for this project.
-						</p>
-						<p className="text-text-primary">This action cannot be undone.</p>
-					</div>
-				</AlertDialogDescription>
-				<div className="flex justify-end gap-2 mt-4">
+				<AlertDialogHeader>
+					<AlertDialogTitle>Remove Project</AlertDialogTitle>
+				</AlertDialogHeader>
+				<AlertDialogBody>
+					<AlertDialogDescription asChild>
+						<div className="flex flex-col gap-3">
+							<p>{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}</p>
+							<p className="text-text-primary">
+								This will delete all project tasks ({pendingProjectTaskCount}), remove task
+								workspaces/worktrees, and stop any running processes for this project.
+							</p>
+							<p className="text-text-primary">This action cannot be undone.</p>
+						</div>
+					</AlertDialogDescription>
+				</AlertDialogBody>
+				<AlertDialogFooter>
 					<AlertDialogCancel asChild>
 						<Button
 							variant="default"
@@ -232,14 +230,14 @@ export function ProjectNavigationPanel({
 							{isProjectRemovalPending ? (
 								<>
 									<Spinner size={14} />
-									Deleting...
+									Removing...
 								</>
 							) : (
-								"Delete Project"
+								"Remove Project"
 							)}
 						</Button>
 					</AlertDialogAction>
-				</div>
+				</AlertDialogFooter>
 			</AlertDialog>
 		</aside>
 	);
@@ -251,19 +249,16 @@ const MOD = isMac ? "\u2318" : "Ctrl";
 
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
-	{ keys: [MOD, "\u23CE"], label: "Create task" },
-	{ keys: [MOD, "Shift", "\u23CE"], label: "Create & start" },
+	{ keys: [MOD, "Shift", "S"], label: "Settings (Select Agent)" },
+	{ keys: ["Click", MOD], label: "Hold to link tasks" },
+	{ keys: [MOD, "G"], label: "Toggle git view" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
-	{ keys: [MOD], label: "Hold to link tasks" },
 ];
 
 const MORE_SHORTCUTS = [
-	{ keys: ["\u2191"], label: "Previous card" },
-	{ keys: ["\u2193"], label: "Next card" },
+	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
-	{ keys: ["Esc"], label: "Cancel / back" },
-	{ keys: ["\u2191"], label: "Previous commit" },
-	{ keys: ["\u2193"], label: "Next commit" },
+	{ keys: ["Esc"], label: "Close / back" },
 ];
 
 function ShortcutHint({ keys, label }: { keys: string[]; label: string }): React.ReactElement {
@@ -284,7 +279,7 @@ function ShortcutsCard(): React.ReactElement {
 
 	return (
 		<div style={{ padding: "8px 12px" }}>
-			<div className="rounded-md p-2.5">
+			<div style={{ padding: "0 8px" }}>
 				<div className="flex flex-col gap-0.5">
 					{ESSENTIAL_SHORTCUTS.map((s) => (
 						<ShortcutHint key={s.label} keys={s.keys} label={s.label} />
@@ -316,7 +311,7 @@ function ShortcutsCard(): React.ReactElement {
 function ProjectRowSkeleton(): React.ReactElement {
 	return (
 		<div
-			className="flex items-center gap-1.5 mx-2"
+			className="flex items-center gap-1.5"
 			style={{
 				padding: "6px 8px",
 			}}
@@ -408,7 +403,7 @@ function ProjectRow({
 					onSelect(project.id);
 				}
 			}}
-			className={cn("kb-project-row cursor-pointer rounded-md mx-2", isCurrent && "kb-project-row-selected")}
+			className={cn("kb-project-row cursor-pointer rounded-md", isCurrent && "kb-project-row-selected")}
 			style={{
 				display: "flex",
 				alignItems: "center",

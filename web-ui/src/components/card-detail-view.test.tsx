@@ -4,16 +4,20 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CardDetailView } from "@/components/card-detail-view";
+import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
 
 const mockUseRuntimeWorkspaceChanges = vi.fn();
+const { mockAgentTerminalPanel } = vi.hoisted(() => ({
+	mockAgentTerminalPanel: vi.fn((_props: { panelBackgroundColor?: string; terminalBackgroundColor?: string }) => null),
+}));
 
 vi.mock("react-hotkeys-hook", () => ({
 	useHotkeys: () => {},
 }));
 
 vi.mock("@/components/detail-panels/agent-terminal-panel", () => ({
-	AgentTerminalPanel: () => <div data-testid="agent-terminal-panel" />,
+	AgentTerminalPanel: mockAgentTerminalPanel,
 }));
 
 vi.mock("@/components/detail-panels/cline-agent-chat-panel", () => ({
@@ -100,6 +104,7 @@ describe("CardDetailView", () => {
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
+		mockAgentTerminalPanel.mockClear();
 		mockUseRuntimeWorkspaceChanges.mockReturnValue({
 			changes: {
 				files: [
@@ -122,6 +127,7 @@ describe("CardDetailView", () => {
 			root.unmount();
 		});
 		mockUseRuntimeWorkspaceChanges.mockReset();
+		mockAgentTerminalPanel.mockClear();
 		vi.restoreAllMocks();
 		container.remove();
 		if (previousActEnvironment === undefined) {
@@ -215,6 +221,41 @@ describe("CardDetailView", () => {
 		expect(lastCall?.[7]).toBe(true);
 	});
 
+	it("closes git history before handling other Escape behavior", async () => {
+		const onCloseGitHistory = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					gitHistoryPanel={<div data-testid="git-history-panel">Git history</div>}
+					onCloseGitHistory={onCloseGitHistory}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const input = document.createElement("input");
+		container.appendChild(input);
+		input.focus();
+
+		await act(async () => {
+			input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+		});
+
+		expect(onCloseGitHistory).toHaveBeenCalledTimes(1);
+	});
+
 	it("renders native chat panel for cline agent", async () => {
 		await act(async () => {
 			root.render(
@@ -238,5 +279,33 @@ describe("CardDetailView", () => {
 
 		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeInstanceOf(HTMLDivElement);
 		expect(container.querySelector('[data-testid="agent-terminal-panel"]')).toBeNull();
+	});
+
+	it("uses surface-primary colors for the detail terminal panel", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="claude"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const lastCall = mockAgentTerminalPanel.mock.calls.at(-1);
+		expect(lastCall?.[0]).toMatchObject({
+			panelBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
+			terminalBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
+		});
 	});
 });

@@ -1,3 +1,6 @@
+import { getClineToolCallDisplay } from "@runtime-cline-tool-call-display";
+import { stripAnsi } from "@/utils/strip-ansi";
+
 export interface ParsedToolMessageContent {
 	toolName: string;
 	input: string | null;
@@ -7,88 +10,47 @@ export interface ParsedToolMessageContent {
 }
 
 /**
- * Formats the first element of a string array, appending "(+N more)" if there are extras.
- */
-function formatArraySummary(arr: unknown[]): string | null {
-	if (arr.length === 0) return null;
-	const first = String(arr[0]).split("\n")[0]?.trim();
-	if (!first) return null;
-	return arr.length > 1 ? `${first} (+${arr.length - 1} more)` : first;
-}
-
-/**
  * Extracts a short, human-readable summary from the tool's input parameters.
  * Uses tool-specific logic for known Cline SDK tools, then falls back to generic extraction.
  */
 export function getToolSummary(toolName: string, input: string | null): string | null {
-	if (!input) return null;
+	return getClineToolCallDisplay(toolName, input).inputSummary;
+}
+
+/**
+ * Formats the raw tool input into a human-readable string for the expanded view.
+ * For tools like run_commands, this extracts the full command list so users can
+ * see the complete commands that were executed.
+ * Returns null when the input adds no value beyond the collapsed summary.
+ */
+export function formatToolInputForDisplay(toolName: string, input: string | null): string | null {
+	if (!input) {
+		return null;
+	}
 
 	try {
 		const parsed: unknown = JSON.parse(input);
-		if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-			const record = parsed as Record<string, unknown>;
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+			return null;
+		}
+		const record = parsed as Record<string, unknown>;
+		const normalized = toolName.toLowerCase().replace(/[^a-z]/g, "");
 
-			// Cline SDK built-in tools have specific parameter shapes
-			switch (toolName) {
-				case "run_commands": {
-					if (Array.isArray(record.commands)) return formatArraySummary(record.commands);
-					break;
-				}
-				case "read_files": {
-					if (Array.isArray(record.file_paths)) return formatArraySummary(record.file_paths);
-					break;
-				}
-				case "search_codebase": {
-					if (Array.isArray(record.queries)) return formatArraySummary(record.queries);
-					break;
-				}
-				case "editor": {
-					const path = record.path;
-					const cmd = record.command;
-					if (typeof path === "string") {
-						return typeof cmd === "string" ? `${cmd} ${path}` : path;
-					}
-					break;
-				}
-				case "fetch_web_content": {
-					if (Array.isArray(record.requests) && record.requests.length > 0) {
-						const first = record.requests[0];
-						if (typeof first === "object" && first !== null && "url" in first) {
-							const url = String((first as Record<string, unknown>).url);
-							return record.requests.length > 1 ? `${url} (+${record.requests.length - 1} more)` : url;
-						}
-					}
-					break;
-				}
-				case "skills": {
-					if (typeof record.skill === "string") return record.skill;
-					break;
-				}
-				case "ask_question": {
-					if (typeof record.question === "string") return record.question.split("\n")[0] ?? null;
-					break;
-				}
+		if (normalized === "runcommands" && Array.isArray(record.commands)) {
+			const commands = record.commands
+				.map((cmd) => String(cmd))
+				.filter((cmd) => cmd.length > 0);
+			if (commands.length === 0) {
+				return null;
 			}
-
-			// Generic fallback for MCP tools and others: try common scalar keys, then arrays
-			for (const value of Object.values(record)) {
-				if (typeof value === "string" && value.trim().length > 0) {
-					return value.trim().split("\n")[0]?.slice(0, 120) ?? null;
-				}
-				if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-					return formatArraySummary(value);
-				}
-			}
+			return commands.join("\n");
 		}
 	} catch {
-		// Not JSON, fall through
+		return null;
 	}
 
-	const firstLine = input.split("\n").find((line) => line.trim().length > 0);
-	return firstLine ? firstLine.trim().slice(0, 120) : null;
+	return null;
 }
-
-// -- Tool output parsing (ToolOperationResult format) --
 
 export interface ToolOutputResult {
 	query: string;
@@ -118,8 +80,8 @@ function toToolOutputResult(item: {
 }): ToolOutputResult {
 	return {
 		query: String(item.query ?? ""),
-		content: item.result,
-		error: typeof item.error === "string" ? item.error : null,
+		content: stripAnsi(item.result),
+		error: typeof item.error === "string" ? stripAnsi(item.error) : null,
 		success: item.success,
 	};
 }
@@ -140,12 +102,11 @@ export function parseToolOutput(output: string): ParsedToolOutput | null {
 			return { results: [toToolOutputResult(parsed)] };
 		}
 	} catch {
-		// Not JSON
+		return null;
 	}
 
 	return null;
 }
-
 
 function normalizeSectionValue(lines: string[]): string | null {
 	const value = lines.join("\n").trim();
@@ -197,11 +158,14 @@ export function parseToolMessageContent(content: string): ParsedToolMessageConte
 		}
 	}
 
+	const rawOutput = normalizeSectionValue(sections.output);
+	const rawError = normalizeSectionValue(sections.error);
+
 	return {
 		toolName,
 		input: normalizeSectionValue(sections.input),
-		output: normalizeSectionValue(sections.output),
-		error: normalizeSectionValue(sections.error),
+		output: rawOutput !== null ? stripAnsi(rawOutput) : null,
+		error: rawError !== null ? stripAnsi(rawError) : null,
 		durationMs,
 	};
 }

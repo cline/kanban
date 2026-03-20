@@ -14,6 +14,7 @@
     "paths": {
       "@/*": ["src/*"],
       "@runtime-agent-catalog": ["../src/core/agent-catalog.ts"],
+      "@runtime-cline-tool-call-display": ["../src/cline-sdk/cline-tool-call-display.ts"],
       "@runtime-contract": ["../src/core/api-contract.ts"],
       "@runtime-home-agent-session": ["../src/core/home-agent-session.ts"],
       "@runtime-trpc": ["../src/trpc/app-router.ts"],

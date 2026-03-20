@@ -37,7 +37,7 @@ export interface CreateRuntimeStateHubDependencies {
 
 export interface RuntimeStateHub {
 	trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => void;
-	trackClineTaskSessionService: (workspaceId: string, service: ClineTaskSessionService) => void;
+	trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => void;
 	broadcastTaskChatMessage: (workspaceId: string, taskId: string, message: ClineTaskMessage) => void;
 	handleUpgrade: (
 		request: IncomingMessage,
@@ -402,6 +402,16 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					workspaceClients.add(client);
 					runtimeStateClientsByWorkspaceId.set(monitorWorkspaceId, workspaceClients);
 					runtimeStateWorkspaceIdByClient.set(client, monitorWorkspaceId);
+					const clineSummaries = Array.from(
+						clinePreviousSummaryByWorkspaceId.get(monitorWorkspaceId)?.values() ?? [],
+					);
+					if (clineSummaries.length > 0) {
+						sendRuntimeStateMessage(client, {
+							type: "task_sessions_updated",
+							workspaceId: monitorWorkspaceId,
+							summaries: clineSummaries,
+						} satisfies RuntimeStateStreamTaskSessionsMessage);
+					}
 				}
 				if (workspace.removedRequestedWorkspacePath) {
 					sendRuntimeStateMessage(client, {
@@ -442,7 +452,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			});
 			terminalSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
 		},
-		trackClineTaskSessionService: (workspaceId: string, service: ClineTaskSessionService) => {
+		trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => {
 			if (clineSummaryUnsubscribeByWorkspaceId.has(workspaceId)) {
 				return;
 			}
@@ -456,6 +466,12 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				const previousSummary = previousSummariesByTaskId.get(summary.taskId);
 				previousSummariesByTaskId.set(summary.taskId, summary);
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+				const didCheckpointChange =
+					previousSummary?.latestTurnCheckpoint?.commit !== summary.latestTurnCheckpoint?.commit ||
+					previousSummary?.previousTurnCheckpoint?.commit !== summary.previousTurnCheckpoint?.commit;
+				if (didCheckpointChange) {
+					void broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
+				}
 				if (
 					previousSummary &&
 					previousSummary.state !== "awaiting_review" &&

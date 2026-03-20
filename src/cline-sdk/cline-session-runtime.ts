@@ -1,6 +1,7 @@
 // Owns the live SDK session host plus taskId to sessionId bindings.
 // This is the runtime-facing layer for starting, looking up, resuming, and
 // stopping native Cline sessions without exposing SDK details upstream.
+import type { RuntimeTaskSessionMode } from "../core/api-contract.js";
 import { extractClineSessionId } from "./cline-event-adapter.js";
 import { createSessionId } from "./cline-session-state.js";
 import {
@@ -10,12 +11,15 @@ import {
 	type ClineSdkSessionRecord,
 } from "./sdk-runtime-boundary.js";
 
+const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 3;
+
 export interface StartClineSessionRuntimeRequest {
 	taskId: string;
 	cwd: string;
 	prompt: string;
 	providerId: string;
 	modelId: string;
+	mode?: RuntimeTaskSessionMode;
 	apiKey?: string | null;
 	baseUrl?: string | null;
 	systemPrompt: string;
@@ -33,7 +37,7 @@ export interface ClinePersistedTaskSessionSnapshot {
 
 export interface ClineSessionRuntime {
 	startTaskSession(request: StartClineSessionRuntimeRequest): Promise<StartClineSessionRuntimeResult>;
-	sendTaskSessionInput(taskId: string, prompt: string): Promise<unknown>;
+	sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown>;
 	stopTaskSession(taskId: string): Promise<void>;
 	abortTaskSession(taskId: string): Promise<void>;
 	getTaskSessionId(taskId: string): string | null;
@@ -72,9 +76,11 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 				apiKey: request.apiKey?.trim() || undefined,
 				baseUrl: request.baseUrl?.trim() || undefined,
 				cwd: request.cwd,
+				mode: request.mode ?? "act",
 				enableTools: true,
 				enableSpawnAgent: false,
 				enableAgentTeams: false,
+				maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
 				systemPrompt: request.systemPrompt,
 			},
 			prompt: request.prompt,
@@ -89,12 +95,15 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		return startResult;
 	}
 
-	async sendTaskSessionInput(taskId: string, prompt: string): Promise<unknown> {
+	async sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown> {
 		const sessionId = this.sessionIdByTaskId.get(taskId);
 		if (!sessionId) {
 			throw new Error(`No active Cline session for task ${taskId}.`);
 		}
 		const sessionHost = await this.ensureSessionHost();
+		if (mode) {
+			this.updateActiveSessionMode(sessionHost, sessionId, mode);
+		}
 		return await sessionHost.send({
 			sessionId,
 			prompt,
@@ -194,6 +203,20 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			});
 		}
 		return await this.sessionHostPromise;
+	}
+
+	private updateActiveSessionMode(
+		sessionHost: ClineSdkSessionHost,
+		sessionId: string,
+		mode: RuntimeTaskSessionMode,
+	): void {
+		const hostWithSessions = sessionHost as unknown as {
+			sessions?: Map<string, { config?: { mode?: RuntimeTaskSessionMode } }>;
+		};
+		const activeSession = hostWithSessions.sessions?.get(sessionId);
+		if (activeSession?.config) {
+			activeSession.config.mode = mode;
+		}
 	}
 
 	private handleSessionEvent(event: unknown): void {

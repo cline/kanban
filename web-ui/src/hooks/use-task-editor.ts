@@ -29,6 +29,10 @@ interface OpenEditTaskOptions {
 	preserveDetailSelection?: boolean;
 }
 
+interface CreateTaskOptions {
+	keepDialogOpen?: boolean;
+}
+
 export interface UseTaskEditorResult {
 	isInlineTaskCreateOpen: boolean;
 	newTaskPrompt: string;
@@ -60,8 +64,8 @@ export interface UseTaskEditorResult {
 	handleCancelEditTask: () => void;
 	handleSaveEditedTask: () => string | null;
 	handleSaveAndStartEditedTask: () => void;
-	handleCreateTask: () => string | null;
-	handleCreateTasks: (prompts: string[]) => string[];
+	handleCreateTask: (options?: CreateTaskOptions) => string | null;
+	handleCreateTasks: (prompts: string[], options?: CreateTaskOptions) => string[];
 	resetTaskEditorState: () => void;
 }
 
@@ -264,7 +268,7 @@ export function useTaskEditor({
 		queueTaskStartAfterEdit?.(taskId);
 	}, [handleSaveEditedTask, queueTaskStartAfterEdit]);
 
-	const handleCreateTask = useCallback((): string | null => {
+	const handleCreateTask = useCallback((options?: CreateTaskOptions): string | null => {
 		const prompt = newTaskPrompt.trim();
 		if (!prompt) {
 			return null;
@@ -273,18 +277,14 @@ export function useTaskEditor({
 			return null;
 		}
 		const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
-		let createdTaskId: string | null = null;
-		setBoard((currentBoard) => {
-			const created = addTaskToColumnWithResult(currentBoard, "backlog", {
-				prompt,
-				startInPlanMode: newTaskStartInPlanMode,
-				autoReviewEnabled: newTaskAutoReviewEnabled,
-				autoReviewMode: newTaskAutoReviewMode,
-				baseRef,
-			});
-			createdTaskId = created.task.id;
-			return created.board;
+		const created = addTaskToColumnWithResult(board, "backlog", {
+			prompt,
+			startInPlanMode: newTaskStartInPlanMode,
+			autoReviewEnabled: newTaskAutoReviewEnabled,
+			autoReviewMode: newTaskAutoReviewMode,
+			baseRef,
 		});
+		setBoard(created.board);
 		trackTaskCreated({
 			selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
 			start_in_plan_mode: newTaskStartInPlanMode,
@@ -299,9 +299,12 @@ export function useTaskEditor({
 		}
 		setNewTaskPrompt("");
 		setNewTaskBranchRef(baseRef);
-		setIsInlineTaskCreateOpen(false);
-		return createdTaskId;
+		if (!options?.keepDialogOpen) {
+			setIsInlineTaskCreateOpen(false);
+		}
+		return created.task.id;
 	}, [
+		board,
 		currentProjectId,
 		newTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,
@@ -313,7 +316,7 @@ export function useTaskEditor({
 		setBoard,
 	]);
 
-	const handleCreateTasks = useCallback((prompts: string[]): string[] => {
+	const handleCreateTasks = useCallback((prompts: string[], options?: CreateTaskOptions): string[] => {
 		const validPrompts = prompts.map((p) => p.trim()).filter(Boolean);
 		if (validPrompts.length === 0) {
 			return [];
@@ -323,21 +326,19 @@ export function useTaskEditor({
 		}
 		const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
 		const createdTaskIds: string[] = [];
-		setBoard((currentBoard) => {
-			let updatedBoard = currentBoard;
-			for (const prompt of validPrompts) {
-				const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
-					prompt,
-					startInPlanMode: newTaskStartInPlanMode,
-					autoReviewEnabled: newTaskAutoReviewEnabled,
-					autoReviewMode: newTaskAutoReviewMode,
-					baseRef,
-				});
-				updatedBoard = created.board;
-				createdTaskIds.push(created.task.id);
-			}
-			return updatedBoard;
-		});
+		let updatedBoard = board;
+		for (const prompt of validPrompts) {
+			const created = addTaskToColumnWithResult(updatedBoard, "backlog", {
+				prompt,
+				startInPlanMode: newTaskStartInPlanMode,
+				autoReviewEnabled: newTaskAutoReviewEnabled,
+				autoReviewMode: newTaskAutoReviewMode,
+				baseRef,
+			});
+			updatedBoard = created.board;
+			createdTaskIds.push(created.task.id);
+		}
+		setBoard(updatedBoard);
 		for (const prompt of validPrompts) {
 			trackTaskCreated({
 				selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
@@ -354,9 +355,12 @@ export function useTaskEditor({
 		}
 		setNewTaskPrompt("");
 		setNewTaskBranchRef(baseRef);
-		setIsInlineTaskCreateOpen(false);
+		if (!options?.keepDialogOpen) {
+			setIsInlineTaskCreateOpen(false);
+		}
 		return createdTaskIds;
 	}, [
+		board,
 		currentProjectId,
 		newTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,

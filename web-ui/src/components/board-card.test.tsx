@@ -238,6 +238,84 @@ describe("BoardCard", () => {
 		expect(container.textContent).toContain("~/.kanban/worktrees/trash-task-1/kanban");
 	});
 
+	it("shows tool input details in the session preview text", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "running",
+						agentId: "cline",
+						workspacePath: "/tmp/worktree",
+						pid: null,
+						startedAt: Date.now(),
+						updatedAt: Date.now(),
+						lastOutputAt: Date.now(),
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: Date.now(),
+						latestHookActivity: {
+							activityText: "Using Read",
+							toolName: "Read",
+							toolInputSummary: "src/index.ts",
+							finalMessage: null,
+							hookEventName: "tool_call",
+							notificationType: null,
+							source: "cline-sdk",
+						},
+						latestTurnCheckpoint: null,
+						previousTurnCheckpoint: null,
+					}}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Read(src/index.ts)");
+		expect(container.textContent).not.toContain("Using Read");
+	});
+
+	it("keeps showing the last cline tool label during assistant streaming", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "running",
+						agentId: "cline",
+						workspacePath: "/tmp/worktree",
+						pid: null,
+						startedAt: Date.now(),
+						updatedAt: Date.now(),
+						lastOutputAt: Date.now(),
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: Date.now(),
+						latestHookActivity: {
+							activityText: "Agent active",
+							toolName: "Read",
+							toolInputSummary: "src/index.ts",
+							finalMessage: null,
+							hookEventName: "assistant_delta",
+							notificationType: null,
+							source: "cline-sdk",
+						},
+						latestTurnCheckpoint: null,
+						previousTurnCheckpoint: null,
+					}}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Read(src/index.ts)");
+		expect(container.textContent).not.toContain("Thinking...");
+	});
+
 	it("renders a new card description before the async measure observer reports width", async () => {
 		mockTitleMeasureWidth = 0;
 		mockDescriptionMeasureWidth = 0;

@@ -164,6 +164,13 @@ describe("InMemoryClineSessionRuntime", () => {
 			}),
 		);
 		expect(requestedSessionId).not.toBe("resolved-session-1");
+		expect(fakeHost.start).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					maxConsecutiveMistakes: 3,
+				}),
+			}),
+		);
 	});
 
 	it("reads persisted task history by scanning task-prefixed SDK session ids", async () => {

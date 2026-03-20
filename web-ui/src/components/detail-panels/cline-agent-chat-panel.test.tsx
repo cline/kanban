@@ -4,9 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "@/runtime/types";
+import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 
-function createSummary(state: RuntimeTaskSessionSummary["state"]): RuntimeTaskSessionSummary {
+function createSummary(
+	state: RuntimeTaskSessionSummary["state"],
+	latestHookActivity: RuntimeTaskHookActivity | null = null,
+): RuntimeTaskSessionSummary {
 	return {
 		taskId: "task-1",
 		state,
@@ -19,7 +23,7 @@ function createSummary(state: RuntimeTaskSessionSummary["state"]): RuntimeTaskSe
 		reviewReason: null,
 		exitCode: null,
 		lastHookAt: null,
-		latestHookActivity: null,
+		latestHookActivity,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};
@@ -30,24 +34,27 @@ describe("ClineAgentChatPanel", () => {
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
 	let scrollIntoViewMock: ReturnType<typeof vi.fn>;
-	let originalScrollIntoView: typeof HTMLElement.prototype.scrollIntoView;
 
 	beforeEach(() => {
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+		resetWorkspaceMetadataStore();
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
-		originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 		scrollIntoViewMock = vi.fn();
-		HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: scrollIntoViewMock,
+		});
 	});
 
 	afterEach(() => {
 		act(() => {
 			root.unmount();
 		});
+		resetWorkspaceMetadataStore();
 		container.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -55,7 +62,10 @@ describe("ClineAgentChatPanel", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-		HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: () => {},
+		});
 	});
 
 	it("renders reasoning and tool messages with specialized UI", async () => {
@@ -138,6 +148,77 @@ describe("ClineAgentChatPanel", () => {
 		expect(scrollIntoViewMock).toHaveBeenCalled();
 	});
 
+	it("hides the thinking indicator while assistant text is streaming", async () => {
+		const messages: ClineChatMessage[] = [
+			{
+				id: "assistant-1",
+				role: "assistant",
+				content: "Streaming reply",
+				createdAt: 1,
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("running", {
+						activityText: "Agent active",
+						toolName: null,
+						toolInputSummary: null,
+						finalMessage: null,
+						hookEventName: "assistant_delta",
+						notificationType: null,
+						source: "cline-sdk",
+					})}
+					onLoadMessages={async () => messages}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain("Streaming reply");
+		expect(container.textContent).not.toContain("Thinking...");
+	});
+
+	it("hides the thinking indicator while a tool call is streaming", async () => {
+		const messages: ClineChatMessage[] = [
+			{
+				id: "tool-1",
+				role: "tool",
+				content: ["Tool: Read", "Input:", '{"file":"src/index.ts"}'].join("\n"),
+				createdAt: 1,
+				meta: {
+					hookEventName: "tool_call_start",
+					toolName: "Read",
+					streamType: "tool",
+				},
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("running", {
+						activityText: "Using Read",
+						toolName: "Read",
+						toolInputSummary: null,
+						finalMessage: null,
+						hookEventName: "tool_call",
+						notificationType: null,
+						source: "cline-sdk",
+					})}
+					onLoadMessages={async () => messages}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain("Read");
+		expect(container.textContent).not.toContain("Thinking...");
+	});
+
 	it("renders assistant markdown including fenced code blocks", async () => {
 		const messages: ClineChatMessage[] = [
 			{
@@ -197,7 +278,13 @@ describe("ClineAgentChatPanel", () => {
 
 		expect(document.activeElement).toBe(textarea);
 		expect(textarea.getAttribute("rows")).toBe("1");
-		expect(container.querySelectorAll("button")).toHaveLength(0);
+		expect(container.textContent).toContain("Select model");
+		const sendButton = container.querySelector('button[aria-label="Cancel request"]');
+		expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(sendButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected composer action button");
+		}
+		expect(sendButton.disabled).toBe(false);
 
 		Object.defineProperty(textarea, "scrollHeight", {
 			configurable: true,
@@ -215,6 +302,7 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		expect(textarea.style.height).toBe("96px");
+		expect(sendButton.disabled).toBe(false);
 
 		await act(async () => {
 			textarea.dispatchEvent(
@@ -227,7 +315,7 @@ describe("ClineAgentChatPanel", () => {
 			await Promise.resolve();
 		});
 
-		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it");
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Ship it", { mode: "act" });
 
 		await act(async () => {
 			textarea.dispatchEvent(
@@ -243,6 +331,131 @@ describe("ClineAgentChatPanel", () => {
 		expect(onCancelTurn).toHaveBeenCalledWith("task-1");
 	});
 
+	it("defaults the composer mode from the task and sends using the selected mode", async () => {
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-2",
+				role: "user" as const,
+				content: "Investigate",
+				createdAt: 2,
+			},
+		}));
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("idle")}
+					defaultMode="plan"
+					onLoadMessages={async () => []}
+					onSendMessage={onSendMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const textarea = container.querySelector("textarea");
+		expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+		if (!(textarea instanceof HTMLTextAreaElement)) {
+			throw new Error("Expected composer textarea");
+		}
+
+		const planToggle = Array.from(container.querySelectorAll('button[role="tab"]')).find((button) =>
+			button.textContent?.includes("Plan"),
+		);
+		expect(planToggle?.getAttribute("aria-selected")).toBe("true");
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+			if (!valueSetter) {
+				throw new Error("Expected textarea value setter");
+			}
+			valueSetter.call(textarea, "Investigate");
+			textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		const sendButton = container.querySelector('button[aria-label="Send message"]');
+		expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(sendButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected composer send button");
+		}
+
+		await act(async () => {
+			sendButton.click();
+			await Promise.resolve();
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Investigate", { mode: "plan" });
+	});
+
+	it("toggles the composer mode with command shift a", async () => {
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-3",
+				role: "user" as const,
+				content: "Switch it",
+				createdAt: 2,
+			},
+		}));
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("idle")}
+					onLoadMessages={async () => []}
+					onSendMessage={onSendMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const textarea = container.querySelector("textarea");
+		expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+		if (!(textarea instanceof HTMLTextAreaElement)) {
+			throw new Error("Expected composer textarea");
+		}
+
+		await act(async () => {
+			textarea.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "A",
+					metaKey: true,
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+			if (!valueSetter) {
+				throw new Error("Expected textarea value setter");
+			}
+			valueSetter.call(textarea, "Switch it");
+			textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		const sendButton = container.querySelector('button[aria-label="Send message"]');
+		expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(sendButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected composer send button");
+		}
+
+		await act(async () => {
+			sendButton.click();
+			await Promise.resolve();
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Switch it", { mode: "plan" });
+	});
+
 	it("keeps chat pinned to bottom when action footer appears", async () => {
 		const messages: ClineChatMessage[] = [
 			{
@@ -252,6 +465,16 @@ describe("ClineAgentChatPanel", () => {
 				createdAt: 1,
 			},
 		];
+		setTaskWorkspaceSnapshot({
+			taskId: "task-1",
+			path: "/tmp/worktree",
+			branch: "task-1",
+			isDetached: false,
+			headCommit: "abc1234",
+			changedFiles: 2,
+			additions: 3,
+			deletions: 1,
+		});
 
 		await act(async () => {
 			root.render(
@@ -284,5 +507,38 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		expect(scrollIntoViewMock).toHaveBeenCalled();
+	});
+
+	it("does not show commit actions when the review workspace is clean", async () => {
+		setTaskWorkspaceSnapshot({
+			taskId: "task-1",
+			path: "/tmp/worktree",
+			branch: "task-1",
+			isDetached: false,
+			headCommit: "def5678",
+			changedFiles: 0,
+			additions: 0,
+			deletions: 0,
+		});
+
+		await act(async () => {
+			root.render(
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("awaiting_review")}
+					onLoadMessages={async () => []}
+					taskColumnId="review"
+					onCommit={() => {}}
+					onOpenPr={() => {}}
+					onMoveToTrash={() => {}}
+					showMoveToTrash
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).not.toContain("Commit");
+		expect(container.textContent).not.toContain("Open PR");
+		expect(container.textContent).toContain("Move Card To Trash");
 	});
 });

@@ -3,6 +3,7 @@ import { GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
@@ -47,16 +48,6 @@ function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: strin
 	}
 }
 
-function formatToolLabel(toolName: string, activityText: string): string {
-	const marker = `${toolName}: `;
-	const markerIndex = activityText.indexOf(marker);
-	if (markerIndex >= 0) {
-		const detail = activityText.slice(markerIndex + marker.length);
-		return `${toolName}(${detail})`;
-	}
-	return toolName;
-}
-
 function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
 	if (!summary) {
 		return null;
@@ -64,6 +55,8 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	const hookActivity = summary.latestHookActivity;
 	const activityText = hookActivity?.activityText?.trim();
 	const toolName = hookActivity?.toolName?.trim() ?? null;
+	const toolInputSummary = hookActivity?.toolInputSummary?.trim() ?? null;
+	const source = hookActivity?.source?.trim() ?? null;
 	const finalMessage = hookActivity?.finalMessage?.trim();
 	if (summary.state === "awaiting_review" && finalMessage) {
 		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: finalMessage };
@@ -71,6 +64,15 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	if (activityText) {
 		let dotColor: string = SESSION_ACTIVITY_COLOR.thinking;
 		let text = activityText;
+		if (source === "cline-sdk" && toolName) {
+			if (text.startsWith("Failed ")) {
+				dotColor = SESSION_ACTIVITY_COLOR.error;
+			}
+			return {
+				dotColor,
+				text: formatClineToolCallLabel(toolName, toolInputSummary),
+			};
+		}
 		if (text.startsWith("Final: ")) {
 			dotColor = SESSION_ACTIVITY_COLOR.success;
 			text = text.slice(7);
@@ -82,9 +84,6 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 			dotColor = SESSION_ACTIVITY_COLOR.error;
 		} else if (text === "Agent active" || text === "Working on task" || text.startsWith("Resumed")) {
 			return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
-		}
-		if (toolName && (text.startsWith("Using ") || text.startsWith("Completed ") || text.startsWith("Failed "))) {
-			text = formatToolLabel(toolName, activityText);
 		}
 		return { dotColor, text };
 	}

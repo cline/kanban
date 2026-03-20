@@ -75,6 +75,7 @@ function createSessionSummary(
 			? {
 					activityText: `Final: ${finalMessage}`,
 					toolName: null,
+					toolInputSummary: null,
 					finalMessage,
 					hookEventName: "agent_end",
 					notificationType: null,

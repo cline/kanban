@@ -162,6 +162,9 @@ export type RuntimeGitDiscardResponse = z.infer<typeof runtimeGitDiscardResponse
 export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review", "failed", "interrupted"]);
 export type RuntimeTaskSessionState = z.infer<typeof runtimeTaskSessionStateSchema>;
 
+export const runtimeTaskSessionModeSchema = z.enum(["act", "plan"]);
+export type RuntimeTaskSessionMode = z.infer<typeof runtimeTaskSessionModeSchema>;
+
 export const runtimeTaskSessionReviewReasonSchema = z
 	.enum(["attention", "exit", "error", "interrupted", "hook"])
 	.nullable();
@@ -170,6 +173,7 @@ export type RuntimeTaskSessionReviewReason = z.infer<typeof runtimeTaskSessionRe
 export const runtimeTaskHookActivitySchema = z.object({
 	activityText: z.string().nullable().default(null),
 	toolName: z.string().nullable().default(null),
+	toolInputSummary: z.string().nullable().default(null),
 	finalMessage: z.string().nullable().default(null),
 	hookEventName: z.string().nullable().default(null),
 	notificationType: z.string().nullable().default(null),
@@ -387,6 +391,7 @@ export const runtimeWorktreeEnsureResponseSchema = z.union([
 		path: z.string(),
 		baseRef: z.string(),
 		baseCommit: z.string(),
+		warning: z.string().optional(),
 		error: z.string().optional(),
 	}),
 	z.object({
@@ -575,6 +580,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	taskId: z.string(),
 	prompt: z.string(),
 	startInPlanMode: z.boolean().optional(),
+	mode: runtimeTaskSessionModeSchema.optional(),
 	resumeFromTrash: z.boolean().optional(),
 	baseRef: z.string(),
 	cols: z.number().int().positive().optional(),
@@ -647,6 +653,7 @@ export type RuntimeTaskChatMessagesResponse = z.infer<typeof runtimeTaskChatMess
 export const runtimeTaskChatSendRequestSchema = z.object({
 	taskId: z.string(),
 	text: z.string(),
+	mode: runtimeTaskSessionModeSchema.optional(),
 });
 export type RuntimeTaskChatSendRequest = z.infer<typeof runtimeTaskChatSendRequestSchema>;
 

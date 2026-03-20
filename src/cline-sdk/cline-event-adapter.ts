@@ -2,6 +2,7 @@
 // Keep protocol-specific parsing here so the runtime and repository can stay
 // focused on lifecycle, storage, and task-facing orchestration.
 import type { RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import { formatClineToolCallLabel, getClineToolCallDisplay } from "./cline-tool-call-display.js";
 import {
 	appendAssistantChunk,
 	appendReasoningChunk,
@@ -31,6 +32,40 @@ export interface ApplyClineSessionEventInput {
 	emitMessage: (taskId: string, message: ClineTaskMessage) => void;
 }
 
+function getRetainedClineToolActivity(entry: ClineTaskSessionEntry): {
+	toolName: string | null;
+	toolInputSummary: string | null;
+} {
+	const latestHookActivity = entry.summary.latestHookActivity;
+	if (!latestHookActivity || latestHookActivity.source !== "cline-sdk" || !latestHookActivity.toolName) {
+		return {
+			toolName: null,
+			toolInputSummary: null,
+		};
+	}
+
+	return {
+		toolName: latestHookActivity.toolName,
+		toolInputSummary: latestHookActivity.toolInputSummary ?? null,
+	};
+}
+
+function extractAgentErrorMessage(error: unknown): string | null {
+	if (typeof error === "string") {
+		const normalized = error.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	if (error instanceof Error) {
+		const normalized = error.message.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+		const normalized = error.message.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	return null;
+}
+
 export function extractClineSessionId(event: unknown): string | null {
 	if (!event || typeof event !== "object" || !("payload" in event)) {
 		return null;
@@ -45,6 +80,59 @@ export function extractClineSessionId(event: unknown): string | null {
 // Translate raw SDK events into Kanban summary and chat mutations so the session service can stay focused on host ownership.
 export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void {
 	const { entry, event, taskId } = input;
+
+	if (
+		event &&
+		typeof event === "object" &&
+		"type" in event &&
+		event.type === "agent_event" &&
+		"payload" in event &&
+		event.payload &&
+		typeof event.payload === "object" &&
+		"event" in event.payload &&
+		event.payload.event &&
+		typeof event.payload.event === "object" &&
+		"type" in event.payload.event &&
+		event.payload.event.type === "error"
+	) {
+		const errorMessage =
+			"error" in event.payload.event ? extractAgentErrorMessage(event.payload.event.error) : null;
+		const recoverable =
+			"recoverable" in event.payload.event && typeof event.payload.event.recoverable === "boolean"
+				? event.payload.event.recoverable
+				: false;
+		const retainedToolActivity = getRetainedClineToolActivity(entry);
+		if (!recoverable) {
+			clearActiveTurnState(entry);
+		}
+		if (recoverable && errorMessage) {
+			const retryMsg = createMessage(taskId, "system", `Retrying: ${errorMessage}`);
+			entry.messages.push(retryMsg);
+			input.emitMessage(taskId, retryMsg);
+		}
+		emitSummary(input, {
+			...(recoverable
+				? {}
+				: {
+						state: "failed",
+						reviewReason: "error",
+					}),
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText: recoverable
+					? `Retrying after error: ${errorMessage ?? "Unknown agent error"}`
+					: `Agent error: ${errorMessage ?? "Unknown agent error"}`,
+				toolName: retainedToolActivity.toolName,
+				toolInputSummary: retainedToolActivity.toolInputSummary,
+				finalMessage: recoverable ? null : (errorMessage ?? "Unknown agent error"),
+				hookEventName: "agent_error",
+				notificationType: null,
+				source: "cline-sdk",
+			},
+		});
+		return;
+	}
 
 	if (
 		event &&
@@ -77,13 +165,15 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		} else if (typeof text === "string" && text.length > 0) {
 			input.emitMessage(taskId, appendAssistantChunk(entry, taskId, text));
 		}
+		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		emitSummary(input, {
 			state: "running",
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
 				activityText: "Agent active",
-				toolName: null,
+				toolName: retainedToolActivity.toolName,
+				toolInputSummary: retainedToolActivity.toolInputSummary,
 				finalMessage: null,
 				hookEventName: "assistant_delta",
 				notificationType: null,
@@ -137,6 +227,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			latestHookActivity: {
 				activityText: finalText ? `Final: ${finalText}` : "Waiting for review",
 				toolName: null,
+				toolInputSummary: null,
 				finalMessage: finalText || null,
 				hookEventName: "agent_end",
 				notificationType: null,
@@ -246,6 +337,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				? event.payload.event.toolCallId
 				: null;
 		const toolInput = "input" in event.payload.event ? event.payload.event.input : undefined;
+		const toolDisplay = getClineToolCallDisplay(toolName, toolInput);
 		const isUserAttentionTool = isClineUserAttentionTool(toolName);
 		input.emitMessage(
 			taskId,
@@ -259,8 +351,9 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
-				activityText: toolName ? `Using ${toolName}` : "Using tool",
-				toolName,
+				activityText: `Using ${formatClineToolCallLabel(toolDisplay.toolName, toolDisplay.inputSummary)}`,
+				toolName: toolDisplay.toolName,
+				toolInputSummary: toolDisplay.inputSummary,
 				finalMessage: null,
 				hookEventName: "tool_call",
 				notificationType: isUserAttentionTool ? "user_attention" : null,
@@ -311,6 +404,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			"durationMs" in event.payload.event && typeof event.payload.event.durationMs === "number"
 				? event.payload.event.durationMs
 				: null;
+		const toolInput = toolCallId ? entry.toolInputByToolCallId.get(toolCallId) : undefined;
+		const toolDisplay = getClineToolCallDisplay(toolName, toolInput);
 		const isUserAttentionTool = isClineUserAttentionTool(toolName);
 		input.emitMessage(
 			taskId,
@@ -326,14 +421,9 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
-				activityText: toolError
-					? toolName
-						? `Failed ${toolName}`
-						: "Failed tool"
-					: toolName
-						? `Completed ${toolName}`
-						: "Completed tool",
-				toolName,
+				activityText: `${toolError ? "Failed" : "Completed"} ${formatClineToolCallLabel(toolDisplay.toolName, toolDisplay.inputSummary)}`,
+				toolName: toolDisplay.toolName,
+				toolInputSummary: toolDisplay.inputSummary,
 				finalMessage: null,
 				hookEventName: "tool_result",
 				notificationType: null,
@@ -398,13 +488,15 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			return;
 		}
 		input.emitMessage(taskId, appendAssistantChunk(entry, taskId, chunk));
+		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		emitSummary(input, {
 			state: "running",
 			lastOutputAt: now(),
 			lastHookAt: now(),
 			latestHookActivity: {
 				activityText: "Agent active",
-				toolName: null,
+				toolName: retainedToolActivity.toolName,
+				toolInputSummary: retainedToolActivity.toolInputSummary,
 				finalMessage: null,
 				hookEventName: "assistant_delta",
 				notificationType: null,
@@ -437,6 +529,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			latestHookActivity: {
 				activityText,
 				toolName,
+				toolInputSummary: null,
 				finalMessage: null,
 				hookEventName,
 				notificationType: null,
@@ -508,6 +601,7 @@ function emitTurnCanceled(input: ApplyClineSessionEventInput): void {
 		latestHookActivity: {
 			activityText: "Turn canceled",
 			toolName: null,
+			toolInputSummary: null,
 			finalMessage: null,
 			hookEventName: "turn_canceled",
 			notificationType: null,

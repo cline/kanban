@@ -17,10 +17,16 @@ import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TaskStartServicePromptDialog } from "@/components/task-start-service-prompt-dialog";
-import { TaskTrashWarningDialog } from "@/components/task-trash-warning-dialog";
 import { TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogAction, AlertDialogTitle } from "@/components/ui/dialog";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogBody,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
@@ -30,7 +36,6 @@ import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
-import type { PendingTrashWarningState } from "@/hooks/use-linked-backlog-task-actions";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
@@ -40,11 +45,12 @@ import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
 import { useTaskEditor } from "@/hooks/use-task-editor";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
+import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
 import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-prompts";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { isTaskAgentSetupSatisfied, selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
@@ -67,7 +73,6 @@ export default function App(): ReactElement {
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
 	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
-	const [pendingTrashWarning, setPendingTrashWarning] = useState<PendingTrashWarningState | null>(null);
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
@@ -113,6 +118,20 @@ export default function App(): ReactElement {
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
 	const {
+		startupOnboardingPrompt,
+		isStartupOnboardingDialogOpen,
+		handleCloseStartupOnboardingDialog,
+		handleSelectOnboardingAgent,
+		handleOnboardingClineSetupSaved,
+	} = useStartupOnboarding({
+		currentProjectId,
+		hasNoProjects,
+		runtimeProjectConfig,
+		isTaskAgentReady,
+		refreshRuntimeProjectConfig,
+		refreshSettingsRuntimeProjectConfig,
+	});
+	const {
 		markConnectionReady: markTerminalConnectionReady,
 		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
 	} = useTerminalConnectionReady();
@@ -139,7 +158,6 @@ export default function App(): ReactElement {
 		fetchTaskChatMessages,
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
-		fetchTaskWorkingChangeCount,
 	} = useTaskSessions({
 		currentProjectId,
 		setSessions,
@@ -482,24 +500,33 @@ export default function App(): ReactElement {
 		setSettingsInitialSection(section ?? null);
 		setIsSettingsOpen(true);
 	}, []);
-	const handleToggleHomeAgentPanel = useCallback(() => {
-		setHomeSidebarSection((current) => (current === "agent" ? "projects" : "agent"));
+	const handleToggleGitHistory = useCallback(() => {
+		if (hasNoProjects) {
+			return;
+		}
+		setIsGitHistoryOpen((current) => !current);
+	}, [hasNoProjects]);
+	const handleCloseGitHistory = useCallback(() => {
+		setIsGitHistoryOpen(false);
 	}, []);
 
 	useAppHotkeys({
 		selectedCard,
 		isDetailTerminalOpen,
 		isHomeTerminalOpen: showHomeBottomTerminal,
+		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
 		handleToggleDetailTerminal,
-		handleToggleHomeTerminal: handleToggleHomeAgentPanel,
+		handleToggleHomeTerminal,
 		handleToggleExpandDetailTerminal,
 		handleToggleExpandHomeTerminal: handleToggleExpandHomeTerminal,
 		handleOpenCreateTask,
+		handleOpenSettings,
+		handleToggleGitHistory,
+		handleCloseGitHistory,
 	});
 
 	const {
 		handleProgrammaticCardMoveReady,
-		confirmMoveTaskToTrash,
 		handleCreateDependency,
 		handleDeleteDependency,
 		handleDragEnd,
@@ -526,14 +553,12 @@ export default function App(): ReactElement {
 		selectedTaskId,
 		currentProjectId,
 		setSelectedTaskId,
-		setPendingTrashWarning,
 		setIsClearTrashDialogOpen,
 		setIsGitHistoryOpen,
 		stopTaskSession,
 		cleanupTaskWorkspace,
 		ensureTaskWorkspace,
 		startTaskSession,
-		fetchTaskWorkingChangeCount,
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
 		readyForReviewNotificationsEnabled,
@@ -758,7 +783,7 @@ export default function App(): ReactElement {
 					onOpenWorkspace={onOpenWorkspace}
 					canOpenWorkspace={canOpenWorkspace}
 					isOpeningWorkspace={isOpeningWorkspace}
-					onToggleGitHistory={hasNoProjects ? undefined : () => setIsGitHistoryOpen((prev) => !prev)}
+					onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
 					isGitHistoryOpen={isGitHistoryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
@@ -885,6 +910,7 @@ export default function App(): ReactElement {
 								currentProjectId={currentProjectId}
 								workspacePath={workspacePath}
 								selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
+								runtimeConfig={runtimeProjectConfig ?? null}
 								sessionSummary={detailSession}
 								taskSessions={sessions}
 								onSessionSummary={upsertSession}
@@ -928,6 +954,7 @@ export default function App(): ReactElement {
 										<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
 									) : undefined
 								}
+								onCloseGitHistory={handleCloseGitHistory}
 								bottomTerminalOpen={isDetailTerminalOpen}
 								bottomTerminalTaskId={detailTerminalTaskId}
 								bottomTerminalSummary={detailTerminalSummary}
@@ -941,6 +968,7 @@ export default function App(): ReactElement {
 								isBottomTerminalExpanded={isDetailTerminalExpanded}
 								onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 								isDocumentVisible={isDocumentVisible}
+								onClineSettingsSaved={refreshRuntimeProjectConfig}
 							/>
 						</div>
 					) : null}
@@ -990,37 +1018,35 @@ export default function App(): ReactElement {
 				onConfirm={handleConfirmClearTrash}
 			/>
 			<TaskStartServicePromptDialog
+				open={isStartupOnboardingDialogOpen}
+				prompt={startupOnboardingPrompt}
+				doNotShowAgain={false}
+				onDoNotShowAgainChange={() => {}}
+				onClose={handleCloseStartupOnboardingDialog}
+				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
+				agents={runtimeProjectConfig?.agents ?? []}
+				clineProviderSettings={runtimeProjectConfig?.clineProviderSettings ?? null}
+				workspaceId={currentProjectId}
+				runtimeConfig={runtimeProjectConfig ?? null}
+				onSelectAgent={handleSelectOnboardingAgent}
+				onClineSetupSaved={handleOnboardingClineSetupSaved}
+			/>
+			<TaskStartServicePromptDialog
 				open={taskStartServicePromptDialogOpen}
 				prompt={taskStartServicePromptDialogPrompt}
 				doNotShowAgain={taskStartServicePromptDoNotShowAgain}
 				onDoNotShowAgainChange={setTaskStartServicePromptDoNotShowAgain}
 				onClose={handleCloseTaskStartServicePrompt}
 				onRunInstallCommand={handleRunTaskStartServiceInstallCommand}
+				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
+				agents={runtimeProjectConfig?.agents ?? []}
+				clineProviderSettings={runtimeProjectConfig?.clineProviderSettings ?? null}
+				workspaceId={currentProjectId}
+				runtimeConfig={runtimeProjectConfig ?? null}
+				onSelectAgent={handleSelectOnboardingAgent}
+				onClineSetupSaved={handleOnboardingClineSetupSaved}
 			/>
-			<TaskTrashWarningDialog
-				open={pendingTrashWarning !== null}
-				warning={
-					pendingTrashWarning
-						? {
-								taskTitle: pendingTrashWarning.taskTitle,
-								fileCount: pendingTrashWarning.fileCount,
-								workspaceInfo: pendingTrashWarning.workspaceInfo,
-							}
-						: null
-				}
-				onCancel={() => setPendingTrashWarning(null)}
-				onConfirm={() => {
-					if (!pendingTrashWarning) {
-						return;
-					}
-					const selection = findCardSelection(board, pendingTrashWarning.taskId);
-					setPendingTrashWarning(null);
-					if (!selection) {
-						return;
-					}
-					void confirmMoveTaskToTrash(selection.card, board);
-				}}
-			/>
+
 			<AlertDialog
 				open={gitActionError !== null}
 				onOpenChange={(open) => {
@@ -1029,22 +1055,24 @@ export default function App(): ReactElement {
 					}
 				}}
 			>
-				<AlertDialogTitle className="text-sm font-semibold text-text-primary mb-2">
-					{gitActionErrorTitle}
-				</AlertDialogTitle>
-				<p className="text-[13px] text-text-secondary mb-3">{gitActionError?.message}</p>
-				{gitActionError?.output ? (
-					<pre className="rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap overflow-auto max-h-[220px] mb-4">
-						{gitActionError.output}
-					</pre>
-				) : null}
-				<div className="flex justify-end">
+				<AlertDialogHeader>
+					<AlertDialogTitle>{gitActionErrorTitle}</AlertDialogTitle>
+				</AlertDialogHeader>
+				<AlertDialogBody>
+					<p>{gitActionError?.message}</p>
+					{gitActionError?.output ? (
+						<pre className="max-h-[220px] overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
+							{gitActionError.output}
+						</pre>
+					) : null}
+				</AlertDialogBody>
+				<AlertDialogFooter className="justify-end">
 					<AlertDialogAction asChild>
 						<Button variant="default" onClick={clearGitActionError}>
 							Close
 						</Button>
 					</AlertDialogAction>
-				</div>
+				</AlertDialogFooter>
 			</AlertDialog>
 		</div>
 	);

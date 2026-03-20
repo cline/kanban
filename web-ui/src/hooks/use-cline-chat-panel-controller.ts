@@ -1,17 +1,22 @@
 // Builds the view model for the native Cline chat panel.
 // Keep panel-specific UI state here so the panel component can stay mostly
 // declarative and shared across detail and sidebar surfaces.
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import { type ClineChatMessage, useClineChatSession } from "@/hooks/use-cline-chat-session";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
+import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 
 interface UseClineChatPanelControllerInput {
 	taskId: string;
 	summary: RuntimeTaskSessionSummary | null;
 	taskColumnId?: string;
-	onSendMessage?: (taskId: string, text: string) => Promise<ClineChatActionResult>;
+	onSendMessage?: (
+		taskId: string,
+		text: string,
+		options?: { mode?: RuntimeTaskSessionMode },
+	) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	incomingMessage?: ClineChatMessage | null;
@@ -36,8 +41,92 @@ interface UseClineChatPanelControllerResult {
 	showAgentProgressIndicator: boolean;
 	showActionFooter: boolean;
 	showCancelAutomaticAction: boolean;
-	handleSendDraft: () => Promise<void>;
+	handleSendDraft: (mode?: RuntimeTaskSessionMode) => Promise<void>;
 	handleCancelTurn: () => void;
+}
+
+const ASSISTANT_STREAM_ACTIVITY_GRACE_MS = 500;
+
+function isAssistantLikeIncomingMessage(message: ClineChatMessage | null): boolean {
+	return message?.role === "assistant" || message?.role === "reasoning";
+}
+
+function hasVisibleStreamingMessage(
+	messages: ClineChatMessage[],
+	incomingMessage: ClineChatMessage | null,
+	hasRecentAssistantStreamActivity: boolean,
+): boolean {
+	if (hasRecentAssistantStreamActivity) {
+		return true;
+	}
+
+	if (incomingMessage) {
+		if (incomingMessage.role === "tool" && incomingMessage.meta?.hookEventName === "tool_call_start") {
+			return true;
+		}
+	}
+
+	return messages.some((message) => message.role === "tool" && message.meta?.hookEventName === "tool_call_start");
+}
+
+function hasFreshAssistantSummarySignal(summary: RuntimeTaskSessionSummary | null): boolean {
+	if (summary?.latestHookActivity?.hookEventName !== "assistant_delta" || summary.updatedAt === null) {
+		return false;
+	}
+
+	return Date.now() - summary.updatedAt < ASSISTANT_STREAM_ACTIVITY_GRACE_MS;
+}
+
+function useRecentAssistantStreamActivity(
+	summary: RuntimeTaskSessionSummary | null,
+	incomingMessage: ClineChatMessage | null,
+): boolean {
+	const latestHookEventName = summary?.latestHookActivity?.hookEventName ?? null;
+	const [hasRecentIncomingAssistantActivity, setHasRecentIncomingAssistantActivity] = useState(() =>
+		isAssistantLikeIncomingMessage(incomingMessage),
+	);
+	const [hasRecentAssistantSummaryActivity, setHasRecentAssistantSummaryActivity] = useState(() =>
+		hasFreshAssistantSummarySignal(summary),
+	);
+
+	useEffect(() => {
+		if (!isAssistantLikeIncomingMessage(incomingMessage)) {
+			setHasRecentIncomingAssistantActivity(false);
+			return;
+		}
+
+		setHasRecentIncomingAssistantActivity(true);
+		const timeoutId = window.setTimeout(() => {
+			setHasRecentIncomingAssistantActivity(false);
+		}, ASSISTANT_STREAM_ACTIVITY_GRACE_MS);
+		return () => {
+			window.clearTimeout(timeoutId);
+		};
+	}, [incomingMessage?.id, incomingMessage?.role, incomingMessage?.content, incomingMessage?.meta?.hookEventName]);
+
+	useEffect(() => {
+		const summaryUpdatedAt = summary?.updatedAt ?? null;
+		if (latestHookEventName !== "assistant_delta" || summaryUpdatedAt === null) {
+			setHasRecentAssistantSummaryActivity(false);
+			return;
+		}
+
+		const remainingMs = summaryUpdatedAt + ASSISTANT_STREAM_ACTIVITY_GRACE_MS - Date.now();
+		if (remainingMs <= 0) {
+			setHasRecentAssistantSummaryActivity(false);
+			return;
+		}
+
+		setHasRecentAssistantSummaryActivity(true);
+		const timeoutId = window.setTimeout(() => {
+			setHasRecentAssistantSummaryActivity(false);
+		}, remainingMs);
+		return () => {
+			window.clearTimeout(timeoutId);
+		};
+	}, [latestHookEventName, summary?.updatedAt]);
+
+	return hasRecentIncomingAssistantActivity || hasRecentAssistantSummaryActivity;
 }
 
 export function useClineChatPanelController({
@@ -56,6 +145,7 @@ export function useClineChatPanelController({
 	showMoveToTrash = false,
 }: UseClineChatPanelControllerInput): UseClineChatPanelControllerResult {
 	const [draft, setDraft] = useState("");
+	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(taskId);
 	const { messages, isSending, isCanceling, error, sendMessage, cancelTurn } = useClineChatSession({
 		taskId,
 		onSendMessage,
@@ -65,13 +155,20 @@ export function useClineChatPanelController({
 	});
 	const canSend = Boolean(onSendMessage) && !isSending && !isCanceling;
 	const canCancel = Boolean(onCancelTurn) && summary?.state === "running" && !isCanceling;
-	const showReviewActions = taskColumnId === "review" && Boolean(onCommit) && Boolean(onOpenPr);
-	const showAgentProgressIndicator = summary?.state === "running";
+	const showReviewActions =
+		taskColumnId === "review" &&
+		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0 &&
+		Boolean(onCommit) &&
+		Boolean(onOpenPr);
+	const hasRecentAssistantStreamActivity = useRecentAssistantStreamActivity(summary, incomingMessage);
+	const showAgentProgressIndicator =
+		summary?.state === "running" &&
+		!hasVisibleStreamingMessage(messages, incomingMessage, hasRecentAssistantStreamActivity);
 	const showActionFooter = showMoveToTrash && Boolean(onMoveToTrash);
 	const showCancelAutomaticAction = Boolean(cancelAutomaticActionLabel && onCancelAutomaticAction);
 
-	const handleSendDraft = useCallback(async (): Promise<void> => {
-		const sent = await sendMessage(draft);
+	const handleSendDraft = useCallback(async (mode?: RuntimeTaskSessionMode): Promise<void> => {
+		const sent = await sendMessage(draft, mode ? { mode } : undefined);
 		if (sent) {
 			setDraft("");
 		}
