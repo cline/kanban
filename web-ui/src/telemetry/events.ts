@@ -13,6 +13,7 @@ interface TelemetryEventMap {
 		start_in_plan_mode: boolean;
 		auto_review_mode?: TaskAutoReviewMode;
 		prompt_character_count: number;
+		prompt_image_count?: number;
 	};
 	task_dependency_created: Record<string, never>;
 	tasks_auto_started_from_dependency: {

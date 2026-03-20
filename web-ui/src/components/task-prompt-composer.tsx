@@ -1,11 +1,17 @@
 import * as RadixPopover from "@radix-ui/react-popover";
-import type { KeyboardEvent, ReactElement } from "react";
+import { Paperclip, X } from "lucide-react";
+import type { ChangeEvent, ClipboardEvent, DragEvent, KeyboardEvent, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { TaskImage } from "@/types";
 import { useDebouncedEffect } from "@/utils/react-use";
 
 const FILE_MENTION_LIMIT = 8;
 const MENTION_QUERY_DEBOUNCE_MS = 120;
+const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024;
+const ACCEPTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 interface ActivePromptToken {
 	kind: "mention";
@@ -27,6 +33,8 @@ interface TaskPromptComposerProps {
 	id?: string;
 	value: string;
 	onValueChange: (value: string) => void;
+	images?: TaskImage[];
+	onImagesChange?: (images: TaskImage[]) => void;
 	onSubmit?: () => void;
 	onSubmitAndStart?: () => void;
 	placeholder?: string;
@@ -75,10 +83,60 @@ function applyTokenReplacement(
 	};
 }
 
+function fileToTaskImage(file: File): Promise<TaskImage | null> {
+	return new Promise((resolve) => {
+		if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
+			resolve(null);
+			return;
+		}
+		if (file.size > MAX_IMAGE_SIZE_BYTES) {
+			resolve(null);
+			return;
+		}
+		const reader = new FileReader();
+		reader.onload = () => {
+			const result = reader.result;
+			if (typeof result !== "string") {
+				resolve(null);
+				return;
+			}
+			const base64 = result.split(",")[1];
+			if (!base64) {
+				resolve(null);
+				return;
+			}
+			resolve({
+				id: crypto.randomUUID().replaceAll("-", "").slice(0, 12),
+				data: base64,
+				mimeType: file.type,
+				name: file.name || undefined,
+			});
+		};
+		reader.onerror = () => resolve(null);
+		reader.readAsDataURL(file);
+	});
+}
+
+async function extractImagesFromDataTransfer(dataTransfer: DataTransfer): Promise<TaskImage[]> {
+	const images: TaskImage[] = [];
+	for (const file of Array.from(dataTransfer.files)) {
+		if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
+			continue;
+		}
+		const image = await fileToTaskImage(file);
+		if (image) {
+			images.push(image);
+		}
+	}
+	return images;
+}
+
 export function TaskPromptComposer({
 	id,
 	value,
 	onValueChange,
+	images = [],
+	onImagesChange,
 	onSubmit,
 	onSubmitAndStart,
 	placeholder,
@@ -88,6 +146,7 @@ export function TaskPromptComposer({
 	workspaceId = null,
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const suggestionItemRefs = useRef(new Map<string, HTMLButtonElement>());
 	const mentionSearchRequestIdRef = useRef(0);
@@ -96,6 +155,7 @@ export function TaskPromptComposer({
 	const [isMentionSearchLoading, setIsMentionSearchLoading] = useState(false);
 	const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
 	const [isSuggestionPickerOpen, setIsSuggestionPickerOpen] = useState(true);
+	const [isDragOver, setIsDragOver] = useState(false);
 
 	const autoResizeTextarea = useCallback(() => {
 		const textarea = textareaRef.current;
@@ -275,6 +335,104 @@ export function TaskPromptComposer({
 		[applySuggestion, isSuggestionPickerOpen, onSubmit, onSubmitAndStart, selectedSuggestionIndex, suggestions],
 	);
 
+	const appendImages = useCallback(
+		(newImages: TaskImage[]) => {
+			if (!onImagesChange || newImages.length === 0) {
+				return;
+			}
+			onImagesChange([...images, ...newImages]);
+		},
+		[images, onImagesChange],
+	);
+
+	const handlePaste = useCallback(
+		(event: ClipboardEvent<HTMLTextAreaElement>) => {
+			if (!onImagesChange || !event.clipboardData) {
+				return;
+			}
+			const imageFiles = Array.from(event.clipboardData.files).filter((file) => ACCEPTED_IMAGE_TYPES.has(file.type));
+			if (imageFiles.length === 0) {
+				return;
+			}
+			event.preventDefault();
+			void (async () => {
+				const newImages = await extractImagesFromDataTransfer(event.clipboardData);
+				appendImages(newImages);
+			})();
+		},
+		[appendImages, onImagesChange],
+	);
+
+	const handleDrop = useCallback(
+		(event: DragEvent<HTMLTextAreaElement>) => {
+			setIsDragOver(false);
+			if (!onImagesChange || !event.dataTransfer) {
+				return;
+			}
+			const imageFiles = Array.from(event.dataTransfer.files).filter((file) => ACCEPTED_IMAGE_TYPES.has(file.type));
+			if (imageFiles.length === 0) {
+				return;
+			}
+			event.preventDefault();
+			void (async () => {
+				const newImages = await extractImagesFromDataTransfer(event.dataTransfer);
+				appendImages(newImages);
+			})();
+		},
+		[appendImages, onImagesChange],
+	);
+
+	const handleDragOver = useCallback(
+		(event: DragEvent<HTMLTextAreaElement>) => {
+			if (!onImagesChange) {
+				return;
+			}
+			const hasFiles = event.dataTransfer.types.includes("Files");
+			if (!hasFiles) {
+				return;
+			}
+			event.preventDefault();
+			setIsDragOver(true);
+		},
+		[onImagesChange],
+	);
+
+	const handleDragLeave = useCallback(() => {
+		setIsDragOver(false);
+	}, []);
+
+	const handleRemoveImage = useCallback(
+		(imageId: string) => {
+			onImagesChange?.(images.filter((image) => image.id !== imageId));
+		},
+		[images, onImagesChange],
+	);
+
+	const handleAttachClick = useCallback(() => {
+		fileInputRef.current?.click();
+	}, []);
+
+	const handleFileInputChange = useCallback(
+		(event: ChangeEvent<HTMLInputElement>) => {
+			if (!onImagesChange || !event.currentTarget.files) {
+				return;
+			}
+			const files = Array.from(event.currentTarget.files);
+			void (async () => {
+				const newImages: TaskImage[] = [];
+				for (const file of files) {
+					const image = await fileToTaskImage(file);
+					if (image) {
+						newImages.push(image);
+					}
+				}
+				appendImages(newImages);
+				event.currentTarget.value = "";
+			})();
+		},
+		[appendImages, onImagesChange],
+	);
+
 	const showMentionLoading = Boolean(enabled && activeToken && isMentionSearchLoading);
 	const showSuggestions = Boolean(
 		enabled && isSuggestionPickerOpen && activeToken && (showMentionLoading || suggestions.length > 0),
@@ -308,69 +466,140 @@ export function TaskPromptComposer({
 	}, [selectedSuggestionIndex, showSuggestions, suggestions]);
 
 	return (
-		<RadixPopover.Root open={showSuggestions}>
-			<RadixPopover.Anchor asChild>
-				<textarea
-					id={id}
-					ref={textareaRef}
-					value={value}
-					onChange={(event) => {
-						onValueChange(event.target.value);
-						setCursorIndex(event.target.selectionStart ?? event.target.value.length);
-					}}
-					onKeyDown={handleTextareaKeyDown}
-					onClick={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
-					onKeyUp={(event) => setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
-					placeholder={placeholder}
-					disabled={disabled}
-					className="w-full rounded-md border border-border-bright bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-					style={{ minHeight: 80, maxHeight: TEXTAREA_MAX_HEIGHT, resize: "none", overflowY: "auto" }}
-				/>
-			</RadixPopover.Anchor>
-			<RadixPopover.Portal>
-				<RadixPopover.Content
-					className="z-50 rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
-					style={{ width: "var(--radix-popover-trigger-width, var(--radix-popover-anchor-width))" }}
-					sideOffset={4}
-					align="start"
-					onOpenAutoFocus={(event) => event.preventDefault()}
-					onCloseAutoFocus={(event) => event.preventDefault()}
-				>
-					{showMentionLoading ? (
-						<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">Loading files...</div>
-					) : (
-						<div ref={menuRef} className="max-h-[200px] overflow-x-hidden overflow-y-auto p-1">
-							{suggestions.map((suggestion, index) => {
-								const suggestionKey = `${suggestion.kind}:${suggestion.id}`;
-								return (
-									<button
-										type="button"
-										key={suggestionKey}
-										ref={(node) => setSuggestionItemRef(suggestionKey, node)}
-										className={`flex w-full items-center px-1.5 py-1 text-left rounded-md ${index === selectedSuggestionIndex ? "bg-surface-3" : "hover:bg-surface-3"}`}
-										onMouseDown={(event) => {
-											event.preventDefault();
-											applySuggestion(suggestion);
-										}}
-										onMouseEnter={() => setSelectedSuggestionIndex(index)}
-									>
-										<span
-											className="block text-xs leading-tight max-w-full text-text-primary"
-											style={{
-												overflowWrap: "anywhere",
-												wordBreak: "break-word",
-												whiteSpace: "normal",
+		<div>
+			<RadixPopover.Root open={showSuggestions}>
+				<RadixPopover.Anchor asChild>
+					<textarea
+						id={id}
+						ref={textareaRef}
+						value={value}
+						onChange={(event) => {
+							onValueChange(event.target.value);
+							setCursorIndex(event.target.selectionStart ?? event.target.value.length);
+						}}
+						onKeyDown={handleTextareaKeyDown}
+						onClick={(event) =>
+							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+						}
+						onKeyUp={(event) =>
+							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+						}
+						onPaste={handlePaste}
+						onDrop={handleDrop}
+						onDragOver={handleDragOver}
+						onDragLeave={handleDragLeave}
+						placeholder={placeholder ?? "Describe the task"}
+						disabled={disabled}
+						className="w-full rounded-md border border-border-bright bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+						style={{
+							minHeight: 80,
+							maxHeight: TEXTAREA_MAX_HEIGHT,
+							resize: "none",
+							overflowY: "auto",
+							...(isDragOver
+								? {
+									outline: "2px dashed var(--accent)",
+									outlineOffset: -2,
+								}
+								: {}),
+						}}
+					/>
+				</RadixPopover.Anchor>
+				<RadixPopover.Portal>
+					<RadixPopover.Content
+						className="z-50 rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
+						style={{ width: "var(--radix-popover-trigger-width, var(--radix-popover-anchor-width))" }}
+						sideOffset={4}
+						align="start"
+						onOpenAutoFocus={(event) => event.preventDefault()}
+						onCloseAutoFocus={(event) => event.preventDefault()}
+					>
+						{showMentionLoading ? (
+							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">Loading files...</div>
+						) : (
+							<div ref={menuRef} className="max-h-[200px] overflow-x-hidden overflow-y-auto p-1">
+								{suggestions.map((suggestion, index) => {
+									const suggestionKey = `${suggestion.kind}:${suggestion.id}`;
+									return (
+										<button
+											type="button"
+											key={suggestionKey}
+											ref={(node) => setSuggestionItemRef(suggestionKey, node)}
+											className={`flex w-full items-center px-1.5 py-1 text-left rounded-md ${index === selectedSuggestionIndex ? "bg-surface-3" : "hover:bg-surface-3"}`}
+											onMouseDown={(event) => {
+												event.preventDefault();
+												applySuggestion(suggestion);
 											}}
+											onMouseEnter={() => setSelectedSuggestionIndex(index)}
 										>
-											{suggestion.text}
-										</span>
-									</button>
-								);
-							})}
+											<span
+												className="block text-xs leading-tight max-w-full text-text-primary"
+												style={{
+													overflowWrap: "anywhere",
+													wordBreak: "break-word",
+													whiteSpace: "normal",
+												}}
+											>
+												{suggestion.text}
+											</span>
+										</button>
+									);
+								})}
+							</div>
+						)}
+					</RadixPopover.Content>
+				</RadixPopover.Portal>
+			</RadixPopover.Root>
+
+			{images.length > 0 ? (
+				<div className="mt-1.5 flex flex-wrap gap-1.5">
+					{images.map((image) => (
+						<div
+							key={image.id}
+							className="inline-flex max-w-[260px] items-center gap-1.5 rounded-md border border-border-bright bg-surface-2 px-1.5 py-1"
+						>
+							<img
+								src={`data:${image.mimeType};base64,${image.data}`}
+								alt={image.name ?? "attached image"}
+								className="h-5 w-5 rounded object-cover"
+							/>
+							<span className="truncate text-[11px] text-text-secondary">{image.name ?? "Image"}</span>
+							<button
+								type="button"
+								onClick={() => handleRemoveImage(image.id)}
+								className="rounded p-0.5 text-text-tertiary hover:text-text-primary"
+								aria-label={`Remove ${image.name ?? "image"}`}
+							>
+								<X size={12} />
+							</button>
 						</div>
-					)}
-				</RadixPopover.Content>
-			</RadixPopover.Portal>
-		</RadixPopover.Root>
+					))}
+				</div>
+			) : null}
+
+			{onImagesChange ? (
+				<>
+					<input
+						ref={fileInputRef}
+						type="file"
+						accept="image/png,image/jpeg,image/gif,image/webp"
+						multiple
+						className="hidden"
+						onChange={handleFileInputChange}
+					/>
+					<div className={images.length > 0 ? "mt-1" : "mt-1.5"}>
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Paperclip size={14} />}
+							onClick={handleAttachClick}
+							disabled={disabled || !enabled}
+						>
+							Attach image
+						</Button>
+					</div>
+				</>
+			) : null}
+		</div>
 	);
 }

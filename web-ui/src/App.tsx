@@ -240,6 +240,8 @@ export default function App(): ReactElement {
 		isInlineTaskCreateOpen,
 		newTaskPrompt,
 		setNewTaskPrompt,
+		newTaskImages,
+		setNewTaskImages,
 		newTaskStartInPlanMode,
 		setNewTaskStartInPlanMode,
 		newTaskAutoReviewEnabled,
@@ -252,6 +254,8 @@ export default function App(): ReactElement {
 		editingTaskId,
 		editTaskPrompt,
 		setEditTaskPrompt,
+		editTaskImages,
+		setEditTaskImages,
 		editTaskStartInPlanMode,
 		setEditTaskStartInPlanMode,
 		editTaskAutoReviewEnabled,
@@ -690,6 +694,8 @@ export default function App(): ReactElement {
 		<TaskInlineCreateCard
 			prompt={editTaskPrompt}
 			onPromptChange={setEditTaskPrompt}
+			images={editTaskImages}
+			onImagesChange={setEditTaskImages}
 			onCreate={handleSaveEditedTask}
 			onCreateAndStart={handleSaveAndStartEditedTask}
 			onCancel={handleCancelEditTask}
@@ -995,6 +1001,8 @@ export default function App(): ReactElement {
 				onOpenChange={handleCreateDialogOpenChange}
 				prompt={newTaskPrompt}
 				onPromptChange={setNewTaskPrompt}
+				images={newTaskImages}
+				onImagesChange={setNewTaskImages}
 				onCreate={handleCreateTask}
 				onCreateAndStart={handleCreateAndStartTask}
 				onCreateMultiple={handleCreateTasks}
