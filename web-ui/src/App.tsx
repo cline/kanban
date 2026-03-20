@@ -1001,6 +1001,8 @@ export default function App(): ReactElement {
 				onOpenChange={handleCreateDialogOpenChange}
 				prompt={newTaskPrompt}
 				onPromptChange={setNewTaskPrompt}
+				images={newTaskImages}
+				onImagesChange={setNewTaskImages}
 				onCreate={handleCreateTask}
 				onCreateAndStart={handleCreateAndStartTask}
 				onCreateMultiple={handleCreateTasks}

@@ -291,22 +291,15 @@ export function useTaskEditor({
 			return null;
 		}
 		const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
-		let createdTaskId: string | null = null;
-		setBoard((currentBoard) => {
-			const created = addTaskToColumnWithResult(currentBoard, "backlog", {
-				prompt,
-				startInPlanMode: newTaskStartInPlanMode,
-				autoReviewEnabled: newTaskAutoReviewEnabled,
-				autoReviewMode: newTaskAutoReviewMode,
-				images: newTaskImages.length > 0 ? newTaskImages : undefined,
-				baseRef,
-			});
-			createdTaskId = created.task.id;
-			return created.board;
+		const created = addTaskToColumnWithResult(board, "backlog", {
+			prompt,
+			startInPlanMode: newTaskStartInPlanMode,
+			autoReviewEnabled: newTaskAutoReviewEnabled,
+			autoReviewMode: newTaskAutoReviewMode,
+			images: newTaskImages.length > 0 ? newTaskImages : undefined,
+			baseRef,
 		});
-		if (!createdTaskId) {
-			return null;
-		}
+		setBoard(created.board);
 		trackTaskCreated({
 			selected_agent_id: toTelemetrySelectedAgentId(selectedAgentId),
 			start_in_plan_mode: newTaskStartInPlanMode,
@@ -326,8 +319,9 @@ export function useTaskEditor({
 		if (!options?.keepDialogOpen) {
 			setIsInlineTaskCreateOpen(false);
 		}
-		return createdTaskId;
+		return created.task.id;
 	}, [
+		board,
 		currentProjectId,
 		newTaskAutoReviewEnabled,
 		newTaskAutoReviewMode,
