@@ -24,6 +24,11 @@ import {
 } from "./sdk-provider-boundary.js";
 
 const WORKOS_TOKEN_PREFIX = "workos:";
+const MANAGED_PROVIDER_ENV_KEYS: Record<ManagedClineOauthProviderId, readonly string[]> = {
+	cline: ["CLINE_API_KEY"],
+	oca: ["OCA_API_KEY"],
+	"openai-codex": [],
+};
 
 export interface ResolvedClineLaunchConfig {
 	providerId: string;
@@ -41,6 +46,16 @@ function toErrorMessage(error: unknown): string {
 
 function isManagedOauthProviderId(providerId: string): providerId is ManagedClineOauthProviderId {
 	return providerId === "cline" || providerId === "oca" || providerId === "openai-codex";
+}
+
+function formatManagedProviderDisplayName(providerId: ManagedClineOauthProviderId): string {
+	if (providerId === "cline") {
+		return "Cline";
+	}
+	if (providerId === "oca") {
+		return "Oracle Code Assist";
+	}
+	return "OpenAI Codex";
 }
 
 function stripWorkosPrefix(accessToken: string): string {
@@ -77,6 +92,39 @@ function toResponseExpirySeconds(expiresAt: number | null | undefined): number |
 function resolveVisibleApiKey(settings: SdkProviderSettings | null): string | null {
 	const apiKey = settings?.apiKey?.trim() || settings?.auth?.apiKey?.trim() || "";
 	return apiKey.length > 0 ? apiKey : null;
+}
+
+function readEnvApiKey(envKey: string): string | null {
+	const apiKey = process.env[envKey]?.trim() ?? "";
+	return apiKey.length > 0 ? apiKey : null;
+}
+
+function resolveManagedProviderEnvApiKey(providerId: ManagedClineOauthProviderId): string | null {
+	for (const envKey of MANAGED_PROVIDER_ENV_KEYS[providerId]) {
+		const apiKey = readEnvApiKey(envKey);
+		if (apiKey) {
+			return apiKey;
+		}
+	}
+	return null;
+}
+
+function resolveManagedProviderLaunchApiKey(input: {
+	providerId: ManagedClineOauthProviderId;
+	settings: SdkProviderSettings;
+	oauthApiKey: string | null;
+}): string {
+	const resolvedApiKey =
+		input.oauthApiKey ?? resolveVisibleApiKey(input.settings) ?? resolveManagedProviderEnvApiKey(input.providerId);
+	if (resolvedApiKey) {
+		return resolvedApiKey;
+	}
+
+	const envKeys = MANAGED_PROVIDER_ENV_KEYS[input.providerId];
+	const envHelp = envKeys.length > 0 ? ` or set ${envKeys.join(" or ")}` : "";
+	throw new Error(
+		`${formatManagedProviderDisplayName(input.providerId)} provider is selected but no ${formatManagedProviderDisplayName(input.providerId)} credentials are configured. Sign in from Settings${envHelp} before starting a native Cline task.`,
+	);
 }
 
 function hasOauthAccessToken(settings: SdkProviderSettings | null): boolean {
@@ -234,21 +282,30 @@ export function createClineProviderService() {
 		async resolveLaunchConfig(): Promise<ResolvedClineLaunchConfig> {
 			const selectedSettings = getSelectedProviderSettings();
 			if (!selectedSettings) {
-				return {
-					providerId: "cline",
-					modelId: null,
-					apiKey: null,
-					baseUrl: null,
-				};
+				throw new Error(
+					"No native Cline provider is configured. Open Settings, choose a provider, and then start the task again.",
+				);
 			}
 
-			const normalizedProviderId = selectedSettings.provider.trim().toLowerCase() || "cline";
+			const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
+			if (!normalizedProviderId) {
+				throw new Error(
+					"No native Cline provider is configured. Open Settings, choose a provider, and then start the task again.",
+				);
+			}
 			const oauthResolution = await refreshManagedOauthSettings(selectedSettings);
 			const resolvedSettings = oauthResolution?.settings ?? selectedSettings;
+			const apiKey = isManagedOauthProviderId(normalizedProviderId)
+				? resolveManagedProviderLaunchApiKey({
+						providerId: normalizedProviderId,
+						settings: resolvedSettings,
+						oauthApiKey: oauthResolution?.apiKey ?? null,
+					})
+				: resolveVisibleApiKey(resolvedSettings);
 			return {
 				providerId: normalizedProviderId,
 				modelId: resolvedSettings.model?.trim() || null,
-				apiKey: oauthResolution?.apiKey ?? resolveVisibleApiKey(resolvedSettings),
+				apiKey,
 				baseUrl: resolvedSettings.baseUrl?.trim() || null,
 			};
 		},

@@ -1,24 +1,63 @@
 import type {
 	RuntimeAgentId,
+	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 	RuntimeStateStreamTaskChatMessage,
 	RuntimeTaskChatMessage,
 } from "@/runtime/types";
+import { isRuntimeAgentLaunchSupported } from "@runtime-agent-catalog";
 
 export function isNativeClineAgentSelected(agentId: RuntimeAgentId | null | undefined): boolean {
 	return agentId === "cline";
 }
 
+export function getRuntimeClineProviderSettings(
+	config: Pick<RuntimeConfigResponse, "clineProviderSettings"> | null | undefined,
+): RuntimeClineProviderSettings {
+	return (
+		config?.clineProviderSettings ?? {
+			providerId: null,
+			modelId: null,
+			baseUrl: null,
+			apiKeyConfigured: false,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		}
+	);
+}
+
+export function isClineProviderAuthenticated(
+	settings: RuntimeClineProviderSettings | null | undefined,
+): boolean {
+	if (!settings) {
+		return false;
+	}
+	const hasProviderSelection =
+		(settings.providerId?.trim().length ?? 0) > 0 || (settings.oauthProvider?.trim().length ?? 0) > 0;
+	if (!hasProviderSelection) {
+		return false;
+	}
+	return settings.apiKeyConfigured || settings.oauthAccessTokenConfigured;
+}
+
 export function isTaskAgentSetupSatisfied(
-	config: Pick<RuntimeConfigResponse, "selectedAgentId" | "agents"> | null | undefined,
+	config: Pick<RuntimeConfigResponse, "selectedAgentId" | "agents" | "clineProviderSettings"> | null | undefined,
 ): boolean | null {
 	if (!config) {
 		return null;
 	}
 	if (isNativeClineAgentSelected(config.selectedAgentId)) {
-		return true;
+		if (isClineProviderAuthenticated(getRuntimeClineProviderSettings(config))) {
+			return true;
+		}
+		return config.agents.some(
+			(agent) => agent.id !== "cline" && isRuntimeAgentLaunchSupported(agent.id) && agent.installed,
+		);
 	}
-	return config.agents.some((agent) => agent.installed);
+	return config.agents.some((agent) => isRuntimeAgentLaunchSupported(agent.id) && agent.installed);
 }
 
 export function selectLatestTaskChatMessageForTask(

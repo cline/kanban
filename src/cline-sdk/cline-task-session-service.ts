@@ -2,7 +2,11 @@
 // runtime-api.ts uses this service to start sessions, send messages, load
 // history, and subscribe to summaries and chat events without knowing SDK
 // host, repository, or event-adapter details.
-import type { RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
+import type {
+	RuntimeTaskSessionMode,
+	RuntimeTaskSessionSummary,
+	RuntimeTaskTurnCheckpoint,
+} from "../core/api-contract.js";
 import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints.js";
@@ -36,6 +40,7 @@ export interface StartClineTaskSessionRequest {
 	resumeFromTrash?: boolean;
 	providerId?: string | null;
 	modelId?: string | null;
+	mode?: RuntimeTaskSessionMode;
 	apiKey?: string | null;
 	baseUrl?: string | null;
 }
@@ -47,7 +52,11 @@ export interface ClineTaskSessionService {
 	stopTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	abortTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	cancelTaskTurn(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
-	sendTaskSessionInput(taskId: string, text: string): Promise<RuntimeTaskSessionSummary | null>;
+	sendTaskSessionInput(
+		taskId: string,
+		text: string,
+		mode?: RuntimeTaskSessionMode,
+	): Promise<RuntimeTaskSessionSummary | null>;
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
 	listSummaries(): RuntimeTaskSessionSummary[];
 	listMessages(taskId: string): ClineTaskMessage[];
@@ -108,6 +117,35 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 	onMessage(listener: (taskId: string, message: ClineTaskMessage) => void): () => void {
 		return this.messageRepository.onMessage(listener);
+	}
+
+	private emitTaskFailure(
+		taskId: string,
+		entry: ClineTaskSessionEntry,
+		context: "start" | "send",
+		error: unknown,
+	): void {
+		const errorMessage = toErrorMessage(error);
+		const systemMessage = createMessage(taskId, "system", `Cline SDK ${context} failed: ${errorMessage}.`);
+		entry.messages.push(systemMessage);
+		this.emitMessage(taskId, systemMessage);
+		clearActiveTurnState(entry);
+		const failedSummary = updateSummary(entry, {
+			state: "failed",
+			reviewReason: "error",
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText: `${context === "start" ? "Start" : "Send"} failed: ${errorMessage}`,
+				toolName: null,
+				toolInputSummary: null,
+				finalMessage: errorMessage,
+				hookEventName: "agent_error",
+				notificationType: null,
+				source: "cline-sdk",
+			},
+		});
+		this.emitSummary(failedSummary);
 	}
 
 	async startTaskSession(request: StartClineTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
@@ -178,6 +216,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					prompt: request.prompt,
 					providerId,
 					modelId,
+					mode: request.mode,
 					apiKey: request.apiKey,
 					baseUrl: request.baseUrl,
 					systemPrompt,
@@ -195,19 +234,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					this.emitMessage(request.taskId, agentMessage);
 				}
 			} catch (error) {
-				const failedMessage = createMessage(
-					request.taskId,
-					"system",
-					`Cline SDK start failed: ${toErrorMessage(error)}.`,
-				);
-				entry.messages.push(failedMessage);
-				this.emitMessage(request.taskId, failedMessage);
-				const failedSummary = updateSummary(entry, {
-					state: "failed",
-					reviewReason: "exit",
-					lastOutputAt: now(),
-				});
-				this.emitSummary(failedSummary);
+				this.emitTaskFailure(request.taskId, entry, "start", error);
 			}
 		})();
 
@@ -282,7 +309,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return summary;
 	}
 
-	async sendTaskSessionInput(taskId: string, text: string): Promise<RuntimeTaskSessionSummary | null> {
+	async sendTaskSessionInput(
+		taskId: string,
+		text: string,
+		mode?: RuntimeTaskSessionMode,
+	): Promise<RuntimeTaskSessionSummary | null> {
 		const entry = this.messageRepository.getTaskEntry(taskId);
 		if (!entry) {
 			return null;
@@ -319,7 +350,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			this.emitSummary(waitingSummary);
 			const assistantCountBeforeSend = entry.messages.filter((message) => message.role === "assistant").length;
 			void this.sessionRuntime
-				.sendTaskSessionInput(taskId, normalized)
+				.sendTaskSessionInput(taskId, normalized, mode)
 				.then((result: unknown) => {
 					const agentText = readAgentResultText(result);
 					if (agentText) {
@@ -336,13 +367,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					}
 				})
 				.catch((error: unknown) => {
-					const systemMessage = createMessage(
-						taskId,
-						"system",
-						`Cline SDK send failed: ${toErrorMessage(error)}.`,
-					);
-					entry.messages.push(systemMessage);
-					this.emitMessage(taskId, systemMessage);
+					this.emitTaskFailure(taskId, entry, "send", error);
 				});
 		}
 		const summary = updateSummary(entry, {

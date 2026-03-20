@@ -36,6 +36,7 @@ export function SearchSelectDropdown({
 	noResultsText = "No matching results",
 	showSelectedIndicator = false,
 	matchTargetWidth = true,
+	collisionPadding = 8,
 	dropdownStyle,
 	menuStyle,
 	onPopoverOpenChange,
@@ -57,6 +58,7 @@ export function SearchSelectDropdown({
 	noResultsText?: string;
 	showSelectedIndicator?: boolean;
 	matchTargetWidth?: boolean;
+	collisionPadding?: number;
 	dropdownStyle?: CSSProperties;
 	menuStyle?: CSSProperties;
 	onPopoverOpenChange?: (isOpen: boolean) => void;
@@ -238,6 +240,7 @@ export function SearchSelectDropdown({
 				<RadixPopover.Content
 					className="z-50 max-h-[300px] rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
 					onWheelCapture={handleWheelCapture}
+					collisionPadding={collisionPadding}
 					style={{
 						width: matchTargetWidth ? "var(--radix-popover-trigger-width)" : undefined,
 						...dropdownStyle,

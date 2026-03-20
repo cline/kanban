@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { createHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";
 
 import { notifyError } from "@/components/app-toaster";
-import { isNativeClineAgentSelected } from "@/runtime/native-agent";
+import { getRuntimeClineProviderSettings, isNativeClineAgentSelected } from "@/runtime/native-agent";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -50,11 +50,12 @@ interface HomeAgentWorkspaceDescriptor {
 }
 
 function buildClineDescriptor(config: RuntimeConfigResponse): string {
+	const clineProviderSettings = getRuntimeClineProviderSettings(config);
 	return JSON.stringify({
 		agentId: config.selectedAgentId,
-		providerId: config.clineProviderSettings.providerId ?? config.clineProviderSettings.oauthProvider ?? "",
-		modelId: config.clineProviderSettings.modelId ?? "",
-		baseUrl: config.clineProviderSettings.baseUrl ?? "",
+		providerId: clineProviderSettings.providerId ?? clineProviderSettings.oauthProvider ?? "",
+		modelId: clineProviderSettings.modelId ?? "",
+		baseUrl: clineProviderSettings.baseUrl ?? "",
 	});
 }
 
@@ -122,6 +123,7 @@ export function useHomeAgentSession({
 	const pendingStartRequestIdsRef = useRef(new Map<string, number>());
 	const nextStartRequestIdRef = useRef(0);
 	const disposedRef = useRef(false);
+	const clineProviderSettings = getRuntimeClineProviderSettings(runtimeProjectConfig);
 
 	useEffect(() => {
 		latestBaseRefRef.current = resolveHomeAgentBaseRef(workspaceGit);
@@ -171,10 +173,10 @@ export function useHomeAgentSession({
 		};
 	}, [
 		currentProjectId,
-		runtimeProjectConfig?.clineProviderSettings.baseUrl,
-		runtimeProjectConfig?.clineProviderSettings.modelId,
-		runtimeProjectConfig?.clineProviderSettings.oauthProvider,
-		runtimeProjectConfig?.clineProviderSettings.providerId,
+		clineProviderSettings.baseUrl,
+		clineProviderSettings.modelId,
+		clineProviderSettings.oauthProvider,
+		clineProviderSettings.providerId,
 		runtimeProjectConfig?.effectiveCommand,
 		runtimeProjectConfig?.selectedAgentId,
 	]);

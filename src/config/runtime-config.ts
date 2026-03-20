@@ -6,6 +6,9 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract.js";
+import {
+	isRuntimeAgentLaunchSupported,
+} from "../core/agent-catalog.js";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
 import { detectInstalledCommands } from "../terminal/agent-registry.js";
 import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils.js";
@@ -52,7 +55,7 @@ const CONFIG_FILENAME = "config.json";
 const PROJECT_CONFIG_DIR = ".kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
-const AUTO_SELECT_AGENT_PRIORITY: RuntimeAgentId[] = ["cline", "claude", "codex", "opencode", "droid", "gemini"];
+const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree on a detached HEAD. When you are finished with the task, commit the working changes onto {{base_ref}}.
@@ -114,12 +117,13 @@ function getRuntimeHomePath(): string {
 
 function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): RuntimeAgentId {
 	if (
-		agentId === "claude" ||
-		agentId === "codex" ||
-		agentId === "gemini" ||
-		agentId === "opencode" ||
-		agentId === "droid" ||
-		agentId === "cline"
+		(agentId === "claude" ||
+			agentId === "codex" ||
+			agentId === "gemini" ||
+			agentId === "opencode" ||
+			agentId === "droid" ||
+			agentId === "cline") &&
+		isRuntimeAgentLaunchSupported(agentId)
 	) {
 		return agentId;
 	}

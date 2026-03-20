@@ -9,6 +9,7 @@ import {
 	runClineProviderOauthLogin,
 	saveClineProviderSettings,
 } from "@/runtime/runtime-config-query";
+import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeClineOauthProvider,
@@ -28,6 +29,13 @@ interface UseRuntimeSettingsClineControllerOptions {
 interface SaveResult {
 	ok: boolean;
 	message?: string;
+}
+
+interface SaveProviderSettingsOverrides {
+	providerId?: string;
+	modelId?: string | null;
+	apiKey?: string | null;
+	baseUrl?: string | null;
 }
 
 export interface UseRuntimeSettingsClineControllerResult {
@@ -52,7 +60,7 @@ export interface UseRuntimeSettingsClineControllerResult {
 	oauthAccountId: string;
 	oauthExpiresAt: string;
 	hasUnsavedChanges: boolean;
-	saveProviderSettings: () => Promise<SaveResult>;
+	saveProviderSettings: (overrides?: SaveProviderSettingsOverrides) => Promise<SaveResult>;
 	runOauthLogin: () => Promise<SaveResult>;
 }
 
@@ -68,7 +76,7 @@ function getEffectiveProviderSettings(
 	config: RuntimeConfigResponse | null,
 	override: RuntimeClineProviderSettings | null,
 ): RuntimeClineProviderSettings | null {
-	return override ?? config?.clineProviderSettings ?? null;
+	return override ?? getRuntimeClineProviderSettings(config);
 }
 
 export function useRuntimeSettingsClineController(
@@ -87,6 +95,7 @@ export function useRuntimeSettingsClineController(
 	const [isRunningOauthLogin, setIsRunningOauthLogin] = useState(false);
 
 	const effectiveProviderSettings = getEffectiveProviderSettings(config, providerSettingsOverride);
+	const configProviderSettings = getRuntimeClineProviderSettings(config);
 	const initialProviderId = effectiveProviderSettings?.providerId ?? effectiveProviderSettings?.oauthProvider ?? "";
 	const initialModelId = effectiveProviderSettings?.modelId ?? "";
 	const initialBaseUrl = effectiveProviderSettings?.baseUrl ?? "";
@@ -118,16 +127,16 @@ export function useRuntimeSettingsClineController(
 		if (!open) {
 			return;
 		}
-		setProviderId(config?.clineProviderSettings.providerId ?? config?.clineProviderSettings.oauthProvider ?? "");
-		setModelId(config?.clineProviderSettings.modelId ?? "");
+		setProviderId(configProviderSettings.providerId ?? configProviderSettings.oauthProvider ?? "");
+		setModelId(configProviderSettings.modelId ?? "");
 		setApiKey("");
-		setBaseUrl(config?.clineProviderSettings.baseUrl ?? "");
+		setBaseUrl(configProviderSettings.baseUrl ?? "");
 		setProviderSettingsOverride(null);
 	}, [
-		config?.clineProviderSettings.baseUrl,
-		config?.clineProviderSettings.modelId,
-		config?.clineProviderSettings.oauthProvider,
-		config?.clineProviderSettings.providerId,
+		configProviderSettings.baseUrl,
+		configProviderSettings.modelId,
+		configProviderSettings.oauthProvider,
+		configProviderSettings.providerId,
 		open,
 	]);
 
@@ -197,8 +206,8 @@ export function useRuntimeSettingsClineController(
 		};
 	}, [open, providerId, selectedAgentId, workspaceId]);
 
-	const saveProviderSettingsDraft = useCallback(async (): Promise<SaveResult> => {
-		if (!hasUnsavedChanges) {
+	const saveProviderSettingsDraft = useCallback(async (overrides?: SaveProviderSettingsOverrides): Promise<SaveResult> => {
+		if (!overrides && !hasUnsavedChanges) {
 			return { ok: true };
 		}
 		if (!workspaceId) {
@@ -207,19 +216,28 @@ export function useRuntimeSettingsClineController(
 				message: "Select a workspace before saving Cline provider settings.",
 			};
 		}
-		const trimmedProviderId = providerId.trim();
+		const trimmedProviderId = (overrides?.providerId ?? providerId).trim();
 		if (trimmedProviderId.length === 0) {
 			return {
 				ok: false,
 				message: "Choose a Cline provider before saving.",
 			};
 		}
-		const trimmedBaseUrl = baseUrl.trim() || null;
+		const trimmedBaseUrl =
+			overrides && "baseUrl" in overrides ? overrides.baseUrl?.trim() || null : baseUrl.trim() || null;
+		const trimmedModelId =
+			overrides && "modelId" in overrides ? overrides.modelId?.trim() || null : modelId.trim() || null;
+		const trimmedApiKey =
+			overrides && "apiKey" in overrides
+				? overrides.apiKey?.trim() || null
+				: managedOauthProvider
+					? null
+					: apiKey.trim() || null;
 		try {
 			const savedSettings = await saveClineProviderSettings(workspaceId, {
 				providerId: trimmedProviderId,
-				modelId: modelId.trim() || null,
-				apiKey: managedOauthProvider ? null : apiKey.trim() || null,
+				modelId: trimmedModelId,
+				apiKey: trimmedApiKey,
 				baseUrl: trimmedBaseUrl,
 			});
 			setProviderId(savedSettings.providerId ?? savedSettings.oauthProvider ?? trimmedProviderId);

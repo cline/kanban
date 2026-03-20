@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type ClineChatMessage, useClineChatSession } from "@/hooks/use-cline-chat-session";
+import type { RuntimeTaskSessionMode } from "@/runtime/types";
 
 interface HookSnapshot {
 	messageIds: string[];
@@ -10,7 +11,7 @@ interface HookSnapshot {
 	lastMessageHookEvent: string | null;
 	error: string | null;
 	isSending: boolean;
-	sendMessage: (text: string) => Promise<boolean>;
+	sendMessage: (text: string, options?: { mode?: RuntimeTaskSessionMode }) => Promise<boolean>;
 }
 
 function createDeferred<T>() {
@@ -35,7 +36,11 @@ function HookHarness({
 	onSnapshot,
 }: {
 	taskId: string;
-	onSendMessage?: (taskId: string, text: string) => Promise<{ ok: boolean; message?: string; chatMessage?: ClineChatMessage | null }>;
+	onSendMessage?: (
+		taskId: string,
+		text: string,
+		options?: { mode?: RuntimeTaskSessionMode },
+	) => Promise<{ ok: boolean; message?: string; chatMessage?: ClineChatMessage | null }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	incomingMessage?: ClineChatMessage | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
@@ -231,12 +236,12 @@ describe("useClineChatSession", () => {
 		});
 
 		await act(async () => {
-			await snapshots.at(-1)?.sendMessage("Hello");
+			await snapshots.at(-1)?.sendMessage("Hello", { mode: "plan" });
 		});
 
 		expect(snapshots.at(-1)?.messageIds).toEqual(["sent-1"]);
 		expect(snapshots.at(-1)?.lastMessageContent).toBe("Hello");
-		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Hello");
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Hello", { mode: "plan" });
 		expect(onLoadMessages).toHaveBeenCalledTimes(1);
 	});
 
