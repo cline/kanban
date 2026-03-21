@@ -33,7 +33,7 @@ afterEach(() => {
 describe("codex workspace trust helpers", () => {
 	it("detects Codex trust prompt", () => {
 		const codexPrompt = `
-You are in /Users/saoud/.kanban/worktrees/6df3a/mcp-swift-sdk
+You are in /Users/saoud/.cline/kanban/worktrees/6df3a/mcp-swift-sdk
 
 Do you trust the contents of this directory? Working with untrusted
 contents comes with higher risk of prompt injection.
@@ -53,7 +53,7 @@ Press enter to continue`;
 
 	it("auto-confirms all codex sessions", () => {
 		const home = setupTempHome();
-		const taskWorktreePath = join(home, ".kanban", "worktrees", "task-123", "context");
+		const taskWorktreePath = join(home, ".cline", "kanban", "worktrees", "task-123", "context");
 		const externalPath = join(home, "projects", "repo");
 
 		expect(shouldAutoConfirmCodexWorkspaceTrust("codex", taskWorktreePath)).toBe(true);

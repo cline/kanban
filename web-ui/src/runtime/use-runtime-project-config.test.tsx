@@ -31,7 +31,7 @@ function createRuntimeConfigResponse(
 		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
 		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project/.kanban/config.json",
+		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
 		readyForReviewNotificationsEnabled: true,
 		detectedCommands: [selectedAgentId],
 		agents: [
@@ -54,10 +54,6 @@ function createRuntimeConfigResponse(
 				configured: selectedAgentId === "codex",
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: false,
-			linearMcp: false,
-		},
 		shortcuts,
 		clineProviderSettings: {
 			providerId: null,
@@ -180,4 +176,30 @@ describe("useRuntimeProjectConfig", () => {
 
 		expect(snapshots.at(-1)?.config?.shortcuts).toEqual([]);
 	});
-});
+
+	it("loads runtime config without a selected project", async () => {
+		const startupConfig = createRuntimeConfigResponse("codex", []);
+		fetchRuntimeConfigMock.mockResolvedValue(startupConfig);
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					workspaceId={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+			});
+
+			expect(fetchRuntimeConfigMock).toHaveBeenCalledWith(null);
+			if (latestSnapshot === null) {
+				throw new Error("Expected a runtime project config snapshot.");
+			}
+			const snapshot = latestSnapshot as HookSnapshot;
+			expect(snapshot.config?.selectedAgentId).toBe("codex");
+			expect(snapshot.isLoading).toBe(false);
+		});
+	});

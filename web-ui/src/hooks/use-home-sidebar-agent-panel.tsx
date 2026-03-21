@@ -144,6 +144,7 @@ export function useHomeSidebarAgentPanel({
 				taskId={taskId}
 				summary={homeAgentPanelSummary ?? createIdleTaskSession(taskId)}
 				defaultMode="act"
+				showComposerModeToggle={false}
 				workspaceId={currentProjectId}
 				runtimeConfig={runtimeProjectConfig}
 				onSendMessage={handleSendHomeClineChatMessage}

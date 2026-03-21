@@ -14,9 +14,9 @@ import { KanbanBoard } from "@/components/kanban-board";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
+import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
-import { TaskStartServicePromptDialog } from "@/components/task-start-service-prompt-dialog";
 import { TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,9 +44,9 @@ import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notificati
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
 import { useTaskEditor } from "@/hooks/use-task-editor";
+import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
-import { useTaskStartServicePrompts } from "@/hooks/use-task-start-service-prompts";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { isTaskAgentSetupSatisfied, selectTaskChatMessagesForTask } from "@/runtime/native-agent";
@@ -111,22 +111,25 @@ export default function App(): ReactElement {
 	const isInitialRuntimeLoad =
 		!hasReceivedSnapshot && currentProjectId === null && projects.length === 0 && !streamError;
 	const isAwaitingWorkspaceSnapshot = currentProjectId !== null && streamedWorkspaceState === null;
-	const { config: runtimeProjectConfig, refresh: refreshRuntimeProjectConfig } =
+	const {
+		config: runtimeProjectConfig,
+		isLoading: isRuntimeProjectConfigLoading,
+		refresh: refreshRuntimeProjectConfig,
+	} =
 		useRuntimeProjectConfig(currentProjectId);
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
 	const {
-		startupOnboardingPrompt,
 		isStartupOnboardingDialogOpen,
 		handleCloseStartupOnboardingDialog,
 		handleSelectOnboardingAgent,
 		handleOnboardingClineSetupSaved,
 	} = useStartupOnboarding({
 		currentProjectId,
-		hasNoProjects,
 		runtimeProjectConfig,
+		isRuntimeProjectConfigLoading,
 		isTaskAgentReady,
 		refreshRuntimeProjectConfig,
 		refreshSettingsRuntimeProjectConfig,
@@ -569,27 +572,14 @@ export default function App(): ReactElement {
 	const {
 		handleCreateAndStartTask,
 		handleCreateAndStartTasks,
-		handleStartTaskWithServiceSetupPrompt,
-		handleStartAllBacklogTasksWithServiceSetupPrompt,
-		taskStartServicePromptDialogOpen,
-		taskStartServicePromptDialogPrompt,
-		taskStartServicePromptDoNotShowAgain,
-		setTaskStartServicePromptDoNotShowAgain,
-		handleCloseTaskStartServicePrompt,
-		handleRunTaskStartServiceInstallCommand,
-	} = useTaskStartServicePrompts({
+		handleStartTaskFromBoard,
+		handleStartAllBacklogTasksFromBoard,
+	} = useTaskStartActions({
 		board,
-		currentProjectId,
-		selectedAgentId: runtimeProjectConfig?.selectedAgentId,
-		taskStartSetupAvailability: runtimeProjectConfig?.taskStartSetupAvailability,
-		isTaskAgentSetupSatisfied: isTaskAgentReady,
 		handleCreateTask,
 		handleCreateTasks,
 		handleStartTask,
 		handleStartAllBacklogTasks,
-		prepareTerminalForShortcut,
-		prepareWaitForTerminalConnectionReady,
-		sendTaskSessionInput,
 	});
 
 	useEffect(() => {
@@ -600,9 +590,9 @@ export default function App(): ReactElement {
 		if (!selection || selection.column.id !== "backlog") {
 			return;
 		}
-		handleStartTaskWithServiceSetupPrompt(pendingTaskStartAfterEditId);
+		handleStartTaskFromBoard(pendingTaskStartAfterEditId);
 		setPendingTaskStartAfterEditId(null);
-	}, [board, handleStartTaskWithServiceSetupPrompt, pendingTaskStartAfterEditId]);
+	}, [board, handleStartTaskFromBoard, pendingTaskStartAfterEditId]);
 
 	const detailSession = selectedCard
 		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
@@ -837,8 +827,8 @@ export default function App(): ReactElement {
 											workspacePath={workspacePath}
 											onCardSelect={handleCardSelect}
 											onCreateTask={handleOpenCreateTask}
-											onStartTask={handleStartTaskWithServiceSetupPrompt}
-											onStartAllTasks={handleStartAllBacklogTasksWithServiceSetupPrompt}
+											onStartTask={handleStartTaskFromBoard}
+											onStartAllTasks={handleStartAllBacklogTasksFromBoard}
 											onClearTrash={handleOpenClearTrash}
 											editingTaskId={editingTaskId}
 											inlineTaskEditor={inlineTaskEditor}
@@ -917,8 +907,8 @@ export default function App(): ReactElement {
 								onCardSelect={handleCardSelect}
 								onTaskDragEnd={handleDetailTaskDragEnd}
 								onCreateTask={handleOpenCreateTask}
-								onStartTask={handleStartTaskWithServiceSetupPrompt}
-								onStartAllTasks={handleStartAllBacklogTasksWithServiceSetupPrompt}
+								onStartTask={handleStartTaskFromBoard}
+								onStartAllTasks={handleStartAllBacklogTasksFromBoard}
 								onClearTrash={handleOpenClearTrash}
 								editingTaskId={editingTaskId}
 								inlineTaskEditor={inlineTaskEditor}
@@ -1018,27 +1008,9 @@ export default function App(): ReactElement {
 				onCancel={() => setIsClearTrashDialogOpen(false)}
 				onConfirm={handleConfirmClearTrash}
 			/>
-			<TaskStartServicePromptDialog
+			<StartupOnboardingDialog
 				open={isStartupOnboardingDialogOpen}
-				prompt={startupOnboardingPrompt}
-				doNotShowAgain={false}
-				onDoNotShowAgainChange={() => {}}
 				onClose={handleCloseStartupOnboardingDialog}
-				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
-				agents={runtimeProjectConfig?.agents ?? []}
-				clineProviderSettings={runtimeProjectConfig?.clineProviderSettings ?? null}
-				workspaceId={currentProjectId}
-				runtimeConfig={runtimeProjectConfig ?? null}
-				onSelectAgent={handleSelectOnboardingAgent}
-				onClineSetupSaved={handleOnboardingClineSetupSaved}
-			/>
-			<TaskStartServicePromptDialog
-				open={taskStartServicePromptDialogOpen}
-				prompt={taskStartServicePromptDialogPrompt}
-				doNotShowAgain={taskStartServicePromptDoNotShowAgain}
-				onDoNotShowAgainChange={setTaskStartServicePromptDoNotShowAgain}
-				onClose={handleCloseTaskStartServicePrompt}
-				onRunInstallCommand={handleRunTaskStartServiceInstallCommand}
 				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 				agents={runtimeProjectConfig?.agents ?? []}
 				clineProviderSettings={runtimeProjectConfig?.clineProviderSettings ?? null}

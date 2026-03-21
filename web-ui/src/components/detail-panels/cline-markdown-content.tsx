@@ -96,7 +96,10 @@ const markdownComponents: Components = {
 		if (isInline) {
 			return (
 				<code
-					className={cn("rounded bg-surface-2 px-1 py-0.5 font-mono text-xs text-text-primary", className)}
+					className={cn(
+						"rounded bg-surface-2 px-1 py-0.5 font-mono text-xs whitespace-pre-wrap break-all text-text-primary",
+						className,
+					)}
 					{...props}
 				>
 					{code}
@@ -128,5 +131,11 @@ export function ClineMarkdownContent({ content }: { content: string }): ReactEle
 	if (!content.trim()) {
 		return <span className="text-text-secondary" />;
 	}
-	return <div className="kb-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{content}</ReactMarkdown></div>;
+	return (
+		<div className="kb-markdown min-w-0">
+			<ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+				{content}
+			</ReactMarkdown>
+		</div>
+	);
 }

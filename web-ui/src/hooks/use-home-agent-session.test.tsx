@@ -94,10 +94,6 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 				configured: false,
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: true,
-			linearMcp: true,
-		},
 		shortcuts: [],
 		clineProviderSettings: {
 			providerId: "anthropic",

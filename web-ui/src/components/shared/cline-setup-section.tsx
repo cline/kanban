@@ -4,6 +4,29 @@ import { SearchSelectDropdown, type SearchSelectOption } from "@/components/sear
 import { Button } from "@/components/ui/button";
 import type { UseRuntimeSettingsClineControllerResult } from "@/hooks/use-runtime-settings-cline-controller";
 
+function formatExpiry(value: string): string {
+	const trimmed = value.trim();
+	if (trimmed.length === 0) {
+		return trimmed;
+	}
+
+	if (!Number.isNaN(Number(value))) {
+		const ms = Number(trimmed) * 1000;
+		const date = new Date(ms);
+		if (!Number.isNaN(date.getTime())) {
+			return date.toLocaleString();
+		}
+		return trimmed;
+	}
+
+	const parsed = new Date(trimmed);
+	if (!Number.isNaN(parsed.getTime())) {
+		return parsed.toLocaleString();
+	}
+
+	return trimmed;
+}
+
 export function ClineSetupSection({
 	controller,
 	controlsDisabled,
@@ -145,7 +168,7 @@ export function ClineSetupSection({
 					) : null}
 					{controller.oauthExpiresAt ? (
 						<p className="text-text-secondary text-[12px] mt-1 mb-0">
-							Expiry: <span className="text-text-primary">{controller.oauthExpiresAt}</span>
+							Expiry: <span className="text-text-primary">{formatExpiry(controller.oauthExpiresAt)}</span>
 						</p>
 					) : null}
 					<div className="mt-2">

@@ -112,10 +112,6 @@ function hasDependencyPair(board: RuntimeBoardData, backlogTaskId: string, linke
 	return false;
 }
 
-function sortTaskIds(firstTaskId: string, secondTaskId: string): [string, string] {
-	return firstTaskId <= secondTaskId ? [firstTaskId, secondTaskId] : [secondTaskId, firstTaskId];
-}
-
 function findTaskLocation(
 	board: RuntimeBoardData,
 	taskId: string,
@@ -165,8 +161,10 @@ function resolveDependencyEndpoints(
 	const firstIsBacklog = firstColumnId === "backlog";
 	const secondIsBacklog = secondColumnId === "backlog";
 	if (firstIsBacklog && secondIsBacklog) {
-		const [backlogTaskId, linkedTaskId] = sortTaskIds(firstTaskId, secondTaskId);
-		return { backlogTaskId, linkedTaskId };
+		return {
+			backlogTaskId: firstTaskId,
+			linkedTaskId: secondTaskId,
+		};
 	}
 	if (!firstIsBacklog && !secondIsBacklog) {
 		return { reason: "non_backlog" };

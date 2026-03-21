@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import type { RefObject } from "react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { DependencyLinkDraft } from "@/components/dependencies/use-dependency-linking";
 import type { BoardColumnId, BoardDependency } from "@/types";
@@ -55,8 +55,8 @@ interface AnchorPoint {
 	side: AnchorSide;
 }
 
-const SOURCE_CONNECTOR_PADDING = 0;
-const TARGET_CONNECTOR_PADDING = 0;
+const SOURCE_CONNECTOR_PADDING = 2;
+const TARGET_CONNECTOR_PADDING = 8;
 const COLUMN_ORDER: BoardColumnId[] = ["backlog", "in_progress", "review", "trash"];
 const SIDE_NORMALS: Record<AnchorSide, { x: number; y: number }> = {
 	left: { x: -1, y: 0 },
@@ -196,7 +196,8 @@ function chooseConnection(
 	// Draft links may still target free pointer space while the user is dragging.
 	// Routing rules:
 	// 1) If both cards are in backlog, connect right -> right.
-	// 2) If cards are in different columns, connect from the earlier column right -> the later column left.
+	// 2) If cards are in different columns, preserve first -> second direction while preferring
+	//    right -> left for forward links and left -> right for backward links.
 	// 3) Otherwise fall back to the cheapest side-pairing based on geometry.
 	const firstColumnId = firstAnchor.columnId;
 	const secondColumnId = secondAnchor.columnId;
@@ -235,15 +236,9 @@ function chooseConnection(
 		firstColumnId === secondColumnId &&
 		(firstColumnId === "backlog" || firstColumnId === "in_progress" || firstColumnId === "review")
 	) {
-		if (firstAnchor.centerY <= secondAnchor.centerY) {
-			return {
-				start: getAnchorPoint(firstAnchor, "right", firstLaneOffset, firstPadding),
-				end: getAnchorPoint(secondAnchor, "right", secondLaneOffset, secondPadding),
-			};
-		}
 		return {
-			start: getAnchorPoint(secondAnchor, "right", secondLaneOffset, secondPadding),
-			end: getAnchorPoint(firstAnchor, "right", firstLaneOffset, firstPadding),
+			start: getAnchorPoint(firstAnchor, "right", firstLaneOffset, firstPadding),
+			end: getAnchorPoint(secondAnchor, "right", secondLaneOffset, secondPadding),
 		};
 	}
 
@@ -255,8 +250,8 @@ function chooseConnection(
 			};
 		}
 		return {
-			start: getAnchorPoint(secondAnchor, "right", secondLaneOffset, secondPadding),
-			end: getAnchorPoint(firstAnchor, "left", firstLaneOffset, firstPadding),
+			start: getAnchorPoint(firstAnchor, "left", firstLaneOffset, firstPadding),
+			end: getAnchorPoint(secondAnchor, "right", secondLaneOffset, secondPadding),
 		};
 	}
 
@@ -439,6 +434,7 @@ export function DependencyOverlay({
 }): React.ReactElement | null {
 	const [layout, setLayout] = useState<DependencyLayout>(() => createEmptyLayout());
 	const [hoveredDependencyId, setHoveredDependencyId] = useState<string | null>(null);
+	const markerId = useId().replaceAll(":", "");
 	const hoverClearTimeoutRef = useRef<number | null>(null);
 	const previousRenderedDependencyByIdRef = useRef<
 		Record<string, Pick<RenderedDependency, "geometry" | "startSide" | "endSide">>
@@ -886,6 +882,42 @@ export function DependencyOverlay({
 				height={layout.height}
 				viewBox={`0 0 ${layout.width} ${layout.height}`}
 			>
+				<defs>
+					<marker
+						id={`${markerId}-dependency-arrow`}
+						viewBox="0 0 10 10"
+						refX="7"
+						refY="5"
+						markerWidth="5"
+						markerHeight="5"
+						orient="auto-start-reverse"
+					>
+						<path
+							d="M 0 0 L 10 5 L 0 10 z"
+							fill="var(--color-accent)"
+							stroke="var(--color-accent)"
+							strokeWidth="1.2"
+							strokeLinejoin="round"
+						/>
+					</marker>
+					<marker
+						id={`${markerId}-dependency-arrow-hover`}
+						viewBox="0 0 10 10"
+						refX="7"
+						refY="5"
+						markerWidth="5"
+						markerHeight="5"
+						orient="auto-start-reverse"
+					>
+						<path
+							d="M 0 0 L 10 5 L 0 10 z"
+							fill="var(--color-status-red)"
+							stroke="var(--color-status-red)"
+							strokeWidth="1.2"
+							strokeLinejoin="round"
+						/>
+					</marker>
+				</defs>
 				{renderedDependencies.map((rendered) => {
 					const sideTransition = sideTransitionByDependencyIdRef.current[rendered.dependency.id];
 					const displayedGeometry = sideTransition
@@ -901,6 +933,7 @@ export function DependencyOverlay({
 							<path
 								d={displayedPath}
 								className={`kb-dependency-path${hoveredDependencyId === rendered.dependency.id ? " kb-dependency-path-hover" : ""}`}
+								markerEnd={`url(#${hoveredDependencyId === rendered.dependency.id ? `${markerId}-dependency-arrow-hover` : `${markerId}-dependency-arrow`})`}
 							/>
 							{onDeleteDependency && !rendered.isTransient ? (
 								<path
@@ -943,7 +976,26 @@ export function DependencyOverlay({
 					height={layout.height}
 					viewBox={`0 0 ${layout.width} ${layout.height}`}
 				>
-					<path d={draftPath} className="kb-dependency-draft-path" />
+					<defs>
+						<marker
+							id={`${markerId}-draft-arrow`}
+							viewBox="0 0 10 10"
+							refX="7"
+							refY="5"
+							markerWidth="5"
+							markerHeight="5"
+							orient="auto-start-reverse"
+						>
+							<path
+								d="M 0 0 L 10 5 L 0 10 z"
+								fill="var(--color-accent)"
+								stroke="var(--color-accent)"
+								strokeWidth="1.2"
+								strokeLinejoin="round"
+							/>
+						</marker>
+					</defs>
+					<path d={draftPath} className="kb-dependency-draft-path" markerEnd={`url(#${markerId}-draft-arrow)`} />
 				</svg>
 			) : null}
 			{onDeleteDependency && hoveredDependency && !hoveredDependency.isTransient ? (

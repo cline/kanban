@@ -21,7 +21,7 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
 		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project/.kanban/config.json",
+		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
 		readyForReviewNotificationsEnabled: true,
 		detectedCommands: [selectedAgentId],
 		agents: [
@@ -44,10 +44,6 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				configured: selectedAgentId === "codex",
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: false,
-			linearMcp: false,
-		},
 		shortcuts: [],
 		clineProviderSettings: {
 			providerId: null,
@@ -163,4 +159,31 @@ describe("useRuntimeConfig", () => {
 		expect(refreshedSnapshot.config?.selectedAgentId).toBe("codex");
 		expect(refreshedSnapshot.isLoading).toBe(false);
 	});
-});
+
+	it("fetches runtime config without a selected workspace when the dialog opens", async () => {
+		const startupConfig = createRuntimeConfigResponse("codex");
+		fetchRuntimeConfigMock.mockResolvedValue(startupConfig);
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+			});
+
+			expect(fetchRuntimeConfigMock).toHaveBeenCalledWith(null);
+			if (latestSnapshot === null) {
+				throw new Error("Expected a runtime config snapshot.");
+			}
+			const snapshot = latestSnapshot as HookSnapshot;
+			expect(snapshot.config?.selectedAgentId).toBe("codex");
+			expect(snapshot.isLoading).toBe(false);
+		});
+	});

@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 
 import packageJson from "../../package.json" with { type: "json" };
 
+import type { RuntimeAgentId } from "../core/api-contract.js";
 import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update.js";
 
@@ -13,6 +14,54 @@ export interface ResolveAppendSystemPromptCommandPrefixOptions {
 	argv?: string[];
 	cwd?: string;
 	resolveRealPath?: (path: string) => string;
+}
+
+export interface RenderAppendSystemPromptOptions {
+	agentId?: RuntimeAgentId | null;
+}
+
+const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
+	"claude",
+	"codex",
+	"cline",
+	"droid",
+	"gemini",
+	"opencode",
+];
+
+function isRuntimeAgentId(value: string): value is RuntimeAgentId {
+	return APPEND_PROMPT_AGENT_IDS.includes(value as RuntimeAgentId);
+}
+
+function resolveHomeAgentId(taskId: string): RuntimeAgentId | null {
+	if (!isHomeAgentSessionId(taskId)) {
+		return null;
+	}
+	const parts = taskId.split(":");
+	const maybeAgentId = parts.at(-2) ?? null;
+	if (!maybeAgentId || !isRuntimeAgentId(maybeAgentId)) {
+		return null;
+	}
+	return maybeAgentId;
+}
+
+function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): string {
+	switch (agentId) {
+		case "cline":
+			return "- If Linear MCP is not available in the current agent (Cline), open MCP settings in the app, add server name `linear`, URL `https://mcp.linear.app/mcp`, transport `http`, then complete OAuth.";
+		case "claude":
+			return "- If Linear MCP is not available in the current agent (Claude Code), run: `claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp`";
+		case "codex":
+			return "- If Linear MCP is not available in the current agent (OpenAI Codex), run: `codex mcp add linear --url https://mcp.linear.app/mcp`";
+		case "gemini":
+			return "- If Linear MCP is not available in the current agent (Gemini CLI), run: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
+		case "opencode":
+			return "- If Linear MCP is not available in the current agent (OpenCode), run `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
+		case "droid":
+			return "- If Linear MCP is not available in the current agent (Droid), run: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
+		default:
+			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
+	}
 }
 
 export function resolveAppendSystemPromptCommandPrefix(
@@ -59,8 +108,12 @@ export function resolveAppendSystemPromptCommandPrefix(
 	return DEFAULT_COMMAND_PREFIX;
 }
 
-export function renderAppendSystemPrompt(commandPrefix: string): string {
+export function renderAppendSystemPrompt(
+	commandPrefix: string,
+	options: RenderAppendSystemPromptOptions = {},
+): string {
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
+	const selectedAgentId = options.agentId ?? null;
 	return `# Kanban Sidebar
 
 You are the Kanban sidebar agent for this workspace. Help the user interact with their Kanban board directly from this side panel. When the user asks to add tasks, create tasks, break work down, link tasks, or start tasks, prefer using the Kanban CLI yourself instead of describing manual steps.
@@ -68,7 +121,7 @@ You are the Kanban sidebar agent for this workspace. Help the user interact with
 Kanban is a CLI tool for orchestrating multiple coding agents working on tasks in parallel on a kanban board. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree.
 
 - If the user asks to add tasks to kb, ask kb, kanban, or says add tasks without other context, they likely want to add tasks in Kanban. This includes phrases like "create tasks", "make 3 tasks", "add a task", "break down into tasks", "split into tasks", "decompose into tasks", and "turn into tasks".
-- Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start.
+- Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. If both linked tasks are in backlog, Kanban preserves the order you pass to the command: \`--task-id\` waits on \`--linked-task-id\`, and on the board the arrow points into \`--linked-task-id\`. Once only one linked task remains in backlog, Kanban reorients the saved dependency so the backlog task is the waiting dependent task and the other task is the prerequisite. The board arrow points into the prerequisite task so the user can see what must finish first. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start.
 - Tasks can also enable automatic review actions: auto-commit, auto-open-pr, or auto-move-to-trash once completed, sending the task to trash and kicking off any linked tasks.
 - If a task command fails because the runtime is unavailable, tell the user to start Kanban in that workspace first with \`${kanbanCommand}\`, then retry the task command.
 
@@ -76,6 +129,21 @@ Kanban is a CLI tool for orchestrating multiple coding agents working on tasks i
 
 Use this prefix for every Kanban command in this session:
 \`${kanbanCommand}\`
+
+# GitHub and Linear Guidance
+
+- If the user asks for GitHub work (issues, PRs, repos, comments, labels, milestones) or includes a \`github.com\` URL, prefer the \`gh\` CLI first.
+- Prefer native GitHub commands over manual browser walkthroughs when possible, for example: \`gh issue view\`, \`gh pr view\`, \`gh repo view\`, \`gh pr checks\`, \`gh pr diff\`.
+- If \`gh\` is missing, guide installation based on platform:
+  - macOS: \`brew install gh\`
+  - Windows: \`winget install --id GitHub.cli\`
+  - Linux: use the distro package or official instructions at \`https://cli.github.com/\`
+
+- If the user references Linear (Linear links, Linear issue IDs, or Linear workflows), prefer Linear MCP tools when available.
+- Current home agent: \`${selectedAgentId ?? "unknown"}\`
+${renderLinearSetupGuidanceForAgent(selectedAgentId)}
+- After setup, run the agent MCP auth flow (often \`/mcp\`) and complete OAuth before using Linear tools.
+- Linear MCP docs: \`https://linear.app/docs/mcp\`
 
 # CLI Reference
 
@@ -160,15 +228,21 @@ Notes:
 
 ## task link
 
-Purpose: link two tasks so one can wait on another. At least one linked task must be in backlog.
+Purpose: link two tasks so one task waits on another. At least one linked task must be in backlog.
 
 Command:
 \`${kanbanCommand} task link --task-id <task_id> --linked-task-id <task_id> [--project-path <path>]\`
 
 Parameters:
-- \`--task-id <task_id>\` required first task ID.
-- \`--linked-task-id <task_id>\` required second task ID.
+- \`--task-id <task_id>\` required one of the two task IDs to link.
+- \`--linked-task-id <task_id>\` required the other task ID to link.
 - \`--project-path <path>\` optional workspace path. If not already registered in Kanban, it is auto-added for git repos.
+
+Notes:
+- If both linked tasks are in backlog, Kanban preserves the order you pass: \`--task-id\` waits on \`--linked-task-id\`.
+- On the board, the dependency arrow points into the task that must finish first.
+- Once only one linked task remains in backlog, Kanban reorients the saved dependency so the backlog task is the waiting dependent task and the other task is the prerequisite.
+- When the prerequisite task finishes review and is moved to trash, the waiting backlog task becomes ready to start.
 
 ## task unlink
 
@@ -206,5 +280,7 @@ export function resolveHomeAgentAppendSystemPrompt(
 	if (!isHomeAgentSessionId(taskId)) {
 		return null;
 	}
-	return renderAppendSystemPrompt(resolveAppendSystemPromptCommandPrefix(options));
+	return renderAppendSystemPrompt(resolveAppendSystemPromptCommandPrefix(options), {
+		agentId: resolveHomeAgentId(taskId),
+	});
 }

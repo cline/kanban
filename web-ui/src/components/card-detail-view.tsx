@@ -626,6 +626,7 @@ export function CardDetailView({
 								>
 									<div
 										onMouseDown={handleSeparatorMouseDown}
+										className="hover:bg-accent/30"
 										style={{
 											position: "absolute",
 											left: -2,

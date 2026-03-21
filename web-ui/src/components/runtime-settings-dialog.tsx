@@ -587,7 +587,7 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.globalConfigPath ?? "~/.kanban/config.json"}
+					{config?.globalConfigPath ?? "~/.cline/kanban/config.json"}
 					{config?.globalConfigPath ? (
 						<ExternalLink size={12} className="inline ml-1.5 align-middle" />
 					) : null}
@@ -722,7 +722,7 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.projectConfigPath ?? "<project>/.kanban/config.json"}
+					{config?.projectConfigPath ?? "<project>/.cline/kanban/config.json"}
 					{config?.projectConfigPath ? (
 						<ExternalLink size={12} className="inline ml-1.5 align-middle" />
 					) : null}
