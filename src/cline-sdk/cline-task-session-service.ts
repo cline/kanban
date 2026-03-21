@@ -474,9 +474,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					// Best effort cleanup only.
 				});
 			})
-				.catch(() => {
-					// Best effort checkpointing only.
-				});
+			.catch(() => {
+				// Best effort checkpointing only.
+			});
+	}
 
 	private async ensureRuntimeSetup(workspacePath: string): Promise<ClineRuntimeSetup> {
 		const normalizedWorkspacePath = workspacePath.trim();
