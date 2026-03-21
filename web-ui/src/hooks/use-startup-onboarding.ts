@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-import { buildTaskStartServicePromptContent, type TaskStartServicePromptContent } from "@/hooks/use-task-start-service-prompts";
+import { useCallback, useEffect, useState } from "react";
 import {
 	isOnboardingForceShowEnabled,
 	isSelectedAgentAuthenticated,
@@ -13,8 +11,8 @@ import { useBooleanLocalStorageValue } from "@/utils/react-use";
 
 interface UseStartupOnboardingOptions {
 	currentProjectId: string | null;
-	hasNoProjects: boolean;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
+	isRuntimeProjectConfigLoading: boolean;
 	isTaskAgentReady: boolean | null;
 	refreshRuntimeProjectConfig: () => void;
 	refreshSettingsRuntimeProjectConfig: () => void;
@@ -26,7 +24,6 @@ interface AgentSelectionResult {
 }
 
 export interface UseStartupOnboardingResult {
-	startupOnboardingPrompt: TaskStartServicePromptContent;
 	isStartupOnboardingDialogOpen: boolean;
 	handleCloseStartupOnboardingDialog: () => void;
 	handleSelectOnboardingAgent: (agentId: RuntimeAgentId) => Promise<AgentSelectionResult>;
@@ -37,6 +34,7 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 	const {
 		currentProjectId,
 		runtimeProjectConfig,
+		isRuntimeProjectConfigLoading,
 		isTaskAgentReady,
 		refreshRuntimeProjectConfig,
 		refreshSettingsRuntimeProjectConfig,
@@ -48,10 +46,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		false,
 	);
 	const forceShowOnboardingDialog = isOnboardingForceShowEnabled(import.meta.env.VITE_FORCE_SHOW_ONBOARDING_DIALOG);
-	const startupOnboardingPrompt = useMemo(
-		() => buildTaskStartServicePromptContent("agent_cli"),
-		[],
-	);
 	const selectedAgentAuthenticated = isSelectedAgentAuthenticated(
 		runtimeProjectConfig?.selectedAgentId,
 		runtimeProjectConfig?.clineProviderSettings,
@@ -62,6 +56,10 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 	}, [currentProjectId]);
 
 	useEffect(() => {
+		if (isRuntimeProjectConfigLoading && runtimeProjectConfig === null) {
+			setIsStartupOnboardingDialogOpen(false);
+			return;
+		}
 		if (didDismissStartupOnboardingForSession) {
 			setIsStartupOnboardingDialogOpen(false);
 			return;
@@ -78,7 +76,9 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		didDismissStartupOnboardingForSession,
 		forceShowOnboardingDialog,
 		hasShownOnboardingDialog,
+		isRuntimeProjectConfigLoading,
 		isTaskAgentReady,
+		runtimeProjectConfig,
 		selectedAgentAuthenticated,
 	]);
 
@@ -90,12 +90,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 
 	const handleSelectOnboardingAgent = useCallback(
 		async (agentId: RuntimeAgentId): Promise<AgentSelectionResult> => {
-			if (!currentProjectId) {
-				return {
-					ok: false,
-					message: "Select a project before choosing an agent.",
-				};
-			}
 			try {
 				await saveRuntimeConfigQuery(currentProjectId, { selectedAgentId: agentId });
 				refreshRuntimeProjectConfig();
@@ -117,7 +111,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 	}, [refreshRuntimeProjectConfig, refreshSettingsRuntimeProjectConfig]);
 
 	return {
-		startupOnboardingPrompt,
 		isStartupOnboardingDialogOpen,
 		handleCloseStartupOnboardingDialog,
 		handleSelectOnboardingAgent,

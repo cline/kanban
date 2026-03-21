@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.29]
+
+- Fix onboarding and settings screens not working when no projects exist
+- Update Cline SDK with auth migration for existing CLI users and fixes for OpenAI-compatible APIs
+
 ## [0.1.28]
 
 - Onboarding dialog for first-time users with guided walkthroughs for auto-commit, linking, and diff comments

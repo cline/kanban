@@ -146,10 +146,11 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			workspaceScope: scope.workspaceScope,
 			runtimeApi: createRuntimeApi({
 				getActiveWorkspaceId: deps.workspaceRegistry.getActiveWorkspaceId,
+				getActiveRuntimeConfig: deps.workspaceRegistry.getActiveRuntimeConfig,
 				loadScopedRuntimeConfig: deps.workspaceRegistry.loadScopedRuntimeConfig,
 				setActiveRuntimeConfig: deps.workspaceRegistry.setActiveRuntimeConfig,
 				getScopedTerminalManager,
-					getScopedClineTaskSessionService,
+				getScopedClineTaskSessionService,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
 			}),
