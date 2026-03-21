@@ -11,6 +11,7 @@ import {
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
+import { normalizeUserInput } from '@clinebot/core'
 
 function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
 	const parsed = useMemo(() => parseToolMessageContent(message.content), [message.content]);
@@ -140,7 +141,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 	if (message.role === "user") {
 		return (
 			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm whitespace-pre-wrap text-text-primary">
-				{message.content}
+				{normalizeUserInput(message.content)}
 			</div>
 		);
 	}
