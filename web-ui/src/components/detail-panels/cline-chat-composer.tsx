@@ -1,4 +1,4 @@
-import { ArrowBigUp, Command, Pause, SendHorizontal } from "lucide-react";
+import { AlertTriangle, ArrowBigUp, Command, Pause, SendHorizontal } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type ReactElement } from "react";
 
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
@@ -32,6 +32,7 @@ export function ClineChatComposer({
 	isModelSaving = false,
 	modelPickerDisabled = false,
 	isSending = false,
+	warningMessage = null,
 }: {
 	taskId: string;
 	draft: string;
@@ -52,6 +53,7 @@ export function ClineChatComposer({
 	isModelSaving?: boolean;
 	modelPickerDisabled?: boolean;
 	isSending?: boolean;
+	warningMessage?: string | null;
 }): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const canSubmit = canSend && !isModelSaving && draft.trim().length > 0;
@@ -218,6 +220,22 @@ export function ClineChatComposer({
 					/>
 				</div>
 			</div>
+			{warningMessage ? (
+				<div className="mt-2 flex items-start gap-1.5 text-xs text-status-orange" title={warningMessage}>
+					<AlertTriangle size={14} className="mt-0.5 shrink-0" />
+					<p
+						className="m-0 min-w-0"
+						style={{
+							display: "-webkit-box",
+							WebkitBoxOrient: "vertical",
+							WebkitLineClamp: 2,
+							overflow: "hidden",
+						}}
+					>
+						{warningMessage}
+					</p>
+				</div>
+			) : null}
 		</div>
 	);
 }

@@ -1,6 +1,6 @@
 {
   "name": "kanban",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "description": "A kanban foundation for coding agents",
   "publishConfig": {
     "access": "public",
@@ -81,6 +81,7 @@
     "@clinebot/agents": "^0.0.7",
     "@clinebot/core": "^0.0.7",
     "@clinebot/llms": "^0.0.7",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
     "close-with-grace": "^2.5.0",

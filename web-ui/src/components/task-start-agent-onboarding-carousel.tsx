@@ -331,7 +331,6 @@ export function TaskStartAgentOnboardingCarousel({
 		selectedAgentId: activeAgentId ?? selectedAgentId ?? "cline",
 		config: runtimeConfig,
 	});
-
 	const onboardingAgents = useMemo(
 		() =>
 			ONBOARDING_AGENT_IDS.map((agentId) => {
@@ -519,6 +518,7 @@ export function TaskStartAgentOnboardingCarousel({
 										controller={clineSettings}
 										controlsDisabled={false}
 										showHeading={false}
+										showMcpSettings={false}
 										onError={setClineSetupError}
 										onSaved={onClineSetupSaved}
 									/>

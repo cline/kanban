@@ -4,6 +4,10 @@
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
+	RuntimeClineMcpAuthStatusResponse,
+	RuntimeClineMcpOAuthResponse,
+	RuntimeClineMcpServer,
+	RuntimeClineMcpSettingsResponse,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineOauthProvider,
 	RuntimeClineProviderCatalogItem,
@@ -71,4 +75,34 @@ export async function runClineProviderOauthLogin(
 ): Promise<RuntimeClineOauthLoginResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.runClineProviderOAuthLogin.mutate(input);
+}
+
+export async function fetchClineMcpSettings(workspaceId: string | null): Promise<RuntimeClineMcpSettingsResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.getClineMcpSettings.query();
+}
+
+export async function fetchClineMcpAuthStatuses(workspaceId: string | null): Promise<RuntimeClineMcpAuthStatusResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.getClineMcpAuthStatuses.query();
+}
+
+export async function saveClineMcpSettings(
+	workspaceId: string | null,
+	input: {
+		servers: RuntimeClineMcpServer[];
+	},
+): Promise<RuntimeClineMcpSettingsResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.saveClineMcpSettings.mutate(input);
+}
+
+export async function runClineMcpServerOAuth(
+	workspaceId: string | null,
+	input: {
+		serverName: string;
+	},
+): Promise<RuntimeClineMcpOAuthResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.runClineMcpServerOAuth.mutate(input);
 }

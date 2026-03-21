@@ -3,6 +3,8 @@
 // workspace actions, but detailed Cline, terminal, and config behavior
 // should stay in focused services instead of accumulating here.
 import { TRPCError } from "@trpc/server";
+import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service.js";
+import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service.js";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import { createClineProviderService } from "../cline-sdk/cline-provider-service.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
@@ -10,7 +12,9 @@ import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config.js";
 import type { RuntimeCommandRunResponse } from "../core/api-contract.js";
 import {
+	parseClineMcpOAuthRequest,
 	parseClineOauthLoginRequest,
+	parseClineMcpSettingsSaveRequest,
 	parseClineProviderModelsRequest,
 	parseClineProviderSettingsSaveRequest,
 	parseCommandRunRequest,
@@ -24,6 +28,7 @@ import {
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
 } from "../core/api-validation.js";
+import { openInBrowser } from "../server/browser.js";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { resolveTaskCwd } from "../workspace/task-worktree.js";
@@ -65,6 +70,8 @@ async function resolveExistingTaskCwdOrEnsure(options: {
 
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
 	const clineProviderService = createClineProviderService();
+	const clineMcpSettingsService = createClineMcpSettingsService();
+	const clineMcpRuntimeService = createClineMcpRuntimeService();
 
 	const buildConfigResponse = (runtimeConfig: RuntimeConfigState) =>
 		buildRuntimeConfigResponse(runtimeConfig, clineProviderService.getProviderSettingsSummary());
@@ -78,8 +85,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			let scopedRuntimeConfig: RuntimeConfigState;
 			if (workspaceScope) {
 				scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+			} else if (activeRuntimeConfig) {
+				scopedRuntimeConfig = activeRuntimeConfig;
 			} else {
-				scopedRuntimeConfig = activeRuntimeConfig!;
+				throw new Error("No active runtime config provider is available.");
 			}
 			return buildConfigResponse(scopedRuntimeConfig);
 		},
@@ -353,6 +362,28 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		getClineProviderModels: async (_workspaceScope, input) => {
 			const body = parseClineProviderModelsRequest(input);
 			return await clineProviderService.getProviderModels(body.providerId);
+		},
+		getClineMcpAuthStatuses: async (_workspaceScope) => {
+			const statuses = await clineMcpRuntimeService.getAuthStatuses();
+			return {
+				statuses,
+			};
+		},
+		runClineMcpServerOAuth: async (_workspaceScope, input) => {
+			const body = parseClineMcpOAuthRequest(input);
+			return await clineMcpRuntimeService.authorizeServer({
+				serverName: body.serverName,
+			onAuthorizationUrl: (url: string) => {
+					openInBrowser(url);
+				},
+			});
+		},
+		getClineMcpSettings: async (_workspaceScope) => {
+			return clineMcpSettingsService.loadSettings();
+		},
+		saveClineMcpSettings: async (_workspaceScope, input) => {
+			const body = parseClineMcpSettingsSaveRequest(input);
+			return await clineMcpSettingsService.saveSettings(body);
 		},
 		runClineProviderOAuthLogin: async (_workspaceScope, input) => {
 			const body = parseClineOauthLoginRequest(input);

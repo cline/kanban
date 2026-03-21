@@ -11,6 +11,8 @@ import {
 	ProviderSettingsManager,
 } from "@clinebot/core/node";
 import { models as llmsModels } from "@clinebot/llms";
+import { createMcpTools, type CreateMcpToolsOptions, type Tool } from "@clinebot/agents";
+import * as coreNodeModule from "@clinebot/core/node";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 
@@ -61,6 +63,69 @@ export interface SaveSdkProviderSettingsInput {
 	tokenSource?: "oauth" | "manual";
 	setLastUsed?: boolean;
 }
+
+export type SdkMcpTool = Tool;
+
+export interface SdkMcpServerRegistration {
+	name: string;
+	disabled?: boolean;
+	transport:
+		| {
+				type: "stdio";
+				command: string;
+				args?: string[];
+				cwd?: string;
+				env?: Record<string, string>;
+		  }
+		| {
+				type: "sse";
+				url: string;
+				headers?: Record<string, string>;
+		  }
+		| {
+				type: "streamableHttp";
+				url: string;
+				headers?: Record<string, string>;
+		  };
+}
+
+export interface SdkMcpServerSnapshot {
+	name: string;
+	status: "disconnected" | "connecting" | "connected";
+	disabled: boolean;
+	lastError?: string;
+	toolCount: number;
+	updatedAt: number;
+}
+
+export interface SdkMcpServerClient {
+	connect(): Promise<void>;
+	disconnect(): Promise<void>;
+	listTools(): Promise<readonly { name: string; description?: string; inputSchema: Record<string, unknown> }[]>;
+	callTool(request: { name: string; arguments?: Record<string, unknown> }): Promise<unknown>;
+}
+
+export interface SdkMcpManagerOptions {
+	clientFactory:
+		| ((registration: SdkMcpServerRegistration) => Promise<SdkMcpServerClient>)
+		| ((registration: SdkMcpServerRegistration) => SdkMcpServerClient);
+	toolsCacheTtlMs?: number;
+}
+
+export interface SdkMcpManager {
+	registerServer(registration: SdkMcpServerRegistration): Promise<void>;
+	listServers(): readonly SdkMcpServerSnapshot[];
+	listTools(serverName: string): Promise<readonly { name: string; description?: string; inputSchema: Record<string, unknown> }[]>;
+	callTool(request: {
+		serverName: string;
+		toolName: string;
+		arguments?: Record<string, unknown>;
+		context?: unknown;
+	}): Promise<unknown>;
+	dispose(): Promise<void>;
+}
+
+export type SdkCreateMcpToolsOptions = CreateMcpToolsOptions;
 
 function buildOcaOauthConfig(baseUrl: string | null | undefined):
 	| {
@@ -224,4 +289,18 @@ export function saveSdkProviderSettings(
 		setLastUsed: input.setLastUsed,
 		tokenSource: input.tokenSource,
 	});
+}
+
+export function createSdkInMemoryMcpManager(options: SdkMcpManagerOptions): SdkMcpManager {
+	type InMemoryMcpManagerConstructor = new (options: SdkMcpManagerOptions) => SdkMcpManager;
+	const managerConstructor = (coreNodeModule as unknown as { InMemoryMcpManager: InMemoryMcpManagerConstructor })
+		.InMemoryMcpManager;
+	if (!managerConstructor) {
+		throw new Error("InMemoryMcpManager is not available from @clinebot/core/node.");
+	}
+	return new managerConstructor(options);
+}
+
+export async function createSdkMcpTools(options: SdkCreateMcpToolsOptions): Promise<SdkMcpTool[]> {
+	return await createMcpTools(options);
 }

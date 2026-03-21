@@ -192,6 +192,26 @@ describe("ClineAgentChatPanel", () => {
 		expect(container.textContent).not.toContain("Cline chat");
 	});
 
+	it("shows a compact warning below the composer when the session has a warning", async () => {
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={{
+						...createSummary("running"),
+						warningMessage:
+							'Failed to load MCP server "linear": MCP server "linear" requires OAuth authorization.',
+					}}
+					onLoadMessages={async () => []}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain('Failed to load MCP server "linear"');
+	});
+
 	it("keeps the message list pinned to the bottom while new content streams in", async () => {
 		const initialMessages: ClineChatMessage[] = [
 			{

@@ -32,10 +32,16 @@ import {
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service.js";
 
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
+const AUTO_RESTART_WINDOW_MS = 5_000;
+const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 // OpenCode can query OSC 11 before the browser terminal is attached and ready to answer.
 // We intercept that startup probe during history replay and early PTY output, synthesize a
 // background-color reply, then disable the filter once a live terminal listener has attached.
 const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
+
+type RestartableSessionRequest =
+	| { kind: "task"; request: StartTaskSessionRequest }
+	| { kind: "shell"; request: StartShellSessionRequest };
 
 interface ActiveProcessState {
 	session: PtySession;
@@ -56,6 +62,10 @@ interface SessionEntry {
 	active: ActiveProcessState | null;
 	listenerIdCounter: number;
 	listeners: Map<number, TerminalSessionListener>;
+	restartRequest: RestartableSessionRequest | null;
+	suppressAutoRestartOnExit: boolean;
+	autoRestartTimestamps: number[];
+	pendingAutoRestart: Promise<void> | null;
 }
 
 export interface StartTaskSessionRequest {
@@ -102,6 +112,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};
@@ -124,6 +135,22 @@ function updateSummary(entry: SessionEntry, patch: Partial<RuntimeTaskSessionSum
 
 function isActiveState(state: RuntimeTaskSessionState): boolean {
 	return state === "running" || state === "awaiting_review";
+}
+
+function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): StartTaskSessionRequest {
+	return {
+		...request,
+		args: [...request.args],
+		env: request.env ? { ...request.env } : undefined,
+	};
+}
+
+function cloneStartShellSessionRequest(request: StartShellSessionRequest): StartShellSessionRequest {
+	return {
+		...request,
+		args: request.args ? [...request.args] : undefined,
+		env: request.env ? { ...request.env } : undefined,
+	};
 }
 
 function formatSpawnFailure(binary: string, error: unknown): string {
@@ -174,6 +201,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 				active: null,
 				listenerIdCounter: 1,
 				listeners: new Map(),
+				restartRequest: null,
+				suppressAutoRestartOnExit: false,
+				autoRestartTimestamps: [],
+				pendingAutoRestart: null,
 			});
 		}
 	}
@@ -218,6 +249,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const entry = this.ensureEntry(request.taskId);
+		entry.restartRequest = {
+			kind: "task",
+			request: cloneStartTaskSessionRequest(request),
+		};
 		if (entry.active && isActiveState(entry.summary.state)) {
 			return cloneSummary(entry.summary);
 		}
@@ -345,6 +380,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 						exitCode: event.exitCode,
 						interrupted: currentActive.session.wasInterrupted(),
 					});
+					const shouldAutoRestart = this.shouldAutoRestart(currentEntry);
 
 					for (const taskListener of currentEntry.listeners.values()) {
 						taskListener.onState?.(cloneSummary(summary));
@@ -352,6 +388,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 					currentEntry.active = null;
 					this.emitSummary(summary);
+					if (shouldAutoRestart) {
+						this.scheduleAutoRestart(currentEntry);
+					}
 
 					const cleanupFn = currentActive.onSessionCleanup;
 					currentActive.onSessionCleanup = null;
@@ -421,6 +460,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
+			warningMessage: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});
@@ -431,6 +471,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const entry = this.ensureEntry(request.taskId);
+		entry.restartRequest = {
+			kind: "shell",
+			request: cloneStartShellSessionRequest(request),
+		};
 		if (entry.active && entry.summary.state === "running") {
 			return cloneSummary(entry.summary);
 		}
@@ -553,6 +597,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
+			warningMessage: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});
@@ -775,6 +820,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry?.active) {
 			return entry ? cloneSummary(entry.summary) : null;
 		}
+		entry.suppressAutoRestartOnExit = true;
 		const cleanupFn = entry.active.onSessionCleanup;
 		entry.active.onSessionCleanup = null;
 		stopWorkspaceTrustTimers(entry.active);
@@ -825,9 +871,65 @@ export class TerminalSessionManager implements TerminalSessionService {
 			active: null,
 			listenerIdCounter: 1,
 			listeners: new Map(),
+			restartRequest: null,
+			suppressAutoRestartOnExit: false,
+			autoRestartTimestamps: [],
+			pendingAutoRestart: null,
 		};
 		this.entries.set(taskId, created);
 		return created;
+	}
+
+	private shouldAutoRestart(entry: SessionEntry): boolean {
+		const wasSuppressed = entry.suppressAutoRestartOnExit;
+		entry.suppressAutoRestartOnExit = false;
+		if (wasSuppressed) {
+			return false;
+		}
+		if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
+			return false;
+		}
+		const currentTime = now();
+		entry.autoRestartTimestamps = entry.autoRestartTimestamps.filter(
+			(timestamp) => currentTime - timestamp < AUTO_RESTART_WINDOW_MS,
+		);
+		if (entry.autoRestartTimestamps.length >= MAX_AUTO_RESTARTS_PER_WINDOW) {
+			return false;
+		}
+		entry.autoRestartTimestamps.push(currentTime);
+		return true;
+	}
+
+	private scheduleAutoRestart(entry: SessionEntry): void {
+		if (entry.pendingAutoRestart) {
+			return;
+		}
+		const restartRequest = entry.restartRequest;
+		if (!restartRequest || restartRequest.kind !== "task") {
+			return;
+		}
+		let pendingAutoRestart: Promise<void> | null = null;
+		pendingAutoRestart = (async () => {
+			try {
+				await this.startTaskSession(cloneStartTaskSessionRequest(restartRequest.request));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				const summary = updateSummary(entry, {
+					warningMessage: message,
+				});
+				const output = Buffer.from(`\r\n[kanban] ${message}\r\n`, "utf8");
+				for (const listener of entry.listeners.values()) {
+					listener.onOutput?.(output);
+					listener.onState?.(cloneSummary(summary));
+				}
+				this.emitSummary(summary);
+			} finally {
+				if (entry.pendingAutoRestart === pendingAutoRestart) {
+					entry.pendingAutoRestart = null;
+				}
+			}
+		})();
+		entry.pendingAutoRestart = pendingAutoRestart;
 	}
 
 	private emitSummary(summary: RuntimeTaskSessionSummary): void {

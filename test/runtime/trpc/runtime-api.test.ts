@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rmSync, writeFileSync } from "node:fs";
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config.js";
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
@@ -23,6 +24,8 @@ const oauthMocks = vi.hoisted(() => ({
 	loginClineOAuth: vi.fn(),
 	loginOcaOAuth: vi.fn(),
 	loginOpenAICodex: vi.fn(),
+	resolveDefaultMcpSettingsPath: vi.fn(),
+	loadMcpSettingsFile: vi.fn(),
 	saveProviderSettings: vi.fn(),
 	getProviderSettings: vi.fn(),
 	getLastUsedProviderSettings: vi.fn(),
@@ -57,6 +60,8 @@ vi.mock("@clinebot/core/node", () => ({
 	loginClineOAuth: oauthMocks.loginClineOAuth,
 	loginOcaOAuth: oauthMocks.loginOcaOAuth,
 	loginOpenAICodex: oauthMocks.loginOpenAICodex,
+	resolveDefaultMcpSettingsPath: oauthMocks.resolveDefaultMcpSettingsPath,
+	loadMcpSettingsFile: oauthMocks.loadMcpSettingsFile,
 	ProviderSettingsManager: class {
 		saveProviderSettings = oauthMocks.saveProviderSettings;
 		getProviderSettings = oauthMocks.getProviderSettings;
@@ -166,8 +171,16 @@ function createClineTaskSessionServiceMock() {
 describe("createRuntimeApi startTaskSession", () => {
 	const originalClineApiKey = process.env.CLINE_API_KEY;
 	const originalOcaApiKey = process.env.OCA_API_KEY;
+	const originalClineMcpSettingsPath = process.env.CLINE_MCP_SETTINGS_PATH;
+	const originalClineMcpOauthSettingsPath = process.env.CLINE_MCP_OAUTH_SETTINGS_PATH;
+	let mcpSettingsPath = "";
+	let mcpOauthSettingsPath = "";
 
 	beforeEach(() => {
+		mcpSettingsPath = `/tmp/kanban-mcp-settings-${Date.now()}-${Math.random().toString(16).slice(2)}.json`;
+		mcpOauthSettingsPath = `/tmp/kanban-mcp-oauth-settings-${Date.now()}-${Math.random().toString(16).slice(2)}.json`;
+		process.env.CLINE_MCP_SETTINGS_PATH = mcpSettingsPath;
+		process.env.CLINE_MCP_OAUTH_SETTINGS_PATH = mcpOauthSettingsPath;
 		agentRegistryMocks.resolveAgentCommand.mockReset();
 		agentRegistryMocks.buildRuntimeConfigResponse.mockReset();
 		taskWorktreeMocks.resolveTaskCwd.mockReset();
@@ -178,6 +191,8 @@ describe("createRuntimeApi startTaskSession", () => {
 		oauthMocks.getValidClineCredentials.mockReset();
 		oauthMocks.getValidOcaCredentials.mockReset();
 		oauthMocks.getValidOpenAICodexCredentials.mockReset();
+		oauthMocks.resolveDefaultMcpSettingsPath.mockReset();
+		oauthMocks.loadMcpSettingsFile.mockReset();
 		oauthMocks.saveProviderSettings.mockReset();
 		oauthMocks.getProviderSettings.mockReset();
 		oauthMocks.getLastUsedProviderSettings.mockReset();
@@ -234,6 +249,10 @@ describe("createRuntimeApi startTaskSession", () => {
 			expires: 1_700_000_000_000,
 			accountId: "codex-acct",
 		});
+		oauthMocks.resolveDefaultMcpSettingsPath.mockReturnValue(mcpSettingsPath);
+		oauthMocks.loadMcpSettingsFile.mockReturnValue({
+			mcpServers: {},
+		});
 		setSelectedProviderSettings(null);
 		llmsModelMocks.getAllProviders.mockResolvedValue([
 			{
@@ -266,6 +285,20 @@ describe("createRuntimeApi startTaskSession", () => {
 	afterEach(() => {
 		restoreEnvVar("CLINE_API_KEY", originalClineApiKey);
 		restoreEnvVar("OCA_API_KEY", originalOcaApiKey);
+		if (originalClineMcpSettingsPath === undefined) {
+			delete process.env.CLINE_MCP_SETTINGS_PATH;
+		} else {
+			process.env.CLINE_MCP_SETTINGS_PATH = originalClineMcpSettingsPath;
+		}
+		if (originalClineMcpOauthSettingsPath === undefined) {
+			delete process.env.CLINE_MCP_OAUTH_SETTINGS_PATH;
+		} else {
+			process.env.CLINE_MCP_OAUTH_SETTINGS_PATH = originalClineMcpOauthSettingsPath;
+		}
+		rmSync(mcpSettingsPath, { force: true });
+		rmSync(`${mcpSettingsPath}.lock`, { force: true });
+		rmSync(mcpOauthSettingsPath, { force: true });
+		rmSync(`${mcpOauthSettingsPath}.lock`, { force: true });
 	});
 
 	it("reuses an existing worktree path before falling back to ensure", async () => {
@@ -1110,5 +1143,216 @@ describe("createRuntimeApi startTaskSession", () => {
 			  }
 			| undefined;
 		expect(loginInput?.callbacks?.onManualCodeInput).toBeUndefined();
+	});
+
+	it("returns Cline MCP settings", async () => {
+		writeFileSync(
+			mcpSettingsPath,
+			JSON.stringify(
+				{
+					mcpServers: {
+						linear: {
+							transport: {
+								type: "streamableHttp",
+								url: "https://mcp.linear.app/mcp",
+							},
+							disabled: false,
+						},
+					},
+				},
+				null,
+				2,
+			),
+		);
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.getClineMcpSettings({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(response.path).toBe(mcpSettingsPath);
+		expect(response.servers).toEqual([
+			{
+				name: "linear",
+				disabled: false,
+				transport: {
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
+				},
+			},
+		]);
+	});
+
+	it("saves Cline MCP settings", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.saveClineMcpSettings(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				servers: [
+					{
+						name: "linear",
+						disabled: false,
+						transport: {
+							type: "streamableHttp",
+							url: "https://mcp.linear.app/mcp",
+						},
+					},
+				],
+			},
+		);
+
+		expect(response.path).toBe(mcpSettingsPath);
+		expect(response.servers).toEqual([
+			{
+				name: "linear",
+				disabled: false,
+				transport: {
+					type: "streamableHttp",
+					url: "https://mcp.linear.app/mcp",
+				},
+			},
+		]);
+	});
+
+	it("returns MCP auth statuses from persisted OAuth settings", async () => {
+		writeFileSync(
+			mcpSettingsPath,
+			JSON.stringify(
+				{
+					mcpServers: {
+						linear: {
+							transport: {
+								type: "streamableHttp",
+								url: "https://mcp.linear.app/mcp",
+							},
+						},
+						filesystem: {
+							transport: {
+								type: "stdio",
+								command: "npx",
+								args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+							},
+						},
+					},
+				},
+				null,
+				2,
+			),
+		);
+		writeFileSync(
+			mcpOauthSettingsPath,
+			JSON.stringify(
+				{
+					servers: {
+						linear: {
+							tokens: {
+								access_token: "token-1",
+								token_type: "Bearer",
+							},
+							lastAuthenticatedAt: 1_700_000_000_000,
+						},
+					},
+				},
+				null,
+				2,
+			),
+		);
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.getClineMcpAuthStatuses({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(response.statuses).toEqual([
+			{
+				serverName: "filesystem",
+				oauthSupported: false,
+				oauthConfigured: false,
+				lastError: null,
+				lastAuthenticatedAt: null,
+			},
+			{
+				serverName: "linear",
+				oauthSupported: true,
+				oauthConfigured: true,
+				lastError: null,
+				lastAuthenticatedAt: 1_700_000_000_000,
+			},
+		]);
+	});
+
+	it("rejects MCP OAuth flow for stdio servers", async () => {
+		writeFileSync(
+			mcpSettingsPath,
+			JSON.stringify(
+				{
+					mcpServers: {
+						filesystem: {
+							transport: {
+								type: "stdio",
+								command: "npx",
+								args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+							},
+						},
+					},
+				},
+				null,
+				2,
+			),
+		);
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		await expect(
+			api.runClineMcpServerOAuth(
+				{
+					workspaceId: "workspace-1",
+					workspacePath: "/tmp/repo",
+				},
+				{
+					serverName: "filesystem",
+				},
+			),
+		).rejects.toThrow("does not support OAuth browser flow");
 	});
 });

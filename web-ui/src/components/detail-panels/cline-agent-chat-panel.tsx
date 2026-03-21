@@ -275,6 +275,7 @@ export function ClineAgentChatPanel({
 					isModelSaving={isSavingModel}
 					modelPickerDisabled={isSavingModel || clineSettings.providerId.trim().length === 0}
 					isSending={isSavingModel || isSending}
+					warningMessage={summary?.warningMessage ?? null}
 				/>
 			</div>
 			{showActionFooter ? (

@@ -12,6 +12,12 @@ import type {
 	RuntimeConfigSaveRequest,
 	RuntimeClineOauthLoginRequest,
 	RuntimeClineOauthLoginResponse,
+	RuntimeClineMcpAuthStatusResponse,
+	RuntimeClineMcpOAuthRequest,
+	RuntimeClineMcpOAuthResponse,
+	RuntimeClineMcpSettingsResponse,
+	RuntimeClineMcpSettingsSaveRequest,
+	RuntimeClineMcpSettingsSaveResponse,
 	RuntimeClineProviderCatalogResponse,
 	RuntimeClineProviderModelsRequest,
 	RuntimeClineProviderModelsResponse,
@@ -72,6 +78,12 @@ import {
 	runtimeConfigSaveRequestSchema,
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineOauthLoginResponseSchema,
+	runtimeClineMcpAuthStatusResponseSchema,
+	runtimeClineMcpOAuthRequestSchema,
+	runtimeClineMcpOAuthResponseSchema,
+	runtimeClineMcpSettingsResponseSchema,
+	runtimeClineMcpSettingsSaveRequestSchema,
+	runtimeClineMcpSettingsSaveResponseSchema,
 	runtimeClineProviderCatalogResponseSchema,
 	runtimeClineProviderModelsRequestSchema,
 	runtimeClineProviderModelsResponseSchema,
@@ -181,6 +193,18 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineOauthLoginRequest,
 		) => Promise<RuntimeClineOauthLoginResponse>;
+		getClineMcpAuthStatuses: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+		) => Promise<RuntimeClineMcpAuthStatusResponse>;
+		runClineMcpServerOAuth: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+			input: RuntimeClineMcpOAuthRequest,
+		) => Promise<RuntimeClineMcpOAuthResponse>;
+		getClineMcpSettings: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeClineMcpSettingsResponse>;
+		saveClineMcpSettings: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+			input: RuntimeClineMcpSettingsSaveRequest,
+		) => Promise<RuntimeClineMcpSettingsSaveResponse>;
 		startShellSession: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeShellSessionStartRequest,
@@ -383,6 +407,28 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeClineProviderModelsResponseSchema)
 			.query(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.getClineProviderModels(ctx.workspaceScope, input);
+			}),
+		getClineMcpAuthStatuses: t.procedure
+			.output(runtimeClineMcpAuthStatusResponseSchema)
+			.query(async ({ ctx }) => {
+				return await ctx.runtimeApi.getClineMcpAuthStatuses(ctx.workspaceScope);
+			}),
+		runClineMcpServerOAuth: t.procedure
+			.input(runtimeClineMcpOAuthRequestSchema)
+			.output(runtimeClineMcpOAuthResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.runClineMcpServerOAuth(ctx.workspaceScope, input);
+			}),
+		getClineMcpSettings: t.procedure
+			.output(runtimeClineMcpSettingsResponseSchema)
+			.query(async ({ ctx }) => {
+				return await ctx.runtimeApi.getClineMcpSettings(ctx.workspaceScope);
+			}),
+		saveClineMcpSettings: t.procedure
+			.input(runtimeClineMcpSettingsSaveRequestSchema)
+			.output(runtimeClineMcpSettingsSaveResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.saveClineMcpSettings(ctx.workspaceScope, input);
 			}),
 		runClineProviderOAuthLogin: t.procedure
 			.input(runtimeClineOauthLoginRequestSchema)

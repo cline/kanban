@@ -52,6 +52,21 @@ function isAssistantLikeIncomingMessage(message: ClineChatMessage | null): boole
 	return message?.role === "assistant" || message?.role === "reasoning";
 }
 
+function getLatestAssistantLikeIncomingMessage(messages: ClineChatMessage[] | null): ClineChatMessage | null {
+	if (!messages || messages.length === 0) {
+		return null;
+	}
+
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (message && isAssistantLikeIncomingMessage(message)) {
+			return message;
+		}
+	}
+
+	return null;
+}
+
 function hasVisibleStreamingMessage(
 	messages: ClineChatMessage[],
 	incomingMessage: ClineChatMessage | null,
@@ -80,18 +95,22 @@ function hasFreshAssistantSummarySignal(summary: RuntimeTaskSessionSummary | nul
 
 function useRecentAssistantStreamActivity(
 	summary: RuntimeTaskSessionSummary | null,
+	incomingMessages: ClineChatMessage[] | null,
 	incomingMessage: ClineChatMessage | null,
 ): boolean {
 	const latestHookEventName = summary?.latestHookActivity?.hookEventName ?? null;
+	const latestAssistantLikeIncomingMessage = isAssistantLikeIncomingMessage(incomingMessage)
+		? incomingMessage
+		: getLatestAssistantLikeIncomingMessage(incomingMessages);
 	const [hasRecentIncomingAssistantActivity, setHasRecentIncomingAssistantActivity] = useState(() =>
-		isAssistantLikeIncomingMessage(incomingMessage),
+		latestAssistantLikeIncomingMessage !== null,
 	);
 	const [hasRecentAssistantSummaryActivity, setHasRecentAssistantSummaryActivity] = useState(() =>
 		hasFreshAssistantSummarySignal(summary),
 	);
 
 	useEffect(() => {
-		if (!isAssistantLikeIncomingMessage(incomingMessage)) {
+		if (!latestAssistantLikeIncomingMessage) {
 			setHasRecentIncomingAssistantActivity(false);
 			return;
 		}
@@ -103,7 +122,12 @@ function useRecentAssistantStreamActivity(
 		return () => {
 			window.clearTimeout(timeoutId);
 		};
-	}, [incomingMessage?.id, incomingMessage?.role, incomingMessage?.content, incomingMessage?.meta?.hookEventName]);
+	}, [
+		latestAssistantLikeIncomingMessage?.id,
+		latestAssistantLikeIncomingMessage?.role,
+		latestAssistantLikeIncomingMessage?.content,
+		latestAssistantLikeIncomingMessage?.meta?.hookEventName,
+	]);
 
 	useEffect(() => {
 		const summaryUpdatedAt = summary?.updatedAt ?? null;
@@ -163,7 +187,7 @@ export function useClineChatPanelController({
 		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0 &&
 		Boolean(onCommit) &&
 		Boolean(onOpenPr);
-	const hasRecentAssistantStreamActivity = useRecentAssistantStreamActivity(summary, incomingMessage);
+	const hasRecentAssistantStreamActivity = useRecentAssistantStreamActivity(summary, incomingMessages, incomingMessage);
 	const showAgentProgressIndicator =
 		summary?.state === "running" &&
 		!hasVisibleStreamingMessage(messages, incomingMessage, hasRecentAssistantStreamActivity);

@@ -312,6 +312,33 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
 	});
 
+	it("normalizes legacy base urls away for OAuth providers", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "cline",
+			oauthProvider: "cline",
+			baseUrl: "https://legacy.example.com",
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("");
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
 	it("saves the current provider draft and clears dirty state using the saved override", async () => {
 		const config = createRuntimeConfigResponse({
 			providerId: "anthropic",
@@ -421,10 +448,62 @@ describe("useRuntimeSettingsClineController", () => {
 
 		expect(runClineProviderOauthLoginMock).toHaveBeenCalledWith("workspace-1", {
 			provider: "cline",
-			baseUrl: null,
 		});
 		expect(requireSnapshot(latestSnapshot).oauthConfigured).toBe(true);
 		expect(requireSnapshot(latestSnapshot).oauthAccountId).toBe("acct-123");
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("clears base url when saving an OAuth provider", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "openrouter",
+			oauthProvider: null,
+			modelId: "gpt-5",
+			baseUrl: "https://openrouter.ai/api",
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		saveClineProviderSettingsMock.mockResolvedValue({
+			providerId: "cline",
+			modelId: "claude-sonnet-4-6",
+			baseUrl: null,
+			apiKeyConfigured: false,
+			oauthProvider: "cline",
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setProviderId("cline");
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			expect(await requireSnapshot(latestSnapshot).saveProviderSettings()).toEqual({ ok: true });
+		});
+
+		expect(saveClineProviderSettingsMock).toHaveBeenCalledWith("workspace-1", {
+			providerId: "cline",
+			modelId: "gpt-5",
+			apiKey: null,
+			baseUrl: null,
+		});
+		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("");
 	});
 });

@@ -202,6 +202,7 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	exitCode: z.number().nullable(),
 	lastHookAt: z.number().nullable().default(null),
 	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
+	warningMessage: z.string().nullable().optional(),
 	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 });
@@ -513,6 +514,85 @@ export type RuntimeClineProviderSettingsSaveRequest = z.infer<typeof runtimeClin
 
 export const runtimeClineProviderSettingsSaveResponseSchema = runtimeClineProviderSettingsSchema;
 export type RuntimeClineProviderSettingsSaveResponse = z.infer<typeof runtimeClineProviderSettingsSaveResponseSchema>;
+
+export const runtimeClineMcpServerStdioTransportSchema = z.object({
+	type: z.literal("stdio"),
+	command: z.string(),
+	args: z.array(z.string()).optional(),
+	cwd: z.string().optional(),
+	env: z.record(z.string(), z.string()).optional(),
+});
+export type RuntimeClineMcpServerStdioTransport = z.infer<typeof runtimeClineMcpServerStdioTransportSchema>;
+
+export const runtimeClineMcpServerSseTransportSchema = z.object({
+	type: z.literal("sse"),
+	url: z.string().url(),
+	headers: z.record(z.string(), z.string()).optional(),
+});
+export type RuntimeClineMcpServerSseTransport = z.infer<typeof runtimeClineMcpServerSseTransportSchema>;
+
+export const runtimeClineMcpServerStreamableHttpTransportSchema = z.object({
+	type: z.literal("streamableHttp"),
+	url: z.string().url(),
+	headers: z.record(z.string(), z.string()).optional(),
+});
+export type RuntimeClineMcpServerStreamableHttpTransport = z.infer<
+	typeof runtimeClineMcpServerStreamableHttpTransportSchema
+>;
+
+export const runtimeClineMcpServerTransportSchema = z.discriminatedUnion("type", [
+	runtimeClineMcpServerStdioTransportSchema,
+	runtimeClineMcpServerSseTransportSchema,
+	runtimeClineMcpServerStreamableHttpTransportSchema,
+]);
+export type RuntimeClineMcpServerTransport = z.infer<typeof runtimeClineMcpServerTransportSchema>;
+
+export const runtimeClineMcpServerSchema = z.object({
+	name: z.string(),
+	disabled: z.boolean(),
+	transport: runtimeClineMcpServerTransportSchema,
+});
+export type RuntimeClineMcpServer = z.infer<typeof runtimeClineMcpServerSchema>;
+
+export const runtimeClineMcpSettingsResponseSchema = z.object({
+	path: z.string(),
+	servers: z.array(runtimeClineMcpServerSchema),
+});
+export type RuntimeClineMcpSettingsResponse = z.infer<typeof runtimeClineMcpSettingsResponseSchema>;
+
+export const runtimeClineMcpSettingsSaveRequestSchema = z.object({
+	servers: z.array(runtimeClineMcpServerSchema),
+});
+export type RuntimeClineMcpSettingsSaveRequest = z.infer<typeof runtimeClineMcpSettingsSaveRequestSchema>;
+
+export const runtimeClineMcpSettingsSaveResponseSchema = runtimeClineMcpSettingsResponseSchema;
+export type RuntimeClineMcpSettingsSaveResponse = z.infer<typeof runtimeClineMcpSettingsSaveResponseSchema>;
+
+export const runtimeClineMcpServerAuthStatusSchema = z.object({
+	serverName: z.string(),
+	oauthSupported: z.boolean(),
+	oauthConfigured: z.boolean(),
+	lastError: z.string().nullable(),
+	lastAuthenticatedAt: z.number().nullable(),
+});
+export type RuntimeClineMcpServerAuthStatus = z.infer<typeof runtimeClineMcpServerAuthStatusSchema>;
+
+export const runtimeClineMcpAuthStatusResponseSchema = z.object({
+	statuses: z.array(runtimeClineMcpServerAuthStatusSchema),
+});
+export type RuntimeClineMcpAuthStatusResponse = z.infer<typeof runtimeClineMcpAuthStatusResponseSchema>;
+
+export const runtimeClineMcpOAuthRequestSchema = z.object({
+	serverName: z.string(),
+});
+export type RuntimeClineMcpOAuthRequest = z.infer<typeof runtimeClineMcpOAuthRequestSchema>;
+
+export const runtimeClineMcpOAuthResponseSchema = z.object({
+	serverName: z.string(),
+	authorized: z.literal(true),
+	message: z.string(),
+});
+export type RuntimeClineMcpOAuthResponse = z.infer<typeof runtimeClineMcpOAuthResponseSchema>;
 
 export const runtimeCommandRunRequestSchema = z.object({
 	command: z.string(),

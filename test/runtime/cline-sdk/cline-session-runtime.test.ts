@@ -2,6 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryClineSessionRuntime } from "../../../src/cline-sdk/cline-session-runtime.js";
 
+function createNoopMcpRuntimeService() {
+	return {
+		createToolBundle: vi.fn(async () => ({
+			tools: [],
+			warnings: [],
+			dispose: async () => {},
+		})),
+		getAuthStatuses: vi.fn(async () => []),
+		authorizeServer: vi.fn(),
+	};
+}
+
 function createDeferred<T>() {
 	let resolve: (value: T) => void = () => {};
 	let reject: (error: unknown) => void = () => {};
@@ -43,6 +55,7 @@ describe("InMemoryClineSessionRuntime", () => {
 
 		const runtime = createInMemoryClineSessionRuntime({
 			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
 			onTaskEvent,
 		});
 
@@ -120,6 +133,7 @@ describe("InMemoryClineSessionRuntime", () => {
 
 		const runtime = createInMemoryClineSessionRuntime({
 			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
 			onTaskEvent,
 		});
 
@@ -215,6 +229,7 @@ describe("InMemoryClineSessionRuntime", () => {
 
 		const runtime = createInMemoryClineSessionRuntime({
 			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
 		});
 
 		const snapshot = await runtime.readPersistedTaskSession("task-1");
@@ -291,6 +306,7 @@ describe("InMemoryClineSessionRuntime", () => {
 
 		const runtime = createInMemoryClineSessionRuntime({
 			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
 		});
 
 		await runtime.startTaskSession({

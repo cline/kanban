@@ -16,6 +16,7 @@ import {
 	createInMemoryClineMessageRepository,
 	createTaskEntryFromPersistedSession,
 } from "./cline-message-repository.js";
+import { type ClineRuntimeSetup, createClineRuntimeSetup } from "./cline-runtime-setup.js";
 import {
 	type ClineSessionRuntime,
 	type CreateInMemoryClineSessionRuntimeOptions,
@@ -73,6 +74,7 @@ export interface ClineTaskSessionService {
 export interface CreateInMemoryClineTaskSessionServiceOptions {
 	createSessionRuntime?: (options: CreateInMemoryClineSessionRuntimeOptions) => ClineSessionRuntime;
 	createMessageRepository?: () => ClineMessageRepository;
+	createRuntimeSetup?: (workspacePath: string) => Promise<ClineRuntimeSetup>;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -100,14 +102,31 @@ function readAgentResultText(result: unknown): string | null {
 	return normalized.length > 0 ? normalized : null;
 }
 
+function formatStartWarnings(warnings: readonly string[] | undefined): string | null {
+	if (!warnings) {
+		return null;
+	}
+	const normalized = warnings.map((warning) => warning.trim()).filter((warning) => warning.length > 0);
+	if (normalized.length === 0) {
+		return null;
+	}
+	if (normalized.length === 1) {
+		return normalized[0] ?? null;
+	}
+	return `${normalized[0]} (+${normalized.length - 1} more MCP warning${normalized.length === 2 ? "" : "s"})`;
+}
+
 export class InMemoryClineTaskSessionService implements ClineTaskSessionService {
 	private readonly pendingTurnCancelTaskIds = new Set<string>();
 	private readonly sessionRuntime: ClineSessionRuntime;
 	private readonly messageRepository: ClineMessageRepository;
+	private readonly createRuntimeSetup: (workspacePath: string) => Promise<ClineRuntimeSetup>;
+	private readonly runtimeSetupByWorkspacePath = new Map<string, Promise<ClineRuntimeSetup>>();
 
 	constructor(options: CreateInMemoryClineTaskSessionServiceOptions = {}) {
 		const createSessionRuntime = options.createSessionRuntime ?? createInMemoryClineSessionRuntime;
 		const createMessageRepository = options.createMessageRepository ?? createInMemoryClineMessageRepository;
+		this.createRuntimeSetup = options.createRuntimeSetup ?? createClineRuntimeSetup;
 		this.sessionRuntime = createSessionRuntime({
 			onTaskEvent: (taskId: string, event: unknown) => {
 				this.handleTaskEvent(taskId, event);
@@ -207,9 +226,12 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		void (async () => {
 			const assistantCountBeforeStart = entry.messages.filter((message) => message.role === "assistant").length;
 			try {
+				const runtimeSetup = await this.ensureRuntimeSetup(request.cwd);
+				const runtimePrompt = runtimeSetup.resolvePrompt(request.prompt);
 				let systemPrompt = await resolveClineSdkSystemPrompt({
 					cwd: request.cwd,
 					providerId,
+					rules: runtimeSetup.loadRules(),
 				});
 				const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(request.taskId);
 				if (appendedSystemPrompt) {
@@ -219,14 +241,24 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				const startResult = await this.sessionRuntime.startTaskSession({
 					taskId: request.taskId,
 					cwd: request.cwd,
-					prompt: request.prompt,
+					prompt: runtimePrompt,
 					providerId,
 					modelId,
 					mode: request.mode,
 					apiKey: request.apiKey,
 					baseUrl: request.baseUrl,
 					systemPrompt,
+					userInstructionWatcher: runtimeSetup.watcher,
+					requestToolApproval: runtimeSetup.requestToolApproval,
 				});
+				const warningMessage = formatStartWarnings(startResult.warnings);
+				if (warningMessage) {
+					this.emitSummary(
+						updateSummary(entry, {
+							warningMessage,
+						}),
+					);
+				}
 
 				const initialAgentText = readAgentResultText(startResult.result);
 				if (initialAgentText) {
@@ -355,8 +387,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			});
 			this.emitSummary(waitingSummary);
 			const assistantCountBeforeSend = entry.messages.filter((message) => message.role === "assistant").length;
-			void this.sessionRuntime
-				.sendTaskSessionInput(taskId, normalized, mode)
+			void this.ensureRuntimeSetup(entry.summary.workspacePath ?? "")
+				.then((runtimeSetup) =>
+					this.sessionRuntime.sendTaskSessionInput(taskId, runtimeSetup.resolvePrompt(normalized), mode),
+				)
 				.then((result: unknown) => {
 					const agentText = readAgentResultText(result);
 					if (agentText) {
@@ -441,6 +475,15 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 	async dispose(): Promise<void> {
 		await this.sessionRuntime.dispose();
 		this.pendingTurnCancelTaskIds.clear();
+		for (const setupPromise of this.runtimeSetupByWorkspacePath.values()) {
+			try {
+				const setup = await setupPromise;
+				await setup.dispose();
+			} catch {
+				// Ignore runtime setup disposal failures.
+			}
+		}
+		this.runtimeSetupByWorkspacePath.clear();
 		this.messageRepository.dispose();
 	}
 
@@ -488,6 +531,16 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			.catch(() => {
 				// Best effort checkpointing only.
 			});
+	}
+
+	private async ensureRuntimeSetup(workspacePath: string): Promise<ClineRuntimeSetup> {
+		const normalizedWorkspacePath = workspacePath.trim();
+		let setupPromise = this.runtimeSetupByWorkspacePath.get(normalizedWorkspacePath);
+		if (!setupPromise) {
+			setupPromise = this.createRuntimeSetup(normalizedWorkspacePath);
+			this.runtimeSetupByWorkspacePath.set(normalizedWorkspacePath, setupPromise);
+		}
+		return await setupPromise;
 	}
 
 	private handleTaskEvent(taskId: string, event: unknown): void {

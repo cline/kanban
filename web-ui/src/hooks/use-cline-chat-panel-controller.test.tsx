@@ -66,6 +66,7 @@ function HookHarness({
 	summary,
 	taskColumnId,
 	onSendMessage,
+	incomingMessages,
 	incomingMessage,
 	onSnapshot,
 }: {
@@ -93,6 +94,18 @@ function HookHarness({
 			streamType?: string | null;
 		} | null;
 	} | null;
+	incomingMessages?: {
+		id: string;
+		role: "user" | "assistant" | "system" | "tool" | "reasoning" | "status";
+		content: string;
+		createdAt: number;
+		meta?: {
+			toolName?: string | null;
+			hookEventName?: string | null;
+			toolCallId?: string | null;
+			streamType?: string | null;
+		} | null;
+	}[] | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const loadMessages = useCallback(async () => [], []);
@@ -106,6 +119,7 @@ function HookHarness({
 		taskColumnId,
 		onSendMessage,
 		onLoadMessages: loadMessages,
+		incomingMessages,
 		incomingMessage,
 		onCommit: handleCommit,
 		onOpenPr: handleOpenPr,
@@ -303,6 +317,60 @@ describe("useClineChatPanelController", () => {
 						content: "H",
 						createdAt: 2,
 					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+	expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(false);
+	});
+
+	it("hides the thinking indicator when assistant chunks arrive through incomingMessages only", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					summary={createSummary("running")}
+					incomingMessages={[
+						{
+							id: "assistant-1",
+							role: "assistant",
+							content: "H",
+							createdAt: 2,
+						},
+					]}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(false);
+
+		await act(async () => {
+			vi.advanceTimersByTime(501);
+		});
+
+		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(true);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					summary={createSummary("running")}
+					incomingMessages={[
+						{
+							id: "assistant-1",
+							role: "assistant",
+							content: "Hello",
+							createdAt: 2,
+						},
+					]}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef } from "react";
-import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardData } from "@/types";
 import {
@@ -37,7 +36,6 @@ function collectActiveBoardTaskIds(board: BoardData): Set<string> {
 
 function disposeTaskOwnedTerminals(workspaceId: string, taskId: string): void {
 	disposePersistentTerminal(workspaceId, taskId);
-	disposePersistentTerminal(workspaceId, getDetailTerminalTaskId(taskId));
 }
 
 export function usePrewarmedAgentTerminals({

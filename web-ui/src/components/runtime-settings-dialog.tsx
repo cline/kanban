@@ -22,6 +22,7 @@ import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
+import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -379,6 +380,11 @@ export function RuntimeSettingsDialog({
 		selectedAgentId,
 		config,
 	});
+	const clineMcpSettings = useRuntimeSettingsClineMcpController({
+		open,
+		workspaceId,
+		selectedAgentId,
+	});
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
 			return false;
@@ -393,6 +399,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (clineSettings.hasUnsavedChanges) {
+			return true;
+		}
+		if (clineMcpSettings.hasUnsavedChanges) {
 			return true;
 		}
 		if (!areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts)) {
@@ -410,6 +419,7 @@ export function RuntimeSettingsDialog({
 		);
 	}, [
 		agentAutonomousModeEnabled,
+		clineMcpSettings.hasUnsavedChanges,
 		clineSettings.hasUnsavedChanges,
 		commitPromptTemplate,
 		config,
@@ -545,10 +555,17 @@ export function RuntimeSettingsDialog({
 			setSaveError("Choose a Cline provider before saving.");
 			return;
 		}
-		const clineSaveResult = await clineSettings.saveProviderSettings();
-		if (!clineSaveResult.ok) {
-			setSaveError(clineSaveResult.message ?? "Could not save Cline provider settings.");
-			return;
+		if (selectedAgentId === "cline") {
+			const clineProviderSaveResult = await clineSettings.saveProviderSettings();
+			if (!clineProviderSaveResult.ok) {
+				setSaveError(clineProviderSaveResult.message ?? "Could not save Cline provider settings.");
+				return;
+			}
+			const clineMcpSaveResult = await clineMcpSettings.saveMcpSettings();
+			if (!clineMcpSaveResult.ok) {
+				setSaveError(clineMcpSaveResult.message ?? "Could not save Cline MCP settings.");
+				return;
+			}
 		}
 		const saved = await save({
 			selectedAgentId,
@@ -630,6 +647,7 @@ export function RuntimeSettingsDialog({
 				{selectedAgentId === "cline" ? (
 					<ClineSetupSection
 						controller={clineSettings}
+						mcpController={clineMcpSettings}
 						controlsDisabled={controlsDisabled}
 						onError={setSaveError}
 					/>

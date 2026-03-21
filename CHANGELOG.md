@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.30]
+
+- Add MCP server management and OAuth authentication for Cline providers
+- Add "Start All Tasks" keyboard shortcut (Alt + Shift + S)
+- Show assistant response previews in task card activity instead of generic "Agent active" text
+- Track full chat history per task, enabling richer conversation display and reliable message streaming
+- Display API key expiry as a human-readable date instead of a raw number
+- Support launching Kanban without a selected project (global-only mode)
+- Automatically restart agent terminals when the underlying process exits unexpectedly
+- Fix prewarm cleanup accidentally disposing the detail panel terminal for active tasks
+- Fix task card expand animation jumping by waiting for measured height before animating
+- Fix Cline thinking indicator flicker in the chat panel
+
 ## [0.1.29]
 
 - Fix onboarding and settings screens not working when no projects exist
