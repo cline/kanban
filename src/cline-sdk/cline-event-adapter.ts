@@ -3,6 +3,7 @@
 // focused on lifecycle, storage, and task-facing orchestration.
 import type { RuntimeTaskSessionSummary } from "../core/api-contract.js";
 import { formatClineToolCallLabel, getClineToolCallDisplay } from "./cline-tool-call-display.js";
+import type { ClineSdkAgentEvent, ClineSdkSessionEvent } from "./sdk-runtime-boundary.js";
 import {
 	appendAssistantChunk,
 	appendReasoningChunk,
@@ -30,6 +31,82 @@ export interface ApplyClineSessionEventInput {
 	pendingTurnCancelTaskIds: Set<string>;
 	emitSummary: (summary: RuntimeTaskSessionSummary) => void;
 	emitMessage: (taskId: string, message: ClineTaskMessage) => void;
+}
+
+type ClineSdkChunkEvent = Extract<ClineSdkSessionEvent, { type: "chunk" }>;
+type ClineSdkHookEvent = Extract<ClineSdkSessionEvent, { type: "hook" }>;
+type ClineSdkEndedEvent = Extract<ClineSdkSessionEvent, { type: "ended" }>;
+type ClineSdkStatusEvent = Extract<ClineSdkSessionEvent, { type: "status" }>;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function readAgentEvent(event: unknown): ClineSdkAgentEvent | null {
+	const record = asRecord(event);
+	if (!record || record.type !== "agent_event") {
+		return null;
+	}
+	const payload = asRecord(record.payload);
+	if (!payload) {
+		return null;
+	}
+	const agentEvent = asRecord(payload.event);
+	if (!agentEvent || typeof agentEvent.type !== "string") {
+		return null;
+	}
+	return agentEvent as unknown as ClineSdkAgentEvent;
+}
+
+function readChunkEvent(event: unknown): ClineSdkChunkEvent | null {
+	const record = asRecord(event);
+	if (!record || record.type !== "chunk") {
+		return null;
+	}
+	const payload = asRecord(record.payload);
+	if (!payload || typeof payload.sessionId !== "string" || typeof payload.chunk !== "string") {
+		return null;
+	}
+	if (payload.stream !== "stdout" && payload.stream !== "stderr" && payload.stream !== "agent") {
+		return null;
+	}
+	return { type: "chunk", payload: payload as ClineSdkChunkEvent["payload"] };
+}
+
+function readHookEvent(event: unknown): ClineSdkHookEvent | null {
+	const record = asRecord(event);
+	if (!record || record.type !== "hook") {
+		return null;
+	}
+	const payload = asRecord(record.payload);
+	if (!payload || typeof payload.sessionId !== "string") {
+		return null;
+	}
+	return { type: "hook", payload: payload as ClineSdkHookEvent["payload"] };
+}
+
+function readEndedEvent(event: unknown): ClineSdkEndedEvent | null {
+	const record = asRecord(event);
+	if (!record || record.type !== "ended") {
+		return null;
+	}
+	const payload = asRecord(record.payload);
+	if (!payload || typeof payload.sessionId !== "string" || typeof payload.reason !== "string") {
+		return null;
+	}
+	return { type: "ended", payload: payload as ClineSdkEndedEvent["payload"] };
+}
+
+function readStatusEvent(event: unknown): ClineSdkStatusEvent | null {
+	const record = asRecord(event);
+	if (!record || record.type !== "status") {
+		return null;
+	}
+	const payload = asRecord(record.payload);
+	if (!payload || typeof payload.sessionId !== "string" || typeof payload.status !== "string") {
+		return null;
+	}
+	return { type: "status", payload: payload as ClineSdkStatusEvent["payload"] };
 }
 
 function getRetainedClineToolActivity(entry: ClineTaskSessionEntry): {
@@ -67,40 +144,27 @@ function extractAgentErrorMessage(error: unknown): string | null {
 }
 
 export function extractClineSessionId(event: unknown): string | null {
-	if (!event || typeof event !== "object" || !("payload" in event)) {
+	const record = asRecord(event);
+	if (!record) {
 		return null;
 	}
-	const payload = event.payload;
-	if (!payload || typeof payload !== "object" || !("sessionId" in payload)) {
-		return null;
-	}
-	return typeof payload.sessionId === "string" ? payload.sessionId : null;
+	const payload = asRecord(record.payload);
+	return payload && typeof payload.sessionId === "string" ? payload.sessionId : null;
 }
 
 // Translate raw SDK events into Kanban summary and chat mutations so the session service can stay focused on host ownership.
 export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void {
 	const { entry, event, taskId } = input;
+	const agentEvent = readAgentEvent(event);
+	const chunkEvent = readChunkEvent(event);
+	const hookEvent = readHookEvent(event);
+	const endedEvent = readEndedEvent(event);
+	const statusEvent = readStatusEvent(event);
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "agent_event" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"event" in event.payload &&
-		event.payload.event &&
-		typeof event.payload.event === "object" &&
-		"type" in event.payload.event &&
-		event.payload.event.type === "error"
-	) {
+	if (agentEvent?.type === "error") {
 		const errorMessage =
-			"error" in event.payload.event ? extractAgentErrorMessage(event.payload.event.error) : null;
-		const recoverable =
-			"recoverable" in event.payload.event && typeof event.payload.event.recoverable === "boolean"
-				? event.payload.event.recoverable
-				: false;
+			"error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
+		const recoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		if (!recoverable) {
 			clearActiveTurnState(entry);
@@ -134,30 +198,9 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "agent_event" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"event" in event.payload &&
-		event.payload.event &&
-		typeof event.payload.event === "object" &&
-		"type" in event.payload.event &&
-		event.payload.event.type === "content_start" &&
-		"contentType" in event.payload.event &&
-		event.payload.event.contentType === "text"
-	) {
-		const accumulated =
-			"accumulated" in event.payload.event && typeof event.payload.event.accumulated === "string"
-				? event.payload.event.accumulated
-				: null;
-		const text =
-			"text" in event.payload.event && typeof event.payload.event.text === "string"
-				? event.payload.event.text
-				: null;
+	if (agentEvent?.type === "content_start" && agentEvent.contentType === "text") {
+		const accumulated = typeof agentEvent.accumulated === "string" ? agentEvent.accumulated : null;
+		const text = typeof agentEvent.text === "string" ? agentEvent.text : null;
 		if (typeof accumulated === "string") {
 			const message =
 				setOrCreateAssistantMessage(entry, taskId, accumulated) ?? createAssistantMessage(entry, taskId, accumulated);
@@ -183,24 +226,28 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "agent_event" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"event" in event.payload &&
-		event.payload.event &&
-		typeof event.payload.event === "object" &&
-		"type" in event.payload.event &&
-		event.payload.event.type === "done"
-	) {
-		const finalText =
-			"text" in event.payload.event && typeof event.payload.event.text === "string"
-				? event.payload.event.text.trim()
-				: "";
+	if (agentEvent?.type === "notice") {
+		const message = typeof agentEvent.message === "string" ? agentEvent.message.trim() : "";
+		if (message) {
+			const displayRole = typeof agentEvent.displayRole === "string" ? agentEvent.displayRole : "system";
+			const reason = typeof agentEvent.reason === "string" ? agentEvent.reason : null;
+			const noticeType = typeof agentEvent.noticeType === "string" ? agentEvent.noticeType : null;
+			const normalizedRole = displayRole === "status" ? "status" : "system";
+			const noticeMessage = createMessage(taskId, normalizedRole, message);
+			noticeMessage.meta = {
+				hookEventName: "agent_notice",
+				messageKind: noticeType,
+				displayRole,
+				reason,
+			};
+			entry.messages.push(noticeMessage);
+			input.emitMessage(taskId, noticeMessage);
+		}
+		return;
+	}
+
+	if (agentEvent?.type === "done") {
+		const finalText = typeof agentEvent.text === "string" ? agentEvent.text.trim() : "";
 		if (finalText) {
 			const message = setOrCreateAssistantMessage(entry, taskId, finalText);
 			if (message) {
@@ -212,10 +259,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			}
 		}
 
-		const doneReason =
-			"reason" in event.payload.event && typeof event.payload.event.reason === "string"
-				? event.payload.event.reason
-				: "completed";
+		const doneReason = typeof agentEvent.reason === "string" ? agentEvent.reason : "completed";
 		if (doneReason === "aborted" && input.pendingTurnCancelTaskIds.has(taskId)) {
 			emitTurnCanceled(input);
 			return;
@@ -250,26 +294,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "agent_event" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"event" in event.payload &&
-		event.payload.event &&
-		typeof event.payload.event === "object" &&
-		"type" in event.payload.event &&
-		event.payload.event.type === "content_start" &&
-		"contentType" in event.payload.event &&
-		event.payload.event.contentType === "reasoning"
-	) {
-		const reasoning =
-			"reasoning" in event.payload.event && typeof event.payload.event.reasoning === "string"
-				? event.payload.event.reasoning
-				: null;
+	if (agentEvent?.type === "content_start" && agentEvent.contentType === "reasoning") {
+		const reasoning = typeof agentEvent.reasoning === "string" ? agentEvent.reasoning : null;
 		if (reasoning && reasoning.length > 0) {
 			input.emitMessage(taskId, appendReasoningChunk(entry, taskId, reasoning));
 			emitSummary(input, {
@@ -280,26 +306,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "agent_event" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"event" in event.payload &&
-		event.payload.event &&
-		typeof event.payload.event === "object" &&
-		"type" in event.payload.event &&
-		event.payload.event.type === "content_end" &&
-		"contentType" in event.payload.event &&
-		event.payload.event.contentType === "reasoning"
-	) {
-		const reasoning =
-			"reasoning" in event.payload.event && typeof event.payload.event.reasoning === "string"
-				? event.payload.event.reasoning
-				: null;
+	if (agentEvent?.type === "content_end" && agentEvent.contentType === "reasoning") {
+		const reasoning = typeof agentEvent.reasoning === "string" ? agentEvent.reasoning : null;
 		if (reasoning) {
 			const message =
 				setOrCreateReasoningMessage(entry, taskId, reasoning) ?? createReasoningMessage(entry, taskId, reasoning);
@@ -312,31 +320,10 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "agent_event" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"event" in event.payload &&
-		event.payload.event &&
-		typeof event.payload.event === "object" &&
-		"type" in event.payload.event &&
-		event.payload.event.type === "content_start" &&
-		"contentType" in event.payload.event &&
-		event.payload.event.contentType === "tool"
-	) {
-		const toolName =
-			"toolName" in event.payload.event && typeof event.payload.event.toolName === "string"
-				? event.payload.event.toolName
-				: null;
-		const toolCallId =
-			"toolCallId" in event.payload.event && typeof event.payload.event.toolCallId === "string"
-				? event.payload.event.toolCallId
-				: null;
-		const toolInput = "input" in event.payload.event ? event.payload.event.input : undefined;
+	if (agentEvent?.type === "content_start" && agentEvent.contentType === "tool") {
+		const toolName = typeof agentEvent.toolName === "string" ? agentEvent.toolName : null;
+		const toolCallId = typeof agentEvent.toolCallId === "string" ? agentEvent.toolCallId : null;
+		const toolInput = agentEvent.input;
 		const toolDisplay = getClineToolCallDisplay(toolName, toolInput);
 		const isUserAttentionTool = isClineUserAttentionTool(toolName);
 		input.emitMessage(
@@ -371,39 +358,12 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "agent_event" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"event" in event.payload &&
-		event.payload.event &&
-		typeof event.payload.event === "object" &&
-		"type" in event.payload.event &&
-		event.payload.event.type === "content_end" &&
-		"contentType" in event.payload.event &&
-		event.payload.event.contentType === "tool"
-	) {
-		const toolName =
-			"toolName" in event.payload.event && typeof event.payload.event.toolName === "string"
-				? event.payload.event.toolName
-				: null;
-		const toolCallId =
-			"toolCallId" in event.payload.event && typeof event.payload.event.toolCallId === "string"
-				? event.payload.event.toolCallId
-				: null;
-		const toolOutput = "output" in event.payload.event ? event.payload.event.output : undefined;
-		const toolError =
-			"error" in event.payload.event && typeof event.payload.event.error === "string"
-				? event.payload.event.error
-				: null;
-		const durationMs =
-			"durationMs" in event.payload.event && typeof event.payload.event.durationMs === "number"
-				? event.payload.event.durationMs
-				: null;
+	if (agentEvent?.type === "content_end" && agentEvent.contentType === "tool") {
+		const toolName = typeof agentEvent.toolName === "string" ? agentEvent.toolName : null;
+		const toolCallId = typeof agentEvent.toolCallId === "string" ? agentEvent.toolCallId : null;
+		const toolOutput = agentEvent.output;
+		const toolError = typeof agentEvent.error === "string" ? agentEvent.error : null;
+		const durationMs = typeof agentEvent.durationMs === "number" ? agentEvent.durationMs : null;
 		const toolInput = toolCallId ? entry.toolInputByToolCallId.get(toolCallId) : undefined;
 		const toolDisplay = getClineToolCallDisplay(toolName, toolInput);
 		const isUserAttentionTool = isClineUserAttentionTool(toolName);
@@ -438,26 +398,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "agent_event" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"event" in event.payload &&
-		event.payload.event &&
-		typeof event.payload.event === "object" &&
-		"type" in event.payload.event &&
-		event.payload.event.type === "content_end" &&
-		"contentType" in event.payload.event &&
-		event.payload.event.contentType === "text"
-	) {
-		const text =
-			"text" in event.payload.event && typeof event.payload.event.text === "string"
-				? event.payload.event.text
-				: null;
+	if (agentEvent?.type === "content_end" && agentEvent.contentType === "text") {
+		const text = typeof agentEvent.text === "string" ? agentEvent.text : null;
 		if (text) {
 			const message =
 				setOrCreateAssistantMessage(entry, taskId, text) ?? createAssistantMessage(entry, taskId, text);
@@ -470,20 +412,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "chunk" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"stream" in event.payload &&
-		event.payload.stream === "agent" &&
-		"chunk" in event.payload &&
-		typeof event.payload.chunk === "string"
-	) {
-		const chunk = event.payload.chunk;
+	if (chunkEvent?.payload.stream === "agent") {
+		const chunk = chunkEvent.payload.chunk;
 		if (chunk.length === 0 || isLikelySerializedAgentEventChunk(chunk)) {
 			return;
 		}
@@ -506,23 +436,10 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "hook" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object"
-	) {
+	if (hookEvent) {
 		const hookEventName =
-			"hookEventName" in event.payload && typeof event.payload.hookEventName === "string"
-				? event.payload.hookEventName
-				: null;
-		const toolName =
-			"toolName" in event.payload && typeof event.payload.toolName === "string"
-				? event.payload.toolName
-				: null;
+			typeof hookEvent.payload.hookEventName === "string" ? hookEvent.payload.hookEventName : null;
+		const toolName = typeof hookEvent.payload.toolName === "string" ? hookEvent.payload.toolName : null;
 		const activityText = hookEventName && toolName ? `${hookEventName}: ${toolName}` : hookEventName;
 		emitSummary(input, {
 			lastHookAt: now(),
@@ -539,19 +456,9 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "ended" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"reason" in event.payload &&
-		typeof event.payload.reason === "string"
-	) {
+	if (endedEvent) {
 		const interrupted =
-			event.payload.reason.includes("abort") || event.payload.reason.includes("interrupt");
+			endedEvent.payload.reason.includes("abort") || endedEvent.payload.reason.includes("interrupt");
 		if (interrupted && input.pendingTurnCancelTaskIds.has(taskId)) {
 			emitTurnCanceled(input);
 			return;
@@ -565,22 +472,12 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
-	if (
-		event &&
-		typeof event === "object" &&
-		"type" in event &&
-		event.type === "status" &&
-		"payload" in event &&
-		event.payload &&
-		typeof event.payload === "object" &&
-		"status" in event.payload &&
-		typeof event.payload.status === "string"
-	) {
-		if (event.payload.status !== "running") {
+	if (statusEvent) {
+		if (statusEvent.payload.status !== "running") {
 			clearActiveTurnState(entry);
 		}
 		emitSummary(input, {
-			state: event.payload.status === "running" ? "running" : entry.summary.state,
+			state: statusEvent.payload.status === "running" ? "running" : entry.summary.state,
 			lastOutputAt: now(),
 		});
 	}

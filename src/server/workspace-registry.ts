@@ -1,4 +1,4 @@
-import type { RuntimeConfigState } from "../config/runtime-config.js";
+import { toGlobalRuntimeConfigState, type RuntimeConfigState } from "../config/runtime-config.js";
 import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
@@ -23,6 +23,7 @@ export interface WorkspaceRegistryScope {
 
 export interface CreateWorkspaceRegistryDependencies {
 	cwd: string;
+	loadGlobalRuntimeConfig: () => Promise<RuntimeConfigState>;
 	loadRuntimeConfig: (cwd: string) => Promise<RuntimeConfigState>;
 	hasGitRepository: (path: string) => boolean;
 	pathIsDirectory: (path: string) => Promise<boolean>;
@@ -192,7 +193,8 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 
 	let activeWorkspaceId: string | null = initialWorkspace?.workspaceId ?? indexedWorkspace?.workspaceId ?? null;
 	let activeWorkspacePath: string | null = initialWorkspace?.repoPath ?? indexedWorkspace?.repoPath ?? null;
-	let activeRuntimeConfig = await deps.loadRuntimeConfig(activeWorkspacePath ?? deps.cwd);
+	let globalRuntimeConfig = await deps.loadGlobalRuntimeConfig();
+	let activeRuntimeConfig = activeWorkspacePath ? await deps.loadRuntimeConfig(activeWorkspacePath) : globalRuntimeConfig;
 	const workspacePathsById = new Map<string, string>(
 		activeWorkspaceId && activeWorkspacePath ? [[activeWorkspaceId, activeWorkspacePath]] : [],
 	);
@@ -253,11 +255,13 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		rememberWorkspace(workspaceId, repoPath);
 		await ensureTerminalManagerForWorkspace(workspaceId, repoPath);
 		activeRuntimeConfig = await deps.loadRuntimeConfig(repoPath);
+		globalRuntimeConfig = toGlobalRuntimeConfigState(activeRuntimeConfig);
 	};
 
 	const clearActiveWorkspace = (): void => {
 		activeWorkspaceId = null;
 		activeWorkspacePath = null;
+		activeRuntimeConfig = globalRuntimeConfig;
 	};
 
 	const disposeWorkspace = (
@@ -442,7 +446,8 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		rememberWorkspace,
 		getActiveRuntimeConfig: () => activeRuntimeConfig,
 		setActiveRuntimeConfig: (config: RuntimeConfigState) => {
-			activeRuntimeConfig = config;
+			globalRuntimeConfig = toGlobalRuntimeConfigState(config);
+			activeRuntimeConfig = activeWorkspaceId ? config : globalRuntimeConfig;
 		},
 		loadScopedRuntimeConfig: async (scope: WorkspaceRegistryScope) => {
 			if (scope.workspaceId === activeWorkspaceId) {

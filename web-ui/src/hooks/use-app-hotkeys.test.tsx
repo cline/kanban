@@ -63,6 +63,7 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={handleOpenSettings}
 					handleToggleGitHistory={handleToggleGitHistory}
 					handleCloseGitHistory={() => {}}
+					onStartAllTasks={() => {}}
 				/>,
 			);
 		});
@@ -105,6 +106,7 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={() => {}}
 					handleToggleGitHistory={() => {}}
 					handleCloseGitHistory={handleCloseGitHistory}
+					onStartAllTasks={() => {}}
 				/>,
 			);
 		});
@@ -120,5 +122,41 @@ describe("useAppHotkeys", () => {
 		});
 
 		expect(handleCloseGitHistory).toHaveBeenCalledTimes(1);
+	});
+
+	it("starts all tasks on Alt+Shift+S", async () => {
+		const onStartAllTasks = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					selectedCard={null}
+					isDetailTerminalOpen={false}
+					isHomeTerminalOpen={false}
+					isHomeGitHistoryOpen={false}
+					handleToggleDetailTerminal={() => {}}
+					handleToggleHomeTerminal={() => {}}
+					handleToggleExpandDetailTerminal={() => {}}
+					handleToggleExpandHomeTerminal={() => {}}
+					handleOpenCreateTask={() => {}}
+					handleOpenSettings={() => {}}
+					handleToggleGitHistory={() => {}}
+					handleCloseGitHistory={() => {}}
+					onStartAllTasks={onStartAllTasks}
+				/>,
+			);
+		});
+
+		const startAllTasksCall = mockUseHotkeys.mock.calls.find(([shortcut]) => shortcut === "alt+shift+s");
+		if (!startAllTasksCall || typeof startAllTasksCall[1] !== "function") {
+			throw new Error("Expected start all tasks shortcut to be registered.");
+		}
+
+		act(() => {
+			const startAllTasksHandler = startAllTasksCall[1] as () => void;
+			startAllTasksHandler();
+		});
+
+		expect(onStartAllTasks).toHaveBeenCalledTimes(1);
 	});
 });

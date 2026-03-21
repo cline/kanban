@@ -4,6 +4,7 @@ import { delimiter, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+	loadGlobalRuntimeConfig,
 	loadRuntimeConfig,
 	pickBestInstalledAgentIdFromDetected,
 	saveRuntimeConfig,
@@ -152,6 +153,49 @@ describe.sequential("runtime-config auto agent selection", () => {
 		} finally {
 			cleanupBin();
 			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("treats the home directory as global-only config scope", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-home-scope-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const state = await loadRuntimeConfig(tempHome);
+				expect(state.globalConfigPath).toBe(join(tempHome, ".cline", "kanban", "config.json"));
+				expect(state.projectConfigPath).toBeNull();
+				expect(state.shortcuts).toEqual([]);
+
+				const updated = await updateRuntimeConfig(tempHome, {
+					selectedAgentId: "codex",
+				});
+				expect(updated.selectedAgentId).toBe("codex");
+				expect(updated.projectConfigPath).toBeNull();
+
+				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".cline", "kanban", "config.json"), "utf8")) as {
+					selectedAgentId?: string;
+					shortcuts?: unknown;
+				};
+				expect(globalPayload.selectedAgentId).toBe("codex");
+				expect(globalPayload.shortcuts).toBeUndefined();
+			});
+		} finally {
+			cleanupHome();
+		}
+	});
+
+	it("loads global runtime config without a project scope", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-global-only-");
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const state = await loadGlobalRuntimeConfig();
+				expect(state.globalConfigPath).toBe(join(tempHome, ".cline", "kanban", "config.json"));
+				expect(state.projectConfigPath).toBeNull();
+				expect(state.shortcuts).toEqual([]);
+			});
+		} finally {
 			cleanupHome();
 		}
 	});

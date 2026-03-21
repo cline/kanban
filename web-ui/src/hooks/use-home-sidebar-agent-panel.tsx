@@ -11,12 +11,11 @@ import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
-import { selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeConfigResponse,
 	RuntimeGitRepositoryInfo,
-	RuntimeStateStreamTaskChatMessage,
+	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
@@ -27,7 +26,7 @@ interface UseHomeSidebarAgentPanelInput {
 	runtimeProjectConfig: RuntimeConfigResponse | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
-	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
+	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>;
 }
 
 async function stopHomeSidebarTaskSession(workspaceId: string, taskId: string): Promise<void> {
@@ -46,7 +45,7 @@ export function useHomeSidebarAgentPanel({
 	runtimeProjectConfig,
 	taskSessions,
 	workspaceGit,
-	latestTaskChatMessage,
+	taskChatMessagesByTaskId,
 }: UseHomeSidebarAgentPanelInput): ReactElement | null {
 	const [sessionSummaries, setSessionSummaries] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const upsertSessionSummary = useCallback((summary: RuntimeTaskSessionSummary) => {
@@ -98,7 +97,7 @@ export function useHomeSidebarAgentPanel({
 	}, [runtimeProjectConfig]);
 
 	const homeAgentPanelSummary = taskId ? (effectiveSessionSummaries[taskId] ?? null) : null;
-	const latestHomeTaskChatMessage = selectLatestTaskChatMessageForTask(taskId, latestTaskChatMessage);
+	const homeTaskChatMessages = taskId ? (taskChatMessagesByTaskId[taskId] ?? []) : [];
 
 	const handleSendHomeClineChatMessage = useCallback(
 		async (messageTaskId: string, text: string, options?: { mode?: "act" | "plan" }) => {
@@ -151,7 +150,7 @@ export function useHomeSidebarAgentPanel({
 				onSendMessage={handleSendHomeClineChatMessage}
 				onCancelTurn={handleCancelHomeClineChatTurn}
 				onLoadMessages={handleLoadHomeClineChatMessages}
-				incomingMessage={latestHomeTaskChatMessage}
+				incomingMessages={homeTaskChatMessages}
 				showRightBorder={false}
 				composerPlaceholder="Ask Cline to add, edit, start, or link tasks"
 			/>

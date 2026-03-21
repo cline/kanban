@@ -7,7 +7,7 @@ import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-se
 import { createClineProviderService } from "../cline-sdk/cline-provider-service.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
 import { isHomeAgentSessionId } from "../core/home-agent-session.js";
-import { updateRuntimeConfig } from "../config/runtime-config.js";
+import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config.js";
 import type { RuntimeCommandRunResponse } from "../core/api-contract.js";
 import {
 	parseClineOauthLoginRequest,
@@ -32,6 +32,7 @@ import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router
 
 export interface CreateRuntimeApiDependencies {
 	getActiveWorkspaceId: () => string | null;
+	getActiveRuntimeConfig?: () => RuntimeConfigState;
 	loadScopedRuntimeConfig: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeConfigState>;
 	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
@@ -70,13 +71,37 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 
 	return {
 		loadConfig: async (workspaceScope) => {
-			const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+			const activeRuntimeConfig = deps.getActiveRuntimeConfig?.();
+			if (!workspaceScope && !activeRuntimeConfig) {
+				throw new Error("No active runtime config provider is available.");
+			}
+			let scopedRuntimeConfig: RuntimeConfigState;
+			if (workspaceScope) {
+				scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+			} else {
+				scopedRuntimeConfig = activeRuntimeConfig!;
+			}
 			return buildConfigResponse(scopedRuntimeConfig);
 		},
 		saveConfig: async (workspaceScope, input) => {
 			const parsed = parseRuntimeConfigSaveRequest(input);
-			const nextRuntimeConfig = await updateRuntimeConfig(workspaceScope.workspacePath, parsed);
-			if (workspaceScope.workspaceId === deps.getActiveWorkspaceId()) {
+			let nextRuntimeConfig: RuntimeConfigState;
+			if (workspaceScope) {
+				nextRuntimeConfig = await updateRuntimeConfig(workspaceScope.workspacePath, parsed);
+			} else {
+				const activeRuntimeConfig = deps.getActiveRuntimeConfig?.();
+				if (!activeRuntimeConfig) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "No active runtime config is available.",
+					});
+				}
+				nextRuntimeConfig = await updateGlobalRuntimeConfig(activeRuntimeConfig, parsed);
+			}
+			if (workspaceScope && workspaceScope.workspaceId === deps.getActiveWorkspaceId()) {
+				deps.setActiveRuntimeConfig(nextRuntimeConfig);
+			}
+			if (!workspaceScope) {
 				deps.setActiveRuntimeConfig(nextRuntimeConfig);
 			}
 			return buildConfigResponse(nextRuntimeConfig);

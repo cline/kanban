@@ -5,8 +5,6 @@ import {
 	trackTaskCreated,
 	trackTaskDependencyCreated,
 	trackTaskResumedFromTrash,
-	trackTaskStartSetupInstallCommandClicked,
-	trackTaskStartSetupPromptViewed,
 	trackTasksAutoStartedFromDependency,
 } from "@/telemetry/events";
 
@@ -70,26 +68,6 @@ describe("telemetry events", () => {
 			started_task_count: 3,
 		});
 		expect(captureMock).toHaveBeenNthCalledWith(3, "task_resumed_from_trash", {});
-	});
-
-	it("captures task start setup modal telemetry events", () => {
-		trackTaskStartSetupPromptViewed({
-			setup_kind: "linear_mcp",
-			selected_agent_id: "codex",
-		});
-		trackTaskStartSetupInstallCommandClicked({
-			setup_kind: "github_cli",
-			selected_agent_id: "codex",
-		});
-
-		expect(captureMock).toHaveBeenNthCalledWith(1, "task_start_setup_prompt_viewed", {
-			setup_kind: "linear_mcp",
-			selected_agent_id: "codex",
-		});
-		expect(captureMock).toHaveBeenNthCalledWith(2, "task_start_setup_install_command_clicked", {
-			setup_kind: "github_cli",
-			selected_agent_id: "codex",
-		});
 	});
 
 	it("skips capture when telemetry is disabled", () => {

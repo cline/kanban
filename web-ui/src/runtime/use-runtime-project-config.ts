@@ -6,19 +6,15 @@ import { useTrpcQuery } from "@/runtime/use-trpc-query";
 
 export interface UseRuntimeProjectConfigResult {
 	config: RuntimeConfigResponse | null;
+	isLoading: boolean;
 	refresh: () => void;
 }
 
 export function useRuntimeProjectConfig(workspaceId: string | null): UseRuntimeProjectConfigResult {
 	const previousWorkspaceIdRef = useRef<string | null>(null);
-	const queryFn = useCallback(async () => {
-		if (!workspaceId) {
-			throw new Error("No workspace selected.");
-		}
-		return await fetchRuntimeConfig(workspaceId);
-	}, [workspaceId]);
+	const queryFn = useCallback(async () => await fetchRuntimeConfig(workspaceId), [workspaceId]);
 	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
-		enabled: workspaceId !== null,
+		enabled: true,
 		queryFn,
 	});
 	const setConfigData = configQuery.setData;
@@ -36,7 +32,8 @@ export function useRuntimeProjectConfig(workspaceId: string | null): UseRuntimeP
 	}, [configQuery.refetch]);
 
 	return {
-		config: workspaceId ? configQuery.data : null,
+		config: configQuery.data,
+		isLoading: configQuery.isLoading && configQuery.data === null,
 		refresh,
 	};
 }

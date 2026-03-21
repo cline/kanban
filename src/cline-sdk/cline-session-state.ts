@@ -24,6 +24,9 @@ export interface ClineTaskMessage {
 		hookEventName?: string | null;
 		toolCallId?: string | null;
 		streamType?: string | null;
+		messageKind?: string | null;
+		displayRole?: string | null;
+		reason?: string | null;
 	} | null;
 }
 

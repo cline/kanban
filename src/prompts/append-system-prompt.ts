@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 
 import packageJson from "../../package.json" with { type: "json" };
 
+import type { RuntimeAgentId } from "../core/api-contract.js";
 import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update.js";
 
@@ -13,6 +14,54 @@ export interface ResolveAppendSystemPromptCommandPrefixOptions {
 	argv?: string[];
 	cwd?: string;
 	resolveRealPath?: (path: string) => string;
+}
+
+export interface RenderAppendSystemPromptOptions {
+	agentId?: RuntimeAgentId | null;
+}
+
+const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
+	"claude",
+	"codex",
+	"cline",
+	"droid",
+	"gemini",
+	"opencode",
+];
+
+function isRuntimeAgentId(value: string): value is RuntimeAgentId {
+	return APPEND_PROMPT_AGENT_IDS.includes(value as RuntimeAgentId);
+}
+
+function resolveHomeAgentId(taskId: string): RuntimeAgentId | null {
+	if (!isHomeAgentSessionId(taskId)) {
+		return null;
+	}
+	const parts = taskId.split(":");
+	const maybeAgentId = parts.at(-2) ?? null;
+	if (!maybeAgentId || !isRuntimeAgentId(maybeAgentId)) {
+		return null;
+	}
+	return maybeAgentId;
+}
+
+function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): string {
+	switch (agentId) {
+		case "cline":
+			return "- If Linear MCP is not available in the current agent (Cline), open MCP settings in the app, add server name `linear`, URL `https://mcp.linear.app/mcp`, transport `http`, then complete OAuth.";
+		case "claude":
+			return "- If Linear MCP is not available in the current agent (Claude Code), run: `claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp`";
+		case "codex":
+			return "- If Linear MCP is not available in the current agent (OpenAI Codex), run: `codex mcp add linear --url https://mcp.linear.app/mcp`";
+		case "gemini":
+			return "- If Linear MCP is not available in the current agent (Gemini CLI), run: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
+		case "opencode":
+			return "- If Linear MCP is not available in the current agent (OpenCode), run `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
+		case "droid":
+			return "- If Linear MCP is not available in the current agent (Droid), run: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
+		default:
+			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
+	}
 }
 
 export function resolveAppendSystemPromptCommandPrefix(
@@ -59,8 +108,12 @@ export function resolveAppendSystemPromptCommandPrefix(
 	return DEFAULT_COMMAND_PREFIX;
 }
 
-export function renderAppendSystemPrompt(commandPrefix: string): string {
+export function renderAppendSystemPrompt(
+	commandPrefix: string,
+	options: RenderAppendSystemPromptOptions = {},
+): string {
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
+	const selectedAgentId = options.agentId ?? null;
 	return `# Kanban Sidebar
 
 You are the Kanban sidebar agent for this workspace. Help the user interact with their Kanban board directly from this side panel. When the user asks to add tasks, create tasks, break work down, link tasks, or start tasks, prefer using the Kanban CLI yourself instead of describing manual steps.
@@ -76,6 +129,21 @@ Kanban is a CLI tool for orchestrating multiple coding agents working on tasks i
 
 Use this prefix for every Kanban command in this session:
 \`${kanbanCommand}\`
+
+# GitHub and Linear Guidance
+
+- If the user asks for GitHub work (issues, PRs, repos, comments, labels, milestones) or includes a \`github.com\` URL, prefer the \`gh\` CLI first.
+- Prefer native GitHub commands over manual browser walkthroughs when possible, for example: \`gh issue view\`, \`gh pr view\`, \`gh repo view\`, \`gh pr checks\`, \`gh pr diff\`.
+- If \`gh\` is missing, guide installation based on platform:
+  - macOS: \`brew install gh\`
+  - Windows: \`winget install --id GitHub.cli\`
+  - Linux: use the distro package or official instructions at \`https://cli.github.com/\`
+
+- If the user references Linear (Linear links, Linear issue IDs, or Linear workflows), prefer Linear MCP tools when available.
+- Current home agent: \`${selectedAgentId ?? "unknown"}\`
+${renderLinearSetupGuidanceForAgent(selectedAgentId)}
+- After setup, run the agent MCP auth flow (often \`/mcp\`) and complete OAuth before using Linear tools.
+- Linear MCP docs: \`https://linear.app/docs/mcp\`
 
 # CLI Reference
 
@@ -212,5 +280,7 @@ export function resolveHomeAgentAppendSystemPrompt(
 	if (!isHomeAgentSessionId(taskId)) {
 		return null;
 	}
-	return renderAppendSystemPrompt(resolveAppendSystemPromptCommandPrefix(options));
+	return renderAppendSystemPrompt(resolveAppendSystemPromptCommandPrefix(options), {
+		agentId: resolveHomeAgentId(taskId),
+	});
 }

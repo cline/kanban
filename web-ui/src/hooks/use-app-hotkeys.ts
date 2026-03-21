@@ -19,6 +19,7 @@ interface UseAppHotkeysInput {
 	handleOpenSettings: () => void;
 	handleToggleGitHistory: () => void;
 	handleCloseGitHistory: () => void;
+	onStartAllTasks: () => void;
 }
 
 export function useAppHotkeys({
@@ -34,6 +35,7 @@ export function useAppHotkeys({
 	handleOpenSettings,
 	handleToggleGitHistory,
 	handleCloseGitHistory,
+	onStartAllTasks,
 }: UseAppHotkeysInput): void {
 	useHotkeys(
 		"mod+j",
@@ -50,6 +52,17 @@ export function useAppHotkeys({
 			preventDefault: true,
 		},
 		[handleToggleDetailTerminal, handleToggleHomeTerminal, selectedCard],
+	);
+
+	useHotkeys(
+		"alt+shift+s",
+		onStartAllTasks,
+		{
+			enableOnContentEditable: false,
+			enableOnFormTags: false,
+			preventDefault: true,
+		},
+		[onStartAllTasks],
 	);
 
 	useHotkeys(

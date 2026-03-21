@@ -50,6 +50,23 @@ describe("renderAppendSystemPrompt", () => {
 		expect(rendered).toContain("task delete --column trash");
 		expect(rendered).toContain("kanban task link");
 		expect(rendered).toContain("If a task command fails because the runtime is unavailable");
+		expect(rendered).toContain("If the user asks for GitHub work");
+		expect(rendered).toContain("gh issue view");
+		expect(rendered).toContain("If the user references Linear");
+		expect(rendered).toContain("Current home agent: `unknown`");
+		expect(rendered).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
+		expect(rendered).not.toContain("codex mcp add linear --url https://mcp.linear.app/mcp");
+	});
+
+	it("renders only the active-agent Linear MCP guidance when an agent is provided", () => {
+		const rendered = renderAppendSystemPrompt("kanban", {
+			agentId: "codex",
+		});
+
+		expect(rendered).toContain("Current home agent: `codex`");
+		expect(rendered).toContain("codex mcp add linear --url https://mcp.linear.app/mcp");
+		expect(rendered).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
+		expect(rendered).not.toContain("droid mcp add linear https://mcp.linear.app/mcp --type http");
 	});
 });
 
@@ -67,5 +84,8 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		});
 		expect(prompt).toContain("Kanban sidebar agent");
 		expect(prompt).toContain("kanban task list");
+		expect(prompt).toContain("Current home agent: `codex`");
+		expect(prompt).toContain("codex mcp add linear --url https://mcp.linear.app/mcp");
+		expect(prompt).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
 	});
 });

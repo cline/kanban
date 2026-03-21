@@ -357,9 +357,11 @@ export function ProjectNavigationPanel({
 const isMac =
 	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 const MOD = isMac ? "\u2318" : "Ctrl";
+const ALT = isMac ? "\u2325" : "Alt";
 
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
+	{ keys: [ALT, "Shift", "S"], label: "Start all tasks" },
 	{ keys: [MOD, "Shift", "S"], label: "Settings (Select Agent)" },
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "G"], label: "Toggle git view" },

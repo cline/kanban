@@ -10,7 +10,7 @@ import {
 	loginOpenAICodex,
 	ProviderSettingsManager,
 } from "@clinebot/core/node";
-import { models as llmsModels } from "@clinebot/llms/node";
+import { models as llmsModels } from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 
@@ -34,7 +34,10 @@ export interface SdkProviderCatalogItem {
 	capabilities?: string[];
 }
 
-export type SdkProviderModelRecord = Record<string, { name?: string; capabilities?: string[] } | unknown>;
+export type SdkProviderModelRecord = Record<
+	string,
+	{ name?: string; capabilities?: string[] } | unknown
+>;
 
 export interface SdkProviderSettings {
 	provider: string;
@@ -88,10 +91,13 @@ export async function refreshManagedOauthCredentials(input: {
 	oauthProvider?: string | null;
 }): Promise<ManagedOauthCredentials | null> {
 	if (input.providerId === "cline") {
-		const credentials = await getValidClineCredentials(input.currentCredentials, {
-			apiBaseUrl: input.baseUrl?.trim() || "https://api.cline.bot",
-			provider: input.oauthProvider?.trim() || undefined,
-		});
+		const credentials = await getValidClineCredentials(
+			input.currentCredentials,
+			{
+				apiBaseUrl: input.baseUrl?.trim() || "https://api.cline.bot",
+				provider: input.oauthProvider?.trim() || undefined,
+			},
+		);
 		return credentials ?? null;
 	}
 
@@ -104,7 +110,9 @@ export async function refreshManagedOauthCredentials(input: {
 		return credentials ?? null;
 	}
 
-	const credentials = await getValidOpenAICodexCredentials(input.currentCredentials);
+	const credentials = await getValidOpenAICodexCredentials(
+		input.currentCredentials,
+	);
 	return credentials ?? null;
 }
 
@@ -135,26 +143,41 @@ export async function loginManagedOauthProvider(input: {
 	});
 }
 
-export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
+export async function listSdkProviderCatalog(): Promise<
+	SdkProviderCatalogItem[]
+> {
 	return await llmsModels.getAllProviders();
 }
 
-export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
+export async function listSdkProviderModels(
+	providerId: string,
+): Promise<SdkProviderModelRecord> {
 	return await llmsModels.getModelsForProvider(providerId);
 }
 
-export function getSdkProviderSettings(providerId: string): SdkProviderSettings | null {
-	const manager = new ProviderSettingsManager();
-	return (manager.getProviderSettings(providerId) as SdkProviderSettings | undefined) ?? null;
+const providerManager = new ProviderSettingsManager();
+
+export function getSdkProviderSettings(
+	providerId: string,
+): SdkProviderSettings | null {
+	return (
+		(providerManager.getProviderSettings(providerId) as
+			| SdkProviderSettings
+			| undefined) ?? null
+	);
 }
 
 export function getLastUsedSdkProviderSettings(): SdkProviderSettings | null {
-	const manager = new ProviderSettingsManager();
-	return (manager.getLastUsedProviderSettings() as SdkProviderSettings | undefined) ?? null;
+	return (
+		(providerManager.getLastUsedProviderSettings() as
+			| SdkProviderSettings
+			| undefined) ?? null
+	);
 }
 
-export function saveSdkProviderSettings(input: SaveSdkProviderSettingsInput): void {
-	const manager = new ProviderSettingsManager();
+export function saveSdkProviderSettings(
+	input: SaveSdkProviderSettingsInput,
+): void {
 	const settings: SdkProviderSettings = {
 		...input.settings,
 		provider: input.settings.provider.trim(),
@@ -197,7 +220,7 @@ export function saveSdkProviderSettings(input: SaveSdkProviderSettingsInput): vo
 		settings.auth = auth;
 	}
 
-	manager.saveProviderSettings(settings, {
+	providerManager.saveProviderSettings(settings, {
 		setLastUsed: input.setLastUsed,
 		tokenSource: input.tokenSource,
 	});

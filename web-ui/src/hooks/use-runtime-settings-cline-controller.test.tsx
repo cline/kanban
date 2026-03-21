@@ -58,10 +58,6 @@ function createRuntimeConfigResponse(clineOverrides: Partial<RuntimeConfigRespon
 				configured: true,
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: false,
-			linearMcp: false,
-		},
 		shortcuts: [],
 		clineProviderSettings: {
 			providerId: "cline",
@@ -229,6 +225,50 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["claude-sonnet-4-6"]);
 		expect(requireSnapshot(latestSnapshot).isOauthProviderSelected).toBe(true);
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("loads provider catalog and models without a selected workspace", async () => {
+		const config = createRuntimeConfigResponse();
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "cline",
+				name: "Cline",
+				oauthSupported: true,
+				enabled: true,
+				defaultModelId: "claude-sonnet-4-6",
+			},
+		]);
+		fetchClineProviderModelsMock.mockResolvedValue([
+			{
+				id: "claude-sonnet-4-6",
+				name: "Claude Sonnet 4.6",
+			},
+		]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId={null}
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		expect(fetchClineProviderCatalogMock).toHaveBeenCalledWith(null);
+		expect(fetchClineProviderModelsMock).toHaveBeenCalledWith(null, "cline");
+		expect(requireSnapshot(latestSnapshot).providerCatalogIds).toEqual(["cline"]);
+		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["claude-sonnet-4-6"]);
 	});
 
 	it("falls back to empty provider settings when the config omits cline settings", async () => {

@@ -6,8 +6,10 @@ import { useStartupOnboarding, type UseStartupOnboardingResult } from "@/hooks/u
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 
+const saveRuntimeConfigMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/runtime/runtime-config-query", () => ({
-	saveRuntimeConfig: vi.fn(),
+	saveRuntimeConfig: saveRuntimeConfigMock,
 }));
 
 type HookSnapshot = UseStartupOnboardingResult;
@@ -33,10 +35,6 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				configured: selectedAgentId === "codex",
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: false,
-			linearMcp: false,
-		},
 		shortcuts: [],
 		clineProviderSettings: {
 			providerId: null,
@@ -58,21 +56,21 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 
 function HookHarness({
 	currentProjectId,
-	hasNoProjects,
 	runtimeProjectConfig,
+	isRuntimeProjectConfigLoading,
 	isTaskAgentReady,
 	onSnapshot,
 }: {
 	currentProjectId: string | null;
-	hasNoProjects: boolean;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
+	isRuntimeProjectConfigLoading: boolean;
 	isTaskAgentReady: boolean | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const snapshot = useStartupOnboarding({
 		currentProjectId,
-		hasNoProjects,
 		runtimeProjectConfig,
+		isRuntimeProjectConfigLoading,
 		isTaskAgentReady,
 		refreshRuntimeProjectConfig: () => {},
 		refreshSettingsRuntimeProjectConfig: () => {},
@@ -92,6 +90,8 @@ describe("useStartupOnboarding", () => {
 
 	beforeEach(() => {
 		window.localStorage.clear();
+		saveRuntimeConfigMock.mockReset();
+		saveRuntimeConfigMock.mockResolvedValue(createRuntimeConfigResponse("codex"));
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -120,8 +120,8 @@ describe("useStartupOnboarding", () => {
 			root.render(
 				<HookHarness
 					currentProjectId={null}
-					hasNoProjects={true}
 					runtimeProjectConfig={null}
+					isRuntimeProjectConfigLoading={false}
 					isTaskAgentReady={null}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -139,6 +139,61 @@ describe("useStartupOnboarding", () => {
 		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
 	});
 
+	it("saves the selected agent without requiring a project", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId={null}
+					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
+					isRuntimeProjectConfigLoading={false}
+					isTaskAgentReady={false}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a startup onboarding snapshot.");
+		}
+
+		const snapshot = latestSnapshot as HookSnapshot;
+		const result = await snapshot.handleSelectOnboardingAgent("codex");
+
+		expect(result).toEqual({ ok: true });
+		expect(saveRuntimeConfigMock).toHaveBeenCalledWith(null, { selectedAgentId: "codex" });
+	});
+
+	it("waits for runtime config to finish loading before opening onboarding", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId={null}
+					runtimeProjectConfig={null}
+					isRuntimeProjectConfigLoading={true}
+					isTaskAgentReady={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a startup onboarding snapshot.");
+		}
+
+		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.isStartupOnboardingDialogOpen).toBe(false);
+	});
+
 	it("reopens after a project is added when setup is still incomplete", async () => {
 		window.localStorage.setItem(LocalStorageKey.OnboardingDialogShown, "true");
 		let latestSnapshot: HookSnapshot | null = null;
@@ -147,8 +202,8 @@ describe("useStartupOnboarding", () => {
 			root.render(
 				<HookHarness
 					currentProjectId={"project-1"}
-					hasNoProjects={false}
 					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
+					isRuntimeProjectConfigLoading={false}
 					isTaskAgentReady={false}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;

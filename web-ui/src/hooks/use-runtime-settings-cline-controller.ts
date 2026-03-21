@@ -141,7 +141,7 @@ export function useRuntimeSettingsClineController(
 	]);
 
 	useEffect(() => {
-		if (!open || selectedAgentId !== "cline" || !workspaceId) {
+		if (!open || selectedAgentId !== "cline") {
 			setProviderCatalog([]);
 			setIsLoadingProviderCatalog(false);
 			return;
@@ -171,7 +171,7 @@ export function useRuntimeSettingsClineController(
 	}, [open, selectedAgentId, workspaceId]);
 
 	useEffect(() => {
-		if (!open || selectedAgentId !== "cline" || !workspaceId) {
+		if (!open || selectedAgentId !== "cline") {
 			setProviderModels([]);
 			setIsLoadingProviderModels(false);
 			return;
@@ -209,12 +209,6 @@ export function useRuntimeSettingsClineController(
 	const saveProviderSettingsDraft = useCallback(async (overrides?: SaveProviderSettingsOverrides): Promise<SaveResult> => {
 		if (!overrides && !hasUnsavedChanges) {
 			return { ok: true };
-		}
-		if (!workspaceId) {
-			return {
-				ok: false,
-				message: "Select a workspace before saving Cline provider settings.",
-			};
 		}
 		const trimmedProviderId = (overrides?.providerId ?? providerId).trim();
 		if (trimmedProviderId.length === 0) {
@@ -255,12 +249,6 @@ export function useRuntimeSettingsClineController(
 	}, [apiKey, baseUrl, hasUnsavedChanges, managedOauthProvider, modelId, providerId, workspaceId]);
 
 	const runOauthLogin = useCallback(async (): Promise<SaveResult> => {
-		if (!workspaceId) {
-			return {
-				ok: false,
-				message: "Select a workspace before running OAuth login.",
-			};
-		}
 		if (!managedOauthProvider) {
 			return {
 				ok: false,

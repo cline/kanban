@@ -34,6 +34,13 @@ npm run web:dev
 
 Use `http://127.0.0.1:4173` while developing UI so changes hot reload.
 
+## VS Code F5 debugging
+
+The repo includes `.vscode/launch.json` with two configurations:
+
+- **Dev Server**: Launches the runtime server with `tsx watch` (same as `npm run dev`) with the debugger attached. Run `npm run web:dev` in a separate terminal for the web UI.
+- **Run Tests**: Runs `vitest run` with the debugger so you can set breakpoints in tests.
+
 ## Build and run packaged CLI
 
 ```bash

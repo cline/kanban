@@ -539,23 +539,16 @@ export const runtimeAgentDefinitionSchema = z.object({
 });
 export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema>;
 
-export const runtimeTaskStartSetupAvailabilitySchema = z.object({
-	githubCli: z.boolean(),
-	linearMcp: z.boolean(),
-});
-export type RuntimeTaskStartSetupAvailability = z.infer<typeof runtimeTaskStartSetupAvailabilitySchema>;
-
 export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
 	selectedShortcutLabel: z.string().nullable(),
 	agentAutonomousModeEnabled: z.boolean(),
 	effectiveCommand: z.string().nullable(),
 	globalConfigPath: z.string(),
-	projectConfigPath: z.string(),
+	projectConfigPath: z.string().nullable(),
 	readyForReviewNotificationsEnabled: z.boolean(),
 	detectedCommands: z.array(z.string()),
 	agents: z.array(runtimeAgentDefinitionSchema),
-	taskStartSetupAvailability: runtimeTaskStartSetupAvailabilitySchema,
 	shortcuts: z.array(runtimeProjectShortcutSchema),
 	clineProviderSettings: runtimeClineProviderSettingsSchema,
 	commitPromptTemplate: z.string(),
@@ -632,6 +625,9 @@ export const runtimeTaskChatMessageSchema = z.object({
 			hookEventName: z.string().nullable().optional(),
 			toolCallId: z.string().nullable().optional(),
 			streamType: z.string().nullable().optional(),
+			messageKind: z.string().nullable().optional(),
+			displayRole: z.string().nullable().optional(),
+			reason: z.string().nullable().optional(),
 		})
 		.nullable()
 		.optional(),
