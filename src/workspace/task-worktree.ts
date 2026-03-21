@@ -13,7 +13,7 @@ import {
 	KANBAN_TASK_WORKTREES_DIR_NAME,
 	normalizeTaskIdForWorktreePath,
 } from "./task-worktree-path.js";
-import { getGitStdout, readGitHeadInfo, runGit } from "./git-utils.js";
+import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils.js";
 
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
@@ -479,8 +479,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				await applyTaskPatch(storedPatch.path, worktreePath);
 				await rm(storedPatch.path, { force: true });
 			} catch (error) {
-				const patchError = error instanceof Error ? error.message : String(error);
-				warning = `Saved task changes could not be reapplied automatically. ${patchError}`;
+				warning = `Saved task changes could not be reapplied automatically. ${getGitCommandErrorMessage(error)}`;
 			}
 		}
 

@@ -66,10 +66,6 @@ export async function getGitStdout(args: string[], cwd: string, options: RunGitO
 	return result.stdout
 }
 
-// ---------------------------------------------------------------------------
-// Git HEAD helpers
-// ---------------------------------------------------------------------------
-
 export interface GitHeadInfo {
 	branch: string | null;
 	headCommit: string | null;
@@ -92,3 +88,12 @@ export async function readGitHeadInfo(cwd: string): Promise<GitHeadInfo> {
 	};
 }
 
+export function getGitCommandErrorMessage(error: unknown): string {
+	if (error && typeof error === "object" && "stderr" in error) {
+		const stderr = (error as { stderr?: unknown }).stderr;
+		if (typeof stderr === "string" && stderr.trim()) {
+			return stderr.trim();
+		}
+	}
+	return error instanceof Error ? error.message : String(error);
+}
