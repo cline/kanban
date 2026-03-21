@@ -15,6 +15,7 @@ import {
 } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
 import { deleteTaskWorktree } from "../workspace/task-worktree.js";
+import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo.js";
 import type { RuntimeTrpcContext } from "./app-router.js";
 
 interface DisposeWorkspaceOptions {
@@ -70,11 +71,23 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				const projectPath = deps.resolveProjectInputPath(body.path, resolveBasePath);
 				await deps.assertPathIsDirectory(projectPath);
 				if (!deps.hasGitRepository(projectPath)) {
-					return {
-						ok: false,
-						project: null,
-						error: "No git repository detected. Only projects with git initialized can be added.",
-					} satisfies RuntimeProjectAddResponse;
+					const initResult = await initializeGitRepository(projectPath);
+					if (!initResult.ok) {
+						return {
+							ok: false,
+							project: null,
+							error: initResult.error ?? "Failed to initialize git repository.",
+						} satisfies RuntimeProjectAddResponse;
+					}
+				} else {
+					const commitResult = await ensureInitialCommit(projectPath);
+					if (!commitResult.ok) {
+						return {
+							ok: false,
+							project: null,
+							error: commitResult.error ?? "Failed to ensure initial commit.",
+						} satisfies RuntimeProjectAddResponse;
+					}
 				}
 				const context = await loadWorkspaceContext(projectPath);
 				deps.rememberWorkspace(context.workspaceId, context.repoPath);
