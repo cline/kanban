@@ -3,7 +3,7 @@
 // switches so chat surfaces can stay reactive without duplicating logic.
 import { useCallback, useEffect, useState } from "react";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
-import type { RuntimeTaskChatMessage, RuntimeTaskSessionMode } from "@/runtime/types";
+import type { RuntimeTaskChatMessage, RuntimeTaskImage, RuntimeTaskSessionMode } from "@/runtime/types";
 
 export type ClineChatMessage = RuntimeTaskChatMessage;
 
@@ -12,7 +12,7 @@ interface UseClineChatSessionInput {
 	onSendMessage?: (
 		taskId: string,
 		text: string,
-		options?: { mode?: RuntimeTaskSessionMode },
+		options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] },
 	) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
@@ -25,7 +25,7 @@ interface UseClineChatSessionResult {
 	isSending: boolean;
 	isCanceling: boolean;
 	error: string | null;
-	sendMessage: (text: string, options?: { mode?: RuntimeTaskSessionMode }) => Promise<boolean>;
+	sendMessage: (text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }) => Promise<boolean>;
 	cancelTurn: () => Promise<boolean>;
 }
 
@@ -150,7 +150,7 @@ export function useClineChatSession({
 	}, [isCanceling, onCancelTurn, taskId]);
 
 	const sendMessage = useCallback(
-		async (text: string, options?: { mode?: RuntimeTaskSessionMode }): Promise<boolean> => {
+		async (text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }): Promise<boolean> => {
 			const trimmed = text.trim();
 			if (!trimmed || !onSendMessage) {
 				return false;

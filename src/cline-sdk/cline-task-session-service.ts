@@ -3,6 +3,7 @@
 // history, and subscribe to summaries and chat events without knowing SDK
 // host, repository, or event-adapter details.
 import type {
+	RuntimeTaskImage,
 	RuntimeTaskSessionMode,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
@@ -42,6 +43,7 @@ export interface StartClineTaskSessionRequest {
 	taskId: string;
 	cwd: string;
 	prompt: string;
+	images?: RuntimeTaskImage[];
 	resumeFromTrash?: boolean;
 	providerId?: string | null;
 	modelId?: string | null;
@@ -61,6 +63,7 @@ export interface ClineTaskSessionService {
 		taskId: string,
 		text: string,
 		mode?: RuntimeTaskSessionMode,
+		images?: RuntimeTaskImage[],
 	): Promise<RuntimeTaskSessionSummary | null>;
 	rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
@@ -201,7 +204,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		this.pendingTurnCancelTaskIds.delete(request.taskId);
 
 		if (!request.resumeFromTrash && request.prompt.trim().length > 0) {
-			const message = createMessage(request.taskId, "user", request.prompt.trim());
+			const message = createMessage(request.taskId, "user", request.prompt.trim(), request.images);
 			entry.messages.push(message);
 			this.emitMessage(request.taskId, message);
 			const runningSummary = updateSummary(entry, {
@@ -242,6 +245,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					taskId: request.taskId,
 					cwd: request.cwd,
 					prompt: runtimePrompt,
+					images: request.images,
 					providerId,
 					modelId,
 					mode: request.mode,
@@ -351,6 +355,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		taskId: string,
 		text: string,
 		mode?: RuntimeTaskSessionMode,
+		images?: RuntimeTaskImage[],
 	): Promise<RuntimeTaskSessionSummary | null> {
 		const entry = this.messageRepository.getTaskEntry(taskId);
 		if (!entry) {
@@ -366,7 +371,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		this.pendingTurnCancelTaskIds.delete(taskId);
 		const normalized = text.trim();
 		if (normalized.length > 0) {
-			const message = createMessage(taskId, "user", normalized);
+			const message = createMessage(taskId, "user", normalized, images);
 			entry.messages.push(message);
 			this.emitMessage(taskId, message);
 			clearActiveTurnState(entry);
@@ -389,7 +394,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			const assistantCountBeforeSend = entry.messages.filter((message) => message.role === "assistant").length;
 			void this.ensureRuntimeSetup(entry.summary.workspacePath ?? "")
 				.then((runtimeSetup) =>
-					this.sessionRuntime.sendTaskSessionInput(taskId, runtimeSetup.resolvePrompt(normalized), mode),
+					this.sessionRuntime.sendTaskSessionInput(taskId, runtimeSetup.resolvePrompt(normalized), mode, images),
 				)
 				.then((result: unknown) => {
 					const agentText = readAgentResultText(result);

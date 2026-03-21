@@ -15,13 +15,12 @@ import type {
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
 import { appendTerminalHeuristicText, hasInterruptAcknowledgement, hasLikelyShellPrompt } from "@/terminal/terminal-prompt-heuristics";
+import { isMacPlatform } from "@/utils/platform";
 
 const SHIFT_ENTER_SEQUENCE = "\n";
 const RESIZE_DEBOUNCE_MS = 50;
 const INTERRUPT_IDLE_SETTLE_MS = 250;
 const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
-const isMacPlatform =
-	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
 interface PersistentTerminalAppearance {
 	cursorColor: string;

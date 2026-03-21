@@ -550,7 +550,7 @@ export function CardDetailView({
 										<ClineAgentChatPanel
 											taskId={selection.card.id}
 											summary={sessionSummary}
-											taskColumnId={selection.column.id}
+														taskColumnId={selection.column.id}
 											defaultMode={selection.card.startInPlanMode ? "plan" : "act"}
 											workspaceId={currentProjectId}
 											runtimeConfig={runtimeConfig}

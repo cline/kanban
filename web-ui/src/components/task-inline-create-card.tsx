@@ -1,17 +1,19 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
-import { useCallback, useRef, useState, type ReactElement } from "react";
+import { useCallback, useRef, useState, type Dispatch, type ReactElement, type SetStateAction } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
-import type { TaskAutoReviewMode } from "@/types";
+import type { TaskAutoReviewMode, TaskImage } from "@/types";
+import { pasteShortcutLabel } from "@/utils/platform";
 import { useDocumentEvent, useMeasure } from "@/utils/react-use";
 
 export type TaskInlineCardMode = "create" | "edit";
 
 export type TaskBranchOption = BranchSelectOption;
+
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
@@ -42,6 +44,8 @@ function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): R
 export function TaskInlineCreateCard({
 	prompt,
 	onPromptChange,
+	images,
+	onImagesChange,
 	onCreate,
 	onCreateAndStart,
 	onCancel,
@@ -62,6 +66,8 @@ export function TaskInlineCreateCard({
 }: {
 	prompt: string;
 	onPromptChange: (value: string) => void;
+	images?: TaskImage[];
+	onImagesChange?: Dispatch<SetStateAction<TaskImage[]>>;
 	onCreate: () => void;
 	onCreateAndStart?: () => void;
 	onCancel?: () => void;
@@ -154,16 +160,20 @@ export function TaskInlineCreateCard({
 					id={promptId}
 					value={prompt}
 					onValueChange={onPromptChange}
+					images={images}
+					onImagesChange={onImagesChange}
 					onSubmit={onCreate}
 					onSubmitAndStart={onCreateAndStart}
-					placeholder="Describe the task"
+					placeholder="Describe the task..."
 					enabled={enabled}
 					autoFocus
 					workspaceId={workspaceId}
+					showAttachImageButton={false}
 				/>
 				<p className="text-[11px] text-text-tertiary mt-1 mb-0">
 					Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference
-					files.
+					files, and <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to paste
+					images.
 				</p>
 			</div>
 

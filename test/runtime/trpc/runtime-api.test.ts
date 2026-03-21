@@ -432,6 +432,13 @@ describe("createRuntimeApi startTaskSession", () => {
 				taskId: "task-1",
 				baseRef: "main",
 				prompt: "Continue task",
+				images: [
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
 				startInPlanMode: true,
 			},
 		);
@@ -442,6 +449,13 @@ describe("createRuntimeApi startTaskSession", () => {
 				taskId: "task-1",
 				cwd: "/tmp/existing-worktree",
 				prompt: "Continue task",
+				images: [
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
 				providerId: "anthropic",
 				apiKey: "anthropic-api-key",
 				mode: "plan",
@@ -857,7 +871,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			{ taskId: "task-1", text: "hello" },
 		);
 		expect(sendResponse.ok).toBe(true);
-		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenCalledWith("task-1", "hello", "act");
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenCalledWith("task-1", "hello", "act", undefined);
 		expect(sendResponse.message).toEqual(latestMessage);
 
 		const messagesResponse = await api.getTaskChatMessages(
@@ -882,6 +896,47 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 		expect(cancelResponse.ok).toBe(true);
 		expect(clineTaskSessionService.cancelTaskTurn).toHaveBeenCalledWith("task-1");
+	});
+
+	it("forwards chat images through the cline service send path", async () => {
+		const summary = createSummary({ agentId: "cline", pid: null });
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(summary);
+		clineTaskSessionService.listMessages.mockReturnValue([]);
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.sendTaskChatMessage(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{
+				taskId: "task-1",
+				text: "hello",
+				images: [
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
+			},
+		);
+
+		expect(response.ok).toBe(true);
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenCalledWith("task-1", "hello", "act", [
+			{
+				id: "img-1",
+				data: "abc123",
+				mimeType: "image/png",
+			},
+		]);
 	});
 
 	it("hydrates persisted cline chat messages when no live in-memory session is loaded", async () => {
@@ -945,8 +1000,8 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		expect(response.ok).toBe(true);
 		expect(clineTaskSessionService.rebindPersistedTaskSession).toHaveBeenCalledWith("task-1");
-		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "continue", "act");
-		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "continue", "act");
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "continue", "act", undefined);
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "continue", "act", undefined);
 		expect(response.message).toEqual(latestMessage);
 	});
 

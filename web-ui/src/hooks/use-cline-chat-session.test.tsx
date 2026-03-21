@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type ClineChatMessage, useClineChatSession } from "@/hooks/use-cline-chat-session";
-import type { RuntimeTaskSessionMode } from "@/runtime/types";
+import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "@/runtime/types";
 
 interface HookSnapshot {
 	messageIds: string[];
@@ -11,7 +11,7 @@ interface HookSnapshot {
 	lastMessageHookEvent: string | null;
 	error: string | null;
 	isSending: boolean;
-	sendMessage: (text: string, options?: { mode?: RuntimeTaskSessionMode }) => Promise<boolean>;
+	sendMessage: (text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }) => Promise<boolean>;
 }
 
 function createDeferred<T>() {
@@ -39,7 +39,7 @@ function HookHarness({
 	onSendMessage?: (
 		taskId: string,
 		text: string,
-		options?: { mode?: RuntimeTaskSessionMode },
+		options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] },
 	) => Promise<{ ok: boolean; message?: string; chatMessage?: ClineChatMessage | null }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	incomingMessage?: ClineChatMessage | null;
@@ -243,6 +243,46 @@ describe("useClineChatSession", () => {
 		expect(snapshots.at(-1)?.lastMessageContent).toBe("Hello");
 		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Hello", { mode: "plan" });
 		expect(onLoadMessages).toHaveBeenCalledTimes(1);
+	});
+
+	it("forwards attached images through the send callback", async () => {
+		const onLoadMessages = vi.fn(async () => []);
+		const onSendMessage = vi.fn(async () => ({ ok: true }));
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onSendMessage={onSendMessage}
+					onLoadMessages={onLoadMessages}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			await snapshots.at(-1)?.sendMessage("Hello", {
+				images: [
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
+			});
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Hello", {
+			images: [
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			],
+		});
 	});
 
 	it("merges late-loaded history with streamed messages that arrived first", async () => {

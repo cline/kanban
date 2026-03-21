@@ -140,6 +140,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						taskId: body.taskId,
 						cwd: taskCwd,
 						prompt: body.prompt,
+						images: body.images,
 						resumeFromTrash: body.resumeFromTrash,
 						providerId: clineLaunchConfig.providerId,
 						modelId: clineLaunchConfig.modelId,
@@ -397,12 +398,12 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const body = parseTaskChatSendRequest(input);
 				const requestedMode = body.mode ?? "act";
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
-				let summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text, requestedMode);
+				let summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text, requestedMode, body.images);
 				if (!summary) {
 					if (!isHomeAgentSessionId(body.taskId)) {
 						const reboundSummary = await clineTaskSessionService.rebindPersistedTaskSession(body.taskId);
 						if (reboundSummary) {
-							summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text, requestedMode);
+							summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text, requestedMode, body.images);
 						}
 						if (!summary) {
 							return {
@@ -417,6 +418,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							taskId: body.taskId,
 							cwd: workspaceScope.workspacePath,
 							prompt: body.text,
+							images: body.images,
 							providerId: clineLaunchConfig.providerId,
 							modelId: clineLaunchConfig.modelId,
 							mode: requestedMode,

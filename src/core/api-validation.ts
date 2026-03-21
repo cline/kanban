@@ -265,6 +265,7 @@ export function parseTaskChatSendRequest(value: unknown): RuntimeTaskChatSendReq
 		throw new Error("Task chat text cannot be empty.");
 	}
 	return {
+		...parsed,
 		taskId,
 		text,
 	};

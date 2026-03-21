@@ -13,6 +13,7 @@ import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-contro
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import type { RuntimeConfigResponse, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { TaskImage } from "@/types";
 
 const BOTTOM_LOCK_THRESHOLD_PX = 24;
 
@@ -38,7 +39,7 @@ export interface ClineAgentChatPanelProps {
 	onSendMessage?: (
 		taskId: string,
 		text: string,
-		options?: { mode?: RuntimeTaskSessionMode },
+		options?: { mode?: RuntimeTaskSessionMode; images?: TaskImage[] },
 	) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
@@ -116,6 +117,7 @@ export function ClineAgentChatPanel({
 	const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 	const [isSavingModel, setIsSavingModel] = useState(false);
 	const [mode, setMode] = useState<RuntimeTaskSessionMode>(defaultMode);
+	const [draftImages, setDraftImages] = useState<TaskImage[]>([]);
 	const clineSettings = useRuntimeSettingsClineController({
 		open: true,
 		workspaceId,
@@ -130,6 +132,11 @@ export function ClineAgentChatPanel({
 				label: model.name,
 			})),
 		[clineSettings.providerModels],
+	);
+
+	const selectedModel = useMemo(
+		() => clineSettings.providerModels.find((model) => model.id === clineSettings.modelId) ?? null,
+		[clineSettings.modelId, clineSettings.providerModels],
 	);
 
 	const selectedModelButtonText = useMemo(() => {
@@ -148,6 +155,10 @@ export function ClineAgentChatPanel({
 	}, [clineSettings.isLoadingProviderModels, clineSettings.modelId, isSavingModel, modelOptions]);
 
 	const panelError = composerError ?? error;
+	const attachmentWarningMessage =
+		draftImages.length > 0 && selectedModel?.supportsVision === false
+			? "The selected Cline model may not accept image input. Choose a vision-capable model to use these images."
+			: null;
 
 	const isPinnedToBottom = useCallback((container: HTMLDivElement): boolean => {
 		const remainingDistance = container.scrollHeight - container.scrollTop - container.clientHeight;
@@ -183,6 +194,7 @@ export function ClineAgentChatPanel({
 
 	useEffect(() => {
 		setMode(defaultMode);
+		setDraftImages([]);
 	}, [defaultMode, taskId]);
 
 	const persistSelectedModel = useCallback(
@@ -235,8 +247,11 @@ export function ClineAgentChatPanel({
 				return;
 			}
 		}
-		await handleSendDraft(mode);
-	}, [clineSettings.hasUnsavedChanges, handleSendDraft, isSavingModel, mode, persistSelectedModel]);
+		const sent = await handleSendDraft(mode, draftImages);
+		if (sent) {
+			setDraftImages([]);
+		}
+	}, [clineSettings.hasUnsavedChanges, draftImages, handleSendDraft, isSavingModel, mode, persistSelectedModel]);
 
 	return (
 		<div
@@ -259,6 +274,8 @@ export function ClineAgentChatPanel({
 					taskId={taskId}
 					draft={draft}
 					onDraftChange={setDraft}
+					images={draftImages}
+					onImagesChange={setDraftImages}
 					placeholder={composerPlaceholder}
 					mode={mode}
 					onModeChange={setMode}
@@ -276,6 +293,7 @@ export function ClineAgentChatPanel({
 					modelPickerDisabled={isSavingModel || clineSettings.providerId.trim().length === 0}
 					isSending={isSavingModel || isSending}
 					warningMessage={summary?.warningMessage ?? null}
+					attachmentWarningMessage={attachmentWarningMessage}
 				/>
 			</div>
 			{showActionFooter ? (

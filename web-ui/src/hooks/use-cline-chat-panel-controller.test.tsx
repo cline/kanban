@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
-import type { RuntimeTaskHookActivity, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskHookActivity, RuntimeTaskImage, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 
 interface HookSnapshot {
@@ -17,7 +17,7 @@ interface HookSnapshot {
 	showActionFooter: boolean;
 	showCancelAutomaticAction: boolean;
 	setDraft: (draft: string) => void;
-	handleSendDraft: (mode?: RuntimeTaskSessionMode) => Promise<void>;
+	handleSendDraft: (mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]) => Promise<boolean>;
 }
 
 function createSummary(
@@ -72,7 +72,7 @@ function HookHarness({
 }: {
 	summary: RuntimeTaskSessionSummary | null;
 	taskColumnId?: string;
-	onSendMessage?: (taskId: string, text: string, options?: { mode?: RuntimeTaskSessionMode }) => Promise<{
+	onSendMessage?: (taskId: string, text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }) => Promise<{
 		ok: boolean;
 		message?: string;
 		chatMessage?: {

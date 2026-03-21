@@ -1,7 +1,7 @@
 // Pure state helpers for native Cline sessions.
 // This module owns the in-memory summary and message shape plus the low-level
 // mutations shared by the event adapter and the message repository.
-import type { RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract.js";
 
 const CLINE_USER_ATTENTION_TOOL_NAMES = new Set(["ask_followup_question", "plan_mode_respond"]);
 
@@ -18,6 +18,7 @@ export interface ClineTaskMessage {
 	id: string;
 	role: "user" | "assistant" | "system" | "tool" | "reasoning" | "status";
 	content: string;
+	images?: RuntimeTaskImage[];
 	createdAt: number;
 	meta?: {
 		toolName?: string | null;
@@ -46,6 +47,7 @@ export function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSes
 export function cloneMessage(message: ClineTaskMessage): ClineTaskMessage {
 	return {
 		...message,
+		images: message.images ? message.images.map((image) => ({ ...image })) : message.images,
 		meta: message.meta ? { ...message.meta } : message.meta,
 	};
 }
@@ -82,11 +84,12 @@ export function updateSummary(
 	return cloneSummary(entry.summary);
 }
 
-export function createMessage(taskId: string, role: ClineTaskMessage["role"], content: string): ClineTaskMessage {
+export function createMessage(taskId: string, role: ClineTaskMessage["role"], content: string, images?: RuntimeTaskImage[]): ClineTaskMessage {
 	return {
 		id: `${taskId}-${now()}-${Math.random().toString(36).slice(2, 8)}`,
 		role,
 		content,
+		images: images && images.length > 0 ? images.map((image) => ({ ...image })) : undefined,
 		createdAt: now(),
 	};
 }
@@ -96,9 +99,10 @@ export function createMessageWithMeta(
 	role: ClineTaskMessage["role"],
 	content: string,
 	meta: ClineTaskMessage["meta"],
+	images?: RuntimeTaskImage[],
 ): ClineTaskMessage {
 	return {
-		...createMessage(taskId, role, content),
+		...createMessage(taskId, role, content, images),
 		meta,
 	};
 }

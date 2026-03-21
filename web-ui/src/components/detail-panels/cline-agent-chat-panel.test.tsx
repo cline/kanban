@@ -212,6 +212,41 @@ describe("ClineAgentChatPanel", () => {
 		expect(container.textContent).toContain('Failed to load MCP server "linear"');
 	});
 
+	it("renders user message images inline without a task header", async () => {
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("running")}
+					onLoadMessages={async () => [
+						{
+							id: "msg-1",
+							role: "user",
+							content: "Please inspect this screenshot",
+							images: [
+								{
+									id: "img-1",
+									data: "abc123",
+									mimeType: "image/png",
+									name: "error.png",
+								},
+							],
+							createdAt: 1,
+						},
+					]}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain("Please inspect this screenshot");
+		expect(container.textContent).toContain("error.png");
+		expect(container.textContent).not.toContain("Task images");
+		const image = container.querySelector('img[alt="error.png"]');
+		expect(image).toBeInstanceOf(HTMLImageElement);
+	});
+
 	it("keeps the message list pinned to the bottom while new content streams in", async () => {
 		const initialMessages: ClineChatMessage[] = [
 			{
