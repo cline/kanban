@@ -151,6 +151,9 @@ function createClineTaskSessionServiceMock() {
 		abortTaskSession: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(async () => null),
 		cancelTaskTurn: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(async () => null),
 		sendTaskSessionInput: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(async () => null),
+		rebindPersistedTaskSession: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(
+			async () => null,
+		),
 		getSummary: vi.fn<(...args: unknown[]) => RuntimeTaskSessionSummary | null>(() => null),
 		listSummaries: vi.fn<(...args: unknown[]) => RuntimeTaskSessionSummary[]>(() => []),
 		listMessages: vi.fn<(...args: unknown[]) => unknown[]>(() => []),
@@ -396,6 +399,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				taskId: "task-1",
 				baseRef: "main",
 				prompt: "Continue task",
+				startInPlanMode: true,
 			},
 		);
 
@@ -407,6 +411,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				prompt: "Continue task",
 				providerId: "anthropic",
 				apiKey: "anthropic-api-key",
+				mode: "plan",
 				resumeFromTrash: undefined,
 			}),
 		);
@@ -875,6 +880,41 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(response.ok).toBe(true);
 		expect(response.messages).toEqual([persistedMessage]);
 		expect(clineTaskSessionService.loadTaskSessionMessages).toHaveBeenCalledWith("task-1");
+	});
+
+	it("rebinds persisted non-home chat sessions before retrying the first send after restart", async () => {
+		const summary = createSummary({ agentId: "cline", pid: null });
+		const latestMessage = {
+			id: "message-rebound-1",
+			role: "user" as const,
+			content: "continue",
+			createdAt: Date.now(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.sendTaskSessionInput.mockResolvedValueOnce(null).mockResolvedValueOnce(summary);
+		clineTaskSessionService.rebindPersistedTaskSession.mockResolvedValue(summary);
+		clineTaskSessionService.listMessages.mockReturnValue([latestMessage]);
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.sendTaskChatMessage(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-1", text: "continue" },
+		);
+
+		expect(response.ok).toBe(true);
+		expect(clineTaskSessionService.rebindPersistedTaskSession).toHaveBeenCalledWith("task-1");
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "continue", "act");
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "continue", "act");
+		expect(response.message).toEqual(latestMessage);
 	});
 
 	it("auto-starts home chat sessions when the first message is sent", async () => {

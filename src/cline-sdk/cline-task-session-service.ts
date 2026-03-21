@@ -11,7 +11,11 @@ import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints.js";
 import { applyClineSessionEvent } from "./cline-event-adapter.js";
-import { type ClineMessageRepository, createInMemoryClineMessageRepository } from "./cline-message-repository.js";
+import {
+	type ClineMessageRepository,
+	createInMemoryClineMessageRepository,
+	createTaskEntryFromPersistedSession,
+} from "./cline-message-repository.js";
 import {
 	type ClineSessionRuntime,
 	type CreateInMemoryClineSessionRuntimeOptions,
@@ -57,6 +61,7 @@ export interface ClineTaskSessionService {
 		text: string,
 		mode?: RuntimeTaskSessionMode,
 	): Promise<RuntimeTaskSessionSummary | null>;
+	rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
 	listSummaries(): RuntimeTaskSessionSummary[];
 	listMessages(taskId: string): ClineTaskMessage[];
@@ -377,6 +382,32 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		});
 		this.emitSummary(summary);
 		return summary;
+	}
+
+	async rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
+		const existingEntry = this.messageRepository.getTaskEntry(taskId);
+		if (existingEntry) {
+			return cloneSummary(existingEntry.summary);
+		}
+		const snapshot = await this.sessionRuntime.resumeTaskSession(taskId);
+		if (!snapshot) {
+			return null;
+		}
+		const startedAt = Date.parse(snapshot.record.startedAt);
+		const updatedAt = Date.parse(snapshot.record.updatedAt || snapshot.record.startedAt);
+		const persistedCwd = typeof snapshot.record.cwd === "string" ? snapshot.record.cwd.trim() : "";
+		const persistedWorkspaceRoot =
+			typeof snapshot.record.workspaceRoot === "string" ? snapshot.record.workspaceRoot.trim() : "";
+		const entry = createTaskEntryFromPersistedSession(taskId, snapshot.messages, {
+			agentId: "cline",
+			state: "idle",
+			reviewReason: null,
+			workspacePath: persistedCwd || persistedWorkspaceRoot || null,
+			startedAt: Number.isFinite(startedAt) ? startedAt : null,
+			lastOutputAt: Number.isFinite(updatedAt) ? updatedAt : null,
+		});
+		this.messageRepository.setTaskEntry(taskId, entry);
+		return cloneSummary(entry.summary);
 	}
 
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null {

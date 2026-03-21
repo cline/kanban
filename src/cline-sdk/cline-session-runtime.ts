@@ -38,6 +38,7 @@ export interface ClinePersistedTaskSessionSnapshot {
 export interface ClineSessionRuntime {
 	startTaskSession(request: StartClineSessionRuntimeRequest): Promise<StartClineSessionRuntimeResult>;
 	sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown>;
+	resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	stopTaskSession(taskId: string): Promise<void>;
 	abortTaskSession(taskId: string): Promise<void>;
 	getTaskSessionId(taskId: string): string | null;
@@ -108,6 +109,20 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			sessionId,
 			prompt,
 		});
+	}
+
+	async resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
+		const sessionHost = await this.ensureSessionHost();
+		const record = await this.findPersistedTaskSessionRecord(taskId, sessionHost);
+		if (!record) {
+			return null;
+		}
+		this.bindTaskSession(taskId, record.sessionId);
+		const messages = await sessionHost.readMessages(record.sessionId);
+		return {
+			record,
+			messages,
+		};
 	}
 
 	async stopTaskSession(taskId: string): Promise<void> {

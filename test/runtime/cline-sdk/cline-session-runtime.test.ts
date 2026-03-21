@@ -229,6 +229,50 @@ describe("InMemoryClineSessionRuntime", () => {
 		expect(fakeHost.readMessages).toHaveBeenCalledWith("task-1-newer");
 	});
 
+	it("rebinds a task id to the latest persisted SDK session before resuming sends", async () => {
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => [
+				{
+					sessionId: "task-1-newer",
+					status: "completed",
+					startedAt: "2026-03-17T10:10:00.000Z",
+					updatedAt: "2026-03-17T10:15:00.000Z",
+				},
+			]),
+			readMessages: vi.fn(async () => [
+				{
+					role: "assistant" as const,
+					content: "Recovered response",
+				},
+			]),
+			subscribe: vi.fn(() => () => {}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+		});
+
+		const snapshot = await runtime.resumeTaskSession("task-1");
+
+		expect(snapshot?.record.sessionId).toBe("task-1-newer");
+		expect(runtime.getTaskSessionId("task-1")).toBe("task-1-newer");
+
+		await runtime.sendTaskSessionInput("task-1", "Continue");
+		expect(fakeHost.send).toHaveBeenCalledWith({
+			sessionId: "task-1-newer",
+			prompt: "Continue",
+		});
+	});
+
 	it("disposes the shared host and clears task mappings", async () => {
 		const fakeHost = {
 			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({

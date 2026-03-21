@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
+import type { RuntimeTaskSessionMode } from "../../../src/core/api-contract.js";
 import type {
 	ClinePersistedTaskSessionSnapshot,
 	ClineSessionRuntime,
@@ -38,7 +39,7 @@ function createDeferred<T>() {
 type StartTaskSessionMock = Mock<
 	(request: StartClineSessionRuntimeRequest & { sessionId: string }) => Promise<StartClineSessionRuntimeResult>
 >;
-type SendTaskSessionInputMock = Mock<(taskId: string, prompt: string) => Promise<unknown>>;
+type SendTaskSessionInputMock = Mock<(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode) => Promise<unknown>>;
 type StopTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type AbortTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type ReadPersistedTaskSessionMock = Mock<(taskId: string) => Promise<ClinePersistedTaskSessionSnapshot | null>>;
@@ -106,8 +107,11 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 				bindTaskSession(request.taskId, startResult.sessionId);
 				return startResult;
 			},
-			async sendTaskSessionInput(taskId: string, prompt: string): Promise<unknown> {
-				return await sendTaskSessionInputMock(taskId, prompt);
+			async sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown> {
+				return await sendTaskSessionInputMock(taskId, prompt, mode);
+			},
+			async resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
+				return await readPersistedTaskSessionMock(taskId);
 			},
 			async stopTaskSession(taskId: string): Promise<void> {
 				await stopTaskSessionMock(taskId);
@@ -299,6 +303,49 @@ describe("InMemoryClineTaskSessionService", () => {
 
 		expect(nextSummary?.state).toBe("running");
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual(["Initial prompt", "Continue"]);
+	});
+
+	it("rebinds a persisted session after restart and resumes chat on the next message", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.readPersistedTaskSessionMock.mockResolvedValue({
+			record: {
+				sessionId: "task-1-persisted",
+				status: "completed",
+				startedAt: "2026-03-17T10:00:00.000Z",
+				updatedAt: "2026-03-17T10:05:00.000Z",
+				cwd: "task-1-persisted-cwd",
+				workspaceRoot: "/tmp/workspace-root",
+			},
+			messages: [
+				{
+					role: "user",
+					content: "Recovered prompt",
+				},
+				{
+					role: "assistant",
+					content: "Recovered answer",
+				},
+			],
+		});
+
+		const reboundSummary = await service.rebindPersistedTaskSession("task-1");
+
+		expect(reboundSummary?.state).toBe("idle");
+		expect(reboundSummary?.workspacePath).toBe("task-1-persisted-cwd");
+		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
+			"Recovered prompt",
+			"Recovered answer",
+		]);
+
+		const nextSummary = await service.sendTaskSessionInput("task-1", "Continue");
+
+		expect(nextSummary?.state).toBe("running");
+		expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "Continue", undefined);
+		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
+			"Recovered prompt",
+			"Recovered answer",
+			"Continue",
+		]);
 	});
 
 	it("marks session interrupted when stopped", async () => {

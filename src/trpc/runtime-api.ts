@@ -369,23 +369,30 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				let summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text, requestedMode);
 				if (!summary) {
 					if (!isHomeAgentSessionId(body.taskId)) {
-						return {
-							ok: false,
-							summary: null,
-							error: "Task chat session is not running.",
-						};
+						const reboundSummary = await clineTaskSessionService.rebindPersistedTaskSession(body.taskId);
+						if (reboundSummary) {
+							summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, body.text, requestedMode);
+						}
+						if (!summary) {
+							return {
+								ok: false,
+								summary: null,
+								error: "Task chat session is not running.",
+							};
+						}
+					} else {
+						const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
+						summary = await clineTaskSessionService.startTaskSession({
+							taskId: body.taskId,
+							cwd: workspaceScope.workspacePath,
+							prompt: body.text,
+							providerId: clineLaunchConfig.providerId,
+							modelId: clineLaunchConfig.modelId,
+							mode: requestedMode,
+							apiKey: clineLaunchConfig.apiKey,
+							baseUrl: clineLaunchConfig.baseUrl,
+						});
 					}
-					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
-					summary = await clineTaskSessionService.startTaskSession({
-						taskId: body.taskId,
-						cwd: workspaceScope.workspacePath,
-						prompt: body.text,
-						providerId: clineLaunchConfig.providerId,
-						modelId: clineLaunchConfig.modelId,
-						mode: requestedMode,
-						apiKey: clineLaunchConfig.apiKey,
-						baseUrl: clineLaunchConfig.baseUrl,
-					});
 				}
 				const latestMessage = clineTaskSessionService.listMessages(body.taskId).at(-1) ?? null;
 				return {
