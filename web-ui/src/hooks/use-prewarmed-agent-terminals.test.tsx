@@ -3,7 +3,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
-import { getDetailTerminalTaskId } from "@/hooks/use-terminal-panels";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardData } from "@/types";
 
@@ -193,9 +192,8 @@ describe("usePrewarmedAgentTerminals", () => {
 				workspaceId: "project-1",
 			}),
 		);
-		expect(disposePersistentTerminalMock).toHaveBeenCalledTimes(2);
-		expect(disposePersistentTerminalMock).toHaveBeenNthCalledWith(1, "project-1", "task-a");
-		expect(disposePersistentTerminalMock).toHaveBeenNthCalledWith(2, "project-1", getDetailTerminalTaskId("task-a"));
+		expect(disposePersistentTerminalMock).toHaveBeenCalledTimes(1);
+		expect(disposePersistentTerminalMock).toHaveBeenCalledWith("project-1", "task-a");
 
 		ensurePersistentTerminalMock.mockClear();
 		disposePersistentTerminalMock.mockClear();
@@ -304,9 +302,31 @@ describe("usePrewarmedAgentTerminals", () => {
 		});
 
 		expect(ensurePersistentTerminalMock).not.toHaveBeenCalled();
-		expect(disposePersistentTerminalMock).toHaveBeenCalledTimes(2);
-		expect(disposePersistentTerminalMock).toHaveBeenNthCalledWith(1, "project-1", "task-a");
-		expect(disposePersistentTerminalMock).toHaveBeenNthCalledWith(2, "project-1", getDetailTerminalTaskId("task-a"));
+		expect(disposePersistentTerminalMock).toHaveBeenCalledTimes(1);
+		expect(disposePersistentTerminalMock).toHaveBeenCalledWith("project-1", "task-a");
+	});
+
+	it("only disposes the prewarmed task terminal when a task becomes idle", async () => {
+		const board = createBoard({ inProgressTaskIds: ["task-a"] });
+		const runningSessions = {
+			"task-a": createSummary("task-a"),
+		};
+		const idleSessions = {
+			"task-a": createSummary("task-a", { state: "idle", updatedAt: 2 }),
+		};
+
+		await act(async () => {
+			root.render(<HookHarness currentProjectId="project-1" board={board} sessions={runningSessions} />);
+		});
+
+		disposePersistentTerminalMock.mockClear();
+
+		await act(async () => {
+			root.render(<HookHarness currentProjectId="project-1" board={board} sessions={idleSessions} />);
+		});
+
+		expect(disposePersistentTerminalMock).toHaveBeenCalledTimes(1);
+		expect(disposePersistentTerminalMock).toHaveBeenCalledWith("project-1", "task-a");
 	});
 
 	it("disposes all task terminals when runtime disconnects", async () => {

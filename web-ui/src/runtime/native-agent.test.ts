@@ -5,6 +5,7 @@ import {
 	isNativeClineAgentSelected,
 	isTaskAgentSetupSatisfied,
 	selectLatestTaskChatMessageForTask,
+	selectTaskChatMessagesForTask,
 } from "@/runtime/native-agent";
 import type { RuntimeConfigResponse, RuntimeStateStreamTaskChatMessage } from "@/runtime/types";
 
@@ -205,5 +206,16 @@ describe("native-agent helpers", () => {
 		expect(selectLatestTaskChatMessageForTask("task-1", messageEvent)).toEqual(messageEvent.message);
 		expect(selectLatestTaskChatMessageForTask("task-2", messageEvent)).toBeNull();
 		expect(selectLatestTaskChatMessageForTask(null, messageEvent)).toBeNull();
+	});
+
+	it("selects the streamed task chat transcript for the matching task", () => {
+		const messageEvent = createLatestTaskChatMessage("task-1");
+		expect(
+			selectTaskChatMessagesForTask("task-1", {
+				"task-1": [messageEvent.message],
+			}),
+		).toEqual([messageEvent.message]);
+		expect(selectTaskChatMessagesForTask("task-2", { "task-1": [messageEvent.message] })).toEqual([]);
+		expect(selectTaskChatMessagesForTask(null, { "task-1": [messageEvent.message] })).toEqual([]);
 	});
 });

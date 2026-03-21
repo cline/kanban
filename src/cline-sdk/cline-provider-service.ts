@@ -467,9 +467,10 @@ export function createClineProviderService() {
 				const existingSettings = getSdkProviderSettings(input.providerId) ?? {
 					provider: input.providerId,
 				};
+				const baseUrl = input.baseUrl?.trim() || null;
 				const credentials = await loginManagedOauthProvider({
 					providerId: input.providerId,
-					baseUrl: input.baseUrl?.trim() || existingSettings.baseUrl?.trim() || null,
+					baseUrl,
 					oauthProvider: input.providerId,
 					callbacks: createRuntimeOauthCallbacks(input.providerId),
 				});
@@ -477,11 +478,6 @@ export function createClineProviderService() {
 				const nextSettings: SdkProviderSettings = {
 					...existingSettings,
 					provider: input.providerId,
-					...(input.baseUrl !== undefined
-						? input.baseUrl?.trim()
-							? { baseUrl: input.baseUrl.trim() }
-							: {}
-						: {}),
 					auth: {
 						...(existingSettings.auth ?? {}),
 						accessToken: toProviderApiKey(input.providerId, credentials.access),
@@ -490,6 +486,12 @@ export function createClineProviderService() {
 						expiresAt: normalizeEpochMs(credentials.expires),
 					},
 				};
+
+				if (baseUrl) {
+					nextSettings.baseUrl = baseUrl;
+				} else {
+					delete nextSettings.baseUrl;
+				}
 
 				saveSdkProviderSettings({
 					settings: nextSettings,

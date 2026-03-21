@@ -66,6 +66,21 @@ const NOOP_RUN_AUTO_REVIEW = async (): Promise<boolean> => false;
 
 interface HookSnapshot {
 	handleRestoreTaskFromTrash: (taskId: string) => void;
+	handleStartTask: (taskId: string) => void;
+}
+
+function createRect(width: number, height: number): DOMRect {
+	return {
+		x: 0,
+		y: 0,
+		left: 0,
+		top: 0,
+		width,
+		height,
+		right: width,
+		bottom: height,
+		toJSON: () => ({}),
+	} as DOMRect;
 }
 
 function HookHarness({
@@ -111,8 +126,9 @@ function HookHarness({
 	useEffect(() => {
 		onSnapshot?.({
 			handleRestoreTaskFromTrash: actions.handleRestoreTaskFromTrash,
+			handleStartTask: actions.handleStartTask,
 		});
-	}, [actions.handleRestoreTaskFromTrash, onSnapshot]);
+	}, [actions.handleRestoreTaskFromTrash, actions.handleStartTask, onSnapshot]);
 
 	return null;
 }
@@ -123,6 +139,16 @@ describe("useBoardInteractions", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+		vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+			return window.setTimeout(() => {
+				callback(performance.now());
+			}, 16);
+		});
+		vi.spyOn(window, "cancelAnimationFrame").mockImplementation((handle: number) => {
+			window.clearTimeout(handle);
+		});
 		notifyErrorMock.mockReset();
 		showAppToastMock.mockReset();
 		useLinkedBacklogTaskActionsMock.mockReset();
@@ -139,6 +165,8 @@ describe("useBoardInteractions", () => {
 		act(() => {
 			root.unmount();
 		});
+		vi.restoreAllMocks();
+		vi.useRealTimers();
 		container.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -218,6 +246,96 @@ describe("useBoardInteractions", () => {
 		expect(started).toBe(true);
 		expect(ensureTaskWorkspace).toHaveBeenCalledWith(backlogTask);
 		expect(startTaskSession).toHaveBeenCalledWith(backlogTask);
+	});
+
+	it("waits for a new backlog card height to settle before starting animation", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const tryProgrammaticCardMove = vi.fn(() => "unavailable" as const);
+		let measurementCount = 0;
+		const boardElement = document.createElement("section");
+		boardElement.className = "kb-board";
+		const taskElement = document.createElement("div");
+		taskElement.dataset.taskId = "task-1";
+		vi.spyOn(taskElement, "getBoundingClientRect").mockImplementation(() => {
+			measurementCount += 1;
+			if (measurementCount === 1) {
+				return createRect(160, 44);
+			}
+			return createRect(160, 96);
+		});
+		boardElement.appendChild(taskElement);
+		document.body.appendChild(boardElement);
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove,
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		const board = createBoard();
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>(() => {});
+		const ensureTaskWorkspace = vi.fn(async () => ({
+			ok: true as const,
+			response: {
+				ok: true as const,
+				path: "/tmp/task-1",
+				baseRef: "main",
+				baseCommit: "abc123",
+			},
+		}));
+		const startTaskSession = vi.fn(async () => ({ ok: true as const }));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={board}
+					setBoard={setBoard}
+					ensureTaskWorkspace={ensureTaskWorkspace}
+					startTaskSession={startTaskSession}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleStartTask("task-1");
+		});
+
+		expect(tryProgrammaticCardMove).not.toHaveBeenCalled();
+
+		await act(async () => {
+			vi.advanceTimersByTime(32);
+			await Promise.resolve();
+		});
+
+		expect(tryProgrammaticCardMove).not.toHaveBeenCalled();
+
+		await act(async () => {
+			vi.advanceTimersByTime(16);
+			await Promise.resolve();
+		});
+
+		expect(tryProgrammaticCardMove).toHaveBeenCalledWith("task-1", "backlog", "in_progress");
+		boardElement.remove();
 	});
 
 	it("shows a warning toast when restoring a trashed task with a saved patch warning", async () => {

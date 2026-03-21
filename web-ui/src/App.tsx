@@ -49,7 +49,11 @@ import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
-import { isTaskAgentSetupSatisfied, selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
+import {
+	isTaskAgentSetupSatisfied,
+	selectLatestTaskChatMessageForTask,
+	selectTaskChatMessagesForTask,
+} from "@/runtime/native-agent";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -91,6 +95,7 @@ export default function App(): ReactElement {
 		workspaceState: streamedWorkspaceState,
 		workspaceMetadata,
 		latestTaskChatMessage,
+		taskChatMessagesByTaskId,
 		latestTaskReadyForReview,
 		streamError,
 		isRuntimeDisconnected,
@@ -382,6 +387,7 @@ export default function App(): ReactElement {
 		taskSessions: sessions,
 		workspaceGit,
 		latestTaskChatMessage,
+		taskChatMessagesByTaskId,
 	});
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut } = useShortcutActions({
 		currentProjectId,
@@ -513,21 +519,6 @@ export default function App(): ReactElement {
 		setIsGitHistoryOpen(false);
 	}, []);
 
-	useAppHotkeys({
-		selectedCard,
-		isDetailTerminalOpen,
-		isHomeTerminalOpen: showHomeBottomTerminal,
-		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
-		handleToggleDetailTerminal,
-		handleToggleHomeTerminal,
-		handleToggleExpandDetailTerminal,
-		handleToggleExpandHomeTerminal: handleToggleExpandHomeTerminal,
-		handleOpenCreateTask,
-		handleOpenSettings,
-		handleToggleGitHistory,
-		handleCloseGitHistory,
-	});
-
 	const {
 		handleProgrammaticCardMoveReady,
 		handleCreateDependency,
@@ -580,6 +571,22 @@ export default function App(): ReactElement {
 		handleCreateTasks,
 		handleStartTask,
 		handleStartAllBacklogTasks,
+	});
+
+	useAppHotkeys({
+		selectedCard,
+		isDetailTerminalOpen,
+		isHomeTerminalOpen: showHomeBottomTerminal,
+		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
+		handleToggleDetailTerminal,
+		handleToggleHomeTerminal,
+		handleToggleExpandDetailTerminal,
+		handleToggleExpandHomeTerminal: handleToggleExpandHomeTerminal,
+		handleOpenCreateTask,
+		handleOpenSettings,
+		handleToggleGitHistory,
+		handleCloseGitHistory,
+		onStartAllTasks: handleStartAllBacklogTasksFromBoard,
 	});
 
 	useEffect(() => {
@@ -663,6 +670,10 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
+	const selectedTaskChatMessages = selectTaskChatMessagesForTask(
+		selectedCard?.card.id,
+		taskChatMessagesByTaskId,
+	);
 	const latestSelectedTaskChatMessage = selectLatestTaskChatMessageForTask(
 		selectedCard?.card.id,
 		latestTaskChatMessage,
@@ -936,7 +947,8 @@ export default function App(): ReactElement {
 								onSendClineChatMessage={sendTaskChatMessage}
 								onCancelClineChatTurn={cancelTaskChatTurn}
 								onLoadClineChatMessages={fetchTaskChatMessages}
-								latestClineChatMessage={latestSelectedTaskChatMessage}
+									latestClineChatMessage={latestSelectedTaskChatMessage}
+									streamedClineChatMessages={selectedTaskChatMessages}
 								onMoveToTrash={handleMoveToTrash}
 								isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}
 								gitHistoryPanel={

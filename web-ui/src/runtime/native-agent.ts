@@ -69,3 +69,13 @@ export function selectLatestTaskChatMessageForTask(
 	}
 	return latestTaskChatMessage.message;
 }
+
+export function selectTaskChatMessagesForTask(
+	taskId: string | null | undefined,
+	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>,
+): RuntimeTaskChatMessage[] {
+	if (!taskId) {
+		return [];
+	}
+	return taskChatMessagesByTaskId[taskId] ?? [];
+}

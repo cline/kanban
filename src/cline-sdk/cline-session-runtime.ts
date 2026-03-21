@@ -2,13 +2,19 @@
 // This is the runtime-facing layer for starting, looking up, resuming, and
 // stopping native Cline sessions without exposing SDK details upstream.
 import type { RuntimeTaskSessionMode } from "../core/api-contract.js";
+import {
+	createClineMcpRuntimeService,
+	type ClineMcpRuntimeService,
+	type ClineMcpToolBundle,
+} from "./cline-mcp-runtime-service.js";
 import { extractClineSessionId } from "./cline-event-adapter.js";
 import { createSessionId } from "./cline-session-state.js";
 import {
-	createClineSdkSessionHost,
 	type ClineSdkPersistedMessage,
 	type ClineSdkSessionHost,
 	type ClineSdkSessionRecord,
+	type ClineSdkUserInstructionWatcher,
+	createClineSdkSessionHost,
 } from "./sdk-runtime-boundary.js";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 3;
@@ -23,11 +29,14 @@ export interface StartClineSessionRuntimeRequest {
 	apiKey?: string | null;
 	baseUrl?: string | null;
 	systemPrompt: string;
+	userInstructionWatcher?: ClineSdkUserInstructionWatcher;
+	requestToolApproval?: (request: unknown) => Promise<unknown>;
 }
 
 export interface StartClineSessionRuntimeResult {
 	sessionId: string;
 	result: unknown;
+	warnings?: string[];
 }
 
 export interface ClinePersistedTaskSessionSnapshot {
@@ -38,6 +47,7 @@ export interface ClinePersistedTaskSessionSnapshot {
 export interface ClineSessionRuntime {
 	startTaskSession(request: StartClineSessionRuntimeRequest): Promise<StartClineSessionRuntimeResult>;
 	sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown>;
+	resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	stopTaskSession(taskId: string): Promise<void>;
 	abortTaskSession(taskId: string): Promise<void>;
 	getTaskSessionId(taskId: string): string | null;
@@ -48,51 +58,82 @@ export interface ClineSessionRuntime {
 export interface CreateInMemoryClineSessionRuntimeOptions {
 	onTaskEvent?: (taskId: string, event: unknown) => void;
 	createSessionHost?: () => Promise<ClineSdkSessionHost>;
+	createMcpRuntimeService?: () => ClineMcpRuntimeService;
 }
 
 // Own the SDK session host plus the taskId <-> sessionId bindings so higher layers can stay task-oriented.
 export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 	private readonly onTaskEvent: ((taskId: string, event: unknown) => void) | null;
 	private readonly createSessionHost: () => Promise<ClineSdkSessionHost>;
+	private readonly clineMcpRuntimeService: ClineMcpRuntimeService;
 	private readonly sessionIdByTaskId = new Map<string, string>();
 	private readonly taskIdBySessionId = new Map<string, string>();
+	private readonly mcpToolBundleByTaskId = new Map<string, ClineMcpToolBundle>();
 	private sessionHostPromise: Promise<ClineSdkSessionHost> | null = null;
 
 	constructor(options: CreateInMemoryClineSessionRuntimeOptions = {}) {
 		this.onTaskEvent = options.onTaskEvent ?? null;
 		this.createSessionHost = options.createSessionHost ?? createClineSdkSessionHost;
+		const createMcpRuntimeService = options.createMcpRuntimeService ?? createClineMcpRuntimeService;
+		this.clineMcpRuntimeService = createMcpRuntimeService();
 	}
 
 	async startTaskSession(request: StartClineSessionRuntimeRequest): Promise<StartClineSessionRuntimeResult> {
 		const requestedSessionId = createSessionId(request.taskId);
 		this.bindTaskSession(request.taskId, requestedSessionId);
 
+		let mcpToolBundle: ClineMcpToolBundle | null = null;
+		let startWarnings: string[] = [];
+		try {
+			mcpToolBundle = await this.clineMcpRuntimeService.createToolBundle();
+			startWarnings = mcpToolBundle.warnings;
+		} catch (error) {
+			mcpToolBundle = null;
+			const message = error instanceof Error ? error.message.trim() : String(error);
+			if (message.length > 0) {
+				startWarnings = [`Failed to load MCP tools: ${message}`];
+			}
+		}
+		this.replaceTaskMcpToolBundle(request.taskId, mcpToolBundle);
+
 		const sessionHost = await this.ensureSessionHost();
-		const startResult = await sessionHost.start({
-			config: {
-				sessionId: requestedSessionId,
-				providerId: request.providerId,
-				modelId: request.modelId,
-				apiKey: request.apiKey?.trim() || undefined,
-				baseUrl: request.baseUrl?.trim() || undefined,
-				cwd: request.cwd,
-				mode: request.mode ?? "act",
-				enableTools: true,
-				enableSpawnAgent: false,
-				enableAgentTeams: false,
-				maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
-				systemPrompt: request.systemPrompt,
-			},
-			prompt: request.prompt,
-			interactive: true,
-		});
+		let startResult: StartClineSessionRuntimeResult;
+		try {
+			startResult = await sessionHost.start({
+				config: {
+					sessionId: requestedSessionId,
+					providerId: request.providerId,
+					modelId: request.modelId,
+					apiKey: request.apiKey?.trim() || undefined,
+					baseUrl: request.baseUrl?.trim() || undefined,
+					cwd: request.cwd,
+					mode: request.mode ?? "act",
+					enableTools: true,
+					enableSpawnAgent: false,
+					enableAgentTeams: false,
+					maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
+					systemPrompt: request.systemPrompt,
+					...(mcpToolBundle && mcpToolBundle.tools.length > 0 ? { extraTools: mcpToolBundle.tools } : {}),
+				},
+				prompt: request.prompt,
+				interactive: true,
+				userInstructionWatcher: request.userInstructionWatcher,
+				requestToolApproval: request.requestToolApproval,
+			});
+		} catch (error) {
+			await this.releaseTaskMcpToolBundle(request.taskId);
+			throw error;
+		}
 
 		this.bindTaskSession(request.taskId, startResult.sessionId);
 		if (startResult.sessionId !== requestedSessionId) {
 			this.taskIdBySessionId.delete(requestedSessionId);
 		}
 
-		return startResult;
+		return {
+			...startResult,
+			...(startWarnings.length > 0 ? { warnings: startWarnings } : {}),
+		};
 	}
 
 	async sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown> {
@@ -110,22 +151,40 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		});
 	}
 
+	async resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
+		const sessionHost = await this.ensureSessionHost();
+		const record = await this.findPersistedTaskSessionRecord(taskId, sessionHost);
+		if (!record) {
+			return null;
+		}
+		this.bindTaskSession(taskId, record.sessionId);
+		const messages = await sessionHost.readMessages(record.sessionId);
+		return {
+			record,
+			messages,
+		};
+	}
+
 	async stopTaskSession(taskId: string): Promise<void> {
 		const sessionId = this.sessionIdByTaskId.get(taskId);
 		if (!sessionId) {
+			await this.releaseTaskMcpToolBundle(taskId);
 			return;
 		}
 		const sessionHost = await this.ensureSessionHost();
 		await sessionHost.stop(sessionId);
+		await this.releaseTaskMcpToolBundle(taskId);
 	}
 
 	async abortTaskSession(taskId: string): Promise<void> {
 		const sessionId = this.sessionIdByTaskId.get(taskId);
 		if (!sessionId) {
+			await this.releaseTaskMcpToolBundle(taskId);
 			return;
 		}
 		const sessionHost = await this.ensureSessionHost();
 		await sessionHost.abort(sessionId);
+		await this.releaseTaskMcpToolBundle(taskId);
 	}
 
 	getTaskSessionId(taskId: string): string | null {
@@ -158,6 +217,34 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		}
 		this.sessionIdByTaskId.clear();
 		this.taskIdBySessionId.clear();
+
+		const mcpBundles = [...this.mcpToolBundleByTaskId.values()];
+		this.mcpToolBundleByTaskId.clear();
+		await Promise.all(
+			mcpBundles.map(async (bundle) => {
+				await bundle.dispose().catch(() => undefined);
+			}),
+		);
+	}
+
+	private replaceTaskMcpToolBundle(taskId: string, bundle: ClineMcpToolBundle | null): void {
+		const current = this.mcpToolBundleByTaskId.get(taskId);
+		if (current) {
+			void current.dispose().catch(() => undefined);
+			this.mcpToolBundleByTaskId.delete(taskId);
+		}
+		if (bundle) {
+			this.mcpToolBundleByTaskId.set(taskId, bundle);
+		}
+	}
+
+	private async releaseTaskMcpToolBundle(taskId: string): Promise<void> {
+		const current = this.mcpToolBundleByTaskId.get(taskId);
+		if (!current) {
+			return;
+		}
+		this.mcpToolBundleByTaskId.delete(taskId);
+		await current.dispose().catch(() => undefined);
 	}
 
 	private bindTaskSession(taskId: string, sessionId: string): void {

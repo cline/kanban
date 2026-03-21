@@ -42,6 +42,7 @@ export interface ClineAgentChatPanelProps {
 	) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
+	incomingMessages?: ClineChatMessage[] | null;
 	incomingMessage?: ClineChatMessage | null;
 	onCommit?: () => void;
 	onOpenPr?: () => void;
@@ -68,6 +69,7 @@ export function ClineAgentChatPanel({
 	onSendMessage,
 	onCancelTurn,
 	onLoadMessages,
+	incomingMessages,
 	incomingMessage,
 	onCommit,
 	onOpenPr,
@@ -100,6 +102,7 @@ export function ClineAgentChatPanel({
 		onSendMessage,
 		onCancelTurn,
 		onLoadMessages,
+		incomingMessages,
 		incomingMessage,
 		onCommit,
 		onOpenPr,
@@ -272,6 +275,7 @@ export function ClineAgentChatPanel({
 					isModelSaving={isSavingModel}
 					modelPickerDisabled={isSavingModel || clineSettings.providerId.trim().length === 0}
 					isSending={isSavingModel || isSending}
+					warningMessage={summary?.warningMessage ?? null}
 				/>
 			</div>
 			{showActionFooter ? (

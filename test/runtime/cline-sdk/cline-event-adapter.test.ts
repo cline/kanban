@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
 import { applyClineSessionEvent } from "../../../src/cline-sdk/cline-event-adapter.js";
 import {
-	createDefaultSummary,
 	type ClineTaskMessage,
 	type ClineTaskSessionEntry,
+	createDefaultSummary,
 } from "../../../src/cline-sdk/cline-session-state.js";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
 
 function createEntry(taskId: string): ClineTaskSessionEntry {
 	return {
@@ -90,6 +89,7 @@ describe("applyClineSessionEvent", () => {
 		expect(entry.messages[0]?.content).toBe("Hello world");
 		expect(secondPass.summaries.at(-1)?.state).toBe("running");
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.hookEventName).toBe("assistant_delta");
+		expect(secondPass.summaries.at(-1)?.latestHookActivity?.finalMessage).toBe("world");
 	});
 
 	it("transitions into and back out of awaiting review around user-attention tools", () => {
@@ -238,6 +238,27 @@ describe("applyClineSessionEvent", () => {
 		expect(result.entry.summary.latestHookActivity?.finalMessage).toBe("Done. Added the comment.");
 		expect(result.messages[0]?.role).toBe("assistant");
 		expect(result.messages[0]?.content).toBe("Done. Added the comment.");
+	});
+
+	it("keeps awaiting-review sessions in review when a stale running status event arrives", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "awaiting_review";
+		entry.summary.reviewReason = "attention";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "status",
+				payload: {
+					sessionId: "session-1",
+					status: "running",
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("awaiting_review");
+		expect(result.entry.summary.reviewReason).toBe("attention");
+		expect(result.summaries.at(-1)?.state).toBe("awaiting_review");
 	});
 
 	it("surfaces recoverable agent errors in the summary without failing the task", () => {

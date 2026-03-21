@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardCard } from "@/components/board-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { ReviewTaskWorkspaceSnapshot } from "@/types";
 
 let mockWorkspaceSnapshot: ReviewTaskWorkspaceSnapshot | undefined;
@@ -85,6 +86,29 @@ function createCard(overrides?: Partial<Parameters<typeof BoardCard>[0]["card"]>
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
+		...overrides,
+	};
+}
+
+function createSummary(
+	state: RuntimeTaskSessionSummary["state"],
+	overrides?: Partial<RuntimeTaskSessionSummary>,
+): RuntimeTaskSessionSummary {
+	return {
+		taskId: "task-1",
+		state,
+		agentId: "cline",
+		workspacePath: "/tmp/worktree",
+		pid: null,
+		startedAt: 1,
+		updatedAt: 1,
+		lastOutputAt: 1,
+		reviewReason: null,
+		exitCode: null,
+		lastHookAt: 1,
+		latestHookActivity: null,
+		latestTurnCheckpoint: null,
+		previousTurnCheckpoint: null,
 		...overrides,
 	};
 }
@@ -192,7 +216,9 @@ describe("BoardCard", () => {
 			"Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau final hidden segment";
 
 		await act(async () => {
-			root.render(<BoardCard card={createCard({ prompt: `Task title||${description}` })} index={0} columnId="backlog" />);
+			root.render(
+				<BoardCard card={createCard({ prompt: `Task title||${description}` })} index={0} columnId="backlog" />,
+			);
 		});
 
 		const findButton = (label: string) =>
@@ -245,9 +271,9 @@ describe("BoardCard", () => {
 					card={createCard()}
 					index={0}
 					columnId="in_progress"
-					sessionSummary={{
-						taskId: "task-1",
-						state: "running",
+						sessionSummary={{
+							taskId: "task-1",
+							state: "running",
 						agentId: "cline",
 						workspacePath: "/tmp/worktree",
 						pid: null,
@@ -296,14 +322,14 @@ describe("BoardCard", () => {
 						reviewReason: null,
 						exitCode: null,
 						lastHookAt: Date.now(),
-						latestHookActivity: {
-							activityText: "Agent active",
-							toolName: "Read",
-							toolInputSummary: "src/index.ts",
-							finalMessage: null,
-							hookEventName: "assistant_delta",
-							notificationType: null,
-							source: "cline-sdk",
+							latestHookActivity: {
+								activityText: "Agent active",
+								toolName: "Read",
+								toolInputSummary: "src/index.ts",
+								finalMessage: "Looking at the file now",
+								hookEventName: "assistant_delta",
+								notificationType: null,
+								source: "cline-sdk",
 						},
 						latestTurnCheckpoint: null,
 						previousTurnCheckpoint: null,
@@ -331,5 +357,31 @@ describe("BoardCard", () => {
 		});
 
 		expect(container.textContent).toContain("Freshly created task description");
+	});
+
+	it("shows the latest assistant preview on active task cards", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+						sessionSummary={createSummary("running", {
+							latestHookActivity: {
+								activityText: "Reviewing the final diff",
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: "Reviewing the final diff",
+								hookEventName: "assistant_delta",
+								notificationType: null,
+							source: "cline-sdk",
+						},
+					})}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Reviewing the final diff");
+		expect(container.textContent).not.toContain("Thinking...");
 	});
 });

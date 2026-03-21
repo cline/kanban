@@ -217,6 +217,7 @@ export function CardDetailView({
 	onCancelClineChatTurn,
 	onLoadClineChatMessages,
 	latestClineChatMessage,
+	streamedClineChatMessages,
 	onMoveToTrash,
 	isMoveToTrashLoading,
 	gitHistoryPanel,
@@ -275,6 +276,7 @@ export function CardDetailView({
 	onCancelClineChatTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadClineChatMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
 	latestClineChatMessage?: ClineChatMessage | null;
+	streamedClineChatMessages?: ClineChatMessage[] | null;
 	onMoveToTrash: () => void;
 	isMoveToTrashLoading?: boolean;
 	gitHistoryPanel?: ReactNode;
@@ -556,6 +558,7 @@ export function CardDetailView({
 											onSendMessage={onSendClineChatMessage}
 											onCancelTurn={onCancelClineChatTurn}
 											onLoadMessages={onLoadClineChatMessages}
+											incomingMessages={streamedClineChatMessages}
 											incomingMessage={latestClineChatMessage}
 											onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
 											onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}

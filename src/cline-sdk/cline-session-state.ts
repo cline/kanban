@@ -24,6 +24,9 @@ export interface ClineTaskMessage {
 		hookEventName?: string | null;
 		toolCallId?: string | null;
 		streamType?: string | null;
+		messageKind?: string | null;
+		displayRole?: string | null;
+		reason?: string | null;
 	} | null;
 }
 
@@ -61,6 +64,7 @@ export function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary 
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};

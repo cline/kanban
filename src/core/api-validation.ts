@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
 	type RuntimeCommandRunRequest,
 	type RuntimeConfigSaveRequest,
+	type RuntimeClineMcpOAuthRequest,
+	type RuntimeClineMcpSettingsSaveRequest,
 	type RuntimeClineOauthLoginRequest,
 	type RuntimeClineProviderModelsRequest,
 	type RuntimeClineProviderSettingsSaveRequest,
@@ -27,6 +29,8 @@ import {
 	type RuntimeWorktreeEnsureRequest,
 	runtimeCommandRunRequestSchema,
 	runtimeConfigSaveRequestSchema,
+	runtimeClineMcpOAuthRequestSchema,
+	runtimeClineMcpSettingsSaveRequestSchema,
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineProviderModelsRequestSchema,
 	runtimeClineProviderSettingsSaveRequestSchema,
@@ -308,6 +312,90 @@ export function parseClineProviderSettingsSaveRequest(value: unknown): RuntimeCl
 	return {
 		...parsed,
 		providerId,
+	};
+}
+
+export function parseClineMcpSettingsSaveRequest(value: unknown): RuntimeClineMcpSettingsSaveRequest {
+	const parsed = parseWithSchema(runtimeClineMcpSettingsSaveRequestSchema, value);
+	const normalizedServers = parsed.servers.map((server) => {
+		const name = server.name.trim();
+		if (!name) {
+			throw new Error("MCP server name cannot be empty.");
+		}
+
+		if (server.transport.type === "stdio") {
+			const command = server.transport.command.trim();
+			if (!command) {
+				throw new Error(`MCP server "${name}" requires a command.`);
+			}
+			const args = server.transport.args?.map((value) => value.trim()).filter((value) => value.length > 0);
+			const cwd = server.transport.cwd?.trim() || undefined;
+			const env = server.transport.env
+				? Object.fromEntries(
+						Object.entries(server.transport.env)
+							.map(([key, entry]) => [key.trim(), entry.trim()] as const)
+							.filter(([key, entry]) => key.length > 0 && entry.length > 0),
+					)
+				: undefined;
+
+			return {
+				name,
+				disabled: server.disabled,
+				transport: {
+					type: "stdio" as const,
+					command,
+					...(args && args.length > 0 ? { args } : {}),
+					...(cwd ? { cwd } : {}),
+					...(env && Object.keys(env).length > 0 ? { env } : {}),
+				},
+			};
+		}
+
+		const url = server.transport.url.trim();
+		if (!url) {
+			throw new Error(`MCP server "${name}" requires a URL.`);
+		}
+		const headers = server.transport.headers
+			? Object.fromEntries(
+					Object.entries(server.transport.headers)
+						.map(([key, entry]) => [key.trim(), entry.trim()] as const)
+						.filter(([key, entry]) => key.length > 0 && entry.length > 0),
+				)
+			: undefined;
+
+		return {
+			name,
+			disabled: server.disabled,
+			transport: {
+				type: server.transport.type,
+				url,
+				...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+			},
+		};
+	});
+
+	const seen = new Set<string>();
+	for (const server of normalizedServers) {
+		const dedupeKey = server.name.toLowerCase();
+		if (seen.has(dedupeKey)) {
+			throw new Error(`MCP server "${server.name}" is duplicated.`);
+		}
+		seen.add(dedupeKey);
+	}
+
+	return {
+		servers: normalizedServers,
+	};
+}
+
+export function parseClineMcpOAuthRequest(value: unknown): RuntimeClineMcpOAuthRequest {
+	const parsed = parseWithSchema(runtimeClineMcpOAuthRequestSchema, value);
+	const serverName = parsed.serverName.trim();
+	if (!serverName) {
+		throw new Error("MCP server name cannot be empty.");
+	}
+	return {
+		serverName,
 	};
 }
 

@@ -17,6 +17,7 @@ import type {
 	RuntimeConfigResponse,
 	RuntimeGitRepositoryInfo,
 	RuntimeStateStreamTaskChatMessage,
+	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
@@ -28,6 +29,7 @@ interface UseHomeSidebarAgentPanelInput {
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
 	latestTaskChatMessage: RuntimeStateStreamTaskChatMessage | null;
+	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>;
 }
 
 async function stopHomeSidebarTaskSession(workspaceId: string, taskId: string): Promise<void> {
@@ -47,6 +49,7 @@ export function useHomeSidebarAgentPanel({
 	taskSessions,
 	workspaceGit,
 	latestTaskChatMessage,
+	taskChatMessagesByTaskId,
 }: UseHomeSidebarAgentPanelInput): ReactElement | null {
 	const [sessionSummaries, setSessionSummaries] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const upsertSessionSummary = useCallback((summary: RuntimeTaskSessionSummary) => {
@@ -98,6 +101,7 @@ export function useHomeSidebarAgentPanel({
 	}, [runtimeProjectConfig]);
 
 	const homeAgentPanelSummary = taskId ? (effectiveSessionSummaries[taskId] ?? null) : null;
+	const homeTaskChatMessages = taskId ? (taskChatMessagesByTaskId[taskId] ?? []) : [];
 	const latestHomeTaskChatMessage = selectLatestTaskChatMessageForTask(taskId, latestTaskChatMessage);
 
 	const handleSendHomeClineChatMessage = useCallback(
@@ -152,6 +156,7 @@ export function useHomeSidebarAgentPanel({
 				onCancelTurn={handleCancelHomeClineChatTurn}
 				onLoadMessages={handleLoadHomeClineChatMessages}
 				incomingMessage={latestHomeTaskChatMessage}
+				incomingMessages={homeTaskChatMessages}
 				showRightBorder={false}
 				composerPlaceholder="Ask Cline to add, edit, start, or link tasks"
 			/>
