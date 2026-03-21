@@ -4,7 +4,7 @@ import { toFileUrl } from "@/utils/file-url";
 
 describe("toFileUrl", () => {
 	it("converts Unix absolute paths to file urls", () => {
-		expect(toFileUrl("/Users/dev/repo/.kanban/config.json")).toBe("file:///Users/dev/repo/.kanban/config.json");
+		expect(toFileUrl("/Users/dev/repo/.cline/kanban/config.json")).toBe("file:///Users/dev/repo/.cline/kanban/config.json");
 	});
 
 	it("converts Windows absolute paths to file urls", () => {

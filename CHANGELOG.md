@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.28]
+
+- Onboarding dialog for first-time users with guided walkthroughs for auto-commit, linking, and diff comments
+- Dependency links now show arrowheads so you can see direction at a glance, and the agent provides guidance about link direction when creating them
+- Cline chat input field now includes a model selector, plan/act mode toggle, and a cancel button to stop generations midstream
+- Resizable project sidebar (drag to resize, persists across sessions)
+- Show the full command in expanded run_commands tool calls
+- Review actions (Commit, Open PR) only appear when there are actual file changes
+- Cline chat preserves your scroll position when reading older messages
+- Failed tool calls display proper error messages instead of deadlocking the session
+- "Thinking" indicator shows while tool calls are loading
+- ANSI escape codes from CLI output are stripped instead of showing raw characters
+- Inline code in Cline chat wraps correctly instead of overflowing
+- Tasks with uncompleted dependencies can no longer be started
+- Better error reporting when Cline fails to start (clear messages instead of silent hangs)
+- Gracefully handles missing provider settings instead of crashing
+- Removed OpenAI, Gemini, and Droid agents to reduce surface area at launch (coming back in follow-up releases)
+
 ## [0.1.27]
 
 - Upgraded Cline SDK to stable v0.0.4, replacing nightly builds for more reliable native Cline sessions

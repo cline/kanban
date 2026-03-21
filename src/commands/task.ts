@@ -955,10 +955,26 @@ export function registerTaskCommand(program: Command): void {
 
 	task
 		.command("link")
-		.description("Link two tasks so one can wait on another.")
-		.requiredOption("--task-id <id>", "First task ID.")
-		.requiredOption("--linked-task-id <id>", "Second task ID.")
+		.description("Link two tasks so one task waits on another.")
+		.requiredOption("--task-id <id>", "One of the two task IDs to link.")
+		.requiredOption("--linked-task-id <id>", "The other task ID to link.")
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.addHelpText(
+			"after",
+			[
+				"",
+				"Dependency direction:",
+				"  If both linked tasks are in backlog, Kanban preserves the order you pass:",
+				"  --task-id waits on --linked-task-id, and on the board the arrow points into",
+				"  --linked-task-id.",
+				"  Once only one linked task remains in backlog, Kanban reorients the saved link",
+				"  so the backlog task is the waiting dependent task and the other task is the",
+				"  prerequisite.",
+				"  When the prerequisite finishes review and moves to trash, the waiting backlog",
+				"  task becomes ready to start.",
+				"",
+			].join("\n"),
+		)
 		.action(async (options: { taskId: string; linkedTaskId: string; projectPath?: string }) => {
 			await runTaskCommand(
 				async () =>

@@ -2,17 +2,15 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useStartupOnboarding, type UseStartupOnboardingResult } from "@/hooks/use-startup-onboarding";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { RuntimeConfigResponse } from "@/runtime/types";
-import { type UseRuntimeConfigResult, useRuntimeConfig } from "@/runtime/use-runtime-config";
-
-const fetchRuntimeConfigMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/runtime-config-query", () => ({
-	fetchRuntimeConfig: fetchRuntimeConfigMock,
 	saveRuntimeConfig: vi.fn(),
 }));
 
-type HookSnapshot = UseRuntimeConfigResult;
+type HookSnapshot = UseStartupOnboardingResult;
 
 function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["selectedAgentId"]): RuntimeConfigResponse {
 	return {
@@ -20,27 +18,18 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
-		globalConfigPath: "/tmp/global-config.json",
+		globalConfigPath: "/tmp/.cline/kanban/config.json",
 		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
 		readyForReviewNotificationsEnabled: true,
-		detectedCommands: [selectedAgentId],
+		detectedCommands: ["codex"],
 		agents: [
-			{
-				id: "claude",
-				label: "Claude Code",
-				binary: "claude",
-				command: "claude",
-				defaultArgs: [],
-				installed: selectedAgentId === "claude",
-				configured: selectedAgentId === "claude",
-			},
 			{
 				id: "codex",
 				label: "OpenAI Codex",
 				binary: "codex",
 				command: "codex",
 				defaultArgs: [],
-				installed: selectedAgentId === "codex",
+				installed: true,
 				configured: selectedAgentId === "codex",
 			},
 		],
@@ -68,17 +57,26 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 }
 
 function HookHarness({
-	open,
-	workspaceId,
-	initialConfig,
+	currentProjectId,
+	hasNoProjects,
+	runtimeProjectConfig,
+	isTaskAgentReady,
 	onSnapshot,
 }: {
-	open: boolean;
-	workspaceId: string | null;
-	initialConfig?: RuntimeConfigResponse | null;
+	currentProjectId: string | null;
+	hasNoProjects: boolean;
+	runtimeProjectConfig: RuntimeConfigResponse | null;
+	isTaskAgentReady: boolean | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
-	const snapshot = useRuntimeConfig(open, workspaceId, initialConfig);
+	const snapshot = useStartupOnboarding({
+		currentProjectId,
+		hasNoProjects,
+		runtimeProjectConfig,
+		isTaskAgentReady,
+		refreshRuntimeProjectConfig: () => {},
+		refreshSettingsRuntimeProjectConfig: () => {},
+	});
 
 	useEffect(() => {
 		onSnapshot(snapshot);
@@ -87,13 +85,13 @@ function HookHarness({
 	return null;
 }
 
-describe("useRuntimeConfig", () => {
+describe("useStartupOnboarding", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
-		fetchRuntimeConfigMock.mockReset();
+		window.localStorage.clear();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -115,38 +113,16 @@ describe("useRuntimeConfig", () => {
 		}
 	});
 
-	it("seeds the dialog with initial config and refreshes when opened", async () => {
-		const initialConfig = createRuntimeConfigResponse("claude");
-		const refreshedConfig = createRuntimeConfigResponse("codex");
-		fetchRuntimeConfigMock.mockResolvedValue(refreshedConfig);
+	it("opens startup onboarding on first launch even before any project exists", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
-					open={false}
-					workspaceId="project-1"
-					initialConfig={initialConfig}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		if (latestSnapshot === null) {
-			throw new Error("Expected an initial hook snapshot.");
-		}
-		const initialSnapshot = latestSnapshot as HookSnapshot;
-		expect(initialSnapshot.config?.selectedAgentId).toBe("claude");
-		expect(fetchRuntimeConfigMock).not.toHaveBeenCalled();
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					open={true}
-					workspaceId="project-1"
-					initialConfig={initialConfig}
+					currentProjectId={null}
+					hasNoProjects={true}
+					runtimeProjectConfig={null}
+					isTaskAgentReady={null}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -156,11 +132,37 @@ describe("useRuntimeConfig", () => {
 		});
 
 		if (latestSnapshot === null) {
-			throw new Error("Expected a refreshed hook snapshot.");
+			throw new Error("Expected a startup onboarding snapshot.");
 		}
-		const refreshedSnapshot = latestSnapshot as HookSnapshot;
-		expect(fetchRuntimeConfigMock).toHaveBeenCalledWith("project-1");
-		expect(refreshedSnapshot.config?.selectedAgentId).toBe("codex");
-		expect(refreshedSnapshot.isLoading).toBe(false);
+
+		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
+	});
+
+	it("reopens after a project is added when setup is still incomplete", async () => {
+		window.localStorage.setItem(LocalStorageKey.OnboardingDialogShown, "true");
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId={"project-1"}
+					hasNoProjects={false}
+					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
+					isTaskAgentReady={false}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a startup onboarding snapshot.");
+		}
+
+		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
 	});
 });

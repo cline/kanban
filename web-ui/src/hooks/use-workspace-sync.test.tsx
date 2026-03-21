@@ -42,7 +42,7 @@ function createBoard(taskId: string): BoardData {
 function createWorkspaceState(taskId: string, revision: number): RuntimeWorkspaceStateResponse {
 	return {
 		repoPath: "/tmp/project-a",
-		statePath: "/tmp/project-a/.kanban",
+		statePath: "/tmp/project-a/.cline/kanban",
 		git: {
 			currentBranch: "main",
 			defaultBranch: "main",
