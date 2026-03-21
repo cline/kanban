@@ -183,6 +183,120 @@ describe("CardDetailView", () => {
 		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
 	});
 
+	it("collapses and restores the diff panel", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const collapseButton = container.querySelector('button[aria-label="Collapse diff panel"]');
+		expect(collapseButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(collapseButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected a collapse diff panel button.");
+		}
+
+		await act(async () => {
+			collapseButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			collapseButton.click();
+		});
+
+		expect(container.querySelector('[data-testid="diff-viewer-panel"]')).toBeNull();
+		expect(container.querySelector('[data-testid="file-tree-panel"]')).toBeNull();
+		expect(container.querySelector('[role="separator"][aria-label="Resize agent and diff panels"]')).toBeNull();
+		expect(container.querySelector('button[aria-label="Show diff panel"]')).toBeInstanceOf(HTMLButtonElement);
+		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeNull();
+
+		const showButton = container.querySelector('button[aria-label="Show diff panel"]');
+		expect(showButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(showButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected a show diff panel button.");
+		}
+
+		await act(async () => {
+			showButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			showButton.click();
+		});
+
+		expect(container.querySelector('[data-testid="diff-viewer-panel"]')).toBeInstanceOf(HTMLDivElement);
+		expect(container.querySelector('[data-testid="file-tree-panel"]')).toBeInstanceOf(HTMLDivElement);
+		expect(container.querySelector('button[aria-label="Collapse diff panel"]')).toBeInstanceOf(HTMLButtonElement);
+		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
+	});
+
+	it("collapses the diff panel from expanded mode and restores to unified mode", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const expandButton = container.querySelector('button[aria-label="Expand split diff view"]');
+		expect(expandButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(expandButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected an expand diff button.");
+		}
+
+		await act(async () => {
+			expandButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			expandButton.click();
+		});
+
+		const collapseDiffButton = container.querySelector('button[aria-label="Collapse diff panel"]');
+		expect(collapseDiffButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(collapseDiffButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected a collapse diff panel button in expanded mode.");
+		}
+
+		await act(async () => {
+			collapseDiffButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			collapseDiffButton.click();
+		});
+
+		expect(container.querySelector('button[aria-label="Collapse expanded diff view"]')).toBeNull();
+		expect(container.querySelector('button[aria-label="Show diff panel"]')).toBeInstanceOf(HTMLButtonElement);
+
+		const showButton = container.querySelector('button[aria-label="Show diff panel"]');
+		expect(showButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(showButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected a show diff panel button.");
+		}
+
+		await act(async () => {
+			showButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			showButton.click();
+		});
+
+		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
+		expect(container.querySelector('button[aria-label="Collapse expanded diff view"]')).toBeNull();
+	});
+
 	it("clears stale diff content when switching from all changes to last turn", async () => {
 		await act(async () => {
 			root.render(
