@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTaskEditor } from "@/hooks/use-task-editor";
-import type { BoardCard, BoardData, TaskAutoReviewMode } from "@/types";
+import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
 
 function createTask(taskId: string, prompt: string, createdAt: number, overrides: Partial<BoardCard> = {}): BoardCard {
 	return {
@@ -35,6 +35,7 @@ interface HookSnapshot {
 	board: BoardData;
 	isInlineTaskCreateOpen: boolean;
 	newTaskPrompt: string;
+	newTaskImages: TaskImage[];
 	newTaskBranchRef: string;
 	editingTaskId: string | null;
 	editTaskPrompt: string;
@@ -42,7 +43,9 @@ interface HookSnapshot {
 	isEditTaskStartInPlanModeDisabled: boolean;
 	handleOpenCreateTask: () => void;
 	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
+	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	setNewTaskPrompt: (value: string) => void;
+	setNewTaskImages: (value: TaskImage[]) => void;
 	handleOpenEditTask: (task: BoardCard) => void;
 	handleSaveEditedTask: () => string | null;
 	handleSaveAndStartEditedTask: () => void;
@@ -85,6 +88,7 @@ function HookHarness({
 			board,
 			isInlineTaskCreateOpen: editor.isInlineTaskCreateOpen,
 			newTaskPrompt: editor.newTaskPrompt,
+			newTaskImages: editor.newTaskImages,
 			newTaskBranchRef: editor.newTaskBranchRef,
 			editingTaskId: editor.editingTaskId,
 			editTaskPrompt: editor.editTaskPrompt,
@@ -92,7 +96,9 @@ function HookHarness({
 			isEditTaskStartInPlanModeDisabled: editor.isEditTaskStartInPlanModeDisabled,
 			handleOpenCreateTask: editor.handleOpenCreateTask,
 			handleCreateTask: editor.handleCreateTask,
+			handleCreateTasks: editor.handleCreateTasks,
 			setNewTaskPrompt: editor.setNewTaskPrompt,
+			setNewTaskImages: editor.setNewTaskImages,
 			handleOpenEditTask: editor.handleOpenEditTask,
 			handleSaveEditedTask: editor.handleSaveEditedTask,
 			handleSaveAndStartEditedTask: editor.handleSaveAndStartEditedTask,
@@ -103,6 +109,7 @@ function HookHarness({
 	}, [
 		board,
 		editor.handleCreateTask,
+		editor.handleCreateTasks,
 		editor.handleOpenCreateTask,
 		editor.editTaskPrompt,
 		editor.editTaskStartInPlanMode,
@@ -113,10 +120,12 @@ function HookHarness({
 		editor.isEditTaskStartInPlanModeDisabled,
 		editor.isInlineTaskCreateOpen,
 		editor.newTaskPrompt,
+		editor.newTaskImages,
 		editor.newTaskBranchRef,
 		editor.setEditTaskAutoReviewEnabled,
 		editor.setEditTaskAutoReviewMode,
 		editor.setEditTaskPrompt,
+		editor.setNewTaskImages,
 		editor.setNewTaskPrompt,
 		onSnapshot,
 	]);
@@ -311,4 +320,59 @@ describe("useTaskEditor", () => {
 		expect(snapshot.newTaskBranchRef).toBe("main");
 		expect(snapshot.board.columns[0]?.cards.some((card) => card.prompt === "Create another task")).toBe(true);
 	});
+	it("copies attached images to each split task and clears the draft images", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleOpenCreateTask();
+		});
+
+		await act(async () => {
+			latestSnapshot?.setNewTaskImages([
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			]);
+		});
+
+		let createdTaskIds: string[] = [];
+		await act(async () => {
+			createdTaskIds = latestSnapshot?.handleCreateTasks(["First task", "Second task"]) ?? [];
+		});
+
+		expect(createdTaskIds).toHaveLength(2);
+		const backlogCards = requireSnapshot(latestSnapshot).board.columns[0]?.cards ?? [];
+		expect(backlogCards).toHaveLength(2);
+		expect(backlogCards.map((card) => card.images)).toEqual([
+			[
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			],
+			[
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			],
+		]);
+		expect(requireSnapshot(latestSnapshot).newTaskImages).toEqual([]);
+	});
+
 });

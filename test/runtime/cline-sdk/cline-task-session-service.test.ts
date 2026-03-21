@@ -377,6 +377,34 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 	});
 
+	it("allows image-only follow-up chat input", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+
+		await service.sendTaskSessionInput("task-1", "   ", undefined, [
+			{
+				id: "img-1",
+				data: "abc123",
+				mimeType: "image/png",
+			},
+		]);
+
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "", undefined, [
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			]);
+		});
+	});
+
 	it("surfaces startup warnings from the runtime on the session summary", async () => {
 		const { service, runtime } = createTrackedService();
 		runtime.startTaskSessionMock.mockResolvedValueOnce({

@@ -203,8 +203,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		this.messageRepository.setTaskEntry(request.taskId, entry);
 		this.pendingTurnCancelTaskIds.delete(request.taskId);
 
-		if (!request.resumeFromTrash && request.prompt.trim().length > 0) {
-			const message = createMessage(request.taskId, "user", request.prompt.trim(), request.images);
+		const normalizedPrompt = request.prompt.trim();
+		const hasRequestImages = Boolean(request.images && request.images.length > 0);
+
+		if (!request.resumeFromTrash && (normalizedPrompt.length > 0 || hasRequestImages)) {
+			const message = createMessage(request.taskId, "user", normalizedPrompt, request.images);
 			entry.messages.push(message);
 			this.emitMessage(request.taskId, message);
 			const runningSummary = updateSummary(entry, {
@@ -370,7 +373,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		}
 		this.pendingTurnCancelTaskIds.delete(taskId);
 		const normalized = text.trim();
-		if (normalized.length > 0) {
+		const hasImages = Boolean(images && images.length > 0);
+		if (normalized.length === 0 && !hasImages) {
+			return null;
+		}
+		{
 			const message = createMessage(taskId, "user", normalized, images);
 			entry.messages.push(message);
 			this.emitMessage(taskId, message);

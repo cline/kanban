@@ -6,6 +6,7 @@ import {
 	addTaskToColumn,
 	deleteTasksFromBoard,
 	trashTaskAndGetReadyLinkedTaskIds,
+	updateTask,
 } from "../../src/core/task-board-mutations.js";
 
 function createBoard(): RuntimeBoardData {
@@ -51,5 +52,55 @@ describe("deleteTasksFromBoard", () => {
 		expect(deleted.deleted).toBe(true);
 		expect(deleted.deletedTaskIds.sort()).toEqual(["aaaaa", "bbbbb"]);
 		expect(deleted.board.columns.find((column) => column.id === "trash")?.cards).toEqual([]);
+	});
+});
+
+
+describe("task images", () => {
+	it("preserves images when creating and updating tasks", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"backlog",
+			{
+				prompt: "Task with image",
+				baseRef: "main",
+				images: [
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
+			},
+			() => "aaaaa111",
+		);
+
+		expect(created.task.images).toEqual([
+			{
+				id: "img-1",
+				data: "abc123",
+				mimeType: "image/png",
+			},
+		]);
+
+		const updated = updateTask(created.board, created.task.id, {
+			prompt: "Task with updated image",
+			baseRef: "main",
+			images: [
+				{
+					id: "img-2",
+					data: "def456",
+					mimeType: "image/jpeg",
+				},
+			],
+		});
+
+		expect(updated.task?.images).toEqual([
+			{
+				id: "img-2",
+				data: "def456",
+				mimeType: "image/jpeg",
+			},
+		]);
 	});
 });

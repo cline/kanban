@@ -152,7 +152,8 @@ export function useClineChatSession({
 	const sendMessage = useCallback(
 		async (text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }): Promise<boolean> => {
 			const trimmed = text.trim();
-			if (!trimmed || !onSendMessage) {
+			const hasImages = Boolean(options?.images && options.images.length > 0);
+			if ((!trimmed && !hasImages) || !onSendMessage) {
 				return false;
 			}
 
@@ -160,7 +161,7 @@ export function useClineChatSession({
 			setIsSending(true);
 
 			try {
-				const result = options?.mode
+				const result = options
 					? await onSendMessage(taskId, trimmed, options)
 					: await onSendMessage(taskId, trimmed);
 				if (!result.ok) {

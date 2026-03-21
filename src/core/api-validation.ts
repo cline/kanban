@@ -261,8 +261,9 @@ export function parseTaskChatSendRequest(value: unknown): RuntimeTaskChatSendReq
 		throw new Error("Task chat taskId cannot be empty.");
 	}
 	const text = parsed.text.trim();
-	if (!text) {
-		throw new Error("Task chat text cannot be empty.");
+	const hasImages = Boolean(parsed.images && parsed.images.length > 0);
+	if (!text && !hasImages) {
+		throw new Error("Task chat text or images are required.");
 	}
 	return {
 		...parsed,

@@ -65,7 +65,7 @@ export function ClineChatComposer({
 }): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const [isDragOver, setIsDragOver] = useState(false);
-	const canSubmit = canSend && !isModelSaving && draft.trim().length > 0;
+	const canSubmit = canSend && !isModelSaving && (draft.trim().length > 0 || images.length > 0);
 
 	useLayoutEffect(() => {
 		const textarea = textareaRef.current;

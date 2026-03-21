@@ -285,6 +285,46 @@ describe("useClineChatSession", () => {
 		});
 	});
 
+	it("allows image-only messages through the send callback", async () => {
+		const onLoadMessages = vi.fn(async () => []);
+		const onSendMessage = vi.fn(async () => ({ ok: true }));
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onSendMessage={onSendMessage}
+					onLoadMessages={onLoadMessages}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			await snapshots.at(-1)?.sendMessage("   ", {
+				images: [
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
+			});
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "", {
+			images: [
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			],
+		});
+	});
+
 	it("merges late-loaded history with streamed messages that arrived first", async () => {
 		const deferredLoad = createDeferred<ClineChatMessage[] | null>();
 		const snapshots: HookSnapshot[] = [];

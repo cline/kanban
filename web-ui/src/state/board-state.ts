@@ -14,6 +14,7 @@ import {
 	DEFAULT_TASK_AUTO_REVIEW_MODE,
 	resolveTaskAutoReviewMode,
 	type TaskAutoReviewMode,
+	type TaskImage,
 } from "@/types";
 
 export interface TaskDraft {
@@ -21,6 +22,7 @@ export interface TaskDraft {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: TaskAutoReviewMode;
+	images?: TaskImage[];
 	baseRef: string;
 }
 
@@ -60,6 +62,29 @@ function normalizeColumnId(id: string): BoardColumnId | null {
 	return null;
 }
 
+function normalizeTaskImages(rawImages: unknown): TaskImage[] | undefined {
+	if (!Array.isArray(rawImages)) {
+		return undefined;
+	}
+	const images: TaskImage[] = [];
+	for (const rawImage of rawImages) {
+		if (!rawImage || typeof rawImage !== "object") {
+			continue;
+		}
+		const image = rawImage as { id?: unknown; data?: unknown; mimeType?: unknown; name?: unknown };
+		if (typeof image.id !== "string" || typeof image.data !== "string" || typeof image.mimeType !== "string") {
+			continue;
+		}
+		images.push({
+			id: image.id,
+			data: image.data,
+			mimeType: image.mimeType,
+			...(typeof image.name === "string" ? { name: image.name } : {}),
+		});
+	}
+	return images.length > 0 ? images : undefined;
+}
+
 function normalizeCard(rawCard: unknown): BoardCard | null {
 	if (!rawCard || typeof rawCard !== "object") {
 		return null;
@@ -71,6 +96,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		startInPlanMode?: unknown;
 		autoReviewEnabled?: unknown;
 		autoReviewMode?: unknown;
+		images?: unknown;
 		baseRef?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
@@ -94,6 +120,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		autoReviewMode: resolveTaskAutoReviewMode(
 			typeof card.autoReviewMode === "string" ? (card.autoReviewMode as TaskAutoReviewMode) : undefined,
 		),
+		images: normalizeTaskImages(card.images),
 		baseRef,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
@@ -238,6 +265,7 @@ export function addTaskToColumnWithResult(
 			startInPlanMode: draft.startInPlanMode,
 			autoReviewEnabled: draft.autoReviewEnabled,
 			autoReviewMode: draft.autoReviewMode,
+			images: draft.images,
 			baseRef: draft.baseRef,
 		},
 		() => crypto.randomUUID(),
@@ -426,6 +454,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 				startInPlanMode: Boolean(draft.startInPlanMode),
 				autoReviewEnabled: Boolean(draft.autoReviewEnabled),
 				autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
+				images: draft.images === undefined ? card.images : draft.images.length > 0 ? draft.images.map((image) => ({ ...image })) : undefined,
 				baseRef,
 				updatedAt: Date.now(),
 			};
@@ -450,6 +479,7 @@ export function disableTaskAutoReview(board: BoardData, taskId: string): { board
 		startInPlanMode: selection.card.startInPlanMode,
 		autoReviewEnabled: false,
 		autoReviewMode: DEFAULT_TASK_AUTO_REVIEW_MODE,
+		images: selection.card.images,
 		baseRef: selection.card.baseRef,
 	});
 }
