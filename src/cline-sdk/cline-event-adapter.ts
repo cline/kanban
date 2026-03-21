@@ -477,7 +477,11 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			clearActiveTurnState(entry);
 		}
 		emitSummary(input, {
-			state: statusEvent.payload.status === "running" ? "running" : entry.summary.state,
+			state:
+				statusEvent.payload.status === "running" &&
+				!(entry.summary.state === "awaiting_review" && canReturnToRunning(entry.summary.reviewReason))
+					? "running"
+					: entry.summary.state,
 			lastOutputAt: now(),
 		});
 	}

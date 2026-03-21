@@ -240,6 +240,27 @@ describe("applyClineSessionEvent", () => {
 		expect(result.messages[0]?.content).toBe("Done. Added the comment.");
 	});
 
+	it("keeps awaiting-review sessions in review when a stale running status event arrives", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "awaiting_review";
+		entry.summary.reviewReason = "attention";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "status",
+				payload: {
+					sessionId: "session-1",
+					status: "running",
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("awaiting_review");
+		expect(result.entry.summary.reviewReason).toBe("attention");
+		expect(result.summaries.at(-1)?.state).toBe("awaiting_review");
+	});
+
 	it("surfaces recoverable agent errors in the summary without failing the task", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";

@@ -242,6 +242,21 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual(["Investigate startup"]);
 	});
 
+	it("keeps resume-from-trash sessions awaiting review until the user sends a message", async () => {
+		const { service } = createTrackedService();
+
+		const summary = await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+
+		expect(summary.state).toBe("awaiting_review");
+		expect(summary.reviewReason).toBe("attention");
+		expect(service.listMessages("task-1")).toEqual([]);
+	});
+
 	it("defaults to anthropic provider when provider is not explicitly configured", async () => {
 		const { service, runtime } = createTrackedService();
 
@@ -330,7 +345,8 @@ describe("InMemoryClineTaskSessionService", () => {
 
 		const reboundSummary = await service.rebindPersistedTaskSession("task-1");
 
-		expect(reboundSummary?.state).toBe("idle");
+		expect(reboundSummary?.state).toBe("awaiting_review");
+		expect(reboundSummary?.reviewReason).toBe("attention");
 		expect(reboundSummary?.workspacePath).toBe("task-1-persisted-cwd");
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
 			"Recovered prompt",

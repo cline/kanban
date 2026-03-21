@@ -164,10 +164,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 		const summary: RuntimeTaskSessionSummary = {
 			...createDefaultSummary(request.taskId),
-			state: "running",
+			state: request.resumeFromTrash ? "awaiting_review" : "running",
 			workspacePath: request.cwd,
 			startedAt: now(),
 			lastOutputAt: now(),
+			reviewReason: request.resumeFromTrash ? "attention" : null,
 		};
 		const entry: ClineTaskSessionEntry = {
 			summary,
@@ -400,8 +401,8 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			typeof snapshot.record.workspaceRoot === "string" ? snapshot.record.workspaceRoot.trim() : "";
 		const entry = createTaskEntryFromPersistedSession(taskId, snapshot.messages, {
 			agentId: "cline",
-			state: "idle",
-			reviewReason: null,
+			state: "awaiting_review",
+			reviewReason: "attention",
 			workspacePath: persistedCwd || persistedWorkspaceRoot || null,
 			startedAt: Number.isFinite(startedAt) ? startedAt : null,
 			lastOutputAt: Number.isFinite(updatedAt) ? updatedAt : null,
