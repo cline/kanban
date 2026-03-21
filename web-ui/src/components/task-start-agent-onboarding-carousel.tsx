@@ -246,7 +246,7 @@ function OnboardingMedia({
 
 function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	if (agentId === "cline") {
-		return "Install: npm install -g cline";
+		return "Built in. Configure your Cline provider settings below.";
 	}
 	if (agentId === "claude") {
 		return "Anthropics coding agent with access to Claude models.";
@@ -517,7 +517,7 @@ export function TaskStartAgentOnboardingCarousel({
 								<div className="mt-2">
 									<ClineSetupSection
 										controller={clineSettings}
-										controlsDisabled={!workspaceId}
+										controlsDisabled={false}
 										showHeading={false}
 										onError={setClineSetupError}
 										onSaved={onClineSetupSaved}

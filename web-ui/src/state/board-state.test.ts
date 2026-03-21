@@ -68,17 +68,16 @@ describe("board dependency state", () => {
 		expect(sameTask.reason).toBe("same_task");
 	});
 
-	it("allows backlog-to-backlog links and reorients them when one task starts", () => {
+	it("preserves backlog-to-backlog link order and reorients it when one task starts", () => {
 		const fixture = createBacklogBoard(["Task A", "Task B"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
 		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
 
 		const bothBacklog = addTaskDependency(fixture.board, taskA, taskB);
 		expect(bothBacklog.added).toBe(true);
-		const [firstBacklogTaskId, secondBacklogTaskId] = [taskA, taskB].sort();
 		expect(bothBacklog.dependency).toMatchObject({
-			fromTaskId: firstBacklogTaskId,
-			toTaskId: secondBacklogTaskId,
+			fromTaskId: taskA,
+			toTaskId: taskB,
 		});
 
 		const movedA = moveTaskToColumn(bothBacklog.board, taskA, "in_progress");
@@ -88,6 +87,21 @@ describe("board dependency state", () => {
 				fromTaskId: taskB,
 				toTaskId: taskA,
 			}),
+		]);
+	});
+
+	it("allows backlog-to-backlog links in either direction", () => {
+		const fixture = createBacklogBoard(["Task A", "Task B"]);
+		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");
+		const taskB = requireTaskId(fixture.taskIdByPrompt["Task B"], "Task B");
+
+		const firstDirection = addTaskDependency(fixture.board, taskA, taskB);
+		expect(firstDirection.added).toBe(true);
+		const reverseDirection = addTaskDependency(firstDirection.board, taskB, taskA);
+		expect(reverseDirection.added).toBe(true);
+		expect(reverseDirection.board.dependencies).toEqual([
+			expect.objectContaining({ fromTaskId: taskA, toTaskId: taskB }),
+			expect.objectContaining({ fromTaskId: taskB, toTaskId: taskA }),
 		]);
 	});
 

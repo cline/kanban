@@ -18,7 +18,7 @@ function createRuntimeConfigResponse(
 		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId === "cline" ? null : selectedAgentId,
 		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project/.kanban/config.json",
+		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
 		readyForReviewNotificationsEnabled: true,
 		detectedCommands: ["claude", "codex"],
 		agents: [
@@ -41,10 +41,6 @@ function createRuntimeConfigResponse(
 				configured: true,
 			},
 		],
-		taskStartSetupAvailability: {
-			githubCli: false,
-			linearMcp: false,
-		},
 		shortcuts: [],
 		clineProviderSettings: {
 			providerId: "cline",

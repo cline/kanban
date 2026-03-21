@@ -10,7 +10,6 @@ import type {
 	RuntimeConfigResponse,
 } from "../core/api-contract.js";
 import { isBinaryAvailableOnPath } from "./command-discovery.js";
-import { detectTaskStartSetupAvailability } from "./task-start-setup-detection.js";
 
 export interface ResolvedAgentCommand {
 	agentId: RuntimeAgentId;
@@ -111,7 +110,6 @@ export function buildRuntimeConfigResponse(
 		readyForReviewNotificationsEnabled: runtimeConfig.readyForReviewNotificationsEnabled,
 		detectedCommands,
 		agents,
-		taskStartSetupAvailability: detectTaskStartSetupAvailability(runtimeConfig.selectedAgentId),
 		shortcuts: runtimeConfig.shortcuts,
 		clineProviderSettings,
 		commitPromptTemplate: runtimeConfig.commitPromptTemplate,

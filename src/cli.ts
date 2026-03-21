@@ -4,14 +4,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import closeWithGrace from "close-with-grace";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import packageJson from "../package.json" with { type: "json" };
 
 import { registerHooksCommand } from "./commands/hooks.js";
 import { registerTaskCommand } from "./commands/task.js";
-import { loadRuntimeConfig, updateRuntimeConfig } from "./config/runtime-config.js";
-import { isRuntimeAgentLaunchSupported } from "./core/agent-catalog.js";
-import type { RuntimeAgentId, RuntimeCommandRunResponse } from "./core/api-contract.js";
+import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config.js";
+import type { RuntimeCommandRunResponse } from "./core/api-contract.js";
 import { createGitProcessEnv } from "./core/git-process-env.js";
 import {
 	buildKanbanRuntimeUrl,
@@ -30,36 +29,11 @@ import type { TerminalSessionManager } from "./terminal/session-manager.js";
 interface CliOptions {
 	noOpen: boolean;
 	skipShutdownCleanup: boolean;
-	agent: RuntimeAgentId | null;
 	host: string | null;
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
 }
 
-const CLI_AGENT_IDS: readonly RuntimeAgentId[] = [
-	"claude",
-	"codex",
-	"cline",
-	// "opencode",
-	// "droid",
-	// "gemini",
-];
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
-
-function parseCliAgentId(value: string): RuntimeAgentId {
-	const normalized = value.trim().toLowerCase();
-	if (
-		(normalized === "claude" ||
-			normalized === "codex" ||
-			normalized === "gemini" ||
-			normalized === "opencode" ||
-			normalized === "droid" ||
-			normalized === "cline") &&
-		isRuntimeAgentLaunchSupported(normalized)
-	) {
-		return normalized;
-	}
-	throw new Error(`Invalid agent: ${value}. Expected one of: ${CLI_AGENT_IDS.join(", ")}`);
-}
 
 function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } | { mode: "auto" } {
 	const normalized = rawValue.trim().toLowerCase();
@@ -77,7 +51,6 @@ function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } |
 }
 
 interface RootCommandOptions {
-	agent?: RuntimeAgentId;
 	host?: string;
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
@@ -118,15 +91,6 @@ async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<n
 	const autoPort = await findAvailableRuntimePort(DEFAULT_KANBAN_RUNTIME_PORT);
 	setKanbanRuntimePort(autoPort);
 	return autoPort;
-}
-
-async function persistCliAgentSelection(cwd: string, selectedAgentId: RuntimeAgentId): Promise<boolean> {
-	const currentRuntimeConfig = await loadRuntimeConfig(cwd);
-	if (currentRuntimeConfig.selectedAgentId === selectedAgentId) {
-		return false;
-	}
-	await updateRuntimeConfig(cwd, { selectedAgentId });
-	return true;
 }
 
 async function assertPathIsDirectory(path: string): Promise<void> {
@@ -315,6 +279,7 @@ async function startServer(): Promise<{
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
+		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
 		hasGitRepository,
 		pathIsDirectory,
@@ -422,13 +387,6 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 		currentVersion: KANBAN_VERSION,
 	});
 
-	if (options.agent) {
-		const didChange = await persistCliAgentSelection(process.cwd(), options.agent);
-		if (didChange) {
-			console.log(`Default agent set to ${options.agent}.`);
-		}
-	}
-
 	let runtime: Awaited<ReturnType<typeof startServer>>;
 	try {
 		runtime = await startServerWithAutoPortRetry(options);
@@ -503,13 +461,17 @@ function createProgram(): Command {
 		.name("kanban")
 		.description("Local orchestration board for coding agents.")
 		.version(KANBAN_VERSION, "-v, --version", "Output the version number")
-		.option("--agent <id>", `Default agent ID (${CLI_AGENT_IDS.join(", ")}).`, parseCliAgentId)
 		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
 		.showHelpAfterError()
-		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}\nAgent IDs: ${CLI_AGENT_IDS.join(", ")}`);
+		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
+
+	program.addOption(
+		new Option("--agent <id>", "Deprecated compatibility flag. Ignored.")
+			.hideHelp(),
+	);
 
 	registerTaskCommand(program);
 	registerHooksCommand(program);
@@ -523,7 +485,6 @@ function createProgram(): Command {
 
 	program.action(async (options: RootCommandOptions) => {
 		await runMainCommand({
-			agent: options.agent ?? null,
 			host: options.host ?? null,
 			port: options.port ?? null,
 			noOpen: options.open === false,

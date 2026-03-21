@@ -27,14 +27,9 @@ export function useRuntimeConfig(
 ): UseRuntimeConfigResult {
 	const [isSaving, setIsSaving] = useState(false);
 	const previousWorkspaceIdRef = useRef<string | null>(null);
-	const queryFn = useCallback(async () => {
-		if (!workspaceId) {
-			throw new Error("No workspace selected.");
-		}
-		return await fetchRuntimeConfig(workspaceId);
-	}, [workspaceId]);
+	const queryFn = useCallback(async () => await fetchRuntimeConfig(workspaceId), [workspaceId]);
 	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
-		enabled: open && workspaceId !== null,
+		enabled: open,
 		queryFn,
 		retainDataOnError: true,
 	});
@@ -62,9 +57,6 @@ export function useRuntimeConfig(
 			commitPromptTemplate?: string;
 			openPrPromptTemplate?: string;
 		}): Promise<RuntimeConfigResponse | null> => {
-			if (!workspaceId) {
-				return null;
-			}
 			setIsSaving(true);
 			try {
 				const saved = await saveRuntimeConfig(workspaceId, nextConfig);
@@ -84,7 +76,7 @@ export function useRuntimeConfig(
 	}, [configQuery.refetch]);
 
 	return {
-		config: workspaceId ? (configQuery.data ?? initialConfig) : null,
+		config: configQuery.data ?? initialConfig,
 		isLoading: open ? configQuery.isLoading && configQuery.data === null && initialConfig === null : false,
 		isSaving,
 		refresh,

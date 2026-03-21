@@ -236,7 +236,8 @@ describe.sequential("task-worktree integration", () => {
 
 				const patchPath = join(
 					process.env.HOME ?? sandboxRoot,
-					".kanban",
+					".cline",
+					"kanban",
 					"trashed-task-patches",
 					`${taskId}.${createdCommit}.patch`,
 				);

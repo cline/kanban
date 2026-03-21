@@ -1,7 +1,7 @@
-// Browser-side query helpers for workspace-scoped runtime settings and Cline actions.
+// Browser-side query helpers for runtime settings and Cline actions.
 // Keep TRPC request details here so components and controller hooks can focus
 // on state orchestration instead of transport plumbing.
-import { createWorkspaceTrpcClient } from "@/runtime/trpc-client";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
 	RuntimeClineOauthLoginResponse,
@@ -13,13 +13,13 @@ import type {
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
 
-export async function fetchRuntimeConfig(workspaceId: string): Promise<RuntimeConfigResponse> {
-	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+export async function fetchRuntimeConfig(workspaceId: string | null): Promise<RuntimeConfigResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.getConfig.query();
 }
 
 export async function saveRuntimeConfig(
-	workspaceId: string,
+	workspaceId: string | null,
 	nextConfig: {
 		selectedAgentId?: RuntimeAgentId;
 		selectedShortcutLabel?: string | null;
@@ -30,12 +30,12 @@ export async function saveRuntimeConfig(
 		openPrPromptTemplate?: string;
 	},
 ): Promise<RuntimeConfigResponse> {
-	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.saveConfig.mutate(nextConfig);
 }
 
 export async function saveClineProviderSettings(
-	workspaceId: string,
+	workspaceId: string | null,
 	input: {
 		providerId: string;
 		modelId?: string | null;
@@ -43,32 +43,32 @@ export async function saveClineProviderSettings(
 		baseUrl?: string | null;
 	},
 ): Promise<RuntimeClineProviderSettings> {
-	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.saveClineProviderSettings.mutate(input);
 }
 
-export async function fetchClineProviderCatalog(workspaceId: string): Promise<RuntimeClineProviderCatalogItem[]> {
-	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+export async function fetchClineProviderCatalog(workspaceId: string | null): Promise<RuntimeClineProviderCatalogItem[]> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	const response = await trpcClient.runtime.getClineProviderCatalog.query();
 	return response.providers;
 }
 
 export async function fetchClineProviderModels(
-	workspaceId: string,
+	workspaceId: string | null,
 	providerId: string,
 ): Promise<RuntimeClineProviderModel[]> {
-	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	const response = await trpcClient.runtime.getClineProviderModels.query({ providerId });
 	return response.models;
 }
 
 export async function runClineProviderOauthLogin(
-	workspaceId: string,
+	workspaceId: string | null,
 	input: {
 		provider: RuntimeClineOauthProvider;
 		baseUrl?: string | null;
 	},
 ): Promise<RuntimeClineOauthLoginResponse> {
-	const trpcClient = createWorkspaceTrpcClient(workspaceId);
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.runClineProviderOAuthLogin.mutate(input);
 }

@@ -1,10 +1,11 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, ChevronUp, Heart, Plus, Trash2 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
+import { useUnmount, useWindowEvent } from "@/utils/react-use";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -19,6 +20,34 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
+
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 600;
+const SIDEBAR_DEFAULT_WIDTH = 280;
+const SIDEBAR_WIDTH_STORAGE_KEY = "kb-sidebar-width";
+
+function loadSidebarWidth(): number {
+	try {
+		const stored = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+		if (stored) {
+			const parsed = Number(stored);
+			if (Number.isFinite(parsed)) {
+				return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, parsed));
+			}
+		}
+	} catch {
+		// ignore
+	}
+	return SIDEBAR_DEFAULT_WIDTH;
+}
+
+function saveSidebarWidth(width: number): void {
+	try {
+		localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+	} catch {
+		// ignore
+	}
+}
 
 interface TaskCountBadge {
 	id: string;
@@ -54,6 +83,73 @@ export function ProjectNavigationPanel({
 	onAddProject: () => void;
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
+
+	// Resize state
+	const [width, setWidth] = useState(loadSidebarWidth);
+	const [isDragging, setIsDragging] = useState(false);
+	const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
+
+	const stopDrag = useCallback(() => {
+		setIsDragging(false);
+		const prev = previousBodyStyleRef.current;
+		if (prev) {
+			document.body.style.userSelect = prev.userSelect;
+			document.body.style.cursor = prev.cursor;
+			previousBodyStyleRef.current = null;
+		}
+		dragStateRef.current = null;
+	}, []);
+
+	useUnmount(() => {
+		stopDrag();
+	});
+
+	const handleMouseMove = useCallback(
+		(event: MouseEvent) => {
+			if (!isDragging) {
+				return;
+			}
+			const dragState = dragStateRef.current;
+			if (!dragState) {
+				return;
+			}
+			const deltaX = event.clientX - dragState.startX;
+			const nextWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, dragState.startWidth + deltaX));
+			setWidth(nextWidth);
+			saveSidebarWidth(nextWidth);
+		},
+		[isDragging],
+	);
+
+	const handleMouseUp = useCallback(() => {
+		if (!isDragging) {
+			return;
+		}
+		stopDrag();
+	}, [isDragging, stopDrag]);
+
+	useWindowEvent("mousemove", isDragging ? handleMouseMove : null);
+	useWindowEvent("mouseup", isDragging ? handleMouseUp : null);
+
+	const handleResizeMouseDown = useCallback(
+		(event: React.MouseEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			if (isDragging) {
+				stopDrag();
+			}
+			dragStateRef.current = { startX: event.clientX, startWidth: width };
+			setIsDragging(true);
+			previousBodyStyleRef.current = {
+				userSelect: document.body.style.userSelect,
+				cursor: document.body.style.cursor,
+			};
+			document.body.style.userSelect = "none";
+			document.body.style.cursor = "ew-resize";
+		},
+		[width, isDragging, stopDrag],
+	);
+
 	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
 	const isProjectRemovalPending = pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
 	const pendingProjectTaskCount = pendingProjectRemoval
@@ -65,12 +161,21 @@ export function ProjectNavigationPanel({
 
 	return (
 		<aside
-			className="flex flex-col min-h-0 overflow-hidden bg-surface-1"
+			className="relative flex flex-col min-h-0 overflow-hidden bg-surface-1"
 			style={{
-				width: "20%",
+				width,
+				minWidth: SIDEBAR_MIN_WIDTH,
+				maxWidth: SIDEBAR_MAX_WIDTH,
 				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
+			<div
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="Resize sidebar"
+				onMouseDown={handleResizeMouseDown}
+				className="absolute top-0 right-0 bottom-0 z-10 w-[5px] cursor-ew-resize hover:bg-accent/30"
+			/>
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
@@ -104,10 +209,16 @@ export function ProjectNavigationPanel({
 								!canShowAgentSection ? "cursor-not-allowed opacity-50" : null,
 							)}
 						>
-							Agent
+							Kanban Agent
 						</button>
 					</div>
 				</div>
+				{activeSection === "agent" ? (
+					<p className="text-text-tertiary text-xs" style={{ padding: "8px 12px 0" }}>
+						Add tasks, link dependencies, break work down, and manage your board. Try asking to
+						create and link some tasks to get started.
+					</p>
+				) : null}
 			</div>
 
 			{activeSection === "projects" ? (

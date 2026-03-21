@@ -4,7 +4,6 @@ kanban \- local orchestration board for coding agents
 .SH SYNOPSIS
 .B kanban
 .RI [ --port " " number|auto ]
-.RI [ --agent " " id ]
 .RI [ --no-open ]
 .RI [ command ]
 .br
@@ -27,9 +26,6 @@ When launched outside git, it starts with no active workspace or falls back to t
 .TP
 .B --port <number|auto>
 Bind to a specific local port or pick the first available port starting at 3484.
-.TP
-.B --agent <id>
-Set the default agent command to one of: claude, codex, gemini, opencode, droid, cline.
 .TP
 .B --no-open
 Do not open the browser automatically.

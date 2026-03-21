@@ -501,6 +501,47 @@ describe.sequential("runtime state stream integration", () => {
 		}
 	}, 30_000);
 
+	it("starts from the home directory with no active workspace", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-home-dir-launch-");
+
+		const port = await getAvailablePort();
+		const server = await startKanbanServer({
+			cwd: tempHome,
+			homeDir: tempHome,
+			port,
+		});
+
+		let stream: RuntimeStreamClient | null = null;
+
+		try {
+			const runtimeUrl = new URL(server.runtimeUrl);
+			expect(runtimeUrl.pathname).toBe("/");
+
+			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
+				baseUrl: `http://127.0.0.1:${port}`,
+				procedure: "projects.list",
+				type: "query",
+			});
+			expect(projectsResponse.status).toBe(200);
+			expect(projectsResponse.payload.currentProjectId).toBeNull();
+			expect(projectsResponse.payload.projects).toEqual([]);
+
+			stream = await connectRuntimeStream(`ws://127.0.0.1:${port}/api/runtime/ws`);
+			const snapshot = (await stream.waitForMessage(
+				(message): message is RuntimeStateStreamSnapshotMessage => message.type === "snapshot",
+			)) as RuntimeStateStreamSnapshotMessage;
+			expect(snapshot.currentProjectId).toBeNull();
+			expect(snapshot.workspaceState).toBeNull();
+			expect(snapshot.projects).toEqual([]);
+		} finally {
+			if (stream) {
+				await stream.close();
+			}
+			await server.stop();
+			cleanupHome();
+		}
+	}, 30_000);
+
 	it("launches outside git using the first indexed project", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-first-project-");
 		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-first-project-");

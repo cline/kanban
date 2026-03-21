@@ -5,7 +5,6 @@ import { isTelemetryEnabled } from "@/telemetry/posthog-config";
 import type { TaskAutoReviewMode } from "@/types";
 
 export type TelemetrySelectedAgentId = RuntimeAgentId | "unknown";
-export type TaskStartSetupKind = "linear_mcp" | "github_cli" | "agent_cli";
 
 interface TelemetryEventMap {
 	task_created: {
@@ -19,14 +18,6 @@ interface TelemetryEventMap {
 		started_task_count: number;
 	};
 	task_resumed_from_trash: Record<string, never>;
-	task_start_setup_prompt_viewed: {
-		setup_kind: TaskStartSetupKind;
-		selected_agent_id: TelemetrySelectedAgentId;
-	};
-	task_start_setup_install_command_clicked: {
-		setup_kind: TaskStartSetupKind;
-		selected_agent_id: TelemetrySelectedAgentId;
-	};
 }
 
 export function toTelemetrySelectedAgentId(agentId: RuntimeAgentId | null | undefined): TelemetrySelectedAgentId {
@@ -64,14 +55,4 @@ export function trackTasksAutoStartedFromDependency(startedTaskCount: number): v
 
 export function trackTaskResumedFromTrash(): void {
 	captureTelemetryEvent("task_resumed_from_trash", {});
-}
-
-export function trackTaskStartSetupPromptViewed(properties: TelemetryEventMap["task_start_setup_prompt_viewed"]): void {
-	captureTelemetryEvent("task_start_setup_prompt_viewed", properties);
-}
-
-export function trackTaskStartSetupInstallCommandClicked(
-	properties: TelemetryEventMap["task_start_setup_install_command_clicked"],
-): void {
-	captureTelemetryEvent("task_start_setup_install_command_clicked", properties);
 }
