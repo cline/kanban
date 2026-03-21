@@ -25,7 +25,7 @@ interface AgentSelectionResult {
 	message?: string;
 }
 
-interface UseStartupOnboardingResult {
+export interface UseStartupOnboardingResult {
 	startupOnboardingPrompt: TaskStartServicePromptContent;
 	isStartupOnboardingDialogOpen: boolean;
 	handleCloseStartupOnboardingDialog: () => void;
@@ -36,7 +36,6 @@ interface UseStartupOnboardingResult {
 export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseStartupOnboardingResult {
 	const {
 		currentProjectId,
-		hasNoProjects,
 		runtimeProjectConfig,
 		isTaskAgentReady,
 		refreshRuntimeProjectConfig,
@@ -63,7 +62,7 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 	}, [currentProjectId]);
 
 	useEffect(() => {
-		if (!currentProjectId || hasNoProjects || didDismissStartupOnboardingForSession) {
+		if (didDismissStartupOnboardingForSession) {
 			setIsStartupOnboardingDialogOpen(false);
 			return;
 		}
@@ -76,10 +75,8 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 			}),
 		);
 	}, [
-		currentProjectId,
 		didDismissStartupOnboardingForSession,
 		forceShowOnboardingDialog,
-		hasNoProjects,
 		hasShownOnboardingDialog,
 		isTaskAgentReady,
 		selectedAgentAuthenticated,

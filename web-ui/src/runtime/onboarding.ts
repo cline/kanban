@@ -29,11 +29,11 @@ export function shouldShowStartupOnboardingDialog(input: {
 	if (input.forceShowOnboardingDialog) {
 		return true;
 	}
-	if (input.isTaskAgentReady === null || input.isTaskAgentReady === undefined) {
-		return false;
-	}
 	if (!input.hasShownOnboardingDialog) {
 		return true;
+	}
+	if (input.isTaskAgentReady === null || input.isTaskAgentReady === undefined) {
+		return false;
 	}
 	if (!input.isSelectedAgentAuthenticated) {
 		return true;

@@ -70,6 +70,17 @@ describe("runtime onboarding helpers", () => {
 		).toBe(true);
 	});
 
+	it("does not reopen when onboarding was already shown and readiness is still unknown", () => {
+		expect(
+			shouldShowStartupOnboardingDialog({
+				hasShownOnboardingDialog: true,
+				isTaskAgentReady: null,
+				isSelectedAgentAuthenticated: true,
+				forceShowOnboardingDialog: false,
+			}),
+		).toBe(false);
+	});
+
 	it("shows startup onboarding when selected agent is not authenticated", () => {
 		expect(
 			shouldShowStartupOnboardingDialog({
