@@ -240,6 +240,11 @@ export const runtimeWorkspaceStateConflictResponseSchema = z.object({
 });
 export type RuntimeWorkspaceStateConflictResponse = z.infer<typeof runtimeWorkspaceStateConflictResponseSchema>;
 
+export const runtimeWorkspaceStateNotifyResponseSchema = z.object({
+	ok: z.boolean(),
+});
+export type RuntimeWorkspaceStateNotifyResponse = z.infer<typeof runtimeWorkspaceStateNotifyResponseSchema>;
+
 export const runtimeProjectTaskCountsSchema = z.object({
 	backlog: z.number(),
 	in_progress: z.number(),

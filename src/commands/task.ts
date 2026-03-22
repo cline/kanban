@@ -15,7 +15,7 @@ import {
 	updateTask,
 } from "../core/task-board-mutations.js";
 import { resolveProjectInputPath } from "../projects/project-path.js";
-import { loadWorkspaceContext } from "../state/workspace-state.js";
+import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review", "trash"] as const;
@@ -134,18 +134,30 @@ async function ensureRuntimeWorkspace(workspaceRepoPath: string): Promise<string
 	return added.project.id;
 }
 
+async function notifyRuntimeWorkspaceStateUpdated(
+	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
+): Promise<void> {
+	await runtimeClient.workspace.notifyStateUpdated.mutate().catch(() => null);
+}
+
 async function updateRuntimeWorkspaceState<T>(
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
+	workspaceRepoPath: string,
 	mutate: (state: RuntimeWorkspaceStateResponse) => RuntimeWorkspaceMutationResult<T>,
 ): Promise<T> {
-	const state = await runtimeClient.workspace.getState.query();
-	const mutation = mutate(state);
-	await runtimeClient.workspace.saveState.mutate({
-		board: mutation.board,
-		sessions: state.sessions,
-		expectedRevision: state.revision,
+	const mutationResponse = await mutateWorkspaceState(workspaceRepoPath, (state) => {
+		const mutation = mutate(state);
+		return {
+			board: mutation.board,
+			value: mutation.value,
+		};
 	});
-	return mutation.value;
+
+	if (mutationResponse.saved) {
+		await notifyRuntimeWorkspaceStateUpdated(runtimeClient);
+	}
+
+	return mutationResponse.value;
 }
 
 function resolveTaskBaseRef(state: RuntimeWorkspaceStateResponse): string {
@@ -309,7 +321,7 @@ async function createTask(input: {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const created = await updateRuntimeWorkspaceState(runtimeClient, (state) => {
+	const created = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (state) => {
 		const resolvedBaseRef = (input.baseRef ?? "").trim() || resolveTaskBaseRef(state);
 		if (!resolvedBaseRef) {
 			throw new Error("Could not determine task base branch for this workspace.");
@@ -370,36 +382,37 @@ async function updateTaskCommand(input: {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const runtimeState = await runtimeClient.workspace.getState.query();
-	const taskRecord = findTaskRecord(runtimeState, input.taskId);
-	if (!taskRecord) {
-		throw new Error(`Task "${input.taskId}" was not found in workspace ${workspaceRepoPath}.`);
-	}
+	const updated = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
+		const taskRecord = findTaskRecord(runtimeState, input.taskId);
+		if (!taskRecord) {
+			throw new Error(`Task "${input.taskId}" was not found in workspace ${workspaceRepoPath}.`);
+		}
 
-	const updated = updateTask(runtimeState.board, input.taskId, {
-		prompt: input.prompt ?? taskRecord.task.prompt,
-		baseRef: input.baseRef ?? taskRecord.task.baseRef,
-		startInPlanMode: input.startInPlanMode ?? taskRecord.task.startInPlanMode,
-		autoReviewEnabled: input.autoReviewEnabled ?? taskRecord.task.autoReviewEnabled === true,
-		autoReviewMode: input.autoReviewMode ?? taskRecord.task.autoReviewMode ?? "commit",
+		const updatedTask = updateTask(runtimeState.board, input.taskId, {
+			prompt: input.prompt ?? taskRecord.task.prompt,
+			baseRef: input.baseRef ?? taskRecord.task.baseRef,
+			startInPlanMode: input.startInPlanMode ?? taskRecord.task.startInPlanMode,
+			autoReviewEnabled: input.autoReviewEnabled ?? taskRecord.task.autoReviewEnabled === true,
+			autoReviewMode: input.autoReviewMode ?? taskRecord.task.autoReviewMode ?? "commit",
+		});
+		if (!updatedTask.updated || !updatedTask.task) {
+			throw new Error(`Task "${input.taskId}" could not be updated.`);
+		}
+
+		const nextState: RuntimeWorkspaceStateResponse = {
+			...runtimeState,
+			board: updatedTask.board,
+		};
+
+		return {
+			board: updatedTask.board,
+			value: formatTaskRecord(nextState, updatedTask.task, taskRecord.columnId),
+		};
 	});
-	if (!updated.updated || !updated.task) {
-		throw new Error(`Task "${input.taskId}" could not be updated.`);
-	}
 
-	await runtimeClient.workspace.saveState.mutate({
-		board: updated.board,
-		sessions: runtimeState.sessions,
-		expectedRevision: runtimeState.revision,
-	});
-
-	const nextState: RuntimeWorkspaceStateResponse = {
-		...runtimeState,
-		board: updated.board,
-	};
 	return {
 		ok: true,
-		task: formatTaskRecord(nextState, updated.task, taskRecord.columnId),
+		task: updated,
 		workspacePath: workspaceRepoPath,
 	};
 }
@@ -413,26 +426,25 @@ async function linkTasks(input: {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const runtimeState = await runtimeClient.workspace.getState.query();
-	const linked = addTaskDependency(runtimeState.board, input.taskId, input.linkedTaskId);
-	if (!linked.added || !linked.dependency) {
-		throw new Error(getLinkFailureMessage(linked.reason));
-	}
+	const dependency = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
+		const linked = addTaskDependency(runtimeState.board, input.taskId, input.linkedTaskId);
+		if (!linked.added || !linked.dependency) {
+			throw new Error(getLinkFailureMessage(linked.reason));
+		}
 
-	await runtimeClient.workspace.saveState.mutate({
-		board: linked.board,
-		sessions: runtimeState.sessions,
-		expectedRevision: runtimeState.revision,
+		const nextState: RuntimeWorkspaceStateResponse = {
+			...runtimeState,
+			board: linked.board,
+		};
+		return {
+			board: linked.board,
+			value: formatDependencyRecord(nextState, linked.dependency),
+		};
 	});
-
-	const nextState: RuntimeWorkspaceStateResponse = {
-		...runtimeState,
-		board: linked.board,
-	};
 	return {
 		ok: true,
 		workspacePath: workspaceRepoPath,
-		dependency: formatDependencyRecord(nextState, linked.dependency),
+		dependency,
 	};
 }
 
@@ -440,31 +452,30 @@ async function unlinkTasks(input: { cwd: string; dependencyId: string; projectPa
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const runtimeState = await runtimeClient.workspace.getState.query();
-	const dependency = runtimeState.board.dependencies.find((candidate) => candidate.id === input.dependencyId) ?? null;
-	if (!dependency) {
-		throw new Error(`Dependency "${input.dependencyId}" was not found in workspace ${workspaceRepoPath}.`);
-	}
+	const removedDependency = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
+		const dependency = runtimeState.board.dependencies.find((candidate) => candidate.id === input.dependencyId) ?? null;
+		if (!dependency) {
+			throw new Error(`Dependency "${input.dependencyId}" was not found in workspace ${workspaceRepoPath}.`);
+		}
 
-	const unlinked = removeTaskDependency(runtimeState.board, input.dependencyId);
-	if (!unlinked.removed) {
-		throw new Error(`Dependency "${input.dependencyId}" could not be removed.`);
-	}
+		const unlinked = removeTaskDependency(runtimeState.board, input.dependencyId);
+		if (!unlinked.removed) {
+			throw new Error(`Dependency "${input.dependencyId}" could not be removed.`);
+		}
 
-	await runtimeClient.workspace.saveState.mutate({
-		board: unlinked.board,
-		sessions: runtimeState.sessions,
-		expectedRevision: runtimeState.revision,
+		const nextState: RuntimeWorkspaceStateResponse = {
+			...runtimeState,
+			board: unlinked.board,
+		};
+		return {
+			board: unlinked.board,
+			value: formatDependencyRecord(nextState, dependency),
+		};
 	});
-
-	const nextState: RuntimeWorkspaceStateResponse = {
-		...runtimeState,
-		board: unlinked.board,
-	};
 	return {
 		ok: true,
 		workspacePath: workspaceRepoPath,
-		removedDependency: formatDependencyRecord(nextState, dependency),
+		removedDependency,
 	};
 }
 
@@ -484,8 +495,8 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 		);
 	}
 
-	const moved = moveTaskToColumn(runtimeState.board, input.taskId, "in_progress");
-	const task = moved.task;
+	const currentRecord = findTaskRecord(runtimeState, input.taskId);
+	const task = currentRecord?.task;
 	if (!task) {
 		throw new Error(`Task "${input.taskId}" could not be resolved.`);
 	}
@@ -513,13 +524,22 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 		}
 	}
 
-	if (moved.moved) {
-		await runtimeClient.workspace.saveState.mutate({
-			board: moved.board,
-			sessions: runtimeState.sessions,
-			expectedRevision: runtimeState.revision,
-		});
-	}
+	const moved = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (latestState) => {
+		const movement = moveTaskToColumn(latestState.board, input.taskId, "in_progress");
+		if (!movement.task) {
+			throw new Error(`Task "${input.taskId}" could not be resolved.`);
+		}
+		if (!movement.moved) {
+			return {
+				board: latestState.board,
+				value: movement,
+			};
+		}
+		return {
+			board: movement.board,
+			value: movement,
+		};
+	});
 
 	if (!moved.moved) {
 		return {
@@ -562,14 +582,50 @@ async function trashTaskById(input: {
 	workspaceRepoPath: string;
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
 }): Promise<TrashTaskExecutionResult> {
-	const initialState = await input.runtimeClient.workspace.getState.query();
-	const initialRecord = findTaskRecord(initialState, input.taskId);
-	if (!initialRecord) {
-		throw new Error(`Task "${input.taskId}" was not found in workspace ${input.workspaceRepoPath}.`);
-	}
-	if (initialRecord.columnId === "trash") {
+	await stopTaskRuntimeSession(input.runtimeClient, input.taskId);
+	const mutation = await mutateWorkspaceState(input.workspaceRepoPath, (latestState) => {
+		const latestRecord = findTaskRecord(latestState, input.taskId);
+		if (!latestRecord) {
+			throw new Error(`Task "${input.taskId}" was not found in workspace ${input.workspaceRepoPath}.`);
+		}
+		if (latestRecord.columnId === "trash") {
+			return {
+				board: latestState.board,
+				value: {
+					task: formatTaskRecord(latestState, latestRecord.task, latestRecord.columnId),
+					readyTaskIds: [] as string[],
+					alreadyInTrash: true,
+				},
+				save: false,
+			};
+		}
+
+		const trashed = trashTaskAndGetReadyLinkedTaskIds(latestState.board, input.taskId);
+		if (!trashed.moved || !trashed.task) {
+			throw new Error(`Task "${input.taskId}" could not be moved to trash.`);
+		}
+
+		const nextState: RuntimeWorkspaceStateResponse = {
+			...latestState,
+			board: trashed.board,
+		};
 		return {
-			task: formatTaskRecord(initialState, initialRecord.task, initialRecord.columnId),
+			board: trashed.board,
+			value: {
+				task: formatTaskRecord(nextState, trashed.task, "trash"),
+				readyTaskIds: trashed.readyTaskIds,
+				alreadyInTrash: false,
+			},
+		};
+	});
+
+	if (mutation.saved) {
+		await notifyRuntimeWorkspaceStateUpdated(input.runtimeClient);
+	}
+
+	if (mutation.value.alreadyInTrash) {
+		return {
+			task: mutation.value.task,
 			taskId: input.taskId,
 			readyTaskIds: [],
 			autoStartedTasks: [],
@@ -578,26 +634,8 @@ async function trashTaskById(input: {
 		};
 	}
 
-	await stopTaskRuntimeSession(input.runtimeClient, input.taskId);
-	const latestState = await input.runtimeClient.workspace.getState.query();
-	const latestRecord = findTaskRecord(latestState, input.taskId);
-	if (!latestRecord) {
-		throw new Error(`Task "${input.taskId}" was not found in workspace ${input.workspaceRepoPath}.`);
-	}
-
-	const trashed = trashTaskAndGetReadyLinkedTaskIds(latestState.board, input.taskId);
-	if (!trashed.moved || !trashed.task) {
-		throw new Error(`Task "${input.taskId}" could not be moved to trash.`);
-	}
-
-	await input.runtimeClient.workspace.saveState.mutate({
-		board: trashed.board,
-		sessions: latestState.sessions,
-		expectedRevision: latestState.revision,
-	});
-
 	const autoStartedTasks: JsonRecord[] = [];
-	for (const readyTaskId of trashed.readyTaskIds) {
+	for (const readyTaskId of mutation.value.readyTaskIds) {
 		const started = await startTask({
 			cwd: input.cwd,
 			taskId: readyTaskId,
@@ -607,15 +645,11 @@ async function trashTaskById(input: {
 	}
 
 	const deletedWorkspace = await deleteTaskWorkspace(input.runtimeClient, input.taskId);
-	const nextState: RuntimeWorkspaceStateResponse = {
-		...latestState,
-		board: trashed.board,
-	};
 
 	return {
-		task: formatTaskRecord(nextState, trashed.task, "trash"),
+		task: mutation.value.task,
 		taskId: input.taskId,
-		readyTaskIds: trashed.readyTaskIds,
+		readyTaskIds: mutation.value.readyTaskIds,
 		autoStartedTasks,
 		worktreeDeleted: deletedWorkspace.removed,
 		worktreeDeleteError: deletedWorkspace.error,
@@ -722,66 +756,72 @@ async function deleteTaskCommand(input: {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
+	const mutation = await mutateWorkspaceState(workspaceRepoPath, (latestState) => {
+		const latestTargetRecords =
+			target.kind === "task"
+				? (() => {
+						const record = findTaskRecord(latestState, target.taskId);
+						if (!record) {
+							throw new Error(`Task "${target.taskId}" was not found in workspace ${workspaceRepoPath}.`);
+						}
+						return [record];
+					})()
+				: findTasksInColumn(latestState, target.column);
 
-	const initialState = await runtimeClient.workspace.getState.query();
-	const initialTargetRecords =
-		target.kind === "task"
-			? (() => {
-					const record = findTaskRecord(initialState, target.taskId);
-					if (!record) {
-						throw new Error(`Task "${target.taskId}" was not found in workspace ${workspaceRepoPath}.`);
-					}
-					return [record];
-				})()
-			: findTasksInColumn(initialState, target.column);
-	const targetTaskIds = initialTargetRecords.map(({ task }) => task.id);
-	if (targetTaskIds.length === 0) {
+		if (latestTargetRecords.length === 0) {
+			return {
+				board: latestState.board,
+				value: {
+					deletedTaskIds: [] as string[],
+					deletedTasks: [] as JsonRecord[],
+				},
+				save: false,
+			};
+		}
+
+		const deleted = deleteTasksFromBoard(
+			latestState.board,
+			latestTargetRecords.map(({ task }) => task.id),
+		);
+		if (!deleted.deleted) {
+			return {
+				board: latestState.board,
+				value: {
+					deletedTaskIds: [] as string[],
+					deletedTasks: [] as JsonRecord[],
+				},
+				save: false,
+			};
+		}
+
+		const deletedTasks = latestTargetRecords.map(({ task, columnId }) => formatTaskRecord(latestState, task, columnId));
 		return {
-			ok: true,
-			workspacePath: workspaceRepoPath,
-			column: target.kind === "column" ? target.column : null,
-			deletedTasks: [],
-			count: 0,
+			board: deleted.board,
+			value: {
+				deletedTaskIds: deleted.deletedTaskIds,
+				deletedTasks,
+			},
 		};
-	}
-
-	await Promise.all(targetTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)));
-
-	const latestState = await runtimeClient.workspace.getState.query();
-	const latestTargetRecords =
-		target.kind === "task"
-			? (() => {
-					const record = findTaskRecord(latestState, target.taskId);
-					if (!record) {
-						throw new Error(`Task "${target.taskId}" was not found in workspace ${workspaceRepoPath}.`);
-					}
-					return [record];
-				})()
-			: findTasksInColumn(latestState, target.column);
-
-	const deleted = deleteTasksFromBoard(
-		latestState.board,
-		latestTargetRecords.map(({ task }) => task.id),
-	);
-	if (!deleted.deleted) {
-		return {
-			ok: true,
-			workspacePath: workspaceRepoPath,
-			column: target.kind === "column" ? target.column : null,
-			deletedTasks: [],
-			count: 0,
-		};
-	}
-
-	await runtimeClient.workspace.saveState.mutate({
-		board: deleted.board,
-		sessions: latestState.sessions,
-		expectedRevision: latestState.revision,
 	});
 
-	const deletedTasks = latestTargetRecords.map(({ task, columnId }) => formatTaskRecord(latestState, task, columnId));
+	if (mutation.saved) {
+		await notifyRuntimeWorkspaceStateUpdated(runtimeClient);
+	}
+
+	if (mutation.value.deletedTaskIds.length === 0) {
+		return {
+			ok: true,
+			workspacePath: workspaceRepoPath,
+			column: target.kind === "column" ? target.column : null,
+			deletedTasks: [],
+			count: 0,
+		};
+	}
+
+	await Promise.all(mutation.value.deletedTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)));
+
 	const workspaceCleanupResults = await Promise.all(
-		deleted.deletedTaskIds.map(async (taskId) => ({
+		mutation.value.deletedTaskIds.map(async (taskId) => ({
 			taskId,
 			...(await deleteTaskWorkspace(runtimeClient, taskId)),
 		})),
@@ -791,8 +831,8 @@ async function deleteTaskCommand(input: {
 		ok: true,
 		workspacePath: workspaceRepoPath,
 		column: target.kind === "column" ? target.column : null,
-		deletedTasks,
-		count: deleted.deletedTaskIds.length,
+		deletedTasks: mutation.value.deletedTasks,
+		count: mutation.value.deletedTaskIds.length,
 		worktreeCleanup: workspaceCleanupResults,
 	};
 }

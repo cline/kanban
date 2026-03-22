@@ -675,3 +675,62 @@ export async function saveWorkspaceState(
 		return toWorkspaceStateResponse(context, board, sessions, nextRevision);
 	});
 }
+
+export interface RuntimeWorkspaceAtomicMutationResult<T> {
+	board: RuntimeBoardData;
+	sessions?: Record<string, RuntimeTaskSessionSummary>;
+	value: T;
+	save?: boolean;
+}
+
+export interface RuntimeWorkspaceAtomicMutationResponse<T> {
+	value: T;
+	state: RuntimeWorkspaceStateResponse;
+	saved: boolean;
+}
+
+export async function mutateWorkspaceState<T>(
+	cwd: string,
+	mutate: (state: RuntimeWorkspaceStateResponse) => RuntimeWorkspaceAtomicMutationResult<T>,
+): Promise<RuntimeWorkspaceAtomicMutationResponse<T>> {
+	const context = await loadWorkspaceContext(cwd);
+	return await lockedFileSystem.withLock(getWorkspaceDirectoryLockRequest(context.workspaceId), async () => {
+		const currentBoard = await readWorkspaceBoard(context.workspaceId);
+		const currentSessions = await readWorkspaceSessions(context.workspaceId);
+		const currentMeta = await readWorkspaceMeta(context.workspaceId);
+		const currentState = toWorkspaceStateResponse(context, currentBoard, currentSessions, currentMeta.revision);
+
+		const mutation = mutate(currentState);
+		if (mutation.save === false) {
+			return {
+				value: mutation.value,
+				state: currentState,
+				saved: false,
+			};
+		}
+
+		const nextBoard = mutation.board;
+		const nextSessions = mutation.sessions ?? currentSessions;
+		const nextRevision = currentMeta.revision + 1;
+		const nextMeta: WorkspaceStateMeta = {
+			revision: nextRevision,
+			updatedAt: Date.now(),
+		};
+
+		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), nextBoard, {
+			lock: null,
+		});
+		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceSessionsPath(context.workspaceId), nextSessions, {
+			lock: null,
+		});
+		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceMetaPath(context.workspaceId), nextMeta, {
+			lock: null,
+		});
+
+		return {
+			value: mutation.value,
+			state: toWorkspaceStateResponse(context, nextBoard, nextSessions, nextRevision),
+			saved: true,
+		};
+	});
+}
