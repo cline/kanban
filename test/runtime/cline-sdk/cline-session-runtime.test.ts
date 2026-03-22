@@ -141,6 +141,13 @@ describe("InMemoryClineSessionRuntime", () => {
 			taskId: "task-1",
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
+			images: [
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			],
 			providerId: "anthropic",
 			modelId: "claude-sonnet-4-6",
 			systemPrompt: "You are a helpful coding assistant.",
@@ -149,10 +156,17 @@ describe("InMemoryClineSessionRuntime", () => {
 		expect(startResult.sessionId).toBe("resolved-session-1");
 		expect(runtime.getTaskSessionId("task-1")).toBe("resolved-session-1");
 
-		await runtime.sendTaskSessionInput("task-1", "Continue");
+		await runtime.sendTaskSessionInput("task-1", "Continue", undefined, [
+			{
+				id: "img-2",
+				data: "def456",
+				mimeType: "image/jpeg",
+			},
+		]);
 		expect(fakeHost.send).toHaveBeenCalledWith({
 			sessionId: "resolved-session-1",
 			prompt: "Continue",
+			userImages: ["data:image/jpeg;base64,def456"],
 		});
 
 		if (!subscribedListener) {
@@ -180,6 +194,7 @@ describe("InMemoryClineSessionRuntime", () => {
 		expect(requestedSessionId).not.toBe("resolved-session-1");
 		expect(fakeHost.start).toHaveBeenCalledWith(
 			expect.objectContaining({
+				userImages: ["data:image/png;base64,abc123"],
 				config: expect.objectContaining({
 					maxConsecutiveMistakes: 3,
 				}),

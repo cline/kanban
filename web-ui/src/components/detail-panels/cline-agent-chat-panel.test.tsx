@@ -1,8 +1,8 @@
-import { act, type ReactElement } from "react";
+import { act, createRef, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
+import { ClineAgentChatPanel, type ClineAgentChatPanelHandle } from "@/components/detail-panels/cline-agent-chat-panel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -210,6 +210,41 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		expect(container.textContent).toContain('Failed to load MCP server "linear"');
+	});
+
+	it("renders user message images inline without a task header", async () => {
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={createSummary("running")}
+					onLoadMessages={async () => [
+						{
+							id: "msg-1",
+							role: "user",
+							content: "Please inspect this screenshot",
+							images: [
+								{
+									id: "img-1",
+									data: "abc123",
+									mimeType: "image/png",
+									name: "error.png",
+								},
+							],
+							createdAt: 1,
+						},
+					]}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain("Please inspect this screenshot");
+		expect(container.textContent).toContain("error.png");
+		expect(container.textContent).not.toContain("Task images");
+		const image = container.querySelector('img[alt="error.png"]');
+		expect(image).toBeInstanceOf(HTMLImageElement);
 	});
 
 	it("keeps the message list pinned to the bottom while new content streams in", async () => {
@@ -623,6 +658,96 @@ describe("ClineAgentChatPanel", () => {
 		});
 
 		expect(onSendMessage).toHaveBeenCalledWith("task-1", "Investigate", { mode: "plan" });
+	});
+
+	it("appends review comments into the composer draft through the panel handle", async () => {
+		const panelRef = createRef<ClineAgentChatPanelHandle>();
+
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					ref={panelRef}
+					taskId="task-1"
+					summary={createSummary("idle")}
+					onLoadMessages={async () => []}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const textarea = container.querySelector("textarea");
+		expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+		if (!(textarea instanceof HTMLTextAreaElement)) {
+			throw new Error("Expected composer textarea");
+		}
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+			if (!valueSetter) {
+				throw new Error("Expected textarea value setter");
+			}
+			valueSetter.call(textarea, "Keep this");
+			textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			panelRef.current?.appendToDraft("src/example.ts:4 | value\n> Add tests");
+			await Promise.resolve();
+		});
+
+		expect(textarea.value).toBe("Keep this\n\nsrc/example.ts:4 | value\n> Add tests");
+	});
+
+	it("sends review comments through the panel handle without overwriting the draft", async () => {
+		const panelRef = createRef<ClineAgentChatPanelHandle>();
+		const onSendMessage = vi.fn(async () => ({
+			ok: true,
+			chatMessage: {
+				id: "sent-review-comments",
+				role: "user" as const,
+				content: "src/example.ts:8 | done\n> Ship this",
+				createdAt: 2,
+			},
+		}));
+
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					ref={panelRef}
+					taskId="task-1"
+					summary={createSummary("idle")}
+					onLoadMessages={async () => []}
+					onSendMessage={onSendMessage}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const textarea = container.querySelector("textarea");
+		expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+		if (!(textarea instanceof HTMLTextAreaElement)) {
+			throw new Error("Expected composer textarea");
+		}
+
+		await act(async () => {
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+			if (!valueSetter) {
+				throw new Error("Expected textarea value setter");
+			}
+			valueSetter.call(textarea, "Keep acting");
+			textarea.dispatchEvent(new Event("input", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		await act(async () => {
+			await panelRef.current?.sendText("src/example.ts:8 | done\n> Ship this");
+		});
+
+		expect(onSendMessage).toHaveBeenCalledWith("task-1", "src/example.ts:8 | done\n> Ship this", { mode: "act" });
+		expect(textarea.value).toBe("Keep acting");
 	});
 
 	it("toggles the composer mode with command shift a", async () => {

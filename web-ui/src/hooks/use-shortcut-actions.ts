@@ -20,7 +20,7 @@ interface UseShortcutActionsInput {
 	refreshRuntimeProjectConfig: () => void;
 	prepareTerminalForShortcut: (input: {
 		prepareWaitForTerminalConnectionReady: (taskId: string) => () => Promise<void>;
-	}) => Promise<{ ok: boolean; targetTaskId?: string; usedExistingTerminal?: boolean; message?: string }>;
+	}) => Promise<{ ok: boolean; targetTaskId?: string; message?: string }>;
 	prepareWaitForTerminalConnectionReady: (taskId: string) => () => Promise<void>;
 	sendTaskSessionInput: (
 		taskId: string,
@@ -99,19 +99,17 @@ export function useShortcutActions({
 				if (!prepared.ok || !prepared.targetTaskId) {
 					throw new Error(prepared.message ?? "Could not open terminal.");
 				}
-				if (prepared.usedExistingTerminal) {
-					const waitForLikelyPrompt = waitForTerminalLikelyPrompt(
-						prepared.targetTaskId,
-						TERMINAL_PROMPT_WAIT_TIMEOUT_MS,
-					);
-					const interruptResult = await sendTaskSessionInput(prepared.targetTaskId, TERMINAL_INTERRUPT_SEQUENCE, {
-						appendNewline: false,
-					});
-					if (!interruptResult.ok) {
-						throw new Error(interruptResult.message ?? "Could not interrupt existing terminal command.");
-					}
-					await waitForLikelyPrompt;
+				const waitForLikelyPrompt = waitForTerminalLikelyPrompt(
+					prepared.targetTaskId,
+					TERMINAL_PROMPT_WAIT_TIMEOUT_MS,
+				);
+				const interruptResult = await sendTaskSessionInput(prepared.targetTaskId, TERMINAL_INTERRUPT_SEQUENCE, {
+					appendNewline: false,
+				});
+				if (!interruptResult.ok) {
+					throw new Error(interruptResult.message ?? "Could not interrupt terminal command.");
 				}
+				await waitForLikelyPrompt;
 				const runResult = await sendTaskSessionInput(prepared.targetTaskId, shortcut.command, {
 					appendNewline: true,
 				});

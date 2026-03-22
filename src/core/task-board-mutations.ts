@@ -4,6 +4,7 @@ import type {
 	RuntimeBoardData,
 	RuntimeBoardDependency,
 	RuntimeTaskAutoReviewMode,
+	RuntimeTaskImage,
 } from "./api-contract.js";
 import { createUniqueTaskId } from "./task-id.js";
 
@@ -12,6 +13,7 @@ export interface RuntimeCreateTaskInput {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
+	images?: RuntimeTaskImage[];
 	baseRef: string;
 }
 
@@ -20,6 +22,7 @@ export interface RuntimeUpdateTaskInput {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
+	images?: RuntimeTaskImage[];
 	baseRef: string;
 }
 
@@ -28,6 +31,11 @@ function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | u
 		return value;
 	}
 	return "commit";
+}
+
+// Copy image metadata so board tasks do not retain caller-owned array or object references.
+function cloneTaskImages(images?: RuntimeTaskImage[]): RuntimeTaskImage[] | undefined {
+	return images && images.length > 0 ? images.map((image) => ({ ...image })) : undefined;
 }
 
 export interface RuntimeCreateTaskResult {
@@ -270,6 +278,7 @@ export function addTaskToColumn(
 		startInPlanMode: Boolean(input.startInPlanMode),
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
 		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+		images: cloneTaskImages(input.images),
 		baseRef,
 		createdAt: now,
 		updatedAt: now,
@@ -582,6 +591,7 @@ export function updateTask(
 				startInPlanMode: Boolean(input.startInPlanMode),
 				autoReviewEnabled: Boolean(input.autoReviewEnabled),
 				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
 				updatedAt: now,
 			};

@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { buildFileTree } from "@/utils/file-tree";
+import { isMacPlatform } from "@/utils/platform";
 
 interface FileDiffGroup {
 	path: string;
@@ -29,8 +30,6 @@ interface FileDiffGroup {
 	removed: number;
 }
 
-const isMacPlatform =
-	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
 export interface DiffLineComment {
 	filePath: string;

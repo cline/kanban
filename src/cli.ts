@@ -57,6 +57,45 @@ interface RootCommandOptions {
 	skipShutdownCleanup?: boolean;
 }
 
+/**
+ * Decide whether this CLI invocation should auto-open a browser tab.
+ *
+ * This uses a positive allowlist for app-launch shapes like `kanban`,
+ * `kanban --agent codex`, and `kanban --port 3484`. Any subcommand or
+ * unexpected argument is treated as a command-style invocation instead.
+ */
+function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
+	const launchFlags = new Set(["--open", "--no-open", "--skip-shutdown-cleanup"]);
+	const launchOptionsWithValues = new Set(["--host", "--port", "--agent"]);
+
+	for (let index = 0; index < argv.length; index += 1) {
+		const arg = argv[index];
+		if (!arg) {
+			continue;
+		}
+		if (!arg.startsWith("-")) {
+			return false;
+		}
+		if (launchFlags.has(arg)) {
+			continue;
+		}
+		const optionName = arg.split("=", 1)[0] ?? arg;
+		if (!launchOptionsWithValues.has(optionName)) {
+			return false;
+		}
+		if (arg.includes("=")) {
+			continue;
+		}
+		const optionValue = argv[index + 1];
+		if (!optionValue) {
+			return false;
+		}
+		index += 1;
+	}
+
+	return true;
+}
+
 async function isPortAvailable(port: number): Promise<boolean> {
 	return await new Promise<boolean>((resolve) => {
 		const probe = createNetServer();
@@ -152,7 +191,7 @@ async function canReachKanbanServer(workspaceId: string | null): Promise<boolean
 	}
 }
 
-async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
+async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenBrowser: boolean }): Promise<boolean> {
 	let workspaceId: string | null = null;
 	if (hasGitRepository(process.cwd())) {
 		const { loadWorkspaceContext } = await import("./state/workspace-state.js");
@@ -167,7 +206,7 @@ async function tryOpenExistingServer(noOpen: boolean): Promise<boolean> {
 		? buildKanbanRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
 		: getKanbanRuntimeOrigin();
 	console.log(`Kanban already running at ${getKanbanRuntimeOrigin()}`);
-	if (!noOpen) {
+	if (!options.noOpen && options.shouldAutoOpenBrowser) {
 		try {
 			const { openInBrowser } = await import("./server/browser.js");
 			openInBrowser(projectUrl, {
@@ -367,7 +406,7 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 	}
 }
 
-async function runMainCommand(options: CliOptions): Promise<void> {
+async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
 	if (options.host) {
 		setKanbanRuntimeHost(options.host);
 		console.log(`Binding to host ${options.host}.`);
@@ -394,14 +433,14 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 		if (
 			options.port?.mode !== "auto" &&
 			isAddressInUseError(error) &&
-			(await tryOpenExistingServer(options.noOpen))
+			(await tryOpenExistingServer({ noOpen: options.noOpen, shouldAutoOpenBrowser }))
 		) {
 			return;
 		}
 		throw error;
 	}
 	console.log(`Kanban running at ${runtime.url}`);
-	if (!options.noOpen) {
+	if (!options.noOpen && shouldAutoOpenBrowser) {
 		try {
 			openInBrowser(runtime.url, {
 				warn: (message) => {
@@ -455,7 +494,8 @@ async function runMainCommand(options: CliOptions): Promise<void> {
 	);
 }
 
-function createProgram(): Command {
+function createProgram(invocationArgs: string[]): Command {
+	const shouldAutoOpenBrowser = shouldAutoOpenBrowserTabForInvocation(invocationArgs);
 	const program = new Command();
 	program
 		.name("kanban")
@@ -489,7 +529,7 @@ function createProgram(): Command {
 			port: options.port ?? null,
 			noOpen: options.open === false,
 			skipShutdownCleanup: options.skipShutdownCleanup === true,
-		});
+		}, shouldAutoOpenBrowser);
 	});
 
 	return program;
@@ -497,7 +537,7 @@ function createProgram(): Command {
 
 async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
-	const program = createProgram();
+	const program = createProgram(argv);
 	await program.parseAsync(argv, { from: "user" });
 }
 

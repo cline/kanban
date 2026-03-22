@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/git-history/use-git-history-data";
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import { isNativeClineAgentSelected } from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
@@ -34,6 +35,11 @@ interface UseGitActionsInput {
 		taskId: string,
 		text: string,
 		options?: SendTerminalInputOptions,
+	) => Promise<{ ok: boolean; message?: string }>;
+	sendTaskChatMessage: (
+		taskId: string,
+		text: string,
+		options?: { mode?: "plan" | "act" },
 	) => Promise<{ ok: boolean; message?: string }>;
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	isGitHistoryOpen: boolean;
@@ -84,6 +90,7 @@ export function useGitActions({
 	selectedCard,
 	runtimeProjectConfig,
 	sendTaskSessionInput,
+	sendTaskChatMessage,
 	fetchTaskWorkspaceInfo,
 	isGitHistoryOpen,
 	refreshWorkspaceState,
@@ -207,6 +214,8 @@ export function useGitActions({
 		return next;
 	}, [taskGitActionLoadingByTaskId]);
 
+	const shouldUseClineChatForTaskGitActions = isNativeClineAgentSelected(runtimeProjectConfig?.selectedAgentId ?? null);
+
 	const runTaskGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {
 			const taskLoadingState = taskGitActionLoadingByTaskId[taskId];
@@ -275,6 +284,19 @@ export function useGitActions({
 							}
 						: null,
 				});
+				if (shouldUseClineChatForTaskGitActions) {
+					const sent = await sendTaskChatMessage(taskId, prompt, { mode: "act" });
+					if (!sent.ok) {
+						showAppToast({
+							intent: "danger",
+							icon: "warning-sign",
+							message: sent.message ?? "Could not send instructions to the task chat session.",
+							timeout: 7000,
+						});
+						return false;
+					}
+					return true;
+				}
 				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
 				if (!typed.ok) {
 					showAppToast({
@@ -307,8 +329,10 @@ export function useGitActions({
 			board,
 			fetchTaskWorkspaceInfo,
 			runtimeProjectConfig,
+			sendTaskChatMessage,
 			sendTaskSessionInput,
 			setTaskGitActionLoading,
+			shouldUseClineChatForTaskGitActions,
 			taskGitActionLoadingByTaskId,
 		],
 	);

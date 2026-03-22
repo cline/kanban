@@ -303,6 +303,60 @@ describe("BoardCard", () => {
 		expect(container.textContent).not.toContain("Using Read");
 	});
 
+	it("shows non-cline tool activity in the compact tool label format", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					sessionSummary={createSummary("running", {
+						agentId: "claude",
+						latestHookActivity: {
+							activityText: "Completed Read: src/index.ts",
+							toolName: "Read",
+							toolInputSummary: null,
+							finalMessage: null,
+							hookEventName: "PostToolUse",
+							notificationType: null,
+							source: "claude",
+						},
+					})}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Read(src/index.ts)");
+		expect(container.textContent).not.toContain("Completed Read");
+	});
+
+	it("parses codex tool activity into the compact tool label format", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					sessionSummary={createSummary("running", {
+						agentId: "codex",
+						latestHookActivity: {
+							activityText: "Calling Read: src/index.ts",
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: null,
+							hookEventName: "raw_response_item",
+							notificationType: null,
+							source: "codex",
+						},
+					})}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Read(src/index.ts)");
+		expect(container.textContent).not.toContain("Calling Read");
+	});
+
 	it("keeps showing the last cline tool label during assistant streaming", async () => {
 		await act(async () => {
 			root.render(
@@ -383,5 +437,32 @@ describe("BoardCard", () => {
 
 		expect(container.textContent).toContain("Reviewing the final diff");
 		expect(container.textContent).not.toContain("Thinking...");
+	});
+
+	it("shows normal agent messages without the agent prefix", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					sessionSummary={createSummary("running", {
+						agentId: "codex",
+						latestHookActivity: {
+							activityText: "Agent: checking the next file",
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: null,
+							hookEventName: "agent_message",
+							notificationType: null,
+							source: "codex",
+						},
+					})}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("checking the next file");
+		expect(container.textContent).not.toContain("Agent:");
 	});
 });

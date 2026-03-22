@@ -1,6 +1,6 @@
 import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import type { RuntimeTaskSessionMode } from "../../../src/core/api-contract.js";
+import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../../../src/core/api-contract.js";
 import type { ClineRuntimeSetup } from "../../../src/cline-sdk/cline-runtime-setup.js";
 import type {
 	ClinePersistedTaskSessionSnapshot,
@@ -12,6 +12,10 @@ import type {
 import { createSessionId } from "../../../src/cline-sdk/cline-session-state.js";
 import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
 import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
+
+const originalArgv = [...process.argv];
+const originalExecArgv = [...process.execArgv];
+const originalExecPath = process.execPath;
 
 const turnCheckpointMocks = vi.hoisted(() => ({
 	captureTaskTurnCheckpoint: vi.fn(),
@@ -40,7 +44,7 @@ function createDeferred<T>() {
 type StartTaskSessionMock = Mock<
 	(request: StartClineSessionRuntimeRequest & { sessionId: string }) => Promise<StartClineSessionRuntimeResult>
 >;
-type SendTaskSessionInputMock = Mock<(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode) => Promise<unknown>>;
+type SendTaskSessionInputMock = Mock<(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]) => Promise<unknown>>;
 type StopTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type AbortTaskSessionMock = Mock<(taskId: string) => Promise<void>>;
 type ReadPersistedTaskSessionMock = Mock<(taskId: string) => Promise<ClinePersistedTaskSessionSnapshot | null>>;
@@ -116,8 +120,8 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 				bindTaskSession(request.taskId, startResult.sessionId);
 				return startResult;
 			},
-			async sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown> {
-				return await sendTaskSessionInputMock(taskId, prompt, mode);
+			async sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]): Promise<unknown> {
+				return await sendTaskSessionInputMock(taskId, prompt, mode, images);
 			},
 			async resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
 				return await readPersistedTaskSessionMock(taskId);
@@ -228,6 +232,15 @@ async function waitForTaskSessionId(runtime: FakeClineSessionRuntimeController, 
 	return runtime.getTaskSessionId(taskId) ?? "session-1";
 }
 
+function setKanbanProcessContext(): void {
+	process.argv = ["node", "/Users/example/repo/dist/cli.js"];
+	process.execArgv = [];
+	Object.defineProperty(process, "execPath", {
+		configurable: true,
+		value: "/usr/local/bin/node",
+	});
+}
+
 describe("InMemoryClineTaskSessionService", () => {
 	const services: ClineTaskSessionService[] = [];
 
@@ -264,6 +277,12 @@ describe("InMemoryClineTaskSessionService", () => {
 				await service.dispose();
 			}),
 		);
+		process.argv = [...originalArgv];
+		process.execArgv = [...originalExecArgv];
+		Object.defineProperty(process, "execPath", {
+			configurable: true,
+			value: originalExecPath,
+		});
 	});
 
 	it("starts a cline session and captures initial prompt as a user message", async () => {
@@ -317,6 +336,94 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("forwards task images into the Cline runtime start request", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			images: [
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			],
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				images: [
+					{
+						id: "img-1",
+						data: "abc123",
+						mimeType: "image/png",
+					},
+				],
+			}),
+		);
+	});
+
+	it("forwards attached images when sending follow-up chat input", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+
+		await service.sendTaskSessionInput("task-1", "Continue", undefined, [
+			{
+				id: "img-1",
+				data: "abc123",
+				mimeType: "image/png",
+			},
+		]);
+
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "Continue", undefined, [
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			]);
+		});
+	});
+
+	it("allows image-only follow-up chat input", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+
+		await service.sendTaskSessionInput("task-1", "   ", undefined, [
+			{
+				id: "img-1",
+				data: "abc123",
+				mimeType: "image/png",
+			},
+		]);
+
+		await vi.waitFor(() => {
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "", undefined, [
+				{
+					id: "img-1",
+					data: "abc123",
+					mimeType: "image/png",
+				},
+			]);
+		});
+	});
+
 	it("surfaces startup warnings from the runtime on the session summary", async () => {
 		const { service, runtime } = createTrackedService();
 		runtime.startTaskSessionMock.mockResolvedValueOnce({
@@ -340,6 +447,7 @@ describe("InMemoryClineTaskSessionService", () => {
 
 	it("appends Kanban sidebar instructions for home sessions", async () => {
 		const { service, runtime } = createTrackedService();
+		setKanbanProcessContext();
 
 		await service.startTaskSession({
 			taskId: "__home_agent__:workspace-1:cline:abc123",
@@ -362,7 +470,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				systemPrompt: expect.stringContaining("kanban task create"),
+				systemPrompt: expect.stringContaining("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create"),
 			}),
 		);
 	});
@@ -450,7 +558,7 @@ describe("InMemoryClineTaskSessionService", () => {
 
 		expect(nextSummary?.state).toBe("running");
 		await vi.waitFor(() => {
-			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "Continue", undefined);
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "Continue", undefined, undefined);
 		});
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
 			"Recovered prompt",
@@ -478,7 +586,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
 		await service.sendTaskSessionInput("task-1", "/continue");
 		await vi.waitFor(() => {
-			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "workflow:/continue", undefined);
+			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith("task-1", "workflow:/continue", undefined, undefined);
 		});
 	});
 	it("marks session interrupted when stopped", async () => {

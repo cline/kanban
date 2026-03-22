@@ -472,8 +472,9 @@ export function ClineSetupSection({
 								</div>
 							) : null}
 
-							<div className="flex items-center gap-2 text-[12px] text-text-primary mt-2">
+							<label htmlFor={`mcp-disabled-${serverIndex}`} className="flex items-center gap-2 text-[12px] text-text-primary mt-2 cursor-pointer select-none">
 								<RadixCheckbox.Root
+									id={`mcp-disabled-${serverIndex}`}
 									checked={server.disabled}
 									disabled={mcpControlsDisabled}
 									onCheckedChange={(checked) => {
@@ -482,14 +483,14 @@ export function ClineSetupSection({
 											disabled: checked === true,
 										}));
 									}}
-									className="flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:opacity-40"
+									className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
 								>
 									<RadixCheckbox.Indicator>
 										<Check size={12} className="text-white" />
 									</RadixCheckbox.Indicator>
 								</RadixCheckbox.Root>
 								<span>Disabled</span>
-							</div>
+							</label>
 							</div>
 							<Button
 								variant="ghost"

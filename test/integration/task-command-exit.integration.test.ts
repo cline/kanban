@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -131,6 +131,42 @@ async function waitForServerStart(process: ChildProcess, timeoutMs = 10_000): Pr
 			);
 		});
 	});
+}
+
+function installBrowserOpenStub(binDir: string, logPath: string): void {
+	mkdirSync(binDir, { recursive: true });
+	const script = `#!/usr/bin/env sh
+printf '%s\n' "$*" >> ${JSON.stringify(logPath)}
+`;
+	const commandNames = process.platform === "darwin" ? ["open"] : ["xdg-open"];
+	for (const commandName of commandNames) {
+		const scriptPath = join(binDir, commandName);
+		writeFileSync(scriptPath, script, "utf8");
+		chmodSync(scriptPath, 0o755);
+	}
+}
+
+function readBrowserOpenLog(logPath: string): string[] {
+	if (!existsSync(logPath)) {
+		return [];
+	}
+	return readFileSync(logPath, "utf8")
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
+}
+
+async function waitForBrowserOpenCount(logPath: string, expectedCount: number, timeoutMs = 2_000): Promise<void> {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < timeoutMs) {
+		if (readBrowserOpenLog(logPath).length >= expectedCount) {
+			return;
+		}
+		await new Promise<void>((resolve) => {
+			setTimeout(resolve, 25);
+		});
+	}
+	throw new Error(`Timed out waiting for browser open count ${expectedCount}. Current log: ${readBrowserOpenLog(logPath).join(", ")}`);
 }
 
 async function waitForExit(process: ChildProcess, timeoutMs: number): Promise<boolean> {
@@ -278,6 +314,80 @@ describe("source task commands", () => {
 				expect(didExit, `task create did not exit in time.\nstdout:\n${stdout}\nstderr:\n${stderr}`).toBe(true);
 				expect(commandProcess.exitCode).toBe(0);
 				expect(stdout).toContain('"ok": true');
+			} finally {
+				await requestGracefulShutdown(serverProcess);
+				const stopped = await waitForExit(serverProcess, 5_000);
+				if (!stopped) {
+					serverProcess.kill("SIGKILL");
+					await waitForExit(serverProcess, 5_000);
+				}
+			}
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("opens only for launch invocations", async () => {
+		if (process.platform === "win32") {
+			return;
+		}
+
+		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-root-launch-open-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-root-launch-open-");
+
+		try {
+			initGitRepository(projectPath);
+			writeFileSync(join(projectPath, "README.md"), "# Root Launch Browser Open Test\n", "utf8");
+			commitAll(projectPath, "init");
+
+			const port = String(await getAvailablePort());
+			const browserStubBinDir = join(homeDir, "browser-bin");
+			const browserOpenLogPath = join(homeDir, "browser-open.log");
+			installBrowserOpenStub(browserStubBinDir, browserOpenLogPath);
+			const env = createGitTestEnv({
+				HOME: homeDir,
+				USERPROFILE: homeDir,
+				KANBAN_RUNTIME_PORT: port,
+				PATH: `${browserStubBinDir}:${process.env.PATH ?? ""}`,
+			});
+
+			const serverProcess = spawn(
+				process.execPath,
+				[
+					"--require",
+					resolveShutdownIpcHookPath(),
+					"--import",
+					resolveTsxLoaderImportSpecifier(),
+					resolve(process.cwd(), "src/cli.ts"),
+					"--no-open",
+				],
+				{
+					cwd: projectPath,
+					env,
+					stdio: ["ignore", "pipe", "pipe", "ipc"],
+				},
+			);
+
+			try {
+				await waitForServerStart(serverProcess);
+
+				for (const [args, expectedOpenCount] of [
+					[[], 1],
+					[["task", "list", "--project-path", projectPath], 1],
+					[["--agent", "codex"], 2],
+					[["--port", port], 3],
+				] as const) {
+					const result = await runCliCommandAndCollectOutput({
+						args: [...args],
+						cwd: projectPath,
+						env,
+					});
+					expect(result.didExit).toBe(true);
+					expect(result.exitCode).toBe(0);
+					await waitForBrowserOpenCount(browserOpenLogPath, expectedOpenCount);
+					expect(readBrowserOpenLog(browserOpenLogPath)).toHaveLength(expectedOpenCount);
+				}
 			} finally {
 				await requestGracefulShutdown(serverProcess);
 				const stopped = await waitForExit(serverProcess, 5_000);

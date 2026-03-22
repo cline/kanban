@@ -360,8 +360,35 @@ export function useBoardInteractions({
 		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, setBoard, startTaskSession],
 	);
 
+	const startBacklogTaskImmediately = useCallback(
+		async (task: BoardCard): Promise<boolean> => {
+			const selection = findCardSelection(board, task.id);
+			if (!selection || selection.column.id !== "backlog") {
+				return false;
+			}
+
+			setBoard((currentBoard) => {
+				const currentSelection = findCardSelection(currentBoard, task.id);
+				if (!currentSelection || currentSelection.column.id !== "backlog") {
+					return currentBoard;
+				}
+				const moved = moveTaskToColumn(currentBoard, task.id, "in_progress", { insertAtTop: true });
+				return moved.moved ? moved.board : currentBoard;
+			});
+
+			return kickoffTaskInProgress(task, task.id, "backlog", {
+				optimisticMove: true,
+			});
+		},
+		[board, kickoffTaskInProgress, setBoard],
+	);
+
 	const startBacklogTaskWithAnimation = useCallback(
 		async (task: BoardCard): Promise<boolean> => {
+			if (selectedCard) {
+				return startBacklogTaskImmediately(task);
+			}
+
 			await waitForBacklogCardHeightToSettle(task.id);
 
 			const programmaticMoveAttempt = tryProgrammaticCardMove(task.id, "backlog", "in_progress");
@@ -394,6 +421,8 @@ export function useBoardInteractions({
 		[
 			kickoffTaskInProgress,
 			resolvePendingProgrammaticStartMove,
+			selectedCard,
+			startBacklogTaskImmediately,
 			tryProgrammaticCardMove,
 			waitForBacklogCardHeightToSettle,
 			waitForProgrammaticCardMoveAvailability,

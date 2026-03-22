@@ -1,21 +1,25 @@
 import { AlertTriangle, ArrowBigUp, Command, Pause, SendHorizontal } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
 
+import { extractImagesFromDataTransfer } from "@/components/task-image-input-utils";
+import { TaskImageStrip } from "@/components/task-image-strip";
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionMode } from "@/runtime/types";
+import type { TaskImage } from "@/types";
+import { isMacPlatform } from "@/utils/platform";
 
 const CLINE_CHAT_COMPOSER_MAX_HEIGHT = 160;
-const isMacPlatform =
-	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
 export function ClineChatComposer({
 	taskId,
 	draft,
 	onDraftChange,
+	images = [],
+	onImagesChange,
 	placeholder,
 	mode,
 	onModeChange,
@@ -33,10 +37,13 @@ export function ClineChatComposer({
 	modelPickerDisabled = false,
 	isSending = false,
 	warningMessage = null,
+	attachmentWarningMessage = null,
 }: {
 	taskId: string;
 	draft: string;
 	onDraftChange: (draft: string) => void;
+	images?: TaskImage[];
+	onImagesChange?: (images: TaskImage[]) => void;
 	placeholder: string;
 	mode: RuntimeTaskSessionMode;
 	onModeChange: (mode: RuntimeTaskSessionMode) => void;
@@ -54,9 +61,11 @@ export function ClineChatComposer({
 	modelPickerDisabled?: boolean;
 	isSending?: boolean;
 	warningMessage?: string | null;
+	attachmentWarningMessage?: string | null;
 }): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-	const canSubmit = canSend && !isModelSaving && draft.trim().length > 0;
+	const [isDragOver, setIsDragOver] = useState(false);
+	const canSubmit = canSend && !isModelSaving && (draft.trim().length > 0 || images.length > 0);
 
 	useLayoutEffect(() => {
 		const textarea = textareaRef.current;
@@ -75,12 +84,73 @@ export function ClineChatComposer({
 		textareaRef.current?.focus();
 	}, [canSend, taskId]);
 
+	const appendImages = useCallback(
+		(newImages: TaskImage[]) => {
+			if (!onImagesChange || newImages.length === 0) {
+				return;
+			}
+			onImagesChange([...images, ...newImages]);
+		},
+		[images, onImagesChange],
+	);
+
+	const handleRemoveImage = useCallback(
+		(imageId: string) => {
+			onImagesChange?.(images.filter((image) => image.id !== imageId));
+		},
+		[images, onImagesChange],
+	);
+
+
+	const handlePaste = useCallback(
+		async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+			const nextImages = await extractImagesFromDataTransfer(event.clipboardData);
+			if (nextImages.length === 0) {
+				return;
+			}
+			event.preventDefault();
+			appendImages(nextImages);
+		},
+		[appendImages],
+	);
+
+	const handleDrop = useCallback(
+		async (event: DragEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			setIsDragOver(false);
+			const nextImages = await extractImagesFromDataTransfer(event.dataTransfer);
+			appendImages(nextImages);
+		},
+		[appendImages],
+	);
+
 	return (
-		<div className="rounded-xl border border-border bg-surface-2 px-3 py-2 focus-within:border-border-focus">
+		<div
+			className={cn(
+				"rounded-xl border border-border bg-surface-2 px-3 py-2 focus-within:border-border-focus",
+				isDragOver && "border-border-focus bg-surface-3/50",
+			)}
+			onDragEnter={(event) => {
+				event.preventDefault();
+				setIsDragOver(true);
+			}}
+			onDragOver={(event) => {
+				event.preventDefault();
+				setIsDragOver(true);
+			}}
+			onDragLeave={(event) => {
+				if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+					return;
+				}
+				setIsDragOver(false);
+			}}
+			onDrop={handleDrop}
+		>
 			<textarea
 				ref={textareaRef}
 				value={draft}
 				onChange={(event) => onDraftChange(event.target.value)}
+				onPaste={handlePaste}
 				onKeyDown={(event) => {
 					if (event.nativeEvent.isComposing) {
 						return;
@@ -119,6 +189,9 @@ export function ClineChatComposer({
 				className="w-full min-h-6 resize-none bg-transparent p-0 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
 				style={{ maxHeight: CLINE_CHAT_COMPOSER_MAX_HEIGHT }}
 			/>
+			{images.length > 0 ? (
+				<TaskImageStrip images={images} onRemoveImage={handleRemoveImage} className="mt-2" />
+			) : null}
 			<div className="mt-2 flex min-w-0 items-center gap-2">
 				<div className="min-w-0 shrink overflow-hidden">
 					<SearchSelectDropdown
@@ -234,6 +307,12 @@ export function ClineChatComposer({
 					>
 						{warningMessage}
 					</p>
+				</div>
+			) : null}
+			{attachmentWarningMessage ? (
+				<div className="mt-2 flex items-start gap-1.5 text-xs text-status-orange" title={attachmentWarningMessage}>
+					<AlertTriangle size={14} className="mt-0.5 shrink-0" />
+					<p className="m-0 min-w-0">{attachmentWarningMessage}</p>
 				</div>
 			) : null}
 		</div>

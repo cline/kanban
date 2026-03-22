@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.31]
+
+- Add ability to resume Cline tasks that were trashed
+- Support image attachments for Cline agent chat
+- Fix the commit and make PR button in the Cline agent chat panel
+- Fix issue where creating multiple tasks at the same time with git submodules would run into a git config locking issue
+- Fix script shortcuts to interrupt previously long-running commands, so you no longer need to Ctrl+C before hitting the shortcut again
+- Fix issue where running incorrect kanban commands would auto-open the browser
+- Preserve runnable kanban command in sidebar prompt
+- Avoid premature Codex review state transitions
+- Fix diff "Add" button incorrectly sending Cline chat messages
+- Various UX improvements (checkbox labels, Cline thinking shimmer animation)
+
 ## [0.1.30]
 
 - Add MCP server management and OAuth authentication for Cline providers

@@ -52,6 +52,67 @@ function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: strin
 	}
 }
 
+function extractToolInputSummaryFromActivityText(activityText: string, toolName: string): string | null {
+	const escapedToolName = toolName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = activityText.match(new RegExp(`^(?:Using|Completed|Failed|Calling)\\s+${escapedToolName}(?::\\s*(.+))?$`));
+	if (!match) {
+		return null;
+	}
+	const rawSummary = match[1]?.trim() ?? "";
+	if (!rawSummary) {
+		return null;
+	}
+	if (activityText.startsWith("Failed ")) {
+		const [operationSummary] = rawSummary.split(": ");
+		return operationSummary?.trim() || null;
+	}
+	return rawSummary;
+}
+
+function parseToolCallFromActivityText(activityText: string): { toolName: string; toolInputSummary: string | null } | null {
+	const match = activityText.match(/^(?:Using|Completed|Failed|Calling)\s+([^:()]+?)(?::\s*(.+))?$/);
+	if (!match?.[1]) {
+		return null;
+	}
+	const toolName = match[1].trim();
+	if (!toolName) {
+		return null;
+	}
+	const rawSummary = match[2]?.trim() ?? "";
+	if (!rawSummary) {
+		return { toolName, toolInputSummary: null };
+	}
+	if (activityText.startsWith("Failed ")) {
+		const [operationSummary] = rawSummary.split(": ");
+		return {
+			toolName,
+			toolInputSummary: operationSummary?.trim() || null,
+		};
+	}
+	return {
+		toolName,
+		toolInputSummary: rawSummary,
+	};
+}
+
+function resolveToolCallLabel(
+	activityText: string | undefined,
+	toolName: string | null,
+	toolInputSummary: string | null,
+): string | null {
+	if (toolName) {
+		return formatClineToolCallLabel(toolName, toolInputSummary ?? extractToolInputSummaryFromActivityText(activityText ?? "", toolName));
+	}
+	if (!activityText) {
+		return null;
+	}
+	const parsed = parseToolCallFromActivityText(activityText);
+	if (!parsed) {
+		return null;
+	}
+	return formatClineToolCallLabel(parsed.toolName, parsed.toolInputSummary);
+}
+
 function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
 	if (!summary) {
 		return null;
@@ -79,17 +140,20 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	if (activityText) {
 		let dotColor: string = SESSION_ACTIVITY_COLOR.thinking;
 		let text = activityText;
-		if (source === "cline-sdk" && toolName) {
+		const toolCallLabel = resolveToolCallLabel(activityText, toolName, toolInputSummary);
+		if (toolCallLabel) {
 			if (text.startsWith("Failed ")) {
 				dotColor = SESSION_ACTIVITY_COLOR.error;
 			}
 			return {
 				dotColor,
-				text: formatClineToolCallLabel(toolName, toolInputSummary),
+				text: toolCallLabel,
 			};
 		}
 		if (text.startsWith("Final: ")) {
 			dotColor = SESSION_ACTIVITY_COLOR.success;
+			text = text.slice(7);
+		} else if (text.startsWith("Agent: ")) {
 			text = text.slice(7);
 		} else if (text.startsWith("Waiting for approval")) {
 			dotColor = SESSION_ACTIVITY_COLOR.waiting;

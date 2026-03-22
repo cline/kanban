@@ -469,7 +469,7 @@ export function TaskStartAgentOnboardingCarousel({
 												handleAgentSelect(agent.id);
 											}
 										}}
-										className="flex h-4 w-4 items-center justify-center rounded border border-border-bright bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+										className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border-bright bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
 									>
 										<RadixCheckbox.Indicator>
 											<Check size={12} className="text-white" />

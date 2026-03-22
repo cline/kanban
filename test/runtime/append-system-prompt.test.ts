@@ -27,14 +27,30 @@ describe("resolveAppendSystemPromptCommandPrefix", () => {
 		expect(prefix).toBe("bun x kanban");
 	});
 
-	it("falls back to kanban for local entrypoints", () => {
+	it("falls back to the current runnable invocation for local entrypoints", () => {
 		const prefix = resolveAppendSystemPromptCommandPrefix({
 			currentVersion: "0.1.10",
 			cwd: "/Users/example/repo",
+			execPath: "/usr/local/bin/node",
+			execArgv: [],
 			argv: ["node", "/Users/example/repo/dist/cli.js"],
 			resolveRealPath: (path) => path,
 		});
-		expect(prefix).toBe("kanban");
+		expect(prefix).toBe("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js'");
+	});
+
+	it("falls back to the current runnable invocation when realpath resolution fails", () => {
+		const prefix = resolveAppendSystemPromptCommandPrefix({
+			currentVersion: "0.1.10",
+			cwd: "/Users/example/repo",
+			execPath: "/usr/local/bin/node",
+			execArgv: [],
+			argv: ["node", "/tmp/missing-kanban-cli.js"],
+			resolveRealPath: () => {
+				throw new Error("missing");
+			},
+		});
+		expect(prefix).toBe("'/usr/local/bin/node' '/tmp/missing-kanban-cli.js'");
 	});
 });
 
@@ -79,11 +95,13 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:codex:abc123", {
 			currentVersion: "0.1.10",
 			cwd: "/Users/example/repo",
+			execPath: "/usr/local/bin/node",
+			execArgv: [],
 			argv: ["node", "/Users/example/repo/dist/cli.js"],
 			resolveRealPath: (path) => path,
 		});
 		expect(prompt).toContain("Kanban sidebar agent");
-		expect(prompt).toContain("kanban task list");
+		expect(prompt).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task list");
 		expect(prompt).toContain("Current home agent: `codex`");
 		expect(prompt).toContain("codex mcp add linear --url https://mcp.linear.app/mcp");
 		expect(prompt).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");

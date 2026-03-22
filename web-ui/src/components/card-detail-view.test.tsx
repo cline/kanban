@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { forwardRef, useImperativeHandle, type ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,8 +8,12 @@ import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
 
 const mockUseRuntimeWorkspaceChanges = vi.fn();
-const { mockAgentTerminalPanel } = vi.hoisted(() => ({
+const { mockAgentTerminalPanel, mockClineAgentChatPanel, mockDiffViewerPanel, mockClineAppendToDraft, mockClineSendText } = vi.hoisted(() => ({
 	mockAgentTerminalPanel: vi.fn((_props: { panelBackgroundColor?: string; terminalBackgroundColor?: string }) => null),
+	mockClineAgentChatPanel: vi.fn((..._args: unknown[]) => null),
+	mockDiffViewerPanel: vi.fn((..._args: unknown[]) => null),
+	mockClineAppendToDraft: vi.fn(),
+	mockClineSendText: vi.fn(async () => {}),
 }));
 
 vi.mock("react-hotkeys-hook", () => ({
@@ -21,7 +25,14 @@ vi.mock("@/components/detail-panels/agent-terminal-panel", () => ({
 }));
 
 vi.mock("@/components/detail-panels/cline-agent-chat-panel", () => ({
-	ClineAgentChatPanel: () => <div data-testid="cline-agent-chat-panel" />,
+	ClineAgentChatPanel: forwardRef((props: unknown, ref) => {
+		mockClineAgentChatPanel(props);
+		useImperativeHandle(ref, () => ({
+			appendToDraft: mockClineAppendToDraft,
+			sendText: mockClineSendText,
+		}));
+		return <div data-testid="cline-agent-chat-panel" />;
+	}),
 }));
 
 vi.mock("@/components/detail-panels/column-context-panel", () => ({
@@ -29,7 +40,10 @@ vi.mock("@/components/detail-panels/column-context-panel", () => ({
 }));
 
 vi.mock("@/components/detail-panels/diff-viewer-panel", () => ({
-	DiffViewerPanel: () => <div data-testid="diff-viewer-panel" />,
+	DiffViewerPanel: (props: unknown) => {
+		mockDiffViewerPanel(props);
+		return <div data-testid="diff-viewer-panel" />;
+	},
 }));
 
 vi.mock("@/components/detail-panels/file-tree-panel", () => ({
@@ -92,6 +106,17 @@ function createSelection(): CardSelection {
 	};
 }
 
+type MockedDiffViewerProps = {
+	onAddToTerminal?: (formatted: string) => void;
+	onSendToTerminal?: (formatted: string) => void;
+};
+
+function getLastMockFirstArg<T>(mockFn: { mock: { calls: unknown[][] } }): T {
+	const lastCall = mockFn.mock.calls.at(-1);
+	expect(lastCall).toBeDefined();
+	return lastCall?.[0] as T;
+}
+
 describe("CardDetailView", () => {
 	let container: HTMLDivElement;
 	let root: Root;
@@ -105,6 +130,10 @@ describe("CardDetailView", () => {
 		document.body.appendChild(container);
 		root = createRoot(container);
 		mockAgentTerminalPanel.mockClear();
+		mockClineAgentChatPanel.mockClear();
+		mockDiffViewerPanel.mockClear();
+		mockClineAppendToDraft.mockClear();
+		mockClineSendText.mockClear();
 		mockUseRuntimeWorkspaceChanges.mockReturnValue({
 			changes: {
 				files: [
@@ -128,6 +157,10 @@ describe("CardDetailView", () => {
 		});
 		mockUseRuntimeWorkspaceChanges.mockReset();
 		mockAgentTerminalPanel.mockClear();
+		mockClineAgentChatPanel.mockClear();
+		mockDiffViewerPanel.mockClear();
+		mockClineAppendToDraft.mockClear();
+		mockClineSendText.mockClear();
 		vi.restoreAllMocks();
 		container.remove();
 		if (previousActEnvironment === undefined) {
@@ -307,5 +340,76 @@ describe("CardDetailView", () => {
 			panelBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
 			terminalBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
 		});
+	});
+
+	it("queues Add diff comments into the cline composer without sending them", async () => {
+		const onAddReviewComments = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="cline"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					onAddReviewComments={onAddReviewComments}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const diffProps = getLastMockFirstArg<MockedDiffViewerProps>(mockDiffViewerPanel);
+		expect(diffProps.onAddToTerminal).toBeTypeOf("function");
+
+		await act(async () => {
+			diffProps.onAddToTerminal?.("src/example.ts:4 | value\n> Add tests");
+		});
+
+		expect(onAddReviewComments).not.toHaveBeenCalled();
+		expect(mockClineAppendToDraft).toHaveBeenCalledWith("src/example.ts:4 | value\n> Add tests");
+	});
+
+	it("routes Send diff comments through the mounted cline panel", async () => {
+		const onSendReviewComments = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="cline"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					onSendReviewComments={onSendReviewComments}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const diffProps = getLastMockFirstArg<MockedDiffViewerProps>(mockDiffViewerPanel);
+		expect(diffProps.onSendToTerminal).toBeTypeOf("function");
+
+		await act(async () => {
+			diffProps.onSendToTerminal?.("src/example.ts:8 | done\n> Ship this");
+			await Promise.resolve();
+		});
+
+		expect(onSendReviewComments).not.toHaveBeenCalled();
+		expect(mockClineSendText).toHaveBeenCalledWith("src/example.ts:8 | done\n> Ship this");
 	});
 });

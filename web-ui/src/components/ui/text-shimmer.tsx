@@ -1,6 +1,6 @@
+import { motion, type UseInViewOptions, useInView } from "motion/react";
 import type React from "react";
 import { useMemo, useRef } from "react";
-import { motion, useInView, type UseInViewOptions } from "motion/react";
 import { cn } from "@/components/ui/cn";
 
 interface ShimmeringTextProps {
@@ -60,12 +60,12 @@ export function ShimmeringText({
 				} as React.CSSProperties
 			}
 			initial={{
-				backgroundPosition: "200% center",
+				backgroundPosition: "125% center",
 			}}
 			animate={
 				shouldAnimate
 					? {
-							backgroundPosition: "-50% center",
+							backgroundPosition: "-25% center",
 						}
 					: {}
 			}

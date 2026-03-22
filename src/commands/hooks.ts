@@ -973,6 +973,25 @@ async function runGeminiHookSubcommand(): Promise<void> {
 	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
 }
 
+export function buildCodexWrapperChildArgs(agentArgs: string[], shouldWatchSessionLog: boolean): string[] {
+	const childArgs = [...agentArgs];
+	if (shouldWatchSessionLog) {
+		return childArgs;
+	}
+	const reviewNotifyCommandParts = buildKanbanCommandParts([
+		"hooks",
+		"notify",
+		"--event",
+		"to_review",
+		"--source",
+		"codex",
+	]);
+	const notifyConfig = `notify=${JSON.stringify(reviewNotifyCommandParts)}`;
+	childArgs.unshift(notifyConfig);
+	childArgs.unshift("-c");
+	return childArgs;
+}
+
 async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise<void> {
 	const childEnv: NodeJS.ProcessEnv = { ...process.env };
 	let shuttingDown = false;
@@ -1009,16 +1028,7 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 		}
 	}
 
-	const reviewNotifyCommandParts = buildKanbanCommandParts([
-		"hooks",
-		"notify",
-		"--event",
-		"to_review",
-		"--source",
-		"codex",
-	]);
-	const notifyConfig = `notify=${JSON.stringify(reviewNotifyCommandParts)}`;
-	const child = spawn(wrapperArgs.realBinary, ["-c", notifyConfig, ...wrapperArgs.agentArgs], {
+	const child = spawn(wrapperArgs.realBinary, buildCodexWrapperChildArgs(wrapperArgs.agentArgs, shouldWatchSessionLog), {
 		stdio: "inherit",
 		env: childEnv,
 	});

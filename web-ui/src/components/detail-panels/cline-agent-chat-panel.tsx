@@ -1,28 +1,41 @@
 // Layout component for the native Cline chat panel.
 // Rendering lives here, while session state and action wiring come from the
 // controller hook so multiple surfaces can share the same behavior.
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import React, { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 
 import { ClineChatComposer } from "@/components/detail-panels/cline-chat-composer";
 import { ClineChatMessageItem } from "@/components/detail-panels/cline-chat-message-item";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ShimmeringText } from "@/components/ui/text-shimmer";
-import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
+import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import type { RuntimeConfigResponse, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { TaskImage } from "@/types";
 
 const BOTTOM_LOCK_THRESHOLD_PX = 24;
 
 const ThinkingShimmer = React.memo(function ThinkingShimmer() {
 	return (
 		<div className="px-1.5">
-			<ShimmeringText text="Thinking..." className="text-sm" duration={2.5} spread={5} repeatDelay={1.2} startOnView={false} />
+			<ShimmeringText
+				text="Thinking..."
+				className="text-sm"
+				duration={2.5}
+				spread={5}
+				repeatDelay={0}
+				startOnView={false}
+			/>
 		</div>
 	);
 });
+
+export interface ClineAgentChatPanelHandle {
+	appendToDraft: (text: string) => void;
+	sendText: (text: string) => Promise<void>;
+}
 
 export interface ClineAgentChatPanelProps {
 	taskId: string;
@@ -38,7 +51,7 @@ export interface ClineAgentChatPanelProps {
 	onSendMessage?: (
 		taskId: string,
 		text: string,
-		options?: { mode?: RuntimeTaskSessionMode },
+		options?: { mode?: RuntimeTaskSessionMode; images?: TaskImage[] },
 	) => Promise<ClineChatActionResult>;
 	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
@@ -55,7 +68,7 @@ export interface ClineAgentChatPanelProps {
 	showMoveToTrash?: boolean;
 }
 
-export function ClineAgentChatPanel({
+export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, ClineAgentChatPanelProps>(function ClineAgentChatPanel({
 	taskId,
 	summary,
 	taskColumnId = "in_progress",
@@ -80,7 +93,9 @@ export function ClineAgentChatPanel({
 	onCancelAutomaticAction,
 	cancelAutomaticActionLabel,
 	showMoveToTrash = false,
-}: ClineAgentChatPanelProps): ReactElement {
+},
+ref,
+): ReactElement {
 	const {
 		draft,
 		setDraft,
@@ -93,6 +108,7 @@ export function ClineAgentChatPanel({
 		showAgentProgressIndicator,
 		showActionFooter,
 		showCancelAutomaticAction,
+		handleSendText,
 		handleSendDraft,
 		handleCancelTurn,
 	} = useClineChatPanelController({
@@ -116,6 +132,7 @@ export function ClineAgentChatPanel({
 	const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 	const [isSavingModel, setIsSavingModel] = useState(false);
 	const [mode, setMode] = useState<RuntimeTaskSessionMode>(defaultMode);
+	const [draftImages, setDraftImages] = useState<TaskImage[]>([]);
 	const clineSettings = useRuntimeSettingsClineController({
 		open: true,
 		workspaceId,
@@ -130,6 +147,11 @@ export function ClineAgentChatPanel({
 				label: model.name,
 			})),
 		[clineSettings.providerModels],
+	);
+
+	const selectedModel = useMemo(
+		() => clineSettings.providerModels.find((model) => model.id === clineSettings.modelId) ?? null,
+		[clineSettings.modelId, clineSettings.providerModels],
 	);
 
 	const selectedModelButtonText = useMemo(() => {
@@ -148,6 +170,10 @@ export function ClineAgentChatPanel({
 	}, [clineSettings.isLoadingProviderModels, clineSettings.modelId, isSavingModel, modelOptions]);
 
 	const panelError = composerError ?? error;
+	const attachmentWarningMessage =
+		draftImages.length > 0 && selectedModel?.supportsVision === false
+			? "The selected Cline model may not accept image input. Choose a vision-capable model to use these images."
+			: null;
 
 	const isPinnedToBottom = useCallback((container: HTMLDivElement): boolean => {
 		const remainingDistance = container.scrollHeight - container.scrollTop - container.clientHeight;
@@ -171,7 +197,14 @@ export function ClineAgentChatPanel({
 			return;
 		}
 		container.scrollTop = container.scrollHeight;
-	}, [isAutoScrollEnabled, messages, showAgentProgressIndicator, showActionFooter, showReviewActions, showCancelAutomaticAction]);
+	}, [
+		isAutoScrollEnabled,
+		messages,
+		showAgentProgressIndicator,
+		showActionFooter,
+		showReviewActions,
+		showCancelAutomaticAction,
+	]);
 
 	useEffect(() => {
 		setComposerError(null);
@@ -183,6 +216,7 @@ export function ClineAgentChatPanel({
 
 	useEffect(() => {
 		setMode(defaultMode);
+		setDraftImages([]);
 	}, [defaultMode, taskId]);
 
 	const persistSelectedModel = useCallback(
@@ -225,6 +259,46 @@ export function ClineAgentChatPanel({
 		[clineSettings.modelId, clineSettings.setModelId, persistSelectedModel],
 	);
 
+	const handleAppendToDraft = useCallback(
+		(text: string) => {
+			const trimmed = text.trim();
+			if (trimmed.length === 0) {
+				return;
+			}
+			if (draft.trim().length === 0) {
+				setDraft(trimmed);
+				return;
+			}
+			setDraft(`${draft.trimEnd()}\n\n${trimmed}`);
+		},
+		[draft, setDraft],
+	);
+
+	const handleSendComposerText = useCallback(
+		async (text: string): Promise<void> => {
+			if (isSavingModel) {
+				return;
+			}
+			if (clineSettings.hasUnsavedChanges) {
+				const saved = await persistSelectedModel();
+				if (!saved) {
+					return;
+				}
+			}
+			await handleSendText(text, mode);
+		},
+		[clineSettings.hasUnsavedChanges, handleSendText, isSavingModel, mode, persistSelectedModel],
+	);
+
+	useImperativeHandle(
+		ref,
+		() => ({
+			appendToDraft: handleAppendToDraft,
+			sendText: handleSendComposerText,
+		}),
+		[handleAppendToDraft, handleSendComposerText],
+	);
+
 	const handleComposerSend = useCallback(async () => {
 		if (isSavingModel) {
 			return;
@@ -235,8 +309,11 @@ export function ClineAgentChatPanel({
 				return;
 			}
 		}
-		await handleSendDraft(mode);
-	}, [clineSettings.hasUnsavedChanges, handleSendDraft, isSavingModel, mode, persistSelectedModel]);
+		const sent = await handleSendDraft(mode, draftImages);
+		if (sent) {
+			setDraftImages([]);
+		}
+	}, [clineSettings.hasUnsavedChanges, draftImages, handleSendDraft, isSavingModel, mode, persistSelectedModel]);
 
 	return (
 		<div
@@ -248,17 +325,23 @@ export function ClineAgentChatPanel({
 				className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3"
 				onScroll={handleMessageListScroll}
 			>
-				{messages.map((message) => <ClineChatMessageItem key={message.id} message={message} />)}
+				{messages.map((message) => (
+					<ClineChatMessageItem key={message.id} message={message} />
+				))}
 				{showAgentProgressIndicator ? <ThinkingShimmer /> : null}
 			</div>
 			{panelError ? (
-				<div className="border-t border-status-red/30 bg-status-red/10 px-2 py-2 text-xs text-status-red">{panelError}</div>
+				<div className="border-t border-status-red/30 bg-status-red/10 px-2 py-2 text-xs text-status-red">
+					{panelError}
+				</div>
 			) : null}
 			<div className="px-2 py-3">
 				<ClineChatComposer
 					taskId={taskId}
 					draft={draft}
 					onDraftChange={setDraft}
+					images={draftImages}
+					onImagesChange={setDraftImages}
 					placeholder={composerPlaceholder}
 					mode={mode}
 					onModeChange={setMode}
@@ -276,6 +359,7 @@ export function ClineAgentChatPanel({
 					modelPickerDisabled={isSavingModel || clineSettings.providerId.trim().length === 0}
 					isSending={isSavingModel || isSending}
 					warningMessage={summary?.warningMessage ?? null}
+					attachmentWarningMessage={attachmentWarningMessage}
 				/>
 			</div>
 			{showActionFooter ? (
@@ -314,4 +398,6 @@ export function ClineAgentChatPanel({
 			) : null}
 		</div>
 	);
-}
+});
+
+ClineAgentChatPanel.displayName = "ClineAgentChatPanel";

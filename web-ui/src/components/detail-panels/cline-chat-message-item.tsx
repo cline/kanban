@@ -2,6 +2,7 @@ import { type ReactElement, useMemo, useState } from "react";
 import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 
 import { ClineMarkdownContent } from "@/components/detail-panels/cline-markdown-content";
+import { TaskImageStrip } from "@/components/task-image-strip";
 import {
 	formatToolInputForDisplay,
 	getToolSummary,
@@ -139,9 +140,12 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 		return <ReasoningMessageBlock message={message} />;
 	}
 	if (message.role === "user") {
+		const hasText = message.content.trim().length > 0;
+		const hasImages = Boolean(message.images && message.images.length > 0);
 		return (
-			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm whitespace-pre-wrap text-text-primary">
-				{normalizeUserInput(message.content)}
+			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm text-text-primary">
+				{hasText ? <div className="whitespace-pre-wrap">{normalizeUserInput(message.content)}</div> : null}
+				{hasImages ? <TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} /> : null}
 			</div>
 		);
 	}

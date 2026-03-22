@@ -6,7 +6,7 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract.js";
-import { lockedFileSystem } from "../fs/locked-file-system.js";
+import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
 import { getRuntimeHomePath, loadWorkspaceContext } from "../state/workspace-state.js";
 import {
 	getWorkspaceFolderLabelForWorktreePath,
@@ -18,6 +18,7 @@ import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from
 const KANBAN_MANAGED_EXCLUDE_BLOCK_START = "# kanban-managed-symlinked-ignored-paths:start";
 const KANBAN_MANAGED_EXCLUDE_BLOCK_END = "# kanban-managed-symlinked-ignored-paths:end";
 const KANBAN_TRASHED_TASK_PATCHES_DIR_NAME = "trashed-task-patches";
+const KANBAN_TASK_WORKTREE_SETUP_LOCKFILE_NAME = "kanban-task-worktree-setup.lock";
 const TASK_PATCH_FILE_SUFFIX = ".patch";
 
 const SYMLINK_PATH_SEGMENT_BLACKLIST = new Set([
@@ -86,6 +87,28 @@ function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, errorMessage:
 	}
 
 	return `This repository does not have an initial commit yet, so Kanban cannot create a task worktree from base ref "${baseRef}". Create an initial commit, then try moving the task to in progress again.`;
+}
+
+async function tryRunGit(cwd: string, args: string[]): Promise<string | null> {
+	const result = await runGit(cwd, args);
+	return result.ok ? result.stdout : null;
+}
+
+async function getGitCommonDir(repoPath: string): Promise<string> {
+	const gitCommonDir = await getGitStdout(["rev-parse", "--git-common-dir"], repoPath);
+	return isAbsolute(gitCommonDir) ? gitCommonDir : join(repoPath, gitCommonDir);
+}
+
+async function getTaskWorktreeSetupLock(repoPath: string): Promise<LockRequest> {
+	return {
+		path: await getGitCommonDir(repoPath),
+		type: "directory",
+		lockfileName: KANBAN_TASK_WORKTREE_SETUP_LOCKFILE_NAME,
+	};
+}
+
+async function withTaskWorktreeSetupLock<T>(repoPath: string, operation: () => Promise<T>): Promise<T> {
+	return await lockedFileSystem.withLock(await getTaskWorktreeSetupLock(repoPath), operation);
 }
 
 function getWorktreesRootPath(taskId: string): string {
@@ -424,72 +447,86 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			};
 		}
 
-		const requestedBaseRef = options.baseRef.trim();
-		if (!requestedBaseRef) {
-			return {
-				ok: false,
-				path: null,
-				baseRef: requestedBaseRef,
-				baseCommit: null,
-				error: "Task base branch is required for worktree creation.",
-			};
-		}
+		return await withTaskWorktreeSetupLock(context.repoPath, async () => {
+			const lockedExistingCommit = await tryRunGit(worktreePath, ["rev-parse", "HEAD"]);
+			if (lockedExistingCommit) {
+				await syncIgnoredPathsIntoWorktree(context.repoPath, worktreePath);
+				return {
+					ok: true,
+					path: worktreePath,
+					baseRef: options.baseRef.trim(),
+					baseCommit: lockedExistingCommit,
+				};
+			}
 
-		const baseRefResult = await runGit(context.repoPath, ["rev-parse", "--verify", `${requestedBaseRef}^{commit}`]);
-		if (!baseRefResult.ok) {
-			return {
-				ok: false,
-				path: null,
-				baseRef: requestedBaseRef,
-				baseCommit: null,
-				error: getWorktreeBaseRefResolutionErrorMessage(requestedBaseRef, baseRefResult.stderr || baseRefResult.output),
-			};
-		}
-		const requestedBaseCommit = baseRefResult.stdout;
-
-		const storedPatch = await findTaskPatch(taskId);
-		let baseCommit = storedPatch?.commit ?? requestedBaseCommit;
-		let warning: string | undefined;
-
-		if (await pathExists(worktreePath)) {
-			await removeTaskWorktreeInternal(context.repoPath, worktreePath);
-		}
-
-		await mkdir(dirname(worktreePath), { recursive: true });
-		const addResult = await runGit(context.repoPath, ["worktree", "add", "--detach", worktreePath, baseCommit]);
-		if (!addResult.ok) {
-			if (!storedPatch) {
+			const requestedBaseRef = options.baseRef.trim();
+			if (!requestedBaseRef) {
 				return {
 					ok: false,
 					path: null,
 					baseRef: requestedBaseRef,
 					baseCommit: null,
-					error: addResult.stderr || addResult.output,
+					error: "Task base branch is required for worktree creation.",
 				};
 			}
 
-			baseCommit = requestedBaseCommit;
-			warning = "Could not restore the saved task patch onto its original commit. Started from the task base ref instead.";
-			await getGitStdout(["worktree", "add", "--detach", worktreePath, baseCommit], context.repoPath);
-		}
-		await prepareNewTaskWorktree(context.repoPath, worktreePath);
-
-		if (storedPatch && baseCommit === storedPatch.commit) {
-			try {
-				await applyTaskPatch(storedPatch.path, worktreePath);
-				await rm(storedPatch.path, { force: true });
-			} catch (error) {
-				warning = `Saved task changes could not be reapplied automatically. ${getGitCommandErrorMessage(error)}`;
+			const baseRefResult = await runGit(context.repoPath, ["rev-parse", "--verify", `${requestedBaseRef}^{commit}`]);
+			if (!baseRefResult.ok) {
+				return {
+					ok: false,
+					path: null,
+					baseRef: requestedBaseRef,
+					baseCommit: null,
+					error: getWorktreeBaseRefResolutionErrorMessage(requestedBaseRef, baseRefResult.stderr || baseRefResult.output),
+				};
 			}
-		}
+			const requestedBaseCommit = baseRefResult.stdout;
 
-		return {
-			ok: true,
-			path: worktreePath,
-			baseRef: requestedBaseRef,
-			baseCommit,
-			warning,
-		};
+			const storedPatch = await findTaskPatch(taskId);
+			let baseCommit = storedPatch?.commit ?? requestedBaseCommit;
+			let warning: string | undefined;
+
+			if (await pathExists(worktreePath)) {
+				await removeTaskWorktreeInternal(context.repoPath, worktreePath);
+			}
+
+			await mkdir(dirname(worktreePath), { recursive: true });
+			const addResult = await runGit(context.repoPath, ["worktree", "add", "--detach", worktreePath, baseCommit]);
+			if (!addResult.ok) {
+				if (!storedPatch) {
+					return {
+						ok: false,
+						path: null,
+						baseRef: requestedBaseRef,
+						baseCommit: null,
+						error: addResult.stderr || addResult.output,
+					};
+				}
+
+				baseCommit = requestedBaseCommit;
+				warning =
+					"Could not restore the saved task patch onto its original commit. Started from the task base ref instead.";
+				await getGitStdout(["worktree", "add", "--detach", worktreePath, baseCommit], context.repoPath);
+			}
+			await prepareNewTaskWorktree(context.repoPath, worktreePath);
+
+			if (storedPatch && baseCommit === storedPatch.commit) {
+				try {
+					await applyTaskPatch(storedPatch.path, worktreePath);
+					await rm(storedPatch.path, { force: true });
+				} catch (error) {
+					warning = `Saved task changes could not be reapplied automatically. ${getGitCommandErrorMessage(error)}`;
+				}
+			}
+
+			return {
+				ok: true,
+				path: worktreePath,
+				baseRef: requestedBaseRef,
+				baseCommit,
+				warning,
+			};
+		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {

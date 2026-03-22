@@ -20,6 +20,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
+import { isMacPlatform, modifierKeyLabel, optionKeyLabel } from "@/utils/platform";
 
 const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 600;
@@ -354,10 +355,8 @@ export function ProjectNavigationPanel({
 	);
 }
 
-const isMac =
-	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
-const MOD = isMac ? "\u2318" : "Ctrl";
-const ALT = isMac ? "\u2325" : "Alt";
+const MOD = isMacPlatform ? "⌘" : modifierKeyLabel;
+const ALT = optionKeyLabel;
 
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },

@@ -19,6 +19,8 @@ const MATCHED_TEXT_STYLE_SELECTED = {
 } as const;
 const HEAD_BADGE_BACKGROUND = "color-mix(in srgb, var(--color-status-blue) 15%, transparent)";
 const HEAD_BADGE_BACKGROUND_SELECTED = "color-mix(in srgb, white 18%, transparent)";
+const isMacPlatform =
+	typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
 function AheadBehindIndicator({
 	ahead,
@@ -113,6 +115,7 @@ export function GitRefsPanel({
 	const isHeadBranchSelected =
 		!isWorkingCopySelected &&
 		(selectedRefName === headBranch?.name || (selectedRefName === null && headBranch?.isHead === true));
+	const closeShortcutLabel = isMacPlatform ? "Command G" : "Control G";
 
 	return (
 		<div
@@ -147,9 +150,8 @@ export function GitRefsPanel({
 				<Tooltip
 					content={
 						<div style={{ maxWidth: 260, whiteSpace: "normal", lineHeight: 1.4 }}>
-							Press Esc, use Cmd/Ctrl+G, or click the branch button in the navbar to close this view.
-							 Double-click a branch to switch the workspace branch. Remote refs show fetched upstream positions
-							 and can be opened to inspect incoming commits.
+							<div>Use {closeShortcutLabel} to close, or Escape to close, or click the button in the branch menu to close.</div>
+							<div>Double-click a branch to switch to that branch.</div>
 						</div>
 					}
 					side="bottom"

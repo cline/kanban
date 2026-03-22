@@ -1,7 +1,7 @@
 // Owns the live SDK session host plus taskId to sessionId bindings.
 // This is the runtime-facing layer for starting, looking up, resuming, and
 // stopping native Cline sessions without exposing SDK details upstream.
-import type { RuntimeTaskSessionMode } from "../core/api-contract.js";
+import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../core/api-contract.js";
 import {
 	createClineMcpRuntimeService,
 	type ClineMcpRuntimeService,
@@ -19,10 +19,28 @@ import {
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 3;
 
+function toSdkUserImages(images?: RuntimeTaskImage[]): string[] | undefined {
+	if (!images || images.length === 0) {
+		return undefined;
+	}
+	const userImages = images
+		.map((image) => {
+			const mimeType = image.mimeType.trim();
+			const data = image.data.trim();
+			if (!mimeType || !data) {
+				return null;
+			}
+			return `data:${mimeType};base64,${data}`;
+		})
+		.filter((image): image is string => image !== null);
+	return userImages.length > 0 ? userImages : undefined;
+}
+
 export interface StartClineSessionRuntimeRequest {
 	taskId: string;
 	cwd: string;
 	prompt: string;
+	images?: RuntimeTaskImage[];
 	providerId: string;
 	modelId: string;
 	mode?: RuntimeTaskSessionMode;
@@ -46,7 +64,7 @@ export interface ClinePersistedTaskSessionSnapshot {
 
 export interface ClineSessionRuntime {
 	startTaskSession(request: StartClineSessionRuntimeRequest): Promise<StartClineSessionRuntimeResult>;
-	sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown>;
+	sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]): Promise<unknown>;
 	resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	stopTaskSession(taskId: string): Promise<void>;
 	abortTaskSession(taskId: string): Promise<void>;
@@ -117,6 +135,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 				},
 				prompt: request.prompt,
 				interactive: true,
+				userImages: toSdkUserImages(request.images),
 				userInstructionWatcher: request.userInstructionWatcher,
 				requestToolApproval: request.requestToolApproval,
 			});
@@ -136,7 +155,12 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		};
 	}
 
-	async sendTaskSessionInput(taskId: string, prompt: string, mode?: RuntimeTaskSessionMode): Promise<unknown> {
+	async sendTaskSessionInput(
+		taskId: string,
+		prompt: string,
+		mode?: RuntimeTaskSessionMode,
+		images?: RuntimeTaskImage[],
+	): Promise<unknown> {
 		const sessionId = this.sessionIdByTaskId.get(taskId);
 		if (!sessionId) {
 			throw new Error(`No active Cline session for task ${taskId}.`);
@@ -148,6 +172,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		return await sessionHost.send({
 			sessionId,
 			prompt,
+			userImages: toSdkUserImages(images),
 		});
 	}
 

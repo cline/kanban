@@ -12,7 +12,7 @@ import {
 	Plus,
 	X,
 } from "lucide-react";
-import type { ReactElement } from "react";
+import type { Dispatch, ReactElement, SetStateAction } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
@@ -21,7 +21,9 @@ import { BranchSelectDropdown } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import type { TaskAutoReviewMode } from "@/types";
+import type { TaskAutoReviewMode, TaskImage } from "@/types";
+import { pasteShortcutLabel } from "@/utils/platform";
+
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
@@ -67,6 +69,8 @@ export function TaskCreateDialog({
 	onOpenChange,
 	prompt,
 	onPromptChange,
+	images,
+	onImagesChange,
 	onCreate,
 	onCreateAndStart,
 	onCreateMultiple,
@@ -87,6 +91,8 @@ export function TaskCreateDialog({
 	onOpenChange: (open: boolean) => void;
 	prompt: string;
 	onPromptChange: (value: string) => void;
+	images: TaskImage[];
+	onImagesChange: Dispatch<SetStateAction<TaskImage[]>>;
 	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
@@ -192,12 +198,13 @@ export function TaskCreateDialog({
 
 	const resetForCreateMore = useCallback(() => {
 		onPromptChange("");
+		onImagesChange([]);
 		setMode("single");
 		setTaskPrompts([]);
 		inputRefs.current = [];
 		nextFocusIndexRef.current = null;
 		setComposerResetKey((current) => current + 1);
-	}, [onPromptChange]);
+	}, [onImagesChange, onPromptChange]);
 
 	const handleCreateSingle = useCallback(() => {
 		const createdTaskId = onCreate({ keepDialogOpen: createMore });
@@ -314,15 +321,18 @@ export function TaskCreateDialog({
 							key={composerResetKey}
 							value={prompt}
 							onValueChange={onPromptChange}
+							images={images}
+							onImagesChange={onImagesChange}
 							onSubmit={handleCreateSingle}
 							onSubmitAndStart={handleCreateAndStartSingle}
 							placeholder="Describe the task..."
 							autoFocus
 							workspaceId={workspaceId}
+							showAttachImageButton={false}
 						/>
 						<div className="flex items-center justify-between mt-1.5">
 							<p className="text-[11px] text-text-tertiary">
-								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference files.
+								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference files, and <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to paste images.
 							</p>
 							<button
 								type="button"
@@ -395,7 +405,7 @@ export function TaskCreateDialog({
 							checked={startInPlanMode}
 							onCheckedChange={(checked) => onStartInPlanModeChange(checked === true)}
 							disabled={startInPlanModeDisabled}
-							className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:opacity-40"
+							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
 						>
 							<RadixCheckbox.Indicator>
 								<Check size={10} className="text-white" />
@@ -425,7 +435,7 @@ export function TaskCreateDialog({
 								id={autoReviewEnabledId}
 								checked={autoReviewEnabled}
 								onCheckedChange={(checked) => onAutoReviewEnabledChange(checked === true)}
-								className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+								className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
 							>
 								<RadixCheckbox.Indicator>
 									<Check size={10} className="text-white" />

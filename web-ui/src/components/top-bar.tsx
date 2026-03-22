@@ -27,6 +27,7 @@ import {
 } from "@/stores/workspace-metadata-store";
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 import { formatPathForDisplay } from "@/utils/path-display";
+import { isMacPlatform } from "@/utils/platform";
 
 type SettingsSection = "shortcuts";
 
@@ -272,8 +273,6 @@ export function TopBar({
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
 	const hasAbsoluteLeadingSlash = Boolean(displayWorkspacePath?.startsWith("/"));
-	const isMacPlatform =
-		typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 	const handleAddShortcut = () => {
 		onOpenSettings?.("shortcuts");
 	};

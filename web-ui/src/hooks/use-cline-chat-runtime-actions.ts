@@ -4,7 +4,7 @@
 import { useCallback } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeTaskChatMessage, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskChatMessage, RuntimeTaskImage, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
 
 export interface ClineChatActionResult {
 	ok: boolean;
@@ -14,6 +14,7 @@ export interface ClineChatActionResult {
 
 export interface SendClineChatMessageOptions {
 	mode?: RuntimeTaskSessionMode;
+	images?: RuntimeTaskImage[];
 }
 
 interface UseClineChatRuntimeActionsInput {
@@ -49,6 +50,7 @@ export function useClineChatRuntimeActions({
 				const payload = await getRuntimeTrpcClient(currentProjectId).runtime.sendTaskChatMessage.mutate({
 					taskId,
 					text,
+					...(options?.images && options.images.length > 0 ? { images: options.images } : {}),
 					...(options?.mode ? { mode: options.mode } : {}),
 				});
 				if (!payload.ok) {
