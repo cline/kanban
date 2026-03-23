@@ -205,40 +205,45 @@ export function buildUnifiedDiffRows(oldText: string | null | undefined, newText
 			const addedLines = toLines(nextChange.value);
 			const pairCount = Math.max(removedLines.length, addedLines.length);
 
+			const removedRows: UnifiedDiffRow[] = [];
+			const addedRows: UnifiedDiffRow[] = [];
+			let localOldLine = oldLine;
+			let localNewLine = newLine;
+
 			for (let pairIndex = 0; pairIndex < pairCount; pairIndex += 1) {
 				const removedLine = removedLines[pairIndex];
 				const addedLine = addedLines[pairIndex];
 
 				if (removedLine != null && addedLine != null) {
 					const { oldSegments, newSegments } = buildModifiedSegments(removedLine, addedLine);
-					rows.push({
-						key: `m-old-${oldLine}-${newLine}`,
-						lineNumber: oldLine,
+					removedRows.push({
+						key: `m-old-${localOldLine}-${localNewLine}`,
+						lineNumber: localOldLine,
 						variant: "removed",
 						text: removedLine,
 						segments: oldSegments,
 					});
-					rows.push({
-						key: `m-new-${oldLine}-${newLine}`,
-						lineNumber: newLine,
+					addedRows.push({
+						key: `m-new-${localOldLine}-${localNewLine}`,
+						lineNumber: localNewLine,
 						variant: "added",
 						text: addedLine,
 						segments: newSegments,
 					});
-					oldLine += 1;
-					newLine += 1;
-					continue;
-				}
-				if (removedLine != null) {
-					rows.push({ key: `o-${oldLine}`, lineNumber: oldLine, variant: "removed", text: removedLine });
-					oldLine += 1;
-					continue;
-				}
-				if (addedLine != null) {
-					rows.push({ key: `n-${newLine}`, lineNumber: newLine, variant: "added", text: addedLine });
-					newLine += 1;
+					localOldLine += 1;
+					localNewLine += 1;
+				} else if (removedLine != null) {
+					removedRows.push({ key: `o-${localOldLine}`, lineNumber: localOldLine, variant: "removed", text: removedLine });
+					localOldLine += 1;
+				} else if (addedLine != null) {
+					addedRows.push({ key: `n-${localNewLine}`, lineNumber: localNewLine, variant: "added", text: addedLine });
+					localNewLine += 1;
 				}
 			}
+
+			rows.push(...removedRows, ...addedRows);
+			oldLine = localOldLine;
+			newLine = localNewLine;
 			index += 1;
 			continue;
 		}
@@ -301,7 +306,61 @@ export function parsePatchToRows(patch: string): UnifiedDiffRow[] {
 			newLine++;
 		}
 	}
-	return rows;
+	return enrichRowsWithInlineSegments(rows);
+}
+
+/**
+ * Post-process rows to add word-level inline diff segments for adjacent
+ * removed/added blocks (e.g. rows parsed from a git patch which lack them).
+ */
+function enrichRowsWithInlineSegments(rows: UnifiedDiffRow[]): UnifiedDiffRow[] {
+	const result: UnifiedDiffRow[] = [];
+	let index = 0;
+
+	while (index < rows.length) {
+		const row = rows[index]!;
+		if (row.variant !== "removed") {
+			result.push(row);
+			index += 1;
+			continue;
+		}
+
+		// Collect contiguous removed rows
+		const removedStart = index;
+		while (index < rows.length && rows[index]!.variant === "removed") {
+			index += 1;
+		}
+		const removedBlock = rows.slice(removedStart, index);
+
+		// Collect contiguous added rows immediately following
+		const addedStart = index;
+		while (index < rows.length && rows[index]!.variant === "added") {
+			index += 1;
+		}
+		const addedBlock = rows.slice(addedStart, index);
+
+		if (addedBlock.length === 0) {
+			// Pure deletion — no pairing possible
+			result.push(...removedBlock);
+			continue;
+		}
+
+		// Pair positionally and compute inline segments
+		const pairCount = Math.min(removedBlock.length, addedBlock.length);
+		for (let pi = 0; pi < pairCount; pi += 1) {
+			const removedRow = removedBlock[pi]!;
+			const addedRow = addedBlock[pi]!;
+			if (!removedRow.segments && !addedRow.segments) {
+				const { oldSegments, newSegments } = buildModifiedSegments(removedRow.text, addedRow.text);
+				removedBlock[pi] = { ...removedRow, segments: oldSegments };
+				addedBlock[pi] = { ...addedRow, segments: newSegments };
+			}
+		}
+
+		result.push(...removedBlock, ...addedBlock);
+	}
+
+	return result;
 }
 
 export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Record<string, boolean>): DiffDisplayItem[] {

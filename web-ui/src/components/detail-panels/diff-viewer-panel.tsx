@@ -269,25 +269,38 @@ function pairRowsForSplit(rows: UnifiedDiffRow[]): SplitDiffRowPair[] {
 			index += 1;
 			continue;
 		}
-		const nextRow = rows[index + 1];
-		if (row.variant === "removed" && nextRow?.variant === "added") {
-			pairs.push({
-				key: `pair-${row.key}-${nextRow.key}`,
-				left: row,
-				right: nextRow,
-			});
-			index += 2;
-			continue;
-		}
+
 		if (row.variant === "removed") {
-			pairs.push({
-				key: `pair-left-${row.key}`,
-				left: row,
-				right: null,
-			});
-			index += 1;
+			// Collect contiguous removed block
+			const removedStart = index;
+			while (index < rows.length && rows[index]!.variant === "removed") {
+				index += 1;
+			}
+			const removedBlock = rows.slice(removedStart, index);
+
+			// Collect contiguous added block immediately following
+			const addedStart = index;
+			while (index < rows.length && rows[index]!.variant === "added") {
+				index += 1;
+			}
+			const addedBlock = rows.slice(addedStart, index);
+
+			// Pair positionally
+			const pairCount = Math.max(removedBlock.length, addedBlock.length);
+			for (let pi = 0; pi < pairCount; pi += 1) {
+				const left = removedBlock[pi] ?? null;
+				const right = addedBlock[pi] ?? null;
+				const key =
+					left && right
+						? `pair-${left.key}-${right.key}`
+						: left
+							? `pair-left-${left.key}`
+							: `pair-right-${right!.key}`;
+				pairs.push({ key, left, right });
+			}
 			continue;
 		}
+
 		if (row.variant === "added") {
 			pairs.push({
 				key: `pair-right-${row.key}`,
