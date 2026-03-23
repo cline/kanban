@@ -1,6 +1,6 @@
 import { Draggable } from "@hello-pangea/dnd";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
-import { GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -138,7 +138,7 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		};
 	}
 	if (activityText) {
-		let dotColor: string = SESSION_ACTIVITY_COLOR.thinking;
+		let dotColor: string = summary.state === "failed" ? SESSION_ACTIVITY_COLOR.error : SESSION_ACTIVITY_COLOR.thinking;
 		let text = activityText;
 		const toolCallLabel = resolveToolCallLabel(activityText, toolName, toolInputSummary);
 		if (toolCallLabel) {
@@ -165,6 +165,10 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 			return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
 		}
 		return { dotColor, text };
+	}
+	if (summary.state === "failed") {
+		const failedText = finalMessage ?? activityText ?? "Task failed to start";
+		return { dotColor: SESSION_ACTIVITY_COLOR.error, text: failedText };
 	}
 	if (summary.state === "awaiting_review") {
 		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Waiting for review" };
@@ -324,6 +328,9 @@ export function BoardCard({
 
 	const renderStatusMarker = () => {
 		if (columnId === "in_progress") {
+			if (sessionSummary?.state === "failed") {
+				return <AlertCircle size={12} className="text-status-red" />;
+			}
 			return <Spinner size={12} />;
 		}
 		return null;

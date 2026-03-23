@@ -159,7 +159,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 	}
 	const label = message.role === "status" ? "Status" : "System";
 	return (
-		<div className="max-w-[85%] rounded-md border border-border bg-surface-3/70 px-3 py-2 text-sm whitespace-pre-wrap text-text-secondary">
+		<div className="max-w-[85%] rounded-md border border-border bg-surface-3/70 px-3 py-2 text-sm whitespace-pre-wrap break-all text-text-secondary">
 			<div className="mb-1 text-xs uppercase tracking-wide text-text-tertiary">{label}</div>
 			{message.content}
 		</div>
