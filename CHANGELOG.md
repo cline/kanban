@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.34]
+
+- Model pickers now show recommended Cline models for quick selection
+- Failed tasks show a red error icon and failure reason on the board card instead of a spinner
+- When adding a project on a headless/remote runtime where no directory picker is available, you can now enter the project path manually
+- Fixed workspace not refreshing correctly on startup by waiting for the runtime snapshot before syncing
+- Fixed Kanban agent creating tasks for worktree paths instead of the main project
+
 ## [0.1.33]
 
 - Fixed task worktree setup for Turbopack projects no longer attempting slow background copies of node_modules; affected subproject dependencies are now correctly skipped instead of symlinked
