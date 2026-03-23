@@ -8,6 +8,7 @@ import {
 	CircleArrowDown,
 	Command,
 	GitBranch,
+	GitCompareArrows,
 	Plus,
 	Settings,
 	Terminal,
@@ -207,6 +208,45 @@ function TopBarGitStatusSection({
 	return null;
 }
 
+function DiffPanelToggleButton({
+	selectedTaskId,
+	isDiffPanelVisible,
+	onToggle,
+}: {
+	selectedTaskId: string | null;
+	isDiffPanelVisible: boolean;
+	onToggle: () => void;
+}): React.ReactElement {
+	const taskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedTaskId);
+	const additions = taskWorkspaceSnapshot?.additions ?? 0;
+	const deletions = taskWorkspaceSnapshot?.deletions ?? 0;
+	const hasChanges = additions > 0 || deletions > 0;
+
+	return (
+		<Tooltip side="bottom" content="Toggle diff panel">
+			<Button
+				variant={isDiffPanelVisible ? "default" : "ghost"}
+				size="sm"
+				icon={<GitCompareArrows size={14} />}
+				onClick={onToggle}
+				aria-label={isDiffPanelVisible ? "Hide diff panel" : "Show diff panel"}
+				className={cn(
+					"ml-2",
+					isDiffPanelVisible && "ring-1 ring-accent",
+					!isDiffPanelVisible && "kb-navbar-btn",
+				)}
+			>
+				{hasChanges ? (
+					<span className="font-mono text-xs whitespace-nowrap">
+						<span className="text-status-green">+{additions}</span>
+						<span className="text-status-red ml-1">-{deletions}</span>
+					</span>
+				) : null}
+			</Button>
+		</Tooltip>
+	);
+}
+
 export function TopBar({
 	onBack,
 	workspacePath,
@@ -223,6 +263,8 @@ export function TopBar({
 	onToggleTerminal,
 	isTerminalOpen,
 	isTerminalLoading,
+	onToggleDiffPanel,
+	isDiffPanelVisible,
 	onToggleGitHistory,
 	isGitHistoryOpen,
 	onOpenSettings,
@@ -254,6 +296,8 @@ export function TopBar({
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
+	onToggleDiffPanel?: () => void;
+	isDiffPanelVisible?: boolean;
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
@@ -441,40 +485,47 @@ export function TopBar({
 						</RadixPopover.Root>
 					</div>
 				) : null}
-				{onToggleTerminal ? (
-					<Tooltip
-						side="bottom"
-						content={
-							<span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-								<span>Toggle terminal</span>
-								<span className="inline-flex items-center gap-0.5 whitespace-nowrap">
-									<span>(</span>
-									{isMacPlatform ? <Command size={11} /> : <span>Ctrl</span>}
-									<span>+ J)</span>
-								</span>
-							</span>
-						}
-					>
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={<Terminal size={16} />}
-							onClick={onToggleTerminal}
-							disabled={Boolean(isTerminalLoading)}
-							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
-							className="ml-2"
-						/>
-					</Tooltip>
-				) : null}
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={<Settings size={16} />}
-					onClick={() => onOpenSettings?.()}
-					aria-label="Settings"
-					data-testid="open-settings-button"
-					className="ml-0.5 mr-0.5"
+			{onToggleDiffPanel ? (
+				<DiffPanelToggleButton
+					selectedTaskId={selectedTaskId ?? null}
+					isDiffPanelVisible={isDiffPanelVisible ?? true}
+					onToggle={onToggleDiffPanel}
 				/>
+			) : null}
+			{onToggleTerminal ? (
+				<Tooltip
+					side="bottom"
+					content={
+						<span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+							<span>Toggle terminal</span>
+							<span className="inline-flex items-center gap-0.5 whitespace-nowrap">
+								<span>(</span>
+								{isMacPlatform ? <Command size={11} /> : <span>Ctrl</span>}
+								<span>+ J)</span>
+							</span>
+						</span>
+					}
+				>
+					<Button
+						variant="ghost"
+						size="sm"
+						icon={<Terminal size={16} />}
+						onClick={onToggleTerminal}
+						disabled={Boolean(isTerminalLoading)}
+						aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
+						className="ml-2"
+					/>
+				</Tooltip>
+			) : null}
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={<Settings size={16} />}
+				onClick={() => onOpenSettings?.()}
+				aria-label="Settings"
+				data-testid="open-settings-button"
+				className="ml-0.5 mr-0.5"
+			/>
 			</div>
 		</nav>
 	);

@@ -81,6 +81,7 @@ export default function App(): ReactElement {
 	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [isDiffPanelVisible, setIsDiffPanelVisible] = useState(true);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
@@ -521,6 +522,9 @@ export default function App(): ReactElement {
 		setSettingsInitialSection(section ?? null);
 		setIsSettingsOpen(true);
 	}, []);
+	const handleToggleDiffPanel = useCallback(() => {
+		setIsDiffPanelVisible((current) => !current);
+	}, []);
 	const handleToggleGitHistory = useCallback(() => {
 		if (hasNoProjects) {
 			return;
@@ -781,12 +785,14 @@ export default function App(): ReactElement {
 									void runGitAction("push");
 								}
 					}
-					onToggleTerminal={
-						hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
-					}
-					isTerminalOpen={selectedCard ? isDetailTerminalOpen : showHomeBottomTerminal}
-					isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
-					onOpenSettings={handleOpenSettings}
+				onToggleDiffPanel={selectedCard ? handleToggleDiffPanel : undefined}
+				isDiffPanelVisible={isDiffPanelVisible}
+				onToggleTerminal={
+					hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
+				}
+				isTerminalOpen={selectedCard ? isDetailTerminalOpen : showHomeBottomTerminal}
+				isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
+				onOpenSettings={handleOpenSettings}
 					shortcuts={shortcuts}
 					selectedShortcutLabel={selectedShortcutLabel}
 					onSelectShortcutLabel={handleSelectShortcutLabel}
@@ -983,8 +989,9 @@ export default function App(): ReactElement {
 								onBottomTerminalSendAgentCommand={handleSendAgentCommandToDetailTerminal}
 								isBottomTerminalExpanded={isDetailTerminalExpanded}
 								onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
-								isDocumentVisible={isDocumentVisible}
-								onClineSettingsSaved={refreshRuntimeProjectConfig}
+							isDiffPanelVisible={isDiffPanelVisible}
+							isDocumentVisible={isDocumentVisible}
+							onClineSettingsSaved={refreshRuntimeProjectConfig}
 							/>
 						</div>
 					) : null}

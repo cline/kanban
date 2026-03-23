@@ -234,6 +234,7 @@ export function CardDetailView({
 	onBottomTerminalSendAgentCommand,
 	isBottomTerminalExpanded,
 	onBottomTerminalToggleExpand,
+	isDiffPanelVisible = true,
 	isDocumentVisible = true,
 	onClineSettingsSaved,
 }: {
@@ -293,6 +294,7 @@ export function CardDetailView({
 	onBottomTerminalSendAgentCommand?: () => void;
 	isBottomTerminalExpanded?: boolean;
 	onBottomTerminalToggleExpand?: () => void;
+	isDiffPanelVisible?: boolean;
 	isDocumentVisible?: boolean;
 	onClineSettingsSaved?: () => void;
 }): React.ReactElement {
@@ -400,7 +402,8 @@ export function CardDetailView({
 	const emptyDiffTitle = diffMode === "last_turn" ? "No changes since last turn" : "No working changes";
 	const agentPanelPercent = `${(agentPanelRatio * 100).toFixed(1)}%`;
 	const diffPanelPercent = `${((1 - agentPanelRatio) * 100).toFixed(1)}%`;
-	const fileTreePanelFlex = `0 0 ${isDiffExpanded ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
+	const isDiffFullscreen = isDiffExpanded && isDiffPanelVisible;
+	const fileTreePanelFlex = `0 0 ${isDiffFullscreen ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const showClineAgentChatPanel = isNativeClineAgentSelected(selectedAgentId);
@@ -532,7 +535,7 @@ export function CardDetailView({
 				background: "var(--color-surface-0)",
 			}}
 		>
-			{!isDiffExpanded ? (
+			{!isDiffFullscreen ? (
 				<ColumnContextPanel
 					selection={selection}
 					workspacePath={workspacePath}
@@ -559,7 +562,7 @@ export function CardDetailView({
 				style={{
 					display: "flex",
 					flexDirection: "column",
-					width: isDiffExpanded ? "100%" : "80%",
+					width: isDiffFullscreen ? "100%" : "80%",
 					minWidth: 0,
 					minHeight: 0,
 					overflow: "hidden",
@@ -569,10 +572,15 @@ export function CardDetailView({
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
 				) : (
 					<>
-						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
-							<div
-								style={{ display: isDiffExpanded ? "none" : "flex", width: agentPanelPercent, minWidth: 0, minHeight: 0 }}
-							>
+					<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+						<div
+							style={{
+								display: isDiffFullscreen ? "none" : "flex",
+								width: isDiffPanelVisible ? agentPanelPercent : "100%",
+								minWidth: 0,
+								minHeight: 0,
+							}}
+						>
 									{showClineAgentChatPanel ? (
 										<ClineAgentChatPanel
 											ref={clineAgentChatPanelRef}
@@ -639,41 +647,42 @@ export function CardDetailView({
 										/>
 									)}
 								</div>
-							{!isDiffExpanded ? (
-								<div
-									role="separator"
-									aria-orientation="vertical"
-									aria-label="Resize agent and diff panels"
-									style={{
-										position: "relative",
-										flex: "0 0 1px",
-										background: "var(--color-divider)",
-										zIndex: 2,
-									}}
-								>
-									<div
-										onMouseDown={handleSeparatorMouseDown}
-										className="hover:bg-accent/30"
-										style={{
-											position: "absolute",
-											left: -2,
-											right: -2,
-											top: 0,
-											bottom: 0,
-											cursor: "ew-resize",
-										}}
-									/>
-								</div>
-							) : null}
+						{!isDiffFullscreen && isDiffPanelVisible ? (
 							<div
+								role="separator"
+								aria-orientation="vertical"
+								aria-label="Resize agent and diff panels"
 								style={{
-									display: "flex",
-									width: isDiffExpanded ? "100%" : diffPanelPercent,
-									minWidth: 0,
-									minHeight: 0,
-									flexDirection: "column",
+									position: "relative",
+									flex: "0 0 1px",
+									background: "var(--color-divider)",
+									zIndex: 2,
 								}}
 							>
+								<div
+									onMouseDown={handleSeparatorMouseDown}
+									className="hover:bg-accent/30"
+									style={{
+										position: "absolute",
+										left: -2,
+										right: -2,
+										top: 0,
+										bottom: 0,
+										cursor: "ew-resize",
+									}}
+								/>
+							</div>
+						) : null}
+						<div
+							style={{
+								display: "flex",
+								width: !isDiffPanelVisible ? "0%" : isDiffExpanded ? "100%" : diffPanelPercent,
+								minWidth: 0,
+								minHeight: 0,
+								flexDirection: "column",
+								overflow: "hidden",
+							}}
+						>
 								{isRuntimeAvailable ? (
 								<DiffToolbar
 									mode={diffMode}
@@ -693,7 +702,7 @@ export function CardDetailView({
 												workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
 												selectedPath={selectedPath}
 												onSelectedPathChange={setSelectedPath}
-												viewMode={isDiffExpanded ? "split" : "unified"}
+												viewMode={isDiffFullscreen ? "split" : "unified"}
 												onAddToTerminal={onAddReviewComments || showClineAgentChatPanel ? handleAddDiffComments : undefined}
 											onSendToTerminal={onSendReviewComments || showClineAgentChatPanel ? handleSendDiffComments : undefined}
 											comments={diffComments}
