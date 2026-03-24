@@ -1,18 +1,22 @@
-# Engineering Docs
+# Documentation
 
-This folder is the starting point for engineers working on Kanban itself.
+This folder contains the stable documentation for Kanban.
 
-This follows the usual split a small engineering team would want:
+If you are trying to **use Kanban**, start with the user guides below. They are written to help first-time users get from “I just launched Kanban” to “I successfully started and reviewed my first task” without having to read code or infer missing setup steps.
 
-- `README.md` explains the product, local setup, and everyday usage.
-- `docs/` holds stable onboarding and architecture references for humans.
-- `.plan/docs/` holds active plans, handoffs, and deeper change-history context for larger refactors.
+## User guides
 
-If you are new to the codebase, read these in order:
+- [`getting-started.md`](./getting-started.md) — the best first stop if you are new to Kanban
+- [`windows-setup.md`](./windows-setup.md) — a dedicated setup guide for Windows users
+- [`choose-an-agent.md`](./choose-an-agent.md) — explains the current agent options and which one is right for you
+- [`cline-setup.md`](./cline-setup.md) — a focused guide to using Cline inside Kanban
+- [`troubleshooting.md`](./troubleshooting.md) — help for the most common first-run and setup problems
+- [`how-kanban-works.md`](./how-kanban-works.md) — a plain-language explanation of tasks, worktrees, review, and task linking
+- [`remote-access.md`](./remote-access.md) — an advanced guide for running Kanban on another machine and connecting remotely
 
-1. [`../README.md`](../README.md) for the product overview and local setup.
-2. [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide.
+If you are working on **Kanban itself as an engineer**, these are the best starting points:
 
-This `docs/` folder should stand on its own for normal onboarding. Active plans and handoffs may still exist in `.plan/docs`, but a new engineer should not need those to understand the current architecture.
+- [`../README.md`](../README.md) for the product overview and local setup
+- [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide
 
-When adding new engineering docs, prefer putting stable explanations here and linking them from this index.
+Active plans, refactor notes, and handoff documents still live in `.plan/docs/`. Those are useful when you are working on a change in progress, but they should not be required reading for normal product use.
