@@ -675,6 +675,12 @@ export function DiffViewerPanel({
 				return;
 			}
 			const next = new Map(comments);
+			// Remove any existing empty comment boxes before opening a new one
+			for (const [existingKey, existingComment] of next) {
+				if (existingComment.comment.trim() === "") {
+					next.delete(existingKey);
+				}
+			}
 			next.set(key, {
 				filePath,
 				lineNumber,
