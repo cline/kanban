@@ -314,6 +314,83 @@ describe("CardDetailView", () => {
 		expect(container.querySelector('[data-testid="agent-terminal-panel"]')).toBeNull();
 	});
 
+	it("shows cline chat panel when task session agentId is cline even if global agent is claude", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="claude"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "running",
+						agentId: "cline",
+						workspacePath: null,
+						pid: null,
+						startedAt: null,
+						updatedAt: Date.now(),
+						lastOutputAt: null,
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: null,
+						latestHookActivity: null,
+						warningMessage: null,
+					}}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeInstanceOf(HTMLDivElement);
+	});
+
+	it("shows terminal panel when task session agentId is claude even if global agent is cline", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="cline"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "running",
+						agentId: "claude",
+						workspacePath: null,
+						pid: null,
+						startedAt: null,
+						updatedAt: Date.now(),
+						lastOutputAt: null,
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: null,
+						latestHookActivity: null,
+						warningMessage: null,
+					}}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeNull();
+		expect(mockAgentTerminalPanel).toHaveBeenCalled();
+	});
+
 	it("uses surface-primary colors for the detail terminal panel", async () => {
 		await act(async () => {
 			root.render(
