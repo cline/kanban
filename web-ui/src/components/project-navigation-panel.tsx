@@ -5,6 +5,7 @@ import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEff
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
+import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import {
 	AlertDialog,
 	AlertDialogAction,
