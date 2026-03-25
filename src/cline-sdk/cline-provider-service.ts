@@ -2,6 +2,7 @@
 // It resolves provider settings, model catalogs, OAuth flows, and launch
 // config without leaking SDK details into runtime-api.ts or the UI.
 import type {
+	RuntimeClineAccountProfileResponse,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderCatalogResponse,
@@ -12,6 +13,7 @@ import type {
 } from "../core/api-contract.js";
 import { openInBrowser } from "../server/browser.js";
 import {
+	fetchSdkClineAccountProfile,
 	type ManagedClineOauthProviderId,
 	type SdkProviderSettings,
 	getLastUsedSdkProviderSettings,
@@ -24,6 +26,7 @@ import {
 } from "./sdk-provider-boundary.js";
 
 const WORKOS_TOKEN_PREFIX = "workos:";
+const DEFAULT_CLINE_API_BASE_URL = "https://api.cline.bot";
 const MANAGED_PROVIDER_ENV_KEYS: Record<ManagedClineOauthProviderId, readonly string[]> = {
 	cline: ["CLINE_API_KEY"],
 	oca: ["OCA_API_KEY"],
@@ -63,6 +66,17 @@ function stripWorkosPrefix(accessToken: string): string {
 		return accessToken.slice(WORKOS_TOKEN_PREFIX.length);
 	}
 	return accessToken;
+}
+
+function ensureWorkosPrefix(accessToken: string): string {
+	const normalized = accessToken.trim();
+	if (!normalized) {
+		return normalized;
+	}
+	if (normalized.toLowerCase().startsWith(WORKOS_TOKEN_PREFIX)) {
+		return normalized;
+	}
+	return `${WORKOS_TOKEN_PREFIX}${normalized}`;
 }
 
 function toProviderApiKey(providerId: ManagedClineOauthProviderId, accessToken: string): string {
@@ -277,6 +291,64 @@ export function createClineProviderService() {
 	return {
 		getProviderSettingsSummary(): RuntimeClineProviderSettings {
 			return getProviderSettingsSummary();
+		},
+
+		async getClineAccountProfile(): Promise<RuntimeClineAccountProfileResponse> {
+			try {
+				const selectedSettings = getSelectedProviderSettings();
+				if (!selectedSettings) {
+					return {
+						profile: null,
+					};
+				}
+
+				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
+				if (normalizedProviderId !== "cline") {
+					return {
+						profile: null,
+					};
+				}
+
+				const tryFetchProfile = async (
+					settings: SdkProviderSettings,
+				): Promise<RuntimeClineAccountProfileResponse["profile"] | null> => {
+					const rawAccessToken = settings.auth?.accessToken?.trim() ?? "";
+					if (!rawAccessToken) {
+						return null;
+					}
+					const me = await fetchSdkClineAccountProfile({
+						apiBaseUrl: settings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
+						accessToken: ensureWorkosPrefix(rawAccessToken),
+					});
+					return {
+						accountId: me.id?.trim() || settings.auth?.accountId?.trim() || null,
+						email: me.email?.trim() || null,
+						displayName: me.displayName?.trim() || null,
+					};
+				};
+
+				try {
+					const profile = await tryFetchProfile(selectedSettings);
+					if (profile) {
+						return {
+							profile,
+						};
+					}
+				} catch {
+					// Retry once after OAuth refresh below.
+				}
+
+				const oauthResolution = await refreshManagedOauthSettings(selectedSettings);
+				const profile = oauthResolution?.settings ? await tryFetchProfile(oauthResolution.settings) : null;
+				return {
+					profile,
+				};
+			} catch (error) {
+				return {
+					profile: null,
+					error: toErrorMessage(error),
+				};
+			}
 		},
 
 		async resolveLaunchConfig(): Promise<ResolvedClineLaunchConfig> {

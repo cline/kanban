@@ -49,7 +49,6 @@ export interface CreateRuntimeApiDependencies {
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	prepareForStateReset?: () => Promise<void>;
-	warn?: (message: string) => void;
 }
 
 async function resolveExistingTaskCwdOrEnsure(options: {
@@ -88,33 +87,20 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		buildRuntimeConfigResponse(runtimeConfig, clineProviderService.getProviderSettingsSummary());
 
 	return {
-		loadConfig: async (workspaceScope, options) => {
-			const scopeLabel = workspaceScope?.workspaceId ?? "global";
-			const requestedWorkspaceId = options?.requestedWorkspaceId ?? null;
-			if (requestedWorkspaceId && !workspaceScope) {
-				deps.warn?.(
-					`[runtime.getConfig] Requested workspace ${requestedWorkspaceId} is unknown; serving active/global runtime config instead.`,
-				);
+		loadConfig: async (workspaceScope) => {
+			const activeRuntimeConfig = deps.getActiveRuntimeConfig?.();
+			if (!workspaceScope && !activeRuntimeConfig) {
+				throw new Error("No active runtime config provider is available.");
 			}
-			try {
-				const activeRuntimeConfig = deps.getActiveRuntimeConfig?.();
-				if (!workspaceScope && !activeRuntimeConfig) {
-					throw new Error("No active runtime config provider is available.");
-				}
-				let scopedRuntimeConfig: RuntimeConfigState;
-				if (workspaceScope) {
-					scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
-				} else if (activeRuntimeConfig) {
-					scopedRuntimeConfig = activeRuntimeConfig;
-				} else {
-					throw new Error("No active runtime config provider is available.");
-				}
-				return buildConfigResponse(scopedRuntimeConfig);
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				deps.warn?.(`[runtime.getConfig] Failed to load runtime config for scope ${scopeLabel}: ${message}`);
-				throw error;
+			let scopedRuntimeConfig: RuntimeConfigState;
+			if (workspaceScope) {
+				scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+			} else if (activeRuntimeConfig) {
+				scopedRuntimeConfig = activeRuntimeConfig;
+			} else {
+				throw new Error("No active runtime config provider is available.");
 			}
+			return buildConfigResponse(scopedRuntimeConfig);
 		},
 		saveConfig: async (workspaceScope, input) => {
 			const parsed = parseRuntimeConfigSaveRequest(input);
@@ -392,6 +378,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		},
 		getClineProviderCatalog: async (_workspaceScope) => {
 			return await clineProviderService.getProviderCatalog();
+		},
+		getClineAccountProfile: async (_workspaceScope) => {
+			return await clineProviderService.getClineAccountProfile();
 		},
 		getClineProviderModels: async (_workspaceScope, input) => {
 			const body = parseClineProviderModelsRequest(input);

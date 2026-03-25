@@ -37,6 +37,11 @@ const llmsModelMocks = vi.hoisted(() => ({
 	getModelsForProvider: vi.fn(),
 }));
 
+const clineAccountMocks = vi.hoisted(() => ({
+	fetchMe: vi.fn(),
+	constructedOptions: [] as Array<{ apiBaseUrl: string; getAuthToken: () => Promise<string | undefined | null> }>,
+}));
+
 const browserMocks = vi.hoisted(() => ({
 	openInBrowser: vi.fn(),
 }));
@@ -63,6 +68,12 @@ vi.mock("@clinebot/core/node", () => ({
 	loginOpenAICodex: oauthMocks.loginOpenAICodex,
 	resolveDefaultMcpSettingsPath: oauthMocks.resolveDefaultMcpSettingsPath,
 	loadMcpSettingsFile: oauthMocks.loadMcpSettingsFile,
+	ClineAccountService: class {
+		constructor(options: { apiBaseUrl: string; getAuthToken: () => Promise<string | undefined | null> }) {
+			clineAccountMocks.constructedOptions.push(options);
+		}
+		fetchMe = clineAccountMocks.fetchMe;
+	},
 	ProviderSettingsManager: class {
 		saveProviderSettings = oauthMocks.saveProviderSettings;
 		getProviderSettings = oauthMocks.getProviderSettings;
@@ -197,6 +208,8 @@ describe("createRuntimeApi startTaskSession", () => {
 		oauthMocks.saveProviderSettings.mockReset();
 		oauthMocks.getProviderSettings.mockReset();
 		oauthMocks.getLastUsedProviderSettings.mockReset();
+		clineAccountMocks.fetchMe.mockReset();
+		clineAccountMocks.constructedOptions.length = 0;
 		llmsModelMocks.getAllProviders.mockReset();
 		llmsModelMocks.getModelsForProvider.mockReset();
 		browserMocks.openInBrowser.mockReset();
@@ -253,6 +266,11 @@ describe("createRuntimeApi startTaskSession", () => {
 		oauthMocks.resolveDefaultMcpSettingsPath.mockReturnValue(mcpSettingsPath);
 		oauthMocks.loadMcpSettingsFile.mockReturnValue({
 			mcpServers: {},
+		});
+		clineAccountMocks.fetchMe.mockResolvedValue({
+			id: "acct-1",
+			email: "saoud@example.com",
+			displayName: "Saoud",
 		});
 		setSelectedProviderSettings(null);
 		llmsModelMocks.getAllProviders.mockResolvedValue([
@@ -1145,6 +1163,86 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 		expect(modelsResponse.providerId).toBe("cline");
 		expect(modelsResponse.models.some((model) => model.id === "claude-sonnet-4-6")).toBe(true);
+	});
+
+	it("returns cline account profile for cline OAuth users", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "workos:oauth-access",
+				refreshToken: "oauth-refresh",
+				accountId: "acct-1",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
+
+		const response = await api.getClineAccountProfile({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(response.profile).toEqual({
+			accountId: "acct-1",
+			email: "saoud@example.com",
+			displayName: "Saoud",
+		});
+		expect(clineAccountMocks.constructedOptions[0]?.apiBaseUrl).toBe("https://api.cline.bot");
+		expect(clineAccountMocks.fetchMe).toHaveBeenCalledTimes(1);
+		expect(oauthMocks.getValidClineCredentials).not.toHaveBeenCalled();
+		const getAuthToken = clineAccountMocks.constructedOptions[0]?.getAuthToken;
+		await expect(getAuthToken?.()).resolves.toBe("workos:oauth-access");
+	});
+
+	it("refreshes cline OAuth credentials and retries profile lookup when direct profile fetch fails", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		clineAccountMocks.fetchMe
+			.mockRejectedValueOnce(new Error("Cline account request failed with status 401"))
+			.mockResolvedValueOnce({
+				id: "acct-1",
+				email: "saoud@example.com",
+				displayName: "Saoud",
+			});
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "workos:expired-access",
+				refreshToken: "oauth-refresh",
+				accountId: "acct-1",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
+
+		const response = await api.getClineAccountProfile({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(response.profile).toEqual({
+			accountId: "acct-1",
+			email: "saoud@example.com",
+			displayName: "Saoud",
+		});
+		expect(clineAccountMocks.fetchMe).toHaveBeenCalledTimes(2);
+		expect(oauthMocks.getValidClineCredentials).toHaveBeenCalledTimes(1);
+		const refreshedGetAuthToken = clineAccountMocks.constructedOptions[1]?.getAuthToken;
+		await expect(refreshedGetAuthToken?.()).resolves.toBe("workos:oauth-access");
 	});
 
 	it("runs oauth login for selected provider and persists provider settings", async () => {

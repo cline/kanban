@@ -36,6 +36,12 @@ export interface SdkProviderCatalogItem {
 	capabilities?: string[];
 }
 
+export interface SdkClineAccountProfile {
+	id: string;
+	email: string;
+	displayName: string;
+}
+
 export type SdkProviderModelRecord = Record<
 	string,
 	{ name?: string; capabilities?: string[] } | unknown
@@ -303,4 +309,31 @@ export function createSdkInMemoryMcpManager(options: SdkMcpManagerOptions): SdkM
 
 export async function createSdkMcpTools(options: SdkCreateMcpToolsOptions): Promise<SdkMcpTool[]> {
 	return await createMcpTools(options);
+}
+
+export async function fetchSdkClineAccountProfile(input: {
+	apiBaseUrl: string;
+	accessToken: string;
+}): Promise<SdkClineAccountProfile> {
+	type ClineAccountServiceConstructor = new (options: {
+		apiBaseUrl: string;
+		getAuthToken: () => Promise<string | undefined | null>;
+	}) => {
+		fetchMe(): Promise<{ id: string; email: string; displayName: string }>;
+	};
+	const accountServiceConstructor = (coreNodeModule as unknown as { ClineAccountService?: ClineAccountServiceConstructor })
+		.ClineAccountService;
+	if (!accountServiceConstructor) {
+		throw new Error("ClineAccountService is not available from @clinebot/core/node.");
+	}
+	const accountService = new accountServiceConstructor({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	const me = await accountService.fetchMe();
+	return {
+		id: me.id,
+		email: me.email,
+		displayName: me.displayName,
+	};
 }

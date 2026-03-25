@@ -1,10 +1,11 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
-import { ChevronDown, ChevronUp, Heart, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
+import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 import {
 	AlertDialog,
@@ -267,15 +268,7 @@ export function ProjectNavigationPanel({
 						) : null}
 					</div>
 					<ShortcutsCard />
-					<a
-						href="https://cline.bot"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-text-tertiary hover:text-text-primary text-center block text-xs"
-						style={{ padding: "6px 12px" }}
-					>
-						Made with <Heart size={10} fill="currentColor" className="inline-block" /> by Cline
-					</a>
+					<FeedbackCard />
 				</>
 			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
@@ -415,6 +408,27 @@ function ShortcutsCard(): React.ReactElement {
 					</Collapsible.Trigger>
 				</Collapsible.Root>
 			</div>
+		</div>
+	);
+}
+
+function FeedbackCard(): React.ReactElement {
+	const handleOpenFeedback = useCallback(() => {
+		openFeaturebaseFeedbackWidget();
+	}, []);
+
+	return (
+		<div style={{ padding: "0 12px 10px" }}>
+			<Button
+				fill
+				size="sm"
+				variant="ghost"
+				className="!border !border-border-bright bg-transparent text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+				data-featurebase-feedback
+				onClick={handleOpenFeedback}
+			>
+				Share feedback
+			</Button>
 		</div>
 	);
 }

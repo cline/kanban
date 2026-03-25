@@ -485,6 +485,19 @@ export const runtimeClineProviderSettingsSchema = z.object({
 });
 export type RuntimeClineProviderSettings = z.infer<typeof runtimeClineProviderSettingsSchema>;
 
+export const runtimeClineAccountProfileSchema = z.object({
+	accountId: z.string().nullable(),
+	email: z.string().nullable(),
+	displayName: z.string().nullable(),
+});
+export type RuntimeClineAccountProfile = z.infer<typeof runtimeClineAccountProfileSchema>;
+
+export const runtimeClineAccountProfileResponseSchema = z.object({
+	profile: runtimeClineAccountProfileSchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeClineAccountProfileResponse = z.infer<typeof runtimeClineAccountProfileResponseSchema>;
+
 export const runtimeClineProviderCatalogItemSchema = z.object({
 	id: z.string(),
 	name: z.string(),
