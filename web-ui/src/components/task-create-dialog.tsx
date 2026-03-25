@@ -24,7 +24,7 @@ import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
-import { isMacPlatform } from "@/utils/platform";
+import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
@@ -360,16 +360,20 @@ export function TaskCreateDialog({
 						/>
 						<div className="flex items-center justify-between mt-1.5">
 							<p className="text-[11px] text-text-tertiary">
-								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference files.
+								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference
+								files. Drag and drop or <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to
+								add images.
 							</p>
-							<button
-								type="button"
-								onClick={handleSplitIntoTasks}
-								className={`inline-flex items-center gap-1.5 text-[12px] text-status-blue hover:text-[#86BEFF] cursor-pointer shrink-0 ${detectedItems.length >= 2 ? "" : "invisible"}`}
-							>
-								<List size={12} />
-								Split into {detectedItems.length || 0} tasks
-							</button>
+							{detectedItems.length >= 2 ? (
+								<button
+									type="button"
+									onClick={handleSplitIntoTasks}
+									className="inline-flex items-center gap-1.5 text-[12px] text-status-blue hover:text-[#86BEFF] cursor-pointer shrink-0"
+								>
+									<List size={12} />
+									Split into {detectedItems.length} tasks
+								</button>
+							) : null}
 						</div>
 					</div>
 				) : (
