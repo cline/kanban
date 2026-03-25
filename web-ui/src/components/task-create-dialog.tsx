@@ -1,4 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import {
 	ArrowBigUp,
@@ -8,6 +9,7 @@ import {
 	Command,
 	CornerDownLeft,
 	List,
+	Option,
 	PencilLine,
 	Plus,
 	X,
@@ -22,6 +24,7 @@ import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
+import { isMacPlatform } from "@/utils/platform";
 
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
@@ -74,6 +77,7 @@ export function TaskCreateDialog({
 	onCreateAndStart,
 	onCreateMultiple,
 	onCreateAndStartMultiple,
+	onCreateStartAndOpen,
 	startInPlanMode,
 	onStartInPlanModeChange,
 	autoReviewEnabled,
@@ -96,6 +100,7 @@ export function TaskCreateDialog({
 	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	onCreateAndStartMultiple?: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
+	onCreateStartAndOpen?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	startInPlanMode: boolean;
 	onStartInPlanModeChange: (value: boolean) => void;
 	autoReviewEnabled: boolean;
@@ -219,6 +224,13 @@ export function TaskCreateDialog({
 		}
 	}, [createMore, onCreateAndStart, resetForCreateMore]);
 
+	const handleCreateStartAndOpenSingle = useCallback(() => {
+		const createdTaskId = onCreateStartAndOpen?.({ keepDialogOpen: createMore });
+		if (createMore && createdTaskId) {
+			resetForCreateMore();
+		}
+	}, [createMore, onCreateStartAndOpen, resetForCreateMore]);
+
 	const handleCreateAll = useCallback(() => {
 		const validPrompts = getValidPrompts();
 		if (validPrompts.length === 0) {
@@ -302,6 +314,23 @@ export function TaskCreateDialog({
 			preventDefault: true,
 		},
 		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateAndStartSingle, handleCreateSingle],
+	);
+
+	// Alt/Opt+Shift+Enter → Start & Open (single mode only)
+	useHotkeys(
+		"alt+shift+enter",
+		() => {
+			if (mode === "single") {
+				handleCreateStartAndOpenSingle();
+			}
+		},
+		{
+			enabled: open && Boolean(onCreateStartAndOpen),
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[open, mode, handleCreateStartAndOpenSingle, onCreateStartAndOpen],
 	);
 
 	const dialogTitle = mode === "multi"
@@ -491,17 +520,56 @@ export function TaskCreateDialog({
 							</span>
 						</Button>
 						{onCreateAndStart ? (
-							<Button
-								variant="primary"
-								size="sm"
-								onClick={handleCreateAndStartSingle}
-								disabled={!prompt.trim() || !branchRef}
-							>
-								<span className="inline-flex items-center">
-									Start
-									<ButtonShortcut includeShift />
-								</span>
-							</Button>
+							<DropdownMenu.Root>
+								<div className="inline-flex items-center">
+									<Button
+										variant="primary"
+										size="sm"
+										onClick={handleCreateAndStartSingle}
+										disabled={!prompt.trim() || !branchRef}
+										className={onCreateStartAndOpen ? "rounded-r-none" : undefined}
+									>
+										<span className="inline-flex items-center">
+											Start
+											<ButtonShortcut includeShift />
+										</span>
+									</Button>
+									{onCreateStartAndOpen ? (
+										<DropdownMenu.Trigger asChild>
+											<Button
+												variant="primary"
+												size="sm"
+												disabled={!prompt.trim() || !branchRef}
+												className="rounded-l-none border-l border-white/20 px-1"
+												aria-label="More start options"
+											>
+												<ChevronDown size={12} />
+											</Button>
+										</DropdownMenu.Trigger>
+									) : null}
+								</div>
+								<DropdownMenu.Portal>
+									<DropdownMenu.Content
+										side="bottom"
+										align="end"
+										sideOffset={4}
+										className="z-50 rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
+										onCloseAutoFocus={(event) => event.preventDefault()}
+									>
+										<DropdownMenu.Item
+											className="flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-[12px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 whitespace-nowrap"
+											onSelect={handleCreateStartAndOpenSingle}
+										>
+											Start & Open
+											<span className="inline-flex items-center gap-0.5 text-text-tertiary" aria-hidden>
+												{isMacPlatform ? <Option size={10} /> : <span className="text-[10px] font-medium leading-none">Alt</span>}
+												<ArrowBigUp size={10} />
+												<CornerDownLeft size={10} />
+											</span>
+										</DropdownMenu.Item>
+									</DropdownMenu.Content>
+								</DropdownMenu.Portal>
+							</DropdownMenu.Root>
 						) : null}
 					</>
 				) : (

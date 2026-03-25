@@ -16,6 +16,7 @@ interface UseTaskStartActionsInput {
 export interface UseTaskStartActionsResult {
 	handleCreateAndStartTask: (options?: { keepDialogOpen?: boolean }) => string | null;
 	handleCreateAndStartTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
+	handleCreateStartAndOpenTask: (options?: { keepDialogOpen?: boolean }) => string | null;
 	handleStartTaskFromBoard: (taskId: string) => void;
 	handleStartAllBacklogTasksFromBoard: () => void;
 }
@@ -109,11 +110,8 @@ export function useTaskStartActions({
 			return null;
 		}
 		setPendingTaskStartAfterCreateIds([taskId]);
-		if (!options?.keepDialogOpen) {
-			setSelectedTaskId(taskId);
-		}
 		return taskId;
-	}, [handleCreateTask, setSelectedTaskId]);
+	}, [handleCreateTask]);
 
 	const handleCreateAndStartTasks = useCallback(
 		(prompts: string[], options?: { keepDialogOpen?: boolean }): string[] => {
@@ -122,13 +120,22 @@ export function useTaskStartActions({
 				return [];
 			}
 			setPendingTaskStartAfterCreateIds(taskIds);
-			if (!options?.keepDialogOpen && taskIds.length === 1 && taskIds[0]) {
-				setSelectedTaskId(taskIds[0]);
-			}
 			return taskIds;
 		},
-		[handleCreateTasks, setSelectedTaskId],
+		[handleCreateTasks],
 	);
+
+	const handleCreateStartAndOpenTask = useCallback((options?: { keepDialogOpen?: boolean }): string | null => {
+		const taskId = handleCreateTask(options);
+		if (!taskId) {
+			return null;
+		}
+		setPendingTaskStartAfterCreateIds([taskId]);
+		if (!options?.keepDialogOpen) {
+			setSelectedTaskId(taskId);
+		}
+		return taskId;
+	}, [handleCreateTask, setSelectedTaskId]);
 
 	useEffect(() => {
 		if (!pendingTaskStartAfterCreateIds || pendingTaskStartAfterCreateIds.length === 0) {
@@ -148,6 +155,7 @@ export function useTaskStartActions({
 	return {
 		handleCreateAndStartTask,
 		handleCreateAndStartTasks,
+		handleCreateStartAndOpenTask,
 		handleStartTaskFromBoard,
 		handleStartAllBacklogTasksFromBoard,
 	};
