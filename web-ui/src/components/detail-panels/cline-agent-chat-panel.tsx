@@ -360,6 +360,7 @@ ref,
 					isSending={isSavingModel || isSending}
 					warningMessage={summary?.warningMessage ?? null}
 					attachmentWarningMessage={attachmentWarningMessage}
+					workspaceId={workspaceId}
 				/>
 			</div>
 			{showActionFooter ? (

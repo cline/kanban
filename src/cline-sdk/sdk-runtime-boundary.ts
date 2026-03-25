@@ -9,6 +9,7 @@ import {
 	buildWorkspaceMetadata,
 	createSessionHost,
 	createUserInstructionConfigWatcher,
+	listAvailableWorkflowsFromWatcher,
 	loadRulesForSystemPromptFromWatcher,
 	resolveWorkflowSlashCommandFromWatcher,
 	type SessionHost,
@@ -182,11 +183,14 @@ export type ClineSdkSessionEvent =
 			};
 	  };
 
-export type ClineSdkSessionRecord = Awaited<
-	ReturnType<ClineSdkSessionHost["list"]>
->[number];
+export type ClineSdkSessionRecord = Awaited<ReturnType<ClineSdkSessionHost["list"]>>[number];
 export type ClineSdkPersistedMessage = ClineSdkProviders.Message;
 export type ClineSdkUserInstructionWatcher = UserInstructionConfigWatcher;
+export interface ClineSdkSlashCommand {
+	name: string;
+	instructions: string;
+	description?: string;
+}
 export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
 export type ClineSdkToolApprovalResult = ToolApprovalResult;
 
@@ -197,9 +201,7 @@ export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> 
 	});
 }
 
-export async function buildClineSdkWorkspaceMetadata(
-	cwd: string,
-): Promise<string> {
+export async function buildClineSdkWorkspaceMetadata(cwd: string): Promise<string> {
 	return await buildWorkspaceMetadata(cwd);
 }
 
@@ -209,6 +211,23 @@ export function createClineSdkUserInstructionWatcher(workspacePath: string): Cli
 		rules: { workspacePath },
 		workflows: { workspacePath },
 	});
+}
+
+export function listClineSdkWorkflowSlashCommands(watcher?: ClineSdkUserInstructionWatcher): ClineSdkSlashCommand[] {
+	const builtIns: ClineSdkSlashCommand[] = [];
+	if (!watcher) {
+		return builtIns;
+	}
+	return [
+		...builtIns,
+		...listAvailableWorkflowsFromWatcher(watcher).map(
+			(workflow: { name: string; instructions: string; description?: string }) => ({
+				name: workflow.name,
+				instructions: workflow.instructions,
+				description: workflow.description,
+			}),
+		),
+	];
 }
 
 export function resolveClineSdkWorkflowSlashCommand(prompt: string, watcher: ClineSdkUserInstructionWatcher): string {
@@ -228,13 +247,6 @@ export async function resolveClineSdkSystemPrompt(input: {
 	// "cline" provider expects the extra workspace metadata block that powers
 	// its repo-aware behavior in the same way the official CLI does.
 	const shouldAppendWorkspaceMetadata = input.providerId === "cline";
-	const workspaceMetadata = shouldAppendWorkspaceMetadata
-		? await buildWorkspaceMetadata(input.cwd)
-		: "";
-	return getClineDefaultSystemPrompt(
-		"Kanban",
-		input.cwd,
-		workspaceMetadata,
-		input.rules ?? "",
-	);
+	const workspaceMetadata = shouldAppendWorkspaceMetadata ? await buildWorkspaceMetadata(input.cwd) : "";
+	return getClineDefaultSystemPrompt("Kanban", input.cwd, workspaceMetadata, input.rules ?? "");
 }

@@ -10,6 +10,7 @@ import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-ser
 import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service.js";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
 import { createClineProviderService } from "../cline-sdk/cline-provider-service.js";
+import { createClineSdkUserInstructionWatcher, listClineSdkWorkflowSlashCommands } from "../cline-sdk/sdk-runtime-boundary.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
 import { isHomeAgentSessionId } from "../core/home-agent-session.js";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config.js";
@@ -329,6 +330,15 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					error: message,
 				};
 			}
+		},
+		getClineSlashCommands: async (workspaceScope) => {
+			const watcher = workspaceScope ? createClineSdkUserInstructionWatcher(workspaceScope.workspacePath) : undefined;
+			if (watcher) {
+				await watcher.refreshAll();
+			}
+			return {
+				commands: listClineSdkWorkflowSlashCommands(watcher),
+			};
 		},
 		abortTaskChatTurn: async (workspaceScope, input) => {
 			try {

@@ -58,6 +58,18 @@ export const runtimeWorkspaceFileSearchResponseSchema = z.object({
 });
 export type RuntimeWorkspaceFileSearchResponse = z.infer<typeof runtimeWorkspaceFileSearchResponseSchema>;
 
+export const runtimeSlashCommandSchema = z.object({
+	name: z.string(),
+	instructions: z.string(),
+	description: z.string().optional(),
+});
+export type RuntimeSlashCommand = z.infer<typeof runtimeSlashCommandSchema>;
+
+export const runtimeSlashCommandsResponseSchema = z.object({
+	commands: z.array(runtimeSlashCommandSchema),
+});
+export type RuntimeSlashCommandsResponse = z.infer<typeof runtimeSlashCommandsResponseSchema>;
+
 export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "cline"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 

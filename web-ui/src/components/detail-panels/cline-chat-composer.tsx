@@ -1,18 +1,43 @@
 import { AlertTriangle, ArrowBigUp, Command, Pause, SendHorizontal } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
+import {
+	type ClipboardEvent,
+	type DragEvent,
+	type KeyboardEvent,
+	type ReactElement,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 
+import {
+	type ActiveClineComposerToken,
+	applyClineComposerCompletion,
+	buildMentionInsertText,
+	buildSlashCommandInsertText,
+	type ClineComposerCompletionSuggestion,
+	detectActiveClineComposerToken,
+} from "@/components/detail-panels/cline-chat-composer-completion";
+import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
 import { collectImageFilesFromDataTransfer, extractImagesFromDataTransfer } from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";
-import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { RuntimeTaskSessionMode } from "@/runtime/types";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { RuntimeSlashCommand, RuntimeTaskSessionMode } from "@/runtime/types";
 import type { TaskImage } from "@/types";
 import { isMacPlatform } from "@/utils/platform";
+import { useDebouncedEffect } from "@/utils/react-use";
 
 const CLINE_CHAT_COMPOSER_MAX_HEIGHT = 160;
+const CLINE_CHAT_COMPOSER_COMPLETION_DEBOUNCE_MS = 120;
+const CLINE_CHAT_COMPOSER_FILE_LIMIT = 8;
+const CLINE_CHAT_COMPOSER_COMMAND_LIMIT = 8;
 
 export function ClineChatComposer({
 	taskId,
@@ -40,6 +65,7 @@ export function ClineChatComposer({
 	isSending = false,
 	warningMessage = null,
 	attachmentWarningMessage = null,
+	workspaceId = null,
 }: {
 	taskId: string;
 	draft: string;
@@ -66,10 +92,45 @@ export function ClineChatComposer({
 	isSending?: boolean;
 	warningMessage?: string | null;
 	attachmentWarningMessage?: string | null;
+	workspaceId?: string | null;
 }): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const completionMenuRef = useRef<HTMLDivElement | null>(null);
+	const completionItemRefs = useRef(new Map<string, HTMLButtonElement>());
+	const mentionSearchRequestIdRef = useRef(0);
+	const slashCommandsRequestIdRef = useRef(0);
+	const slashCommandsCacheRef = useRef(new Map<string, RuntimeSlashCommand[]>());
 	const [isDragOver, setIsDragOver] = useState(false);
+	const [cursorIndex, setCursorIndex] = useState(() => draft.length);
+	const [isCompletionPickerOpen, setIsCompletionPickerOpen] = useState(true);
+	const [selectedCompletionIndex, setSelectedCompletionIndex] = useState(0);
+	const [mentionSuggestions, setMentionSuggestions] = useState<ClineComposerCompletionSuggestion[]>([]);
+	const [slashSuggestions, setSlashSuggestions] = useState<ClineComposerCompletionSuggestion[]>([]);
+	const [isMentionSearchLoading, setIsMentionSearchLoading] = useState(false);
+	const [isSlashSearchLoading, setIsSlashSearchLoading] = useState(false);
 	const canSubmit = canSend && !isModelSaving && (draft.trim().length > 0 || images.length > 0);
+
+	const activeToken = useMemo(() => detectActiveClineComposerToken(draft, cursorIndex), [cursorIndex, draft]);
+	const completionSuggestions = useMemo(() => {
+		if (!activeToken) {
+			return [] as ClineComposerCompletionSuggestion[];
+		}
+		return activeToken.kind === "mention" ? mentionSuggestions : slashSuggestions;
+	}, [activeToken, mentionSuggestions, slashSuggestions]);
+	const isCompletionLoading = activeToken?.kind === "mention" ? isMentionSearchLoading : isSlashSearchLoading;
+	const showCompletionPicker = Boolean(activeToken && isCompletionPickerOpen);
+	const completionEmptyState = useMemo(() => {
+		if (!activeToken) {
+			return null;
+		}
+		if (activeToken.kind === "mention" && !workspaceId) {
+			return "Select a workspace to mention files.";
+		}
+		if (activeToken.kind === "mention") {
+			return "No matching files.";
+		}
+		return "No matching commands.";
+	}, [activeToken, workspaceId]);
 
 	useLayoutEffect(() => {
 		const textarea = textareaRef.current;
@@ -87,6 +148,28 @@ export function ClineChatComposer({
 		}
 		textareaRef.current?.focus();
 	}, [canSend, taskId]);
+
+	useEffect(() => {
+		setCursorIndex((currentValue) => Math.min(currentValue, draft.length));
+	}, [draft.length]);
+
+	useEffect(() => {
+		setSelectedCompletionIndex(0);
+		setIsCompletionPickerOpen(true);
+	}, [activeToken?.kind, activeToken?.query, activeToken?.start]);
+
+	useEffect(() => {
+		if (!activeToken || activeToken.kind !== "mention") {
+			mentionSearchRequestIdRef.current += 1;
+			setMentionSuggestions([]);
+			setIsMentionSearchLoading(false);
+		}
+		if (!activeToken || activeToken.kind !== "slash") {
+			slashCommandsRequestIdRef.current += 1;
+			setSlashSuggestions([]);
+			setIsSlashSearchLoading(false);
+		}
+	}, [activeToken]);
 
 	const appendImages = useCallback(
 		(newImages: TaskImage[]) => {
@@ -123,6 +206,234 @@ export function ClineChatComposer({
 		[appendImages],
 	);
 
+	useDebouncedEffect(
+		() => {
+			if (!activeToken || activeToken.kind !== "mention" || !workspaceId) {
+				return;
+			}
+			const requestId = ++mentionSearchRequestIdRef.current;
+			setIsMentionSearchLoading(true);
+			void (async () => {
+				try {
+					const payload = await getRuntimeTrpcClient(workspaceId).workspace.searchFiles.query({
+						query: activeToken.query,
+						limit: CLINE_CHAT_COMPOSER_FILE_LIMIT,
+					});
+					if (requestId !== mentionSearchRequestIdRef.current) {
+						return;
+					}
+					setMentionSuggestions(
+						payload.files.map((file) => ({
+							id: file.path,
+							kind: "mention",
+							label: file.name,
+							detail: file.path,
+							insertText: buildMentionInsertText(file.path),
+						})),
+					);
+				} catch {
+					if (requestId === mentionSearchRequestIdRef.current) {
+						setMentionSuggestions([]);
+					}
+				} finally {
+					if (requestId === mentionSearchRequestIdRef.current) {
+						setIsMentionSearchLoading(false);
+					}
+				}
+			})();
+		},
+		CLINE_CHAT_COMPOSER_COMPLETION_DEBOUNCE_MS,
+		[activeToken, workspaceId],
+	);
+
+	useDebouncedEffect(
+		() => {
+			if (!activeToken || activeToken.kind !== "slash") {
+				return;
+			}
+			const requestKey = workspaceId ?? "__global__";
+			const requestId = ++slashCommandsRequestIdRef.current;
+			const cachedCommands = slashCommandsCacheRef.current.get(requestKey);
+			const applyCommands = (commands: RuntimeSlashCommand[]) => {
+				const query = activeToken.query.trim().toLowerCase();
+				const filteredCommands = commands
+					.filter((command) => {
+						if (query.length === 0) {
+							return true;
+						}
+						const description = command.description?.toLowerCase() ?? "";
+						return command.name.toLowerCase().includes(query) || description.includes(query);
+					})
+					.slice(0, CLINE_CHAT_COMPOSER_COMMAND_LIMIT)
+					.map((command) => ({
+						id: command.name,
+						kind: "slash" as const,
+						label: `/${command.name}`,
+						detail: command.description,
+						insertText: buildSlashCommandInsertText(command.name),
+					}));
+				setSlashSuggestions(filteredCommands);
+			};
+
+			if (cachedCommands) {
+				applyCommands(cachedCommands);
+				return;
+			}
+
+			setIsSlashSearchLoading(true);
+			void (async () => {
+				try {
+					const payload = await getRuntimeTrpcClient(workspaceId).runtime.getClineSlashCommands.query();
+					if (requestId !== slashCommandsRequestIdRef.current) {
+						return;
+					}
+					slashCommandsCacheRef.current.set(requestKey, payload.commands);
+					applyCommands(payload.commands);
+				} catch {
+					if (requestId === slashCommandsRequestIdRef.current) {
+						setSlashSuggestions([]);
+					}
+				} finally {
+					if (requestId === slashCommandsRequestIdRef.current) {
+						setIsSlashSearchLoading(false);
+					}
+				}
+			})();
+		},
+		CLINE_CHAT_COMPOSER_COMPLETION_DEBOUNCE_MS,
+		[activeToken, workspaceId],
+	);
+
+	const applySuggestion = useCallback(
+		(suggestion: ClineComposerCompletionSuggestion, token: ActiveClineComposerToken) => {
+			const next = applyClineComposerCompletion(draft, token, suggestion.insertText);
+			onDraftChange(next.value);
+			window.requestAnimationFrame(() => {
+				const textarea = textareaRef.current;
+				if (!textarea) {
+					return;
+				}
+				textarea.focus();
+				textarea.setSelectionRange(next.cursor, next.cursor);
+				setCursorIndex(next.cursor);
+			});
+		},
+		[draft, onDraftChange],
+	);
+
+	const setCompletionItemRef = useCallback((itemKey: string, node: HTMLButtonElement | null) => {
+		if (node) {
+			completionItemRefs.current.set(itemKey, node);
+			return;
+		}
+		completionItemRefs.current.delete(itemKey);
+	}, []);
+
+	useEffect(() => {
+		if (!showCompletionPicker) {
+			return;
+		}
+		const activeSuggestion = completionSuggestions[selectedCompletionIndex];
+		if (!activeSuggestion) {
+			return;
+		}
+		const activeKey = `${activeSuggestion.kind}:${activeSuggestion.id}`;
+		const activeElement = completionItemRefs.current.get(activeKey);
+		const menuElement = completionMenuRef.current;
+		if (!activeElement || !menuElement) {
+			return;
+		}
+		const activeTop = activeElement.offsetTop;
+		const activeBottom = activeTop + activeElement.offsetHeight;
+		const viewportTop = menuElement.scrollTop;
+		const viewportBottom = viewportTop + menuElement.clientHeight;
+		if (activeBottom > viewportBottom) {
+			menuElement.scrollTop = activeBottom - menuElement.clientHeight;
+			return;
+		}
+		if (activeTop < viewportTop) {
+			menuElement.scrollTop = activeTop;
+		}
+	}, [completionSuggestions, selectedCompletionIndex, showCompletionPicker]);
+
+	const handleTextareaKeyDown = useCallback(
+		(event: KeyboardEvent<HTMLTextAreaElement>) => {
+			if (event.nativeEvent.isComposing) {
+				return;
+			}
+			const canNavigateCompletions = showCompletionPicker && completionSuggestions.length > 0;
+			if (canNavigateCompletions && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+				event.preventDefault();
+				const direction = event.key === "ArrowDown" ? 1 : -1;
+				setSelectedCompletionIndex((currentValue) => {
+					const nextIndex = currentValue + direction;
+					if (nextIndex < 0) {
+						return completionSuggestions.length - 1;
+					}
+					if (nextIndex >= completionSuggestions.length) {
+						return 0;
+					}
+					return nextIndex;
+				});
+				return;
+			}
+			if (canNavigateCompletions && (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey))) {
+				event.preventDefault();
+				const selectedSuggestion = completionSuggestions[selectedCompletionIndex] ?? completionSuggestions[0];
+				if (selectedSuggestion && activeToken) {
+					applySuggestion(selectedSuggestion, activeToken);
+				}
+				return;
+			}
+			if (event.key === "Escape" && showCompletionPicker) {
+				event.preventDefault();
+				setIsCompletionPickerOpen(false);
+				return;
+			}
+			if (
+				showModeToggle &&
+				(event.metaKey || event.ctrlKey) &&
+				event.shiftKey &&
+				!event.altKey &&
+				event.key.toLowerCase() === "a"
+			) {
+				event.preventDefault();
+				onModeChange(mode === "plan" ? "act" : "plan");
+				return;
+			}
+			if (event.key === "Escape") {
+				if (!canCancel) {
+					return;
+				}
+				event.preventDefault();
+				onCancel();
+				return;
+			}
+			if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
+				return;
+			}
+			if (!canSubmit) {
+				return;
+			}
+			event.preventDefault();
+			void onSend();
+		},
+		[
+			activeToken,
+			applySuggestion,
+			canCancel,
+			canSubmit,
+			completionSuggestions,
+			onCancel,
+			onModeChange,
+			onSend,
+			mode,
+			selectedCompletionIndex,
+			showCompletionPicker,
+			showModeToggle,
+		],
+	);
+
 	const handleDrop = useCallback(
 		async (event: DragEvent<HTMLDivElement>) => {
 			event.preventDefault();
@@ -155,49 +466,77 @@ export function ClineChatComposer({
 			}}
 			onDrop={handleDrop}
 		>
-			<textarea
-				ref={textareaRef}
-				value={draft}
-				onChange={(event) => onDraftChange(event.target.value)}
-				onPaste={handlePaste}
-				onKeyDown={(event) => {
-					if (event.nativeEvent.isComposing) {
-						return;
-					}
-					if (
-						showModeToggle &&
-						(event.metaKey || event.ctrlKey) &&
-						event.shiftKey &&
-						!event.altKey &&
-						event.key.toLowerCase() === "a"
-					) {
-						event.preventDefault();
-						onModeChange(mode === "plan" ? "act" : "plan");
-						return;
-					}
-					if (event.key === "Escape") {
-						if (!canCancel) {
-							return;
+			<Popover open={showCompletionPicker}>
+				<PopoverAnchor asChild>
+					<textarea
+						ref={textareaRef}
+						value={draft}
+						onChange={(event) => {
+							onDraftChange(event.target.value);
+							setCursorIndex(event.target.selectionStart ?? event.target.value.length);
+						}}
+						onPaste={handlePaste}
+						onKeyDown={handleTextareaKeyDown}
+						onClick={(event) =>
+							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
 						}
-						event.preventDefault();
-						onCancel();
-						return;
-					}
-					if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
-						return;
-					}
-					if (!canSubmit) {
-						return;
-					}
-					event.preventDefault();
-					void onSend();
-				}}
-				placeholder={placeholder}
-				disabled={!canSend}
-				rows={1}
-				className="w-full min-h-6 resize-none bg-transparent p-0 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
-				style={{ maxHeight: CLINE_CHAT_COMPOSER_MAX_HEIGHT }}
-			/>
+						onKeyUp={(event) =>
+							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+						}
+						placeholder={placeholder}
+						disabled={!canSend}
+						rows={1}
+						className="w-full min-h-6 resize-none bg-transparent p-0 text-xs leading-5 text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+						style={{ maxHeight: CLINE_CHAT_COMPOSER_MAX_HEIGHT }}
+					/>
+				</PopoverAnchor>
+				<PopoverContent
+					align="start"
+					sideOffset={6}
+					onOpenAutoFocus={(event) => event.preventDefault()}
+					onCloseAutoFocus={(event) => event.preventDefault()}
+					className="w-(--radix-popover-trigger-width) max-w-[min(32rem,var(--radix-popover-trigger-width))] gap-0 overflow-hidden rounded-lg border-border bg-surface-1 p-0 text-text-primary shadow-xl ring-0"
+				>
+					{isCompletionLoading ? (
+						<div className="px-2.5 py-2 text-[13px] text-text-tertiary">
+							{activeToken?.kind === "mention" ? "Loading files..." : "Loading commands..."}
+						</div>
+					) : completionSuggestions.length === 0 ? (
+						<div className="px-2.5 py-2 text-[13px] text-text-tertiary">{completionEmptyState}</div>
+					) : (
+						<div ref={completionMenuRef} className="max-h-56 p-1">
+							{completionSuggestions.map((suggestion, index) => {
+								const suggestionKey = `${suggestion.kind}:${suggestion.id}`;
+								return (
+									<button
+										type="button"
+										key={suggestionKey}
+										ref={(node) => setCompletionItemRef(suggestionKey, node)}
+										className={cn(
+											"flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left",
+											index === selectedCompletionIndex ? "bg-surface-3" : "hover:bg-surface-3",
+										)}
+										onMouseDown={(event) => {
+											event.preventDefault();
+											if (activeToken) {
+												applySuggestion(suggestion, activeToken);
+											}
+										}}
+										onMouseEnter={() => setSelectedCompletionIndex(index)}
+									>
+										<div className="min-w-0 flex-1">
+											<div className="truncate text-xs text-text-primary">{suggestion.label}</div>
+											{suggestion.detail ? (
+												<div className="truncate text-xs text-text-secondary">{suggestion.detail}</div>
+											) : null}
+										</div>
+									</button>
+								);
+							})}
+						</div>
+					)}
+				</PopoverContent>
+			</Popover>
 			{images.length > 0 ? (
 				<TaskImageStrip images={images} onRemoveImage={handleRemoveImage} className="mt-2" />
 			) : null}
@@ -294,13 +633,7 @@ export function ClineChatComposer({
 							void onSend();
 						}}
 						icon={
-							isSending ? (
-								<Spinner size={12} />
-							) : canCancel ? (
-								<Pause size={14} />
-							) : (
-								<SendHorizontal size={14} />
-							)
+							isSending ? <Spinner size={12} /> : canCancel ? <Pause size={14} /> : <SendHorizontal size={14} />
 						}
 					/>
 				</div>
