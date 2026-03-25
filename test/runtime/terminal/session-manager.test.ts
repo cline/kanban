@@ -79,8 +79,10 @@ describe("TerminalSessionManager", () => {
 
 		expect(recovered?.state).toBe("idle");
 		expect(recovered?.pid).toBeNull();
-		expect(recovered?.agentId).toBeNull();
-		expect(recovered?.workspacePath).toBeNull();
+		// agentId and workspacePath are preserved so the frontend can auto-resume
+		// the session with --continue/--resume to reload conversation history.
+		expect(recovered?.agentId).toBe("claude");
+		expect(recovered?.workspacePath).toBe("/tmp/worktree");
 		expect(recovered?.reviewReason).toBeNull();
 	});
 

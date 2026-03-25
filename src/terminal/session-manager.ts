@@ -615,10 +615,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return cloneSummary(entry.summary);
 		}
 
+		// Preserve agentId and workspacePath so the frontend can detect which agent
+		// was running and auto-resume the session with --continue/--resume.
 		const summary = updateSummary(entry, {
 			state: "idle",
-			agentId: null,
-			workspacePath: null,
 			pid: null,
 			startedAt: null,
 			lastOutputAt: null,
