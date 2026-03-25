@@ -443,6 +443,7 @@ function ProjectRow({
 	const displayPath = formatPathForDisplay(project.path);
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
+	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const taskCountBadges: TaskCountBadge[] = [
 		{
 			id: "backlog",
@@ -529,8 +530,8 @@ function ProjectRow({
 					</div>
 				) : null}
 			</div>
-			<div className="kb-project-row-actions flex items-center">
-				<DropdownMenu.Root>
+			<div className="kb-project-row-actions flex items-center" style={isMenuOpen ? { opacity: 1 } : undefined}>
+				<DropdownMenu.Root open={isMenuOpen} onOpenChange={setIsMenuOpen}>
 					<DropdownMenu.Trigger asChild>
 						<Button
 							variant="ghost"
