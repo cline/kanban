@@ -1,6 +1,7 @@
 import { Draggable } from "@hello-pangea/dnd";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
-import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, Ellipsis, GitBranch, Play, RotateCcw } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -470,18 +471,35 @@ export function BoardCard({
 										}}
 									/>
 								) : columnId === "review" ? (
-									<Button
-										icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
-										variant="ghost"
-										size="sm"
-										disabled={isMoveToTrashLoading}
-										aria-label="Move task to trash"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onMoveToTrash?.(card.id);
-										}}
-									/>
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger asChild>
+											<Button
+												icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Ellipsis size={14} />}
+												variant="ghost"
+												size="sm"
+												disabled={isMoveToTrashLoading}
+												aria-label="Task actions"
+												onMouseDown={stopEvent}
+												onClick={stopEvent}
+											/>
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Portal>
+											<DropdownMenu.Content
+												side="bottom"
+												align="end"
+												sideOffset={4}
+												className="z-50 min-w-[140px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
+												onCloseAutoFocus={(event) => event.preventDefault()}
+											>
+												<DropdownMenu.Item
+													className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-status-red cursor-pointer outline-none data-[highlighted]:bg-surface-3"
+													onSelect={() => onMoveToTrash?.(card.id)}
+												>
+													Delete
+												</DropdownMenu.Item>
+											</DropdownMenu.Content>
+										</DropdownMenu.Portal>
+									</DropdownMenu.Root>
 								) : columnId === "trash" ? (
 									<Tooltip
 										side="bottom"

@@ -607,6 +607,7 @@ export default function App(): ReactElement {
 		handleCreateTasks,
 		handleStartTask,
 		handleStartAllBacklogTasks,
+		setSelectedTaskId,
 	});
 
 	useAppHotkeys({

@@ -1,3 +1,4 @@
+import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useState } from "react";
 
 import { findCardSelection } from "@/state/board-state";
@@ -9,6 +10,7 @@ interface UseTaskStartActionsInput {
 	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	handleStartTask: (taskId: string) => void;
 	handleStartAllBacklogTasks: (taskIds?: string[]) => void;
+	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
 }
 
 export interface UseTaskStartActionsResult {
@@ -52,6 +54,7 @@ export function useTaskStartActions({
 	handleCreateTasks,
 	handleStartTask,
 	handleStartAllBacklogTasks,
+	setSelectedTaskId,
 }: UseTaskStartActionsInput): UseTaskStartActionsResult {
 	const [pendingTaskStartAfterCreateIds, setPendingTaskStartAfterCreateIds] = useState<string[] | null>(null);
 
@@ -106,8 +109,11 @@ export function useTaskStartActions({
 			return null;
 		}
 		setPendingTaskStartAfterCreateIds([taskId]);
+		if (!options?.keepDialogOpen) {
+			setSelectedTaskId(taskId);
+		}
 		return taskId;
-	}, [handleCreateTask]);
+	}, [handleCreateTask, setSelectedTaskId]);
 
 	const handleCreateAndStartTasks = useCallback(
 		(prompts: string[], options?: { keepDialogOpen?: boolean }): string[] => {
@@ -116,9 +122,12 @@ export function useTaskStartActions({
 				return [];
 			}
 			setPendingTaskStartAfterCreateIds(taskIds);
+			if (!options?.keepDialogOpen && taskIds.length === 1 && taskIds[0]) {
+				setSelectedTaskId(taskIds[0]);
+			}
 			return taskIds;
 		},
-		[handleCreateTasks],
+		[handleCreateTasks, setSelectedTaskId],
 	);
 
 	useEffect(() => {
