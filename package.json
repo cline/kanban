@@ -88,6 +88,7 @@
     "@trpc/server": "^11.11.0",
     "commander": "^14.0.3",
     "node-pty": "^1.2.0-beta.11",
+    "open": "^11.0.0",
     "proper-lockfile": "^4.1.2",
     "tree-kill": "^1.2.2",
     "ws": "^8.18.0",
