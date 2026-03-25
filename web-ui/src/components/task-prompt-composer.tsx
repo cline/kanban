@@ -1,32 +1,22 @@
-import * as RadixPopover from "@radix-ui/react-popover";
 import { Paperclip } from "lucide-react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, KeyboardEvent, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import {
+	applyClineComposerCompletion,
+	buildMentionInsertText,
+	detectActiveClineComposerToken,
+} from "@/components/detail-panels/cline-chat-composer-completion";
+import { InlineCompletionPicker, type InlineCompletionItem } from "@/components/inline-completion-picker";
 import { ACCEPTED_TASK_IMAGE_INPUT_ACCEPT, collectImageFilesFromDataTransfer, extractImagesFromDataTransfer, fileToTaskImage } from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";
+import { Button } from "@/components/ui/button";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { TaskImage } from "@/types";
 import { useDebouncedEffect } from "@/utils/react-use";
 
 const FILE_MENTION_LIMIT = 8;
 const MENTION_QUERY_DEBOUNCE_MS = 120;
-
-interface ActivePromptToken {
-	kind: "mention";
-	start: number;
-	end: number;
-	query: string;
-}
-
-interface PromptSuggestion {
-	id: string;
-	kind: "mention";
-	text: string;
-	insertText: string;
-}
-
 const TEXTAREA_MAX_HEIGHT = 200;
 
 interface TaskPromptComposerProps {
@@ -44,45 +34,6 @@ interface TaskPromptComposerProps {
 	autoFocus?: boolean;
 	workspaceId?: string | null;
 	showAttachImageButton?: boolean;
-}
-
-function detectActivePromptToken(value: string, cursorIndex: number): ActivePromptToken | null {
-	const head = value.slice(0, cursorIndex);
-	let tokenStart = head.length;
-	while (tokenStart > 0) {
-		const previous = head[tokenStart - 1];
-		if (previous && /\s/.test(previous)) {
-			break;
-		}
-		tokenStart -= 1;
-	}
-	const token = head.slice(tokenStart);
-	if (!token.startsWith("@")) {
-		return null;
-	}
-	return {
-		kind: "mention",
-		start: tokenStart,
-		end: cursorIndex,
-		query: token.slice(1),
-	};
-}
-
-function applyTokenReplacement(
-	value: string,
-	token: ActivePromptToken,
-	replacement: string,
-): { value: string; cursor: number } {
-	const before = value.slice(0, token.start);
-	const after = value.slice(token.end);
-	const shouldAppendSpace = after.length === 0 || !/^\s/.test(after);
-	const spacer = shouldAppendSpace ? " " : "";
-	const nextValue = `${before}${replacement}${spacer}${after}`;
-	const nextCursor = before.length + replacement.length + spacer.length;
-	return {
-		value: nextValue,
-		cursor: nextCursor,
-	};
 }
 
 export function TaskPromptComposer({
@@ -103,14 +54,13 @@ export function TaskPromptComposer({
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
-	const menuRef = useRef<HTMLDivElement | null>(null);
-	const suggestionItemRefs = useRef(new Map<string, HTMLButtonElement>());
 	const mentionSearchRequestIdRef = useRef(0);
 	const [cursorIndex, setCursorIndex] = useState(0);
-	const [mentionSuggestions, setMentionSuggestions] = useState<PromptSuggestion[]>([]);
+	const [mentionItems, setMentionItems] = useState<InlineCompletionItem[]>([]);
+	const [mentionInsertTextMap, setMentionInsertTextMap] = useState(new Map<string, string>());
 	const [isMentionSearchLoading, setIsMentionSearchLoading] = useState(false);
 	const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
-	const [isSuggestionPickerOpen, setIsSuggestionPickerOpen] = useState(true);
+	const [isSuggestionPickerOpen, setIsSuggestionPickerOpen] = useState(false);
 	const [isDragOver, setIsDragOver] = useState(false);
 
 	const autoResizeTextarea = useCallback(() => {
@@ -126,39 +76,32 @@ export function TaskPromptComposer({
 		autoResizeTextarea();
 	}, [autoResizeTextarea, value]);
 
-	const activeToken = useMemo(() => detectActivePromptToken(value, cursorIndex), [cursorIndex, value]);
+	const activeToken = useMemo(() => {
+		const token = detectActiveClineComposerToken(value, cursorIndex);
+		if (token && token.kind !== "mention") {
+			return null;
+		}
+		return token;
+	}, [cursorIndex, value]);
 
 	useEffect(() => {
-		if (!enabled) {
+		if (!enabled || !activeToken) {
 			mentionSearchRequestIdRef.current += 1;
-			setMentionSuggestions([]);
+			setMentionItems([]);
+			setMentionInsertTextMap(new Map());
 			setIsMentionSearchLoading(false);
-			return;
 		}
-		if (!activeToken || activeToken.kind !== "mention") {
-			mentionSearchRequestIdRef.current += 1;
-			setMentionSuggestions([]);
-			setIsMentionSearchLoading(false);
-			return;
-		}
-		mentionSearchRequestIdRef.current += 1;
-	}, [activeToken, workspaceId]);
+	}, [activeToken, enabled, workspaceId]);
 
 	useDebouncedEffect(
 		() => {
-			if (!enabled) {
+			if (!enabled || !activeToken || !workspaceId) {
 				return;
 			}
-			if (!activeToken || activeToken.kind !== "mention") {
-				return;
-			}
-			const requestId = mentionSearchRequestIdRef.current;
+			const requestId = ++mentionSearchRequestIdRef.current;
 			setIsMentionSearchLoading(true);
 			void (async () => {
 				try {
-					if (!workspaceId) {
-						throw new Error("No workspace selected.");
-					}
 					const trpcClient = getRuntimeTrpcClient(workspaceId);
 					const payload = await trpcClient.workspace.searchFiles.query({
 						query: activeToken.query,
@@ -167,19 +110,19 @@ export function TaskPromptComposer({
 					if (requestId !== mentionSearchRequestIdRef.current) {
 						return;
 					}
-					setMentionSuggestions(
-						Array.isArray(payload.files)
-							? payload.files.map((file) => ({
-									id: file.path,
-									kind: "mention",
-									text: file.path,
-									insertText: `@${file.path}`,
-								}))
-							: [],
-					);
+					const files = Array.isArray(payload.files) ? payload.files : [];
+					const insertMap = new Map<string, string>();
+					const items: InlineCompletionItem[] = files.map((file) => {
+						const insertText = buildMentionInsertText(file.path);
+						insertMap.set(file.path, insertText);
+						return { id: file.path, label: file.path };
+					});
+					setMentionItems(items);
+					setMentionInsertTextMap(insertMap);
 				} catch {
 					if (requestId === mentionSearchRequestIdRef.current) {
-						setMentionSuggestions([]);
+						setMentionItems([]);
+						setMentionInsertTextMap(new Map());
 					}
 				} finally {
 					if (requestId === mentionSearchRequestIdRef.current) {
@@ -193,8 +136,8 @@ export function TaskPromptComposer({
 	);
 
 	const suggestions = useMemo(() => {
-		return enabled && activeToken ? mentionSuggestions : ([] as PromptSuggestion[]);
-	}, [activeToken, enabled, mentionSuggestions]);
+		return enabled && activeToken ? mentionItems : [];
+	}, [activeToken, enabled, mentionItems]);
 
 	useEffect(() => {
 		setSelectedSuggestionIndex(0);
@@ -217,11 +160,12 @@ export function TaskPromptComposer({
 	}, [autoFocus, disabled, enabled]);
 
 	const applySuggestion = useCallback(
-		(suggestion: PromptSuggestion) => {
+		(item: InlineCompletionItem) => {
 			if (!activeToken) {
 				return;
 			}
-			const next = applyTokenReplacement(value, activeToken, suggestion.insertText);
+			const insertText = mentionInsertTextMap.get(item.id) ?? `@${item.id}`;
+			const next = applyClineComposerCompletion(value, activeToken, insertText);
 			onValueChange(next.value);
 			window.requestAnimationFrame(() => {
 				if (!textareaRef.current) {
@@ -232,16 +176,8 @@ export function TaskPromptComposer({
 				setCursorIndex(next.cursor);
 			});
 		},
-		[activeToken, onValueChange, value],
+		[activeToken, mentionInsertTextMap, onValueChange, value],
 	);
-
-	const setSuggestionItemRef = useCallback((itemKey: string, node: HTMLButtonElement | null) => {
-		if (node) {
-			suggestionItemRefs.current.set(itemKey, node);
-			return;
-		}
-		suggestionItemRefs.current.delete(itemKey);
-	}, []);
 
 	const handleTextareaKeyDown = useCallback(
 		(event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -276,9 +212,9 @@ export function TaskPromptComposer({
 
 			if (canShowSuggestions && (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey))) {
 				event.preventDefault();
-				const selectedSuggestion = suggestions[selectedSuggestionIndex] ?? suggestions[0];
-				if (selectedSuggestion) {
-					applySuggestion(selectedSuggestion);
+				const selectedItem = suggestions[selectedSuggestionIndex] ?? suggestions[0];
+				if (selectedItem) {
+					applySuggestion(selectedItem);
 				}
 				return;
 			}
@@ -395,123 +331,56 @@ export function TaskPromptComposer({
 		[appendImages, onImagesChange],
 	);
 
-	const showMentionLoading = Boolean(enabled && activeToken && isMentionSearchLoading);
-	const showSuggestions = Boolean(
-		enabled && isSuggestionPickerOpen && activeToken && (showMentionLoading || suggestions.length > 0),
-	);
-
-	useEffect(() => {
-		if (!showSuggestions) {
-			return;
-		}
-		const activeSuggestion = suggestions[selectedSuggestionIndex];
-		if (!activeSuggestion) {
-			return;
-		}
-		const activeKey = `${activeSuggestion.kind}:${activeSuggestion.id}`;
-		const activeElement = suggestionItemRefs.current.get(activeKey);
-		const menuElement = menuRef.current;
-		if (!activeElement || !menuElement) {
-			return;
-		}
-		const activeTop = activeElement.offsetTop;
-		const activeBottom = activeTop + activeElement.offsetHeight;
-		const viewportTop = menuElement.scrollTop;
-		const viewportBottom = viewportTop + menuElement.clientHeight;
-		if (activeBottom > viewportBottom) {
-			menuElement.scrollTop = activeBottom - menuElement.clientHeight;
-			return;
-		}
-		if (activeTop < viewportTop) {
-			menuElement.scrollTop = activeTop;
-		}
-	}, [selectedSuggestionIndex, showSuggestions, suggestions]);
+	const showSuggestions = Boolean(enabled && isSuggestionPickerOpen && activeToken);
 
 	return (
 		<div>
-			<RadixPopover.Root open={showSuggestions}>
-				<RadixPopover.Anchor asChild>
-					<textarea
-						id={id}
-						ref={textareaRef}
-						value={value}
-						onChange={(event) => {
-							onValueChange(event.target.value);
-							setCursorIndex(event.target.selectionStart ?? event.target.value.length);
-						}}
-						onKeyDown={handleTextareaKeyDown}
-						onClick={(event) =>
-							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-						}
-						onKeyUp={(event) =>
-							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-						}
-						onPaste={handlePaste}
-						onDrop={handleDrop}
-						onDragOver={handleDragOver}
-						onDragLeave={handleDragLeave}
-						placeholder={placeholder ?? "Describe the task"}
-						disabled={disabled}
-						className="w-full rounded-md border border-border-bright bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-						style={{
-							minHeight: 80,
-							maxHeight: TEXTAREA_MAX_HEIGHT,
-							resize: "none",
-							overflowY: "auto",
-							...(isDragOver
-								? {
-									outline: "2px dashed var(--accent)",
-									outlineOffset: -2,
-								}
-								: {}),
-						}}
-					/>
-				</RadixPopover.Anchor>
-				<RadixPopover.Portal>
-					<RadixPopover.Content
-						className="z-50 rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
-						style={{ width: "var(--radix-popover-trigger-width, var(--radix-popover-anchor-width))" }}
-						sideOffset={4}
-						align="start"
-						onOpenAutoFocus={(event) => event.preventDefault()}
-						onCloseAutoFocus={(event) => event.preventDefault()}
-					>
-						{showMentionLoading ? (
-							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">Loading files...</div>
-						) : (
-							<div ref={menuRef} className="max-h-[200px] overflow-x-hidden overflow-y-auto p-1">
-								{suggestions.map((suggestion, index) => {
-									const suggestionKey = `${suggestion.kind}:${suggestion.id}`;
-									return (
-										<button
-											type="button"
-											key={suggestionKey}
-											ref={(node) => setSuggestionItemRef(suggestionKey, node)}
-											className={`flex w-full items-center px-1.5 py-1 text-left rounded-md ${index === selectedSuggestionIndex ? "bg-surface-3" : "hover:bg-surface-3"}`}
-											onMouseDown={(event) => {
-												event.preventDefault();
-												applySuggestion(suggestion);
-											}}
-											onMouseEnter={() => setSelectedSuggestionIndex(index)}
-										>
-											<span
-												className="block text-xs leading-tight max-w-full text-text-primary"
-												style={{
-													overflowWrap: "anywhere",
-													wordBreak: "break-word",
-													whiteSpace: "normal",
-												}}
-											>
-												{suggestion.text}
-											</span>
-										</button>
-									);
-								})}
-							</div>
-						)}
-					</RadixPopover.Content>
-				</RadixPopover.Portal>
-			</RadixPopover.Root>
+			<InlineCompletionPicker
+				open={showSuggestions}
+				items={suggestions}
+				selectedIndex={selectedSuggestionIndex}
+				onSelectItem={applySuggestion}
+				onHoverItem={setSelectedSuggestionIndex}
+				isLoading={isMentionSearchLoading}
+				loadingMessage="Loading files..."
+				emptyMessage="No matching files."
+			>
+				<textarea
+					id={id}
+					ref={textareaRef}
+					value={value}
+					onChange={(event) => {
+						onValueChange(event.target.value);
+						setCursorIndex(event.target.selectionStart ?? event.target.value.length);
+					}}
+					onKeyDown={handleTextareaKeyDown}
+					onClick={(event) =>
+						setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+					}
+					onKeyUp={(event) =>
+						setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+					}
+					onPaste={handlePaste}
+					onDrop={handleDrop}
+					onDragOver={handleDragOver}
+					onDragLeave={handleDragLeave}
+					placeholder={placeholder ?? "Describe the task"}
+					disabled={disabled}
+					className="w-full rounded-md border border-border-bright bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+					style={{
+						minHeight: 80,
+						maxHeight: TEXTAREA_MAX_HEIGHT,
+						resize: "none",
+						overflowY: "auto",
+						...(isDragOver
+							? {
+								outline: "2px dashed var(--accent)",
+								outlineOffset: -2,
+							}
+							: {}),
+					}}
+				/>
+			</InlineCompletionPicker>
 
 			{images.length > 0 ? (
 				<TaskImageStrip

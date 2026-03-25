@@ -20,12 +20,12 @@ import {
 	type ClineComposerCompletionSuggestion,
 	detectActiveClineComposerToken,
 } from "@/components/detail-panels/cline-chat-composer-completion";
+import { InlineCompletionPicker, type InlineCompletionItem } from "@/components/inline-completion-picker";
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
 import { collectImageFilesFromDataTransfer, extractImagesFromDataTransfer } from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -95,8 +95,6 @@ export function ClineChatComposer({
 	workspaceId?: string | null;
 }): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-	const completionMenuRef = useRef<HTMLDivElement | null>(null);
-	const completionItemRefs = useRef(new Map<string, HTMLButtonElement>());
 	const mentionSearchRequestIdRef = useRef(0);
 	const slashCommandsRequestIdRef = useRef(0);
 	const slashCommandsCacheRef = useRef(new Map<string, RuntimeSlashCommand[]>());
@@ -117,9 +115,14 @@ export function ClineChatComposer({
 		}
 		return activeToken.kind === "mention" ? mentionSuggestions : slashSuggestions;
 	}, [activeToken, mentionSuggestions, slashSuggestions]);
+	const completionItems: InlineCompletionItem[] = useMemo(
+		() => completionSuggestions.map((s) => ({ id: s.id, label: s.label, detail: s.detail })),
+		[completionSuggestions],
+	);
 	const isCompletionLoading = activeToken?.kind === "mention" ? isMentionSearchLoading : isSlashSearchLoading;
 	const showCompletionPicker = Boolean(activeToken && isCompletionPickerOpen);
-	const completionEmptyState = useMemo(() => {
+	const completionLoadingMessage = activeToken?.kind === "mention" ? "Loading files..." : "Loading commands...";
+	const completionEmptyMessage = useMemo(() => {
 		if (!activeToken) {
 			return null;
 		}
@@ -321,40 +324,15 @@ export function ClineChatComposer({
 		[draft, onDraftChange],
 	);
 
-	const setCompletionItemRef = useCallback((itemKey: string, node: HTMLButtonElement | null) => {
-		if (node) {
-			completionItemRefs.current.set(itemKey, node);
-			return;
-		}
-		completionItemRefs.current.delete(itemKey);
-	}, []);
-
-	useEffect(() => {
-		if (!showCompletionPicker) {
-			return;
-		}
-		const activeSuggestion = completionSuggestions[selectedCompletionIndex];
-		if (!activeSuggestion) {
-			return;
-		}
-		const activeKey = `${activeSuggestion.kind}:${activeSuggestion.id}`;
-		const activeElement = completionItemRefs.current.get(activeKey);
-		const menuElement = completionMenuRef.current;
-		if (!activeElement || !menuElement) {
-			return;
-		}
-		const activeTop = activeElement.offsetTop;
-		const activeBottom = activeTop + activeElement.offsetHeight;
-		const viewportTop = menuElement.scrollTop;
-		const viewportBottom = viewportTop + menuElement.clientHeight;
-		if (activeBottom > viewportBottom) {
-			menuElement.scrollTop = activeBottom - menuElement.clientHeight;
-			return;
-		}
-		if (activeTop < viewportTop) {
-			menuElement.scrollTop = activeTop;
-		}
-	}, [completionSuggestions, selectedCompletionIndex, showCompletionPicker]);
+	const handleCompletionSelect = useCallback(
+		(item: InlineCompletionItem) => {
+			const suggestion = completionSuggestions.find((s) => s.id === item.id);
+			if (suggestion && activeToken) {
+				applySuggestion(suggestion, activeToken);
+			}
+		},
+		[activeToken, applySuggestion, completionSuggestions],
+	);
 
 	const handleTextareaKeyDown = useCallback(
 		(event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -466,77 +444,39 @@ export function ClineChatComposer({
 			}}
 			onDrop={handleDrop}
 		>
-			<Popover open={showCompletionPicker}>
-				<PopoverAnchor asChild>
-					<textarea
-						ref={textareaRef}
-						value={draft}
-						onChange={(event) => {
-							onDraftChange(event.target.value);
-							setCursorIndex(event.target.selectionStart ?? event.target.value.length);
-						}}
-						onPaste={handlePaste}
-						onKeyDown={handleTextareaKeyDown}
-						onClick={(event) =>
-							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-						}
-						onKeyUp={(event) =>
-							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-						}
-						placeholder={placeholder}
-						disabled={!canSend}
-						rows={1}
-						className="w-full min-h-6 resize-none bg-transparent p-0 text-xs leading-5 text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
-						style={{ maxHeight: CLINE_CHAT_COMPOSER_MAX_HEIGHT }}
-					/>
-				</PopoverAnchor>
-				<PopoverContent
-					align="start"
-					sideOffset={6}
-					onOpenAutoFocus={(event) => event.preventDefault()}
-					onCloseAutoFocus={(event) => event.preventDefault()}
-					className="w-(--radix-popover-trigger-width) max-w-[min(32rem,var(--radix-popover-trigger-width))] gap-0 overflow-hidden rounded-lg border-border bg-surface-1 p-0 text-text-primary shadow-xl ring-0"
-				>
-					{isCompletionLoading ? (
-						<div className="px-2.5 py-2 text-[13px] text-text-tertiary">
-							{activeToken?.kind === "mention" ? "Loading files..." : "Loading commands..."}
-						</div>
-					) : completionSuggestions.length === 0 ? (
-						<div className="px-2.5 py-2 text-[13px] text-text-tertiary">{completionEmptyState}</div>
-					) : (
-						<div ref={completionMenuRef} className="max-h-56 p-1">
-							{completionSuggestions.map((suggestion, index) => {
-								const suggestionKey = `${suggestion.kind}:${suggestion.id}`;
-								return (
-									<button
-										type="button"
-										key={suggestionKey}
-										ref={(node) => setCompletionItemRef(suggestionKey, node)}
-										className={cn(
-											"flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left",
-											index === selectedCompletionIndex ? "bg-surface-3" : "hover:bg-surface-3",
-										)}
-										onMouseDown={(event) => {
-											event.preventDefault();
-											if (activeToken) {
-												applySuggestion(suggestion, activeToken);
-											}
-										}}
-										onMouseEnter={() => setSelectedCompletionIndex(index)}
-									>
-										<div className="min-w-0 flex-1">
-											<div className="truncate text-xs text-text-primary">{suggestion.label}</div>
-											{suggestion.detail ? (
-												<div className="truncate text-xs text-text-secondary">{suggestion.detail}</div>
-											) : null}
-										</div>
-									</button>
-								);
-							})}
-						</div>
-					)}
-				</PopoverContent>
-			</Popover>
+			<InlineCompletionPicker
+				open={showCompletionPicker}
+				items={completionItems}
+				selectedIndex={selectedCompletionIndex}
+				onSelectItem={handleCompletionSelect}
+				onHoverItem={setSelectedCompletionIndex}
+				isLoading={isCompletionLoading}
+				loadingMessage={completionLoadingMessage}
+				emptyMessage={completionEmptyMessage}
+				side="top"
+			>
+				<textarea
+					ref={textareaRef}
+					value={draft}
+					onChange={(event) => {
+						onDraftChange(event.target.value);
+						setCursorIndex(event.target.selectionStart ?? event.target.value.length);
+					}}
+					onPaste={handlePaste}
+					onKeyDown={handleTextareaKeyDown}
+					onClick={(event) =>
+						setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+					}
+					onKeyUp={(event) =>
+						setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+					}
+					placeholder={placeholder}
+					disabled={!canSend}
+					rows={1}
+					className="w-full min-h-6 resize-none bg-transparent p-0 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+					style={{ maxHeight: CLINE_CHAT_COMPOSER_MAX_HEIGHT }}
+				/>
+			</InlineCompletionPicker>
 			{images.length > 0 ? (
 				<TaskImageStrip images={images} onRemoveImage={handleRemoveImage} className="mt-2" />
 			) : null}
