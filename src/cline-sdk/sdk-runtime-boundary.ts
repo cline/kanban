@@ -15,6 +15,8 @@ import {
 	type SessionHost,
 	type UserInstructionConfigWatcher,
 } from "@clinebot/core/node";
+import { LoggerTelemetryAdapter, type LoggerTelemetryAdapterOptions } from "@clinebot/core";
+import { createConfiguredTelemetryService } from "@clinebot/core/telemetry/opentelemetry";
 import type { LlmsProviders as ClineSdkProviders } from "@clinebot/llms";
 
 export type ClineSdkSessionHost = SessionHost;
@@ -193,6 +195,10 @@ export interface ClineSdkSlashCommand {
 }
 export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
 export type ClineSdkToolApprovalResult = ToolApprovalResult;
+
+// Telemetry
+export { LoggerTelemetryAdapter, type LoggerTelemetryAdapterOptions };
+export { createConfiguredTelemetryService };
 
 export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
 	return await createSessionHost({
