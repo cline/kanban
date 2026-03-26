@@ -4,9 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
-import type { BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/types";
+import type {
+	BoardColumnId,
+	BoardData,
+	ReviewTaskWorkspaceSnapshot,
+	TaskAgentReviewState,
+	TaskAutoReviewMode,
+} from "@/types";
 
-function createBoard(autoReviewEnabled: boolean): BoardData {
+function createBoard(options?: {
+	autoReviewEnabled?: boolean;
+	autoReviewMode?: TaskAutoReviewMode;
+	agentReview?: TaskAgentReviewState;
+}): BoardData {
 	return {
 		columns: [
 			{ id: "backlog", title: "Backlog", cards: [] },
@@ -19,8 +29,9 @@ function createBoard(autoReviewEnabled: boolean): BoardData {
 						id: "task-1",
 						prompt: "Test task",
 						startInPlanMode: false,
-						autoReviewEnabled,
-						autoReviewMode: "commit",
+						autoReviewEnabled: options?.autoReviewEnabled ?? true,
+						autoReviewMode: options?.autoReviewMode ?? "commit",
+						agentReview: options?.agentReview,
 						baseRef: "main",
 						createdAt: 1,
 						updatedAt: 1,
@@ -48,16 +59,19 @@ const workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot> = {
 
 function HookHarness({
 	board,
+	agentReviewEnabled = false,
 	runAutoReviewGitAction,
 	requestMoveTaskToTrash,
 }: {
 	board: BoardData;
+	agentReviewEnabled?: boolean;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
 }): null {
 	setTaskWorkspaceSnapshot(workspaceSnapshots["task-1"] ?? null);
 	useReviewAutoActions({
 		board,
+		agentReviewEnabled,
 		taskGitActionLoadingByTaskId: {},
 		runAutoReviewGitAction,
 		requestMoveTaskToTrash,
@@ -102,7 +116,7 @@ describe("useReviewAutoActions", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					board={createBoard(true)}
+					board={createBoard({ autoReviewEnabled: true })}
 					runAutoReviewGitAction={runAutoReviewGitAction}
 					requestMoveTaskToTrash={requestMoveTaskToTrash}
 				/>,
@@ -112,7 +126,7 @@ describe("useReviewAutoActions", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					board={createBoard(false)}
+					board={createBoard({ autoReviewEnabled: false })}
 					runAutoReviewGitAction={runAutoReviewGitAction}
 					requestMoveTaskToTrash={requestMoveTaskToTrash}
 				/>,
@@ -124,6 +138,136 @@ describe("useReviewAutoActions", () => {
 		});
 
 		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("does not trigger auto commit when agent review is exhausted", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "exhausted",
+							currentRound: 2,
+							stopAfterCurrentRound: true,
+							passedBannerVisible: false,
+						},
+					})}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("cancels a scheduled auto commit when agent review becomes exhausted", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({ autoReviewEnabled: true, autoReviewMode: "commit" })}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "exhausted",
+							currentRound: 2,
+							stopAfterCurrentRound: true,
+							passedBannerVisible: false,
+						},
+					})}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("does not trigger auto commit when project agent review is enabled but the task has not passed yet", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({ autoReviewEnabled: true, autoReviewMode: "commit" })}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("triggers auto commit after agent review passes", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "passed",
+							currentRound: 1,
+							stopAfterCurrentRound: false,
+							passedBannerVisible: true,
+						},
+					})}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).toHaveBeenCalledWith("task-1", "commit");
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
 	});
 });

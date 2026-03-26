@@ -4,12 +4,26 @@ import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { findCardSelection } from "@/state/board-state";
 import { getTaskWorkspaceSnapshot, subscribeToAnyTaskMetadata } from "@/stores/workspace-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData, TaskAutoReviewMode } from "@/types";
-import { resolveTaskAutoReviewMode } from "@/types";
+import { resolveTaskAgentReviewStatus, resolveTaskAutoReviewMode } from "@/types";
 
 const AUTO_REVIEW_ACTION_DELAY_MS = 500;
 
 function isTaskAutoReviewEnabled(task: BoardCard): boolean {
 	return task.autoReviewEnabled === true;
+}
+
+function shouldBlockGitAutoReview(
+	task: BoardCard,
+	autoReviewMode: TaskAutoReviewMode,
+	agentReviewEnabled: boolean,
+): boolean {
+	if (autoReviewMode === "move_to_trash") {
+		return false;
+	}
+	if (!agentReviewEnabled) {
+		return false;
+	}
+	return resolveTaskAgentReviewStatus(task.agentReview?.status) !== "passed";
 }
 
 interface TaskGitActionLoadingStateLike {
@@ -23,6 +37,7 @@ interface RequestMoveTaskToTrashOptions {
 
 interface UseReviewAutoActionsOptions {
 	board: BoardData;
+	agentReviewEnabled: boolean;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (
@@ -35,6 +50,7 @@ interface UseReviewAutoActionsOptions {
 
 export function useReviewAutoActions({
 	board,
+	agentReviewEnabled,
 	taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction,
 	requestMoveTaskToTrash,
@@ -150,6 +166,11 @@ export function useReviewAutoActions({
 				}
 
 				const autoReviewMode = resolveTaskAutoReviewMode(reviewTask.autoReviewMode);
+				if (shouldBlockGitAutoReview(reviewTask, autoReviewMode, agentReviewEnabled)) {
+					delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+					clearAutoReviewTimer(reviewTask.id);
+					continue;
+				}
 				const loadingState = taskGitActionLoadingByTaskId[reviewTask.id];
 				const isGitActionInFlight =
 					autoReviewMode === "commit"
@@ -207,6 +228,10 @@ export function useReviewAutoActions({
 								return;
 							}
 							const latestMode = resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode);
+							if (shouldBlockGitAutoReview(latestSelection.card, latestMode, agentReviewEnabled)) {
+								delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+								return;
+							}
 							if (latestMode !== autoReviewMode) {
 								return;
 							}
@@ -240,6 +265,10 @@ export function useReviewAutoActions({
 						return;
 					}
 					const latestMode = resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode);
+					if (shouldBlockGitAutoReview(latestSelection.card, latestMode, agentReviewEnabled)) {
+						delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+						return;
+					}
 					if (latestMode !== autoReviewMode) {
 						return;
 					}
@@ -252,7 +281,7 @@ export function useReviewAutoActions({
 				});
 			}
 		},
-		[clearAutoReviewTimer, scheduleAutoReviewAction, taskGitActionLoadingByTaskId],
+		[agentReviewEnabled, clearAutoReviewTimer, scheduleAutoReviewAction, taskGitActionLoadingByTaskId],
 	);
 
 	useEffect(() => {
