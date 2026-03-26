@@ -101,6 +101,17 @@ export interface AgentReviewExecutionResult {
 	error?: string;
 }
 
+interface BuildAgentReviewExecutionResultInput {
+	ok: boolean;
+	state: AgentReviewState;
+	runnerResult?: AgentReviewRunnerResult | null;
+	followUpPrompt?: string | null;
+	followUpSent?: boolean;
+	duplicate?: boolean;
+	skipped?: boolean;
+	error?: string;
+}
+
 function clampMaxRounds(value: number): number {
 	if (!Number.isFinite(value)) {
 		return 1;
@@ -127,6 +138,35 @@ function createSkippedAgentReviewState(snapshot: AgentReviewTaskSnapshot, trigge
 		maxRoundsSnapshot: clampMaxRounds(snapshot.policy.maxRounds),
 		lastOutcome: "skipped",
 	};
+}
+
+function buildAgentReviewExecutionResult(
+	input: BuildAgentReviewExecutionResultInput,
+): AgentReviewExecutionResult {
+	return {
+		ok: input.ok,
+		state: input.state,
+		runnerResult: input.runnerResult ?? null,
+		followUpPrompt: input.followUpPrompt ?? null,
+		followUpSent: input.followUpSent ?? false,
+		duplicate: input.duplicate ?? false,
+		skipped: input.skipped ?? false,
+		...(input.error ? { error: input.error } : {}),
+	};
+}
+
+async function persistSkippedExecutionResult(
+	persistState: (workspaceId: string, taskId: string, state: AgentReviewState) => Promise<void>,
+	snapshot: AgentReviewTaskSnapshot,
+	triggerSource: AgentReviewTriggerSource,
+): Promise<AgentReviewExecutionResult> {
+	const skippedState = createSkippedAgentReviewState(snapshot, triggerSource);
+	await persistState(snapshot.workspaceId, snapshot.taskId, skippedState);
+	return buildAgentReviewExecutionResult({
+		ok: true,
+		state: skippedState,
+		skipped: true,
+	});
 }
 
 function shouldStartNewRun(existingState: AgentReviewState | null, triggerSource: AgentReviewTriggerSource): boolean {
@@ -220,7 +260,7 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 	const runReviewRound = deps.runReviewRound ?? runAgentReviewRound;
 	const recordFallbackRound = deps.recordFallbackRound ?? recordFallbackReviewRound;
 
-	async function persistState(workspaceId: string, taskId: string, state: AgentReviewState): Promise<void> {
+async function persistState(workspaceId: string, taskId: string, state: AgentReviewState): Promise<void> {
 		await deps.persistState({ workspaceId, taskId, state });
 	}
 
@@ -231,42 +271,24 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 		): Promise<AgentReviewExecutionResult> {
 			const activeKey = `${snapshot.workspaceId}:${snapshot.taskId}`;
 			if (activeRuns.has(activeKey)) {
-				return {
+				return buildAgentReviewExecutionResult({
 					ok: false,
 					state: snapshot.existingState ?? createIdleAgentReviewState(),
-					runnerResult: null,
-					followUpPrompt: null,
-					followUpSent: false,
 					duplicate: true,
-					skipped: false,
 					error: "A review round is already active for this task.",
-				};
+				});
 			}
 
 			if (triggerSource === "automatic" && shouldSkipAutomaticTrigger(snapshot)) {
-				return {
+				return buildAgentReviewExecutionResult({
 					ok: true,
 					state: snapshot.existingState ?? createIdleAgentReviewState(),
-					runnerResult: null,
-					followUpPrompt: null,
-					followUpSent: false,
-					duplicate: false,
 					skipped: true,
-				};
+				});
 			}
 
 			if (!snapshot.originalAgentId) {
-				const skippedState = createSkippedAgentReviewState(snapshot, triggerSource);
-				await persistState(snapshot.workspaceId, snapshot.taskId, skippedState);
-				return {
-					ok: true,
-					state: skippedState,
-					runnerResult: null,
-					followUpPrompt: null,
-					followUpSent: false,
-					duplicate: false,
-					skipped: true,
-				};
+				return await persistSkippedExecutionResult(persistState, snapshot, triggerSource);
 			}
 
 			const launchCommand = await deps.resolveLaunchCommand({
@@ -274,17 +296,7 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 				preferredAgentId: snapshot.originalAgentId,
 			});
 			if (!launchCommand) {
-				const skippedState = createSkippedAgentReviewState(snapshot, triggerSource);
-				await persistState(snapshot.workspaceId, snapshot.taskId, skippedState);
-				return {
-					ok: true,
-					state: skippedState,
-					runnerResult: null,
-					followUpPrompt: null,
-					followUpSent: false,
-					duplicate: false,
-					skipped: true,
-				};
+				return await persistSkippedExecutionResult(persistState, snapshot, triggerSource);
 			}
 
 			const previousState = snapshot.existingState;
@@ -340,16 +352,11 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 					stopAfterCurrentRound: true,
 				};
 				await persistState(snapshot.workspaceId, snapshot.taskId, failedState);
-				return {
+				return buildAgentReviewExecutionResult({
 					ok: false,
 					state: failedState,
-					runnerResult: null,
-					followUpPrompt: null,
-					followUpSent: false,
-					duplicate: false,
-					skipped: false,
 					error: message,
-				};
+				});
 			} finally {
 				activeRuns.delete(activeKey);
 			}
@@ -382,15 +389,13 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 			}
 
 			await persistState(snapshot.workspaceId, snapshot.taskId, finalState);
-			return {
+			return buildAgentReviewExecutionResult({
 				ok: true,
 				state: finalState,
 				runnerResult,
 				followUpPrompt,
 				followUpSent,
-				duplicate: false,
-				skipped: false,
-			};
+			});
 		},
 	};
 }

@@ -46,6 +46,53 @@ interface PendingProgrammaticStartMoveCompletion {
 	timeoutId: number;
 }
 
+function moveTaskIfStillInColumn(
+	board: BoardData,
+	taskId: string,
+	expectedColumnId: BoardColumnId,
+	targetColumnId: BoardColumnId,
+	options?: { insertAtTop?: boolean },
+): BoardData {
+	const currentColumnId = getTaskColumnId(board, taskId);
+	if (currentColumnId !== expectedColumnId) {
+		return board;
+	}
+	const reverted = moveTaskToColumn(board, taskId, targetColumnId, options);
+	return reverted.moved ? reverted.board : board;
+}
+
+function updateTaskAgentReviewState(
+	board: BoardData,
+	taskId: string,
+	agentReview: BoardCard["agentReview"] | undefined,
+): BoardData {
+	return {
+		...board,
+		columns: board.columns.map((column) => ({
+			...column,
+			cards: column.cards.map((card) => (card.id === taskId ? { ...card, agentReview } : card)),
+		})),
+	};
+}
+
+function showWarningToast(message: string, timeout = 7000): void {
+	showAppToast({
+		intent: "warning",
+		icon: "warning-sign",
+		message,
+		timeout,
+	});
+}
+
+function showSuccessToast(message: string, timeout = 4000): void {
+	showAppToast({
+		intent: "success",
+		icon: "tick-circle",
+		message,
+		timeout,
+	});
+}
+
 interface UseBoardInteractionsInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
@@ -266,68 +313,33 @@ export function useBoardInteractions({
 	const handleTriggerAgentReview = useCallback(
 		async (taskId: string): Promise<void> => {
 			if (!currentProjectId) {
-				showAppToast({
-					intent: "warning",
-					icon: "warning-sign",
-					message: "Select a project before starting agent review.",
-					timeout: 5000,
-				});
+				showWarningToast("Select a project before starting agent review.", 5000);
 				return;
 			}
 
 			try {
 				const response = await triggerTaskAgentReview(currentProjectId, taskId);
 				if (response.state) {
-					setBoard((currentBoard) =>
-						({
-							...currentBoard,
-							columns: currentBoard.columns.map((column) => ({
-								...column,
-								cards: column.cards.map((card) =>
-									card.id === taskId ? { ...card, agentReview: response.state ?? undefined } : card,
-								),
-							})),
-						}) satisfies BoardData,
-					);
+					setBoard((currentBoard) => updateTaskAgentReviewState(currentBoard, taskId, response.state ?? undefined));
 				}
 
 				if (!response.ok) {
-					showAppToast({
-						intent: "warning",
-						icon: "warning-sign",
-						message: response.error ?? "Could not start agent review for this card.",
-						timeout: 7000,
-					});
+					showWarningToast(response.error ?? "Could not start agent review for this card.");
 					return;
 				}
 
 				const reviewStatus = resolveTaskAgentReviewStatus(response.state?.status);
 				if (reviewStatus === "skipped") {
-					showAppToast({
-						intent: "warning",
-						icon: "warning-sign",
-						message: "This card is not eligible for agent review yet.",
-						timeout: 7000,
-					});
+					showWarningToast("This card is not eligible for agent review yet.");
 					return;
 				}
 
 				if (reviewStatus === "pending" || reviewStatus === "reviewing") {
-					showAppToast({
-						intent: "success",
-						icon: "tick-circle",
-						message: "Agent review started.",
-						timeout: 4000,
-					});
+					showSuccessToast("Agent review started.");
 					return;
 				}
 
-				showAppToast({
-					intent: "warning",
-					icon: "warning-sign",
-					message: response.error ?? "Agent review is already active for this card.",
-					timeout: 7000,
-				});
+				showWarningToast(response.error ?? "Agent review is already active for this card.");
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				notifyError(message);
@@ -369,14 +381,7 @@ export function useBoardInteractions({
 			if (!ensured.ok) {
 				notifyError(ensured.message ?? "Could not set up task workspace.");
 				if (optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "in_progress") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
-					});
+					setBoard((currentBoard) => moveTaskIfStillInColumn(currentBoard, taskId, "in_progress", fromColumnId));
 				}
 				return false;
 			}
@@ -409,14 +414,7 @@ export function useBoardInteractions({
 			if (!started.ok) {
 				notifyError(started.message ?? "Could not start task session.");
 				if (optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "in_progress") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
-					});
+					setBoard((currentBoard) => moveTaskIfStillInColumn(currentBoard, taskId, "in_progress", fromColumnId));
 				}
 				return false;
 			}
@@ -616,16 +614,9 @@ export function useBoardInteractions({
 				if (!options?.optimisticMoveApplied) {
 					return;
 				}
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== "review") {
-						return currentBoard;
-					}
-					const reverted = moveTaskToColumn(currentBoard, taskId, "trash", {
-						insertAtTop: true,
-					});
-					return reverted.moved ? reverted.board : currentBoard;
-				});
+				setBoard((currentBoard) =>
+					moveTaskIfStillInColumn(currentBoard, taskId, "review", "trash", { insertAtTop: true }),
+				);
 				return;
 			}
 			if (ensured.response?.warning) {
@@ -649,16 +640,9 @@ export function useBoardInteractions({
 			if (!options?.optimisticMoveApplied) {
 				return;
 			}
-			setBoard((currentBoard) => {
-				const currentColumnId = getTaskColumnId(currentBoard, taskId);
-				if (currentColumnId !== "review") {
-					return currentBoard;
-				}
-				const reverted = moveTaskToColumn(currentBoard, taskId, "trash", {
-					insertAtTop: true,
-				});
-				return reverted.moved ? reverted.board : currentBoard;
-			});
+			setBoard((currentBoard) =>
+				moveTaskIfStillInColumn(currentBoard, taskId, "review", "trash", { insertAtTop: true }),
+			);
 		},
 		[ensureTaskWorkspace, setBoard, startTaskSession],
 	);
