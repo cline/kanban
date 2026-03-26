@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";

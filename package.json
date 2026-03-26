@@ -47,7 +47,7 @@
   "scripts": {
     "clean": "shx rm -rf dist coverage",
     "install:all": "npm install && npm --prefix web-ui install",
-    "build": "npm run clean && npm run web:build && tsc -p tsconfig.build.json && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && node scripts/upload-sentry-sourcemaps.mjs && shx chmod +x dist/cli.js",
+    "build": "npm run clean && npm run web:build && node scripts/build.mjs && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && node scripts/upload-sentry-sourcemaps.mjs && shx chmod +x dist/cli.js",
     "dogfood": "node scripts/dogfood.mjs",
     "link": "npm run build && npm link",
     "unlink": "npm unlink -g kanban",
@@ -72,6 +72,7 @@
     "@types/node": "^22.10.5",
     "@types/proper-lockfile": "^4.1.4",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.27.4",
     "husky": "^9.1.7",
     "shx": "^0.4.0",
     "tsx": "^4.20.3",
