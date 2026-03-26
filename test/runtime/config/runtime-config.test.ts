@@ -166,6 +166,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(state.globalConfigPath).toBe(join(tempHome, ".cline", "kanban", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
+				expect(state.agentReviewPolicy).toEqual({ enabled: false, maxRounds: 2 });
 
 				const updated = await updateRuntimeConfig(tempHome, {
 					selectedAgentId: "codex",
@@ -194,6 +195,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(state.globalConfigPath).toBe(join(tempHome, ".cline", "kanban", "config.json"));
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
+				expect(state.agentReviewPolicy).toEqual({ enabled: false, maxRounds: 2 });
 			});
 		} finally {
 			cleanupHome();
@@ -286,6 +288,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 					agentAutonomousModeEnabled: true,
 					readyForReviewNotificationsEnabled: true,
 					shortcuts: [],
+					agentReviewPolicy: {
+						enabled: false,
+						maxRounds: 2,
+					},
 					commitPromptTemplate: current.commitPromptTemplateDefault,
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
 				});
@@ -329,6 +335,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 					agentAutonomousModeEnabled: true,
 					readyForReviewNotificationsEnabled: true,
 					shortcuts: [],
+					agentReviewPolicy: {
+						enabled: false,
+						maxRounds: 2,
+					},
 					commitPromptTemplate: current.commitPromptTemplateDefault,
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
 				});
@@ -356,6 +366,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 					agentAutonomousModeEnabled: true,
 					readyForReviewNotificationsEnabled: true,
 					shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
+					agentReviewPolicy: {
+						enabled: false,
+						maxRounds: 2,
+					},
 					commitPromptTemplate: current.commitPromptTemplateDefault,
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
 				});
@@ -453,6 +467,50 @@ describe.sequential("runtime-config auto agent selection", () => {
 				const reloaded = await loadRuntimeConfig(tempProject);
 				expect(reloaded.selectedAgentId).toBe("codex");
 				expect(reloaded.agentAutonomousModeEnabled).toBe(false);
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("persists project agent review policy in project config", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-agent-review-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanban-project-runtime-config-agent-review-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const updated = await updateRuntimeConfig(tempProject, {
+					agentReviewPolicy: {
+						enabled: true,
+						maxRounds: 4,
+					},
+				});
+				expect(updated.agentReviewPolicy).toEqual({
+					enabled: true,
+					maxRounds: 4,
+				});
+
+				const projectPayload = JSON.parse(
+					readFileSync(join(tempProject, ".cline", "kanban", "config.json"), "utf8"),
+				) as {
+					agentReviewPolicy?: {
+						enabled?: boolean;
+						maxRounds?: number;
+					};
+				};
+				expect(projectPayload.agentReviewPolicy).toEqual({
+					enabled: true,
+					maxRounds: 4,
+				});
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.agentReviewPolicy).toEqual({
+					enabled: true,
+					maxRounds: 4,
+				});
 			});
 		} finally {
 			cleanupProject();

@@ -12,6 +12,7 @@ import {
 	type RuntimeTaskChatCancelRequest,
 	type RuntimeTaskChatMessagesRequest,
 	type RuntimeTaskChatSendRequest,
+	type RuntimeTaskAgentReviewTriggerRequest,
 	type RuntimeGitCheckoutRequest,
 	type RuntimeHookIngestRequest,
 	type RuntimeProjectAddRequest,
@@ -38,6 +39,7 @@ import {
 	runtimeTaskChatCancelRequestSchema,
 	runtimeTaskChatMessagesRequestSchema,
 	runtimeTaskChatSendRequestSchema,
+	runtimeTaskAgentReviewTriggerRequestSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeProjectAddRequestSchema,
@@ -240,6 +242,17 @@ export function parseTaskSessionInputRequest(value: unknown): RuntimeTaskSession
 	}
 	return {
 		...parsed,
+		taskId,
+	};
+}
+
+export function parseTaskAgentReviewTriggerRequest(value: unknown): RuntimeTaskAgentReviewTriggerRequest {
+	const parsed = parseWithSchema(runtimeTaskAgentReviewTriggerRequestSchema, value);
+	const taskId = parsed.taskId.trim();
+	if (!taskId) {
+		throw new Error("Task agent review taskId cannot be empty.");
+	}
+	return {
 		taskId,
 	};
 }

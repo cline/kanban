@@ -60,6 +60,8 @@ import type {
 	RuntimeTaskChatSendResponse,
 	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
+	RuntimeTaskAgentReviewTriggerRequest,
+	RuntimeTaskAgentReviewTriggerResponse,
 	RuntimeTaskSessionStartRequest,
 	RuntimeTaskSessionStartResponse,
 	RuntimeTaskSessionStopRequest,
@@ -133,6 +135,8 @@ import {
 	runtimeTaskChatSendResponseSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionInputResponseSchema,
+	runtimeTaskAgentReviewTriggerRequestSchema,
+	runtimeTaskAgentReviewTriggerResponseSchema,
 	runtimeTaskSessionStartRequestSchema,
 	runtimeTaskSessionStartResponseSchema,
 	runtimeTaskSessionStopRequestSchema,
@@ -182,6 +186,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskSessionInputRequest,
 		) => Promise<RuntimeTaskSessionInputResponse>;
+		triggerTaskAgentReview: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeTaskAgentReviewTriggerRequest,
+		) => Promise<RuntimeTaskAgentReviewTriggerResponse>;
 		getTaskChatMessages: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskChatMessagesRequest,
@@ -398,6 +406,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeTaskSessionInputResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.sendTaskSessionInput(ctx.workspaceScope, input);
+			}),
+		triggerTaskAgentReview: workspaceProcedure
+			.input(runtimeTaskAgentReviewTriggerRequestSchema)
+			.output(runtimeTaskAgentReviewTriggerResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.triggerTaskAgentReview(ctx.workspaceScope, input);
 			}),
 		getTaskChatMessages: workspaceProcedure
 			.input(runtimeTaskChatMessagesRequestSchema)

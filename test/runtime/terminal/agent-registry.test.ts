@@ -22,6 +22,10 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 		selectedAgentId: "claude",
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
+		agentReviewPolicy: {
+			enabled: false,
+			maxRounds: 2,
+		},
 		readyForReviewNotificationsEnabled: true,
 		shortcuts: [],
 		commitPromptTemplate: "commit",

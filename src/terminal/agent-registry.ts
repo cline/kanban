@@ -19,7 +19,7 @@ export interface ResolvedAgentCommand {
 	args: string[];
 }
 
-function getDefaultArgs(agentId: RuntimeAgentId): string[] {
+export function getDefaultArgs(agentId: RuntimeAgentId): string[] {
 	const entry = RUNTIME_AGENT_CATALOG.find((candidate) => candidate.id === agentId);
 	if (!entry) {
 		return [];
@@ -83,7 +83,11 @@ function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: stri
 }
 
 export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): ResolvedAgentCommand | null {
-	const selected = getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === runtimeConfig.selectedAgentId);
+	return resolveAgentCommandForAgentId(runtimeConfig.selectedAgentId);
+}
+
+export function resolveAgentCommandForAgentId(agentId: RuntimeAgentId): ResolvedAgentCommand | null {
+	const selected = getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === agentId);
 	if (!selected) {
 		return null;
 	}
@@ -114,6 +118,7 @@ export function buildRuntimeConfigResponse(
 		selectedAgentId: runtimeConfig.selectedAgentId,
 		selectedShortcutLabel: runtimeConfig.selectedShortcutLabel,
 		agentAutonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
+		agentReviewPolicy: runtimeConfig.agentReviewPolicy,
 		debugModeEnabled: isRuntimeDebugModeEnabled(),
 		effectiveCommand,
 		globalConfigPath: runtimeConfig.globalConfigPath,

@@ -79,6 +79,47 @@ export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;
 export const runtimeTaskAutoReviewModeSchema = z.enum(["commit", "pr", "move_to_trash"]);
 export type RuntimeTaskAutoReviewMode = z.infer<typeof runtimeTaskAutoReviewModeSchema>;
 
+export const runtimeTaskAgentReviewStatusSchema = z.enum([
+	"idle",
+	"pending",
+	"reviewing",
+	"changes_requested",
+	"passed",
+	"exhausted",
+	"skipped",
+]);
+export type RuntimeTaskAgentReviewStatus = z.infer<typeof runtimeTaskAgentReviewStatusSchema>;
+
+export const runtimeTaskAgentReviewTriggerSourceSchema = z.enum(["automatic", "manual"]);
+export type RuntimeTaskAgentReviewTriggerSource = z.infer<typeof runtimeTaskAgentReviewTriggerSourceSchema>;
+
+export const runtimeTaskAgentReviewOutcomeSchema = z.enum(["pass", "changes_requested", "exhausted", "skipped"]);
+export type RuntimeTaskAgentReviewOutcome = z.infer<typeof runtimeTaskAgentReviewOutcomeSchema>;
+
+export const runtimeAgentReviewPolicySchema = z.object({
+	enabled: z.boolean(),
+	maxRounds: z.number().int().positive(),
+});
+export type RuntimeAgentReviewPolicy = z.infer<typeof runtimeAgentReviewPolicySchema>;
+
+export const runtimeTaskAgentReviewStateSchema = z.object({
+	status: runtimeTaskAgentReviewStatusSchema,
+	triggerSource: runtimeTaskAgentReviewTriggerSourceSchema.optional(),
+	requestedAt: z.number().optional(),
+	startedAt: z.number().optional(),
+	completedAt: z.number().optional(),
+	currentRound: z.number().int().nonnegative(),
+	maxRoundsSnapshot: z.number().int().positive().optional(),
+	runId: z.string().optional(),
+	originalAgentId: runtimeAgentIdSchema.optional(),
+	reviewerAgentId: runtimeAgentIdSchema.optional(),
+	reportPath: z.string().optional(),
+	lastOutcome: runtimeTaskAgentReviewOutcomeSchema.optional(),
+	stopAfterCurrentRound: z.boolean(),
+	passedBannerVisible: z.boolean(),
+});
+export type RuntimeTaskAgentReviewState = z.infer<typeof runtimeTaskAgentReviewStateSchema>;
+
 export const runtimeTaskImageSchema = z.object({
 	id: z.string(),
 	data: z.string(),
@@ -93,6 +134,7 @@ export const runtimeBoardCardSchema = z.object({
 	startInPlanMode: z.boolean(),
 	autoReviewEnabled: z.boolean().optional(),
 	autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
+	agentReview: runtimeTaskAgentReviewStateSchema.optional(),
 	images: z.array(runtimeTaskImageSchema).optional(),
 	baseRef: z.string(),
 	createdAt: z.number(),
@@ -691,6 +733,7 @@ export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
 	selectedShortcutLabel: z.string().nullable(),
 	agentAutonomousModeEnabled: z.boolean(),
+	agentReviewPolicy: runtimeAgentReviewPolicySchema,
 	debugModeEnabled: z.boolean().optional(),
 	effectiveCommand: z.string().nullable(),
 	globalConfigPath: z.string(),
@@ -711,6 +754,13 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema.optional(),
 	selectedShortcutLabel: z.string().nullable().optional(),
 	agentAutonomousModeEnabled: z.boolean().optional(),
+	agentReviewPolicy: runtimeAgentReviewPolicySchema
+		.partial()
+		.refine(
+			(value) => value.enabled !== undefined || value.maxRounds !== undefined,
+			"agentReviewPolicy must include at least one field.",
+		)
+		.optional(),
 	shortcuts: z.array(runtimeProjectShortcutSchema).optional(),
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
 	commitPromptTemplate: z.string().optional(),
@@ -763,6 +813,19 @@ export const runtimeTaskSessionInputResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeTaskSessionInputResponse = z.infer<typeof runtimeTaskSessionInputResponseSchema>;
+
+export const runtimeTaskAgentReviewTriggerRequestSchema = z.object({
+	taskId: z.string(),
+});
+export type RuntimeTaskAgentReviewTriggerRequest = z.infer<typeof runtimeTaskAgentReviewTriggerRequestSchema>;
+
+export const runtimeTaskAgentReviewTriggerResponseSchema = z.object({
+	ok: z.boolean(),
+	taskId: z.string(),
+	state: runtimeTaskAgentReviewStateSchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeTaskAgentReviewTriggerResponse = z.infer<typeof runtimeTaskAgentReviewTriggerResponseSchema>;
 
 export const runtimeTaskChatMessageSchema = z.object({
 	id: z.string(),

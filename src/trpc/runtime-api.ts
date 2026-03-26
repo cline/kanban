@@ -17,7 +17,11 @@ import {
 } from "../cline-sdk/sdk-runtime-boundary.js";
 import type { RuntimeConfigState } from "../config/runtime-config.js";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config.js";
-import type { RuntimeCommandRunResponse } from "../core/api-contract.js";
+import type {
+	RuntimeAgentReviewPolicy,
+	RuntimeCommandRunResponse,
+	RuntimeTaskAgentReviewTriggerResponse,
+} from "../core/api-contract.js";
 import {
 	parseClineMcpOAuthRequest,
 	parseClineMcpSettingsSaveRequest,
@@ -27,6 +31,7 @@ import {
 	parseCommandRunRequest,
 	parseRuntimeConfigSaveRequest,
 	parseShellSessionStartRequest,
+	parseTaskAgentReviewTriggerRequest,
 	parseTaskChatAbortRequest,
 	parseTaskChatCancelRequest,
 	parseTaskChatMessagesRequest,
@@ -43,6 +48,20 @@ import { resolveTaskCwd } from "../workspace/task-worktree.js";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints.js";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router.js";
 
+interface RuntimeAgentReviewCoordinator {
+	triggerTaskReview: (input: {
+		workspaceId: string;
+		workspacePath: string;
+		taskId: string;
+		triggerSource: "automatic" | "manual";
+	}) => Promise<RuntimeTaskAgentReviewTriggerResponse>;
+	reconcilePolicyUpdate?: (input: {
+		workspaceId: string;
+		workspacePath: string;
+		policy: RuntimeAgentReviewPolicy;
+	}) => Promise<void>;
+}
+
 export interface CreateRuntimeApiDependencies {
 	getActiveWorkspaceId: () => string | null;
 	getActiveRuntimeConfig?: () => RuntimeConfigState;
@@ -52,6 +71,7 @@ export interface CreateRuntimeApiDependencies {
 	getScopedClineTaskSessionService: (scope: RuntimeTrpcWorkspaceScope) => Promise<ClineTaskSessionService>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
+	agentReviewCoordinator?: RuntimeAgentReviewCoordinator;
 	broadcastClineMcpAuthStatusesUpdated?: (
 		statuses: Awaited<ReturnType<ReturnType<typeof createClineMcpRuntimeService>["getAuthStatuses"]>>,
 	) => void;
@@ -134,6 +154,13 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			}
 			if (!workspaceScope) {
 				deps.setActiveRuntimeConfig(nextRuntimeConfig);
+			}
+			if (workspaceScope) {
+				await deps.agentReviewCoordinator?.reconcilePolicyUpdate?.({
+					workspaceId: workspaceScope.workspaceId,
+					workspacePath: workspaceScope.workspacePath,
+					policy: nextRuntimeConfig.agentReviewPolicy,
+				});
 			}
 			return buildConfigResponse(nextRuntimeConfig);
 		},
@@ -299,6 +326,33 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				return {
 					ok: false,
 					summary: null,
+					error: message,
+				};
+			}
+		},
+		triggerTaskAgentReview: async (workspaceScope, input) => {
+			try {
+				const body = parseTaskAgentReviewTriggerRequest(input);
+				if (!deps.agentReviewCoordinator) {
+					return {
+						ok: false,
+						taskId: body.taskId,
+						state: null,
+						error: "Agent review coordinator is not available.",
+					};
+				}
+				return await deps.agentReviewCoordinator.triggerTaskReview({
+					workspaceId: workspaceScope.workspaceId,
+					workspacePath: workspaceScope.workspacePath,
+					taskId: body.taskId,
+					triggerSource: "manual",
+				});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					taskId: "",
+					state: null,
 					error: message,
 				};
 			}

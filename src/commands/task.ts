@@ -190,6 +190,7 @@ function formatTaskRecord(state: RuntimeWorkspaceStateResponse, task: RuntimeBoa
 		startInPlanMode: task.startInPlanMode,
 		autoReviewEnabled: task.autoReviewEnabled === true,
 		autoReviewMode: task.autoReviewMode ?? "commit",
+		agentReview: task.agentReview ?? null,
 		createdAt: task.createdAt,
 		updatedAt: task.updatedAt,
 		session: session

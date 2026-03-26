@@ -8,24 +8,36 @@ import {
 	type ClineTaskSessionService,
 	createInMemoryClineTaskSessionService,
 } from "../cline-sdk/cline-task-session-service.js";
-import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
+import type { RuntimeConfigState } from "../config/runtime-config.js";
+import type {
+	RuntimeBoardData,
+	RuntimeBoardColumnId,
+	RuntimeCommandRunResponse,
+	RuntimeTaskSessionSummary,
+	RuntimeWorkspaceStateResponse,
+} from "../core/api-contract.js";
+import { moveTaskToColumn } from "../core/task-board-mutations.js";
 import {
 	buildKanbanRuntimeUrl,
 	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
 } from "../core/runtime-endpoint.js";
-import { loadWorkspaceContextById } from "../state/workspace-state.js";
+import { loadWorkspaceContextById, loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state.js";
 import type { TerminalSessionManager } from "../terminal/session-manager.js";
+import { resolveAgentCommand, resolveAgentCommandForAgentId } from "../terminal/agent-registry.js";
 import { createTerminalWebSocketBridge } from "../terminal/ws-server.js";
 import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router.js";
 import { createHooksApi } from "../trpc/hooks-api.js";
 import { createProjectsApi } from "../trpc/projects-api.js";
 import { createRuntimeApi } from "../trpc/runtime-api.js";
 import { createWorkspaceApi } from "../trpc/workspace-api.js";
+import { createAgentReviewCoordinator, type AgentReviewState } from "../review/index.js";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
 import type { RuntimeStateHub } from "./runtime-state-hub.js";
 import type { WorkspaceRegistry } from "./workspace-registry.js";
+import { getWorkspaceChanges } from "../workspace/get-workspace-changes.js";
+import { resolveTaskCwd } from "../workspace/task-worktree.js";
 
 interface DisposeTrackedWorkspaceResult {
 	terminalManager: TerminalSessionManager | null;
@@ -74,6 +86,36 @@ function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): 
 		}
 	}
 	return null;
+}
+
+function findBoardCard(
+	board: RuntimeBoardData,
+	taskId: string,
+): { columnId: RuntimeBoardColumnId; card: RuntimeBoardData["columns"][number]["cards"][number] } | null {
+	for (const column of board.columns) {
+		const card = column.cards.find((candidate) => candidate.id === taskId);
+		if (card) {
+			return {
+				columnId: column.id,
+				card,
+			};
+		}
+	}
+	return null;
+}
+
+function selectPreferredTaskSummary(input: {
+	persisted: RuntimeTaskSessionSummary | null;
+	terminal: RuntimeTaskSessionSummary | null;
+	cline: RuntimeTaskSessionSummary | null;
+}): RuntimeTaskSessionSummary | null {
+	const candidates = [input.cline, input.terminal, input.persisted].filter(
+		(summary): summary is RuntimeTaskSessionSummary => summary !== null,
+	);
+	if (candidates.length === 0) {
+		return null;
+	}
+	return candidates.sort((left, right) => right.updatedAt - left.updatedAt)[0] ?? null;
 }
 
 export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
@@ -140,6 +182,243 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const disposeClineTaskSessionService = (workspaceId: string): void => {
 		void disposeClineTaskSessionServiceAsync(workspaceId);
 	};
+	const persistAgentReviewState = async (input: {
+		workspaceId: string;
+		taskId: string;
+		state: AgentReviewState;
+	}): Promise<void> => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			throw new Error(`Workspace "${input.workspaceId}" is not available.`);
+		}
+		await mutateWorkspaceState(workspacePath, (currentState) => {
+			const nextColumns = currentState.board.columns.map((column) => ({
+				...column,
+				cards: column.cards.map((card) =>
+					card.id === input.taskId ? { ...card, agentReview: { ...input.state } } : card,
+				),
+			}));
+			return {
+				board: {
+					...currentState.board,
+					columns: nextColumns,
+				},
+				value: null,
+			};
+		});
+		void deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(input.workspaceId, workspacePath);
+		void deps.runtimeStateHub.broadcastRuntimeProjectsUpdated(input.workspaceId);
+	};
+	const ensureTaskMovedToReviewForAgentReview = async (input: {
+		workspaceId: string;
+		workspacePath: string;
+		taskId: string;
+	}): Promise<void> => {
+		await mutateWorkspaceState(input.workspacePath, (currentState) => {
+			const moved = moveTaskToColumn(currentState.board, input.taskId, "review");
+			return {
+				board: moved.board,
+				value: null,
+				save: moved.moved,
+			};
+		});
+		void deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(input.workspaceId, input.workspacePath);
+		void deps.runtimeStateHub.broadcastRuntimeProjectsUpdated(input.workspaceId);
+	};
+	const sendAgentReviewFollowUp = async (input: {
+		workspaceId: string;
+		taskId: string;
+		text: string;
+	}): Promise<{ ok: boolean; message?: string }> => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			return { ok: false, message: `Workspace "${input.workspaceId}" is not available.` };
+		}
+		const scope = {
+			workspaceId: input.workspaceId,
+			workspacePath,
+		} satisfies RuntimeTrpcWorkspaceScope;
+		const payloadText = `${input.text}\n`;
+		const clineTaskSessionService = await getScopedClineTaskSessionService(scope);
+		const clineSummary = await clineTaskSessionService.sendTaskSessionInput(input.taskId, payloadText);
+		if (clineSummary) {
+			return { ok: true };
+		}
+		const terminalManager = await getScopedTerminalManager(scope);
+		const summary = terminalManager.writeInput(input.taskId, Buffer.from(payloadText, "utf8"));
+		if (!summary) {
+			return {
+				ok: false,
+				message: "Task session is not running.",
+			};
+		}
+		return { ok: true };
+	};
+	const refreshAgentReviewSnapshot = async (input: {
+		workspaceId: string;
+		taskId: string;
+	}): Promise<{ currentColumnId: RuntimeBoardColumnId; policy: RuntimeConfigState["agentReviewPolicy"] } | null> => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			return null;
+		}
+		const state = await loadWorkspaceState(workspacePath);
+		const taskRecord = findBoardCard(state.board, input.taskId);
+		if (!taskRecord) {
+			return null;
+		}
+		const policy = (await deps.workspaceRegistry.loadScopedRuntimeConfig({
+			workspaceId: input.workspaceId,
+			workspacePath,
+		})).agentReviewPolicy;
+		return {
+			currentColumnId: taskRecord.columnId,
+			policy,
+		};
+	};
+	const resolveAgentReviewTaskSnapshot = async (input: {
+		workspaceId: string;
+		workspacePath: string;
+		taskId: string;
+	}) => {
+		const scope = {
+			workspaceId: input.workspaceId,
+			workspacePath: input.workspacePath,
+		} satisfies RuntimeTrpcWorkspaceScope;
+		const runtimeConfig = await deps.workspaceRegistry.loadScopedRuntimeConfig(scope);
+		const state = await loadWorkspaceState(input.workspacePath);
+		const taskRecord = findBoardCard(state.board, input.taskId);
+		if (!taskRecord) {
+			return null;
+		}
+		const terminalManager = await getScopedTerminalManager(scope);
+		const clineTaskSessionService = await getScopedClineTaskSessionService(scope);
+		const summary = selectPreferredTaskSummary({
+			persisted: state.sessions[input.taskId] ?? null,
+			terminal: terminalManager.getSummary(input.taskId),
+			cline: clineTaskSessionService.getSummary(input.taskId),
+		});
+		const taskWorkspacePath = await resolveTaskCwd({
+			cwd: input.workspacePath,
+			taskId: input.taskId,
+			baseRef: taskRecord.card.baseRef,
+			ensure: false,
+		}).catch(() => null);
+		const workspaceChanges =
+			taskWorkspacePath !== null
+				? await getWorkspaceChanges(taskWorkspacePath).catch(() => null)
+				: null;
+		const hasReviewableChanges = workspaceChanges !== null && workspaceChanges.files.length > 0;
+		const existingState = taskRecord.card.agentReview ?? null;
+		const originalAgentId =
+			hasReviewableChanges && summary?.agentId
+				? summary.agentId
+				: (existingState?.originalAgentId ?? null);
+
+		return {
+			workspaceId: input.workspaceId,
+			workspacePath: taskWorkspacePath ?? input.workspacePath,
+			taskId: input.taskId,
+			taskPrompt: taskRecord.card.prompt,
+			baseRef: taskRecord.card.baseRef,
+			currentColumnId: taskRecord.columnId,
+			originalAgentId: hasReviewableChanges ? originalAgentId : null,
+			existingState,
+			policy: runtimeConfig.agentReviewPolicy,
+			requirementsReference: `Task prompt:\n${taskRecord.card.prompt}`,
+		};
+	};
+	const baseAgentReviewCoordinator = createAgentReviewCoordinator({
+		resolveLaunchCommand: async (input) => {
+			if (input.preferredAgentId) {
+				const preferred = resolveAgentCommandForAgentId(input.preferredAgentId);
+				if (preferred) {
+					return preferred;
+				}
+			}
+			const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+			if (!workspacePath) {
+				return null;
+			}
+			const runtimeConfig = await deps.workspaceRegistry.loadScopedRuntimeConfig({
+				workspaceId: input.workspaceId,
+				workspacePath,
+			});
+			return resolveAgentCommand(runtimeConfig);
+		},
+		persistState: persistAgentReviewState,
+		sendFollowUpToOriginalAgent: sendAgentReviewFollowUp,
+		refreshSnapshotAfterRound: refreshAgentReviewSnapshot,
+	});
+	const agentReviewCoordinator = {
+		async triggerTaskReview(input: {
+			workspaceId: string;
+			workspacePath: string;
+			taskId: string;
+			triggerSource: "automatic" | "manual";
+		}) {
+			let snapshot = await resolveAgentReviewTaskSnapshot(input);
+			if (!snapshot) {
+				return {
+					ok: false,
+					taskId: input.taskId,
+					state: null,
+					error: `Task "${input.taskId}" was not found.`,
+				};
+			}
+			if (input.triggerSource === "automatic") {
+				if (snapshot.policy.enabled !== true) {
+					return {
+						ok: true,
+						taskId: input.taskId,
+						state: snapshot.existingState,
+					};
+				}
+				if (snapshot.currentColumnId !== "review") {
+					await ensureTaskMovedToReviewForAgentReview(input);
+					const refreshedSnapshot = await resolveAgentReviewTaskSnapshot(input);
+					if (!refreshedSnapshot) {
+						return {
+							ok: false,
+							taskId: input.taskId,
+							state: null,
+							error: `Task "${input.taskId}" was not found after moving to Review.`,
+						};
+					}
+					snapshot = refreshedSnapshot;
+				}
+			} else if (snapshot.currentColumnId !== "review") {
+				return {
+					ok: false,
+					taskId: input.taskId,
+					state: snapshot.existingState,
+					error: "Agent review can only be triggered for tasks in Review.",
+				};
+			}
+			const result = await baseAgentReviewCoordinator.executeRound(snapshot, input.triggerSource);
+			return {
+				ok: result.ok,
+				taskId: input.taskId,
+				state: result.state,
+				...(result.error ? { error: result.error } : {}),
+			};
+		},
+		async reconcilePolicyUpdate(): Promise<void> {
+			// The coordinator re-reads policy after each completed round, so no eager action is required here.
+		},
+	};
+	deps.runtimeStateHub.setTaskReadyHandler((input) => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			return;
+		}
+		void agentReviewCoordinator.triggerTaskReview({
+			workspaceId: input.workspaceId,
+			workspacePath,
+			taskId: input.taskId,
+			triggerSource: "automatic",
+		});
+	});
 	const prepareForStateReset = async (): Promise<void> => {
 		const workspaceIds = new Set<string>();
 		for (const { workspaceId } of deps.workspaceRegistry.listManagedWorkspaces()) {
@@ -176,6 +455,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				getScopedClineTaskSessionService,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
+				agentReviewCoordinator,
 				broadcastClineMcpAuthStatusesUpdated: deps.runtimeStateHub.broadcastClineMcpAuthStatusesUpdated,
 				bumpClineSessionContextVersion: deps.runtimeStateHub.bumpClineSessionContextVersion,
 				prepareForStateReset,

@@ -35,12 +35,14 @@ export interface CreateRuntimeStateHubDependencies {
 		WorkspaceRegistry,
 		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot"
 	>;
+	onTaskReadyForReview?: (input: { workspaceId: string; taskId: string }) => void;
 }
 
 export interface RuntimeStateHub {
 	trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => void;
 	trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => void;
 	broadcastTaskChatMessage: (workspaceId: string, taskId: string, message: ClineTaskMessage) => void;
+	setTaskReadyHandler: (handler: ((input: { workspaceId: string; taskId: string }) => void) | null) => void;
 	handleUpgrade: (
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
@@ -69,6 +71,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const runtimeStateClients = new Set<WebSocket>();
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
 	let clineSessionContextVersion = 0;
+	let taskReadyHandler = deps.onTaskReadyForReview ?? null;
 	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
 	const workspaceMetadataMonitor = createWorkspaceMetadataMonitor({
 		onMetadataUpdated: (workspaceId, workspaceMetadata) => {
@@ -306,6 +309,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	};
 
 	const broadcastTaskReadyForReview = (workspaceId: string, taskId: string) => {
+		taskReadyHandler?.({ workspaceId, taskId });
 		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
 		if (!runtimeClients || runtimeClients.size === 0) {
 			return;
@@ -523,6 +527,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			clineMessageUnsubscribeByWorkspaceId.set(workspaceId, unsubscribeMessage);
 		},
 		broadcastTaskChatMessage,
+		setTaskReadyHandler: (handler) => {
+			taskReadyHandler = handler;
+		},
 		handleUpgrade: (request, socket, head, context) => {
 			runtimeStateWebSocketServer.handleUpgrade(request, socket, head, (ws) => {
 				runtimeStateWebSocketServer.emit("connection", ws, context);
