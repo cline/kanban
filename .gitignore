@@ -1,11 +1,16 @@
 node_modules
 dist
+build
 coverage
 .DS_Store
 test-results
 playwright-report
 .worktrees
 .sentry-artifacts
+*.log
+*.tmp
+.vscode/
+.idea/
 .env
 .env.*
 !.env.example

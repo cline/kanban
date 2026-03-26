@@ -1,0 +1,12 @@
+node_modules/
+web-ui/
+coverage/
+test/
+specs/
+.specify/
+playwright-report/
+test-results/
+*.log
+*.tmp
+.env
+.env.*
