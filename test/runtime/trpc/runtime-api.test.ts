@@ -40,6 +40,7 @@ const llmsModelMocks = vi.hoisted(() => ({
 const clineAccountMocks = vi.hoisted(() => ({
 	fetchMe: vi.fn(),
 	fetchRemoteConfig: vi.fn(),
+	fetchOrganization: vi.fn(),
 	constructedOptions: [] as Array<{ apiBaseUrl: string; getAuthToken: () => Promise<string | undefined | null> }>,
 }));
 
@@ -75,6 +76,7 @@ vi.mock("@clinebot/core/node", () => ({
 		}
 		fetchMe = clineAccountMocks.fetchMe;
 		fetchRemoteConfig = clineAccountMocks.fetchRemoteConfig;
+		fetchOrganization = clineAccountMocks.fetchOrganization;
 	},
 	ProviderSettingsManager: class {
 		saveProviderSettings = oauthMocks.saveProviderSettings;
@@ -1282,6 +1284,10 @@ describe("createRuntimeApi startTaskSession", () => {
 			}),
 		});
 
+		clineAccountMocks.fetchOrganization.mockResolvedValueOnce({
+			externalOrganizationId: 'test'
+		})
+
 		const response = await api.getClineKanbanAccess({
 			workspaceId: "workspace-1",
 			workspacePath: "/tmp/repo",
@@ -1319,6 +1325,10 @@ describe("createRuntimeApi startTaskSession", () => {
 				}),
 			})
 			.mockRejectedValueOnce(new Error("remote config request failed"));
+
+		clineAccountMocks.fetchOrganization.mockResolvedValueOnce({
+			externalOrganizationId: 'test'
+		})
 
 		const initialResponse = await api.getClineKanbanAccess({
 			workspaceId: "workspace-1",

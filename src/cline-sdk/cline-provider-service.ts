@@ -26,6 +26,7 @@ import {
 	loginManagedOauthProvider,
 	refreshManagedOauthCredentials,
 	saveSdkProviderSettings,
+	fetchSdkOrgData,
 } from "./sdk-provider-boundary.js";
 
 const WORKOS_TOKEN_PREFIX = "workos:";
@@ -369,12 +370,7 @@ export function createClineProviderService() {
 				const selectedSettings = getSelectedProviderSettings();
 				if (!selectedSettings) {
 					return { enabled: true };
-				}
-
-				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
-				if (normalizedProviderId !== "cline") {
-					return { enabled: true };
-				}
+				}	
 
 				const rawAccessToken = selectedSettings.auth?.accessToken?.trim() ?? "";
 				if (!rawAccessToken) {
@@ -385,12 +381,20 @@ export function createClineProviderService() {
 					apiBaseUrl: selectedSettings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
 					accessToken: ensureWorkosPrefix(rawAccessToken),
 				});
-				if (!remoteConfigResponse.enabled) {
+				if (!remoteConfigResponse.enabled || !remoteConfigResponse.organizationId) {
 					return { enabled: true };
 				}
+
+				const orgData = await fetchSdkOrgData({
+					apiBaseUrl: selectedSettings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
+					accessToken: ensureWorkosPrefix(rawAccessToken),
+					organizatinId: remoteConfigResponse.organizationId
+				});
+
 				const parsedRemoteConfig = parseClineRemoteConfigValue(remoteConfigResponse.value);
+				const isEnterpriseCustomer = !!orgData?.externalOrganizationId
 				return {
-					enabled: parsedRemoteConfig.kanbanEnabled === true,
+					enabled: !parsedRemoteConfig || !isEnterpriseCustomer || parsedRemoteConfig.kanbanEnabled === true,
 				};
 			} catch (error) {
 				return {

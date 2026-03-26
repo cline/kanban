@@ -79,9 +79,9 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@clinebot/agents": "^0.0.16",
-    "@clinebot/core": "^0.0.16",
-    "@clinebot/llms": "^0.0.16",
+    "@clinebot/agents": "^0.0.20",
+    "@clinebot/core": "^0.0.20",
+    "@clinebot/llms": "^0.0.20",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",

@@ -136,7 +136,6 @@ export default function App(): ReactElement {
 	} = useRuntimeProjectConfig(currentProjectId);
 	const { isBlocked: isKanbanAccessBlocked } = useKanbanAccessGate({
 		workspaceId: currentProjectId,
-		clineProviderSettings: runtimeProjectConfig?.clineProviderSettings ?? null,
 	});
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;

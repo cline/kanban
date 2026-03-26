@@ -3,6 +3,7 @@
 // auth, catalog, and provider-settings behavior stay behind one boundary.
 import {
 	ClineAccountService,
+	ClineAccountUser,
 	getValidClineCredentials,
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
@@ -11,6 +12,7 @@ import {
 	loginOcaOAuth,
 	loginOpenAICodex,
 	ProviderSettingsManager,
+	ClineOrganization,
 } from "@clinebot/core/node";
 import { LlmsModels as llmsModels } from "@clinebot/llms";
 import { createMcpTools, type CreateMcpToolsOptions, type Tool } from "@clinebot/agents";
@@ -35,12 +37,6 @@ export interface SdkProviderCatalogItem {
 	name: string;
 	defaultModelId?: string;
 	capabilities?: string[];
-}
-
-export interface SdkClineAccountProfile {
-	id: string;
-	email: string;
-	displayName: string;
 }
 
 export interface SdkUserRemoteConfigResponse {
@@ -316,30 +312,30 @@ export async function createSdkMcpTools(options: SdkCreateMcpToolsOptions): Prom
 	return await createMcpTools(options);
 }
 
-export async function fetchSdkClineAccountProfile(input: {
+type ApiRequestParams = {
 	apiBaseUrl: string;
 	accessToken: string;
-}): Promise<SdkClineAccountProfile> {	
-	const accountServiceConstructor = ClineAccountService;
-	if (!accountServiceConstructor) {
-		throw new Error("ClineAccountService is not available from @clinebot/core/node.");
-	}
-	const accountService = new accountServiceConstructor({
+}
+
+export async function fetchSdkClineAccountProfile(input: ApiRequestParams): Promise<ClineAccountUser> {	
+	const accountService = new ClineAccountService({
 		apiBaseUrl: input.apiBaseUrl,
 		getAuthToken: async () => input.accessToken,
 	});
 	const me = await accountService.fetchMe();
-	return {
-		id: me.id,
-		email: me.email,
-		displayName: me.displayName,
-	};
+	return me
 }
 
-export async function fetchSdkClineUserRemoteConfig(input: {
-	apiBaseUrl: string;
-	accessToken: string;
-}): Promise<SdkUserRemoteConfigResponse> {
+export async function fetchSdkOrgData(input: ApiRequestParams & {organizatinId: string}): Promise<ClineOrganization> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	const me = await accountService.fetchOrganization(input.organizatinId);
+	return me
+}
+
+export async function fetchSdkClineUserRemoteConfig(input: ApiRequestParams): Promise<SdkUserRemoteConfigResponse> {
 	const accountServiceConstructor = ClineAccountService;
 	if (!accountServiceConstructor) {
 		throw new Error("ClineAccountService is not available from @clinebot/core/node.");
