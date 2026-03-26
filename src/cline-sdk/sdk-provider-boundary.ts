@@ -331,8 +331,7 @@ export async function fetchSdkOrgData(input: ApiRequestParams & {organizatinId: 
 		apiBaseUrl: input.apiBaseUrl,
 		getAuthToken: async () => input.accessToken,
 	});
-	const me = await accountService.fetchOrganization(input.organizatinId);
-	return me
+	return await accountService.fetchOrganization(input.organizatinId);
 }
 
 export async function fetchSdkClineUserRemoteConfig(input: ApiRequestParams): Promise<SdkUserRemoteConfigResponse> {
