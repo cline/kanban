@@ -77,6 +77,12 @@ import {
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 
+const REVIEWER_TASK_SESSION_PREFIX = "__agent_reviewer__:";
+
+function buildAgentReviewTaskSessionId(taskId: string, runId: string): string {
+	return `${REVIEWER_TASK_SESSION_PREFIX}${taskId}:${runId}`;
+}
+
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
@@ -594,6 +600,7 @@ export default function App(): ReactElement {
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
 		readyForReviewNotificationsEnabled,
+		agentReviewEnabled: runtimeProjectConfig?.agentReviewPolicy?.enabled === true,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
 	});
@@ -643,6 +650,11 @@ export default function App(): ReactElement {
 	const detailSession = selectedCard
 		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
 		: null;
+	const reviewerTaskSessionId =
+		selectedCard?.card.agentReview?.runId
+			? buildAgentReviewTaskSessionId(selectedCard.card.id, selectedCard.card.agentReview.runId)
+			: null;
+	const reviewerSessionSummary = reviewerTaskSessionId ? (sessions[reviewerTaskSessionId] ?? null) : null;
 	const detailTerminalSummary = detailTerminalTaskId ? (sessions[detailTerminalTaskId] ?? null) : null;
 	const detailTerminalSubtitle = useMemo(() => {
 		if (!selectedCard) {
@@ -950,6 +962,8 @@ export default function App(): ReactElement {
 								selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 								runtimeConfig={runtimeProjectConfig ?? null}
 								sessionSummary={detailSession}
+								reviewerTaskId={reviewerTaskSessionId}
+								reviewerSessionSummary={reviewerSessionSummary}
 								taskSessions={sessions}
 								onSessionSummary={upsertSession}
 								onCardSelect={handleCardSelect}

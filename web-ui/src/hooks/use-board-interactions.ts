@@ -115,6 +115,7 @@ interface UseBoardInteractionsInput {
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 	readyForReviewNotificationsEnabled: boolean;
+	agentReviewEnabled: boolean;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 }
@@ -160,6 +161,7 @@ export function useBoardInteractions({
 	fetchTaskWorkspaceInfo,
 	sendTaskSessionInput,
 	readyForReviewNotificationsEnabled,
+	agentReviewEnabled,
 	taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
@@ -600,6 +602,7 @@ export function useBoardInteractions({
 
 	useReviewAutoActions({
 		board,
+		agentReviewEnabled,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
 		requestMoveTaskToTrash: requestMoveTaskToTrashWithAnimation,

@@ -249,6 +249,93 @@ describe("CardDetailView", () => {
 		expect(container.textContent).toContain("Passed");
 	});
 
+	it("switches to the reviewer terminal when the review status chip is clicked", async () => {
+		const selection = createSelection();
+		selection.card.agentReview = {
+			status: "reviewing",
+			currentRound: 1,
+			runId: "run-1",
+			stopAfterCurrentRound: false,
+			passedBannerVisible: false,
+		};
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={selection}
+					currentProjectId="workspace-1"
+					selectedAgentId="cline"
+					sessionSummary={null}
+					reviewerTaskId="__agent_reviewer__:task-1:run-1"
+					reviewerSessionSummary={{
+						taskId: "__agent_reviewer__:task-1:run-1",
+						state: "running",
+						agentId: "claude",
+						workspacePath: null,
+						pid: 123,
+						startedAt: Date.now(),
+						updatedAt: Date.now(),
+						lastOutputAt: null,
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: null,
+						latestHookActivity: null,
+						warningMessage: null,
+					}}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		const reviewButton = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent?.trim() === "Reviewing",
+		);
+		expect(reviewButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(reviewButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected a Reviewing button.");
+		}
+
+		await act(async () => {
+			reviewButton.click();
+			await Promise.resolve();
+		});
+
+		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeNull();
+		expect(mockAgentTerminalPanel).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				taskId: "__agent_reviewer__:task-1:run-1",
+				summary: expect.objectContaining({
+					taskId: "__agent_reviewer__:task-1:run-1",
+					agentId: "claude",
+				}),
+			}),
+			expect.anything(),
+		);
+
+		const taskChatButton = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent?.trim() === "Task chat",
+		);
+		expect(taskChatButton).toBeInstanceOf(HTMLButtonElement);
+		if (!(taskChatButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected a Task chat button.");
+		}
+
+		await act(async () => {
+			taskChatButton.click();
+		});
+
+		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeInstanceOf(HTMLDivElement);
+	});
+
 	it("clears stale diff content when switching from all changes to last turn", async () => {
 		await act(async () => {
 			root.render(
