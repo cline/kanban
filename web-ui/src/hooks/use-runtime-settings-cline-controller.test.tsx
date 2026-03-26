@@ -42,6 +42,7 @@ function createRuntimeConfigResponse(clineOverrides: Partial<RuntimeConfigRespon
 		selectedAgentId: "cline",
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
+		agentReviewPolicy: { enabled: false, maxRounds: 2 },
 		effectiveCommand: "cline",
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project/.cline/kanban/config.json",

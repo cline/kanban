@@ -69,6 +69,7 @@ function createCard(id: string): BoardCard {
 		startInPlanMode: false,
 		autoReviewEnabled: false,
 		autoReviewMode: "commit",
+		agentReview: undefined,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
@@ -214,6 +215,38 @@ describe("CardDetailView", () => {
 
 		expect(container.querySelector('button[aria-label="Collapse expanded diff view"]')).toBeNull();
 		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
+	});
+
+	it("renders the agent review banner for passed cards", async () => {
+		const selection = createSelection();
+		selection.card.agentReview = {
+			status: "passed",
+			currentRound: 2,
+			stopAfterCurrentRound: false,
+			passedBannerVisible: true,
+		};
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={selection}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Passed code review by agent");
+		expect(container.textContent).toContain("Passed");
 	});
 
 	it("clears stale diff content when switching from all changes to last turn", async () => {

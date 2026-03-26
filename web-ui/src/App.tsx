@@ -19,6 +19,7 @@ import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog"
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
 import { TopBar } from "@/components/top-bar";
+import { TaskAgentReviewTriggerProvider } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 import {
 	AlertDialog,
@@ -568,6 +569,7 @@ export default function App(): ReactElement {
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
 		handleCancelAutomaticTaskAction,
+		handleTriggerAgentReview,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
 		handleAddReviewComments,
@@ -746,27 +748,28 @@ export default function App(): ReactElement {
 	}
 
 	return (
-		<div className="flex h-[100svh] min-w-0 overflow-hidden">
-			{!selectedCard ? (
-				<ProjectNavigationPanel
-					projects={displayedProjects}
-					isLoadingProjects={isProjectListLoading}
-					currentProjectId={navigationCurrentProjectId}
-					removingProjectId={removingProjectId}
-					activeSection={homeSidebarSection}
-					onActiveSectionChange={setHomeSidebarSection}
-					canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
-					agentSectionContent={homeSidebarAgentPanel}
-					onSelectProject={(projectId) => {
-						void handleSelectProject(projectId);
-					}}
-					onRemoveProject={handleRemoveProject}
-					onAddProject={() => {
-						void handleAddProject();
-					}}
-				/>
-			) : null}
-			<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+		<TaskAgentReviewTriggerProvider onTrigger={handleTriggerAgentReview}>
+			<div className="flex h-[100svh] min-w-0 overflow-hidden">
+				{!selectedCard ? (
+					<ProjectNavigationPanel
+						projects={displayedProjects}
+						isLoadingProjects={isProjectListLoading}
+						currentProjectId={navigationCurrentProjectId}
+						removingProjectId={removingProjectId}
+						activeSection={homeSidebarSection}
+						onActiveSectionChange={setHomeSidebarSection}
+						canShowAgentSection={!hasNoProjects && Boolean(currentProjectId)}
+						agentSectionContent={homeSidebarAgentPanel}
+						onSelectProject={(projectId) => {
+							void handleSelectProject(projectId);
+						}}
+						onRemoveProject={handleRemoveProject}
+						onAddProject={() => {
+							void handleAddProject();
+						}}
+					/>
+				) : null}
+				<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 				<TopBar
 					onBack={selectedCard ? handleBack : undefined}
 					workspacePath={navbarWorkspacePath}
@@ -1010,7 +1013,7 @@ export default function App(): ReactElement {
 					) : null}
 				</div>
 			</div>
-			<RuntimeSettingsDialog
+				<RuntimeSettingsDialog
 				open={isSettingsOpen}
 				workspaceId={settingsWorkspaceId}
 				initialConfig={settingsRuntimeProjectConfig}
@@ -1027,14 +1030,14 @@ export default function App(): ReactElement {
 					refreshSettingsRuntimeProjectConfig();
 				}}
 			/>
-			<DebugDialog
+				<DebugDialog
 				open={isDebugDialogOpen}
 				onOpenChange={handleDebugDialogOpenChange}
 				isResetAllStatePending={isResetAllStatePending}
 				onShowStartupOnboardingDialog={handleShowStartupOnboardingDialog}
 				onResetAllState={handleResetAllState}
 			/>
-			<TaskCreateDialog
+				<TaskCreateDialog
 				open={isInlineTaskCreateOpen}
 				onOpenChange={handleCreateDialogOpenChange}
 				prompt={newTaskPrompt}
@@ -1057,13 +1060,13 @@ export default function App(): ReactElement {
 				branchOptions={createTaskBranchOptions}
 				onBranchRefChange={setNewTaskBranchRef}
 			/>
-			<ClearTrashDialog
+				<ClearTrashDialog
 				open={isClearTrashDialogOpen}
 				taskCount={trashTaskCount}
 				onCancel={() => setIsClearTrashDialogOpen(false)}
 				onConfirm={handleConfirmClearTrash}
 			/>
-			<StartupOnboardingDialog
+				<StartupOnboardingDialog
 				open={isStartupOnboardingDialogOpen}
 				onClose={handleCloseStartupOnboardingDialog}
 				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
@@ -1075,7 +1078,7 @@ export default function App(): ReactElement {
 				onClineSetupSaved={handleOnboardingClineSetupSaved}
 			/>
 
-			<AlertDialog
+				<AlertDialog
 				open={pendingGitInitializationPath !== null}
 				onOpenChange={(open) => {
 					if (!open) {
@@ -1157,6 +1160,7 @@ export default function App(): ReactElement {
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialog>
-		</div>
+			</div>
+		</TaskAgentReviewTriggerProvider>
 	);
 }

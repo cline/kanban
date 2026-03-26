@@ -1,36 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchRuntimeConfig, saveRuntimeConfig } from "@/runtime/runtime-config-query";
-import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
+import type {
+	RuntimeConfigSaveInput,
+	RuntimeConfigWithAgentReview,
+} from "@/runtime/runtime-config-query";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 
 export interface UseRuntimeConfigResult {
-	config: RuntimeConfigResponse | null;
+	config: RuntimeConfigWithAgentReview | null;
 	isLoading: boolean;
 	isSaving: boolean;
 	refresh: () => void;
-	save: (nextConfig: {
-		selectedAgentId?: RuntimeAgentId;
-		selectedShortcutLabel?: string | null;
-		agentAutonomousModeEnabled?: boolean;
-		shortcuts?: RuntimeProjectShortcut[];
-		readyForReviewNotificationsEnabled?: boolean;
-		commitPromptTemplate?: string;
-		openPrPromptTemplate?: string;
-	}) => Promise<RuntimeConfigResponse | null>;
+	save: (nextConfig: RuntimeConfigSaveInput) => Promise<RuntimeConfigWithAgentReview | null>;
 }
 
 export function useRuntimeConfig(
 	open: boolean,
 	workspaceId: string | null,
-	initialConfig: RuntimeConfigResponse | null = null,
+	initialConfig: RuntimeConfigWithAgentReview | null = null,
 ): UseRuntimeConfigResult {
 	const [isSaving, setIsSaving] = useState(false);
 	const previousWorkspaceIdRef = useRef<string | null>(null);
 	const didRetryAfterInitialErrorRef = useRef(false);
 	const lastLoggedErrorKeyRef = useRef<string | null>(null);
 	const queryFn = useCallback(async () => await fetchRuntimeConfig(workspaceId), [workspaceId]);
-	const configQuery = useTrpcQuery<RuntimeConfigResponse>({
+	const configQuery = useTrpcQuery<RuntimeConfigWithAgentReview>({
 		enabled: open,
 		queryFn,
 		retainDataOnError: true,
@@ -76,15 +71,7 @@ export function useRuntimeConfig(
 	}, [configQuery.data, configQuery.error, configQuery.isError, configQuery.refetch, open, workspaceId]);
 
 	const save = useCallback(
-		async (nextConfig: {
-			selectedAgentId?: RuntimeAgentId;
-			selectedShortcutLabel?: string | null;
-			agentAutonomousModeEnabled?: boolean;
-			shortcuts?: RuntimeProjectShortcut[];
-			readyForReviewNotificationsEnabled?: boolean;
-			commitPromptTemplate?: string;
-			openPrPromptTemplate?: string;
-		}): Promise<RuntimeConfigResponse | null> => {
+		async (nextConfig: RuntimeConfigSaveInput): Promise<RuntimeConfigWithAgentReview | null> => {
 			setIsSaving(true);
 			try {
 				const saved = await saveRuntimeConfig(workspaceId, nextConfig);

@@ -60,6 +60,7 @@ function createRuntimeConfig(overrides: Partial<RuntimeConfigResponse> = {}): Ru
 		selectedAgentId: "codex",
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
+		agentReviewPolicy: { enabled: false, maxRounds: 2 },
 		effectiveCommand: "codex --dangerously-bypass-approvals-and-sandbox",
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",

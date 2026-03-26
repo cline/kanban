@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardCard } from "@/components/board-card";
+import { TaskAgentReviewTriggerProvider } from "@/components/ui/context-menu";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { ReviewTaskWorkspaceSnapshot } from "@/types";
@@ -83,6 +84,7 @@ function createCard(overrides?: Partial<Parameters<typeof BoardCard>[0]["card"]>
 		startInPlanMode: false,
 		autoReviewEnabled: false,
 		autoReviewMode: "commit" as const,
+		agentReview: undefined,
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
@@ -209,6 +211,69 @@ describe("BoardCard", () => {
 		expect(trashButton).toBeInstanceOf(HTMLButtonElement);
 		expect((trashButton as HTMLButtonElement | null)?.disabled).toBe(true);
 		expect(trashButton?.querySelector("svg.animate-spin")).toBeTruthy();
+	});
+
+	it("renders the passed agent review banner and status chip", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard({
+						agentReview: {
+							status: "passed",
+							currentRound: 2,
+							stopAfterCurrentRound: false,
+							passedBannerVisible: true,
+						},
+					})}
+					index={0}
+					columnId="review"
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Passed code review by agent");
+		expect(container.textContent).toContain("Passed");
+	});
+
+	it("opens the task context menu and triggers agent review from review cards", async () => {
+		const triggerAgentReview = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<TaskAgentReviewTriggerProvider onTrigger={triggerAgentReview}>
+					<BoardCard card={createCard()} index={0} columnId="review" />
+				</TaskAgentReviewTriggerProvider>,
+			);
+		});
+
+		const cardShell = container.querySelector('[data-task-id="task-1"]');
+		expect(cardShell).toBeInstanceOf(HTMLDivElement);
+		if (!(cardShell instanceof HTMLDivElement)) {
+			throw new Error("Expected the board card shell to render.");
+		}
+
+		await act(async () => {
+			cardShell.dispatchEvent(
+				new MouseEvent("contextmenu", {
+					bubbles: true,
+					cancelable: true,
+					clientX: 48,
+					clientY: 72,
+				}),
+			);
+		});
+
+		const menuItem = Array.from(document.querySelectorAll("button")).find(
+			(button) => button.textContent?.trim() === "Run Agent Review",
+		);
+		expect(menuItem).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			menuItem?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			menuItem?.click();
+		});
+
+		expect(triggerAgentReview).toHaveBeenCalledWith("task-1");
 	});
 
 	it("shows inline see more and less controls for long descriptions", async () => {

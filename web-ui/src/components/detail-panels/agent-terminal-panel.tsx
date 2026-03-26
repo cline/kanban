@@ -9,6 +9,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
+import type { TaskAgentReviewState } from "@/types";
+import { getTaskAgentReviewStatusLabel, hasTaskPassedAgentReview } from "@/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 import { isMacPlatform } from "@/utils/platform";
 
@@ -52,6 +54,7 @@ export interface AgentTerminalPanelProps {
 	onSendAgentCommand?: () => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
+	reviewState?: TaskAgentReviewState | null;
 }
 
 function describeState(summary: RuntimeTaskSessionSummary | null): string {
@@ -173,12 +176,15 @@ function AgentTerminalPanelLayout({
 	onSendAgentCommand,
 	isExpanded = false,
 	onToggleExpand,
+	reviewState = null,
 	sessionControls,
 }: AgentTerminalPanelProps & { sessionControls: AgentTerminalSessionControls }): ReactElement {
 	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
 	const statusTagStyle = useMemo(() => getStateTagStyle(summary), [summary]);
+	const reviewStatusLabel = getTaskAgentReviewStatusLabel(reviewState);
+	const showPassedReviewBanner = hasTaskPassedAgentReview(reviewState);
 	const agentLabel = useMemo(() => {
 		const normalizedCommand = agentCommand?.trim();
 		if (!normalizedCommand) {
@@ -216,6 +222,11 @@ function AgentTerminalPanelLayout({
 							>
 								{statusLabel}
 							</span>
+							{reviewStatusLabel ? (
+								<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-3 text-text-primary">
+									{reviewStatusLabel}
+								</span>
+							) : null}
 						</div>
 						<div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
 							<Button variant="default" size="sm" onClick={clearTerminal}>
@@ -304,6 +315,11 @@ function AgentTerminalPanelLayout({
 							aria-label="Close terminal"
 						/>
 					</div>
+				</div>
+			) : null}
+			{showPassedReviewBanner ? (
+				<div className="border-b border-status-green/20 bg-status-green/10 px-3 py-2 text-[12px] font-medium text-status-green">
+					Passed code review by agent
 				</div>
 			) : null}
 			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: "3px 1.5px 3px 3px" }}>

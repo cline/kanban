@@ -12,7 +12,9 @@ import {
 	type BoardDependency,
 	type CardSelection,
 	DEFAULT_TASK_AUTO_REVIEW_MODE,
+	type TaskAgentReviewState,
 	resolveTaskAutoReviewMode,
+	resolveTaskAgentReviewStatus,
 	type TaskAutoReviewMode,
 	type TaskImage,
 } from "@/types";
@@ -85,6 +87,66 @@ function normalizeTaskImages(rawImages: unknown): TaskImage[] | undefined {
 	return images.length > 0 ? images : undefined;
 }
 
+function isRuntimeAgentId(value: unknown): value is TaskAgentReviewState["originalAgentId"] {
+	return (
+		value === "claude" ||
+		value === "codex" ||
+		value === "gemini" ||
+		value === "opencode" ||
+		value === "droid" ||
+		value === "cline"
+	);
+}
+
+function normalizeTaskAgentReviewState(rawReviewState: unknown): TaskAgentReviewState | undefined {
+	if (!rawReviewState || typeof rawReviewState !== "object") {
+		return undefined;
+	}
+
+	const state = rawReviewState as {
+		status?: unknown;
+		triggerSource?: unknown;
+		requestedAt?: unknown;
+		startedAt?: unknown;
+		completedAt?: unknown;
+		currentRound?: unknown;
+		maxRoundsSnapshot?: unknown;
+		runId?: unknown;
+		originalAgentId?: unknown;
+		reviewerAgentId?: unknown;
+		reportPath?: unknown;
+		lastOutcome?: unknown;
+		stopAfterCurrentRound?: unknown;
+		passedBannerVisible?: unknown;
+	};
+
+	return {
+		status: resolveTaskAgentReviewStatus(
+			typeof state.status === "string" ? (state.status as TaskAgentReviewState["status"]) : undefined,
+		),
+		triggerSource:
+			state.triggerSource === "automatic" || state.triggerSource === "manual" ? state.triggerSource : undefined,
+		requestedAt: typeof state.requestedAt === "number" ? state.requestedAt : undefined,
+		startedAt: typeof state.startedAt === "number" ? state.startedAt : undefined,
+		completedAt: typeof state.completedAt === "number" ? state.completedAt : undefined,
+		currentRound: typeof state.currentRound === "number" ? state.currentRound : 0,
+		maxRoundsSnapshot: typeof state.maxRoundsSnapshot === "number" ? state.maxRoundsSnapshot : undefined,
+		runId: typeof state.runId === "string" ? state.runId : undefined,
+		originalAgentId: isRuntimeAgentId(state.originalAgentId) ? state.originalAgentId : undefined,
+		reviewerAgentId: isRuntimeAgentId(state.reviewerAgentId) ? state.reviewerAgentId : undefined,
+		reportPath: typeof state.reportPath === "string" ? state.reportPath : undefined,
+		lastOutcome:
+			state.lastOutcome === "pass" ||
+			state.lastOutcome === "changes_requested" ||
+			state.lastOutcome === "exhausted" ||
+			state.lastOutcome === "skipped"
+				? state.lastOutcome
+				: undefined,
+		stopAfterCurrentRound: state.stopAfterCurrentRound === true,
+		passedBannerVisible: state.passedBannerVisible === true,
+	};
+}
+
 function normalizeCard(rawCard: unknown): BoardCard | null {
 	if (!rawCard || typeof rawCard !== "object") {
 		return null;
@@ -96,6 +158,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		startInPlanMode?: unknown;
 		autoReviewEnabled?: unknown;
 		autoReviewMode?: unknown;
+		agentReview?: unknown;
 		images?: unknown;
 		baseRef?: unknown;
 		createdAt?: unknown;
@@ -120,6 +183,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		autoReviewMode: resolveTaskAutoReviewMode(
 			typeof card.autoReviewMode === "string" ? (card.autoReviewMode as TaskAutoReviewMode) : undefined,
 		),
+		agentReview: normalizeTaskAgentReviewState(card.agentReview),
 		images: normalizeTaskImages(card.images),
 		baseRef,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,

@@ -23,7 +23,13 @@ import type {
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
-import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+import {
+	type BoardCard,
+	type CardSelection,
+	getTaskAgentReviewStatusLabel,
+	getTaskAutoReviewCancelButtonLabel,
+	hasTaskPassedAgentReview,
+} from "@/types";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 // We still poll the open detail diff because line content can change without changing
@@ -404,6 +410,8 @@ export function CardDetailView({
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const showClineAgentChatPanel = isNativeClineAgentSelected(sessionSummary?.agentId ?? selectedAgentId);
+	const reviewStatusLabel = getTaskAgentReviewStatusLabel(selection.card.agentReview);
+	const hasPassedAgentReview = hasTaskPassedAgentReview(selection.card.agentReview);
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];
@@ -569,6 +577,22 @@ export function CardDetailView({
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
 				) : (
 					<>
+						{reviewStatusLabel || hasPassedAgentReview ? (
+							<div className="border-b border-border bg-surface-1 px-4 py-3">
+								<div className="flex flex-wrap items-center gap-2">
+									{reviewStatusLabel ? (
+										<span className="inline-flex items-center rounded-full border border-border-bright bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-text-primary">
+											{reviewStatusLabel}
+										</span>
+									) : null}
+									{hasPassedAgentReview ? (
+										<span className="inline-flex items-center rounded-full border border-status-green/30 bg-status-green/10 px-2 py-0.5 text-[12px] font-medium text-status-green">
+											Passed code review by agent
+										</span>
+									) : null}
+								</div>
+							</div>
+						) : null}
 						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 							<div
 								style={{ display: isDiffExpanded ? "none" : "flex", width: agentPanelPercent, minWidth: 0, minHeight: 0 }}
@@ -632,6 +656,7 @@ export function CardDetailView({
 													? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
 													: null
 											}
+											reviewState={selection.card.agentReview ?? null}
 											panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 											terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 											showRightBorder={false}
@@ -745,6 +770,7 @@ export function CardDetailView({
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}
 										isExpanded={isBottomTerminalExpanded}
 										onToggleExpand={onBottomTerminalToggleExpand}
+										reviewState={selection.card.agentReview ?? null}
 									/>
 								</div>
 							</ResizableBottomPane>

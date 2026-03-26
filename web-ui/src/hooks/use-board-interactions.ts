@@ -6,6 +6,7 @@ import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
+import { triggerTaskAgentReview } from "@/runtime/runtime-config-query";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import {
@@ -20,7 +21,7 @@ import {
 import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
-import { resolveTaskAutoReviewMode } from "@/types";
+import { isTaskAgentReviewPinnedToReview, resolveTaskAutoReviewMode, resolveTaskAgentReviewStatus } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import {
 	getBrowserNotificationPermission,
@@ -85,6 +86,7 @@ export interface UseBoardInteractionsResult {
 	handleMoveReviewCardToTrash: (taskId: string) => void;
 	handleRestoreTaskFromTrash: (taskId: string) => void;
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
+	handleTriggerAgentReview: (taskId: string) => Promise<void>;
 	handleOpenClearTrash: () => void;
 	handleConfirmClearTrash: () => void;
 	handleAddReviewComments: (taskId: string, text: string) => Promise<void>;
@@ -259,6 +261,79 @@ export function useBoardInteractions({
 			}
 		},
 		[sendTaskSessionInput],
+	);
+
+	const handleTriggerAgentReview = useCallback(
+		async (taskId: string): Promise<void> => {
+			if (!currentProjectId) {
+				showAppToast({
+					intent: "warning",
+					icon: "warning-sign",
+					message: "Select a project before starting agent review.",
+					timeout: 5000,
+				});
+				return;
+			}
+
+			try {
+				const response = await triggerTaskAgentReview(currentProjectId, taskId);
+				if (response.state) {
+					setBoard((currentBoard) =>
+						({
+							...currentBoard,
+							columns: currentBoard.columns.map((column) => ({
+								...column,
+								cards: column.cards.map((card) =>
+									card.id === taskId ? { ...card, agentReview: response.state ?? undefined } : card,
+								),
+							})),
+						}) satisfies BoardData,
+					);
+				}
+
+				if (!response.ok) {
+					showAppToast({
+						intent: "warning",
+						icon: "warning-sign",
+						message: response.error ?? "Could not start agent review for this card.",
+						timeout: 7000,
+					});
+					return;
+				}
+
+				const reviewStatus = resolveTaskAgentReviewStatus(response.state?.status);
+				if (reviewStatus === "skipped") {
+					showAppToast({
+						intent: "warning",
+						icon: "warning-sign",
+						message: "This card is not eligible for agent review yet.",
+						timeout: 7000,
+					});
+					return;
+				}
+
+				if (reviewStatus === "pending" || reviewStatus === "reviewing") {
+					showAppToast({
+						intent: "success",
+						icon: "tick-circle",
+						message: "Agent review started.",
+						timeout: 4000,
+					});
+					return;
+				}
+
+				showAppToast({
+					intent: "warning",
+					icon: "warning-sign",
+					message: response.error ?? "Agent review is already active for this card.",
+					timeout: 7000,
+				});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				notifyError(message);
+			}
+		},
+		[currentProjectId, setBoard],
 	);
 
 	const trashTaskIds = useMemo(() => {
@@ -440,6 +515,8 @@ export function useBoardInteractions({
 					continue;
 				}
 				const columnId = getTaskColumnId(nextBoard, summary.taskId);
+				const taskSelection = findCardSelection(nextBoard, summary.taskId);
+				const reviewPinned = isTaskAgentReviewPinnedToReview(taskSelection?.card.agentReview);
 				if (summary.state === "awaiting_review" && columnId === "in_progress") {
 					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "review");
 					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
@@ -451,7 +528,7 @@ export function useBoardInteractions({
 					}
 					continue;
 				}
-				if (summary.state === "running" && columnId === "review") {
+				if (summary.state === "running" && columnId === "review" && !reviewPinned) {
 					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
 						skipKickoff: true,
 					});
@@ -888,6 +965,7 @@ export function useBoardInteractions({
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
 		handleCancelAutomaticTaskAction,
+		handleTriggerAgentReview,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
 		handleAddReviewComments,
