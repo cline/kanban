@@ -32,6 +32,7 @@ export interface AgentReviewGitRange {
 }
 
 export interface RunAgentReviewRoundInput {
+	workspaceId: string;
 	taskId: string;
 	runId: string;
 	round: number;

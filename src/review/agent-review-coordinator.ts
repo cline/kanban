@@ -322,6 +322,7 @@ async function persistState(workspaceId: string, taskId: string, state: AgentRev
 			let runnerResult: AgentReviewRunnerResult | null = null;
 			try {
 				runnerResult = await runReviewRound({
+					workspaceId: snapshot.workspaceId,
 					taskId: snapshot.taskId,
 					runId,
 					round,
