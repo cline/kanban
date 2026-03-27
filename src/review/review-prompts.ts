@@ -44,7 +44,7 @@ export function buildCodeReviewPrompt(input: BuildCodeReviewPromptInput): string
 
 	return [
 		`You are acting as the autonomous code reviewer for task ${input.taskId}.`,
-		`Use the rigor and structure of the reviewer skill at ${REQUESTING_CODE_REVIEW_SKILL_URL}, but adapt it to this repository and this round.`,
+		"Follow this prompt as the consolidated source of truth for this repository and this round.",
 		"",
 		`Review round: ${input.round}`,
 		`Reviewer agent: ${input.reviewerAgentId}`,
@@ -76,15 +76,26 @@ export function buildCodeReviewPrompt(input: BuildCodeReviewPromptInput): string
 		"- Type safety",
 		"- Test coverage gaps",
 		"- Security and backwards compatibility concerns",
+		"- Requirements adherence with no silent scope creep",
+		"- Production readiness, including migrations, compatibility, and documentation gaps",
+		"",
+		"Review checklist:",
+		"- Code quality: clean separation of concerns, DRY structure, edge cases handled, proper error handling",
+		"- Architecture: sound design choices, scalability, performance, and security implications",
+		"- Testing: tests should validate real logic, cover edge cases, and include integration coverage where needed",
+		"- Requirements: implementation should match the stated plan and call out any breaking changes",
+		"- Production readiness: consider migration strategy, backward compatibility, and obvious operational risks",
 		"",
 		"Output requirements:",
 		`- Update only ${input.reportPath} for the review artifact.`,
 		`- Append a \`### Round ${input.round}\` section that follows the repository contract.`,
 		"- Decision must be exactly PASS or CHANGES_REQUESTED.",
+		"- Categorize findings by actual severity and do not label everything as critical.",
 		"- Strengths can be reflected in the summary, but actionable findings belong under Findings.",
-		"- Every finding should include a severity, a file reference when possible, and a concrete explanation.",
+		"- Every finding should include severity, file:line when possible, what is wrong, why it matters, and how to fix it when the fix is not obvious.",
 		"- If there are no actionable findings, write PASS and an explicit 'No findings' entry in Findings.",
 		"- Next Step must be a concise instruction that the original implementation agent can act on directly.",
+		"- Be specific and decisive. Do not be vague, do not review code you did not inspect, and do not avoid giving a clear verdict.",
 	].join("\n");
 }
 
@@ -99,9 +110,11 @@ export function buildImplementationFollowUpPrompt(input: {
 
 	return [
 		`Autonomous review round ${input.round.round} completed and requested changes.`,
-		`Open ${input.reportPath} and implement the fixes from the latest round.`,
+		`Open ${input.reportPath}, read the latest review round in full, and treat it as the source of truth for the requested fixes.`,
 		findingsSummary,
-		"Do not rewrite the review file. Make the code changes, verify them, and continue until the task is ready for review again.",
+		"Apply the requested fixes in code, run the relevant verification, and do not rewrite the review file.",
+		"When the fixes are complete, hand the task back for review so the same reviewer agent can run the next round.",
+		"Do not commit or open a PR from this follow-up step unless the normal task automation triggers after the reviewer passes.",
 		`Use the 'Next Step' section in ${input.reportPath} as the highest-priority instruction for this follow-up.`,
 	].join("\n");
 }

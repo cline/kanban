@@ -74,6 +74,7 @@ export interface CreateAgentReviewCoordinatorDependencies {
 	}) => Promise<AgentReviewLaunchCommand | null>;
 	persistState: (input: PersistAgentReviewStateInput) => Promise<void>;
 	sendFollowUpToOriginalAgent: (input: SendAgentReviewFollowUpInput) => Promise<AgentReviewFollowUpResult>;
+	resumeTaskAfterChangesRequested?: (input: { workspaceId: string; taskId: string }) => Promise<void>;
 	refreshSnapshotAfterRound?: (input: {
 		workspaceId: string;
 		taskId: string;
@@ -260,7 +261,7 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 	const runReviewRound = deps.runReviewRound ?? runAgentReviewRound;
 	const recordFallbackRound = deps.recordFallbackRound ?? recordFallbackReviewRound;
 
-async function persistState(workspaceId: string, taskId: string, state: AgentReviewState): Promise<void> {
+	async function persistState(workspaceId: string, taskId: string, state: AgentReviewState): Promise<void> {
 		await deps.persistState({ workspaceId, taskId, state });
 	}
 
@@ -387,6 +388,12 @@ async function persistState(workspaceId: string, taskId: string, state: AgentRev
 					text: followUpPrompt,
 				});
 				followUpSent = followUpResult.ok;
+				if (followUpSent) {
+					await deps.resumeTaskAfterChangesRequested?.({
+						workspaceId: snapshot.workspaceId,
+						taskId: snapshot.taskId,
+					});
+				}
 			}
 
 			await persistState(snapshot.workspaceId, snapshot.taskId, finalState);

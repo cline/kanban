@@ -297,11 +297,11 @@ describe("CardDetailView", () => {
 		});
 
 		const reviewButton = Array.from(container.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Reviewing",
+			(button) => button.textContent?.trim() === "Agent Review In Progress",
 		);
 		expect(reviewButton).toBeInstanceOf(HTMLButtonElement);
 		if (!(reviewButton instanceof HTMLButtonElement)) {
-			throw new Error("Expected a Reviewing button.");
+			throw new Error("Expected an Agent Review In Progress button.");
 		}
 
 		await act(async () => {

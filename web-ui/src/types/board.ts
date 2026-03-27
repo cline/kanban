@@ -72,7 +72,7 @@ export function getTaskAgentReviewStatusLabel(
 ): string | null {
 	const status = resolveTaskAgentReviewStatus(state?.status);
 	if (status === "pending" || status === "reviewing") {
-		return "Reviewing";
+		return "Agent Review In Progress";
 	}
 	if (status === "changes_requested") {
 		return "Changes Requested";

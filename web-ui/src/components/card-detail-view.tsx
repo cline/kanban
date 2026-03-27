@@ -613,7 +613,11 @@ export function CardDetailView({
 											onClick={handleToggleReviewerTranscript}
 											aria-pressed={showReviewerSessionPane}
 											disabled={!reviewerTaskId}
-											className="inline-flex items-center rounded-full border border-border-bright bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-text-primary hover:bg-surface-3 disabled:cursor-default disabled:opacity-70"
+											className={
+												showReviewerSessionPane
+													? "inline-flex items-center rounded-full border border-border-bright bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-text-primary hover:bg-surface-3 disabled:cursor-default disabled:opacity-70"
+													: "inline-flex items-center rounded-full border border-border-bright bg-surface-0 px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary disabled:cursor-default disabled:opacity-70"
+											}
 										>
 											{reviewStatusLabel}
 										</button>

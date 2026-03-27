@@ -265,6 +265,25 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		void deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(input.workspaceId, input.workspacePath);
 		void deps.runtimeStateHub.broadcastRuntimeProjectsUpdated(input.workspaceId);
 	};
+	const moveTaskToInProgressForAgentReviewFollowUp = async (input: {
+		workspaceId: string;
+		taskId: string;
+	}): Promise<void> => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			return;
+		}
+		await mutateWorkspaceState(workspacePath, (currentState) => {
+			const moved = moveTaskToColumn(currentState.board, input.taskId, "in_progress");
+			return {
+				board: moved.board,
+				value: null,
+				save: moved.moved,
+			};
+		});
+		void deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(input.workspaceId, workspacePath);
+		void deps.runtimeStateHub.broadcastRuntimeProjectsUpdated(input.workspaceId);
+	};
 	const sendAgentReviewFollowUp = async (input: {
 		workspaceId: string;
 		taskId: string;
@@ -364,7 +383,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			},
 			onState: (summary) => {
 				latestSummary = summary;
-				if (!settled && summary.state !== "running") {
+			},
+			onExit: () => {
+				if (!settled) {
 					settled = true;
 					resolveCompletion();
 				}
@@ -384,10 +405,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				autoRestartEnabled: false,
 			});
 			latestSummary = startedSummary;
-			if (!settled && startedSummary.state !== "running") {
-				settled = true;
-				resolveCompletion();
-			}
 			await completionPromise;
 		} catch (error) {
 			if (!settled) {
@@ -464,12 +481,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	};
 	const baseAgentReviewCoordinator = createAgentReviewCoordinator({
 		resolveLaunchCommand: async (input) => {
-			if (input.preferredAgentId) {
-				const preferred = resolveAgentCommandForAgentId(input.preferredAgentId);
-				if (preferred) {
-					return preferred;
-				}
-			}
 			const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
 			if (!workspacePath) {
 				return null;
@@ -478,10 +489,26 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				workspaceId: input.workspaceId,
 				workspacePath,
 			});
-			return resolveAgentCommand(runtimeConfig);
+			if (input.preferredAgentId) {
+				const preferred = resolveAgentCommandForAgentId(input.preferredAgentId);
+				if (preferred) {
+					return {
+						...preferred,
+						autonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
+					};
+				}
+			}
+			const resolved = resolveAgentCommand(runtimeConfig);
+			return resolved
+				? {
+						...resolved,
+						autonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
+					}
+				: null;
 		},
 		persistState: persistAgentReviewState,
 		sendFollowUpToOriginalAgent: sendAgentReviewFollowUp,
+		resumeTaskAfterChangesRequested: moveTaskToInProgressForAgentReviewFollowUp,
 		refreshSnapshotAfterRound: refreshAgentReviewSnapshot,
 		runReviewRound: async (input) =>
 			await runManagedAgentReviewRound({
