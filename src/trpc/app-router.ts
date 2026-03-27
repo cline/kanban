@@ -79,6 +79,11 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureRequest,
 	RuntimeWorktreeEnsureResponse,
+	WebhookListResponse,
+	WebhookRegistrationRequest,
+	WebhookRegistrationResponse,
+	WebhookUnregisterRequest,
+	WebhookUnregisterResponse,
 } from "../core/api-contract.js";
 import {
 	runtimeCommandRunRequestSchema,
@@ -154,6 +159,11 @@ import {
 	runtimeWorktreeDeleteResponseSchema,
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
+	webhookListResponseSchema,
+	webhookRegistrationRequestSchema,
+	webhookRegistrationResponseSchema,
+	webhookUnregisterRequestSchema,
+	webhookUnregisterResponseSchema,
 } from "../core/api-contract.js";
 
 export interface RuntimeTrpcWorkspaceScope {
@@ -315,6 +325,11 @@ export interface RuntimeTrpcContext {
 	};
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
+	};
+	webhookService: {
+		register: (input: WebhookRegistrationRequest) => WebhookRegistrationResponse;
+		unregister: (input: WebhookUnregisterRequest) => WebhookUnregisterResponse;
+		list: () => WebhookListResponse;
 	};
 }
 
@@ -631,6 +646,23 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.hooksApi.ingest(input);
 			}),
+	}),
+	webhooks: t.router({
+		register: t.procedure
+			.input(webhookRegistrationRequestSchema)
+			.output(webhookRegistrationResponseSchema)
+			.mutation(({ ctx, input }) => {
+				return ctx.webhookService.register(input);
+			}),
+		unregister: t.procedure
+			.input(webhookUnregisterRequestSchema)
+			.output(webhookUnregisterResponseSchema)
+			.mutation(({ ctx, input }) => {
+				return ctx.webhookService.unregister(input);
+			}),
+		list: t.procedure.output(webhookListResponseSchema).query(({ ctx }) => {
+			return ctx.webhookService.list();
+		}),
 	}),
 });
 

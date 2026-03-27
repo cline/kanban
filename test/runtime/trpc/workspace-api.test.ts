@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+	RuntimeBoardData,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceChangesResponse,
+	RuntimeWorkspaceStateResponse,
 } from "../../../src/core/api-contract.js";
 
 const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
@@ -14,6 +16,10 @@ const workspaceChangesMocks = vi.hoisted(() => ({
 	getWorkspaceChanges: vi.fn(),
 	getWorkspaceChangesBetweenRefs: vi.fn(),
 	getWorkspaceChangesFromRef: vi.fn(),
+}));
+
+const workspaceStateMocks = vi.hoisted(() => ({
+	saveWorkspaceState: vi.fn(),
 }));
 
 vi.mock("../../../src/workspace/task-worktree.js", () => ({
@@ -28,6 +34,17 @@ vi.mock("../../../src/workspace/get-workspace-changes.js", () => ({
 	getWorkspaceChanges: workspaceChangesMocks.getWorkspaceChanges,
 	getWorkspaceChangesBetweenRefs: workspaceChangesMocks.getWorkspaceChangesBetweenRefs,
 	getWorkspaceChangesFromRef: workspaceChangesMocks.getWorkspaceChangesFromRef,
+}));
+
+vi.mock("../../../src/state/workspace-state.js", () => ({
+	saveWorkspaceState: workspaceStateMocks.saveWorkspaceState,
+	WorkspaceStateConflictError: class extends Error {
+		currentRevision: number;
+		constructor(message: string, currentRevision: number) {
+			super(message);
+			this.currentRevision = currentRevision;
+		}
+	},
 }));
 
 import { createWorkspaceApi } from "../../../src/trpc/workspace-api.js";
@@ -295,4 +312,130 @@ describe("createWorkspaceApi loadChanges", () => {
 		});
 	});
 
+});
+
+// ---------------------------------------------------------------------------
+// saveState webhook dispatch tests
+// ---------------------------------------------------------------------------
+
+function createBoard(
+	columns: Partial<Record<string, Array<{ id: string; prompt: string }>>>,
+): RuntimeBoardData {
+	const backlog = columns.backlog ?? [];
+	const in_progress = columns.in_progress ?? [];
+	const review = columns.review ?? [];
+	const trash = columns.trash ?? [];
+	const now = Date.now();
+	const toCard = (c: { id: string; prompt: string }) => ({
+		id: c.id,
+		prompt: c.prompt,
+		startInPlanMode: false,
+		baseRef: "main",
+		createdAt: now,
+		updatedAt: now,
+	});
+	return {
+		columns: [
+			{ id: "backlog", title: "Backlog", cards: backlog.map(toCard) },
+			{ id: "in_progress", title: "In Progress", cards: in_progress.map(toCard) },
+			{ id: "review", title: "Review", cards: review.map(toCard) },
+			{ id: "trash", title: "Trash", cards: trash.map(toCard) },
+		],
+		dependencies: [],
+	};
+}
+
+function createStateResponse(board: RuntimeBoardData): RuntimeWorkspaceStateResponse {
+	return {
+		board,
+		sessions: {},
+		revision: 1,
+	} as RuntimeWorkspaceStateResponse;
+}
+
+describe("createWorkspaceApi saveState webhook dispatch", () => {
+	beforeEach(() => {
+		workspaceStateMocks.saveWorkspaceState.mockReset();
+	});
+
+	it("dispatches webhook events when board changes on saveState", async () => {
+		const oldBoard = createBoard({ backlog: [{ id: "aaa", prompt: "Task A" }] });
+		const newBoard = createBoard({ in_progress: [{ id: "aaa", prompt: "Task A" }] });
+
+		const dispatchWebhookEvents = vi.fn();
+		workspaceStateMocks.saveWorkspaceState.mockResolvedValue(createStateResponse(newBoard));
+
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(async () => ({ listSummaries: () => [] }) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => ({ getSummary: vi.fn(() => null) }) as never),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(async () => createStateResponse(oldBoard)),
+			dispatchWebhookEvents,
+		});
+
+		await api.saveState(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ board: newBoard, sessions: {} },
+		);
+
+		expect(dispatchWebhookEvents).toHaveBeenCalledTimes(1);
+		const events = dispatchWebhookEvents.mock.calls[0]?.[0];
+		expect(events).toHaveLength(1);
+		expect(events[0]).toEqual(
+			expect.objectContaining({
+				type: "task.moved",
+				task: expect.objectContaining({
+					id: "aaa",
+					columnId: "in_progress",
+					previousColumnId: "backlog",
+				}),
+			}),
+		);
+	});
+
+	it("does not dispatch when board is unchanged", async () => {
+		const board = createBoard({ backlog: [{ id: "aaa", prompt: "Task A" }] });
+
+		const dispatchWebhookEvents = vi.fn();
+		workspaceStateMocks.saveWorkspaceState.mockResolvedValue(createStateResponse(board));
+
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(async () => ({ listSummaries: () => [] }) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => ({ getSummary: vi.fn(() => null) }) as never),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(async () => createStateResponse(board)),
+			dispatchWebhookEvents,
+		});
+
+		await api.saveState(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ board, sessions: {} },
+		);
+
+		expect(dispatchWebhookEvents).not.toHaveBeenCalled();
+	});
+
+	it("does not dispatch when dispatchWebhookEvents is not provided", async () => {
+		const oldBoard = createBoard({ backlog: [{ id: "aaa", prompt: "Task A" }] });
+		const newBoard = createBoard({ in_progress: [{ id: "aaa", prompt: "Task A" }] });
+
+		workspaceStateMocks.saveWorkspaceState.mockResolvedValue(createStateResponse(newBoard));
+
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(async () => ({ listSummaries: () => [] }) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => ({ getSummary: vi.fn(() => null) }) as never),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(async () => createStateResponse(oldBoard)),
+			// no dispatchWebhookEvents
+		});
+
+		// Should not throw
+		await api.saveState(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ board: newBoard, sessions: {} },
+		);
+	});
 });
