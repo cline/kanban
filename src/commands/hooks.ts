@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { Stats } from "node:fs";
-import { access, open, stat } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
@@ -13,8 +13,6 @@ import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
-const CODEX_LOG_WAIT_ATTEMPTS = 200;
-const CODEX_LOG_WAIT_DELAY_MS = 50;
 const CODEX_LOG_POLL_INTERVAL_MS = 200;
 const MAX_ACTIVITY_TEXT_LENGTH = 200;
 
@@ -74,6 +72,13 @@ interface CodexSessionLogLine {
 	call_id?: unknown;
 }
 
+export interface CodexMappedHookEvent {
+	event: RuntimeHookEvent;
+	metadata?: Partial<RuntimeTaskHookActivity>;
+}
+
+type CodexSessionWatcherNotify = (mapped: CodexMappedHookEvent) => void;
+
 function formatError(error: unknown): string {
 	if (error instanceof TRPCClientError) {
 		return error.message;
@@ -98,12 +103,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
 			clearTimeout(timeoutHandle);
 		}
 	}
-}
-
-async function sleep(ms: number): Promise<void> {
-	await new Promise((resolve) => {
-		setTimeout(resolve, ms);
-	});
 }
 
 function parseHookEvent(value: string): RuntimeHookEvent {
@@ -627,7 +626,7 @@ export function createCodexWatcherState(): CodexWatcherState {
 export function parseCodexEventLine(
 	line: string,
 	state: CodexWatcherState,
-): { event: RuntimeHookEvent; metadata?: Partial<RuntimeTaskHookActivity> } | null {
+): CodexMappedHookEvent | null {
 	const parsed = parseCodexSessionLogLine(line);
 	if (!parsed) {
 		return null;
@@ -834,19 +833,15 @@ export function parseCodexEventLine(
 	return null;
 }
 
-async function waitForFile(path: string): Promise<boolean> {
-	for (let attempt = 0; attempt < CODEX_LOG_WAIT_ATTEMPTS; attempt += 1) {
-		try {
-			await access(path);
-			return true;
-		} catch {
-			await sleep(CODEX_LOG_WAIT_DELAY_MS);
-		}
-	}
-	return false;
+function notifyCodexSessionWatcherEvent(mapped: CodexMappedHookEvent): void {
+	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
 }
 
-async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
+export async function startCodexSessionWatcher(
+	logPath: string,
+	notify: CodexSessionWatcherNotify = notifyCodexSessionWatcherEvent,
+	pollIntervalMs = CODEX_LOG_POLL_INTERVAL_MS,
+): Promise<() => Promise<void>> {
 	const state = createCodexWatcherState();
 
 	const poll = async () => {
@@ -877,7 +872,7 @@ async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
 			for (const line of lines) {
 				const mapped = parseCodexEventLine(line, state);
 				if (mapped) {
-					spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
+					notify(mapped);
 				}
 			}
 		} catch {
@@ -887,12 +882,35 @@ async function startCodexSessionWatcher(logPath: string): Promise<() => void> {
 		}
 	};
 
+	let queuedPoll = Promise.resolve();
+	const queuePoll = (): Promise<void> => {
+		queuedPoll = queuedPoll.then(
+			() => poll(),
+			() => poll(),
+		);
+		return queuedPoll;
+	};
+
+	const flushRemainder = () => {
+		const line = state.remainder.trim();
+		if (!line) {
+			return;
+		}
+		state.remainder = "";
+		const mapped = parseCodexEventLine(line, state);
+		if (mapped) {
+			notify(mapped);
+		}
+	};
+
 	const timer = setInterval(() => {
-		void poll();
-	}, CODEX_LOG_POLL_INTERVAL_MS);
-	void poll();
-	return () => {
+		void queuePoll();
+	}, pollIntervalMs);
+	await queuePoll();
+	return async () => {
 		clearInterval(timer);
+		await queuePoll();
+		flushRemainder();
 	};
 }
 
@@ -972,8 +990,11 @@ async function runGeminiHookSubcommand(): Promise<void> {
 	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
 }
 
-export function buildCodexWrapperChildArgs(agentArgs: string[], _shouldWatchSessionLog: boolean): string[] {
+export function buildCodexWrapperChildArgs(agentArgs: string[], shouldWatchSessionLog: boolean): string[] {
 	const childArgs = [...agentArgs];
+	if (shouldWatchSessionLog) {
+		return childArgs;
+	}
 	const reviewNotifyCommandParts = buildKanbanCommandParts([
 		"hooks",
 		"notify",
@@ -990,8 +1011,7 @@ export function buildCodexWrapperChildArgs(agentArgs: string[], _shouldWatchSess
 
 async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise<void> {
 	const childEnv: NodeJS.ProcessEnv = { ...process.env };
-	let shuttingDown = false;
-	let stopWatcher = () => {};
+	let stopWatcher: () => Promise<void> = async () => {};
 
 	let shouldWatchSessionLog = false;
 	try {
@@ -1011,16 +1031,7 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 		}
 		const sessionLogPath = childEnv.CODEX_TUI_SESSION_LOG_PATH;
 		if (sessionLogPath) {
-			void (async () => {
-				const exists = await waitForFile(sessionLogPath);
-				if (!exists || shuttingDown) {
-					return;
-				}
-				stopWatcher = await startCodexSessionWatcher(sessionLogPath);
-				if (shuttingDown) {
-					stopWatcher();
-				}
-			})();
+			stopWatcher = await startCodexSessionWatcher(sessionLogPath);
 		}
 	}
 
@@ -1045,23 +1056,31 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 	process.on("SIGINT", onSigint);
 	process.on("SIGTERM", onSigterm);
 
-	const cleanup = () => {
-		shuttingDown = true;
-		stopWatcher();
+	const cleanup = async () => {
+		await stopWatcher();
 		process.off("SIGINT", onSigint);
 		process.off("SIGTERM", onSigterm);
 	};
 
 	await new Promise<void>((resolve) => {
+		let finished = false;
+		const finish = (exitCode: number) => {
+			if (finished) {
+				return;
+			}
+			finished = true;
+			void (async () => {
+				await cleanup();
+				process.exitCode = exitCode;
+				resolve();
+			})();
+		};
+
 		child.on("error", () => {
-			cleanup();
-			process.exitCode = 1;
-			resolve();
+			finish(1);
 		});
 		child.on("exit", (code) => {
-			cleanup();
-			process.exitCode = code ?? 1;
-			resolve();
+			finish(code ?? 1);
 		});
 	});
 }
