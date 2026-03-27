@@ -1,4 +1,9 @@
-import { toGlobalRuntimeConfigState, type RuntimeConfigState } from "../config/runtime-config.js";
+import { readFile } from "node:fs/promises";
+import {
+	getRuntimeProjectConfigPath,
+	toGlobalRuntimeConfigState,
+	type RuntimeConfigState,
+} from "../config/runtime-config.js";
 import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
@@ -170,10 +175,11 @@ function toProjectSummary(project: {
 	workspaceId: string;
 	repoPath: string;
 	taskCounts: RuntimeProjectTaskCounts;
+	customName?: string | null;
 }): RuntimeProjectSummary {
 	const normalized = project.repoPath.replaceAll("\\", "/").replace(/\/+$/g, "");
 	const segments = normalized.split("/").filter((segment) => segment.length > 0);
-	const name = segments[segments.length - 1] ?? normalized;
+	const name = project.customName || segments[segments.length - 1] || normalized;
 	return {
 		id: project.workspaceId,
 		path: project.repoPath,
@@ -339,10 +345,21 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		const projectSummaries = await Promise.all(
 			projects.map(async (project) => {
 				const taskCounts = await summarizeProjectTaskCounts(project.workspaceId, project.repoPath);
+				let customName: string | null = null;
+				try {
+					const configPath = getRuntimeProjectConfigPath(project.repoPath);
+					const raw = JSON.parse(await readFile(configPath, "utf8"));
+					if (typeof raw.name === "string" && raw.name.trim()) {
+						customName = raw.name.trim();
+					}
+				} catch {
+					// No project config file or invalid JSON — use default folder name.
+				}
 				return toProjectSummary({
 					workspaceId: project.workspaceId,
 					repoPath: project.repoPath,
 					taskCounts,
+					customName,
 				});
 			}),
 		);
