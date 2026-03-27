@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.47]
+
+- Fixed browser open failing on Linux systems where `xdg-open` is not available
+
+## [0.1.46]
+
+- Added reasoning level dropdown to Cline provider settings and the model selector in the chat composer
+- Images can now be attached when creating tasks for Claude Code and Codec CLI agents -- images are saved as temporary files and their paths are passed into the prompt since TUIs don't support inline images
+- Added shortcuts for diff view actions and a "Start and Open" shortcut as an alternative to starting a task (shout out to Shey for the idea!)
+- Fixed issues with the sidebar Cline chat session not reloading after adding MCP servers
+- The project column can now be collapsed all the way to the edge for a minimal view (shout out to Shey for this idea!)
+- Fixed issues with some Next.js project configurations in worktrees
+- Fixed diff viewer showing false changes for end-of-file-only differences
+- Fixed a crash in older browsers when generating UUIDs for board state
+- Fixed a crash on Windows when resizing the terminal after the PTY process has exited
+
 ## [0.1.45]
 
 - Fixed kanban access validation to only apply restrictions to enterprise customers, so non-enterprise users are no longer incorrectly blocked

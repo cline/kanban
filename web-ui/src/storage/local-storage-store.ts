@@ -2,6 +2,8 @@ export enum LocalStorageKey {
 	TaskStartInPlanMode = "kanban.task-start-in-plan-mode",
 	TaskAutoReviewEnabled = "kanban.task-auto-review-enabled",
 	TaskAutoReviewMode = "kanban.task-auto-review-mode",
+	TaskCreatePrimaryStartAction = "kanban.task-create-primary-start-action",
+	BottomTerminalPaneHeight = "kanban.bottom-terminal-pane-height",
 	OnboardingDialogShown = "kanban.onboarding.dialog.shown",
 	NotificationPermissionPrompted = "kanban.notifications.permission-prompted",
 	PreferredOpenTarget = "kanban.preferred-open-target",

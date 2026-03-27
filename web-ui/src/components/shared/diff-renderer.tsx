@@ -191,7 +191,7 @@ export function buildUnifiedDiffRows(oldText: string | null | undefined, newText
 	const rows: UnifiedDiffRow[] = [];
 	let oldLine = 1;
 	let newLine = 1;
-	const changes = diffLines(oldText ?? "", newText, { ignoreWhitespace: false });
+	const changes = diffLines(oldText ?? "", newText, { ignoreWhitespace: false, stripTrailingCr: true, ignoreNewlineAtEof: true });
 
 	for (let index = 0; index < changes.length; index += 1) {
 		const change = changes[index];
@@ -430,7 +430,7 @@ export function countAddedRemoved(
 ): { added: number; removed: number } {
 	let added = 0;
 	let removed = 0;
-	const changes = diffLines(oldText ?? "", newText, { ignoreWhitespace: false });
+	const changes = diffLines(oldText ?? "", newText, { ignoreWhitespace: false, stripTrailingCr: true, ignoreNewlineAtEof: true });
 	for (const change of changes) {
 		if (!change) {
 			continue;

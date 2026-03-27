@@ -6,7 +6,6 @@ const TURBOPACK_SCAN_MAX_DIRECTORY_DEPTH = 3;
 const TURBOPACK_SCRIPT_FLAG_PATTERN = /(^|\s)--(?:turbo|turbopack)(?=\s|$)/i;
 const TURBOPACK_SCRIPT_ENV_PATTERN = /(^|\s)(?:TURBOPACK|NEXT_TURBOPACK)\s*=\s*(?:1|true|yes)(?=\s|$)/i;
 const TURBOPACK_CONFIG_PATTERN = /\bturbopack\b/i;
-const NEXT_SCRIPT_PATTERN = /\bnext\b/i;
 const NEXT_CONFIG_FILENAMES = [
 	"next.config.js",
 	"next.config.mjs",
@@ -70,10 +69,7 @@ function packageDependsOnNext(packageJson: PackageJsonShape): boolean {
 }
 
 function packageLooksLikeNextApp(packageJson: PackageJsonShape): boolean {
-	return (
-		packageDependsOnNext(packageJson) ||
-		getStringScripts(packageJson).some((script) => NEXT_SCRIPT_PATTERN.test(script))
-	);
+	return packageDependsOnNext(packageJson);
 }
 
 async function readPackageJson(packageDir: string): Promise<PackageJsonShape | null> {
@@ -111,8 +107,8 @@ async function packageDirectoryUsesTurbopack(packageDir: string): Promise<boolea
 	}
 
 	const hasNextAppHints = packageLooksLikeNextApp(packageJson);
-	if (!hasNextAppHints) {
-		return false;
+	if (hasNextAppHints) {
+		return true;
 	}
 
 	const hasTurbopackConfig = await repoConfigMentionsTurbopack(packageDir);

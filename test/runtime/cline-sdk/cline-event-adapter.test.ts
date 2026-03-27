@@ -92,6 +92,32 @@ describe("applyClineSessionEvent", () => {
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.finalMessage).toBe("world");
 	});
 
+	it("keeps the full streamed assistant message in summary metadata", () => {
+		const entry = createEntry("task-1");
+		const longText = `${"Detailed handoff sentence ".repeat(12)}tail`;
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "content_start",
+						contentType: "text",
+						text: longText,
+						accumulated: longText,
+					},
+				},
+			},
+		});
+
+		const latestHookActivity = result.summaries.at(-1)?.latestHookActivity;
+		expect(latestHookActivity?.finalMessage).toBe(longText.trim());
+		expect((latestHookActivity?.activityText?.length ?? 0)).toBeLessThan(latestHookActivity?.finalMessage?.length ?? 0);
+		expect(latestHookActivity?.activityText).toContain("…");
+	});
+
 	it("transitions into and back out of awaiting review around user-attention tools", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";
@@ -272,6 +298,41 @@ describe("applyClineSessionEvent", () => {
 		expect(result.entry.summary.latestHookActivity?.finalMessage).toBe("Done. Added the comment.");
 		expect(result.messages[0]?.role).toBe("assistant");
 		expect(result.messages[0]?.content).toBe("Done. Added the comment.");
+	});
+
+	it("keeps the previous preview when done events have no final text", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+		entry.summary.latestHookActivity = {
+			activityText: "Reviewing the final diff",
+			toolName: "Read",
+			toolInputSummary: "src/index.ts",
+			finalMessage: "Reviewing the final diff",
+			hookEventName: "assistant_delta",
+			notificationType: null,
+			source: "cline-sdk",
+		};
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "done",
+						reason: "completed",
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("awaiting_review");
+		expect(result.entry.summary.reviewReason).toBe("hook");
+		expect(result.entry.summary.latestHookActivity?.activityText).toBe("Reviewing the final diff");
+		expect(result.entry.summary.latestHookActivity?.toolName).toBe("Read");
+		expect(result.entry.summary.latestHookActivity?.toolInputSummary).toBe("src/index.ts");
+		expect(result.entry.summary.latestHookActivity?.hookEventName).toBe("agent_end");
 	});
 
 	it("keeps awaiting-review sessions in review when a stale running status event arrives", () => {

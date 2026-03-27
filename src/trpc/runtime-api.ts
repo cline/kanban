@@ -33,6 +33,7 @@ import {
 	parseShellSessionStartRequest,
 	parseTaskAgentReviewTriggerRequest,
 	parseTaskChatAbortRequest,
+	parseTaskChatReloadRequest,
 	parseTaskChatCancelRequest,
 	parseTaskChatMessagesRequest,
 	parseTaskChatSendRequest,
@@ -196,6 +197,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						mode: requestedTaskMode,
 						apiKey: clineLaunchConfig.apiKey,
 						baseUrl: clineLaunchConfig.baseUrl,
+						reasoningEffort: clineLaunchConfig.reasoningEffort,
 					});
 
 					let nextSummary = summary;
@@ -236,6 +238,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					autonomousModeEnabled: scopedRuntimeConfig.agentAutonomousModeEnabled,
 					cwd: taskCwd,
 					prompt: body.prompt,
+					images: body.images,
 					startInPlanMode: body.startInPlanMode,
 					resumeFromTrash: body.resumeFromTrash,
 					cols: body.cols,
@@ -394,6 +397,31 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				commands: listClineSdkWorkflowSlashCommands(watcher),
 			};
 		},
+		reloadTaskChatSession: async (workspaceScope, input) => {
+			try {
+				const body = parseTaskChatReloadRequest(input);
+				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				const summary = await clineTaskSessionService.reloadTaskSession(body.taskId);
+				if (!summary) {
+					return {
+						ok: false,
+						summary: null,
+						error: "Task chat session is not available.",
+					};
+				}
+				return {
+					ok: true,
+					summary,
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					summary: null,
+					error: message,
+				};
+			}
+		},
 		abortTaskChatTurn: async (workspaceScope, input) => {
 			try {
 				const body = parseTaskChatAbortRequest(input);
@@ -531,6 +559,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							mode: requestedMode,
 							apiKey: clineLaunchConfig.apiKey,
 							baseUrl: clineLaunchConfig.baseUrl,
+							reasoningEffort: clineLaunchConfig.reasoningEffort,
 						});
 					}
 				}

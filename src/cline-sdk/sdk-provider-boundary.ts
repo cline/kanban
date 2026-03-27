@@ -14,10 +14,11 @@ import {
 	ProviderSettingsManager,
 	ClineOrganization,
 } from "@clinebot/core/node";
-import { LlmsModels as llmsModels } from "@clinebot/llms";
+import { LlmsModels as llmsModels, LlmsProviders } from "@clinebot/llms";
 import { createMcpTools, type CreateMcpToolsOptions, type Tool } from "@clinebot/agents";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
+export type SdkReasoningEffort = NonNullable<LlmsProviders.ReasoningSettings["effort"]>;
 
 export interface ManagedOauthCredentials {
 	access: string;
@@ -45,27 +46,9 @@ export interface SdkUserRemoteConfigResponse {
 	enabled: boolean;
 }
 
-export type SdkProviderModelRecord = Record<
-	string,
-	{ name?: string; capabilities?: string[] } | unknown
->;
+export type SdkProviderModelRecord = Record<string, LlmsProviders.ModelInfo>;
 
-export interface SdkProviderSettings {
-	provider: string;
-	model?: string;
-	baseUrl?: string;
-	apiKey?: string;
-	oca?: {
-		mode?: "internal" | "external";
-	};
-	auth?: {
-		apiKey?: string;
-		accessToken?: string;
-		refreshToken?: string;
-		accountId?: string | null;
-		expiresAt?: number;
-	};
-}
+export type SdkProviderSettings = LlmsProviders.ProviderSettings;
 
 export interface SaveSdkProviderSettingsInput {
 	settings: SdkProviderSettings;
@@ -229,6 +212,10 @@ export async function listSdkProviderModels(
 	return await llmsModels.getModelsForProvider(providerId);
 }
 
+export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): boolean {
+	return LlmsProviders.supportsModelThinking(modelInfo);
+}
+
 const providerManager = new ProviderSettingsManager();
 
 export function getSdkProviderSettings(
@@ -283,6 +270,26 @@ export function saveSdkProviderSettings(
 			delete settings.apiKey;
 		} else {
 			settings.apiKey = apiKey;
+		}
+	}
+	if (settings.reasoning) {
+		const reasoning = { ...settings.reasoning };
+		if (typeof reasoning.effort === "string") {
+			const effort = reasoning.effort.trim();
+			if (!effort) {
+				delete reasoning.effort;
+			} else {
+				reasoning.effort = effort as SdkReasoningEffort;
+			}
+		}
+		if (
+			reasoning.enabled === undefined &&
+			reasoning.effort === undefined &&
+			reasoning.budgetTokens === undefined
+		) {
+			delete settings.reasoning;
+		} else {
+			settings.reasoning = reasoning;
 		}
 	}
 	if (settings.auth) {

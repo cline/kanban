@@ -1,4 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import {
 	ArrowBigUp,
@@ -8,6 +9,7 @@ import {
 	Command,
 	CornerDownLeft,
 	List,
+	Option,
 	PencilLine,
 	Plus,
 	X,
@@ -21,7 +23,10 @@ import { BranchSelectDropdown } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
+import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
+import { useRawLocalStorageValue } from "@/utils/react-use";
 
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
@@ -30,10 +35,29 @@ const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string
 	{ value: "move_to_trash", label: "Move to Trash" },
 ];
 
-function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): ReactElement {
+type TaskCreateStartAction = "start" | "start_and_open";
+
+const DEFAULT_PRIMARY_START_ACTION: TaskCreateStartAction = "start";
+
+function normalizeStoredTaskCreateStartAction(value: string): TaskCreateStartAction | null {
+	if (value === "start" || value === "start_and_open") {
+		return value;
+	}
+	return null;
+}
+
+function ButtonShortcut({
+	includeShift = false,
+	modifier = "mod",
+}: {
+	includeShift?: boolean;
+	modifier?: "mod" | "alt";
+}): ReactElement {
 	return (
 		<span className="inline-flex items-center gap-0.5 ml-1.5" aria-hidden>
-			<Command size={12} />
+			{modifier === "alt"
+				? (isMacPlatform ? <Option size={12} /> : <span className="text-[10px] font-medium leading-none">Alt</span>)
+				: <Command size={12} />}
 			{includeShift ? <ArrowBigUp size={12} /> : null}
 			<CornerDownLeft size={12} />
 		</span>
@@ -74,6 +98,7 @@ export function TaskCreateDialog({
 	onCreateAndStart,
 	onCreateMultiple,
 	onCreateAndStartMultiple,
+	onCreateStartAndOpen,
 	startInPlanMode,
 	onStartInPlanModeChange,
 	autoReviewEnabled,
@@ -96,6 +121,7 @@ export function TaskCreateDialog({
 	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
 	onCreateAndStartMultiple?: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
+	onCreateStartAndOpen?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	startInPlanMode: boolean;
 	onStartInPlanModeChange: (value: boolean) => void;
 	autoReviewEnabled: boolean;
@@ -117,12 +143,20 @@ export function TaskCreateDialog({
 	const startInPlanModeId = useId();
 	const autoReviewEnabledId = useId();
 	const createMoreId = useId();
+	const [primaryStartAction, setPrimaryStartAction] = useRawLocalStorageValue<TaskCreateStartAction>(
+		LocalStorageKey.TaskCreatePrimaryStartAction,
+		DEFAULT_PRIMARY_START_ACTION,
+		normalizeStoredTaskCreateStartAction,
+	);
 
 	const detectedItems = useMemo(() => parseListItems(prompt), [prompt]);
 	const validTaskCount = useMemo(
 		() => taskPrompts.filter((p) => p.trim()).length,
 		[taskPrompts],
 	);
+	const effectivePrimaryStartAction =
+		onCreateStartAndOpen || primaryStartAction === "start" ? primaryStartAction : DEFAULT_PRIMARY_START_ACTION;
+	const secondaryStartAction = effectivePrimaryStartAction === "start" ? "start_and_open" : "start";
 
 	// Reset state when dialog closes
 	useEffect(() => {
@@ -219,6 +253,25 @@ export function TaskCreateDialog({
 		}
 	}, [createMore, onCreateAndStart, resetForCreateMore]);
 
+	const handleCreateStartAndOpenSingle = useCallback(() => {
+		const createdTaskId = onCreateStartAndOpen?.({ keepDialogOpen: createMore });
+		if (createMore && createdTaskId) {
+			resetForCreateMore();
+		}
+	}, [createMore, onCreateStartAndOpen, resetForCreateMore]);
+
+	const handleRunSingleStartAction = useCallback(
+		(action: TaskCreateStartAction) => {
+			setPrimaryStartAction(action);
+			if (action === "start_and_open") {
+				handleCreateStartAndOpenSingle();
+				return;
+			}
+			handleCreateAndStartSingle();
+		},
+		[handleCreateAndStartSingle, handleCreateStartAndOpenSingle, setPrimaryStartAction],
+	);
+
 	const handleCreateAll = useCallback(() => {
 		const validPrompts = getValidPrompts();
 		if (validPrompts.length === 0) {
@@ -282,7 +335,7 @@ export function TaskCreateDialog({
 				return;
 			}
 			if (event.shiftKey) {
-				handleCreateAndStartSingle();
+				handleRunSingleStartAction("start");
 				return;
 			}
 			handleCreateSingle();
@@ -301,7 +354,24 @@ export function TaskCreateDialog({
 			},
 			preventDefault: true,
 		},
-		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateAndStartSingle, handleCreateSingle],
+		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateSingle, handleRunSingleStartAction],
+	);
+
+	// Alt/Opt+Shift+Enter → Start & Open (single mode only)
+	useHotkeys(
+		"alt+shift+enter",
+		() => {
+			if (mode === "single") {
+				handleRunSingleStartAction("start_and_open");
+			}
+		},
+		{
+			enabled: open && Boolean(onCreateStartAndOpen),
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[open, mode, handleRunSingleStartAction, onCreateStartAndOpen],
 	);
 
 	const dialogTitle = mode === "multi"
@@ -309,6 +379,10 @@ export function TaskCreateDialog({
 		: "New task";
 
 	const taskCountLabel = validTaskCount === 1 ? "task" : "tasks";
+	const primaryStartLabel = effectivePrimaryStartAction === "start" ? "Start task" : "Start and open";
+	const primaryStartShortcutModifier = effectivePrimaryStartAction === "start" ? "mod" : "alt";
+	const secondaryStartLabel = secondaryStartAction === "start" ? "Start task" : "Start and open";
+	const secondaryStartShortcutModifier = secondaryStartAction === "start" ? "mod" : "alt";
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange} contentClassName="max-w-2xl">
@@ -323,7 +397,7 @@ export function TaskCreateDialog({
 							images={images}
 							onImagesChange={onImagesChange}
 							onSubmit={handleCreateSingle}
-							onSubmitAndStart={handleCreateAndStartSingle}
+							onSubmitAndStart={() => handleRunSingleStartAction("start")}
 							placeholder="Describe the task..."
 							autoFocus
 							workspaceId={workspaceId}
@@ -331,16 +405,20 @@ export function TaskCreateDialog({
 						/>
 						<div className="flex items-center justify-between mt-1.5">
 							<p className="text-[11px] text-text-tertiary">
-								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference files.
+								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference
+								files. Drag and drop or <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to
+								add images.
 							</p>
-							<button
-								type="button"
-								onClick={handleSplitIntoTasks}
-								className={`inline-flex items-center gap-1.5 text-[12px] text-status-blue hover:text-[#86BEFF] cursor-pointer shrink-0 ${detectedItems.length >= 2 ? "" : "invisible"}`}
-							>
-								<List size={12} />
-								Split into {detectedItems.length || 0} tasks
-							</button>
+							{detectedItems.length >= 2 ? (
+								<button
+									type="button"
+									onClick={handleSplitIntoTasks}
+									className="inline-flex items-center gap-1.5 text-[12px] text-status-blue hover:text-[#86BEFF] cursor-pointer shrink-0"
+								>
+									<List size={12} />
+									Split into {detectedItems.length} tasks
+								</button>
+							) : null}
 						</div>
 					</div>
 				) : (
@@ -491,17 +569,58 @@ export function TaskCreateDialog({
 							</span>
 						</Button>
 						{onCreateAndStart ? (
-							<Button
-								variant="primary"
-								size="sm"
-								onClick={handleCreateAndStartSingle}
-								disabled={!prompt.trim() || !branchRef}
-							>
-								<span className="inline-flex items-center">
-									Start
-									<ButtonShortcut includeShift />
-								</span>
-							</Button>
+							<DropdownMenu.Root>
+								<div className="inline-flex items-center">
+									<Button
+										variant="primary"
+										size="sm"
+										onClick={() => handleRunSingleStartAction(primaryStartAction)}
+										disabled={!prompt.trim() || !branchRef}
+										className={onCreateStartAndOpen ? "rounded-r-none" : undefined}
+									>
+										<span className="inline-flex items-center">
+											{primaryStartLabel}
+											<ButtonShortcut includeShift modifier={primaryStartShortcutModifier} />
+										</span>
+									</Button>
+									{onCreateStartAndOpen ? (
+										<DropdownMenu.Trigger asChild>
+											<Button
+												variant="primary"
+												size="sm"
+												disabled={!prompt.trim() || !branchRef}
+												className="rounded-l-none border-l border-white/20 px-1"
+												aria-label="More start options"
+											>
+												<ChevronDown size={12} />
+											</Button>
+										</DropdownMenu.Trigger>
+									) : null}
+								</div>
+								<DropdownMenu.Portal>
+									<DropdownMenu.Content
+										side="bottom"
+										align="end"
+										sideOffset={4}
+										className="z-50 rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
+										onCloseAutoFocus={(event) => event.preventDefault()}
+									>
+										<DropdownMenu.Item
+											className="flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-[12px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 whitespace-nowrap"
+											onSelect={() => handleRunSingleStartAction(secondaryStartAction)}
+										>
+											{secondaryStartLabel}
+											<span className="inline-flex items-center gap-0.5 text-text-tertiary" aria-hidden>
+												{secondaryStartShortcutModifier === "alt"
+													? (isMacPlatform ? <Option size={10} /> : <span className="text-[10px] font-medium leading-none">Alt</span>)
+													: <Command size={10} />}
+												<ArrowBigUp size={10} />
+												<CornerDownLeft size={10} />
+											</span>
+										</DropdownMenu.Item>
+									</DropdownMenu.Content>
+								</DropdownMenu.Portal>
+							</DropdownMenu.Root>
 						) : null}
 					</>
 				) : (

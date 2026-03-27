@@ -21,7 +21,8 @@ import {
 	detectActiveClineComposerToken,
 } from "@/components/detail-panels/cline-chat-composer-completion";
 import { InlineCompletionPicker, type InlineCompletionItem } from "@/components/inline-completion-picker";
-import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
+import { ClineChatModelSelector } from "@/components/detail-panels/cline-chat-model-selector";
+import type { SearchSelectOption } from "@/components/search-select-dropdown";
 import { collectImageFilesFromDataTransfer, extractImagesFromDataTransfer } from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,7 @@ import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeSlashCommand, RuntimeTaskSessionMode } from "@/runtime/types";
+import type { RuntimeClineReasoningEffort, RuntimeSlashCommand, RuntimeTaskSessionMode } from "@/runtime/types";
 import type { TaskImage } from "@/types";
 import { isMacPlatform } from "@/utils/platform";
 import { useDebouncedEffect } from "@/utils/react-use";
@@ -59,6 +60,9 @@ export function ClineChatComposer({
 	selectedModelId,
 	selectedModelButtonText,
 	onSelectModel,
+	reasoningEnabledModelIds = [],
+	selectedReasoningEffort,
+	onSelectReasoningEffort,
 	isModelLoading = false,
 	isModelSaving = false,
 	modelPickerDisabled = false,
@@ -86,6 +90,9 @@ export function ClineChatComposer({
 	selectedModelId: string;
 	selectedModelButtonText: string;
 	onSelectModel: (value: string) => void;
+	reasoningEnabledModelIds?: readonly string[];
+	selectedReasoningEffort: RuntimeClineReasoningEffort | "";
+	onSelectReasoningEffort: (value: RuntimeClineReasoningEffort | "") => void;
 	isModelLoading?: boolean;
 	isModelSaving?: boolean;
 	modelPickerDisabled?: boolean;
@@ -482,28 +489,19 @@ export function ClineChatComposer({
 			) : null}
 			<div className="mt-2 flex min-w-0 items-center gap-2">
 				<div className="min-w-0 shrink overflow-hidden">
-					<SearchSelectDropdown
-						id="cline-chat-model-picker"
-						options={modelOptions}
-						selectedValue={selectedModelId}
-						onSelect={onSelectModel}
+					<ClineChatModelSelector
+						modelOptions={modelOptions}
+						recommendedModelIds={recommendedModelIds}
+						pinSelectedModelToTop={pinSelectedModelToTop}
+						selectedModelId={selectedModelId}
+						selectedModelButtonText={selectedModelButtonText}
+						onSelectModel={onSelectModel}
+						reasoningEnabledModelIds={reasoningEnabledModelIds}
+						selectedReasoningEffort={selectedReasoningEffort}
+						onSelectReasoningEffort={onSelectReasoningEffort}
 						disabled={modelPickerDisabled}
-						size="sm"
-						buttonText={selectedModelButtonText}
-						emptyText="Select model"
-						noResultsText="No matching models"
-						placeholder="Search models..."
-						showSelectedIndicator
-						pinSelectedToTop={pinSelectedModelToTop}
-						recommendedOptionValues={recommendedModelIds}
-						recommendedHeading="Recommended models"
-						matchTargetWidth={false}
-						collisionPadding={12}
-						dropdownStyle={{ minWidth: "220px", maxWidth: "320px" }}
-						buttonClassName={cn(
-							"min-w-0 max-w-full justify-between rounded-md border-border-bright bg-surface-3 px-2 text-left text-text-secondary shadow-none hover:cursor-pointer hover:bg-surface-4 hover:text-text-primary",
-							(isModelLoading || isModelSaving) && "text-text-tertiary",
-						)}
+						isModelLoading={isModelLoading}
+						isModelSaving={isModelSaving}
 					/>
 				</div>
 				<div className="ml-auto flex shrink-0 items-center gap-2">

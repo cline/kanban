@@ -9,6 +9,7 @@ import {
 	type RuntimeClineProviderModelsRequest,
 	type RuntimeClineProviderSettingsSaveRequest,
 	type RuntimeTaskChatAbortRequest,
+	type RuntimeTaskChatReloadRequest,
 	type RuntimeTaskChatCancelRequest,
 	type RuntimeTaskChatMessagesRequest,
 	type RuntimeTaskChatSendRequest,
@@ -36,6 +37,7 @@ import {
 	runtimeClineProviderModelsRequestSchema,
 	runtimeClineProviderSettingsSaveRequestSchema,
 	runtimeTaskChatAbortRequestSchema,
+	runtimeTaskChatReloadRequestSchema,
 	runtimeTaskChatCancelRequestSchema,
 	runtimeTaskChatMessagesRequestSchema,
 	runtimeTaskChatSendRequestSchema,
@@ -288,6 +290,17 @@ export function parseTaskChatSendRequest(value: unknown): RuntimeTaskChatSendReq
 
 export function parseTaskChatAbortRequest(value: unknown): RuntimeTaskChatAbortRequest {
 	const parsed = parseWithSchema(runtimeTaskChatAbortRequestSchema, value);
+	const taskId = parsed.taskId.trim();
+	if (!taskId) {
+		throw new Error("Task chat taskId cannot be empty.");
+	}
+	return {
+		taskId,
+	};
+}
+
+export function parseTaskChatReloadRequest(value: unknown): RuntimeTaskChatReloadRequest {
+	const parsed = parseWithSchema(runtimeTaskChatReloadRequestSchema, value);
 	const taskId = parsed.taskId.trim();
 	if (!taskId) {
 		throw new Error("Task chat taskId cannot be empty.");

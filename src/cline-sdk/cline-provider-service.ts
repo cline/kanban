@@ -11,6 +11,7 @@ import type {
 	RuntimeClineProviderModelsResponse,
 	RuntimeClineProviderSettings,
 	RuntimeClineProviderSettingsSaveResponse,
+	RuntimeClineReasoningEffort,
 } from "../core/api-contract.js";
 import { openInBrowser } from "../server/browser.js";
 import { z } from "zod";
@@ -27,6 +28,7 @@ import {
 	refreshManagedOauthCredentials,
 	saveSdkProviderSettings,
 	fetchSdkOrgData,
+	supportsSdkModelThinking,
 } from "./sdk-provider-boundary.js";
 
 const WORKOS_TOKEN_PREFIX = "workos:";
@@ -47,6 +49,7 @@ export interface ResolvedClineLaunchConfig {
 	modelId: string | null;
 	apiKey: string | null;
 	baseUrl: string | null;
+	reasoningEffort: RuntimeClineReasoningEffort | null;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -165,16 +168,18 @@ function hasOauthRefreshToken(settings: SdkProviderSettings | null): boolean {
 
 function toRuntimeProviderModel(
 	modelId: string,
-	modelInfo: { name?: string; capabilities?: string[] },
+	modelInfo: { name?: string; capabilities?: string[]; thinkingConfig?: unknown },
 ): RuntimeClineProviderModel {
 	const capabilities = new Set(modelInfo.capabilities ?? []);
 	const supportsVision = capabilities.has("images");
 	const supportsAttachments = capabilities.has("files") || supportsVision;
+	const supportsReasoningEffort = supportsSdkModelThinking(modelInfo);
 	return {
 		id: modelId,
 		name: modelInfo.name?.trim() || modelId,
 		supportsVision: supportsVision || undefined,
 		supportsAttachments: supportsAttachments || undefined,
+		supportsReasoningEffort: supportsReasoningEffort || undefined,
 	};
 }
 
@@ -183,6 +188,7 @@ function createEmptyProviderSettingsSummary(): RuntimeClineProviderSettings {
 		providerId: null,
 		modelId: null,
 		baseUrl: null,
+		reasoningEffort: null,
 		apiKeyConfigured: false,
 		oauthProvider: null,
 		oauthAccessTokenConfigured: false,
@@ -204,6 +210,7 @@ function toProviderSettingsSummary(settings: SdkProviderSettings | null): Runtim
 		providerId,
 		modelId: settings.model?.trim() || null,
 		baseUrl: settings.baseUrl?.trim() || null,
+		reasoningEffort: settings.reasoning?.effort ?? null,
 		apiKeyConfigured: Boolean(resolveVisibleApiKey(settings)),
 		oauthProvider,
 		oauthAccessTokenConfigured: hasOauthAccessToken(settings),
@@ -432,6 +439,7 @@ export function createClineProviderService() {
 				modelId: resolvedSettings.model?.trim() || null,
 				apiKey,
 				baseUrl: resolvedSettings.baseUrl?.trim() || null,
+				reasoningEffort: resolvedSettings.reasoning?.effort ?? null,
 			};
 		},
 
@@ -482,24 +490,8 @@ export function createClineProviderService() {
 					? await listSdkProviderModels(normalizedProviderId)
 							.then((sdkModels) =>
 								Object.entries(sdkModels)
-									.map(([modelId, modelInfo]) => {
-										const parsedModelInfo =
-											typeof modelInfo === "object" && modelInfo !== null
-												? (modelInfo as {
-														name?: unknown;
-														capabilities?: unknown;
-													})
-												: null;
-										return toRuntimeProviderModel(modelId, {
-											name: typeof parsedModelInfo?.name === "string" ? parsedModelInfo.name : undefined,
-											capabilities: Array.isArray(parsedModelInfo?.capabilities)
-												? parsedModelInfo.capabilities.filter(
-														(value): value is string => typeof value === "string",
-													)
-												: undefined,
-										});
-									})
-									.sort((left, right) => left.name.localeCompare(right.name)),
+							.map(([modelId, modelInfo]) => toRuntimeProviderModel(modelId, modelInfo))
+							.sort((left, right) => left.name.localeCompare(right.name)),
 							)
 							.catch(() => [])
 					: [];
@@ -530,6 +522,7 @@ export function createClineProviderService() {
 			modelId?: string | null;
 			apiKey?: string | null;
 			baseUrl?: string | null;
+			reasoningEffort?: RuntimeClineReasoningEffort | null;
 		}): RuntimeClineProviderSettingsSaveResponse {
 			const providerId = input.providerId.trim().toLowerCase();
 			if (!providerId) {
@@ -568,6 +561,24 @@ export function createClineProviderService() {
 					nextSettings.apiKey = apiKey;
 				} else {
 					delete nextSettings.apiKey;
+				}
+			}
+
+			if (input.reasoningEffort !== undefined) {
+				const nextReasoning = { ...(nextSettings.reasoning ?? {}) };
+				if (input.reasoningEffort) {
+					nextReasoning.effort = input.reasoningEffort;
+				} else {
+					delete nextReasoning.effort;
+				}
+				if (
+					nextReasoning.enabled === undefined &&
+					nextReasoning.effort === undefined &&
+					nextReasoning.budgetTokens === undefined
+				) {
+					delete nextSettings.reasoning;
+				} else {
+					nextSettings.reasoning = nextReasoning;
 				}
 			}
 

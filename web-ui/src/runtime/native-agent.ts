@@ -19,6 +19,7 @@ export function getRuntimeClineProviderSettings(
 			providerId: null,
 			modelId: null,
 			baseUrl: null,
+			reasoningEffort: null,
 			apiKeyConfigured: false,
 			oauthProvider: null,
 			oauthAccessTokenConfigured: false,

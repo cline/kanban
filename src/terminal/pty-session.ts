@@ -36,6 +36,17 @@ function isIgnorablePtyWriteError(error: unknown): boolean {
 	return code === "EIO" || code === "EBADF";
 }
 
+function isIgnorablePtyResizeError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	const code = (error as NodeJS.ErrnoException).code;
+	if (code === "EIO" || code === "EBADF") {
+		return true;
+	}
+	return error.message.toLowerCase().includes("already exited");
+}
+
 function terminatePtyProcess(ptyProcess: pty.IPty): void {
 	const pid = ptyProcess.pid;
 	ptyProcess.kill();
@@ -96,6 +107,7 @@ export class PtySession {
 	private readonly outputHistory: Buffer[] = [];
 	private historyBytes = 0;
 	private interrupted = false;
+	private exited = false;
 
 	private constructor(
 		ptyProcess: pty.IPty,
@@ -117,6 +129,7 @@ export class PtySession {
 			this.onDataCallback?.(chunk);
 		});
 		this.ptyProcess.onExit((event) => {
+			this.exited = true;
 			this.onExitCallback?.(event);
 		});
 	}
@@ -162,14 +175,25 @@ export class PtySession {
 	}
 
 	resize(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void {
-		if (pixelWidth !== undefined && pixelHeight !== undefined) {
-			this.ptyProcess.resize(cols, rows, {
-				width: pixelWidth,
-				height: pixelHeight,
-			});
+		if (this.exited) {
 			return;
 		}
-		this.ptyProcess.resize(cols, rows);
+		try {
+			if (pixelWidth !== undefined && pixelHeight !== undefined) {
+				this.ptyProcess.resize(cols, rows, {
+					width: pixelWidth,
+					height: pixelHeight,
+				});
+				return;
+			}
+			this.ptyProcess.resize(cols, rows);
+		} catch (error) {
+			if (isIgnorablePtyResizeError(error)) {
+				this.exited = true;
+				return;
+			}
+			throw error;
+		}
 	}
 
 	pause(): void {

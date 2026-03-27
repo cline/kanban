@@ -2,7 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { quoteShellArg } from "../core/shell.js";
 import { lockedFileSystem } from "../fs/locked-file-system.js";
@@ -16,6 +16,7 @@ import {
 } from "./opencode-paths.js";
 import { stripAnsi } from "./output-utils.js";
 import type { SessionTransitionEvent } from "./session-state-machine.js";
+import { prepareTaskPromptWithImages } from "./task-image-prompt.js";
 
 export interface AgentAdapterLaunchInput {
 	taskId: string;
@@ -25,6 +26,7 @@ export interface AgentAdapterLaunchInput {
 	autonomousModeEnabled?: boolean;
 	cwd: string;
 	prompt: string;
+	images?: RuntimeTaskImage[];
 	startInPlanMode?: boolean;
 	resumeFromTrash?: boolean;
 	env?: Record<string, string | undefined>;
@@ -1311,5 +1313,12 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
-	return ADAPTERS[input.agentId].prepare(input);
+	const preparedPrompt = await prepareTaskPromptWithImages({
+		prompt: input.prompt,
+		images: input.images,
+	});
+	return await ADAPTERS[input.agentId].prepare({
+		...input,
+		prompt: preparedPrompt,
+	});
 }

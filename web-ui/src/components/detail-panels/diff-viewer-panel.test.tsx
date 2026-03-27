@@ -5,8 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 
+const hotkeyRegistrations: Array<{
+	keys: string;
+	callback: (event: KeyboardEvent) => void;
+}> = [];
+
 vi.mock("react-hotkeys-hook", () => ({
-	useHotkeys: () => {},
+	useHotkeys: (keys: string, callback: (event: KeyboardEvent) => void) => {
+		hotkeyRegistrations.push({ keys, callback });
+	},
 }));
 
 function createRect(top: number): DOMRect {
@@ -29,6 +36,7 @@ describe("DiffViewerPanel", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		hotkeyRegistrations.length = 0;
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -203,6 +211,34 @@ describe("DiffViewerPanel", () => {
 		expect(placeholderCell?.querySelector(".kb-diff-line-number")).toBeNull();
 	});
 
+	it("does not mark the last line changed when only the final newline differs", async () => {
+		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+			{
+				path: "src/example.ts",
+				status: "modified",
+				additions: 0,
+				deletions: 0,
+				oldText: "const value = 1;",
+				newText: "const value = 1;\n",
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<DiffViewerPanel
+					workspaceFiles={workspaceFiles}
+					selectedPath={null}
+					onSelectedPathChange={() => {}}
+					comments={new Map<string, DiffLineComment>()}
+					onCommentsChange={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector(".kb-diff-row-added")).toBeNull();
+		expect(container.querySelector(".kb-diff-row-removed")).toBeNull();
+	});
+
 	it("does not render diff rows for binary file paths", async () => {
 		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
 			{
@@ -230,5 +266,121 @@ describe("DiffViewerPanel", () => {
 		expect(container.textContent).toContain("assets/logo.png");
 		expect(container.textContent).toContain("Binary");
 		expect(container.querySelector(".kb-diff-row")).toBeNull();
+	});
+
+	it("shows shortcut indicators on Add and Send", async () => {
+		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+			{
+				path: "src/example.ts",
+				status: "modified",
+				additions: 1,
+				deletions: 0,
+				oldText: "const value = 1;\n",
+				newText: "const value = 2;\n",
+			},
+		];
+		const comments = new Map<string, DiffLineComment>([
+			[
+				"src/example.ts:added:1",
+				{
+					filePath: "src/example.ts",
+					lineNumber: 1,
+					lineText: "const value = 2;",
+					variant: "added",
+					comment: "Ship this",
+				},
+			],
+		]);
+
+		await act(async () => {
+			root.render(
+				<DiffViewerPanel
+					workspaceFiles={workspaceFiles}
+					selectedPath={null}
+					onSelectedPathChange={() => {}}
+					comments={comments}
+					onCommentsChange={() => {}}
+					onAddToTerminal={() => {}}
+					onSendToTerminal={() => {}}
+				/>,
+			);
+		});
+
+		const buttons = Array.from(container.querySelectorAll("button"));
+		const addButton = buttons.find((button) => button.textContent?.includes("Add"));
+		const sendButton = buttons.find((button) => button.textContent?.includes("Send"));
+
+		expect(addButton).toBeDefined();
+		expect(sendButton).toBeDefined();
+		expect(container.querySelector("kbd")).toBeNull();
+		expect(sendButton?.textContent).toContain("Shift");
+		expect(addButton?.querySelectorAll("svg").length).toBeGreaterThan(0);
+		expect(sendButton?.querySelectorAll("svg").length).toBeGreaterThan(0);
+	});
+
+	it("uses Cmd or Ctrl Enter to add comments and Cmd or Ctrl Shift Enter to send comments", async () => {
+		const workspaceFiles: RuntimeWorkspaceFileChange[] = [
+			{
+				path: "src/example.ts",
+				status: "modified",
+				additions: 1,
+				deletions: 0,
+				oldText: "const value = 1;\n",
+				newText: "const value = 2;\n",
+			},
+		];
+		const comments = new Map<string, DiffLineComment>([
+			[
+				"src/example.ts:added:1",
+				{
+					filePath: "src/example.ts",
+					lineNumber: 1,
+					lineText: "const value = 2;",
+					variant: "added",
+					comment: "Ship this",
+				},
+			],
+		]);
+		const onCommentsChange = vi.fn();
+		const onAddToTerminal = vi.fn();
+		const onSendToTerminal = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<DiffViewerPanel
+					workspaceFiles={workspaceFiles}
+					selectedPath={null}
+					onSelectedPathChange={() => {}}
+					comments={comments}
+					onCommentsChange={onCommentsChange}
+					onAddToTerminal={onAddToTerminal}
+					onSendToTerminal={onSendToTerminal}
+				/>,
+			);
+		});
+
+		const enterHotkey = hotkeyRegistrations.find((registration) => registration.keys === "meta+enter,ctrl+enter");
+		const sendHotkey = hotkeyRegistrations.find(
+			(registration) => registration.keys === "meta+shift+enter,ctrl+shift+enter",
+		);
+
+		expect(enterHotkey).toBeDefined();
+		expect(sendHotkey).toBeDefined();
+
+		act(() => {
+			enterHotkey?.callback(new KeyboardEvent("keydown", { key: "Enter", metaKey: true }));
+		});
+
+		expect(onAddToTerminal).toHaveBeenCalledWith("src/example.ts:1 | const value = 2;\n> Ship this");
+		expect(onCommentsChange).toHaveBeenCalledWith(new Map());
+
+		onCommentsChange.mockClear();
+
+		act(() => {
+			sendHotkey?.callback(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, shiftKey: true }));
+		});
+
+		expect(onSendToTerminal).toHaveBeenCalledWith("src/example.ts:1 | const value = 2;\n> Ship this");
+		expect(onCommentsChange).toHaveBeenCalledWith(new Map());
 	});
 });

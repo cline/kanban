@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { notifyError } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, CardSelection } from "@/types";
@@ -12,12 +13,26 @@ const HOME_TERMINAL_ROWS = 16;
 const DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
 const APPROX_TERMINAL_CELL_WIDTH_PX = 8;
 const MIN_TERMINAL_COLS = 40;
+const MIN_BOTTOM_TERMINAL_PANE_HEIGHT = 200;
+const EXPANDED_TERMINAL_PANE_HEIGHT = 99999;
 
 function estimateShellTerminalCols(): number {
 	if (typeof window === "undefined") {
 		return 120;
 	}
 	return Math.max(MIN_TERMINAL_COLS, Math.floor(Math.max(0, window.innerWidth - 96) / APPROX_TERMINAL_CELL_WIDTH_PX));
+}
+
+function loadBottomTerminalPaneHeight(): number | undefined {
+	const storedValue = readLocalStorageItem(LocalStorageKey.BottomTerminalPaneHeight);
+	if (!storedValue) {
+		return undefined;
+	}
+	const parsedHeight = Number(storedValue);
+	if (!Number.isFinite(parsedHeight)) {
+		return undefined;
+	}
+	return Math.max(MIN_BOTTOM_TERMINAL_PANE_HEIGHT, parsedHeight);
 }
 
 export function getDetailTerminalTaskId(taskId: string): string {
@@ -69,13 +84,11 @@ interface PrepareTerminalForShortcutResult {
 interface DetailTerminalPanelState {
 	isExpanded: boolean;
 	isOpen: boolean;
-	paneHeight: number | undefined;
 }
 
 const DEFAULT_DETAIL_TERMINAL_PANEL_STATE: DetailTerminalPanelState = {
 	isExpanded: false,
 	isOpen: false,
-	paneHeight: undefined,
 };
 
 export interface UseTerminalPanelsResult {
@@ -117,7 +130,9 @@ export function useTerminalPanels({
 	const [isHomeTerminalOpen, setIsHomeTerminalOpen] = useState(false);
 	const [isHomeTerminalStarting, setIsHomeTerminalStarting] = useState(false);
 	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
-	const [homeTerminalPaneHeight, setHomeTerminalPaneHeight] = useState<number | undefined>(undefined);
+	const [lastBottomTerminalPaneHeight, setLastBottomTerminalPaneHeight] = useState<number | undefined>(
+		loadBottomTerminalPaneHeight,
+	);
 	const [detailTerminalPanelStateByTaskId, setDetailTerminalPanelStateByTaskId] = useState<
 		Record<string, DetailTerminalPanelState>
 	>({});
@@ -128,8 +143,11 @@ export function useTerminalPanels({
 		? (detailTerminalPanelStateByTaskId[detailTerminalTaskId] ?? DEFAULT_DETAIL_TERMINAL_PANEL_STATE)
 		: DEFAULT_DETAIL_TERMINAL_PANEL_STATE;
 	const isDetailTerminalOpen = currentDetailTerminalPanelState.isOpen;
-	const detailTerminalPaneHeight = currentDetailTerminalPanelState.paneHeight;
 	const isDetailTerminalExpanded = currentDetailTerminalPanelState.isExpanded;
+	const homeTerminalPaneHeight = isHomeTerminalExpanded ? EXPANDED_TERMINAL_PANE_HEIGHT : lastBottomTerminalPaneHeight;
+	const detailTerminalPaneHeight = isDetailTerminalExpanded
+		? EXPANDED_TERMINAL_PANE_HEIGHT
+		: lastBottomTerminalPaneHeight;
 
 	const updateDetailTerminalPanelState = useCallback(
 		(taskId: string, updater: (previous: DetailTerminalPanelState) => DetailTerminalPanelState) => {
@@ -141,10 +159,18 @@ export function useTerminalPanels({
 		[],
 	);
 
+	const persistBottomTerminalPaneHeight = useCallback((height: number | undefined) => {
+		if (typeof height !== "number" || !Number.isFinite(height)) {
+			return;
+		}
+		const normalizedHeight = Math.max(MIN_BOTTOM_TERMINAL_PANE_HEIGHT, height);
+		setLastBottomTerminalPaneHeight(normalizedHeight);
+		writeLocalStorageItem(LocalStorageKey.BottomTerminalPaneHeight, String(normalizedHeight));
+	}, []);
+
 	const closeHomeTerminal = useCallback(() => {
 		setIsHomeTerminalOpen(false);
 		setIsHomeTerminalExpanded(false);
-		setHomeTerminalPaneHeight(undefined);
 		homeTerminalProjectIdRef.current = null;
 	}, []);
 
@@ -155,38 +181,38 @@ export function useTerminalPanels({
 		detailTerminalSelectionKeyRef.current = null;
 	}, [detailTerminalTaskId, updateDetailTerminalPanelState]);
 
-	const setDetailTerminalPaneHeight = useCallback(
+	const setHomeTerminalPaneHeight = useCallback(
 		(height: number | undefined) => {
-			if (!detailTerminalTaskId) {
+			if (isHomeTerminalExpanded) {
 				return;
 			}
-			updateDetailTerminalPanelState(detailTerminalTaskId, (previous) => ({
-				...previous,
-				paneHeight: height,
-			}));
+			persistBottomTerminalPaneHeight(height);
 		},
-		[detailTerminalTaskId, updateDetailTerminalPanelState],
+		[isHomeTerminalExpanded, persistBottomTerminalPaneHeight],
+	);
+
+	const setDetailTerminalPaneHeight = useCallback(
+		(height: number | undefined) => {
+			if (isDetailTerminalExpanded) {
+				return;
+			}
+			persistBottomTerminalPaneHeight(height);
+		},
+		[isDetailTerminalExpanded, persistBottomTerminalPaneHeight],
 	);
 
 	const handleToggleExpandHomeTerminal = useCallback(() => {
-		setIsHomeTerminalExpanded((prev) => {
-			setHomeTerminalPaneHeight(prev ? undefined : 99999);
-			return !prev;
-		});
+		setIsHomeTerminalExpanded((previous) => !previous);
 	}, []);
 
 	const handleToggleExpandDetailTerminal = useCallback(() => {
 		if (!detailTerminalTaskId) {
 			return;
 		}
-		updateDetailTerminalPanelState(detailTerminalTaskId, (previous) => {
-			const isExpanded = !previous.isExpanded;
-			return {
-				...previous,
-				isExpanded,
-				paneHeight: isExpanded ? 99999 : undefined,
-			};
-		});
+		updateDetailTerminalPanelState(detailTerminalTaskId, (previous) => ({
+			...previous,
+			isExpanded: !previous.isExpanded,
+		}));
 	}, [detailTerminalTaskId, updateDetailTerminalPanelState]);
 
 	const startHomeTerminalSession = useCallback(async (): Promise<boolean> => {

@@ -1,7 +1,7 @@
 // Owns the live SDK session host plus taskId to sessionId bindings.
 // This is the runtime-facing layer for starting, looking up, resuming, and
 // stopping native Cline sessions without exposing SDK details upstream.
-import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../core/api-contract.js";
+import type { RuntimeClineReasoningEffort, RuntimeTaskImage, RuntimeTaskSessionMode } from "../core/api-contract.js";
 import {
 	createClineMcpRuntimeService,
 	type ClineMcpRuntimeService,
@@ -47,6 +47,7 @@ export interface StartClineSessionRuntimeRequest {
 	mode?: RuntimeTaskSessionMode;
 	apiKey?: string | null;
 	baseUrl?: string | null;
+	reasoningEffort?: RuntimeClineReasoningEffort | null;
 	systemPrompt: string;
 	userInstructionWatcher?: ClineSdkUserInstructionWatcher;
 	requestToolApproval?: (request: unknown) => Promise<unknown>;
@@ -125,6 +126,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			mode: resolvedMode,
 			apiKey: request.apiKey,
 			baseUrl: request.baseUrl,
+			reasoningEffort: request.reasoningEffort,
 			systemPrompt: request.systemPrompt,
 			userInstructionWatcher: request.userInstructionWatcher,
 			requestToolApproval: request.requestToolApproval,
@@ -155,6 +157,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					modelId: request.modelId,
 					apiKey: request.apiKey?.trim() || undefined,
 					baseUrl: request.baseUrl?.trim() || undefined,
+					reasoningEffort: request.reasoningEffort ?? undefined,
 					cwd: request.cwd,
 					mode: resolvedMode,
 					enableTools: true,

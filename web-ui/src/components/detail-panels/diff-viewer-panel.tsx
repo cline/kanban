@@ -788,6 +788,25 @@ export function DiffViewerPanel({
 	useHotkeys(
 		"meta+enter,ctrl+enter",
 		(event) => {
+			if (!onAddToTerminal || nonEmptyCount === 0) {
+				return;
+			}
+			event.preventDefault();
+			handleAddComments();
+		},
+		{
+			enabled: Boolean(onAddToTerminal),
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			ignoreEventWhen: (event) => event.defaultPrevented,
+			preventDefault: true,
+		},
+		[handleAddComments, nonEmptyCount, onAddToTerminal],
+	);
+
+	useHotkeys(
+		"meta+shift+enter,ctrl+shift+enter",
+		(event) => {
 			if (!onSendToTerminal || nonEmptyCount === 0) {
 				return;
 			}
@@ -972,7 +991,21 @@ export function DiffViewerPanel({
 										disabled={nonEmptyCount === 0}
 										onClick={handleAddComments}
 									>
-										Add
+										<span style={{ display: "inline-flex", alignItems: "center" }}>
+											<span>Add</span>
+											<span
+												style={{
+													display: "inline-flex",
+													alignItems: "center",
+													gap: 2,
+													marginLeft: 6,
+												}}
+												aria-hidden
+											>
+												{isMacPlatform ? <Command size={12} /> : <span style={{ fontSize: 12 }}>Ctrl</span>}
+												<CornerDownLeft size={12} />
+											</span>
+										</span>
 									</Button>
 								) : null}
 								{onSendToTerminal ? (
@@ -994,6 +1027,7 @@ export function DiffViewerPanel({
 												aria-hidden
 											>
 												{isMacPlatform ? <Command size={12} /> : <span style={{ fontSize: 12 }}>Ctrl</span>}
+												<span style={{ fontSize: 12 }}>Shift</span>
 												<CornerDownLeft size={12} />
 											</span>
 										</span>

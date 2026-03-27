@@ -33,6 +33,26 @@ describe("parseCodexEventLine", () => {
 		});
 	});
 
+	it("omits the waiting placeholder when codex completes without final text", () => {
+		const state = createCodexWatcherState();
+
+		const event = parseCodexEventLine(
+			createCodexLogLine({
+				type: "task_complete",
+			}),
+			state,
+		);
+
+		expect(event).toEqual({
+			event: "to_review",
+			metadata: {
+				source: "codex",
+				hookEventName: "task_complete",
+				finalMessage: undefined,
+			},
+		});
+	});
+
 	it("ignores descendant session activity and completion", () => {
 		const state = createCodexWatcherState();
 

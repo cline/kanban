@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
 	buildClineAgentModelPickerOptions,
 	CLINE_RECOMMENDED_MODEL_IDS,
+	formatClineReasoningEffortLabel,
+	formatClineSelectedModelButtonText,
 } from "@/components/detail-panels/cline-model-picker-options";
 import type { RuntimeClineProviderModel } from "@/runtime/types";
 
@@ -44,5 +46,32 @@ describe("buildClineAgentModelPickerOptions", () => {
 		expect(result.options.map((option) => option.value)).toEqual(["model-a", "model-b"]);
 		expect(result.recommendedModelIds).toEqual([]);
 		expect(result.shouldPinSelectedModelToTop).toBe(true);
+	});
+});
+
+describe("cline model labels", () => {
+	it("formats reasoning effort labels for display", () => {
+		expect(formatClineReasoningEffortLabel("")).toBe("Default");
+		expect(formatClineReasoningEffortLabel("xhigh")).toBe("Extra high");
+	});
+
+	it("appends non-default reasoning effort to the selected model label", () => {
+		expect(
+			formatClineSelectedModelButtonText({
+				modelName: "GPT-5.4",
+				reasoningEffort: "high",
+				showReasoningEffort: true,
+			}),
+		).toBe("GPT-5.4 (High)");
+	});
+
+	it("omits reasoning effort when it is not shown", () => {
+		expect(
+			formatClineSelectedModelButtonText({
+				modelName: "GPT-5.4",
+				reasoningEffort: "high",
+				showReasoningEffort: false,
+			}),
+		).toBe("GPT-5.4");
 	});
 });

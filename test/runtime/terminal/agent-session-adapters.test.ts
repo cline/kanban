@@ -286,6 +286,37 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
 	});
 
+	it("materializes task images for CLI prompts", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-images",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Inspect the attached design",
+			images: [
+				{
+					id: "img-1",
+					data: Buffer.from("hello").toString("base64"),
+					mimeType: "image/png",
+					name: "diagram.png",
+				},
+			],
+		});
+
+		const initialPrompt = launch.args.at(-1) ?? "";
+		expect(initialPrompt).toContain("Attached reference images:");
+		expect(initialPrompt).toContain("Task:\nInspect the attached design");
+
+		const imagePathMatch = initialPrompt.match(/1\. (.+?) \(diagram\.png\)/);
+		expect(imagePathMatch?.[1]).toBeDefined();
+		const imagePath = imagePathMatch?.[1] ?? "";
+		expect(existsSync(imagePath)).toBe(true);
+		expect(readFileSync(imagePath).toString("utf8")).toBe("hello");
+
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

@@ -1,5 +1,5 @@
 import type { SearchSelectOption } from "@/components/search-select-dropdown";
-import type { RuntimeClineProviderModel } from "@/runtime/types";
+import type { RuntimeClineProviderModel, RuntimeClineReasoningEffort } from "@/runtime/types";
 
 const CLINE_PROVIDER_ID = "cline";
 
@@ -12,6 +12,14 @@ export const CLINE_RECOMMENDED_MODEL_IDS = [
 	"google/gemini-3.1-flash-lite-preview",
 	"xiaomi/mimo-v2-pro",
 ] as const;
+
+export const CLINE_REASONING_EFFORT_OPTIONS: SearchSelectOption[] = [
+	{ value: "", label: "Default" },
+	{ value: "low", label: "Low" },
+	{ value: "medium", label: "Medium" },
+	{ value: "high", label: "High" },
+	{ value: "xhigh", label: "Extra high" },
+];
 
 export interface BuildClineAgentModelPickerOptionsResult {
 	options: SearchSelectOption[];
@@ -48,4 +56,25 @@ export function buildClineAgentModelPickerOptions(
 		recommendedModelIds,
 		shouldPinSelectedModelToTop: false,
 	};
+}
+
+export function formatClineReasoningEffortLabel(
+	value: RuntimeClineReasoningEffort | "" | null | undefined,
+): string {
+	return CLINE_REASONING_EFFORT_OPTIONS.find((option) => option.value === (value ?? ""))?.label ?? "Default";
+}
+
+export function formatClineSelectedModelButtonText({
+	modelName,
+	reasoningEffort,
+	showReasoningEffort = false,
+}: {
+	modelName: string;
+	reasoningEffort?: RuntimeClineReasoningEffort | "" | null;
+	showReasoningEffort?: boolean;
+}): string {
+	if (!showReasoningEffort || !reasoningEffort) {
+		return modelName;
+	}
+	return `${modelName} (${formatClineReasoningEffortLabel(reasoningEffort)})`;
 }

@@ -22,15 +22,30 @@ function setPlatform(value: NodeJS.Platform): void {
 }
 
 function createMockPtyProcess() {
+	const listeners: {
+		onData?: (data: string | Buffer | Uint8Array) => void;
+		onExit?: (event: { exitCode: number; signal?: number }) => void;
+	} = {};
+
 	return {
 		pid: 4242,
-		onData: vi.fn(),
-		onExit: vi.fn(),
+		onData: vi.fn((listener: (data: string | Buffer | Uint8Array) => void) => {
+			listeners.onData = listener;
+		}),
+		onExit: vi.fn((listener: (event: { exitCode: number; signal?: number }) => void) => {
+			listeners.onExit = listener;
+		}),
 		kill: vi.fn(),
 		write: vi.fn(),
 		resize: vi.fn(),
 		pause: vi.fn(),
 		resume: vi.fn(),
+		emitData: (data: string | Buffer | Uint8Array) => {
+			listeners.onData?.(data);
+		},
+		emitExit: (event: { exitCode: number; signal?: number }) => {
+			listeners.onExit?.(event);
+		},
 	};
 }
 
@@ -154,6 +169,67 @@ describe("PtySession", () => {
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("cmd.exe");
+	});
+
+	it("ignores resize calls after the pty has exited", () => {
+		setPlatform("win32");
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "C:/repo",
+			cols: 120,
+			rows: 40,
+		});
+
+		ptyProcess.emitExit({ exitCode: 0 });
+
+		expect(() => session.resize(100, 30, 1200, 720)).not.toThrow();
+		expect(ptyProcess.resize).not.toHaveBeenCalled();
+	});
+
+	it("ignores node-pty resize races after process exit", () => {
+		setPlatform("win32");
+		const ptyProcess = createMockPtyProcess();
+		ptyProcess.resize.mockImplementation(() => {
+			throw new Error("Cannot resize a pty that has already exited");
+		});
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "C:/repo",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(() => session.resize(100, 30)).not.toThrow();
+		expect(() => session.resize(120, 40)).not.toThrow();
+		expect(ptyProcess.resize).toHaveBeenCalledTimes(1);
+	});
+
+	it("rethrows non-ignorable resize errors", () => {
+		setPlatform("win32");
+		const ptyProcess = createMockPtyProcess();
+		ptyProcess.resize.mockImplementation(() => {
+			const error = new Error("permission denied") as NodeJS.ErrnoException;
+			error.code = "EPERM";
+			throw error;
+		});
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		const session = PtySession.spawn({
+			binary: "claude",
+			args: [],
+			cwd: "C:/repo",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(() => session.resize(100, 30)).toThrow("permission denied");
 	});
 
 	it("ignores EIO write errors", () => {

@@ -541,10 +541,14 @@ export type RuntimeProjectShortcut = z.infer<typeof runtimeProjectShortcutSchema
 export const runtimeClineOauthProviderSchema = z.enum(["cline", "oca", "openai-codex"]);
 export type RuntimeClineOauthProvider = z.infer<typeof runtimeClineOauthProviderSchema>;
 
+export const runtimeClineReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
+export type RuntimeClineReasoningEffort = z.infer<typeof runtimeClineReasoningEffortSchema>;
+
 export const runtimeClineProviderSettingsSchema = z.object({
 	providerId: z.string().nullable(),
 	modelId: z.string().nullable(),
 	baseUrl: z.string().nullable(),
+	reasoningEffort: runtimeClineReasoningEffortSchema.nullable().optional(),
 	apiKeyConfigured: z.boolean(),
 	oauthProvider: runtimeClineOauthProviderSchema.nullable(),
 	oauthAccessTokenConfigured: z.boolean(),
@@ -597,6 +601,7 @@ export const runtimeClineProviderModelSchema = z.object({
 	name: z.string(),
 	supportsVision: z.boolean().optional(),
 	supportsAttachments: z.boolean().optional(),
+	supportsReasoningEffort: z.boolean().optional(),
 });
 export type RuntimeClineProviderModel = z.infer<typeof runtimeClineProviderModelSchema>;
 
@@ -625,6 +630,7 @@ export const runtimeClineProviderSettingsSaveRequestSchema = z.object({
 	modelId: z.string().nullable().optional(),
 	apiKey: z.string().nullable().optional(),
 	baseUrl: z.string().nullable().optional(),
+	reasoningEffort: runtimeClineReasoningEffortSchema.nullable().optional(),
 });
 export type RuntimeClineProviderSettingsSaveRequest = z.infer<typeof runtimeClineProviderSettingsSaveRequestSchema>;
 
@@ -875,6 +881,18 @@ export const runtimeTaskChatSendResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeTaskChatSendResponse = z.infer<typeof runtimeTaskChatSendResponseSchema>;
+
+export const runtimeTaskChatReloadRequestSchema = z.object({
+	taskId: z.string(),
+});
+export type RuntimeTaskChatReloadRequest = z.infer<typeof runtimeTaskChatReloadRequestSchema>;
+
+export const runtimeTaskChatReloadResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeTaskSessionSummarySchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeTaskChatReloadResponse = z.infer<typeof runtimeTaskChatReloadResponseSchema>;
 
 export const runtimeTaskChatAbortRequestSchema = z.object({
 	taskId: z.string(),

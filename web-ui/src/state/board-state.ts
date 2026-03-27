@@ -64,6 +64,13 @@ function normalizeColumnId(id: string): BoardColumnId | null {
 	return null;
 }
 
+function createBrowserUuid(): string {
+	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+		return crypto.randomUUID();
+	}
+	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function normalizeTaskImages(rawImages: unknown): TaskImage[] | undefined {
 	if (!Array.isArray(rawImages)) {
 		return undefined;
@@ -176,7 +183,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	const now = Date.now();
 
 	return {
-		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(() => crypto.randomUUID()),
+		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		autoReviewEnabled: typeof card.autoReviewEnabled === "boolean" ? card.autoReviewEnabled : false,
@@ -192,7 +199,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 }
 
 function createDependencyId(): string {
-	return crypto.randomUUID().replaceAll("-", "").slice(0, 8);
+	return createBrowserUuid().replaceAll("-", "").slice(0, 8);
 }
 
 function collectTaskIds(columns: BoardColumn[]): Set<string> {
@@ -332,7 +339,7 @@ export function addTaskToColumnWithResult(
 			images: draft.images,
 			baseRef: draft.baseRef,
 		},
-		() => crypto.randomUUID(),
+		createBrowserUuid,
 	);
 	return {
 		board: result.board,

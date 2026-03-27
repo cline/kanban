@@ -5,7 +5,10 @@ import React, { useCallback, useEffect, useImperativeHandle, useLayoutEffect, us
 
 import { ClineChatComposer } from "@/components/detail-panels/cline-chat-composer";
 import { ClineChatMessageItem } from "@/components/detail-panels/cline-chat-message-item";
-import { buildClineAgentModelPickerOptions } from "@/components/detail-panels/cline-model-picker-options";
+import {
+	buildClineAgentModelPickerOptions,
+	formatClineSelectedModelButtonText,
+} from "@/components/detail-panels/cline-model-picker-options";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ShimmeringText } from "@/components/ui/text-shimmer";
@@ -13,7 +16,12 @@ import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-contro
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
-import type { RuntimeConfigResponse, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type {
+	RuntimeClineReasoningEffort,
+	RuntimeConfigResponse,
+	RuntimeTaskSessionMode,
+	RuntimeTaskSessionSummary,
+} from "@/runtime/types";
 import type { TaskImage } from "@/types";
 
 const BOTTOM_LOCK_THRESHOLD_PX = 24;
@@ -156,6 +164,10 @@ ref,
 		() => clineSettings.providerModels.find((model) => model.id === clineSettings.modelId) ?? null,
 		[clineSettings.modelId, clineSettings.providerModels],
 	);
+	const reasoningEnabledModelIds = useMemo(
+		() => clineSettings.providerModels.filter((model) => model.supportsReasoningEffort).map((model) => model.id),
+		[clineSettings.providerModels],
+	);
 
 	const selectedModelButtonText = useMemo(() => {
 		if (isSavingModel) {
@@ -165,12 +177,21 @@ ref,
 			return "Loading models...";
 		}
 		const selectedOption = modelOptions.find((option) => option.value === clineSettings.modelId);
-		if (selectedOption) {
-			return selectedOption.label;
-		}
 		const trimmedModelId = clineSettings.modelId.trim();
-		return trimmedModelId.length > 0 ? trimmedModelId : "Select model";
-	}, [clineSettings.isLoadingProviderModels, clineSettings.modelId, isSavingModel, modelOptions]);
+		const selectedModelName = selectedOption?.label ?? (trimmedModelId.length > 0 ? trimmedModelId : "Select model");
+		return formatClineSelectedModelButtonText({
+			modelName: selectedModelName,
+			reasoningEffort: clineSettings.reasoningEffort,
+			showReasoningEffort: clineSettings.selectedModelSupportsReasoningEffort,
+		});
+	}, [
+		clineSettings.isLoadingProviderModels,
+		clineSettings.modelId,
+		clineSettings.reasoningEffort,
+		clineSettings.selectedModelSupportsReasoningEffort,
+		isSavingModel,
+		modelOptions,
+	]);
 
 	const panelError = composerError ?? error;
 	const attachmentWarningMessage =
@@ -233,8 +254,13 @@ ref,
 		[taskId],
 	);
 
-	const persistSelectedModel = useCallback(
-		async (nextModelId?: string): Promise<boolean> => {
+	type PersistClineModelSettingsOverrides = {
+		modelId?: string;
+		reasoningEffort?: RuntimeClineReasoningEffort | "";
+	};
+
+	const persistClineModelSettings = useCallback(
+		async (overrides?: PersistClineModelSettingsOverrides): Promise<boolean> => {
 			if (!workspaceId) {
 				setComposerError("Select a workspace before choosing a Cline model.");
 				return false;
@@ -247,10 +273,14 @@ ref,
 			setIsSavingModel(true);
 			try {
 				const result = await clineSettings.saveProviderSettings({
-					modelId: nextModelId ?? clineSettings.modelId,
+					modelId: overrides?.modelId ?? clineSettings.modelId,
+					reasoningEffort:
+						overrides && "reasoningEffort" in overrides
+							? overrides.reasoningEffort || null
+							: clineSettings.reasoningEffort || null,
 				});
 				if (!result.ok) {
-					setComposerError(result.message ?? "Could not save Cline model.");
+					setComposerError(result.message ?? "Could not save Cline model settings.");
 					return false;
 				}
 				onClineSettingsSaved?.();
@@ -268,9 +298,20 @@ ref,
 				return;
 			}
 			clineSettings.setModelId(nextModelId);
-			void persistSelectedModel(nextModelId);
+			void persistClineModelSettings({ modelId: nextModelId });
 		},
-		[clineSettings.modelId, clineSettings.setModelId, persistSelectedModel],
+		[clineSettings.modelId, clineSettings.setModelId, persistClineModelSettings],
+	);
+
+	const handleSelectReasoningEffort = useCallback(
+		(nextReasoningEffort: RuntimeClineReasoningEffort | "") => {
+			if (nextReasoningEffort === clineSettings.reasoningEffort) {
+				return;
+			}
+			clineSettings.setReasoningEffort(nextReasoningEffort);
+			void persistClineModelSettings({ reasoningEffort: nextReasoningEffort });
+		},
+		[clineSettings.reasoningEffort, clineSettings.setReasoningEffort, persistClineModelSettings],
 	);
 
 	const handleAppendToDraft = useCallback(
@@ -294,14 +335,14 @@ ref,
 				return;
 			}
 			if (clineSettings.hasUnsavedChanges) {
-				const saved = await persistSelectedModel();
+				const saved = await persistClineModelSettings();
 				if (!saved) {
 					return;
 				}
 			}
 			await handleSendText(text, mode);
 		},
-		[clineSettings.hasUnsavedChanges, handleSendText, isSavingModel, mode, persistSelectedModel],
+		[clineSettings.hasUnsavedChanges, handleSendText, isSavingModel, mode, persistClineModelSettings],
 	);
 
 	useImperativeHandle(
@@ -318,7 +359,7 @@ ref,
 			return;
 		}
 		if (clineSettings.hasUnsavedChanges) {
-			const saved = await persistSelectedModel();
+			const saved = await persistClineModelSettings();
 			if (!saved) {
 				return;
 			}
@@ -327,7 +368,7 @@ ref,
 		if (sent) {
 			setDraftImages([]);
 		}
-	}, [clineSettings.hasUnsavedChanges, draftImages, handleSendDraft, isSavingModel, mode, persistSelectedModel]);
+	}, [clineSettings.hasUnsavedChanges, draftImages, handleSendDraft, isSavingModel, mode, persistClineModelSettings]);
 
 	return (
 		<div
@@ -370,6 +411,9 @@ ref,
 					selectedModelId={clineSettings.modelId}
 					selectedModelButtonText={selectedModelButtonText}
 					onSelectModel={handleSelectModel}
+					reasoningEnabledModelIds={reasoningEnabledModelIds}
+					selectedReasoningEffort={clineSettings.reasoningEffort}
+					onSelectReasoningEffort={handleSelectReasoningEffort}
 					isModelLoading={clineSettings.isLoadingProviderModels}
 					isModelSaving={isSavingModel}
 					modelPickerDisabled={isSavingModel || clineSettings.providerId.trim().length === 0}

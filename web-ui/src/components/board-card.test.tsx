@@ -10,8 +10,7 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { ReviewTaskWorkspaceSnapshot } from "@/types";
 
 let mockWorkspaceSnapshot: ReviewTaskWorkspaceSnapshot | undefined;
-let mockTitleMeasureWidth = 240;
-let mockDescriptionMeasureWidth = 240;
+let mockMeasureWidths = [240, 240, 240];
 let mockMeasureCallCount = 0;
 
 vi.mock("@hello-pangea/dnd", () => ({
@@ -38,7 +37,7 @@ vi.mock("@/stores/workspace-metadata-store", () => ({
 vi.mock("@/utils/react-use", () => ({
 	useMeasure: () => {
 		mockMeasureCallCount += 1;
-		const width = mockMeasureCallCount % 2 === 1 ? mockTitleMeasureWidth : mockDescriptionMeasureWidth;
+		const width = mockMeasureWidths[(mockMeasureCallCount - 1) % mockMeasureWidths.length] ?? 240;
 		return [
 			() => {},
 			{
@@ -145,8 +144,7 @@ describe("BoardCard", () => {
 
 	beforeEach(() => {
 		mockWorkspaceSnapshot = undefined;
-		mockTitleMeasureWidth = 240;
-		mockDescriptionMeasureWidth = 240;
+		mockMeasureWidths = [240, 240, 240];
 		mockMeasureCallCount = 0;
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
@@ -462,8 +460,7 @@ describe("BoardCard", () => {
 	});
 
 	it("renders a new card description before the async measure observer reports width", async () => {
-		mockTitleMeasureWidth = 0;
-		mockDescriptionMeasureWidth = 0;
+		mockMeasureWidths = [0, 0, 0];
 
 		await act(async () => {
 			root.render(
@@ -476,6 +473,116 @@ describe("BoardCard", () => {
 		});
 
 		expect(container.textContent).toContain("Freshly created task description");
+	});
+
+	it("shows see more for trash card previews without using card click to expand", async () => {
+		mockMeasureWidths = [240, 240, 96];
+		const preview =
+			"Reviewing the archived implementation details and collecting the final notes for the handoff before cleanup hidden tail";
+
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="trash"
+						sessionSummary={createSummary("awaiting_review", {
+							latestHookActivity: {
+								activityText: null,
+								toolName: null,
+								toolInputSummary: null,
+								finalMessage: preview,
+								hookEventName: "assistant_delta",
+								notificationType: null,
+								source: "cline-sdk",
+							},
+						})}
+					/>
+				</TooltipProvider>,
+			);
+		});
+
+		const findButton = (label: string) =>
+			Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === label);
+		const cardElement = container.querySelector('[data-task-id="task-1"]');
+
+		expect(findButton("See more")).toBeDefined();
+		expect(container.textContent).not.toContain("hidden tail");
+
+		await act(async () => {
+			cardElement?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+
+		expect(findButton("See more")).toBeDefined();
+		expect(findButton("Less")).toBeUndefined();
+		expect(container.textContent).not.toContain("hidden tail");
+
+		const seeMoreButton = findButton("See more");
+		await act(async () => {
+			seeMoreButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			seeMoreButton?.click();
+		});
+
+		expect(findButton("See more")).toBeUndefined();
+		expect(findButton("Less")).toBeDefined();
+		expect(container.textContent).toContain(preview);
+	});
+
+	it("shows see more for active task previews without using card click to expand", async () => {
+		mockMeasureWidths = [240, 240, 96];
+		const preview =
+			"Reviewing the archived implementation details and collecting the final notes for the handoff before cleanup hidden tail";
+		const onCardClick = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					onClick={onCardClick}
+					sessionSummary={createSummary("running", {
+						latestHookActivity: {
+							activityText: null,
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: preview,
+							hookEventName: "assistant_delta",
+							notificationType: null,
+							source: "cline-sdk",
+						},
+					})}
+				/>,
+			);
+		});
+
+		const findButton = (label: string) =>
+			Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === label);
+		const cardElement = container.querySelector('[data-task-id="task-1"]');
+
+		expect(findButton("See more")).toBeDefined();
+		expect(container.textContent).not.toContain("hidden tail");
+
+		await act(async () => {
+			cardElement?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+
+		expect(onCardClick).toHaveBeenCalledTimes(1);
+		expect(findButton("See more")).toBeDefined();
+		expect(findButton("Less")).toBeUndefined();
+		expect(container.textContent).not.toContain("hidden tail");
+
+		const seeMoreButton = findButton("See more");
+		await act(async () => {
+			seeMoreButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			seeMoreButton?.click();
+		});
+
+		expect(onCardClick).toHaveBeenCalledTimes(1);
+		expect(findButton("See more")).toBeUndefined();
+		expect(findButton("Less")).toBeDefined();
+		expect(container.textContent).toContain(preview);
 	});
 
 	it("shows the latest assistant preview on active task cards", async () => {
