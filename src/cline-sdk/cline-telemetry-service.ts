@@ -4,11 +4,8 @@ import {
 	createClineTelemetryServiceConfig,
 	type ITelemetryService,
 } from "@clinebot/shared";
-import {
-	LoggerTelemetryAdapter,
-	createConfiguredTelemetryService,
-} from "../cline-sdk/sdk-runtime-boundary.js";
 import packageJson from "../../package.json" with { type: "json" };
+import { ClineSdkSessionHost, createConfiguredTelemetryService, createSessionHost, LoggerTelemetryAdapter } from "./sdk-runtime-boundary.js";
 
 type MutableTelemetryService = ITelemetryService & {
 	addAdapter?: (adapter: LoggerTelemetryAdapter) => void;
@@ -71,4 +68,12 @@ export async function disposeCliTelemetryService(): Promise<void> {
 	const current = telemetrySingleton;
 	telemetrySingleton = undefined;
 	await current.dispose();
+}
+
+export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
+	return await createSessionHost({
+		backendMode: "auto",
+		autoStartRpcServer: true,
+		telemetry: getCliTelemetryService(),
+	});
 }

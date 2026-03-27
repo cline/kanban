@@ -9,6 +9,7 @@ import {
 	createClineMcpRuntimeService,
 } from "./cline-mcp-runtime-service";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
+import { createClineSdkSessionHost } from "./cline-telemetry-service";
 import {
 	type ClineSdkPersistedMessage,
 	type ClineSdkSessionHost,
@@ -16,7 +17,6 @@ import {
 	type ClineSdkToolApprovalRequest,
 	type ClineSdkToolApprovalResult,
 	type ClineSdkUserInstructionWatcher,
-	createClineSdkSessionHost,
 } from "./sdk-runtime-boundary";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;

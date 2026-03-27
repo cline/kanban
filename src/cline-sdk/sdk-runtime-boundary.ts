@@ -15,9 +15,10 @@ import {
 	type SessionHost,
 	type UserInstructionConfigWatcher,
 } from "@clinebot/core/node";
-import { LoggerTelemetryAdapter, type LoggerTelemetryAdapterOptions } from "@clinebot/core";
-import { createConfiguredTelemetryService } from "@clinebot/core/telemetry/opentelemetry";
 import type { LlmsProviders as ClineSdkProviders } from "@clinebot/llms";
+
+export { createConfiguredTelemetryService } from "@clinebot/core/telemetry/opentelemetry";
+export {createSessionHost, LoggerTelemetryAdapter} from '@clinebot/core'
 
 export type ClineSdkSessionHost = SessionHost;
 export interface ClineSdkContentStartTextEvent {
@@ -195,17 +196,6 @@ export interface ClineSdkSlashCommand {
 }
 export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
 export type ClineSdkToolApprovalResult = ToolApprovalResult;
-
-// Telemetry
-export { LoggerTelemetryAdapter, type LoggerTelemetryAdapterOptions };
-export { createConfiguredTelemetryService };
-
-export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
-	return await createSessionHost({
-		backendMode: "auto",
-		autoStartRpcServer: true,
-	});
-}
 
 export async function buildClineSdkWorkspaceMetadata(cwd: string): Promise<string> {
 	return await buildWorkspaceMetadata(cwd);

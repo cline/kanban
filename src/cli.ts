@@ -1,4 +1,3 @@
-import { disposeCliTelemetryService } from "./telemetry/cline-telemetry.js";
 import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
@@ -27,6 +26,7 @@ import {
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
 import type { TerminalSessionManager } from "./terminal/session-manager";
+import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 
 interface CliOptions {
 	noOpen: boolean;
