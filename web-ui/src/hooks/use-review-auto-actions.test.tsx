@@ -270,4 +270,62 @@ describe("useReviewAutoActions", () => {
 		expect(runAutoReviewGitAction).toHaveBeenCalledWith("task-1", "commit");
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
 	});
+
+	it("triggers auto commit when a reviewing task transitions to passed", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "reviewing",
+							currentRound: 1,
+							stopAfterCurrentRound: false,
+							passedBannerVisible: false,
+						},
+					})}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "passed",
+							currentRound: 1,
+							stopAfterCurrentRound: false,
+							passedBannerVisible: true,
+						},
+					})}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).toHaveBeenCalledWith("task-1", "commit");
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
 });
