@@ -23,8 +23,10 @@ import { BranchSelectDropdown } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
+import { useRawLocalStorageValue } from "@/utils/react-use";
 
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
@@ -33,10 +35,29 @@ const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string
 	{ value: "move_to_trash", label: "Move to Trash" },
 ];
 
-function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): ReactElement {
+type TaskCreateStartAction = "start" | "start_and_open";
+
+const DEFAULT_PRIMARY_START_ACTION: TaskCreateStartAction = "start";
+
+function normalizeStoredTaskCreateStartAction(value: string): TaskCreateStartAction | null {
+	if (value === "start" || value === "start_and_open") {
+		return value;
+	}
+	return null;
+}
+
+function ButtonShortcut({
+	includeShift = false,
+	modifier = "mod",
+}: {
+	includeShift?: boolean;
+	modifier?: "mod" | "alt";
+}): ReactElement {
 	return (
 		<span className="inline-flex items-center gap-0.5 ml-1.5" aria-hidden>
-			<Command size={12} />
+			{modifier === "alt"
+				? (isMacPlatform ? <Option size={12} /> : <span className="text-[10px] font-medium leading-none">Alt</span>)
+				: <Command size={12} />}
 			{includeShift ? <ArrowBigUp size={12} /> : null}
 			<CornerDownLeft size={12} />
 		</span>
@@ -122,12 +143,20 @@ export function TaskCreateDialog({
 	const startInPlanModeId = useId();
 	const autoReviewEnabledId = useId();
 	const createMoreId = useId();
+	const [primaryStartAction, setPrimaryStartAction] = useRawLocalStorageValue<TaskCreateStartAction>(
+		LocalStorageKey.TaskCreatePrimaryStartAction,
+		DEFAULT_PRIMARY_START_ACTION,
+		normalizeStoredTaskCreateStartAction,
+	);
 
 	const detectedItems = useMemo(() => parseListItems(prompt), [prompt]);
 	const validTaskCount = useMemo(
 		() => taskPrompts.filter((p) => p.trim()).length,
 		[taskPrompts],
 	);
+	const effectivePrimaryStartAction =
+		onCreateStartAndOpen || primaryStartAction === "start" ? primaryStartAction : DEFAULT_PRIMARY_START_ACTION;
+	const secondaryStartAction = effectivePrimaryStartAction === "start" ? "start_and_open" : "start";
 
 	// Reset state when dialog closes
 	useEffect(() => {
@@ -231,6 +260,18 @@ export function TaskCreateDialog({
 		}
 	}, [createMore, onCreateStartAndOpen, resetForCreateMore]);
 
+	const handleRunSingleStartAction = useCallback(
+		(action: TaskCreateStartAction) => {
+			setPrimaryStartAction(action);
+			if (action === "start_and_open") {
+				handleCreateStartAndOpenSingle();
+				return;
+			}
+			handleCreateAndStartSingle();
+		},
+		[handleCreateAndStartSingle, handleCreateStartAndOpenSingle, setPrimaryStartAction],
+	);
+
 	const handleCreateAll = useCallback(() => {
 		const validPrompts = getValidPrompts();
 		if (validPrompts.length === 0) {
@@ -294,7 +335,7 @@ export function TaskCreateDialog({
 				return;
 			}
 			if (event.shiftKey) {
-				handleCreateAndStartSingle();
+				handleRunSingleStartAction("start");
 				return;
 			}
 			handleCreateSingle();
@@ -313,7 +354,7 @@ export function TaskCreateDialog({
 			},
 			preventDefault: true,
 		},
-		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateAndStartSingle, handleCreateSingle],
+		[open, mode, handleCreateAll, handleCreateAndStartAll, handleCreateSingle, handleRunSingleStartAction],
 	);
 
 	// Alt/Opt+Shift+Enter → Start & Open (single mode only)
@@ -321,7 +362,7 @@ export function TaskCreateDialog({
 		"alt+shift+enter",
 		() => {
 			if (mode === "single") {
-				handleCreateStartAndOpenSingle();
+				handleRunSingleStartAction("start_and_open");
 			}
 		},
 		{
@@ -330,7 +371,7 @@ export function TaskCreateDialog({
 			enableOnContentEditable: true,
 			preventDefault: true,
 		},
-		[open, mode, handleCreateStartAndOpenSingle, onCreateStartAndOpen],
+		[open, mode, handleRunSingleStartAction, onCreateStartAndOpen],
 	);
 
 	const dialogTitle = mode === "multi"
@@ -338,6 +379,10 @@ export function TaskCreateDialog({
 		: "New task";
 
 	const taskCountLabel = validTaskCount === 1 ? "task" : "tasks";
+	const primaryStartLabel = effectivePrimaryStartAction === "start" ? "Start task" : "Start and open";
+	const primaryStartShortcutModifier = effectivePrimaryStartAction === "start" ? "mod" : "alt";
+	const secondaryStartLabel = secondaryStartAction === "start" ? "Start task" : "Start and open";
+	const secondaryStartShortcutModifier = secondaryStartAction === "start" ? "mod" : "alt";
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange} contentClassName="max-w-2xl">
@@ -352,7 +397,7 @@ export function TaskCreateDialog({
 							images={images}
 							onImagesChange={onImagesChange}
 							onSubmit={handleCreateSingle}
-							onSubmitAndStart={handleCreateAndStartSingle}
+							onSubmitAndStart={() => handleRunSingleStartAction("start")}
 							placeholder="Describe the task..."
 							autoFocus
 							workspaceId={workspaceId}
@@ -529,13 +574,13 @@ export function TaskCreateDialog({
 									<Button
 										variant="primary"
 										size="sm"
-										onClick={handleCreateAndStartSingle}
+										onClick={() => handleRunSingleStartAction(primaryStartAction)}
 										disabled={!prompt.trim() || !branchRef}
 										className={onCreateStartAndOpen ? "rounded-r-none" : undefined}
 									>
 										<span className="inline-flex items-center">
-											Start
-											<ButtonShortcut includeShift />
+											{primaryStartLabel}
+											<ButtonShortcut includeShift modifier={primaryStartShortcutModifier} />
 										</span>
 									</Button>
 									{onCreateStartAndOpen ? (
@@ -562,11 +607,13 @@ export function TaskCreateDialog({
 									>
 										<DropdownMenu.Item
 											className="flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-[12px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 whitespace-nowrap"
-											onSelect={handleCreateStartAndOpenSingle}
+											onSelect={() => handleRunSingleStartAction(secondaryStartAction)}
 										>
-											Start & Open
+											{secondaryStartLabel}
 											<span className="inline-flex items-center gap-0.5 text-text-tertiary" aria-hidden>
-												{isMacPlatform ? <Option size={10} /> : <span className="text-[10px] font-medium leading-none">Alt</span>}
+												{secondaryStartShortcutModifier === "alt"
+													? (isMacPlatform ? <Option size={10} /> : <span className="text-[10px] font-medium leading-none">Alt</span>)
+													: <Command size={10} />}
 												<ArrowBigUp size={10} />
 												<CornerDownLeft size={10} />
 											</span>

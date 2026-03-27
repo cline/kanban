@@ -328,6 +328,7 @@ export function ProjectNavigationPanel({
 }
 
 const MOD = isMacPlatform ? "⌘" : modifierKeyLabel;
+const ALT = isMacPlatform ? "⌥" : "Alt";
 
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
@@ -340,6 +341,7 @@ const ESSENTIAL_SHORTCUTS = [
 
 const MORE_SHORTCUTS = [
 	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
+	{ keys: [ALT, "Shift", "Enter"], label: "Start and open task" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
 	{ keys: ["Esc"], label: "Close / back" },
 ];
