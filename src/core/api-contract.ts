@@ -1004,3 +1004,65 @@ export const runtimeHookIngestResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeHookIngestResponse = z.infer<typeof runtimeHookIngestResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Prompts Library
+// ---------------------------------------------------------------------------
+
+export const runtimePromptTypeSchema = z.enum(["rule", "workflow"]);
+export type RuntimePromptType = z.infer<typeof runtimePromptTypeSchema>;
+
+export const runtimePromptItemSchema = z.object({
+	promptId: z.string(),
+	githubUrl: z.string(),
+	name: z.string(),
+	author: z.string(),
+	description: z.string(),
+	category: z.string(),
+	tags: z.array(z.string()),
+	type: runtimePromptTypeSchema,
+	content: z.string(),
+	version: z.string(),
+	globs: z.array(z.string()),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+});
+export type RuntimePromptItem = z.infer<typeof runtimePromptItemSchema>;
+
+export const runtimePromptsCatalogSchema = z.object({
+	items: z.array(runtimePromptItemSchema),
+	lastUpdated: z.string(),
+});
+export type RuntimePromptsCatalog = z.infer<typeof runtimePromptsCatalogSchema>;
+
+export const runtimeApplyPromptRequestSchema = z.object({
+	promptId: z.string(),
+	type: runtimePromptTypeSchema,
+	content: z.string(),
+	name: z.string(),
+});
+export type RuntimeApplyPromptRequest = z.infer<typeof runtimeApplyPromptRequestSchema>;
+
+export const runtimeApplyPromptResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeApplyPromptResponse = z.infer<typeof runtimeApplyPromptResponseSchema>;
+
+export const runtimeRemovePromptRequestSchema = z.object({
+	promptId: z.string(),
+	type: runtimePromptTypeSchema,
+	name: z.string(),
+});
+export type RuntimeRemovePromptRequest = z.infer<typeof runtimeRemovePromptRequestSchema>;
+
+export const runtimeRemovePromptResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeRemovePromptResponse = z.infer<typeof runtimeRemovePromptResponseSchema>;
+
+export const runtimeAppliedPromptsResponseSchema = z.object({
+	appliedPromptIds: z.array(z.string()),
+});
+export type RuntimeAppliedPromptsResponse = z.infer<typeof runtimeAppliedPromptsResponseSchema>;

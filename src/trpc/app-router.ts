@@ -6,8 +6,14 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type {
+	RuntimeAppliedPromptsResponse,
+	RuntimeApplyPromptRequest,
+	RuntimeApplyPromptResponse,
 	RuntimeCommandRunRequest,
 	RuntimeCommandRunResponse,
+	RuntimePromptsCatalog,
+	RuntimeRemovePromptRequest,
+	RuntimeRemovePromptResponse,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
 	RuntimeClineOauthLoginRequest,
@@ -116,6 +122,12 @@ import {
 	runtimeGitSyncResponseSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeHookIngestResponseSchema,
+	runtimePromptsCatalogSchema,
+	runtimeApplyPromptRequestSchema,
+	runtimeApplyPromptResponseSchema,
+	runtimeRemovePromptRequestSchema,
+	runtimeRemovePromptResponseSchema,
+	runtimeAppliedPromptsResponseSchema,
 	runtimeProjectAddRequestSchema,
 	runtimeProjectAddResponseSchema,
 	runtimeProjectDirectoryPickerResponseSchema,
@@ -315,6 +327,18 @@ export interface RuntimeTrpcContext {
 	};
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
+	};
+	promptsApi: {
+		fetchCatalog: () => Promise<RuntimePromptsCatalog>;
+		applyPrompt: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeApplyPromptRequest,
+		) => Promise<RuntimeApplyPromptResponse>;
+		removePrompt: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeRemovePromptRequest,
+		) => Promise<RuntimeRemovePromptResponse>;
+		getAppliedPrompts: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeAppliedPromptsResponse>;
 	};
 }
 
@@ -630,6 +654,28 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeHookIngestResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.hooksApi.ingest(input);
+			}),
+	}),
+	prompts: t.router({
+		getCatalog: t.procedure.output(runtimePromptsCatalogSchema).query(async ({ ctx }) => {
+			return await ctx.promptsApi.fetchCatalog();
+		}),
+		applyPrompt: workspaceProcedure
+			.input(runtimeApplyPromptRequestSchema)
+			.output(runtimeApplyPromptResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.promptsApi.applyPrompt(ctx.workspaceScope, input);
+			}),
+		removePrompt: workspaceProcedure
+			.input(runtimeRemovePromptRequestSchema)
+			.output(runtimeRemovePromptResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.promptsApi.removePrompt(ctx.workspaceScope, input);
+			}),
+		getAppliedPrompts: workspaceProcedure
+			.output(runtimeAppliedPromptsResponseSchema)
+			.query(async ({ ctx }) => {
+				return await ctx.promptsApi.getAppliedPrompts(ctx.workspaceScope);
 			}),
 	}),
 });

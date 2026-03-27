@@ -21,6 +21,7 @@ import { createTerminalWebSocketBridge } from "../terminal/ws-server.js";
 import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router.js";
 import { createHooksApi } from "../trpc/hooks-api.js";
 import { createProjectsApi } from "../trpc/projects-api.js";
+import { createPromptsApi } from "../trpc/prompts-api.js";
 import { createRuntimeApi } from "../trpc/runtime-api.js";
 import { createWorkspaceApi } from "../trpc/workspace-api.js";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
@@ -215,6 +216,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
 				broadcastTaskReadyForReview: deps.runtimeStateHub.broadcastTaskReadyForReview,
 			}),
+			promptsApi: createPromptsApi(),
 		};
 	};
 

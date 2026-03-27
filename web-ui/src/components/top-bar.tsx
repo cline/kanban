@@ -3,6 +3,7 @@ import {
 	ArrowDown,
 	ArrowLeft,
 	ArrowUp,
+	BookOpen,
 	Bug,
 	Check,
 	ChevronDown,
@@ -294,6 +295,8 @@ export function TopBar({
 	isTerminalLoading,
 	onToggleGitHistory,
 	isGitHistoryOpen,
+	onTogglePromptsLibrary,
+	isPromptsLibraryOpen,
 	onOpenSettings,
 	showDebugButton,
 	onOpenDebugDialog,
@@ -328,6 +331,8 @@ export function TopBar({
 	isTerminalLoading?: boolean;
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
+	onTogglePromptsLibrary?: () => void;
+	isPromptsLibraryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
 	showDebugButton?: boolean;
 	onOpenDebugDialog?: () => void;
@@ -570,6 +575,18 @@ export function TopBar({
 							Run
 						</Button>
 					) : null
+				) : null}
+				{onTogglePromptsLibrary ? (
+					<Tooltip side="bottom" content="Community Prompts">
+						<Button
+							variant={isPromptsLibraryOpen ? "primary" : "ghost"}
+							size="sm"
+							icon={<BookOpen size={16} />}
+							onClick={onTogglePromptsLibrary}
+							aria-label={isPromptsLibraryOpen ? "Close prompts library" : "Open prompts library"}
+							className={cn("ml-1", isPromptsLibraryOpen && "ring-1 ring-accent")}
+						/>
+					</Tooltip>
 				) : null}
 				{onToggleTerminal ? (
 					<Tooltip

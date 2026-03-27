@@ -12,6 +12,7 @@ import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
 import { KanbanBoard } from "@/components/kanban-board";
+import { PromptsLibraryView } from "@/components/prompts-library-view";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
@@ -44,6 +45,7 @@ import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
 import { useKanbanAccessGate } from "@/hooks/use-kanban-access-gate";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { usePrewarmedAgentTerminals } from "@/hooks/use-prewarmed-agent-terminals";
+import { usePromptsLibrary } from "@/hooks/use-prompts-library";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
 import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
@@ -86,6 +88,7 @@ export default function App(): ReactElement {
 	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [isPromptsLibraryOpen, setIsPromptsLibraryOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
@@ -93,6 +96,7 @@ export default function App(): ReactElement {
 		setCanPersistWorkspaceState(false);
 		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
+		setIsPromptsLibraryOpen(false);
 		setPendingTaskStartAfterEditId(null);
 		taskEditorResetRef.current();
 	}, []);
@@ -554,6 +558,18 @@ export default function App(): ReactElement {
 	const handleCloseGitHistory = useCallback(() => {
 		setIsGitHistoryOpen(false);
 	}, []);
+	const handleTogglePromptsLibrary = useCallback(() => {
+		if (hasNoProjects) {
+			return;
+		}
+		setIsPromptsLibraryOpen((current) => {
+			if (!current) {
+				setIsGitHistoryOpen(false);
+			}
+			return !current;
+		});
+	}, [hasNoProjects]);
+	const promptsLibrary = usePromptsLibrary(isPromptsLibraryOpen ? currentProjectId : null);
 
 	const {
 		handleProgrammaticCardMoveReady,
@@ -822,6 +838,8 @@ export default function App(): ReactElement {
 					isOpeningWorkspace={isOpeningWorkspace}
 					onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
 					isGitHistoryOpen={isGitHistoryOpen}
+					onTogglePromptsLibrary={hasNoProjects ? undefined : handleTogglePromptsLibrary}
+					isPromptsLibraryOpen={isPromptsLibraryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
 				<div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -855,7 +873,9 @@ export default function App(): ReactElement {
 						) : (
 							<div className="flex flex-1 flex-col min-h-0 min-w-0">
 								<div className="flex flex-1 min-h-0 min-w-0">
-									{isGitHistoryOpen ? (
+									{isPromptsLibraryOpen ? (
+										<PromptsLibraryView library={promptsLibrary} />
+									) : isGitHistoryOpen ? (
 										<GitHistoryView
 											workspaceId={currentProjectId}
 											gitHistory={gitHistory}
