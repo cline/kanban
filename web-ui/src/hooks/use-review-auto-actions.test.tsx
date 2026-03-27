@@ -62,13 +62,15 @@ function HookHarness({
 	agentReviewEnabled = false,
 	runAutoReviewGitAction,
 	requestMoveTaskToTrash,
+	workspaceSnapshot = workspaceSnapshots["task-1"],
 }: {
 	board: BoardData;
 	agentReviewEnabled?: boolean;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
+	workspaceSnapshot?: ReviewTaskWorkspaceSnapshot | null;
 }): null {
-	setTaskWorkspaceSnapshot(workspaceSnapshots["task-1"] ?? null);
+	setTaskWorkspaceSnapshot(workspaceSnapshot ?? null);
 	useReviewAutoActions({
 		board,
 		agentReviewEnabled,
@@ -141,7 +143,7 @@ describe("useReviewAutoActions", () => {
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
 	});
 
-	it("does not trigger auto commit when agent review is exhausted", async () => {
+	it("triggers auto commit when agent review is exhausted", async () => {
 		const runAutoReviewGitAction = vi.fn(async () => true);
 		const requestMoveTaskToTrash = vi.fn(async () => {});
 
@@ -169,11 +171,11 @@ describe("useReviewAutoActions", () => {
 			vi.advanceTimersByTime(1000);
 		});
 
-		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+		expect(runAutoReviewGitAction).toHaveBeenCalledWith("task-1", "commit");
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
 	});
 
-	it("cancels a scheduled auto commit when agent review becomes exhausted", async () => {
+	it("moves an exhausted auto-committed task to trash after the workspace becomes clean", async () => {
 		const runAutoReviewGitAction = vi.fn(async () => true);
 		const requestMoveTaskToTrash = vi.fn(async () => {});
 
@@ -181,7 +183,80 @@ describe("useReviewAutoActions", () => {
 			root.render(
 				<HookHarness
 					agentReviewEnabled
-					board={createBoard({ autoReviewEnabled: true, autoReviewMode: "commit" })}
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "exhausted",
+							currentRound: 2,
+							stopAfterCurrentRound: true,
+							passedBannerVisible: false,
+						},
+					})}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).toHaveBeenCalledWith("task-1", "commit");
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "exhausted",
+							currentRound: 2,
+							stopAfterCurrentRound: true,
+							passedBannerVisible: false,
+						},
+					})}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+					workspaceSnapshot={{
+						...workspaceSnapshots["task-1"]!,
+						changedFiles: 0,
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(requestMoveTaskToTrash).toHaveBeenCalledWith("task-1", "review", {
+			skipWorkingChangeWarning: true,
+		});
+	});
+
+	it("triggers auto commit when agent review becomes exhausted", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "reviewing",
+							currentRound: 2,
+							stopAfterCurrentRound: false,
+							passedBannerVisible: false,
+						},
+					})}
 					runAutoReviewGitAction={runAutoReviewGitAction}
 					requestMoveTaskToTrash={requestMoveTaskToTrash}
 				/>,
@@ -212,7 +287,7 @@ describe("useReviewAutoActions", () => {
 			vi.advanceTimersByTime(1000);
 		});
 
-		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+		expect(runAutoReviewGitAction).toHaveBeenCalledWith("task-1", "commit");
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
 	});
 
