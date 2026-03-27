@@ -25,13 +25,21 @@ export interface RuntimeAsset {
 
 export function getWebUiDir(): string {
 	const here = dirname(fileURLToPath(import.meta.url));
+	// Bundled output (dist/cli.js): web-ui is at dist/web-ui
+	const bundledPath = resolve(here, "web-ui");
+	// tsc output (dist/server/assets.js): web-ui is at dist/../web-ui → dist/web-ui
 	const packagedBuildPath = resolve(here, "../web-ui");
 	const repoBuildPath = resolve(here, "../../web-ui/dist");
 	const repoSourcePath = resolve(here, "../../web-ui");
-	if (existsSync(join(packagedBuildPath, "index.html")) && existsSync(join(packagedBuildPath, "assets"))) {
+	const hasAssets = (dir: string) =>
+		existsSync(join(dir, "index.html")) && existsSync(join(dir, "assets"));
+	if (hasAssets(bundledPath)) {
+		return bundledPath;
+	}
+	if (hasAssets(packagedBuildPath)) {
 		return packagedBuildPath;
 	}
-	if (existsSync(join(repoBuildPath, "index.html")) && existsSync(join(repoBuildPath, "assets"))) {
+	if (hasAssets(repoBuildPath)) {
 		return repoBuildPath;
 	}
 	return repoSourcePath;
