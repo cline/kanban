@@ -599,6 +599,7 @@ export default function App(): ReactElement {
 	const {
 		handleCreateAndStartTask,
 		handleCreateAndStartTasks,
+		handleCreateStartAndOpenTask,
 		handleStartTaskFromBoard,
 		handleStartAllBacklogTasksFromBoard,
 	} = useTaskStartActions({
@@ -607,6 +608,7 @@ export default function App(): ReactElement {
 		handleCreateTasks,
 		handleStartTask,
 		handleStartAllBacklogTasks,
+		setSelectedTaskId,
 	});
 
 	useAppHotkeys({
@@ -1043,6 +1045,7 @@ export default function App(): ReactElement {
 				onImagesChange={setNewTaskImages}
 				onCreate={handleCreateTask}
 				onCreateAndStart={handleCreateAndStartTask}
+				onCreateStartAndOpen={handleCreateStartAndOpenTask}
 				onCreateMultiple={handleCreateTasks}
 				onCreateAndStartMultiple={handleCreateAndStartTasks}
 				startInPlanMode={newTaskStartInPlanMode}
