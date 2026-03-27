@@ -166,7 +166,7 @@ export function useTaskSessions({
 					images: options?.resumeFromTrash ? undefined : task.images,
 					startInPlanMode: options?.resumeFromTrash ? undefined : task.startInPlanMode,
 					resumeFromTrash: options?.resumeFromTrash,
-				baseRef: task.baseRef,
+					baseRef: task.baseRef,
 					cols: geometry.cols,
 					rows: geometry.rows,
 				});

@@ -156,13 +156,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						});
 				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeAgentSessionId(body.taskId);
 
-				// When restoring from trash, use the agent that originally ran the task
-				// so the correct session type (Cline SDK vs terminal PTY) is used and
-				// the existing conversation history can be resumed.  For Cline we also
-				// probe persisted SDK sessions as a fallback; for terminal agents the
-				// browser passes the original agentId via resumeAgentId.
-				// Check if the terminal manager has a preserved agentId from a
-				// previous session for this task (hydrated from workspace state).
+				// When restoring from trash, resume with the original agent so conversation
+				// history is preserved. Terminal agents have their agentId preserved in the
+				// hydrated session summary; Cline tasks are detected via persisted SDK sessions.
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const previousTerminalAgentId = body.resumeFromTrash
 					? (terminalManager.getSummary(body.taskId)?.agentId ?? null)
