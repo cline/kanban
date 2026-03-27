@@ -9,6 +9,7 @@ import type { Command } from "commander";
 import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract.js";
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint.js";
+import { buildWindowsCmdArgsArray, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core/windows-cmd-launch.js";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 
@@ -991,6 +992,26 @@ export function buildCodexWrapperChildArgs(agentArgs: string[], shouldWatchSessi
 	return childArgs;
 }
 
+export function buildCodexWrapperSpawn(
+	realBinary: string,
+	agentArgs: string[],
+	shouldWatchSessionLog: boolean,
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): { binary: string; args: string[] } {
+	const childArgs = buildCodexWrapperChildArgs(agentArgs, shouldWatchSessionLog);
+	if (!shouldUseWindowsCmdLaunch(realBinary, platform, env)) {
+		return {
+			binary: realBinary,
+			args: childArgs,
+		};
+	}
+	return {
+		binary: resolveWindowsComSpec(env),
+		args: buildWindowsCmdArgsArray(realBinary, childArgs),
+	};
+}
+
 async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise<void> {
 	const childEnv: NodeJS.ProcessEnv = { ...process.env };
 	let shuttingDown = false;
@@ -1027,7 +1048,8 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 		}
 	}
 
-	const child = spawn(wrapperArgs.realBinary, buildCodexWrapperChildArgs(wrapperArgs.agentArgs, shouldWatchSessionLog), {
+	const childLaunch = buildCodexWrapperSpawn(wrapperArgs.realBinary, wrapperArgs.agentArgs, shouldWatchSessionLog);
+	const child = spawn(childLaunch.binary, childLaunch.args, {
 		stdio: "inherit",
 		env: childEnv,
 	});

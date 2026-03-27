@@ -14,6 +14,7 @@ export default defineConfig({
 			"@runtime-task-worktree-path": resolve(__dirname, "../src/workspace/task-worktree-path.ts"),
 			"@runtime-task-state": resolve(__dirname, "../src/core/task-board-mutations.ts"),
 		},
+		conditions: ["import", "module", "browser", "default"],
 	},
 	test: {
 		environment: "jsdom",

@@ -31,7 +31,35 @@ Or if no tags exist:
 git log --oneline --no-merges
 ```
 
-### 3. Curate the changelog
+### 3. Check for Cline SDK version changes
+
+Compare the `@clinebot/core` version in `package.json` at the last tag vs HEAD:
+
+```bash
+git show <last-tag>:package.json  # extract @clinebot/core version
+cat package.json                   # extract current @clinebot/core version
+```
+
+If the version changed, gather the SDK changelog to include in the release notes:
+
+1. Look up the git commit hash for both the old and new versions:
+   ```bash
+   npm view @clinebot/core@<old-version> gitHead
+   npm view @clinebot/core@<new-version> gitHead
+   ```
+   If `gitHead` is not available for the new version, use the commit from the SDK repo's version bump commit instead (e.g. search for "Cline SDK <version>" in the commit log).
+
+2. Get the commits between those two hashes from the SDK repo (`cline/sdk-wip`):
+   ```bash
+   gh api "repos/cline/sdk-wip/compare/<old-hash>...<new-hash>" --jq '.commits[] | "\(.sha[0:7]) \(.commit.message | split("\n")[0])"'
+   ```
+
+3. Filter to user-facing changes only (same inclusion/exclusion rules as step 4 below). For commits with unclear messages, read the full commit from the SDK repo to understand what changed.
+
+4. Incorporate SDK changes into the changelog draft in step 4 as a single bullet point summarizing the version bump and its notable changes, e.g.:
+   - Updated Cline SDK from 0.0.X to 0.0.Y, which includes: <comma-separated list of notable changes>
+
+### 4. Curate the changelog
 
 From the commit list, draft a user-facing changelog as a bullet list. This is part marketing -- YouTubers and users read these.
 
@@ -55,7 +83,7 @@ Does this look good, or would you like changes?
 
 Wait for the user to approve or give feedback. Iterate until approved.
 
-### 4. Determine version bump
+### 5. Determine version bump
 
 Ask the user:
 
@@ -65,7 +93,7 @@ Bump patch (0.1.0 -> 0.1.1) or minor (0.1.0 -> 0.2.0)?
 
 Wait for their answer.
 
-### 5. Update files
+### 6. Update files
 
 Update `package.json` version field to the new version.
 
@@ -82,7 +110,7 @@ Create or prepend to `CHANGELOG.md`. The format must match what `.github/scripts
 
 If `CHANGELOG.md` already exists, prepend the new section after any top-level heading (like `# Changelog`). If it doesn't exist, create it with a `# Changelog` heading followed by the new section.
 
-### 6. Commit and tag
+### 7. Commit and tag
 
 ```bash
 git add CHANGELOG.md package.json package-lock.json
@@ -90,7 +118,7 @@ git commit -m "v<version> release notes"
 git tag v<version>
 ```
 
-### 7. Push to main
+### 8. Push to main
 
 Push the commit and tag directly to main (repo owner workflow -- non-owners will get a permissions error prompting them to create a PR instead):
 
@@ -99,7 +127,7 @@ git push origin main
 git push origin v<version>
 ```
 
-### 8. Optionally trigger publish
+### 9. Optionally trigger publish
 
 Ask the user:
 

@@ -401,7 +401,12 @@ async function prepareNewTaskWorktree(repoPath: string, worktreePath: string): P
 
 async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
-	await runGit(repoPath, ["worktree", "remove", "--force", worktreePath]);
+	const removeResult = await runGit(repoPath, ["worktree", "remove", "--force", worktreePath]);
+	if (!removeResult.ok) {
+		// If remove failed (e.g. worktree in bad state), prune stale registrations
+		// so git doesn't think the path is still registered after we rm it.
+		await runGit(repoPath, ["worktree", "prune"]);
+	}
 	await rm(worktreePath, { recursive: true, force: true });
 	return existed;
 }
@@ -495,6 +500,11 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			if (await pathExists(worktreePath)) {
 				await removeTaskWorktreeInternal(context.repoPath, worktreePath);
 			}
+
+			// Clean up stale worktree registrations that can linger when git
+			// worktree remove fails or the process is interrupted. Without this,
+			// git worktree add refuses with "missing but already registered".
+			await runGit(context.repoPath, ["worktree", "prune"]);
 
 			await mkdir(dirname(worktreePath), { recursive: true });
 			const addResult = await runGit(context.repoPath, ["worktree", "add", "--detach", worktreePath, baseCommit]);
