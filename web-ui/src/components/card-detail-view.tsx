@@ -28,7 +28,6 @@ import {
 	type CardSelection,
 	getTaskAgentReviewStatusLabel,
 	getTaskAutoReviewCancelButtonLabel,
-	hasTaskPassedAgentReview,
 } from "@/types";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
@@ -421,7 +420,6 @@ export function CardDetailView({
 	const showClineAgentChatPanel =
 		showTaskAgentPane && isNativeClineAgentSelected(sessionSummary?.agentId ?? selectedAgentId);
 	const reviewStatusLabel = getTaskAgentReviewStatusLabel(selection.card.agentReview);
-	const hasPassedAgentReview = hasTaskPassedAgentReview(selection.card.agentReview);
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];
@@ -557,6 +555,10 @@ export function CardDetailView({
 		setActiveAgentPaneView((currentView) => (currentView === "reviewer" ? "task" : "reviewer"));
 	}, [reviewerTaskId]);
 
+	const handleShowTaskChat = useCallback(() => {
+		setActiveAgentPaneView("task");
+	}, []);
+
 	return (
 		<div
 			style={{
@@ -604,38 +606,34 @@ export function CardDetailView({
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
 				) : (
 					<>
-						{reviewStatusLabel || hasPassedAgentReview ? (
+						{reviewStatusLabel ? (
 							<div className="border-b border-border bg-surface-1 px-4 py-3">
 								<div className="flex flex-wrap items-center gap-2">
-									{reviewStatusLabel ? (
-										<button
-											type="button"
-											onClick={handleToggleReviewerTranscript}
-											aria-pressed={showReviewerSessionPane}
-											disabled={!reviewerTaskId}
-											className={
-												showReviewerSessionPane
-													? "inline-flex items-center rounded-full border border-border-bright bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-text-primary hover:bg-surface-3 disabled:cursor-default disabled:opacity-70"
-													: "inline-flex items-center rounded-full border border-border-bright bg-surface-0 px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary disabled:cursor-default disabled:opacity-70"
-											}
-										>
-											{reviewStatusLabel}
-										</button>
-									) : null}
-									{showReviewerSessionPane ? (
-										<button
-											type="button"
-											onClick={handleToggleReviewerTranscript}
-											className="inline-flex items-center rounded-full border border-border-bright bg-surface-0 px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-										>
-											Task chat
-										</button>
-									) : null}
-									{hasPassedAgentReview ? (
-										<span className="inline-flex items-center rounded-full border border-status-green/30 bg-status-green/10 px-2 py-0.5 text-[12px] font-medium text-status-green">
-											Passed code review by agent
-										</span>
-									) : null}
+									<button
+										type="button"
+										onClick={handleShowTaskChat}
+										aria-pressed={showTaskAgentPane}
+										className={
+											showTaskAgentPane
+												? "inline-flex items-center rounded-full border border-border-bright bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-text-primary hover:bg-surface-3"
+												: "inline-flex items-center rounded-full border border-border-bright bg-surface-0 px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+										}
+									>
+										Task chat
+									</button>
+									<button
+										type="button"
+										onClick={handleToggleReviewerTranscript}
+										aria-pressed={showReviewerSessionPane}
+										disabled={!reviewerTaskId}
+										className={
+											showReviewerSessionPane
+												? "inline-flex items-center rounded-full border border-border-bright bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-text-primary hover:bg-surface-3 disabled:cursor-default disabled:opacity-70"
+												: "inline-flex items-center rounded-full border border-border-bright bg-surface-0 px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary disabled:cursor-default disabled:opacity-70"
+										}
+									>
+										{reviewStatusLabel}
+									</button>
 								</div>
 							</div>
 						) : null}

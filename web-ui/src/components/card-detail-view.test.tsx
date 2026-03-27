@@ -217,7 +217,7 @@ describe("CardDetailView", () => {
 		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
 	});
 
-	it("renders the agent review banner for passed cards", async () => {
+	it("renders detail view review controls without duplicating the passed banner", async () => {
 		const selection = createSelection();
 		selection.card.agentReview = {
 			status: "passed",
@@ -245,8 +245,10 @@ describe("CardDetailView", () => {
 			);
 		});
 
-		expect(container.textContent).toContain("Passed code review by agent");
-		expect(container.textContent).toContain("Passed");
+		const buttons = Array.from(container.querySelectorAll("button")).map((button) => button.textContent?.trim());
+		expect(buttons).toContain("Task chat");
+		expect(buttons).toContain("Passed");
+		expect(container.textContent).not.toContain("Passed code review by agent");
 	});
 
 	it("switches to the reviewer terminal when the review status chip is clicked", async () => {
@@ -320,6 +322,7 @@ describe("CardDetailView", () => {
 			}),
 			expect.anything(),
 		);
+		expect(container.textContent).not.toContain("Passed code review by agent");
 
 		const taskChatButton = Array.from(container.querySelectorAll("button")).find(
 			(button) => button.textContent?.trim() === "Task chat",

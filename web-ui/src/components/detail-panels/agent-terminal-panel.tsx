@@ -10,7 +10,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { TaskAgentReviewState } from "@/types";
-import { getTaskAgentReviewStatusLabel, hasTaskPassedAgentReview } from "@/types";
+import { getTaskAgentReviewStatusLabel } from "@/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 import { isMacPlatform } from "@/utils/platform";
 
@@ -184,7 +184,6 @@ function AgentTerminalPanelLayout({
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
 	const statusTagStyle = useMemo(() => getStateTagStyle(summary), [summary]);
 	const reviewStatusLabel = getTaskAgentReviewStatusLabel(reviewState);
-	const showPassedReviewBanner = hasTaskPassedAgentReview(reviewState);
 	const agentLabel = useMemo(() => {
 		const normalizedCommand = agentCommand?.trim();
 		if (!normalizedCommand) {
@@ -315,11 +314,6 @@ function AgentTerminalPanelLayout({
 							aria-label="Close terminal"
 						/>
 					</div>
-				</div>
-			) : null}
-			{showPassedReviewBanner ? (
-				<div className="border-b border-status-green/20 bg-status-green/10 px-3 py-2 text-[12px] font-medium text-status-green">
-					Passed code review by agent
 				</div>
 			) : null}
 			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: "3px 1.5px 3px 3px" }}>
