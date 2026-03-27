@@ -37,6 +37,8 @@ import {
 	buildCodeReviewPrompt,
 	createAgentReviewCoordinator,
 	ensureCodeReviewDocument,
+	getAgentReviewWorkspaceChanges,
+	hasAgentReviewableChanges,
 	readCodeReviewDocument,
 	resolveAgentReviewGitRange,
 	type AgentReviewRunnerResult,
@@ -45,7 +47,6 @@ import {
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
 import type { RuntimeStateHub } from "./runtime-state-hub.js";
 import type { WorkspaceRegistry } from "./workspace-registry.js";
-import { getWorkspaceChanges } from "../workspace/get-workspace-changes.js";
 import { resolveTaskCwd } from "../workspace/task-worktree.js";
 import { stripAnsi } from "../terminal/output-utils.js";
 
@@ -502,14 +503,14 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		}).catch(() => null);
 		const workspaceChanges =
 			taskWorkspacePath !== null
-				? await getWorkspaceChanges(taskWorkspacePath).catch(() => null)
+				? await getAgentReviewWorkspaceChanges({
+						workspacePath: taskWorkspacePath,
+						baseRef: taskRecord.card.baseRef,
+					})
 				: null;
-		const hasReviewableChanges = workspaceChanges !== null && workspaceChanges.files.length > 0;
+		const hasReviewableChanges = hasAgentReviewableChanges(workspaceChanges);
 		const existingState = taskRecord.card.agentReview ?? null;
-		const originalAgentId =
-			hasReviewableChanges && summary?.agentId
-				? summary.agentId
-				: (existingState?.originalAgentId ?? null);
+		const originalAgentId = summary?.agentId ?? existingState?.originalAgentId ?? null;
 
 		return {
 			workspaceId: input.workspaceId,

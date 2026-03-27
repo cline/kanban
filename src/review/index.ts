@@ -17,6 +17,10 @@ export {
 	type SendAgentReviewFollowUpInput,
 } from "./agent-review-coordinator.js";
 export {
+	getAgentReviewWorkspaceChanges,
+	hasAgentReviewableChanges,
+} from "./agent-review-workspace-changes.js";
+export {
 	recordFallbackReviewRound,
 	resolveAgentReviewGitRange,
 	runAgentReviewRound,
