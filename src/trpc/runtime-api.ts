@@ -156,7 +156,24 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						});
 				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeAgentSessionId(body.taskId);
 
-				if (scopedRuntimeConfig.selectedAgentId === "cline") {
+				// When restoring from trash, resume with the original agent so conversation
+				// history is preserved. Terminal agents have their agentId preserved in the
+				// hydrated session summary; Cline tasks are detected via persisted SDK sessions.
+				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+				const previousTerminalAgentId = body.resumeFromTrash
+					? (terminalManager.getSummary(body.taskId)?.agentId ?? null)
+					: null;
+				const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
+				let useClinePath = effectiveAgentId === "cline";
+				if (body.resumeFromTrash && !useClinePath) {
+					const clineSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+					const persistedSession = await clineSessionService.rebindPersistedTaskSession(body.taskId).catch(() => null);
+					if (persistedSession) {
+						useClinePath = true;
+					}
+				}
+
+				if (useClinePath) {
 					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const summary = await clineTaskSessionService.startTaskSession({
@@ -194,7 +211,11 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					};
 				}
 
-				const resolved = resolveAgentCommand(scopedRuntimeConfig);
+				const resolvedConfig =
+					effectiveAgentId !== scopedRuntimeConfig.selectedAgentId
+						? { ...scopedRuntimeConfig, selectedAgentId: effectiveAgentId }
+						: scopedRuntimeConfig;
+				const resolved = resolveAgentCommand(resolvedConfig);
 				if (!resolved) {
 					return {
 						ok: false,
@@ -202,7 +223,6 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
 					};
 				}
-				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = await terminalManager.startTaskSession({
 					taskId: body.taskId,
 					agentId: resolved.agentId,

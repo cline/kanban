@@ -80,7 +80,7 @@ describe("TerminalSessionManager", () => {
 
 		expect(recovered?.state).toBe("idle");
 		expect(recovered?.pid).toBeNull();
-		expect(recovered?.agentId).toBeNull();
+		expect(recovered?.agentId).toBe("claude");
 		expect(recovered?.workspacePath).toBeNull();
 		expect(recovered?.reviewReason).toBeNull();
 	});
