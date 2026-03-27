@@ -156,7 +156,13 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						});
 				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeAgentSessionId(body.taskId);
 
-				if (scopedRuntimeConfig.selectedAgentId === "cline") {
+				// When restoring from trash, honour the agent that originally ran the
+				// task so the correct session type (Cline SDK vs terminal PTY) is used
+				// and the existing conversation history can be resumed.
+				const effectiveAgentId =
+					body.resumeFromTrash && body.resumeAgentId ? body.resumeAgentId : scopedRuntimeConfig.selectedAgentId;
+
+				if (effectiveAgentId === "cline") {
 					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const summary = await clineTaskSessionService.startTaskSession({
@@ -194,7 +200,11 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					};
 				}
 
-				const resolved = resolveAgentCommand(scopedRuntimeConfig);
+				const resolvedConfig =
+					effectiveAgentId !== scopedRuntimeConfig.selectedAgentId
+						? { ...scopedRuntimeConfig, selectedAgentId: effectiveAgentId }
+						: scopedRuntimeConfig;
+				const resolved = resolveAgentCommand(resolvedConfig);
 				if (!resolved) {
 					return {
 						ok: false,

@@ -56,7 +56,6 @@ import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import {
-	isNativeClineAgentSelected,
 	getTaskAgentNavbarHint,
 	isTaskAgentSetupSatisfied,
 	selectLatestTaskChatMessageForTask,
@@ -644,38 +643,6 @@ export default function App(): ReactElement {
 	const detailSession = selectedCard
 		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
 		: null;
-
-	// Auto-resume stale terminal-agent sessions after a kanban restart.
-	// When a task was running with a terminal agent (claude, codex, etc.) but the
-	// runtime restarted, the session becomes idle with a preserved agentId.
-	// Re-launching the agent with resumeFromTrash triggers --continue/--resume
-	// so the agent replays its conversation history natively.
-	const autoResumedTaskIdsRef = useRef<Set<string>>(new Set());
-	useEffect(() => {
-		if (!selectedCard || !detailSession) {
-			return;
-		}
-		const { agentId, state, pid } = detailSession;
-		// Only auto-resume terminal agents (not cline which uses the native SDK).
-		if (!agentId || isNativeClineAgentSelected(agentId)) {
-			return;
-		}
-		// Only resume idle sessions with no live process (stale after restart).
-		if (state !== "idle" || pid !== null) {
-			return;
-		}
-		// Only for tasks in active columns.
-		const columnId = selectedCard.column.id;
-		if (columnId !== "in_progress" && columnId !== "review") {
-			return;
-		}
-		// Prevent re-triggering for the same task.
-		if (autoResumedTaskIdsRef.current.has(selectedCard.card.id)) {
-			return;
-		}
-		autoResumedTaskIdsRef.current.add(selectedCard.card.id);
-		void startTaskSession(selectedCard.card, { resumeFromTrash: true });
-	}, [detailSession, selectedCard, startTaskSession]);
 
 	const detailTerminalSummary = detailTerminalTaskId ? (sessions[detailTerminalTaskId] ?? null) : null;
 	const detailTerminalSubtitle = useMemo(() => {
