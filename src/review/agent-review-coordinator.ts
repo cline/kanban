@@ -182,11 +182,21 @@ function shouldStartNewRun(existingState: AgentReviewState | null, triggerSource
 			existingState.status === "idle"
 		);
 	}
-	return existingState.status !== "changes_requested";
+	return (
+		existingState.status === "idle" ||
+		existingState.status === "skipped" ||
+		existingState.status === "passed" ||
+		existingState.status === "exhausted"
+	);
 }
 
 function shouldSkipAutomaticTrigger(snapshot: AgentReviewTaskSnapshot): boolean {
-	return snapshot.existingState?.status === "passed";
+	return (
+		snapshot.existingState?.status === "pending" ||
+		snapshot.existingState?.status === "reviewing" ||
+		snapshot.existingState?.status === "passed" ||
+		snapshot.existingState?.status === "exhausted"
+	);
 }
 
 function buildReviewingState(input: {
@@ -417,6 +427,8 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 				refreshedSnapshot,
 			});
 
+			await persistState(snapshot.workspaceId, snapshot.taskId, finalState);
+
 			let followUpPrompt: string | null = null;
 			let followUpSent = false;
 			if (runnerResult.latestRound.decision === "changes_requested" && finalState.status === "changes_requested") {
@@ -437,8 +449,6 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 					});
 				}
 			}
-
-			await persistState(snapshot.workspaceId, snapshot.taskId, finalState);
 			return buildAgentReviewExecutionResult({
 				ok: true,
 				state: finalState,

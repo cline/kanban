@@ -136,6 +136,7 @@ function buildAgentReviewTaskSessionId(taskId: string, runId: string): string {
 
 async function waitForAgentReviewRoundDocument(
 	workspacePath: string,
+	runId: string,
 	roundNumber: number,
 ): Promise<{
 	document: NonNullable<Awaited<ReturnType<typeof readCodeReviewDocument>>>;
@@ -143,7 +144,13 @@ async function waitForAgentReviewRoundDocument(
 }> {
 	for (let attempt = 0; attempt < 40; attempt += 1) {
 		const document = await readCodeReviewDocument(workspacePath);
-		const latestRound = document?.rounds.find((round) => round.round === roundNumber) ?? document?.rounds.at(-1) ?? null;
+		if (!document || document.runId !== runId) {
+			await new Promise<void>((resolve) => {
+				setTimeout(resolve, 100);
+			});
+			continue;
+		}
+		const latestRound = document?.rounds.find((round) => round.round === roundNumber) ?? null;
 		if (document && latestRound) {
 			return {
 				document,
@@ -437,7 +444,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 		const capturedOutput = stripAnsi(Buffer.concat(outputChunks).toString("utf8"));
 		try {
-			const { document, latestRound } = await waitForAgentReviewRoundDocument(input.workspacePath, input.round);
+			const { document, latestRound } = await waitForAgentReviewRoundDocument(
+				input.workspacePath,
+				input.runId,
+				input.round,
+			);
+			terminalManager.stopTaskSession(reviewerTaskId);
 			return {
 				reportPath,
 				baseSha: gitRange.baseSha,
@@ -456,6 +468,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			Object.assign(wrappedError, {
 				output: recoveredOutput || wrappedError.message,
 			});
+			terminalManager.stopTaskSession(reviewerTaskId);
 			throw wrappedError;
 		}
 	};
@@ -613,6 +626,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		},
 	};
 	deps.runtimeStateHub.setTaskReadyHandler((input) => {
+		if (input.taskId.startsWith(REVIEWER_TASK_SESSION_PREFIX)) {
+			return;
+		}
 		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
 		if (!workspacePath) {
 			return;

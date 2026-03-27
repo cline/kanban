@@ -386,7 +386,8 @@ export async function runAgentReviewRound(input: RunAgentReviewRoundInput): Prom
 	}
 
 	const document = await readCodeReviewDocument(input.workspacePath);
-	const latestRound = document?.rounds.find((round) => round.round === input.round) ?? document?.rounds.at(-1) ?? null;
+	const latestRound =
+		document?.runId === input.runId ? (document.rounds.find((round) => round.round === input.round) ?? null) : null;
 	if (!document || !latestRound) {
 		throw new Error(`Reviewer did not produce a parseable CODE_REVIEW.md entry for round ${input.round}.`);
 	}

@@ -22,9 +22,17 @@ function createSnapshot(): AgentReviewTaskSnapshot {
 
 describe("createAgentReviewCoordinator", () => {
 	it("sends the follow-up prompt and moves the task back to in progress when review requests changes", async () => {
-		const persistState = vi.fn(async () => {});
-		const sendFollowUpToOriginalAgent = vi.fn(async () => ({ ok: true }));
-		const resumeTaskAfterChangesRequested = vi.fn(async () => {});
+		const operations: string[] = [];
+		const persistState = vi.fn(async (input: { state: { status: string } }) => {
+			operations.push(`persist:${input.state.status}`);
+		});
+		const sendFollowUpToOriginalAgent = vi.fn(async () => {
+			operations.push("send");
+			return { ok: true };
+		});
+		const resumeTaskAfterChangesRequested = vi.fn(async () => {
+			operations.push("resume");
+		});
 
 		const coordinator = createAgentReviewCoordinator({
 			resolveLaunchCommand: async () => ({
@@ -82,6 +90,8 @@ describe("createAgentReviewCoordinator", () => {
 			workspaceId: "workspace-1",
 			taskId: "task-1",
 		});
+		expect(persistState.mock.calls.at(-1)?.[0]?.state.status).toBe("changes_requested");
+		expect(operations).toEqual(["persist:pending", "persist:reviewing", "persist:changes_requested", "send", "resume"]);
 	});
 
 	it("does not move the task when sending the follow-up prompt fails", async () => {
@@ -185,5 +195,112 @@ describe("createAgentReviewCoordinator", () => {
 			workspaceId: "workspace-1",
 			taskId: "task-1",
 		});
+	});
+
+	it("reuses the same run id and increments the round after changes requested", async () => {
+		const runReviewRound = vi.fn(async (input) => ({
+			reportPath: "/tmp/workspace/CODE_REVIEW.md",
+			baseSha: "abc",
+			headSha: "def",
+			reviewedRef: "HEAD",
+			output: "review output",
+			exitCode: 0,
+			document: {
+				taskId: "task-1",
+				runId: input.runId,
+				rounds: [],
+			},
+			latestRound: {
+				round: input.round,
+				reviewerAgentId: "claude",
+				reviewedRef: "HEAD",
+				decision: "pass" as const,
+				summary: "Looks good",
+				findings: [],
+				nextStep: "No changes required.",
+			},
+		}));
+
+		const coordinator = createAgentReviewCoordinator({
+			resolveLaunchCommand: async () => ({
+				agentId: "claude",
+				binary: "claude",
+				args: ["--dangerously-skip-permissions"],
+				autonomousModeEnabled: true,
+			}),
+			persistState: async () => {},
+			sendFollowUpToOriginalAgent: async () => ({ ok: true }),
+			runReviewRound,
+		});
+
+		const result = await coordinator.executeRound(
+			{
+				...createSnapshot(),
+				existingState: {
+					status: "changes_requested",
+					currentRound: 1,
+					maxRoundsSnapshot: 2,
+					runId: "run-1",
+					originalAgentId: "claude",
+					reviewerAgentId: "claude",
+					reportPath: "/tmp/workspace/CODE_REVIEW.md",
+					lastOutcome: "changes_requested",
+					stopAfterCurrentRound: false,
+					passedBannerVisible: false,
+				},
+			},
+			"automatic",
+		);
+
+		expect(result.ok).toBe(true);
+		expect(runReviewRound).toHaveBeenCalledWith(
+			expect.objectContaining({
+				runId: "run-1",
+				round: 2,
+			}),
+		);
+		expect(result.state.currentRound).toBe(2);
+	});
+
+	it("does not start a fresh automatic run while another review round is already pending", async () => {
+		const runReviewRound = vi.fn();
+
+		const coordinator = createAgentReviewCoordinator({
+			resolveLaunchCommand: async () => ({
+				agentId: "claude",
+				binary: "claude",
+				args: ["--dangerously-skip-permissions"],
+				autonomousModeEnabled: true,
+			}),
+			persistState: async () => {},
+			sendFollowUpToOriginalAgent: async () => ({ ok: true }),
+			runReviewRound,
+		});
+
+		const existingState = {
+			status: "reviewing" as const,
+			currentRound: 2,
+			maxRoundsSnapshot: 3,
+			runId: "run-2",
+			originalAgentId: "claude" as const,
+			reviewerAgentId: "claude" as const,
+			reportPath: "/tmp/workspace/CODE_REVIEW.md",
+			lastOutcome: "changes_requested" as const,
+			stopAfterCurrentRound: false,
+			passedBannerVisible: false,
+		};
+
+		const result = await coordinator.executeRound(
+			{
+				...createSnapshot(),
+				existingState,
+			},
+			"automatic",
+		);
+
+		expect(result.ok).toBe(true);
+		expect(result.skipped).toBe(true);
+		expect(result.state).toEqual(existingState);
+		expect(runReviewRound).not.toHaveBeenCalled();
 	});
 });
