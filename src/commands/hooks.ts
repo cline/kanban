@@ -972,11 +972,8 @@ async function runGeminiHookSubcommand(): Promise<void> {
 	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
 }
 
-export function buildCodexWrapperChildArgs(agentArgs: string[], shouldWatchSessionLog: boolean): string[] {
+export function buildCodexWrapperChildArgs(agentArgs: string[], _shouldWatchSessionLog: boolean): string[] {
 	const childArgs = [...agentArgs];
-	if (shouldWatchSessionLog) {
-		return childArgs;
-	}
 	const reviewNotifyCommandParts = buildKanbanCommandParts([
 		"hooks",
 		"notify",
