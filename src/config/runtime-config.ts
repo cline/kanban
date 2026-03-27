@@ -23,6 +23,7 @@ interface RuntimeGlobalConfigFileShape {
 }
 
 interface RuntimeProjectConfigFileShape {
+	name?: string;
 	shortcuts?: RuntimeProjectShortcut[];
 }
 
@@ -391,7 +392,9 @@ async function writeRuntimeProjectConfigFile(
 		}
 		return;
 	}
-	if (normalizedShortcuts.length === 0) {
+	const existing = await readRuntimeConfigFile<RuntimeProjectConfigFileShape>(configPath);
+	const existingName = typeof existing?.name === "string" && existing.name.trim() ? existing.name.trim() : null;
+	if (normalizedShortcuts.length === 0 && existingName === null) {
 		await rm(configPath, { force: true });
 		try {
 			await rm(dirname(configPath));
@@ -400,15 +403,16 @@ async function writeRuntimeProjectConfigFile(
 		}
 		return;
 	}
-	await lockedFileSystem.writeJsonFileAtomic(
-		configPath,
-		{
-			shortcuts: normalizedShortcuts,
-		} satisfies RuntimeProjectConfigFileShape,
-		{
-			lock: null,
-		},
-	);
+	const payload: RuntimeProjectConfigFileShape = {};
+	if (existingName !== null) {
+		payload.name = existingName;
+	}
+	if (normalizedShortcuts.length > 0) {
+		payload.shortcuts = normalizedShortcuts;
+	}
+	await lockedFileSystem.writeJsonFileAtomic(configPath, payload, {
+		lock: null,
+	});
 }
 
 interface RuntimeConfigFiles {
