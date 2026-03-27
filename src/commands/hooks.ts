@@ -1028,7 +1028,13 @@ async function runCodexWrapperSubcommand(wrapperArgs: CodexWrapperArgs): Promise
 		}
 	}
 
-	const child = spawn(wrapperArgs.realBinary, buildCodexWrapperChildArgs(wrapperArgs.agentArgs, shouldWatchSessionLog), {
+
+	// On Windows, invoke wrapper binary through COMSPEC so shims like npm's codex.cmd resolve correctly
+	const childArgs = buildCodexWrapperChildArgs(wrapperArgs.agentArgs, shouldWatchSessionLog);
+	const comSpec = process.env.ComSpec?.trim() || process.env.COMSPEC?.trim() || "cmd.exe";
+	const spawnBinary = process.platform === "win32" ? comSpec : wrapperArgs.realBinary;
+	const spawnArgs = process.platform === "win32" ? ["/d", "/s", "/c", wrapperArgs.realBinary, ...childArgs] : childArgs;
+	const child = spawn(spawnBinary, spawnArgs, {
 		stdio: "inherit",
 		env: childEnv,
 	});
