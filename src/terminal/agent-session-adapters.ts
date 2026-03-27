@@ -606,7 +606,9 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
-		const env: Record<string, string | undefined> = {};
+		const env: Record<string, string | undefined> = {
+			FORCE_HYPERLINK: "1",
+		};
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 		if (
 			input.autonomousModeEnabled &&
