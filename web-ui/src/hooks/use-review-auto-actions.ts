@@ -24,7 +24,7 @@ function shouldBlockGitAutoReview(
 		return false;
 	}
 	const status = resolveTaskAgentReviewStatus(task.agentReview?.status);
-	return status !== "passed" && status !== "exhausted";
+	return status !== "passed" && status !== "exhausted" && status !== "skipped";
 }
 
 interface TaskGitActionLoadingStateLike {

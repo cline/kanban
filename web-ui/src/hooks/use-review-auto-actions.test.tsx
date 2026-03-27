@@ -175,6 +175,38 @@ describe("useReviewAutoActions", () => {
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
 	});
 
+	it("falls back to auto commit when agent review is skipped", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					agentReviewEnabled
+					board={createBoard({
+						autoReviewEnabled: true,
+						autoReviewMode: "commit",
+						agentReview: {
+							status: "skipped",
+							currentRound: 0,
+							stopAfterCurrentRound: false,
+							passedBannerVisible: false,
+						},
+					})}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).toHaveBeenCalledWith("task-1", "commit");
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
 	it("moves an exhausted auto-committed task to trash after the workspace becomes clean", async () => {
 		const runAutoReviewGitAction = vi.fn(async () => true);
 		const requestMoveTaskToTrash = vi.fn(async () => {});
