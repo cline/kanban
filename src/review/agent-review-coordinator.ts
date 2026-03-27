@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { RuntimeAgentId, RuntimeBoardColumnId } from "../core/api-contract.js";
-import type { CodeReviewRound } from "./code-review-report.js";
+import type { CodeReviewDocument, CodeReviewRound } from "./code-review-report.js";
 import { getCodeReviewReportPath } from "./code-review-report.js";
 import type { AgentReviewLaunchCommand, AgentReviewRunnerResult, RunAgentReviewRoundInput } from "./agent-review-runner.js";
 import { recordFallbackReviewRound, runAgentReviewRound } from "./agent-review-runner.js";
@@ -88,7 +88,7 @@ export interface CreateAgentReviewCoordinatorDependencies {
 		reviewerAgentId: RuntimeAgentId;
 		reviewedRef: string | null;
 		output: string;
-	}) => Promise<unknown>;
+	}) => Promise<CodeReviewDocument>;
 }
 
 export interface AgentReviewExecutionResult {
@@ -335,15 +335,59 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				await recordFallbackRound({
-					workspacePath: snapshot.workspacePath,
-					taskId: snapshot.taskId,
-					runId,
-					round,
-					reviewerAgentId: launchCommand.agentId,
-					reviewedRef: null,
-					output: message,
-				});
+				const output =
+					typeof error === "object" &&
+					error !== null &&
+					"output" in error &&
+					typeof (error as { output?: unknown }).output === "string"
+						? ((error as { output: string }).output)
+						: message;
+				try {
+					const fallbackDocument = await recordFallbackRound({
+						workspacePath: snapshot.workspacePath,
+						taskId: snapshot.taskId,
+						runId,
+						round,
+						reviewerAgentId: launchCommand.agentId,
+						reviewedRef: null,
+						output,
+					});
+					const latestRound = fallbackDocument.rounds.at(-1);
+					if (!latestRound) {
+						throw new Error("Fallback review round could not be recorded.");
+					}
+					runnerResult = {
+						reportPath: getCodeReviewReportPath(snapshot.workspacePath),
+						baseSha: null,
+						headSha: null,
+						reviewedRef: latestRound.reviewedRef,
+						output,
+						exitCode: 1,
+						document: fallbackDocument,
+						latestRound,
+					};
+				} catch (fallbackError) {
+					const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+					const failedState: AgentReviewState = {
+						...reviewingState,
+						status: "exhausted",
+						completedAt: Date.now(),
+						currentRound: round,
+						reportPath: getCodeReviewReportPath(snapshot.workspacePath),
+						lastOutcome: "exhausted",
+						stopAfterCurrentRound: true,
+					};
+					await persistState(snapshot.workspaceId, snapshot.taskId, failedState);
+					return buildAgentReviewExecutionResult({
+						ok: false,
+						state: failedState,
+						error: `${message}\n${fallbackMessage}`,
+					});
+				}
+			} finally {
+				activeRuns.delete(activeKey);
+			}
+			if (!runnerResult) {
 				const failedState: AgentReviewState = {
 					...reviewingState,
 					status: "exhausted",
@@ -357,10 +401,8 @@ export function createAgentReviewCoordinator(deps: CreateAgentReviewCoordinatorD
 				return buildAgentReviewExecutionResult({
 					ok: false,
 					state: failedState,
-					error: message,
+					error: "Reviewer round did not produce a result.",
 				});
-			} finally {
-				activeRuns.delete(activeKey);
 			}
 
 			const refreshedSnapshot = deps.refreshSnapshotAfterRound

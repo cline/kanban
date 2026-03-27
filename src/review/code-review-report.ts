@@ -63,8 +63,17 @@ function trimTrailingWhitespace(value: string): string {
 		.trim();
 }
 
+function renderMultilineListValue(label: string, value: string): string {
+	const normalized = trimTrailingWhitespace(value);
+	const [firstLine = "", ...remainingLines] = normalized.split("\n");
+	return [
+		`   - ${label}: ${firstLine}`,
+		...remainingLines.map((line) => `     ${line}`),
+	].join("\n");
+}
+
 function parseMetadataValue(markdown: string, label: string): string | null {
-	const pattern = new RegExp(`^- ${label}:\\s*(.+)$`, "imm");
+	const pattern = new RegExp(`^- ${label}:\\s*(.+)$`, "im");
 	const match = markdown.match(pattern);
 	return match?.[1]?.trim() || null;
 }
@@ -88,12 +97,15 @@ function getRoundBlocks(markdown: string): Array<{ round: number; content: strin
 
 function extractSection(content: string, heading: string): string {
 	const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const pattern = new RegExp(
-		`^#### ${escapedHeading}\\s*$([\\s\\S]*?)(?=^####\\s+|^###\\s+Round\\s+\\d+\\s*$|\\Z)`,
-		"im",
-	);
-	const match = content.match(pattern);
-	return trimTrailingWhitespace(match?.[1] ?? "");
+	const headingPattern = new RegExp(`^#### ${escapedHeading}\\s*$`, "m");
+	const match = headingPattern.exec(content);
+	if (!match) {
+		return "";
+	}
+	const sectionStart = (match.index ?? 0) + match[0].length;
+	const remainder = content.slice(sectionStart).replace(/^\n+/u, "");
+	const nextSectionIndex = remainder.search(/^(?:####\s+|###\s+Round\s+\d+\s*$)/m);
+	return trimTrailingWhitespace(nextSectionIndex === -1 ? remainder : remainder.slice(0, nextSectionIndex));
 }
 
 function parseFindingsSection(section: string): CodeReviewFinding[] {
@@ -111,8 +123,8 @@ function parseFindingsSection(section: string): CodeReviewFinding[] {
 		const start = match.index ?? 0;
 		const end = index + 1 < itemMatches.length ? (itemMatches[index + 1]?.index ?? trimmed.length) : trimmed.length;
 		const block = trimmed.slice(start, end);
-		const fileMatch = block.match(/^- File:\s*(.+)$/im);
-		const detailMatch = block.match(/^- Detail:\s*([\s\S]+)$/im);
+		const fileMatch = block.match(/^\s*-\s*File:\s*(.+)$/im);
+		const detailMatch = block.match(/^\s*-\s*Detail:\s*([\s\S]+)$/im);
 		return {
 			severity: normalizeSeverity(match[1]),
 			title: trimTrailingWhitespace(match[2] ?? ""),
@@ -152,7 +164,7 @@ function renderFindings(findings: readonly CodeReviewFinding[]): string {
 			return [
 				`${index + 1}. [${finding.severity}] ${finding.title.trim()}`,
 				`   - File: ${file}`,
-				`   - Detail: ${finding.detail.trim()}`,
+				renderMultilineListValue("Detail", finding.detail),
 			].join("\n");
 		})
 		.join("\n\n");

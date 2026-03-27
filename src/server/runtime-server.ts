@@ -297,18 +297,24 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			workspaceId: input.workspaceId,
 			workspacePath,
 		} satisfies RuntimeTrpcWorkspaceScope;
-		const payloadText = `${input.text}\n`;
 		const clineTaskSessionService = await getScopedClineTaskSessionService(scope);
-		const clineSummary = await clineTaskSessionService.sendTaskSessionInput(input.taskId, payloadText);
+		const clineSummary = await clineTaskSessionService.sendTaskSessionInput(input.taskId, input.text);
 		if (clineSummary) {
 			return { ok: true };
 		}
 		const terminalManager = await getScopedTerminalManager(scope);
-		const summary = terminalManager.writeInput(input.taskId, Buffer.from(payloadText, "utf8"));
-		if (!summary) {
+		const pasted = terminalManager.writeInput(input.taskId, Buffer.from(input.text, "utf8"));
+		if (!pasted) {
 			return {
 				ok: false,
 				message: "Task session is not running.",
+			};
+		}
+		const submitted = terminalManager.writeInput(input.taskId, Buffer.from("\r", "utf8"));
+		if (!submitted) {
+			return {
+				ok: false,
+				message: "Task session did not accept the follow-up submission.",
 			};
 		}
 		return { ok: true };
@@ -377,12 +383,25 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		const completionPromise = new Promise<void>((resolve) => {
 			resolveCompletion = resolve;
 		});
+		const resolveFromReviewArtifact = () => {
+			if (
+				settled ||
+				!latestSummary ||
+				latestSummary.state === "running" ||
+				latestSummary.latestHookActivity?.hookEventName !== "Stop"
+			) {
+				return;
+			}
+			settled = true;
+			resolveCompletion();
+		};
 		const detach = terminalManager.attach(reviewerTaskId, {
 			onOutput: (chunk) => {
 				outputChunks.push(chunk);
 			},
 			onState: (summary) => {
 				latestSummary = summary;
+				resolveFromReviewArtifact();
 			},
 			onExit: () => {
 				if (!settled) {
@@ -405,6 +424,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				autoRestartEnabled: false,
 			});
 			latestSummary = startedSummary;
+			resolveFromReviewArtifact();
 			await completionPromise;
 		} catch (error) {
 			if (!settled) {
@@ -415,17 +435,29 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			detach?.();
 		}
 
-		const { document, latestRound } = await waitForAgentReviewRoundDocument(input.workspacePath, input.round);
-		return {
-			reportPath,
-			baseSha: gitRange.baseSha,
-			headSha: gitRange.headSha,
-			reviewedRef: latestRound.reviewedRef,
-			output: stripAnsi(Buffer.concat(outputChunks).toString("utf8")),
-			exitCode: latestSummary?.exitCode ?? 0,
-			document,
-			latestRound,
-		};
+		const capturedOutput = stripAnsi(Buffer.concat(outputChunks).toString("utf8"));
+		try {
+			const { document, latestRound } = await waitForAgentReviewRoundDocument(input.workspacePath, input.round);
+			return {
+				reportPath,
+				baseSha: gitRange.baseSha,
+				headSha: gitRange.headSha,
+				reviewedRef: latestRound.reviewedRef,
+				output: capturedOutput,
+				exitCode: latestSummary?.exitCode ?? 0,
+				document,
+				latestRound,
+			};
+		} catch (error) {
+			const finalMessage =
+				latestSummary?.latestHookActivity?.finalMessage ?? latestSummary?.latestHookActivity?.activityText ?? "";
+			const recoveredOutput = finalMessage.trim().length > 0 ? finalMessage.trim() : capturedOutput.trim();
+			const wrappedError = error instanceof Error ? error : new Error(String(error));
+			Object.assign(wrappedError, {
+				output: recoveredOutput || wrappedError.message,
+			});
+			throw wrappedError;
+		}
 	};
 	const resolveAgentReviewTaskSnapshot = async (input: {
 		workspaceId: string;

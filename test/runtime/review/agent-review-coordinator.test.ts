@@ -127,4 +127,63 @@ describe("createAgentReviewCoordinator", () => {
 		expect(result.followUpSent).toBe(false);
 		expect(resumeTaskAfterChangesRequested).not.toHaveBeenCalled();
 	});
+
+	it("records a fallback changes-requested round when the reviewer exits without writing CODE_REVIEW.md", async () => {
+		const persistState = vi.fn(async () => {});
+		const sendFollowUpToOriginalAgent = vi.fn(async () => ({ ok: true }));
+		const resumeTaskAfterChangesRequested = vi.fn(async () => {});
+		const recordFallbackRound = vi.fn(async () => ({
+			taskId: "task-1",
+			runId: "run-1",
+			rounds: [
+				{
+					round: 1,
+					reviewerAgentId: "claude",
+					reviewedRef: "HEAD",
+					decision: "changes_requested" as const,
+					summary: "Fallback review recorded",
+					findings: [
+						{
+							severity: "important" as const,
+							title: "Reviewer output could not be parsed into CODE_REVIEW.md",
+							file: null,
+							detail: "Inspect the final reviewer output and apply the requested fixes.",
+						},
+					],
+					nextStep: "Read CODE_REVIEW.md and apply the reviewer-requested fixes.",
+				},
+			],
+		}));
+
+		const coordinator = createAgentReviewCoordinator({
+			resolveLaunchCommand: async () => ({
+				agentId: "claude",
+				binary: "claude",
+				args: ["--dangerously-skip-permissions"],
+				autonomousModeEnabled: true,
+			}),
+			persistState,
+			sendFollowUpToOriginalAgent,
+			resumeTaskAfterChangesRequested,
+			recordFallbackRound,
+			runReviewRound: async () => {
+				throw new Error("Reviewer did not produce a parseable CODE_REVIEW.md entry for round 1.");
+			},
+		});
+
+		const result = await coordinator.executeRound(createSnapshot(), "automatic");
+
+		expect(result.ok).toBe(true);
+		expect(result.state.status).toBe("changes_requested");
+		expect(recordFallbackRound).toHaveBeenCalled();
+		expect(sendFollowUpToOriginalAgent).toHaveBeenCalledWith({
+			workspaceId: "workspace-1",
+			taskId: "task-1",
+			text: expect.stringContaining("Open /tmp/workspace/CODE_REVIEW.md"),
+		});
+		expect(resumeTaskAfterChangesRequested).toHaveBeenCalledWith({
+			workspaceId: "workspace-1",
+			taskId: "task-1",
+		});
+	});
 });
