@@ -327,6 +327,13 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 	};
 
+	const isSummaryReadyForReview = (summary: RuntimeTaskSessionSummary | null | undefined): boolean => {
+		return (
+			summary?.state === "awaiting_review" &&
+			(summary.reviewReason === "hook" || summary.reviewReason === "attention" || summary.reviewReason === "error")
+		);
+	};
+
 	runtimeStateWebSocketServer.on("connection", async (client: WebSocket, context: unknown) => {
 		client.on("close", () => {
 			cleanupRuntimeStateClient(client);
@@ -491,19 +498,15 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			for (const summary of manager.listSummaries()) {
 				previousSummariesByTaskId.set(summary.taskId, summary);
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+				if (isSummaryReadyForReview(summary)) {
+					broadcastTaskReadyForReview(workspaceId, summary.taskId);
+				}
 			}
 			const unsubscribe = manager.onSummary((summary) => {
 				const previousSummary = previousSummariesByTaskId.get(summary.taskId);
 				previousSummariesByTaskId.set(summary.taskId, summary);
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
-				if (
-					previousSummary &&
-					previousSummary.state !== "awaiting_review" &&
-					summary.state === "awaiting_review" &&
-					(summary.reviewReason === "hook" ||
-						summary.reviewReason === "attention" ||
-						summary.reviewReason === "error")
-				) {
+				if (isSummaryReadyForReview(summary) && !isSummaryReadyForReview(previousSummary)) {
 					broadcastTaskReadyForReview(workspaceId, summary.taskId);
 				}
 			});
@@ -518,6 +521,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			for (const summary of service.listSummaries()) {
 				previousSummariesByTaskId.set(summary.taskId, summary);
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+				if (isSummaryReadyForReview(summary)) {
+					broadcastTaskReadyForReview(workspaceId, summary.taskId);
+				}
 			}
 			const unsubscribe = service.onSummary((summary) => {
 				const previousSummary = previousSummariesByTaskId.get(summary.taskId);
@@ -529,14 +535,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				if (didCheckpointChange) {
 					void broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
 				}
-				if (
-					previousSummary &&
-					previousSummary.state !== "awaiting_review" &&
-					summary.state === "awaiting_review" &&
-					(summary.reviewReason === "hook" ||
-						summary.reviewReason === "attention" ||
-						summary.reviewReason === "error")
-				) {
+				if (isSummaryReadyForReview(summary) && !isSummaryReadyForReview(previousSummary)) {
 					broadcastTaskReadyForReview(workspaceId, summary.taskId);
 				}
 			});
