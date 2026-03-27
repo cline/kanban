@@ -31,6 +31,7 @@ const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"droid",
 	"gemini",
 	"opencode",
+	"kiro",
 ];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
@@ -63,6 +64,8 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 			return "- If Linear MCP is not available in the current agent (OpenCode), run `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
 		case "droid":
 			return "- If Linear MCP is not available in the current agent (Droid), run: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
+		case "kiro":
+			return "- If Linear MCP is not available in the current agent (Kiro CLI), configure it in your agent's MCP settings or run `/mcp` to manage MCP servers.";
 		default:
 			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
 	}
