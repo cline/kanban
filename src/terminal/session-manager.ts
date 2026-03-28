@@ -139,6 +139,25 @@ function isActiveState(state: RuntimeTaskSessionState): boolean {
 	return state === "running" || state === "awaiting_review";
 }
 
+function isProcessAlive(pid: number | null): boolean {
+	if (!Number.isFinite(pid) || (pid ?? 0) <= 0) {
+		return false;
+	}
+	try {
+		process.kill(pid as number, 0);
+		return true;
+	} catch (error) {
+		const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
+		if (code === "EPERM") {
+			return true;
+		}
+		if (code === "ESRCH") {
+			return false;
+		}
+		return false;
+	}
+}
+
 function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): StartTaskSessionRequest {
 	return {
 		...request,
@@ -252,6 +271,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const entry = this.ensureEntry(request.taskId);
+		const staleRecovery = this.reconcileStaleProcessState(entry);
+		if (staleRecovery.recovered) {
+			return cloneSummary(staleRecovery.summary);
+		}
 		entry.restartRequest = {
 			kind: "task",
 			request: cloneStartTaskSessionRequest(request),
@@ -615,6 +638,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry) {
 			return null;
 		}
+		const staleRecovery = this.reconcileStaleProcessState(entry);
+		if (staleRecovery.recovered) {
+			return cloneSummary(staleRecovery.summary);
+		}
 		if (entry.active || !isActiveState(entry.summary.state)) {
 			return cloneSummary(entry.summary);
 		}
@@ -640,6 +667,72 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 		this.emitSummary(summary);
 		return cloneSummary(summary);
+	}
+
+	private reconcileStaleProcessState(entry: SessionEntry): { recovered: boolean; summary: RuntimeTaskSessionSummary } {
+		if (!isActiveState(entry.summary.state)) {
+			return {
+				recovered: false,
+				summary: entry.summary,
+			};
+		}
+		if (!Number.isFinite(entry.summary.pid) || (entry.summary.pid ?? 0) <= 0) {
+			return {
+				recovered: false,
+				summary: entry.summary,
+			};
+		}
+		if (isProcessAlive(entry.summary.pid)) {
+			return {
+				recovered: false,
+				summary: entry.summary,
+			};
+		}
+
+		if (entry.active) {
+			stopWorkspaceTrustTimers(entry.active);
+			const cleanupFn = entry.active.onSessionCleanup;
+			entry.active.onSessionCleanup = null;
+			entry.active = null;
+			if (cleanupFn) {
+				void cleanupFn().catch(() => {
+					// Best effort: cleanup failure is non-critical.
+				});
+			}
+		}
+
+		const summary =
+			entry.summary.agentId === null
+				? updateSummary(entry, {
+						state: "idle",
+						workspacePath: null,
+						pid: null,
+						startedAt: null,
+						lastOutputAt: null,
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: null,
+						latestHookActivity: null,
+						latestTurnCheckpoint: null,
+						previousTurnCheckpoint: null,
+					})
+				: updateSummary(entry, {
+						state: "awaiting_review",
+						reviewReason: entry.summary.reviewReason ?? (entry.summary.exitCode === 0 ? "exit" : "error"),
+						pid: null,
+					});
+
+		for (const listener of entry.listeners.values()) {
+			listener.onState?.(cloneSummary(summary));
+			if (summary.pid === null) {
+				listener.onExit?.(summary.exitCode);
+			}
+		}
+		this.emitSummary(summary);
+		return {
+			recovered: true,
+			summary,
+		};
 	}
 
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null {

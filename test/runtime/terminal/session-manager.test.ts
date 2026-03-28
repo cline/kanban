@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import { buildShellCommandLine } from "../../../src/core/shell";
@@ -23,6 +23,10 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 }
 
 describe("TerminalSessionManager", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it("clears trust prompt state when transitioning to review", () => {
 		const manager = new TerminalSessionManager();
 		const entry = {
@@ -69,7 +73,13 @@ describe("TerminalSessionManager", () => {
 		expect(typeof updated?.lastHookAt).toBe("number");
 	});
 
-	it("resets stale running sessions without active processes", () => {
+	it("reconciles stale running task sessions with missing pids into review", () => {
+		vi.spyOn(process, "kill").mockImplementation(() => {
+			const error = new Error("missing process") as NodeJS.ErrnoException;
+			error.code = "ESRCH";
+			throw error;
+		});
+
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({
 			"task-1": createSummary({ state: "running" }),
@@ -77,11 +87,86 @@ describe("TerminalSessionManager", () => {
 
 		const recovered = manager.recoverStaleSession("task-1");
 
-		expect(recovered?.state).toBe("idle");
+		expect(recovered?.state).toBe("awaiting_review");
 		expect(recovered?.pid).toBeNull();
 		expect(recovered?.agentId).toBe("claude");
+		expect(recovered?.workspacePath).toBe("/tmp/worktree");
+		expect(recovered?.reviewReason).toBe("error");
+	});
+
+	it("resets stale shell sessions with missing pids to idle", () => {
+		vi.spyOn(process, "kill").mockImplementation(() => {
+			const error = new Error("missing process") as NodeJS.ErrnoException;
+			error.code = "ESRCH";
+			throw error;
+		});
+
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "running", agentId: null }),
+		});
+
+		const recovered = manager.recoverStaleSession("task-1");
+
+		expect(recovered?.state).toBe("idle");
+		expect(recovered?.pid).toBeNull();
+		expect(recovered?.agentId).toBeNull();
 		expect(recovered?.workspacePath).toBeNull();
 		expect(recovered?.reviewReason).toBeNull();
+	});
+
+	it("reconciles stale active sessions and emits an exit notification", () => {
+		vi.spyOn(process, "kill").mockImplementation(() => {
+			const error = new Error("missing process") as NodeJS.ErrnoException;
+			error.code = "ESRCH";
+			throw error;
+		});
+
+		const manager = new TerminalSessionManager();
+		const onState = vi.fn();
+		const onExit = vi.fn();
+		const cleanupSpy = vi.fn(async () => {});
+		const entry = {
+			summary: createSummary({ taskId: "task-stale-active", state: "running", pid: 4321 }),
+			active: {
+				session: {
+					wasInterrupted: () => false,
+				},
+				workspaceTrustBuffer: "",
+				cols: 120,
+				rows: 40,
+				terminalProtocolFilter: {
+					pendingChunk: null,
+					interceptOsc11BackgroundQueries: false,
+					suppressDeviceAttributeQueries: false,
+				},
+				onSessionCleanup: cleanupSpy,
+				detectOutputTransition: null,
+				shouldInspectOutputForTransition: null,
+				awaitingCodexPromptAfterEnter: false,
+				autoConfirmedWorkspaceTrust: false,
+				workspaceTrustConfirmTimer: null,
+			},
+			listenerIdCounter: 2,
+			listeners: new Map([[1, { onState, onExit }]]),
+			restartRequest: null,
+			suppressAutoRestartOnExit: false,
+			autoRestartTimestamps: [],
+			pendingAutoRestart: null,
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-stale-active", entry);
+
+		const recovered = manager.recoverStaleSession("task-stale-active");
+
+		expect(recovered?.state).toBe("awaiting_review");
+		expect(recovered?.pid).toBeNull();
+		expect(onState).toHaveBeenCalled();
+		expect(onExit).toHaveBeenCalledWith(null);
+		expect(entry.active).toBeNull();
 	});
 
 	it("tracks only the latest two turn checkpoints", () => {
