@@ -197,8 +197,8 @@ function HookHarness({
 		if (!seedSessionSummary || !result.taskId) {
 			return;
 		}
-		upsertSessionSummary(createSummary(result.taskId, "cline"));
-	}, [result.taskId, seedSessionSummary, upsertSessionSummary]);
+		upsertSessionSummary(createSummary(result.taskId, config?.selectedAgentId ?? "cline"));
+	}, [config?.selectedAgentId, result.taskId, seedSessionSummary, upsertSessionSummary]);
 
 	useEffect(() => {
 		onSnapshot({
@@ -343,6 +343,36 @@ describe("useHomeAgentSession", () => {
 		expect(rerenderedSnapshot.taskId).toBe(initialTaskId);
 		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
 		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
+	});
+
+	it("starts the home terminal session even when a stale summary was restored", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					config={createRuntimeConfig()}
+					currentProjectId="workspace-1"
+					seedSessionSummary
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await createFlushPromises();
+		});
+
+		const snapshot = requireSnapshot(latestSnapshot);
+		expect(snapshot.panelMode).toBe("terminal");
+		expect(snapshot.taskId).toMatch(/^__home_agent__:workspace-1:codex$/);
+		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
+		expect(startTaskSessionMutateMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				taskId: snapshot.taskId,
+				prompt: "",
+				baseRef: "main",
+			}),
+		);
 	});
 
 	it("keeps the same cline home chat session id when the provider changes", async () => {
