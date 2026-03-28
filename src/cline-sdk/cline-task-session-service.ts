@@ -37,7 +37,7 @@ import {
 	updateSummary,
 } from "./cline-session-state";
 import { SDK_DEFAULT_MODEL_ID, SDK_DEFAULT_PROVIDER_ID } from "./sdk-provider-boundary";
-import { resolveClineSdkSystemPrompt } from "./sdk-runtime-boundary";
+import { type ClineSdkPersistedMessage, resolveClineSdkSystemPrompt } from "./sdk-runtime-boundary.js";
 
 export type { ClineTaskMessage } from "./cline-session-state";
 
@@ -45,6 +45,7 @@ export interface StartClineTaskSessionRequest {
 	taskId: string;
 	cwd: string;
 	prompt: string;
+	initialMessages?: ClineSdkPersistedMessage[];
 	images?: RuntimeTaskImage[];
 	resumeFromTrash?: boolean;
 	providerId?: string | null;
@@ -53,6 +54,7 @@ export interface StartClineTaskSessionRequest {
 	apiKey?: string | null;
 	baseUrl?: string | null;
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
+	systemPrompt?: string | null;
 }
 
 export interface ClineTaskSessionService {
@@ -293,11 +295,13 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			try {
 				const runtimeSetup = await this.ensureRuntimeSetup(request.cwd);
 				const runtimePrompt = runtimeSetup.resolvePrompt(request.prompt);
-				let systemPrompt = await resolveClineSdkSystemPrompt({
-					cwd: request.cwd,
-					providerId,
-					rules: runtimeSetup.loadRules(),
-				});
+				let systemPrompt =
+					request.systemPrompt?.trim() ||
+					(await resolveClineSdkSystemPrompt({
+						cwd: request.cwd,
+						providerId,
+						rules: runtimeSetup.loadRules(),
+					}));
 				const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(request.taskId);
 				if (appendedSystemPrompt) {
 					systemPrompt = `${systemPrompt}\n\n${appendedSystemPrompt}`;
@@ -307,7 +311,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					taskId: request.taskId,
 					cwd: request.cwd,
 					prompt: runtimePrompt,
-					initialMessages: request.resumeFromTrash ? persistedResumeSnapshot?.messages : undefined,
+					initialMessages: request.resumeFromTrash ? persistedResumeSnapshot?.messages : request.initialMessages,
 					images: request.images,
 					providerId,
 					modelId,

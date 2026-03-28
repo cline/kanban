@@ -8,6 +8,7 @@ import {
 	type ClineMcpToolBundle,
 	createClineMcpRuntimeService,
 } from "./cline-mcp-runtime-service";
+import { createKanbanClineLogger } from "./cline-runtime-logger";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
 import type {
 	ClineSdkPersistedMessage,
@@ -179,6 +180,13 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					enableAgentTeams: false,
 					maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
 					systemPrompt: request.systemPrompt,
+					logger: createKanbanClineLogger({
+						runtime: "kanban",
+						taskId: request.taskId,
+						requestedSessionId,
+						providerId: request.providerId,
+						modelId: request.modelId,
+					}),
 					...(mcpToolBundle && mcpToolBundle.tools.length > 0 ? { extraTools: mcpToolBundle.tools } : {}),
 				},
 				prompt: request.prompt,
