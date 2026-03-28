@@ -25,6 +25,8 @@ const SHIFT_ENTER_SEQUENCE = "\n";
 const RESIZE_DEBOUNCE_MS = 50;
 const INTERRUPT_IDLE_SETTLE_MS = 250;
 const PARKING_ROOT_ID = "kb-persistent-terminal-parking-root";
+const TERMINAL_RECONNECT_BASE_DELAY_MS = 250;
+const TERMINAL_RECONNECT_MAX_DELAY_MS = 5_000;
 
 interface PersistentTerminalAppearance {
 	cursorColor: string;
@@ -126,6 +128,12 @@ class PersistentTerminal {
 	private attachAddon: AttachAddon | null = null;
 	private connectionReady = false;
 	private outputTextDecoder = new TextDecoder();
+	private ioReconnectTimer: number | null = null;
+	private controlReconnectTimer: number | null = null;
+	private ioReconnectAttempt = 0;
+	private controlReconnectAttempt = 0;
+	private ioError: string | null = null;
+	private controlError: string | null = null;
 	private disposed = false;
 
 	constructor(
@@ -193,6 +201,15 @@ class PersistentTerminal {
 		}
 	}
 
+	private syncLastError(): void {
+		const nextLastError = this.ioError ?? this.controlError;
+		if (this.lastError === nextLastError) {
+			return;
+		}
+		this.lastError = nextLastError;
+		this.notifyLastError();
+	}
+
 	private notifySummary(summary: RuntimeTaskSessionSummary): void {
 		this.latestSummary = summary;
 		for (const subscriber of this.subscribers) {
@@ -220,6 +237,115 @@ class PersistentTerminal {
 		this.controlSocket.send(JSON.stringify(message));
 	}
 
+	private clearIoReconnectTimer(): void {
+		if (this.ioReconnectTimer !== null) {
+			window.clearTimeout(this.ioReconnectTimer);
+			this.ioReconnectTimer = null;
+		}
+	}
+
+	private clearControlReconnectTimer(): void {
+		if (this.controlReconnectTimer !== null) {
+			window.clearTimeout(this.controlReconnectTimer);
+			this.controlReconnectTimer = null;
+		}
+	}
+
+	private clearReconnectTimers(): void {
+		this.clearIoReconnectTimer();
+		this.clearControlReconnectTimer();
+	}
+
+	private scheduleIoReconnect(): void {
+		if (this.disposed || this.ioSocket || this.ioReconnectTimer !== null) {
+			return;
+		}
+		const delay = Math.min(
+			TERMINAL_RECONNECT_MAX_DELAY_MS,
+			TERMINAL_RECONNECT_BASE_DELAY_MS * 2 ** this.ioReconnectAttempt,
+		);
+		this.ioReconnectAttempt += 1;
+		this.ioReconnectTimer = window.setTimeout(() => {
+			this.ioReconnectTimer = null;
+			if (this.disposed || this.ioSocket) {
+				return;
+			}
+			this.connectIo();
+		}, delay);
+	}
+
+	private scheduleControlReconnect(): void {
+		if (this.disposed || this.controlSocket || this.controlReconnectTimer !== null) {
+			return;
+		}
+		const delay = Math.min(
+			TERMINAL_RECONNECT_MAX_DELAY_MS,
+			TERMINAL_RECONNECT_BASE_DELAY_MS * 2 ** this.controlReconnectAttempt,
+		);
+		this.controlReconnectAttempt += 1;
+		this.controlReconnectTimer = window.setTimeout(() => {
+			this.controlReconnectTimer = null;
+			if (this.disposed || this.controlSocket) {
+				return;
+			}
+			this.connectControl();
+		}, delay);
+	}
+
+	private setIoError(message: string | null): void {
+		this.ioError = message;
+		this.syncLastError();
+	}
+
+	private setControlError(message: string | null): void {
+		this.controlError = message;
+		this.syncLastError();
+	}
+
+	private cleanupIoConnection(ioSocket: WebSocket | null = this.ioSocket): void {
+		if (ioSocket && this.ioSocket !== ioSocket) {
+			return;
+		}
+		this.ioSocket = null;
+		this.outputTextDecoder = new TextDecoder();
+		if (this.attachAddon) {
+			this.attachAddon.dispose();
+			this.attachAddon = null;
+		}
+		this.connectionReady = false;
+	}
+
+	private cleanupControlConnection(controlSocket: WebSocket | null = this.controlSocket): void {
+		if (controlSocket && this.controlSocket !== controlSocket) {
+			return;
+		}
+		this.controlSocket = null;
+	}
+
+	private disconnectIo(): void {
+		const ioSocket = this.ioSocket;
+		if (ioSocket) {
+			ioSocket.onopen = null;
+			ioSocket.onmessage = null;
+			ioSocket.onerror = null;
+			ioSocket.onclose = null;
+			ioSocket.close();
+		}
+		this.cleanupIoConnection(ioSocket);
+	}
+
+	private disconnectControl(): void {
+		const controlSocket = this.controlSocket;
+		if (controlSocket) {
+			controlSocket.onopen = null;
+			controlSocket.onmessage = null;
+			controlSocket.onerror = null;
+			controlSocket.onclose = null;
+			controlSocket.close();
+		}
+		this.cleanupControlConnection(controlSocket);
+	}
+
 	private requestResize(): void {
 		if (!this.visibleContainer) {
 			return;
@@ -242,6 +368,10 @@ class PersistentTerminal {
 	}
 
 	private connectIo(): void {
+		if (this.disposed || this.ioSocket) {
+			return;
+		}
+		this.clearIoReconnectTimer();
 		const ioSocket = new WebSocket(getTerminalIoWebSocketUrl(this.taskId, this.workspaceId));
 		ioSocket.binaryType = "arraybuffer";
 		ioSocket.addEventListener("message", (event) => {
@@ -259,45 +389,42 @@ class PersistentTerminal {
 			if (this.disposed || this.ioSocket !== ioSocket) {
 				return;
 			}
+			this.ioReconnectAttempt = 0;
 			const attachAddon = new AttachAddon(ioSocket);
 			this.attachAddon = attachAddon;
 			this.terminal.loadAddon(attachAddon);
-			this.lastError = null;
-			this.notifyLastError();
+			this.setIoError(null);
 			this.notifyConnectionReady();
 		};
 		ioSocket.onerror = () => {
 			if (this.disposed || this.ioSocket !== ioSocket) {
 				return;
 			}
-			this.lastError = "Terminal stream failed.";
-			this.notifyLastError();
+			this.setIoError("Terminal stream failed. Retrying...");
 		};
 		ioSocket.onclose = () => {
 			if (this.disposed || this.ioSocket !== ioSocket) {
 				return;
 			}
-			this.ioSocket = null;
-			this.outputTextDecoder = new TextDecoder();
-			if (this.attachAddon) {
-				this.attachAddon.dispose();
-				this.attachAddon = null;
-			}
-			this.connectionReady = false;
-			this.lastError = "Terminal stream closed. Close and reopen to reconnect.";
-			this.notifyLastError();
+			this.cleanupIoConnection(ioSocket);
+			this.setIoError("Terminal stream closed. Reconnecting...");
+			this.scheduleIoReconnect();
 		};
 	}
 
 	private connectControl(): void {
+		if (this.disposed || this.controlSocket) {
+			return;
+		}
+		this.clearControlReconnectTimer();
 		const controlSocket = new WebSocket(getTerminalControlWebSocketUrl(this.taskId, this.workspaceId));
 		this.controlSocket = controlSocket;
 		controlSocket.onopen = () => {
 			if (this.disposed || this.controlSocket !== controlSocket) {
 				return;
 			}
-			this.lastError = null;
-			this.notifyLastError();
+			this.controlReconnectAttempt = 0;
+			this.setControlError(null);
 			if (this.visibleContainer) {
 				this.requestResize();
 			}
@@ -315,8 +442,7 @@ class PersistentTerminal {
 					return;
 				}
 				if (payload.type === "error") {
-					this.lastError = payload.message;
-					this.notifyLastError();
+					this.setControlError(payload.message);
 					this.terminal.writeln(`\r\n[kanban] ${payload.message}\r\n`);
 				}
 			} catch {
@@ -327,16 +453,15 @@ class PersistentTerminal {
 			if (this.disposed || this.controlSocket !== controlSocket) {
 				return;
 			}
-			this.lastError = "Terminal control connection failed.";
-			this.notifyLastError();
+			this.setControlError("Terminal control connection failed. Retrying...");
 		};
 		controlSocket.onclose = () => {
 			if (this.disposed || this.controlSocket !== controlSocket) {
 				return;
 			}
-			this.controlSocket = null;
-			this.lastError = "Terminal control connection closed. Close and reopen to reconnect.";
-			this.notifyLastError();
+			this.cleanupControlConnection(controlSocket);
+			this.setControlError("Terminal control connection closed. Reconnecting...");
+			this.scheduleControlReconnect();
 		};
 	}
 
@@ -467,6 +592,20 @@ class PersistentTerminal {
 		this.terminal.reset();
 	}
 
+	reconnect(): void {
+		if (this.disposed) {
+			return;
+		}
+		this.ioReconnectAttempt = 0;
+		this.controlReconnectAttempt = 0;
+		this.clearReconnectTimers();
+		this.disconnectIo();
+		this.disconnectControl();
+		this.setIoError("Reconnecting terminal stream...");
+		this.setControlError("Reconnecting terminal control connection...");
+		this.ensureConnected();
+	}
+
 	waitForLikelyPrompt(timeoutMs: number): Promise<boolean> {
 		if (timeoutMs <= 0) {
 			return Promise.resolve(false);
@@ -534,15 +673,10 @@ class PersistentTerminal {
 			return;
 		}
 		this.disposed = true;
+		this.clearReconnectTimers();
 		this.unmount(this.visibleContainer);
-		if (this.attachAddon) {
-			this.attachAddon.dispose();
-			this.attachAddon = null;
-		}
-		this.ioSocket?.close();
-		this.controlSocket?.close();
-		this.ioSocket = null;
-		this.controlSocket = null;
+		this.disconnectIo();
+		this.disconnectControl();
 		this.subscribers.clear();
 		this.terminal.dispose();
 		this.hostElement.remove();

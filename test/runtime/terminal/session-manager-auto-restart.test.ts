@@ -14,6 +14,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 }));
 
 import { TerminalSessionManager } from "../../../src/terminal/session-manager";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 
 interface MockSpawnRequest {
 	onExit?: (event: { exitCode: number | null; signal?: number }) => void;
@@ -37,6 +38,7 @@ function createMockPtySession(pid: number, request: MockSpawnRequest) {
 
 describe("TerminalSessionManager auto-restart", () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		prepareAgentLaunchMock.mockReset();
 		ptySessionSpawnMock.mockReset();
 		prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
@@ -112,5 +114,48 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
 		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.getSummary("task-1")?.pid).toBeNull();
+	});
+
+	it("does not relaunch a stale running task before reconciling the missing pid", async () => {
+		vi.spyOn(process, "kill").mockImplementation(() => {
+			const error = new Error("missing process") as NodeJS.ErrnoException;
+			error.code = "ESRCH";
+			throw error;
+		});
+
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": {
+				taskId: "task-1",
+				state: "running",
+				agentId: "codex",
+				workspacePath: "/tmp/task-1",
+				pid: 111,
+				startedAt: Date.now(),
+				updatedAt: Date.now(),
+				lastOutputAt: Date.now(),
+				reviewReason: null,
+				exitCode: null,
+				lastHookAt: null,
+				latestHookActivity: null,
+				warningMessage: null,
+				latestTurnCheckpoint: null,
+				previousTurnCheckpoint: null,
+			} satisfies RuntimeTaskSessionSummary,
+		});
+
+		const summary = await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		expect(summary.state).toBe("awaiting_review");
+		expect(summary.reviewReason).toBe("error");
+		expect(summary.pid).toBeNull();
+		expect(ptySessionSpawnMock).not.toHaveBeenCalled();
 	});
 });
