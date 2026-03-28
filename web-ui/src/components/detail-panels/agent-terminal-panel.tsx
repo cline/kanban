@@ -15,8 +15,10 @@ import { isMacPlatform } from "@/utils/platform";
 interface AgentTerminalSessionControls {
 	clearTerminal: () => void;
 	containerRef: MutableRefObject<HTMLDivElement | null>;
+	canReconnect: boolean;
 	isStopping: boolean;
 	lastError: string | null;
+	reconnectTerminal: () => void;
 	stopTerminal: () => Promise<void>;
 }
 
@@ -174,7 +176,8 @@ function AgentTerminalPanelLayout({
 	onToggleExpand,
 	sessionControls,
 }: AgentTerminalPanelProps & { sessionControls: AgentTerminalSessionControls }): ReactElement {
-	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
+	const { containerRef, canReconnect, lastError, isStopping, clearTerminal, reconnectTerminal, stopTerminal } =
+		sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
 	const statusTagStyle = useMemo(() => getStateTagStyle(summary), [summary]);
@@ -313,8 +316,13 @@ function AgentTerminalPanelLayout({
 				/>
 			</div>
 			{lastError ? (
-				<div className="flex gap-2 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-[13px] text-status-red">
-					{lastError}
+				<div className="flex items-center justify-between gap-3 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-[13px] text-status-red">
+					<span>{lastError}</span>
+					{canReconnect ? (
+						<Button variant="default" size="sm" onClick={reconnectTerminal}>
+							Retry
+						</Button>
+					) : null}
 				</div>
 			) : null}
 			{showMoveToTrash && onMoveToTrash ? (

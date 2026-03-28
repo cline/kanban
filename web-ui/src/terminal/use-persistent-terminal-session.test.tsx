@@ -24,6 +24,7 @@ function createPersistentTerminalMock() {
 		mount: vi.fn(),
 		unmount: vi.fn(),
 		reset: vi.fn(),
+		reconnect: vi.fn(),
 		input: vi.fn(() => true),
 		paste: vi.fn(() => true),
 		waitForLikelyPrompt: vi.fn(async () => true),
@@ -39,6 +40,7 @@ function HookHarness({
 	enabled = true,
 	onSummary,
 	onConnectionReady,
+	onRender,
 }: {
 	taskId: string;
 	workspaceId: string | null;
@@ -46,8 +48,9 @@ function HookHarness({
 	enabled?: boolean;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onConnectionReady?: (taskId: string) => void;
+	onRender?: (result: ReturnType<typeof usePersistentTerminalSession>) => void;
 }) {
-	const { containerRef } = usePersistentTerminalSession({
+	const result = usePersistentTerminalSession({
 		taskId,
 		workspaceId,
 		enabled,
@@ -57,8 +60,9 @@ function HookHarness({
 		terminalBackgroundColor: "terminal-background",
 		cursorColor: "cursor-color",
 	});
+	onRender?.(result);
 
-	return <div ref={containerRef} />;
+	return <div ref={result.containerRef} />;
 }
 
 describe("usePersistentTerminalSession", () => {
@@ -175,5 +179,31 @@ describe("usePersistentTerminalSession", () => {
 
 		expect(terminal.mount).toHaveBeenCalledTimes(1);
 		expect(terminal.unmount).not.toHaveBeenCalled();
+	});
+
+	it("exposes reconnect controls for active workspace terminals", async () => {
+		const terminal = createPersistentTerminalMock();
+		ensurePersistentTerminalMock.mockReturnValue(terminal);
+		const renderedResults: Array<ReturnType<typeof usePersistentTerminalSession>> = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-a"
+					workspaceId="project-1"
+					sessionStartedAt={100}
+					onRender={(result) => {
+						renderedResults.push(result);
+					}}
+				/>,
+			);
+		});
+
+		const latestResult = renderedResults.at(-1);
+		expect(latestResult?.canReconnect).toBe(true);
+		act(() => {
+			latestResult?.reconnectTerminal();
+		});
+		expect(terminal.reconnect).toHaveBeenCalledTimes(1);
 	});
 });

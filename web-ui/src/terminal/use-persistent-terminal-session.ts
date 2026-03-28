@@ -21,8 +21,10 @@ interface UsePersistentTerminalSessionInput {
 export interface UsePersistentTerminalSessionResult {
 	containerRef: MutableRefObject<HTMLDivElement | null>;
 	lastError: string | null;
+	canReconnect: boolean;
 	isStopping: boolean;
 	clearTerminal: () => void;
+	reconnectTerminal: () => void;
 	stopTerminal: () => Promise<void>;
 }
 
@@ -168,11 +170,17 @@ export function usePersistentTerminalSession({
 		terminalRef.current?.clear();
 	}, []);
 
+	const reconnectTerminal = useCallback(() => {
+		terminalRef.current?.reconnect();
+	}, []);
+
 	return {
 		containerRef,
 		lastError,
+		canReconnect: enabled && Boolean(workspaceId),
 		isStopping,
 		clearTerminal,
+		reconnectTerminal,
 		stopTerminal,
 	};
 }
