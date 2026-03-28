@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createCodexWatcherState, parseCodexEventLine } from "../../src/commands/hooks.js";
+import { createCodexWatcherState, parseCodexEventLine } from "../../src/commands/hooks";
 
 function createCodexLogLine(message: Record<string, unknown>): string {
 	return JSON.stringify({

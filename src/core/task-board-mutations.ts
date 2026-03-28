@@ -5,8 +5,8 @@ import type {
 	RuntimeBoardDependency,
 	RuntimeTaskAutoReviewMode,
 	RuntimeTaskImage,
-} from "./api-contract.js";
-import { createUniqueTaskId } from "./task-id.js";
+} from "./api-contract";
+import { createUniqueTaskId } from "./task-id";
 
 export interface RuntimeCreateTaskInput {
 	prompt: string;

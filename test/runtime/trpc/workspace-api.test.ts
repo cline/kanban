@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-	RuntimeTaskSessionSummary,
-	RuntimeWorkspaceChangesResponse,
-} from "../../../src/core/api-contract.js";
+import type { RuntimeTaskSessionSummary, RuntimeWorkspaceChangesResponse } from "../../../src/core/api-contract";
 
 const workspaceTaskWorktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
@@ -30,7 +27,7 @@ vi.mock("../../../src/workspace/get-workspace-changes.js", () => ({
 	getWorkspaceChangesFromRef: workspaceChangesMocks.getWorkspaceChangesFromRef,
 }));
 
-import { createWorkspaceApi } from "../../../src/trpc/workspace-api.js";
+import { createWorkspaceApi } from "../../../src/trpc/workspace-api";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {
@@ -294,5 +291,4 @@ describe("createWorkspaceApi loadChanges", () => {
 			toRef: "cline-3",
 		});
 	});
-
 });

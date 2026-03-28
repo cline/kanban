@@ -15,7 +15,11 @@ export function normalizeTaskIdForWorktreePath(taskId: string): string {
 
 export function getWorkspaceFolderLabelForWorktreePath(repoPath: string): string {
 	const trimmed = repoPath.trim().replace(/[\\/]+$/g, "");
-	const folder = trimmed.split(/[\\/]/g).filter((segment) => segment.length > 0).at(-1) ?? "workspace";
+	const folder =
+		trimmed
+			.split(/[\\/]/g)
+			.filter((segment) => segment.length > 0)
+			.at(-1) ?? "workspace";
 	const cleaned = [...folder]
 		.filter((char) => {
 			const code = char.charCodeAt(0);

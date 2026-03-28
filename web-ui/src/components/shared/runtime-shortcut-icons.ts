@@ -21,16 +21,7 @@ const SHORTCUT_ICON_ALIASES: Record<string, RuntimeShortcutIconId> = {
 
 const DEFAULT_SHORTCUT_ICON_ID: RuntimeShortcutIconId = "console";
 
-const SHORTCUT_PICKER_ICON_IDS = [
-	"play",
-	"console",
-	"bug",
-	"download",
-	"upload",
-	"build",
-	"code",
-	"rocket",
-] as const;
+const SHORTCUT_PICKER_ICON_IDS = ["play", "console", "bug", "download", "upload", "build", "code", "rocket"] as const;
 
 export type RuntimeShortcutIconId = keyof typeof SHORTCUT_ICON_DEFINITIONS;
 export type RuntimeShortcutPickerIconId = (typeof SHORTCUT_PICKER_ICON_IDS)[number];
@@ -39,17 +30,19 @@ export interface RuntimeShortcutIconOption {
 	label: string;
 }
 
-export const RUNTIME_SHORTCUT_ICON_OPTIONS: readonly RuntimeShortcutIconOption[] =
-	SHORTCUT_PICKER_ICON_IDS.map((iconId) => ({
+export const RUNTIME_SHORTCUT_ICON_OPTIONS: readonly RuntimeShortcutIconOption[] = SHORTCUT_PICKER_ICON_IDS.map(
+	(iconId) => ({
 		value: iconId,
 		label: SHORTCUT_ICON_DEFINITIONS[iconId].label,
-	}));
+	}),
+);
 
-const DEFAULT_SHORTCUT_PICKER_ICON_OPTION: RuntimeShortcutIconOption =
-	RUNTIME_SHORTCUT_ICON_OPTIONS.find((entry) => entry.value === DEFAULT_SHORTCUT_ICON_ID) ?? {
-		value: "console",
-		label: "Terminal",
-	};
+const DEFAULT_SHORTCUT_PICKER_ICON_OPTION: RuntimeShortcutIconOption = RUNTIME_SHORTCUT_ICON_OPTIONS.find(
+	(entry) => entry.value === DEFAULT_SHORTCUT_ICON_ID,
+) ?? {
+	value: "console",
+	label: "Terminal",
+};
 
 function resolveShortcutIconId(icon: string | undefined): RuntimeShortcutIconId {
 	const normalized = icon?.trim().toLowerCase();

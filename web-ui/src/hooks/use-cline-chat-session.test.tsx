@@ -11,7 +11,10 @@ interface HookSnapshot {
 	lastMessageHookEvent: string | null;
 	error: string | null;
 	isSending: boolean;
-	sendMessage: (text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }) => Promise<boolean>;
+	sendMessage: (
+		text: string,
+		options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] },
+	) => Promise<boolean>;
 }
 
 function createDeferred<T>() {

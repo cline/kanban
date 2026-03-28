@@ -8,29 +8,29 @@ import type {
 	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
-} from "../core/api-contract.js";
+} from "../core/api-contract";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
 	type AgentOutputTransitionInspectionPredicate,
 	prepareAgentLaunch,
-} from "./agent-session-adapters.js";
+} from "./agent-session-adapters";
 import {
 	hasClaudeWorkspaceTrustPrompt,
 	shouldAutoConfirmClaudeWorkspaceTrust,
 	stopWorkspaceTrustTimers,
 	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
-} from "./claude-workspace-trust.js";
-import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust.js";
-import { PtySession } from "./pty-session.js";
-import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine.js";
+} from "./claude-workspace-trust";
+import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
+import { PtySession } from "./pty-session";
+import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
 import {
 	createTerminalProtocolFilterState,
 	disableOsc11BackgroundQueryIntercept,
 	filterTerminalProtocolOutput,
 	type TerminalProtocolFilterState,
-} from "./terminal-protocol-filter.js";
-import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service.js";
+} from "./terminal-protocol-filter";
+import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
 
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
 const AUTO_RESTART_WINDOW_MS = 5_000;
@@ -619,9 +619,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return cloneSummary(entry.summary);
 		}
 
+		// Preserve agentId so the server can route to the correct agent type
+		// (Cline SDK vs terminal PTY) when a task is restored from trash.
 		const summary = updateSummary(entry, {
 			state: "idle",
-			agentId: null,
 			workspacePath: null,
 			pid: null,
 			startedAt: null,

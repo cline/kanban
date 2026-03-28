@@ -1,10 +1,11 @@
 // Stores the Kanban-side view of native Cline chat state.
 // It combines live in-memory updates with hydration from persisted SDK
 // session artifacts so the rest of the backend can read one repository shape.
-import type { RuntimeTaskImage, RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract.js";
-import type { ClinePersistedTaskSessionSnapshot } from "./cline-session-runtime.js";
-import type { ClineSdkPersistedMessage } from "./sdk-runtime-boundary.js";
+import type { RuntimeTaskImage, RuntimeTaskSessionSummary, RuntimeTaskTurnCheckpoint } from "../core/api-contract";
+import type { ClinePersistedTaskSessionSnapshot } from "./cline-session-runtime";
 import {
+	type ClineTaskMessage,
+	type ClineTaskSessionEntry,
 	cloneMessage,
 	cloneSummary,
 	createDefaultSummary,
@@ -12,10 +13,9 @@ import {
 	createMessageWithMeta,
 	finishToolCallMessage,
 	startToolCallMessage,
-	type ClineTaskMessage,
-	type ClineTaskSessionEntry,
 	updateSummary,
-} from "./cline-session-state.js";
+} from "./cline-session-state";
+import type { ClineSdkPersistedMessage } from "./sdk-runtime-boundary";
 
 export interface ClineMessageRepository {
 	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void;
@@ -183,25 +183,29 @@ function hydratePersistedMessage(
 	taskId: string,
 	message: ClineSdkPersistedMessage,
 ): void {
-	const record =
-		message && typeof message === "object" ? (message as Record<string, unknown>) : null;
 	const persistedMetadata =
-		record?.metadata && typeof record.metadata === "object" && !Array.isArray(record.metadata)
-			? (record.metadata as Record<string, unknown>)
+		message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata)
+			? message.metadata
 			: null;
 	const persistedDisplayRole =
 		typeof persistedMetadata?.displayRole === "string" ? persistedMetadata.displayRole.trim().toLowerCase() : "";
-	const persistedReason =
-		typeof persistedMetadata?.reason === "string" ? persistedMetadata.reason.trim() : null;
-	const persistedMessageKind =
-		typeof persistedMetadata?.kind === "string" ? persistedMetadata.kind.trim() : null;
+	const persistedReason = typeof persistedMetadata?.reason === "string" ? persistedMetadata.reason.trim() : null;
+	const persistedMessageKind = typeof persistedMetadata?.kind === "string" ? persistedMetadata.kind.trim() : null;
 	const hydratedRole =
 		persistedDisplayRole === "system" || persistedDisplayRole === "status"
 			? (persistedDisplayRole as "system" | "status")
 			: message.role;
 
 	if (typeof message.content === "string") {
-		appendPersistedTextMessage(entry, taskId, hydratedRole, message.content, persistedMetadata, persistedReason, persistedMessageKind);
+		appendPersistedTextMessage(
+			entry,
+			taskId,
+			hydratedRole,
+			message.content,
+			persistedMetadata,
+			persistedReason,
+			persistedMessageKind,
+		);
 		return;
 	}
 
@@ -300,9 +304,11 @@ function appendPersistedTextMessage(
 					messageKind: messageKind ?? null,
 					displayRole: typeof metadata?.displayRole === "string" ? metadata.displayRole : null,
 					reason: reason ?? null,
-			  }
+				}
 			: null;
-	entry.messages.push(meta ? createMessageWithMeta(taskId, role, content, meta, images) : createMessage(taskId, role, content, images));
+	entry.messages.push(
+		meta ? createMessageWithMeta(taskId, role, content, meta, images) : createMessage(taskId, role, content, images),
+	);
 }
 
 function appendPersistedReasoningMessage(entry: ClineTaskSessionEntry, taskId: string, content: string): void {
@@ -317,7 +323,7 @@ function appendPersistedReasoningMessage(entry: ClineTaskSessionEntry, taskId: s
 }
 
 function stringifyPersistedToolResult(
-	content: string | Array<{ type: string; [key: string]: unknown }>,
+	content: string | Array<{ type: string; text?: string; path?: string; mediaType?: string }>,
 ): string {
 	if (typeof content === "string") {
 		return content;

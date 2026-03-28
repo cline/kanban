@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { clampTextWithInlineSuffix, splitPromptToTitleDescriptionByWidth, truncateTaskPromptLabel } from "@/utils/task-prompt";
+import {
+	clampTextWithInlineSuffix,
+	splitPromptToTitleDescriptionByWidth,
+	truncateTaskPromptLabel,
+} from "@/utils/task-prompt";
 
 describe("truncateTaskPromptLabel", () => {
 	it("normalizes whitespace and truncates when needed", () => {

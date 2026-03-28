@@ -8,12 +8,12 @@ vi.mock("../../../src/terminal/command-discovery.js", () => ({
 	isBinaryAvailableOnPath: commandDiscoveryMocks.isBinaryAvailableOnPath,
 }));
 
-import type { RuntimeConfigState } from "../../../src/config/runtime-config.js";
+import type { RuntimeConfigState } from "../../../src/config/runtime-config";
 import {
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	resolveAgentCommand,
-} from "../../../src/terminal/agent-registry.js";
+} from "../../../src/terminal/agent-registry";
 
 function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): RuntimeConfigState {
 	return {

@@ -425,15 +425,16 @@ export default function App(): ReactElement {
 		latestTaskChatMessage,
 		taskChatMessagesByTaskId,
 	});
-	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } = useShortcutActions({
-		currentProjectId,
-		selectedShortcutLabel: runtimeProjectConfig?.selectedShortcutLabel,
-		shortcuts,
-		refreshRuntimeProjectConfig,
-		prepareTerminalForShortcut,
-		prepareWaitForTerminalConnectionReady,
-		sendTaskSessionInput,
-	});
+	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
+		useShortcutActions({
+			currentProjectId,
+			selectedShortcutLabel: runtimeProjectConfig?.selectedShortcutLabel,
+			shortcuts,
+			refreshRuntimeProjectConfig,
+			prepareTerminalForShortcut,
+			prepareWaitForTerminalConnectionReady,
+			sendTaskSessionInput,
+		});
 
 	const persistWorkspaceStateAsync = useCallback(
 		async (input: { workspaceId: string; payload: Parameters<typeof saveWorkspaceState>[1] }) =>

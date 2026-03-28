@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import type { BoardData } from "@/types";
 import {
 	disposeAllPersistentTerminalsForWorkspace,
 	disposePersistentTerminal,
 	ensurePersistentTerminal,
 } from "@/terminal/persistent-terminal-manager";
+import type { BoardData } from "@/types";
 
 interface UsePrewarmedAgentTerminalsInput {
 	currentProjectId: string | null;

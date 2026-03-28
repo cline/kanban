@@ -1,1 +1,1 @@
-export * from "./core/api-contract.js";
+export * from "./core/api-contract";

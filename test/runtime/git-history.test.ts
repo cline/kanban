@@ -4,10 +4,10 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { getCommitDiff, getGitLog, getGitRefs } from "../../src/workspace/git-history.js";
-import { discardGitChanges, getGitSyncSummary } from "../../src/workspace/git-sync.js";
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+import { getCommitDiff, getGitLog, getGitRefs } from "../../src/workspace/git-history";
+import { discardGitChanges, getGitSyncSummary } from "../../src/workspace/git-sync";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 function runGit(cwd: string, args: string[]): string {
 	const result = spawnSync("git", args, {

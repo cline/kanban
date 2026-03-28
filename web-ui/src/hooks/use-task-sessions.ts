@@ -5,11 +5,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 
 import { notifyError } from "@/components/app-toaster";
-import {
-	type ClineChatActionResult,
-	useClineChatRuntimeActions,
-} from "@/hooks/use-cline-chat-runtime-actions";
 import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
+import { type ClineChatActionResult, useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -73,10 +70,7 @@ export interface UseTaskSessionsResult {
 	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 }
 
-export function useTaskSessions({
-	currentProjectId,
-	setSessions,
-}: UseTaskSessionsInput): UseTaskSessionsResult {
+export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessionsInput): UseTaskSessionsResult {
 	/*
 		This merge needs to stay monotonic.
 
@@ -285,7 +279,6 @@ export function useTaskSessions({
 		},
 		[currentProjectId],
 	);
-
 
 	return {
 		upsertSession,

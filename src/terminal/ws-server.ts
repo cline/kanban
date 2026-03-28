@@ -4,10 +4,10 @@ import type { Socket } from "node:net";
 import type { RawData, WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 
-import type { RuntimeTerminalWsServerMessage } from "../core/api-contract.js";
-import { parseTerminalWsClientMessage } from "../core/api-validation.js";
-import { getKanbanRuntimeOrigin } from "../core/runtime-endpoint.js";
-import type { TerminalSessionService } from "./terminal-session-service.js";
+import type { RuntimeTerminalWsServerMessage } from "../core/api-contract";
+import { parseTerminalWsClientMessage } from "../core/api-validation";
+import { getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
+import type { TerminalSessionService } from "./terminal-session-service";
 
 interface TerminalWebSocketConnectionContext {
 	taskId: string;

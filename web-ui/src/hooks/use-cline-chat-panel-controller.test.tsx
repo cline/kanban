@@ -3,7 +3,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
-import type { RuntimeTaskHookActivity, RuntimeTaskImage, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type {
+	RuntimeTaskHookActivity,
+	RuntimeTaskImage,
+	RuntimeTaskSessionMode,
+	RuntimeTaskSessionSummary,
+} from "@/runtime/types";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 
 interface HookSnapshot {
@@ -72,7 +77,11 @@ function HookHarness({
 }: {
 	summary: RuntimeTaskSessionSummary | null;
 	taskColumnId?: string;
-	onSendMessage?: (taskId: string, text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }) => Promise<{
+	onSendMessage?: (
+		taskId: string,
+		text: string,
+		options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] },
+	) => Promise<{
 		ok: boolean;
 		message?: string;
 		chatMessage?: {
@@ -94,18 +103,20 @@ function HookHarness({
 			streamType?: string | null;
 		} | null;
 	} | null;
-	incomingMessages?: {
-		id: string;
-		role: "user" | "assistant" | "system" | "tool" | "reasoning" | "status";
-		content: string;
-		createdAt: number;
-		meta?: {
-			toolName?: string | null;
-			hookEventName?: string | null;
-			toolCallId?: string | null;
-			streamType?: string | null;
-		} | null;
-	}[] | null;
+	incomingMessages?:
+		| {
+				id: string;
+				role: "user" | "assistant" | "system" | "tool" | "reasoning" | "status";
+				content: string;
+				createdAt: number;
+				meta?: {
+					toolName?: string | null;
+					hookEventName?: string | null;
+					toolCallId?: string | null;
+					streamType?: string | null;
+				} | null;
+		  }[]
+		| null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const loadMessages = useCallback(async () => [], []);
@@ -325,7 +336,7 @@ describe("useClineChatPanelController", () => {
 			await Promise.resolve();
 		});
 
-	expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(false);
+		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(false);
 	});
 
 	it("hides the thinking indicator when assistant chunks arrive through incomingMessages only", async () => {

@@ -150,7 +150,10 @@ export function GitRefsPanel({
 				<Tooltip
 					content={
 						<div style={{ maxWidth: 260, whiteSpace: "normal", lineHeight: 1.4 }}>
-							<div>Use {closeShortcutLabel} to close, or Escape to close, or click the button in the branch menu to close.</div>
+							<div>
+								Use {closeShortcutLabel} to close, or Escape to close, or click the button in the branch menu to
+								close.
+							</div>
 							<div>Double-click a branch to switch to that branch.</div>
 						</div>
 					}

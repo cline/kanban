@@ -22,6 +22,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
+import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
 	RuntimeClineMcpServerAuthStatus,
@@ -29,13 +30,12 @@ import type {
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
-import { openFileOnHost } from "@/runtime/runtime-config-query";
-import { formatPathForDisplay } from "@/utils/path-display";
 import {
 	type BrowserNotificationPermission,
 	getBrowserNotificationPermission,
 	requestBrowserNotificationPermission,
 } from "@/utils/notification-permission";
+import { formatPathForDisplay } from "@/utils/path-display";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 interface RuntimeSettingsAgentRowModel {
@@ -608,7 +608,9 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.globalConfigPath ? formatPathForDisplay(config.globalConfigPath) : "~/.cline/kanban/config.json"}
+					{config?.globalConfigPath
+						? formatPathForDisplay(config.globalConfigPath)
+						: "~/.cline/kanban/config.json"}
 					{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 
@@ -746,7 +748,9 @@ export function RuntimeSettingsDialog({
 						}
 					}}
 				>
-					{config?.projectConfigPath ? formatPathForDisplay(config.projectConfigPath) : "<project>/.cline/kanban/config.json"}
+					{config?.projectConfigPath
+						? formatPathForDisplay(config.projectConfigPath)
+						: "<project>/.cline/kanban/config.json"}
 					{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
 

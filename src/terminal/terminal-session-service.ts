@@ -1,4 +1,4 @@
-import type { RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import type { RuntimeTaskSessionSummary } from "../core/api-contract";
 
 export interface TerminalSessionListener {
 	onOutput?: (chunk: Buffer) => void;

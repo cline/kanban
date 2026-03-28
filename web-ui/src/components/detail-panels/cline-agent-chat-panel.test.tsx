@@ -144,11 +144,7 @@ describe("ClineAgentChatPanel", () => {
 		await act(async () => {
 			renderPanel(
 				root,
-				<ClineAgentChatPanel
-					taskId="task-1"
-					summary={null}
-					onLoadMessages={async () => messages}
-				/>,
+				<ClineAgentChatPanel taskId="task-1" summary={null} onLoadMessages={async () => messages} />,
 			);
 			await Promise.resolve();
 		});
@@ -181,11 +177,7 @@ describe("ClineAgentChatPanel", () => {
 		await act(async () => {
 			renderPanel(
 				root,
-				<ClineAgentChatPanel
-					taskId="task-1"
-					summary={createSummary("running")}
-					onLoadMessages={async () => []}
-				/>,
+				<ClineAgentChatPanel taskId="task-1" summary={createSummary("running")} onLoadMessages={async () => []} />,
 			);
 			await Promise.resolve();
 		});
@@ -268,11 +260,7 @@ describe("ClineAgentChatPanel", () => {
 		await act(async () => {
 			renderPanel(
 				root,
-				<ClineAgentChatPanel
-					taskId="task-1"
-					summary={null}
-					onLoadMessages={async () => initialMessages}
-				/>,
+				<ClineAgentChatPanel taskId="task-1" summary={null} onLoadMessages={async () => initialMessages} />,
 			);
 			await Promise.resolve();
 		});
@@ -326,11 +314,7 @@ describe("ClineAgentChatPanel", () => {
 		await act(async () => {
 			renderPanel(
 				root,
-				<ClineAgentChatPanel
-					taskId="task-1"
-					summary={null}
-					onLoadMessages={async () => initialMessages}
-				/>,
+				<ClineAgentChatPanel taskId="task-1" summary={null} onLoadMessages={async () => initialMessages} />,
 			);
 			await Promise.resolve();
 		});
@@ -473,11 +457,7 @@ describe("ClineAgentChatPanel", () => {
 		await act(async () => {
 			renderPanel(
 				root,
-				<ClineAgentChatPanel
-					taskId="task-1"
-					summary={null}
-					onLoadMessages={async () => messages}
-				/>,
+				<ClineAgentChatPanel taskId="task-1" summary={null} onLoadMessages={async () => messages} />,
 			);
 			await Promise.resolve();
 		});
@@ -500,11 +480,7 @@ describe("ClineAgentChatPanel", () => {
 		await act(async () => {
 			renderPanel(
 				root,
-				<ClineAgentChatPanel
-					taskId="task-1"
-					summary={null}
-					onLoadMessages={async () => messages}
-				/>,
+				<ClineAgentChatPanel taskId="task-1" summary={null} onLoadMessages={async () => messages} />,
 			);
 			await Promise.resolve();
 		});

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.50]
+
+- Updated Cline SDK from 0.0.21 to 0.0.22, which includes: fixed hook worker process launching to use a more robust internal launch mechanism
+
+## [0.1.49]
+
+- Updated Cline SDK from 0.0.16 to 0.0.21, which includes: organization fetching support, SDK declaration maps for better type resolution, OpenAI Compatible provider migration and cleanup of the legacy provider, agent telemetry events with agent ID and metadata, bash tool and home directory fixes on Windows, and exposed LoggerTelemetryAdapter in the node package
+
 ## [0.1.48]
 
 - Fixed sidebar agent attempting to edit files and write code instead of staying focused on Kanban board management

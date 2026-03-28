@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-
+import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type {
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
@@ -10,31 +10,30 @@ import type {
 	RuntimeWorkspaceChangesMode,
 	RuntimeWorkspaceFileSearchResponse,
 	RuntimeWorkspaceStateResponse,
-} from "../core/api-contract.js";
+} from "../core/api-contract";
 import {
 	parseGitCheckoutRequest,
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
-} from "../core/api-validation.js";
-import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
+} from "../core/api-validation";
+import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
+import type { TerminalSessionManager } from "../terminal/session-manager";
 import {
 	createEmptyWorkspaceChangesResponse,
 	getWorkspaceChanges,
 	getWorkspaceChangesBetweenRefs,
 	getWorkspaceChangesFromRef,
-} from "../workspace/get-workspace-changes.js";
-import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history.js";
-import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync.js";
-import { searchWorkspaceFiles } from "../workspace/search-workspace-files.js";
+} from "../workspace/get-workspace-changes";
+import { getCommitDiff, getGitLog, getGitRefs } from "../workspace/git-history";
+import { discardGitChanges, getGitSyncSummary, runGitCheckoutAction, runGitSyncAction } from "../workspace/git-sync";
+import { searchWorkspaceFiles } from "../workspace/search-workspace-files";
 import {
 	deleteTaskWorktree,
 	ensureTaskWorktreeIfDoesntExist,
 	getTaskWorkspaceInfo,
 	resolveTaskCwd,
-} from "../workspace/task-worktree.js";
-import type { RuntimeTrpcContext } from "./app-router.js";
+} from "../workspace/task-worktree";
+import type { RuntimeTrpcContext } from "./app-router";
 
 export interface CreateWorkspaceApiDependencies {
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;

@@ -14,7 +14,11 @@ import type {
 } from "@/runtime/types";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
-import { appendTerminalHeuristicText, hasInterruptAcknowledgement, hasLikelyShellPrompt } from "@/terminal/terminal-prompt-heuristics";
+import {
+	appendTerminalHeuristicText,
+	hasInterruptAcknowledgement,
+	hasLikelyShellPrompt,
+} from "@/terminal/terminal-prompt-heuristics";
 import { isMacPlatform } from "@/utils/platform";
 
 const SHIFT_ENTER_SEQUENCE = "\n";

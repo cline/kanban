@@ -4,13 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 
-function AppErrorFallback({
-	error,
-	resetError,
-}: {
-	error: unknown;
-	resetError: () => void;
-}): ReactElement {
+function AppErrorFallback({ error, resetError }: { error: unknown; resetError: () => void }): ReactElement {
 	const message = error instanceof Error ? error.message : "Cline hit an unexpected UI error.";
 
 	return (

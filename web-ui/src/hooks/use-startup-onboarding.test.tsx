@@ -2,9 +2,9 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useStartupOnboarding, type UseStartupOnboardingResult } from "@/hooks/use-startup-onboarding";
-import { LocalStorageKey } from "@/storage/local-storage-store";
+import { type UseStartupOnboardingResult, useStartupOnboarding } from "@/hooks/use-startup-onboarding";
 import type { RuntimeConfigResponse } from "@/runtime/types";
+import { LocalStorageKey } from "@/storage/local-storage-store";
 
 const saveRuntimeConfigMock = vi.hoisted(() => vi.fn());
 

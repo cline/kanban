@@ -1,5 +1,5 @@
-import type { RuntimeAgentId } from "../core/api-contract.js";
-import { getTaskWorktreesHomePath } from "../state/workspace-state.js";
+import type { RuntimeAgentId } from "../core/api-contract";
+import { getTaskWorktreesHomePath } from "../state/workspace-state";
 
 export const WORKSPACE_TRUST_CONFIRM_DELAY_MS = 100;
 

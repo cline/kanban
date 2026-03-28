@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listTurbopackNodeModulesSymlinkSkipPaths } from "../../src/workspace/task-worktree-turbopack.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+import { listTurbopackNodeModulesSymlinkSkipPaths } from "../../src/workspace/task-worktree-turbopack";
+import { createTempDir } from "../utilities/temp-dir";
 
 describe("listTurbopackNodeModulesSymlinkSkipPaths", () => {
 	it("skips root node_modules for root Turbopack scripts", async () => {

@@ -2,11 +2,11 @@ import { realpathSync } from "node:fs";
 
 import packageJson from "../../package.json" with { type: "json" };
 
-import type { RuntimeAgentId } from "../core/api-contract.js";
-import { resolveKanbanCommandParts } from "../core/kanban-command.js";
-import { buildShellCommandLine } from "../core/shell.js";
-import { isHomeAgentSessionId } from "../core/home-agent-session.js";
-import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update.js";
+import type { RuntimeAgentId } from "../core/api-contract";
+import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { resolveKanbanCommandParts } from "../core/kanban-command";
+import { buildShellCommandLine } from "../core/shell";
+import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update";
 
 const DEFAULT_COMMAND_PREFIX = "kanban";
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
@@ -124,10 +124,7 @@ export function resolveAppendSystemPromptCommandPrefix(
 	return fallbackCommandPrefix;
 }
 
-export function renderAppendSystemPrompt(
-	commandPrefix: string,
-	options: RenderAppendSystemPromptOptions = {},
-): string {
+export function renderAppendSystemPrompt(commandPrefix: string, options: RenderAppendSystemPromptOptions = {}): string {
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
 	const selectedAgentId = options.agentId ?? null;
 	return `# Kanban Sidebar

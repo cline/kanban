@@ -101,12 +101,8 @@ export function BoardColumn({
 				>
 					<div className="flex items-center gap-2">
 						<ColumnIndicator columnId={column.id} />
-						<span className="font-semibold text-sm">
-							{column.title}
-						</span>
-						<span className="text-text-secondary text-xs">
-							{column.cards.length}
-						</span>
+						<span className="font-semibold text-sm">{column.title}</span>
+						<span className="text-text-secondary text-xs">{column.cards.length}</span>
 					</div>
 					{canStartAllTasks ? (
 						<Button
@@ -208,4 +204,3 @@ export function BoardColumn({
 		</section>
 	);
 }
-

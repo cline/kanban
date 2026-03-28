@@ -4,8 +4,8 @@ import { Toaster } from "sonner";
 import App from "@/App";
 import { AppErrorBoundary } from "@/components/app-error-boundary";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { initializeSentry } from "@/telemetry/sentry";
 import { TelemetryProvider } from "@/telemetry/posthog-provider";
+import { initializeSentry } from "@/telemetry/sentry";
 import "@/styles/globals.css";
 
 initializeSentry();
@@ -29,7 +29,7 @@ ReactDOM.createRoot(root).render(
 							border: "1px solid var(--color-border)",
 							color: "var(--color-text-primary)",
 							fontSize: "13px",
-							whiteSpace: "pre-line"
+							whiteSpace: "pre-line",
 						},
 					}}
 				/>

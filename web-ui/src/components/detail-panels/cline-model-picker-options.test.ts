@@ -27,10 +27,7 @@ describe("buildClineAgentModelPickerOptions", () => {
 
 		const result = buildClineAgentModelPickerOptions("cline", models);
 
-		expect(result.options.map((option) => option.value)).toEqual([
-			...CLINE_RECOMMENDED_MODEL_IDS,
-			"openai/gpt-5.2",
-		]);
+		expect(result.options.map((option) => option.value)).toEqual([...CLINE_RECOMMENDED_MODEL_IDS, "openai/gpt-5.2"]);
 		expect(result.recommendedModelIds).toEqual([...CLINE_RECOMMENDED_MODEL_IDS]);
 		expect(result.shouldPinSelectedModelToTop).toBe(false);
 	});

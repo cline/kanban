@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildKanbanCommandParts, resolveKanbanCommandParts } from "../../src/core/kanban-command.js";
+import { buildKanbanCommandParts, resolveKanbanCommandParts } from "../../src/core/kanban-command";
 
 describe("resolveKanbanCommandParts", () => {
 	it("resolves node plus script entrypoint", () => {

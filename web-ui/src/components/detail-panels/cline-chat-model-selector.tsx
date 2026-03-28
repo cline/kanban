@@ -8,10 +8,10 @@ import {
 	CLINE_REASONING_EFFORT_OPTIONS,
 	formatClineReasoningEffortLabel,
 } from "@/components/detail-panels/cline-model-picker-options";
+import type { SearchSelectOption } from "@/components/search-select-dropdown";
 import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import type { SearchSelectOption } from "@/components/search-select-dropdown";
 import type { RuntimeClineReasoningEffort } from "@/runtime/types";
 
 const MATCHED_TEXT_STYLE = {
@@ -240,7 +240,9 @@ export function ClineChatModelSelector({
 				}}
 				className={cn(
 					"flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px]",
-					isActive ? "bg-surface-3 text-text-primary" : "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
+					isActive
+						? "bg-surface-3 text-text-primary"
+						: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
 				)}
 				onMouseEnter={() => setActiveOptionIndex(optionIndex)}
 				onClick={() => {
@@ -283,9 +285,16 @@ export function ClineChatModelSelector({
 					collisionPadding={12}
 					sideOffset={4}
 				>
-					<div className={cn("grid", selectedModelSupportsReasoningEffort ? "grid-cols-[minmax(0,1fr)_180px]" : "grid-cols-1")}>
+					<div
+						className={cn(
+							"grid",
+							selectedModelSupportsReasoningEffort ? "grid-cols-[minmax(0,1fr)_180px]" : "grid-cols-1",
+						)}
+					>
 						<div className={cn("p-2", selectedModelSupportsReasoningEffort && "border-r border-border")}>
-							<p className="px-1 pb-1 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">Model ID</p>
+							<p className="px-1 pb-1 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
+								Model ID
+							</p>
 							<input
 								ref={inputRef}
 								className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
@@ -315,7 +324,9 @@ export function ClineChatModelSelector({
 												</div>
 											</>
 										) : null}
-										{showRecommendedSection && otherItems.length > 0 ? otherItems.map((option) => renderModelOptionButton(option)) : null}
+										{showRecommendedSection && otherItems.length > 0
+											? otherItems.map((option) => renderModelOptionButton(option))
+											: null}
 									</>
 								)}
 							</div>
@@ -343,7 +354,11 @@ export function ClineChatModelSelector({
 													handleOpenChange(false);
 												}}
 											>
-												<span className="flex-1">{formatClineReasoningEffortLabel(option.value as RuntimeClineReasoningEffort | "")}</span>
+												<span className="flex-1">
+													{formatClineReasoningEffortLabel(
+														option.value as RuntimeClineReasoningEffort | "",
+													)}
+												</span>
 												{isSelected ? <Check size={14} className="shrink-0 text-text-secondary" /> : null}
 											</button>
 										);

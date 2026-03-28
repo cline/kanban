@@ -5,9 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TopBar } from "@/components/top-bar";
 
 function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement | null {
-	return (
-		Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === text) ?? null
-	) as HTMLButtonElement | null;
+	return (Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === text) ??
+		null) as HTMLButtonElement | null;
 }
 
 function setInputValue(input: HTMLInputElement, value: string): void {

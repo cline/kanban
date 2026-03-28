@@ -7,9 +7,7 @@ const appVersion = typeof packageJson.version === "string" ? packageJson.version
 
 let initialized = false;
 const nodeSentryEnvironment =
-	process.env.SENTRY_NODE_ENVIRONMENT?.trim() ||
-	process.env.NODE_ENV?.trim() ||
-	"development";
+	process.env.SENTRY_NODE_ENVIRONMENT?.trim() || process.env.NODE_ENV?.trim() || "development";
 
 if (nodeSentryDsn) {
 	Sentry.init({

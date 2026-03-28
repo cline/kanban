@@ -15,10 +15,10 @@ import {
 	runtimeBoardDataSchema,
 	runtimeTaskSessionSummarySchema,
 	runtimeWorkspaceStateSaveRequestSchema,
-} from "../core/api-contract.js";
-import { createGitProcessEnv } from "../core/git-process-env.js";
-import { updateTaskDependencies } from "../core/task-board-mutations.js";
-import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
+} from "../core/api-contract";
+import { createGitProcessEnv } from "../core/git-process-env";
+import { updateTaskDependencies } from "../core/task-board-mutations";
+import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 
 const RUNTIME_HOME_PARENT_DIR = ".cline";
 const RUNTIME_HOME_DIR = "kanban";

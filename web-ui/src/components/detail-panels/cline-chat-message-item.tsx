@@ -1,18 +1,17 @@
-import { type ReactElement, useMemo, useState } from "react";
+import { normalizeUserInput } from "@clinebot/shared";
 import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
-
-import { ClineMarkdownContent } from "@/components/detail-panels/cline-markdown-content";
-import { TaskImageStrip } from "@/components/task-image-strip";
+import { type ReactElement, useMemo, useState } from "react";
 import {
 	formatToolInputForDisplay,
 	getToolSummary,
 	parseToolMessageContent,
 	parseToolOutput,
 } from "@/components/detail-panels/cline-chat-message-utils";
+import { ClineMarkdownContent } from "@/components/detail-panels/cline-markdown-content";
+import { TaskImageStrip } from "@/components/task-image-strip";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
-import { normalizeUserInput } from '@clinebot/shared'
 
 function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
 	const parsed = useMemo(() => parseToolMessageContent(message.content), [message.content]);
@@ -22,7 +21,10 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 
 	const summary = useMemo(() => getToolSummary(parsed.toolName, parsed.input), [parsed.toolName, parsed.input]);
 	const toolOutput = useMemo(() => (parsed.output ? parseToolOutput(parsed.output) : null), [parsed.output]);
-	const fullInput = useMemo(() => formatToolInputForDisplay(parsed.toolName, parsed.input), [parsed.toolName, parsed.input]);
+	const fullInput = useMemo(
+		() => formatToolInputForDisplay(parsed.toolName, parsed.input),
+		[parsed.toolName, parsed.input],
+	);
 	const hasExpandableContent = Boolean(parsed.output || parsed.error || fullInput);
 
 	return (
@@ -40,21 +42,31 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 				) : hasError ? (
 					<XCircle size={14} className="shrink-0 text-status-red" />
 				) : null}
-				<span className={cn(
-					"shrink-0 font-semibold group-hover:text-[#C9D1D9]",
-					expanded ? "text-[#C9D1D9]" : "text-text-secondary",
-				)}>{parsed.toolName}</span>
+				<span
+					className={cn(
+						"shrink-0 font-semibold group-hover:text-[#C9D1D9]",
+						expanded ? "text-[#C9D1D9]" : "text-text-secondary",
+					)}
+				>
+					{parsed.toolName}
+				</span>
 				{summary ? (
-					<span className={cn(
-						"min-w-0 truncate group-hover:text-text-secondary",
-						expanded ? "text-text-secondary" : "text-text-tertiary",
-					)}>{summary}</span>
+					<span
+						className={cn(
+							"min-w-0 truncate group-hover:text-text-secondary",
+							expanded ? "text-text-secondary" : "text-text-tertiary",
+						)}
+					>
+						{summary}
+					</span>
 				) : null}
 				{hasExpandableContent ? (
-					<span className={cn(
-						"shrink-0 group-hover:text-text-secondary",
-						expanded ? "text-text-secondary" : "text-text-tertiary",
-					)}>
+					<span
+						className={cn(
+							"shrink-0 group-hover:text-text-secondary",
+							expanded ? "text-text-secondary" : "text-text-tertiary",
+						)}
+					>
 						{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
 					</span>
 				) : null}
@@ -73,37 +85,33 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 					) : null}
 
 					{/* Parsed ToolOperationResult output */}
-					{toolOutput
-						? toolOutput.results.map((result, i) => (
-								<div key={i}>
-									{toolOutput.results.length > 1 ? (
-										<div className="mb-0.5 truncate text-xs text-text-tertiary">
-											{result.query}
-										</div>
-									) : null}
-									{result.error ? (
-										<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
-											{result.error}
-										</pre>
-									) : null}
-									{result.content ? (
-										<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
-											{result.content}
-										</pre>
-									) : null}
-								</div>
-							))
-						: parsed.output
-							? /* Fallback for non-ToolOperationResult output (skills, ask_question, MCP tools) */
-								(
-									<div>
-										<div className="mb-0.5 text-xs text-text-tertiary">Output</div>
-										<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
-											{parsed.output}
-										</pre>
-									</div>
-								)
-							: null}
+					{toolOutput ? (
+						toolOutput.results.map((result, i) => (
+							<div key={i}>
+								{toolOutput.results.length > 1 ? (
+									<div className="mb-0.5 truncate text-xs text-text-tertiary">{result.query}</div>
+								) : null}
+								{result.error ? (
+									<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
+										{result.error}
+									</pre>
+								) : null}
+								{result.content ? (
+									<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+										{result.content}
+									</pre>
+								) : null}
+							</div>
+						))
+					) : parsed.output ? (
+						/* Fallback for non-ToolOperationResult output (skills, ask_question, MCP tools) */
+						<div>
+							<div className="mb-0.5 text-xs text-text-tertiary">Output</div>
+							<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+								{parsed.output}
+							</pre>
+						</div>
+					) : null}
 
 					{/* Tool-level error (SDK crash/timeout, separate from per-result errors) */}
 					{parsed.error ? (
@@ -145,7 +153,9 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 		return (
 			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm text-text-primary">
 				{hasText ? <div className="whitespace-pre-wrap">{normalizeUserInput(message.content)}</div> : null}
-				{hasImages ? <TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} /> : null}
+				{hasImages ? (
+					<TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} />
+				) : null}
 			</div>
 		);
 	}

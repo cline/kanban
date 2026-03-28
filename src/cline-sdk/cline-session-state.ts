@@ -1,7 +1,7 @@
 // Pure state helpers for native Cline sessions.
 // This module owns the in-memory summary and message shape plus the low-level
 // mutations shared by the event adapter and the message repository.
-import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
 
 const CLINE_USER_ATTENTION_TOOL_NAMES = new Set(["ask_followup_question", "plan_mode_respond"]);
 const WINDOWS_INVALID_SESSION_ID_CHARS = /[<>:"/\\|?*]/g;
@@ -86,7 +86,12 @@ export function updateSummary(
 	return cloneSummary(entry.summary);
 }
 
-export function createMessage(taskId: string, role: ClineTaskMessage["role"], content: string, images?: RuntimeTaskImage[]): ClineTaskMessage {
+export function createMessage(
+	taskId: string,
+	role: ClineTaskMessage["role"],
+	content: string,
+	images?: RuntimeTaskImage[],
+): ClineTaskMessage {
 	return {
 		id: `${taskId}-${now()}-${Math.random().toString(36).slice(2, 8)}`,
 		role,
@@ -274,9 +279,7 @@ export function finishToolCallMessage(
 		durationMs: number | null;
 	},
 ): ClineTaskMessage {
-	const existingMessageId = input.toolCallId
-		? entry.toolMessageIdByToolCallId.get(input.toolCallId) ?? null
-		: null;
+	const existingMessageId = input.toolCallId ? (entry.toolMessageIdByToolCallId.get(input.toolCallId) ?? null) : null;
 	const toolInput = input.toolCallId ? entry.toolInputByToolCallId.get(input.toolCallId) : undefined;
 	const content = buildToolCallContent({
 		toolName: input.toolName,

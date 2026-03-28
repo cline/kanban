@@ -13,7 +13,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
-import { TerminalSessionManager } from "../../../src/terminal/session-manager.js";
+import { TerminalSessionManager } from "../../../src/terminal/session-manager";
 
 interface MockSpawnRequest {
 	onExit?: (event: { exitCode: number | null; signal?: number }) => void;

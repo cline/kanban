@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useHotkeys } from "react-hotkeys-hook";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 

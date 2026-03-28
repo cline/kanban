@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	hasCodexWorkspaceTrustPrompt,
 	shouldAutoConfirmCodexWorkspaceTrust,
-} from "../../../src/terminal/codex-workspace-trust.js";
+} from "../../../src/terminal/codex-workspace-trust";
 
 const originalHome = process.env.HOME;
 let tempHome: string | null = null;

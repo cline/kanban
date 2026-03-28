@@ -6,7 +6,7 @@ import {
 	getOpenCodeAuthPathCandidates,
 	getOpenCodeConfigPathCandidates,
 	getOpenCodeModelStatePathCandidates,
-} from "../../../src/terminal/opencode-paths.js";
+} from "../../../src/terminal/opencode-paths";
 
 describe("opencode path candidates", () => {
 	it("prioritizes explicit and env config paths before platform defaults", () => {
@@ -33,9 +33,7 @@ describe("opencode path candidates", () => {
 		} as NodeJS.ProcessEnv;
 
 		const modelStatePaths = getOpenCodeModelStatePathCandidates({ env, homePath: "/home/dev" });
-		expect(modelStatePaths).toContain(
-			join("C:\\Users\\dev\\AppData\\Local", "opencode", "state", "model.json"),
-		);
+		expect(modelStatePaths).toContain(join("C:\\Users\\dev\\AppData\\Local", "opencode", "state", "model.json"));
 		expect(modelStatePaths).toContain(join("/home/dev", ".local", "state", "opencode", "model.json"));
 
 		const authPaths = getOpenCodeAuthPathCandidates({ env, homePath: "/home/dev" });

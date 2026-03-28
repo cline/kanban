@@ -1,21 +1,17 @@
-#!/usr/bin/env node
-
-import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { Command, Option } from "commander";
 import packageJson from "../package.json" with { type: "json" };
-
-import { registerHooksCommand } from "./commands/hooks.js";
-import { registerTaskCommand } from "./commands/task.js";
-import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config.js";
-import type { RuntimeCommandRunResponse } from "./core/api-contract.js";
-import { createGitProcessEnv } from "./core/git-process-env.js";
+import { registerHooksCommand } from "./commands/hooks";
+import { registerTaskCommand } from "./commands/task";
+import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
+import type { RuntimeCommandRunResponse } from "./core/api-contract";
+import { createGitProcessEnv } from "./core/git-process-env";
 import {
 	installGracefulShutdownHandlers,
 	shouldSuppressImmediateDuplicateShutdownSignals,
-} from "./core/graceful-shutdown.js";
+} from "./core/graceful-shutdown";
 import {
 	buildKanbanRuntimeUrl,
 	DEFAULT_KANBAN_RUNTIME_PORT,
@@ -25,10 +21,11 @@ import {
 	parseRuntimePort,
 	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
-} from "./core/runtime-endpoint.js";
-import { terminateProcessForTimeout } from "./server/process-termination.js";
-import type { RuntimeStateHub } from "./server/runtime-state-hub.js";
-import type { TerminalSessionManager } from "./terminal/session-manager.js";
+} from "./core/runtime-endpoint";
+import { terminateProcessForTimeout } from "./server/process-termination";
+import type { RuntimeStateHub } from "./server/runtime-state-hub";
+import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node";
+import type { TerminalSessionManager } from "./terminal/session-manager";
 
 interface CliOptions {
 	noOpen: boolean;

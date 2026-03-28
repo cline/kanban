@@ -97,7 +97,7 @@ export default defineConfig({
 			"/api": {
 				target: "http://127.0.0.1:3484",
 				changeOrigin: true,
-				ws: true
+				ws: true,
 			},
 		},
 	},

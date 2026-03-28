@@ -9,7 +9,7 @@ import {
 	parseRuntimePort,
 	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
-} from "../../src/core/runtime-endpoint.js";
+} from "../../src/core/runtime-endpoint";
 
 const originalRuntimePort = getKanbanRuntimePort();
 const originalRuntimeHost = getKanbanRuntimeHost();

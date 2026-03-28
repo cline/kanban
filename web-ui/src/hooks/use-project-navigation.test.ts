@@ -33,7 +33,9 @@ describe("isDirectoryPickerUnavailableErrorMessage", () => {
 			),
 		).toBe(true);
 		expect(
-			isDirectoryPickerUnavailableErrorMessage('Could not open directory picker. Command "osascript" is not available.'),
+			isDirectoryPickerUnavailableErrorMessage(
+				'Could not open directory picker. Command "osascript" is not available.',
+			),
 		).toBe(true);
 	});
 

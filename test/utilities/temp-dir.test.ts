@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { createTempDir } from "./temp-dir.js";
+import { createTempDir } from "./temp-dir";
 
 describe("createTempDir", () => {
 	it("creates and cleans up a temporary directory", () => {

@@ -194,7 +194,7 @@ function ColumnSection({
 												isCommitLoading={commitTaskLoadingById?.[card.id] ?? false}
 												isOpenPrLoading={openPrTaskLoadingById?.[card.id] ?? false}
 												isMoveToTrashLoading={moveToTrashLoadingById?.[card.id] ?? false}
-											workspacePath={workspacePath}
+												workspacePath={workspacePath}
 												onClick={() => {
 													if (column.id === "backlog") {
 														onEditTask?.(card);
@@ -210,9 +210,7 @@ function ColumnSection({
 								})()}
 								{provided.placeholder}
 								{column.cards.length === 0 ? (
-									<div className="flex items-center justify-center py-4 text-text-tertiary text-xs">
-										Empty
-									</div>
+									<div className="flex items-center justify-center py-4 text-text-tertiary text-xs">Empty</div>
 								) : null}
 							</div>
 						);

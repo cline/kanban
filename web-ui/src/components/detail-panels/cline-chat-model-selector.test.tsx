@@ -107,7 +107,9 @@ describe("ClineChatModelSelector", () => {
 			await Promise.resolve();
 		});
 
-		const highButton = Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "High");
+		const highButton = Array.from(document.querySelectorAll("button")).find(
+			(button) => button.textContent?.trim() === "High",
+		);
 		expect(highButton).toBeInstanceOf(HTMLButtonElement);
 		if (!(highButton instanceof HTMLButtonElement)) {
 			throw new Error("Expected reasoning option button");

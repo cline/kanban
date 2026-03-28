@@ -214,7 +214,9 @@ export function useGitActions({
 		return next;
 	}, [taskGitActionLoadingByTaskId]);
 
-	const shouldUseClineChatForTaskGitActions = isNativeClineAgentSelected(runtimeProjectConfig?.selectedAgentId ?? null);
+	const shouldUseClineChatForTaskGitActions = isNativeClineAgentSelected(
+		runtimeProjectConfig?.selectedAgentId ?? null,
+	);
 
 	const runTaskGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {

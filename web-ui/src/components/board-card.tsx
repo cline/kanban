@@ -1,10 +1,10 @@
 import { Draggable } from "@hello-pangea/dnd";
+import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -55,7 +55,9 @@ function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: strin
 
 function extractToolInputSummaryFromActivityText(activityText: string, toolName: string): string | null {
 	const escapedToolName = toolName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const match = activityText.match(new RegExp(`^(?:Using|Completed|Failed|Calling)\\s+${escapedToolName}(?::\\s*(.+))?$`));
+	const match = activityText.match(
+		new RegExp(`^(?:Using|Completed|Failed|Calling)\\s+${escapedToolName}(?::\\s*(.+))?$`),
+	);
 	if (!match) {
 		return null;
 	}
@@ -70,7 +72,9 @@ function extractToolInputSummaryFromActivityText(activityText: string, toolName:
 	return rawSummary;
 }
 
-function parseToolCallFromActivityText(activityText: string): { toolName: string; toolInputSummary: string | null } | null {
+function parseToolCallFromActivityText(
+	activityText: string,
+): { toolName: string; toolInputSummary: string | null } | null {
 	const match = activityText.match(/^(?:Using|Completed|Failed|Calling)\s+([^:()]+?)(?::\s*(.+))?$/);
 	if (!match?.[1]) {
 		return null;
@@ -102,7 +106,10 @@ function resolveToolCallLabel(
 	toolInputSummary: string | null,
 ): string | null {
 	if (toolName) {
-		return formatClineToolCallLabel(toolName, toolInputSummary ?? extractToolInputSummaryFromActivityText(activityText ?? "", toolName));
+		return formatClineToolCallLabel(
+			toolName,
+			toolInputSummary ?? extractToolInputSummaryFromActivityText(activityText ?? "", toolName),
+		);
 	}
 	if (!activityText) {
 		return null;
@@ -139,7 +146,8 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		};
 	}
 	if (activityText) {
-		let dotColor: string = summary.state === "failed" ? SESSION_ACTIVITY_COLOR.error : SESSION_ACTIVITY_COLOR.thinking;
+		let dotColor: string =
+			summary.state === "failed" ? SESSION_ACTIVITY_COLOR.error : SESSION_ACTIVITY_COLOR.thinking;
 		let text = activityText;
 		const toolCallLabel = resolveToolCallLabel(activityText, toolName, toolInputSummary);
 		if (toolCallLabel) {
@@ -626,7 +634,10 @@ export function BoardCard({
 									<div ref={sessionPreviewContainerRef} className="min-w-0 flex-1">
 										<p
 											ref={sessionPreviewRef}
-											className={cn("m-0 font-mono", !isSessionPreviewMeasured && !isSessionPreviewExpanded && "line-clamp-6")}
+											className={cn(
+												"m-0 font-mono",
+												!isSessionPreviewMeasured && !isSessionPreviewExpanded && "line-clamp-6",
+											)}
 											style={{
 												fontSize: 12,
 												whiteSpace: "normal",
@@ -634,9 +645,9 @@ export function BoardCard({
 											}}
 										>
 											{isSessionPreviewExpanded || !sessionPreviewDisplay.isTruncated
-											? sessionActivity.text
-											: sessionPreviewDisplay.text}
-										{sessionPreviewDisplay.isTruncated ? (
+												? sessionActivity.text
+												: sessionPreviewDisplay.text}
+											{sessionPreviewDisplay.isTruncated ? (
 												isSessionPreviewExpanded ? (
 													<>
 														{" "}

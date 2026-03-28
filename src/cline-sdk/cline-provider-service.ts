@@ -1,6 +1,8 @@
 // Kanban-facing facade over the SDK-backed provider store.
 // It resolves provider settings, model catalogs, OAuth flows, and launch
 // config without leaking SDK details into runtime-api.ts or the UI.
+
+import { z } from "zod";
 import type {
 	RuntimeClineAccountProfileResponse,
 	RuntimeClineKanbanAccessResponse,
@@ -12,24 +14,24 @@ import type {
 	RuntimeClineProviderSettings,
 	RuntimeClineProviderSettingsSaveResponse,
 	RuntimeClineReasoningEffort,
-} from "../core/api-contract.js";
-import { openInBrowser } from "../server/browser.js";
-import { z } from "zod";
+} from "../core/api-contract";
+import { openInBrowser } from "../server/browser";
 import {
 	fetchSdkClineAccountProfile,
 	fetchSdkClineUserRemoteConfig,
-	type ManagedClineOauthProviderId,
-	type SdkProviderSettings,
+	fetchSdkOrgData,
 	getLastUsedSdkProviderSettings,
 	getSdkProviderSettings,
 	listSdkProviderCatalog,
 	listSdkProviderModels,
 	loginManagedOauthProvider,
+	type ManagedClineOauthProviderId,
 	refreshManagedOauthCredentials,
+	type SdkProviderModelRecord,
+	type SdkProviderSettings,
 	saveSdkProviderSettings,
-	fetchSdkOrgData,
 	supportsSdkModelThinking,
-} from "./sdk-provider-boundary.js";
+} from "./sdk-provider-boundary";
 
 const WORKOS_TOKEN_PREFIX = "workos:";
 const DEFAULT_CLINE_API_BASE_URL = "https://api.cline.bot";
@@ -43,6 +45,7 @@ const CLINE_REMOTE_CONFIG_SCHEMA = z.object({
 });
 
 type ClineRemoteConfig = z.infer<typeof CLINE_REMOTE_CONFIG_SCHEMA>;
+type SdkReasoningEffort = NonNullable<NonNullable<SdkProviderSettings["reasoning"]>["effort"]>;
 
 export interface ResolvedClineLaunchConfig {
 	providerId: string;
@@ -130,6 +133,13 @@ function readEnvApiKey(envKey: string): string | null {
 	return apiKey.length > 0 ? apiKey : null;
 }
 
+function toRuntimeReasoningEffort(effort: SdkReasoningEffort | null | undefined): RuntimeClineReasoningEffort | null {
+	if (!effort || effort === "none") {
+		return null;
+	}
+	return effort;
+}
+
 function resolveManagedProviderEnvApiKey(providerId: ManagedClineOauthProviderId): string | null {
 	for (const envKey of MANAGED_PROVIDER_ENV_KEYS[providerId]) {
 		const apiKey = readEnvApiKey(envKey);
@@ -166,10 +176,7 @@ function hasOauthRefreshToken(settings: SdkProviderSettings | null): boolean {
 	return (settings?.auth?.refreshToken?.trim() ?? "").length > 0;
 }
 
-function toRuntimeProviderModel(
-	modelId: string,
-	modelInfo: { name?: string; capabilities?: string[]; thinkingConfig?: unknown },
-): RuntimeClineProviderModel {
+function toRuntimeProviderModel(modelId: string, modelInfo: SdkProviderModelRecord[string]): RuntimeClineProviderModel {
 	const capabilities = new Set(modelInfo.capabilities ?? []);
 	const supportsVision = capabilities.has("images");
 	const supportsAttachments = capabilities.has("files") || supportsVision;
@@ -210,7 +217,7 @@ function toProviderSettingsSummary(settings: SdkProviderSettings | null): Runtim
 		providerId,
 		modelId: settings.model?.trim() || null,
 		baseUrl: settings.baseUrl?.trim() || null,
-		reasoningEffort: settings.reasoning?.effort ?? null,
+		reasoningEffort: toRuntimeReasoningEffort(settings.reasoning?.effort),
 		apiKeyConfigured: Boolean(resolveVisibleApiKey(settings)),
 		oauthProvider,
 		oauthAccessTokenConfigured: hasOauthAccessToken(settings),
@@ -377,7 +384,7 @@ export function createClineProviderService() {
 				const selectedSettings = getSelectedProviderSettings();
 				if (!selectedSettings) {
 					return { enabled: true };
-				}	
+				}
 
 				const rawAccessToken = selectedSettings.auth?.accessToken?.trim() ?? "";
 				if (!rawAccessToken) {
@@ -395,11 +402,11 @@ export function createClineProviderService() {
 				const orgData = await fetchSdkOrgData({
 					apiBaseUrl: selectedSettings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
 					accessToken: ensureWorkosPrefix(rawAccessToken),
-					organizatinId: remoteConfigResponse.organizationId
+					organizatinId: remoteConfigResponse.organizationId,
 				});
 
 				const parsedRemoteConfig = parseClineRemoteConfigValue(remoteConfigResponse.value);
-				const isEnterpriseCustomer = !!orgData?.externalOrganizationId
+				const isEnterpriseCustomer = !!orgData?.externalOrganizationId;
 				return {
 					enabled: !parsedRemoteConfig || !isEnterpriseCustomer || parsedRemoteConfig.kanbanEnabled === true,
 				};
@@ -439,7 +446,7 @@ export function createClineProviderService() {
 				modelId: resolvedSettings.model?.trim() || null,
 				apiKey,
 				baseUrl: resolvedSettings.baseUrl?.trim() || null,
-				reasoningEffort: resolvedSettings.reasoning?.effort ?? null,
+				reasoningEffort: toRuntimeReasoningEffort(resolvedSettings.reasoning?.effort),
 			};
 		},
 
@@ -490,8 +497,8 @@ export function createClineProviderService() {
 					? await listSdkProviderModels(normalizedProviderId)
 							.then((sdkModels) =>
 								Object.entries(sdkModels)
-							.map(([modelId, modelInfo]) => toRuntimeProviderModel(modelId, modelInfo))
-							.sort((left, right) => left.name.localeCompare(right.name)),
+									.map(([modelId, modelInfo]) => toRuntimeProviderModel(modelId, modelInfo))
+									.sort((left, right) => left.name.localeCompare(right.name)),
 							)
 							.catch(() => [])
 					: [];

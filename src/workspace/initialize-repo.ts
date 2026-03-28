@@ -1,4 +1,4 @@
-import { runGit } from "./git-utils.js";
+import { runGit } from "./git-utils";
 
 interface InitializeRepoResult {
 	ok: boolean;
@@ -14,7 +14,7 @@ export async function initializeGitRepository(projectPath: string): Promise<Init
 		};
 	}
 
-    return ensureInitialCommit(projectPath)
+	return ensureInitialCommit(projectPath);
 }
 
 export async function ensureInitialCommit(projectPath: string): Promise<InitializeRepoResult> {

@@ -5,8 +5,8 @@ import type {
 	RuntimeWorkspaceChangesResponse,
 	RuntimeWorkspaceFileChange,
 	RuntimeWorkspaceFileStatus,
-} from "../core/api-contract.js";
-import { getGitStdout } from "./git-utils.js";
+} from "../core/api-contract";
+import { getGitStdout } from "./git-utils";
 
 const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 128;
 

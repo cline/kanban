@@ -62,7 +62,9 @@ export function getOpenCodeConfigPathCandidates(input: OpenCodePathCandidatesInp
 	return uniquePaths(candidates);
 }
 
-export function getOpenCodeModelStatePathCandidates(input: Omit<OpenCodePathCandidatesInput, "explicitPath"> = {}): string[] {
+export function getOpenCodeModelStatePathCandidates(
+	input: Omit<OpenCodePathCandidatesInput, "explicitPath"> = {},
+): string[] {
 	const env = input.env ?? process.env;
 	const homePath = input.homePath ?? homedir();
 	const candidates: string[] = [];

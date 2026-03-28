@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeConfigState } from "../../../src/config/runtime-config.js";
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
+import type { RuntimeConfigState } from "../../../src/config/runtime-config";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 
 const agentRegistryMocks = vi.hoisted(() => ({
 	resolveAgentCommand: vi.fn(),
@@ -96,7 +96,7 @@ vi.mock("../../../src/server/browser.js", () => ({
 	openInBrowser: browserMocks.openInBrowser,
 }));
 
-import { createRuntimeApi } from "../../../src/trpc/runtime-api.js";
+import { createRuntimeApi } from "../../../src/trpc/runtime-api";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {
@@ -964,7 +964,12 @@ describe("createRuntimeApi startTaskSession", () => {
 			{ taskId: "task-1", text: "hello" },
 		);
 		expect(sendResponse.ok).toBe(true);
-		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenCalledWith("task-1", "hello", undefined, undefined);
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenCalledWith(
+			"task-1",
+			"hello",
+			undefined,
+			undefined,
+		);
 		expect(sendResponse.message).toEqual(latestMessage);
 
 		const messagesResponse = await api.getTaskChatMessages(
@@ -1120,8 +1125,20 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		expect(response.ok).toBe(true);
 		expect(clineTaskSessionService.rebindPersistedTaskSession).toHaveBeenCalledWith("task-1");
-		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "continue", undefined, undefined);
-		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "continue", undefined, undefined);
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(
+			1,
+			"task-1",
+			"continue",
+			undefined,
+			undefined,
+		);
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(
+			2,
+			"task-1",
+			"continue",
+			undefined,
+			undefined,
+		);
 		expect(response.message).toEqual(latestMessage);
 	});
 
@@ -1374,8 +1391,8 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		clineAccountMocks.fetchOrganization.mockResolvedValueOnce({
-			externalOrganizationId: 'test'
-		})
+			externalOrganizationId: "test",
+		});
 
 		const response = await api.getClineKanbanAccess({
 			workspaceId: "workspace-1",
@@ -1416,8 +1433,8 @@ describe("createRuntimeApi startTaskSession", () => {
 			.mockRejectedValueOnce(new Error("remote config request failed"));
 
 		clineAccountMocks.fetchOrganization.mockResolvedValueOnce({
-			externalOrganizationId: 'test'
-		})
+			externalOrganizationId: "test",
+		});
 
 		const initialResponse = await api.getClineKanbanAccess({
 			workspaceId: "workspace-1",
@@ -1716,7 +1733,11 @@ describe("createRuntimeApi startTaskSession", () => {
 		const tempHome = `/tmp/kanban-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 		process.env.HOME = tempHome;
 		mkdirSync(tempHome, { recursive: true });
-		const debugPaths = [join(tempHome, ".cline", "data"), join(tempHome, ".cline", "kanban"), join(tempHome, ".cline", "worktrees")];
+		const debugPaths = [
+			join(tempHome, ".cline", "data"),
+			join(tempHome, ".cline", "kanban"),
+			join(tempHome, ".cline", "worktrees"),
+		];
 		for (const path of debugPaths) {
 			mkdirSync(path, { recursive: true });
 			writeFileSync(join(path, "marker.txt"), "present");
@@ -1760,7 +1781,11 @@ describe("createRuntimeApi startTaskSession", () => {
 		const tempHome = `/tmp/kanban-reset-home-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 		process.env.HOME = tempHome;
 		mkdirSync(tempHome, { recursive: true });
-		const debugPaths = [join(tempHome, ".cline", "data"), join(tempHome, ".cline", "kanban"), join(tempHome, ".cline", "worktrees")];
+		const debugPaths = [
+			join(tempHome, ".cline", "data"),
+			join(tempHome, ".cline", "kanban"),
+			join(tempHome, ".cline", "worktrees"),
+		];
 		for (const path of debugPaths) {
 			mkdirSync(path, { recursive: true });
 			writeFileSync(join(path, "marker.txt"), "present");

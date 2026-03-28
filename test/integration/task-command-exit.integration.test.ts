@@ -7,8 +7,8 @@ import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -166,7 +166,9 @@ async function waitForBrowserOpenCount(logPath: string, expectedCount: number, t
 			setTimeout(resolve, 25);
 		});
 	}
-	throw new Error(`Timed out waiting for browser open count ${expectedCount}. Current log: ${readBrowserOpenLog(logPath).join(", ")}`);
+	throw new Error(
+		`Timed out waiting for browser open count ${expectedCount}. Current log: ${readBrowserOpenLog(logPath).join(", ")}`,
+	);
 }
 
 async function waitForExit(process: ChildProcess, timeoutMs: number): Promise<boolean> {

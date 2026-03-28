@@ -1,9 +1,7 @@
-import type { ReactElement } from "react";
-
 import { X } from "lucide-react";
-
-import { Tooltip } from "@/components/ui/tooltip";
+import type { ReactElement } from "react";
 import { cn } from "@/components/ui/cn";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { TaskImage } from "@/types";
 
 interface TaskImageStripProps {
@@ -25,7 +23,9 @@ export function TaskImageStrip({
 
 	return (
 		<div className={className}>
-			{label ? <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-text-tertiary">{label}</div> : null}
+			{label ? (
+				<div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-text-tertiary">{label}</div>
+			) : null}
 			<div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
 				{images.map((image) => {
 					const preview = (
@@ -35,8 +35,12 @@ export function TaskImageStrip({
 								alt={image.name ?? "attached image"}
 								className="h-5 w-5 rounded object-cover"
 							/>
-							<span className="min-w-0 max-w-32 truncate text-[11px] text-text-secondary">{image.name ?? "Image"}</span>
-							{onRemoveImage ? <X size={12} className="shrink-0 text-text-tertiary group-hover:text-accent" /> : null}
+							<span className="min-w-0 max-w-32 truncate text-[11px] text-text-secondary">
+								{image.name ?? "Image"}
+							</span>
+							{onRemoveImage ? (
+								<X size={12} className="shrink-0 text-text-tertiary group-hover:text-accent" />
+							) : null}
 						</>
 					);
 

@@ -7,8 +7,13 @@ import {
 	buildMentionInsertText,
 	detectActiveClineComposerToken,
 } from "@/components/detail-panels/cline-chat-composer-completion";
-import { InlineCompletionPicker, type InlineCompletionItem } from "@/components/inline-completion-picker";
-import { ACCEPTED_TASK_IMAGE_INPUT_ACCEPT, collectImageFilesFromDataTransfer, extractImagesFromDataTransfer, fileToTaskImage } from "@/components/task-image-input-utils";
+import { type InlineCompletionItem, InlineCompletionPicker } from "@/components/inline-completion-picker";
+import {
+	ACCEPTED_TASK_IMAGE_INPUT_ACCEPT,
+	collectImageFilesFromDataTransfer,
+	extractImagesFromDataTransfer,
+	fileToTaskImage,
+} from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -231,7 +236,15 @@ export function TaskPromptComposer({
 				onEscape?.();
 			}
 		},
-		[applySuggestion, isSuggestionPickerOpen, onEscape, onSubmit, onSubmitAndStart, selectedSuggestionIndex, suggestions],
+		[
+			applySuggestion,
+			isSuggestionPickerOpen,
+			onEscape,
+			onSubmit,
+			onSubmitAndStart,
+			selectedSuggestionIndex,
+			suggestions,
+		],
 	);
 
 	const appendImages = useCallback(
@@ -296,17 +309,14 @@ export function TaskPromptComposer({
 		[onImagesChange],
 	);
 
-	const handleDragLeave = useCallback(
-		(event: DragEvent<HTMLDivElement>) => {
-			// Only clear drag state when leaving the drop zone container,
-			// not when moving between child elements within it.
-			if (event.currentTarget.contains(event.relatedTarget as Node)) {
-				return;
-			}
-			setIsDragOver(false);
-		},
-		[],
-	);
+	const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+		// Only clear drag state when leaving the drop zone container,
+		// not when moving between child elements within it.
+		if (event.currentTarget.contains(event.relatedTarget as Node)) {
+			return;
+		}
+		setIsDragOver(false);
+	}, []);
 
 	const handleRemoveImage = useCallback(
 		(imageId: string) => {
@@ -344,12 +354,7 @@ export function TaskPromptComposer({
 
 	return (
 		<div>
-			<div
-				className="relative"
-				onDrop={handleDrop}
-				onDragOver={handleDragOver}
-				onDragLeave={handleDragLeave}
-			>
+			<div className="relative" onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
 				<InlineCompletionPicker
 					open={showSuggestions}
 					items={suggestions}
@@ -401,11 +406,7 @@ export function TaskPromptComposer({
 			</div>
 
 			{images.length > 0 ? (
-				<TaskImageStrip
-					images={images}
-					onRemoveImage={handleRemoveImage}
-					className="mt-1.5"
-				/>
+				<TaskImageStrip images={images} onRemoveImage={handleRemoveImage} className="mt-1.5" />
 			) : null}
 
 			{onImagesChange && showAttachImageButton ? (

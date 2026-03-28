@@ -5,7 +5,6 @@ import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEff
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
-import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -18,9 +17,11 @@ import {
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
+import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
+
 interface TaskCountBadge {
 	id: string;
 	title: string;
@@ -56,7 +57,6 @@ export function ProjectNavigationPanel({
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 
-
 	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
 	const isProjectRemovalPending = pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
 	const pendingProjectTaskCount = pendingProjectRemoval
@@ -74,13 +74,16 @@ export function ProjectNavigationPanel({
 	const COLLAPSE_THRESHOLD = 120;
 	const MIN_EXPANDED = 180;
 	const MAX_WIDTH = 400;
-	const startDrag = useCallback((e: ReactMouseEvent) => {
-		e.preventDefault();
-		dragRef.current = { startX: e.clientX, startWidth: isCollapsed ? COLLAPSED_WIDTH : sidebarWidth };
-		setIsDragging(true);
-		document.body.style.userSelect = "none";
-		document.body.style.cursor = "ew-resize";
-	}, [sidebarWidth, isCollapsed]);
+	const startDrag = useCallback(
+		(e: ReactMouseEvent) => {
+			e.preventDefault();
+			dragRef.current = { startX: e.clientX, startWidth: isCollapsed ? COLLAPSED_WIDTH : sidebarWidth };
+			setIsDragging(true);
+			document.body.style.userSelect = "none";
+			document.body.style.cursor = "ew-resize";
+		},
+		[sidebarWidth, isCollapsed],
+	);
 	useEffect(() => {
 		if (!isDragging) return;
 		const onMouseMove = (e: MouseEvent) => {
@@ -102,7 +105,10 @@ export function ProjectNavigationPanel({
 		};
 		window.addEventListener("mousemove", onMouseMove);
 		window.addEventListener("mouseup", onMouseUp);
-		return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
+		return () => {
+			window.removeEventListener("mousemove", onMouseMove);
+			window.removeEventListener("mouseup", onMouseUp);
+		};
 	}, [isDragging]);
 
 	if (isCollapsed) {
@@ -115,7 +121,10 @@ export function ProjectNavigationPanel({
 					borderRight: "1px solid var(--color-divider)",
 				}}
 			>
-				<div onMouseDown={startDrag} className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20" />
+				<div
+					onMouseDown={startDrag}
+					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
+				/>
 				{sortedProjects.map((project) => {
 					const isCurrent = currentProjectId === project.id;
 					const letter = project.name.charAt(0).toUpperCase();
@@ -127,7 +136,9 @@ export function ProjectNavigationPanel({
 							onClick={() => onSelectProject(project.id)}
 							className={cn(
 								"w-8 h-8 rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
-								isCurrent ? "bg-accent text-white" : "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
+								isCurrent
+									? "bg-accent text-white"
+									: "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
 							)}
 						>
 							{letter}
@@ -157,7 +168,10 @@ export function ProjectNavigationPanel({
 				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
-			<div onMouseDown={startDrag} className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20" />
+			<div
+				onMouseDown={startDrag}
+				className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
+			/>
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
@@ -197,8 +211,8 @@ export function ProjectNavigationPanel({
 				</div>
 				{activeSection === "agent" ? (
 					<p className="text-text-tertiary text-xs" style={{ padding: "8px 4px 0" }}>
-						Add tasks, link dependencies, break work down, and manage your board. Try asking to
-						create and link some tasks to get started.
+						Add tasks, link dependencies, break work down, and manage your board. Try asking to create and link
+						some tasks to get started.
 					</p>
 				) : null}
 			</div>
@@ -541,7 +555,9 @@ function ProjectRow({
 							size="sm"
 							icon={isRemovingProject ? <Spinner size={12} /> : <Ellipsis size={14} />}
 							disabled={hasAnyProjectRemoval && !isRemovingProject}
-							className={isCurrent ? "text-white hover:bg-white/20 hover:text-white active:bg-white/30" : undefined}
+							className={
+								isCurrent ? "text-white hover:bg-white/20 hover:text-white active:bg-white/30" : undefined
+							}
 							onClick={(e) => {
 								e.stopPropagation();
 							}}

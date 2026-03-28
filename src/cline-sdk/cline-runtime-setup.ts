@@ -5,7 +5,7 @@ import {
 	createClineSdkUserInstructionWatcher,
 	loadClineSdkRulesForSystemPrompt,
 	resolveClineSdkWorkflowSlashCommand,
-} from "./sdk-runtime-boundary.js";
+} from "./sdk-runtime-boundary";
 
 export interface ClineRuntimeSetup {
 	watcher: ClineSdkUserInstructionWatcher;
@@ -17,7 +17,9 @@ export interface ClineRuntimeSetup {
 
 export async function createClineRuntimeSetup(workspacePath: string): Promise<ClineRuntimeSetup> {
 	const watcher = createClineSdkUserInstructionWatcher(workspacePath);
-	await watcher.start().catch(() => {});
+	try {
+		await watcher.start();
+	} catch {}
 
 	return {
 		watcher,
@@ -28,7 +30,9 @@ export async function createClineRuntimeSetup(workspacePath: string): Promise<Cl
 			reason: `Approved by Kanban runtime for ${request.toolName}.`,
 		}),
 		dispose: async () => {
-			await watcher.stop().catch(() => {});
+			try {
+				watcher.stop();
+			} catch {}
 		},
 	};
 }

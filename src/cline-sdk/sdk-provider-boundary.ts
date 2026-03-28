@@ -1,9 +1,18 @@
 // Centralize direct SDK provider imports here.
 // The rest of Kanban should talk to the SDK through local service modules so
 // auth, catalog, and provider-settings behavior stay behind one boundary.
+
+import { type CreateMcpToolsOptions, createMcpTools, type Tool } from "@clinebot/agents";
 import {
 	ClineAccountService,
-	ClineAccountUser,
+	type ClineAccountUser,
+	type ClineOrganization,
+	DEFAULT_EXTERNAL_IDCS_CLIENT_ID,
+	DEFAULT_EXTERNAL_IDCS_SCOPES,
+	DEFAULT_EXTERNAL_IDCS_URL,
+	DEFAULT_INTERNAL_IDCS_CLIENT_ID,
+	DEFAULT_INTERNAL_IDCS_SCOPES,
+	DEFAULT_INTERNAL_IDCS_URL,
 	getValidClineCredentials,
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
@@ -11,20 +20,19 @@ import {
 	loginClineOAuth,
 	loginOcaOAuth,
 	loginOpenAICodex,
+	type OcaOAuthProviderOptions,
 	ProviderSettingsManager,
-	ClineOrganization,
 } from "@clinebot/core/node";
-import { LlmsModels as llmsModels, LlmsProviders } from "@clinebot/llms";
-import { createMcpTools, type CreateMcpToolsOptions, type Tool } from "@clinebot/agents";
+import { LlmsProviders, LlmsModels as llmsModels } from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
-export type SdkReasoningEffort = NonNullable<LlmsProviders.ReasoningSettings["effort"]>;
+export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
 
 export interface ManagedOauthCredentials {
 	access: string;
 	refresh: string;
 	expires: number;
-	accountId?: string | null;
+	accountId?: string;
 }
 
 export interface ManagedOauthCallbacks {
@@ -107,7 +115,9 @@ export interface SdkMcpManagerOptions {
 export interface SdkMcpManager {
 	registerServer(registration: SdkMcpServerRegistration): Promise<void>;
 	listServers(): readonly SdkMcpServerSnapshot[];
-	listTools(serverName: string): Promise<readonly { name: string; description?: string; inputSchema: Record<string, unknown> }[]>;
+	listTools(
+		serverName: string,
+	): Promise<readonly { name: string; description?: string; inputSchema: Record<string, unknown> }[]>;
 	callTool(request: {
 		serverName: string;
 		toolName: string;
@@ -119,15 +129,7 @@ export interface SdkMcpManager {
 
 export type SdkCreateMcpToolsOptions = CreateMcpToolsOptions;
 
-function buildOcaOauthConfig(baseUrl: string | null | undefined):
-	| {
-			mode: "internal" | "external";
-			config: {
-				internal: { baseUrl: string };
-				external: { baseUrl: string };
-			};
-	  }
-	| undefined {
+function buildOcaOauthConfig(baseUrl: string | null | undefined): OcaOAuthProviderOptions | undefined {
 	const normalizedBaseUrl = baseUrl?.trim() ?? "";
 	if (!normalizedBaseUrl) {
 		return undefined;
@@ -135,8 +137,18 @@ function buildOcaOauthConfig(baseUrl: string | null | undefined):
 	return {
 		mode: normalizedBaseUrl.includes("code-internal") ? "internal" : "external",
 		config: {
-			internal: { baseUrl: normalizedBaseUrl },
-			external: { baseUrl: normalizedBaseUrl },
+			internal: {
+				clientId: DEFAULT_INTERNAL_IDCS_CLIENT_ID,
+				idcsUrl: DEFAULT_INTERNAL_IDCS_URL,
+				scopes: DEFAULT_INTERNAL_IDCS_SCOPES,
+				baseUrl: normalizedBaseUrl,
+			},
+			external: {
+				clientId: DEFAULT_EXTERNAL_IDCS_CLIENT_ID,
+				idcsUrl: DEFAULT_EXTERNAL_IDCS_URL,
+				scopes: DEFAULT_EXTERNAL_IDCS_SCOPES,
+				baseUrl: normalizedBaseUrl,
+			},
 		},
 	};
 }
@@ -148,13 +160,10 @@ export async function refreshManagedOauthCredentials(input: {
 	oauthProvider?: string | null;
 }): Promise<ManagedOauthCredentials | null> {
 	if (input.providerId === "cline") {
-		const credentials = await getValidClineCredentials(
-			input.currentCredentials,
-			{
-				apiBaseUrl: input.baseUrl?.trim() || "https://api.cline.bot",
-				provider: input.oauthProvider?.trim() || undefined,
-			},
-		);
+		const credentials = await getValidClineCredentials(input.currentCredentials, {
+			apiBaseUrl: input.baseUrl?.trim() || "https://api.cline.bot",
+			provider: input.oauthProvider?.trim() || undefined,
+		});
 		return credentials ?? null;
 	}
 
@@ -167,9 +176,7 @@ export async function refreshManagedOauthCredentials(input: {
 		return credentials ?? null;
 	}
 
-	const credentials = await getValidOpenAICodexCredentials(
-		input.currentCredentials,
-	);
+	const credentials = await getValidOpenAICodexCredentials(input.currentCredentials);
 	return credentials ?? null;
 }
 
@@ -200,15 +207,11 @@ export async function loginManagedOauthProvider(input: {
 	});
 }
 
-export async function listSdkProviderCatalog(): Promise<
-	SdkProviderCatalogItem[]
-> {
+export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
 	return await llmsModels.getAllProviders();
 }
 
-export async function listSdkProviderModels(
-	providerId: string,
-): Promise<SdkProviderModelRecord> {
+export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
 	return await llmsModels.getModelsForProvider(providerId);
 }
 
@@ -218,27 +221,15 @@ export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): bo
 
 const providerManager = new ProviderSettingsManager();
 
-export function getSdkProviderSettings(
-	providerId: string,
-): SdkProviderSettings | null {
-	return (
-		(providerManager.getProviderSettings(providerId) as
-			| SdkProviderSettings
-			| undefined) ?? null
-	);
+export function getSdkProviderSettings(providerId: string): SdkProviderSettings | null {
+	return (providerManager.getProviderSettings(providerId) as SdkProviderSettings | undefined) ?? null;
 }
 
 export function getLastUsedSdkProviderSettings(): SdkProviderSettings | null {
-	return (
-		(providerManager.getLastUsedProviderSettings() as
-			| SdkProviderSettings
-			| undefined) ?? null
-	);
+	return (providerManager.getLastUsedProviderSettings() as SdkProviderSettings | undefined) ?? null;
 }
 
-export function saveSdkProviderSettings(
-	input: SaveSdkProviderSettingsInput,
-): void {
+export function saveSdkProviderSettings(input: SaveSdkProviderSettingsInput): void {
 	const settings: SdkProviderSettings = {
 		...input.settings,
 		provider: input.settings.provider.trim(),
@@ -282,11 +273,7 @@ export function saveSdkProviderSettings(
 				reasoning.effort = effort as SdkReasoningEffort;
 			}
 		}
-		if (
-			reasoning.enabled === undefined &&
-			reasoning.effort === undefined &&
-			reasoning.budgetTokens === undefined
-		) {
+		if (reasoning.enabled === undefined && reasoning.effort === undefined && reasoning.budgetTokens === undefined) {
 			delete settings.reasoning;
 		} else {
 			settings.reasoning = reasoning;
@@ -322,18 +309,18 @@ export async function createSdkMcpTools(options: SdkCreateMcpToolsOptions): Prom
 type ApiRequestParams = {
 	apiBaseUrl: string;
 	accessToken: string;
-}
+};
 
-export async function fetchSdkClineAccountProfile(input: ApiRequestParams): Promise<ClineAccountUser> {	
+export async function fetchSdkClineAccountProfile(input: ApiRequestParams): Promise<ClineAccountUser> {
 	const accountService = new ClineAccountService({
 		apiBaseUrl: input.apiBaseUrl,
 		getAuthToken: async () => input.accessToken,
 	});
 	const me = await accountService.fetchMe();
-	return me
+	return me;
 }
 
-export async function fetchSdkOrgData(input: ApiRequestParams & {organizatinId: string}): Promise<ClineOrganization> {
+export async function fetchSdkOrgData(input: ApiRequestParams & { organizatinId: string }): Promise<ClineOrganization> {
 	const accountService = new ClineAccountService({
 		apiBaseUrl: input.apiBaseUrl,
 		getAuthToken: async () => input.accessToken,

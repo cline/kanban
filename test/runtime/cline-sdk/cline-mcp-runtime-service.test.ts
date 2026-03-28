@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	handleClineMcpOauthCallback,
 	startOauthCallbackListener,
-} from "../../../src/cline-sdk/cline-mcp-runtime-service.js";
-import { setKanbanRuntimePort } from "../../../src/core/runtime-endpoint.js";
+} from "../../../src/cline-sdk/cline-mcp-runtime-service";
+import { setKanbanRuntimePort } from "../../../src/core/runtime-endpoint";
 
 describe("cline-mcp-runtime-service OAuth callback handling", () => {
 	const originalRuntimePort = process.env.KANBAN_RUNTIME_PORT;

@@ -4,9 +4,9 @@
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
-	RuntimeClineMcpAuthStatusResponse,
 	RuntimeClineAccountProfileResponse,
 	RuntimeClineKanbanAccessResponse,
+	RuntimeClineMcpAuthStatusResponse,
 	RuntimeClineMcpOAuthResponse,
 	RuntimeClineMcpServer,
 	RuntimeClineMcpSettingsResponse,
@@ -14,8 +14,8 @@ import type {
 	RuntimeClineOauthProvider,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
-	RuntimeClineReasoningEffort,
 	RuntimeClineProviderSettings,
+	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
 	RuntimeDebugResetAllStateResponse,
 	RuntimeProjectShortcut,
@@ -56,13 +56,17 @@ export async function saveClineProviderSettings(
 	return await trpcClient.runtime.saveClineProviderSettings.mutate(input);
 }
 
-export async function fetchClineProviderCatalog(workspaceId: string | null): Promise<RuntimeClineProviderCatalogItem[]> {
+export async function fetchClineProviderCatalog(
+	workspaceId: string | null,
+): Promise<RuntimeClineProviderCatalogItem[]> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	const response = await trpcClient.runtime.getClineProviderCatalog.query();
 	return response.providers;
 }
 
-export async function fetchClineAccountProfile(workspaceId: string | null): Promise<RuntimeClineAccountProfileResponse> {
+export async function fetchClineAccountProfile(
+	workspaceId: string | null,
+): Promise<RuntimeClineAccountProfileResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.getClineAccountProfile.query();
 }
@@ -97,7 +101,9 @@ export async function fetchClineMcpSettings(workspaceId: string | null): Promise
 	return await trpcClient.runtime.getClineMcpSettings.query();
 }
 
-export async function fetchClineMcpAuthStatuses(workspaceId: string | null): Promise<RuntimeClineMcpAuthStatusResponse> {
+export async function fetchClineMcpAuthStatuses(
+	workspaceId: string | null,
+): Promise<RuntimeClineMcpAuthStatusResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.getClineMcpAuthStatuses.query();
 }

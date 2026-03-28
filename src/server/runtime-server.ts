@@ -3,29 +3,29 @@ import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
-import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service.js";
+import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service";
 import {
 	type ClineTaskSessionService,
 	createInMemoryClineTaskSessionService,
-} from "../cline-sdk/cline-task-session-service.js";
-import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
+} from "../cline-sdk/cline-task-session-service";
+import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import {
 	buildKanbanRuntimeUrl,
 	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
-} from "../core/runtime-endpoint.js";
-import { loadWorkspaceContextById } from "../state/workspace-state.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { createTerminalWebSocketBridge } from "../terminal/ws-server.js";
-import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router.js";
-import { createHooksApi } from "../trpc/hooks-api.js";
-import { createProjectsApi } from "../trpc/projects-api.js";
-import { createRuntimeApi } from "../trpc/runtime-api.js";
-import { createWorkspaceApi } from "../trpc/workspace-api.js";
-import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
-import type { RuntimeStateHub } from "./runtime-state-hub.js";
-import type { WorkspaceRegistry } from "./workspace-registry.js";
+} from "../core/runtime-endpoint";
+import { loadWorkspaceContextById } from "../state/workspace-state";
+import type { TerminalSessionManager } from "../terminal/session-manager";
+import { createTerminalWebSocketBridge } from "../terminal/ws-server";
+import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router";
+import { createHooksApi } from "../trpc/hooks-api";
+import { createProjectsApi } from "../trpc/projects-api";
+import { createRuntimeApi } from "../trpc/runtime-api";
+import { createWorkspaceApi } from "../trpc/workspace-api";
+import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import type { RuntimeStateHub } from "./runtime-state-hub";
+import type { WorkspaceRegistry } from "./workspace-registry";
 
 interface DisposeTrackedWorkspaceResult {
 	terminalManager: TerminalSessionManager | null;

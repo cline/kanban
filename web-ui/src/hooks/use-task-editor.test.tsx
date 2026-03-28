@@ -374,5 +374,4 @@ describe("useTaskEditor", () => {
 		]);
 		expect(requireSnapshot(latestSnapshot).newTaskImages).toEqual([]);
 	});
-
 });

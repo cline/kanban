@@ -269,9 +269,9 @@ describe("BoardCard", () => {
 					card={createCard()}
 					index={0}
 					columnId="in_progress"
-						sessionSummary={{
-							taskId: "task-1",
-							state: "running",
+					sessionSummary={{
+						taskId: "task-1",
+						state: "running",
 						agentId: "cline",
 						workspacePath: "/tmp/worktree",
 						pid: null,
@@ -374,14 +374,14 @@ describe("BoardCard", () => {
 						reviewReason: null,
 						exitCode: null,
 						lastHookAt: Date.now(),
-							latestHookActivity: {
-								activityText: "Agent active",
-								toolName: "Read",
-								toolInputSummary: "src/index.ts",
-								finalMessage: "Looking at the file now",
-								hookEventName: "assistant_delta",
-								notificationType: null,
-								source: "cline-sdk",
+						latestHookActivity: {
+							activityText: "Agent active",
+							toolName: "Read",
+							toolInputSummary: "src/index.ts",
+							finalMessage: "Looking at the file now",
+							hookEventName: "assistant_delta",
+							notificationType: null,
+							source: "cline-sdk",
 						},
 						latestTurnCheckpoint: null,
 						previousTurnCheckpoint: null,
@@ -527,14 +527,14 @@ describe("BoardCard", () => {
 					card={createCard()}
 					index={0}
 					columnId="in_progress"
-						sessionSummary={createSummary("running", {
-							latestHookActivity: {
-								activityText: "Reviewing the final diff",
-								toolName: null,
-								toolInputSummary: null,
-								finalMessage: "Reviewing the final diff",
-								hookEventName: "assistant_delta",
-								notificationType: null,
+					sessionSummary={createSummary("running", {
+						latestHookActivity: {
+							activityText: "Reviewing the final diff",
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: "Reviewing the final diff",
+							hookEventName: "assistant_delta",
+							notificationType: null,
 							source: "cline-sdk",
 						},
 					})}

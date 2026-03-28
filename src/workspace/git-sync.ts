@@ -7,8 +7,8 @@ import type {
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
-} from "../core/api-contract.js";
-import { runGit } from "./git-utils.js";
+} from "../core/api-contract";
+import { runGit } from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;
@@ -354,14 +354,7 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 		};
 	}
 
-	const restoreResult = await runGit(repoRoot, [
-		"restore",
-		"--source=HEAD",
-		"--staged",
-		"--worktree",
-		"--",
-		".",
-	]);
+	const restoreResult = await runGit(repoRoot, ["restore", "--source=HEAD", "--staged", "--worktree", "--", "."]);
 	const cleanResult = restoreResult.ok ? await runGit(repoRoot, ["clean", "-fd", "--", "."]) : null;
 	const nextSummary = await getGitSyncSummary(repoRoot);
 	const output = [restoreResult.output, cleanResult?.output ?? ""].filter(Boolean).join("\n");

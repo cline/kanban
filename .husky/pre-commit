@@ -2,8 +2,15 @@
 
 STAGED_FILES=$(git diff --cached --name-only)
 
-echo "Running linting, type checking, and tests..."
-npm run check
+echo "Running biome check on staged files..."
+npx biome check --staged --no-errors-on-unmatched --files-ignore-unknown=true
+if [ $? -ne 0 ]; then
+	echo "Biome check failed."
+	exit 1
+fi
+
+echo "Running type checking and tests..."
+npm run typecheck && npm run test
 if [ $? -ne 0 ]; then
 	echo "Checks failed."
 	exit 1

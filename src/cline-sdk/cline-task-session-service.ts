@@ -3,27 +3,27 @@
 // history, and subscribe to summaries and chat events without knowing SDK
 // host, repository, or event-adapter details.
 import type {
+	RuntimeClineReasoningEffort,
 	RuntimeTaskImage,
 	RuntimeTaskSessionMode,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
-	RuntimeClineReasoningEffort,
-} from "../core/api-contract.js";
-import { isHomeAgentSessionId } from "../core/home-agent-session.js";
-import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
-import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints.js";
-import { applyClineSessionEvent } from "./cline-event-adapter.js";
+} from "../core/api-contract";
+import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
+import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
+import { applyClineSessionEvent } from "./cline-event-adapter";
 import {
 	type ClineMessageRepository,
 	createInMemoryClineMessageRepository,
 	createTaskEntryFromPersistedSession,
-} from "./cline-message-repository.js";
-import { type ClineRuntimeSetup, createClineRuntimeSetup } from "./cline-runtime-setup.js";
+} from "./cline-message-repository";
+import { type ClineRuntimeSetup, createClineRuntimeSetup } from "./cline-runtime-setup";
 import {
 	type ClineSessionRuntime,
 	type CreateInMemoryClineSessionRuntimeOptions,
 	createInMemoryClineSessionRuntime,
-} from "./cline-session-runtime.js";
+} from "./cline-session-runtime";
 import {
 	type ClineTaskMessage,
 	type ClineTaskSessionEntry,
@@ -35,10 +35,10 @@ import {
 	now,
 	setOrCreateAssistantMessage,
 	updateSummary,
-} from "./cline-session-state.js";
-import { resolveClineSdkSystemPrompt } from "./sdk-runtime-boundary.js";
+} from "./cline-session-state";
+import { resolveClineSdkSystemPrompt } from "./sdk-runtime-boundary";
 
-export type { ClineTaskMessage } from "./cline-session-state.js";
+export type { ClineTaskMessage } from "./cline-session-state";
 
 export interface StartClineTaskSessionRequest {
 	taskId: string;

@@ -239,7 +239,9 @@ describe("usePrewarmedAgentTerminals", () => {
 		};
 
 		await act(async () => {
-			root.render(<HookHarness currentProjectId="project-1" board={projectOneBoard} sessions={projectOneSessions} />);
+			root.render(
+				<HookHarness currentProjectId="project-1" board={projectOneBoard} sessions={projectOneSessions} />,
+			);
 		});
 
 		ensurePersistentTerminalMock.mockClear();
@@ -345,12 +347,7 @@ describe("usePrewarmedAgentTerminals", () => {
 
 		await act(async () => {
 			root.render(
-				<HookHarness
-					currentProjectId="project-1"
-					board={board}
-					sessions={sessions}
-					isRuntimeDisconnected
-				/>,
+				<HookHarness currentProjectId="project-1" board={board} sessions={sessions} isRuntimeDisconnected />,
 			);
 		});
 

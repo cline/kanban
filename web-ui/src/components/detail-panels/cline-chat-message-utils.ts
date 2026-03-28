@@ -37,9 +37,7 @@ export function formatToolInputForDisplay(toolName: string, input: string | null
 		const normalized = toolName.toLowerCase().replace(/[^a-z]/g, "");
 
 		if (normalized === "runcommands" && Array.isArray(record.commands)) {
-			const commands = record.commands
-				.map((cmd) => String(cmd))
-				.filter((cmd) => cmd.length > 0);
+			const commands = record.commands.map((cmd) => String(cmd)).filter((cmd) => cmd.length > 0);
 			if (commands.length === 0) {
 				return null;
 			}

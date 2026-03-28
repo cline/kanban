@@ -4,12 +4,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract.js";
-import { shutdownRuntimeServer } from "../../src/server/shutdown-coordinator.js";
-import { loadWorkspaceState, saveWorkspaceState } from "../../src/state/workspace-state.js";
-import type { TerminalSessionManager } from "../../src/terminal/session-manager.js";
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract";
+import { shutdownRuntimeServer } from "../../src/server/shutdown-coordinator";
+import { loadWorkspaceState, saveWorkspaceState } from "../../src/state/workspace-state";
+import type { TerminalSessionManager } from "../../src/terminal/session-manager";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 	const { path: tempHome, cleanup } = createTempDir("kanban-home-shutdown-");
@@ -94,97 +94,93 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 }
 
 describe.sequential("shutdown coordinator integration", () => {
-	it(
-		"moves all in-progress and review cards to trash for every indexed project on shutdown",
-		async () => {
-			await withTemporaryHome(async () => {
-				const { path: sandboxRoot, cleanup } = createTempDir("kanban-shutdown-scope-");
-				try {
-					const managedProjectPath = join(sandboxRoot, "managed-project");
-					const indexedProjectPath = join(sandboxRoot, "indexed-project");
-					mkdirSync(managedProjectPath, { recursive: true });
-					mkdirSync(indexedProjectPath, { recursive: true });
-					initGitRepository(managedProjectPath);
-					initGitRepository(indexedProjectPath);
+	it("moves all in-progress and review cards to trash for every indexed project on shutdown", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-shutdown-scope-");
+			try {
+				const managedProjectPath = join(sandboxRoot, "managed-project");
+				const indexedProjectPath = join(sandboxRoot, "indexed-project");
+				mkdirSync(managedProjectPath, { recursive: true });
+				mkdirSync(indexedProjectPath, { recursive: true });
+				initGitRepository(managedProjectPath);
+				initGitRepository(indexedProjectPath);
 
-					const managedInitial = await loadWorkspaceState(managedProjectPath);
-					await saveWorkspaceState(managedProjectPath, {
-						board: createBoard({
-							inProgress: ["managed-running", "managed-missing-session"],
-							review: ["managed-idle"],
-						}),
-						sessions: {
-							"managed-running": createSession("managed-running", "running"),
-							"managed-idle": createSession("managed-idle", "idle"),
-						},
-						expectedRevision: managedInitial.revision,
-					});
+				const managedInitial = await loadWorkspaceState(managedProjectPath);
+				await saveWorkspaceState(managedProjectPath, {
+					board: createBoard({
+						inProgress: ["managed-running", "managed-missing-session"],
+						review: ["managed-idle"],
+					}),
+					sessions: {
+						"managed-running": createSession("managed-running", "running"),
+						"managed-idle": createSession("managed-idle", "idle"),
+					},
+					expectedRevision: managedInitial.revision,
+				});
 
-					const indexedInitial = await loadWorkspaceState(indexedProjectPath);
-					await saveWorkspaceState(indexedProjectPath, {
-						board: createBoard({
-							inProgress: ["indexed-missing-session"],
-							review: ["indexed-awaiting-review"],
-						}),
-						sessions: {
-							"indexed-awaiting-review": createSession("indexed-awaiting-review", "awaiting_review"),
-						},
-						expectedRevision: indexedInitial.revision,
-					});
+				const indexedInitial = await loadWorkspaceState(indexedProjectPath);
+				await saveWorkspaceState(indexedProjectPath, {
+					board: createBoard({
+						inProgress: ["indexed-missing-session"],
+						review: ["indexed-awaiting-review"],
+					}),
+					sessions: {
+						"indexed-awaiting-review": createSession("indexed-awaiting-review", "awaiting_review"),
+					},
+					expectedRevision: indexedInitial.revision,
+				});
 
-					let didCloseRuntimeServer = false;
-					const managedTerminalManager = {
-						markInterruptedAndStopAll: () => [createSession("managed-running", "running")],
-						listSummaries: () => [createSession("managed-running", "running")],
-						getSummary: (taskId: string) => {
-							if (taskId === "managed-running") {
-								return createSession("managed-running", "running");
-							}
-							if (taskId === "managed-idle") {
-								return createSession("managed-idle", "idle");
-							}
-							return null;
-						},
-					} as unknown as TerminalSessionManager;
-					await shutdownRuntimeServer({
-						workspaceRegistry: {
-							listManagedWorkspaces: () => [
-								{
-									workspaceId: "managed-project",
-									workspacePath: managedProjectPath,
-									terminalManager: managedTerminalManager,
-								},
-							],
-						},
-						warn: () => {},
-						closeRuntimeServer: async () => {
-							didCloseRuntimeServer = true;
-						},
-					});
+				let didCloseRuntimeServer = false;
+				const managedTerminalManager = {
+					markInterruptedAndStopAll: () => [createSession("managed-running", "running")],
+					listSummaries: () => [createSession("managed-running", "running")],
+					getSummary: (taskId: string) => {
+						if (taskId === "managed-running") {
+							return createSession("managed-running", "running");
+						}
+						if (taskId === "managed-idle") {
+							return createSession("managed-idle", "idle");
+						}
+						return null;
+					},
+				} as unknown as TerminalSessionManager;
+				await shutdownRuntimeServer({
+					workspaceRegistry: {
+						listManagedWorkspaces: () => [
+							{
+								workspaceId: "managed-project",
+								workspacePath: managedProjectPath,
+								terminalManager: managedTerminalManager,
+							},
+						],
+					},
+					warn: () => {},
+					closeRuntimeServer: async () => {
+						didCloseRuntimeServer = true;
+					},
+				});
 
-					expect(didCloseRuntimeServer).toBe(true);
+				expect(didCloseRuntimeServer).toBe(true);
 
-					const managedAfter = await loadWorkspaceState(managedProjectPath);
-					const managedTrash = managedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-					expect(managedTrash.map((card) => card.id).sort()).toEqual(
-						["managed-idle", "managed-missing-session", "managed-running"].sort(),
-					);
-					expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
-					expect(managedAfter.sessions["managed-idle"]?.state).toBe("interrupted");
-					expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
+				const managedAfter = await loadWorkspaceState(managedProjectPath);
+				const managedTrash = managedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
+				expect(managedTrash.map((card) => card.id).sort()).toEqual(
+					["managed-idle", "managed-missing-session", "managed-running"].sort(),
+				);
+				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
+				expect(managedAfter.sessions["managed-idle"]?.state).toBe("interrupted");
+				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 
-					const indexedAfter = await loadWorkspaceState(indexedProjectPath);
-					const indexedTrash = indexedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-					expect(indexedTrash.map((card) => card.id).sort()).toEqual(
-						["indexed-awaiting-review", "indexed-missing-session"].sort(),
-					);
-					expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("interrupted");
-					expect(indexedAfter.sessions["indexed-missing-session"]).toBeUndefined();
-				} finally {
-					cleanup();
-				}
-			});
-		},
-		30_000,
-	);
+				const indexedAfter = await loadWorkspaceState(indexedProjectPath);
+				const indexedTrash = indexedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
+				expect(indexedTrash.map((card) => card.id).sort()).toEqual(
+					["indexed-awaiting-review", "indexed-missing-session"].sort(),
+				);
+				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("interrupted");
+				expect(indexedAfter.sessions["indexed-missing-session"]).toBeUndefined();
+			} finally {
+				cleanup();
+			}
+		});
+	}, 30_000);
 });

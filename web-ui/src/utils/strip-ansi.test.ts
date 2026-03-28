@@ -9,9 +9,7 @@ describe("stripAnsi", () => {
 
 	it("strips bold and color CSI sequences", () => {
 		// \x1b[1m = bold, \x1b[46m = cyan bg, \x1b[49m = default bg, \x1b[22m = normal intensity
-		expect(stripAnsi("\x1b[1m\x1b[46m RUN \x1b[49m\x1b[22m src/app.test.ts")).toBe(
-			" RUN  src/app.test.ts",
-		);
+		expect(stripAnsi("\x1b[1m\x1b[46m RUN \x1b[49m\x1b[22m src/app.test.ts")).toBe(" RUN  src/app.test.ts");
 	});
 
 	it("strips foreground color codes", () => {
@@ -59,12 +57,7 @@ describe("stripAnsi", () => {
 			"\x1b[1m\x1b[32m Tests \x1b[39m\x1b[22m 1 passed",
 		].join("\n");
 
-		const expected = [
-			" RUN  src/app.test.ts",
-			" ✓ should work (5ms)",
-			"",
-			" Tests  1 passed",
-		].join("\n");
+		const expected = [" RUN  src/app.test.ts", " ✓ should work (5ms)", "", " Tests  1 passed"].join("\n");
 
 		expect(stripAnsi(input)).toBe(expected);
 	});

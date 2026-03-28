@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-	isSelectedAgentAuthenticated,
-	shouldShowStartupOnboardingDialog,
-} from "@/runtime/onboarding";
+import { isSelectedAgentAuthenticated, shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
 import { saveRuntimeConfig as saveRuntimeConfigQuery } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";

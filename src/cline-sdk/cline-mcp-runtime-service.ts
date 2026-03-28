@@ -14,10 +14,10 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { z } from "zod";
 
-import type { RuntimeClineMcpServer } from "../core/api-contract.js";
-import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint.js";
-import { lockedFileSystem } from "../fs/locked-file-system.js";
-import { createClineMcpSettingsService, resolveMcpSettingsPath } from "./cline-mcp-settings-service.js";
+import type { RuntimeClineMcpServer } from "../core/api-contract";
+import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint";
+import { lockedFileSystem } from "../fs/locked-file-system";
+import { createClineMcpSettingsService, resolveMcpSettingsPath } from "./cline-mcp-settings-service";
 import {
 	createSdkInMemoryMcpManager,
 	createSdkMcpTools,
@@ -25,7 +25,7 @@ import {
 	type SdkMcpServerClient,
 	type SdkMcpServerRegistration,
 	type SdkMcpTool,
-} from "./sdk-provider-boundary.js";
+} from "./sdk-provider-boundary";
 
 const DEFAULT_AUTH_TIMEOUT_MS = 3 * 60 * 1000;
 const COMPLETED_CALLBACK_RETENTION_MS = 5 * 60 * 1000;

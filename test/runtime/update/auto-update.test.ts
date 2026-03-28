@@ -7,7 +7,7 @@ import {
 	resolveUpdateCommandForPlatform,
 	runAutoUpdateCheck,
 	runPendingAutoUpdateOnShutdown,
-} from "../../../src/update/auto-update.js";
+} from "../../../src/update/auto-update";
 
 function normalizePath(value: string): string {
 	return value.replaceAll("\\", "/");

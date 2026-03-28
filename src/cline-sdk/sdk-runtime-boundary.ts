@@ -184,7 +184,7 @@ export type ClineSdkSessionEvent =
 	  };
 
 export type ClineSdkSessionRecord = Awaited<ReturnType<ClineSdkSessionHost["list"]>>[number];
-export type ClineSdkPersistedMessage = ClineSdkProviders.Message;
+export type ClineSdkPersistedMessage = ClineSdkProviders.MessageWithMetadata;
 export type ClineSdkUserInstructionWatcher = UserInstructionConfigWatcher;
 export interface ClineSdkSlashCommand {
 	name: string;

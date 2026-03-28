@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { RuntimeWorkspaceFileSearchMatch } from "../core/api-contract.js";
-import { createGitProcessEnv } from "../core/git-process-env.js";
+import type { RuntimeWorkspaceFileSearchMatch } from "../core/api-contract";
+import { createGitProcessEnv } from "../core/git-process-env";
 
 const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 10_000;

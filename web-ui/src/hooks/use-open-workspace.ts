@@ -7,10 +7,10 @@ import {
 	getOpenTargetOption,
 	getOpenTargetOptions,
 	normalizeOpenTargetId,
-	resolveOpenTargetPlatform,
 	type OpenTargetId,
 	type OpenTargetOption,
 	PREFERRED_OPEN_TARGET_STORAGE_KEY,
+	resolveOpenTargetPlatform,
 } from "@/utils/open-targets";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 
@@ -101,7 +101,14 @@ export function useOpenWorkspace({ currentProjectId, workspacePath }: UseOpenWor
 				setIsOpeningWorkspace(false);
 			}
 		})();
-	}, [currentProjectId, isOpeningWorkspace, openTargetPlatform, selectedOpenTarget.id, showOpenFailureToast, workspacePath]);
+	}, [
+		currentProjectId,
+		isOpeningWorkspace,
+		openTargetPlatform,
+		selectedOpenTarget.id,
+		showOpenFailureToast,
+		workspacePath,
+	]);
 
 	return {
 		openTargetOptions,

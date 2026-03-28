@@ -84,7 +84,7 @@ export function OpenWorkspaceButton({
 								const isActive = option.id === selectedOptionId;
 								return (
 									<button
-									type="button"
+										type="button"
 										key={option.id}
 										className={cn(
 											"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-text-primary rounded-md hover:bg-surface-3 text-left cursor-pointer",

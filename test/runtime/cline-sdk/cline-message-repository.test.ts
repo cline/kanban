@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryClineMessageRepository } from "../../../src/cline-sdk/cline-message-repository.js";
-import type { ClinePersistedTaskSessionSnapshot } from "../../../src/cline-sdk/cline-session-runtime.js";
-import { createDefaultSummary, createMessage, type ClineTaskSessionEntry } from "../../../src/cline-sdk/cline-session-state.js";
+import { createInMemoryClineMessageRepository } from "../../../src/cline-sdk/cline-message-repository";
+import type { ClinePersistedTaskSessionSnapshot } from "../../../src/cline-sdk/cline-session-runtime";
+import {
+	type ClineTaskSessionEntry,
+	createDefaultSummary,
+	createMessage,
+} from "../../../src/cline-sdk/cline-session-state";
 
 function createPersistedSnapshot(
 	messages: NonNullable<ClinePersistedTaskSessionSnapshot>["messages"],
@@ -10,7 +14,7 @@ function createPersistedSnapshot(
 	return {
 		record: {
 			sessionId: "task-1-abc123",
-			source: "core",
+			source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 			status: "completed",
 			startedAt: "2026-03-17T10:00:00.000Z",
 			updatedAt: "2026-03-17T10:05:00.000Z",

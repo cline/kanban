@@ -1,8 +1,8 @@
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import type { Command } from "commander";
 
-import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
-import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint.js";
+import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract";
+import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
 import {
 	addTaskDependency,
 	addTaskToColumn,
@@ -13,10 +13,10 @@ import {
 	removeTaskDependency,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
-} from "../core/task-board-mutations.js";
-import { resolveProjectInputPath } from "../projects/project-path.js";
-import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state.js";
-import type { RuntimeAppRouter } from "../trpc/app-router.js";
+} from "../core/task-board-mutations";
+import { resolveProjectInputPath } from "../projects/project-path";
+import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state";
+import type { RuntimeAppRouter } from "../trpc/app-router";
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review", "trash"] as const;
 type ListTaskColumn = (typeof LIST_TASK_COLUMNS)[number];
@@ -453,7 +453,8 @@ async function unlinkTasks(input: { cwd: string; dependencyId: string; projectPa
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
 	const removedDependency = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
-		const dependency = runtimeState.board.dependencies.find((candidate) => candidate.id === input.dependencyId) ?? null;
+		const dependency =
+			runtimeState.board.dependencies.find((candidate) => candidate.id === input.dependencyId) ?? null;
 		if (!dependency) {
 			throw new Error(`Dependency "${input.dependencyId}" was not found in workspace ${workspaceRepoPath}.`);
 		}
@@ -794,7 +795,9 @@ async function deleteTaskCommand(input: {
 			};
 		}
 
-		const deletedTasks = latestTargetRecords.map(({ task, columnId }) => formatTaskRecord(latestState, task, columnId));
+		const deletedTasks = latestTargetRecords.map(({ task, columnId }) =>
+			formatTaskRecord(latestState, task, columnId),
+		);
 		return {
 			board: deleted.board,
 			value: {
@@ -818,7 +821,9 @@ async function deleteTaskCommand(input: {
 		};
 	}
 
-	await Promise.all(mutation.value.deletedTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)));
+	await Promise.all(
+		mutation.value.deletedTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)),
+	);
 
 	const workspaceCleanupResults = await Promise.all(
 		mutation.value.deletedTaskIds.map(async (taskId) => ({

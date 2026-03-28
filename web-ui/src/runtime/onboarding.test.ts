@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	isSelectedAgentAuthenticated,
-	shouldShowStartupOnboardingDialog,
-} from "@/runtime/onboarding";
+import { isSelectedAgentAuthenticated, shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
 
 describe("runtime onboarding helpers", () => {
 	it("treats non-cline selections as authenticated", () => {

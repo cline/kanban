@@ -1,4 +1,4 @@
-import type { RuntimeAgentId } from "./api-contract.js";
+import type { RuntimeAgentId } from "./api-contract";
 
 export interface RuntimeAgentCatalogEntry {
 	id: RuntimeAgentId;

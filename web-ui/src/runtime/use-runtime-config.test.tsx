@@ -268,4 +268,4 @@ describe("useRuntimeConfig", () => {
 		expect(snapshot.config?.selectedAgentId).toBe("codex");
 		expect(snapshot.isLoading).toBe(false);
 	});
-	});
+});

@@ -4,14 +4,11 @@
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-
-import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract.js";
-import {
-	isRuntimeAgentLaunchSupported,
-} from "../core/agent-catalog.js";
-import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
-import { detectInstalledCommands } from "../terminal/agent-registry.js";
-import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils.js";
+import { isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
+import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
+import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
+import { detectInstalledCommands } from "../terminal/agent-registry";
+import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils";
 
 interface RuntimeGlobalConfigFileShape {
 	selectedAgentId?: RuntimeAgentId;
@@ -625,7 +622,9 @@ export async function updateGlobalRuntimeConfig(
 			const nextConfig = {
 				selectedAgentId: updates.selectedAgentId ?? current.selectedAgentId,
 				selectedShortcutLabel:
-					updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel,
+					updates.selectedShortcutLabel === undefined
+						? current.selectedShortcutLabel
+						: updates.selectedShortcutLabel,
 				agentAutonomousModeEnabled: updates.agentAutonomousModeEnabled ?? current.agentAutonomousModeEnabled,
 				readyForReviewNotificationsEnabled:
 					updates.readyForReviewNotificationsEnabled ?? current.readyForReviewNotificationsEnabled,
