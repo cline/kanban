@@ -58,6 +58,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		autonomousArgs: ["--yolo"],
 		installUrl: "https://github.com/google-gemini/gemini-cli",
 	},
+	{
+		id: "kiro",
+		label: "Kiro CLI",
+		binary: "kiro-cli",
+		baseArgs: ["chat"],
+		autonomousArgs: ["--trust-all-tools"],
+		installUrl: "https://kiro.dev",
+	},
 ];
 
 // Temporarily keep launch support scoped to the core agent set.
@@ -66,6 +74,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"cline",
 	"claude",
 	"codex",
+	"kiro",
 	// "opencode",
 	// "droid",
 	// "gemini",

@@ -1,4 +1,5 @@
 import { access, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -1308,6 +1309,134 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+function buildKiroHookScript(event: RuntimeHookEvent, source: string): string {
+	const commandParts = buildHooksCommandParts(["notify", "--event", event, "--source", source]);
+	if (process.platform === "win32") {
+		const command = commandParts.map(powerShellQuote).join(" ");
+		return `$inputText = [Console]::In.ReadToEnd()
+try {
+  $inputText | & ${command} | Out-Null
+} catch {
+}
+exit 0
+`;
+	}
+	const command = commandParts.map(quoteShellArg).join(" ");
+	return `#!/usr/bin/env bash
+INPUT="$(cat || true)"
+printf '%s' "$INPUT" | ${command} >/dev/null 2>&1 || true
+exit 0
+`;
+}
+
+function getKiroHookScriptPath(hooksDir: string, hookName: string): string {
+	if (process.platform === "win32") {
+		return join(hooksDir, `${hookName}.ps1`);
+	}
+	return join(hooksDir, hookName);
+}
+
+function getKiroGlobalAgentsDir(): string {
+	return join(homedir(), ".kiro", "agents");
+}
+
+const KIRO_KANBAN_AGENT_NAME = "kanban-agent";
+
+const kiroAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--trust-all-tools") && !hasCliOption(args, "-a")) {
+			args.push("--trust-all-tools");
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume") && !hasCliOption(args, "-r")) {
+			args.push("--resume");
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			const hooksDir = getHookAgentDirectory("kiro");
+			const scriptsDir = join(hooksDir, "scripts");
+			const executable = process.platform !== "win32";
+
+			// Create hook scripts
+			const stopScriptPath = getKiroHookScriptPath(scriptsDir, "stop");
+			const preToolScriptPath = getKiroHookScriptPath(scriptsDir, "preToolUse");
+			const postToolScriptPath = getKiroHookScriptPath(scriptsDir, "postToolUse");
+			const userPromptScriptPath = getKiroHookScriptPath(scriptsDir, "userPromptSubmit");
+			const agentSpawnScriptPath = getKiroHookScriptPath(scriptsDir, "agentSpawn");
+
+			await ensureTextFile(stopScriptPath, buildKiroHookScript("to_review", "kiro"), executable);
+			await ensureTextFile(preToolScriptPath, buildKiroHookScript("activity", "kiro"), executable);
+			await ensureTextFile(postToolScriptPath, buildKiroHookScript("to_in_progress", "kiro"), executable);
+			await ensureTextFile(userPromptScriptPath, buildKiroHookScript("to_in_progress", "kiro"), executable);
+			await ensureTextFile(agentSpawnScriptPath, buildKiroHookScript("to_in_progress", "kiro"), executable);
+
+			// Write agent config to ~/.kiro/agents/ where kiro-cli discovers agents by name
+			const agentConfigPath = join(getKiroGlobalAgentsDir(), `${KIRO_KANBAN_AGENT_NAME}.json`);
+			const agentConfig = {
+				name: KIRO_KANBAN_AGENT_NAME,
+				description: "Kanban-managed agent with lifecycle hooks",
+				tools: [
+					"fs_read",
+					"fs_write",
+					"execute_bash",
+					"use_aws",
+					"gh_issue",
+					"knowledge",
+					"thinking",
+					"todo_list",
+					"code",
+					"grep",
+					"glob",
+					"web_search",
+					"web_fetch",
+					"imageRead",
+					"introspect",
+				],
+				hooks: {
+					agentSpawn: [
+						{ command: agentSpawnScriptPath, description: "Kanban: agent started" },
+					],
+					stop: [
+						{ command: stopScriptPath, description: "Kanban: task ready for review" },
+					],
+					preToolUse: [
+						{ matcher: "*", command: preToolScriptPath, description: "Kanban: activity" },
+					],
+					postToolUse: [
+						{ matcher: "*", command: postToolScriptPath, description: "Kanban: in progress" },
+					],
+					userPromptSubmit: [
+						{ command: userPromptScriptPath, description: "Kanban: user prompt submitted" },
+					],
+				},
+			};
+			await ensureTextFile(agentConfigPath, JSON.stringify(agentConfig, null, 2));
+
+			// Use --agent with the name (not path) so kiro-cli resolves it from ~/.kiro/agents/
+			args.push("--agent", KIRO_KANBAN_AGENT_NAME);
+
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		const trimmed = input.prompt.trim();
+		if (trimmed) {
+			args.push(trimmed);
+		}
+
+		return { args, env };
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1315,6 +1444,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
 	cline: clineAdapter,
+	kiro: kiroAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
