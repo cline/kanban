@@ -141,6 +141,8 @@ describe("CardDetailView", () => {
 		mockClineSendText.mockClear();
 		mockUseRuntimeWorkspaceChanges.mockReturnValue({
 			changes: {
+				repoRoot: "/tmp/project",
+				generatedAt: Date.now(),
 				files: [
 					{
 						path: "src/example.ts",
@@ -257,6 +259,43 @@ describe("CardDetailView", () => {
 		const lastCall = mockUseRuntimeWorkspaceChanges.mock.calls.at(-1);
 		expect(lastCall?.[3]).toBe("last_turn");
 		expect(lastCall?.[7]).toBe(true);
+	});
+
+	it("shows a safety panel instead of mounting the diff viewer when changes are truncated", async () => {
+		mockUseRuntimeWorkspaceChanges.mockReturnValue({
+			changes: {
+				repoRoot: "/tmp/project",
+				generatedAt: Date.now(),
+				files: [],
+				totalFileCount: 1000000,
+				truncated: true,
+				warning: "Too many changes to render safely.",
+			},
+			isRuntimeAvailable: true,
+		});
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Too many changes to render");
+		expect(container.textContent).toContain("Too many changes to render safely.");
+		expect(mockDiffViewerPanel).not.toHaveBeenCalled();
 	});
 
 	it("closes git history before handling other Escape behavior", async () => {

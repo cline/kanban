@@ -9,6 +9,8 @@ import type {
 import { getGitStdout } from "./git-utils";
 
 const WORKSPACE_CHANGES_CACHE_MAX_ENTRIES = 128;
+const MAX_WORKSPACE_CHANGE_FILES = 250;
+const MAX_WORKSPACE_CHANGE_TEXT_BYTES = 5_000_000;
 
 interface WorkspaceChangesCacheEntry {
 	stateKey: string;
@@ -45,6 +47,13 @@ interface FileFingerprint {
 	size: number | null;
 	mtimeMs: number | null;
 	ctimeMs: number | null;
+}
+
+function estimateTextBytes(value: string | null): number {
+	if (!value) {
+		return 0;
+	}
+	return Buffer.byteLength(value, "utf8");
 }
 
 function mapNameStatus(code: string): RuntimeWorkspaceFileStatus {
@@ -351,16 +360,75 @@ async function buildFileChangeFromRef(
 	};
 }
 
+function createWorkspaceChangesResponse(input: {
+	repoRoot: string;
+	files: RuntimeWorkspaceChangesResponse["files"];
+	totalFileCount?: number;
+	truncated?: boolean;
+	warning?: string | null;
+}): RuntimeWorkspaceChangesResponse {
+	return {
+		repoRoot: input.repoRoot,
+		generatedAt: Date.now(),
+		files: input.files,
+		totalFileCount: input.totalFileCount ?? input.files.length,
+		truncated: input.truncated ?? false,
+		warning: input.warning ?? null,
+	};
+}
+
+function createTruncatedWorkspaceChangesResponse(input: {
+	repoRoot: string;
+	totalFileCount: number;
+	warning: string;
+}): RuntimeWorkspaceChangesResponse {
+	return createWorkspaceChangesResponse({
+		repoRoot: input.repoRoot,
+		files: [],
+		totalFileCount: input.totalFileCount,
+		truncated: true,
+		warning: input.warning,
+	});
+}
+
+async function buildWorkspaceChangesWithTextBudget(
+	builders: Array<() => Promise<RuntimeWorkspaceChangesResponse["files"][number]>>,
+	repoRoot: string,
+	totalFileCount: number,
+): Promise<RuntimeWorkspaceChangesResponse> {
+	const files: RuntimeWorkspaceChangesResponse["files"] = [];
+	let totalTextBytes = 0;
+	for (const build of builders) {
+		const file = await build();
+		totalTextBytes += estimateTextBytes(file.oldText) + estimateTextBytes(file.newText);
+		if (totalTextBytes > MAX_WORKSPACE_CHANGE_TEXT_BYTES) {
+			return createTruncatedWorkspaceChangesResponse({
+				repoRoot,
+				totalFileCount,
+				warning: `Too many changes to render safely. This view is limited to ${MAX_WORKSPACE_CHANGE_FILES} files or ${Math.floor(
+					MAX_WORKSPACE_CHANGE_TEXT_BYTES / 1_000_000,
+				)} MB of diff text.`,
+			});
+		}
+		files.push(file);
+	}
+	files.sort((left, right) => left.path.localeCompare(right.path));
+	return createWorkspaceChangesResponse({
+		repoRoot,
+		files,
+		totalFileCount,
+	});
+}
+
 export async function createEmptyWorkspaceChangesResponse(cwd: string): Promise<RuntimeWorkspaceChangesResponse> {
 	const repoRoot = (await getGitStdout(["rev-parse", "--show-toplevel"], cwd)).trim();
 	if (!repoRoot) {
 		throw new Error("Could not resolve git repository root.");
 	}
-	return {
+	return createWorkspaceChangesResponse({
 		repoRoot,
-		generatedAt: Date.now(),
 		files: [],
-	};
+	});
 }
 
 export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspaceChangesResponse> {
@@ -390,6 +458,15 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 				status: "untracked" as const,
 			})),
 	];
+	if (allChanges.length > MAX_WORKSPACE_CHANGE_FILES) {
+		return createTruncatedWorkspaceChangesResponse({
+			repoRoot,
+			totalFileCount: allChanges.length,
+			warning: `Too many changes to render safely. This view is limited to ${MAX_WORKSPACE_CHANGE_FILES} files or ${Math.floor(
+				MAX_WORKSPACE_CHANGE_TEXT_BYTES / 1_000_000,
+			)} MB of diff text.`,
+		});
+	}
 	const fingerprintPaths = allChanges.flatMap((entry) => [entry.path, entry.previousPath].filter(Boolean) as string[]);
 	const fingerprints = await buildFileFingerprints(repoRoot, fingerprintPaths);
 	const stateKey = buildWorkspaceChangesStateKey({
@@ -405,13 +482,11 @@ export async function getWorkspaceChanges(cwd: string): Promise<RuntimeWorkspace
 		return existing.response;
 	}
 
-	const files = await Promise.all(allChanges.map((entry) => buildFileChange(repoRoot, entry)));
-	files.sort((left, right) => left.path.localeCompare(right.path));
-	const response: RuntimeWorkspaceChangesResponse = {
+	const response = await buildWorkspaceChangesWithTextBudget(
+		allChanges.map((entry) => () => buildFileChange(repoRoot, entry)),
 		repoRoot,
-		generatedAt: Date.now(),
-		files,
-	};
+		allChanges.length,
+	);
 	workspaceChangesCacheByRepoRoot.set(repoRoot, {
 		stateKey,
 		response,
@@ -435,23 +510,26 @@ export async function getWorkspaceChangesBetweenRefs(
 	);
 	const trackedChanges = parseTrackedChanges(trackedChangesOutput);
 	if (trackedChanges.length === 0) {
-		return {
+		return createWorkspaceChangesResponse({
 			repoRoot,
-			generatedAt: Date.now(),
 			files: [],
-		};
+		});
+	}
+	if (trackedChanges.length > MAX_WORKSPACE_CHANGE_FILES) {
+		return createTruncatedWorkspaceChangesResponse({
+			repoRoot,
+			totalFileCount: trackedChanges.length,
+			warning: `Too many changes to render safely. This view is limited to ${MAX_WORKSPACE_CHANGE_FILES} files or ${Math.floor(
+				MAX_WORKSPACE_CHANGE_TEXT_BYTES / 1_000_000,
+			)} MB of diff text.`,
+		});
 	}
 
-	const files = await Promise.all(
-		trackedChanges.map((entry) => buildFileChangeBetweenRefs(repoRoot, entry, input.fromRef, input.toRef)),
-	);
-	files.sort((left, right) => left.path.localeCompare(right.path));
-
-	return {
+	return await buildWorkspaceChangesWithTextBudget(
+		trackedChanges.map((entry) => () => buildFileChangeBetweenRefs(repoRoot, entry, input.fromRef, input.toRef)),
 		repoRoot,
-		generatedAt: Date.now(),
-		files,
-	};
+		trackedChanges.length,
+	);
 }
 
 export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkspaceChangesResponse> {
@@ -481,18 +559,23 @@ export async function getWorkspaceChangesFromRef(input: ChangesFromRefInput): Pr
 	];
 
 	if (allChanges.length === 0) {
-		return {
+		return createWorkspaceChangesResponse({
 			repoRoot,
-			generatedAt: Date.now(),
 			files: [],
-		};
+		});
 	}
-
-	const files = await Promise.all(allChanges.map((entry) => buildFileChangeFromRef(repoRoot, entry, input.fromRef)));
-	files.sort((left, right) => left.path.localeCompare(right.path));
-	return {
+	if (allChanges.length > MAX_WORKSPACE_CHANGE_FILES) {
+		return createTruncatedWorkspaceChangesResponse({
+			repoRoot,
+			totalFileCount: allChanges.length,
+			warning: `Too many changes to render safely. This view is limited to ${MAX_WORKSPACE_CHANGE_FILES} files or ${Math.floor(
+				MAX_WORKSPACE_CHANGE_TEXT_BYTES / 1_000_000,
+			)} MB of diff text.`,
+		});
+	}
+	return await buildWorkspaceChangesWithTextBudget(
+		allChanges.map((entry) => () => buildFileChangeFromRef(repoRoot, entry, input.fromRef)),
 		repoRoot,
-		generatedAt: Date.now(),
-		files,
-	};
+		allChanges.length,
+	);
 }
