@@ -1266,6 +1266,40 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(modelsResponse.models.some((model) => model.id === "claude-sonnet-4-6")).toBe(true);
 	});
 
+	it("includes openai-compatible in the provider catalog", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			model: "claude-sonnet-4-6",
+		});
+
+		const catalogResponse = await api.getClineProviderCatalog({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		const openaiCompatible = catalogResponse.providers.find((p) => p.id === "openai-compatible");
+		expect(openaiCompatible).toBeDefined();
+		expect(openaiCompatible?.name).toBe("OpenAI Compatible");
+		expect(openaiCompatible?.oauthSupported).toBe(false);
+		expect(openaiCompatible?.defaultModelId).toBeNull();
+		expect(openaiCompatible?.enabled).toBe(false);
+
+		// "cline" should be first (injected as selected fallback), "openai-compatible" second
+		const clineIndex = catalogResponse.providers.findIndex((p) => p.id === "cline");
+		const openaiCompatibleIndex = catalogResponse.providers.findIndex((p) => p.id === "openai-compatible");
+		expect(clineIndex).toBe(0);
+		expect(openaiCompatibleIndex).toBe(1);
+	});
+
 	it("returns cline account profile for cline OAuth users", async () => {
 		const api = createRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),

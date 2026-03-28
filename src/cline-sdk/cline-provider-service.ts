@@ -460,18 +460,46 @@ export function createClineProviderService() {
 							enabled:
 								selectedProviderId.length > 0 ? selectedProviderId === provider.id : provider.id === "cline",
 							defaultModelId: provider.defaultModelId ?? null,
-						}))
-						.sort((left, right) => {
-							if (left.id === "cline") {
-								return -1;
-							}
-							if (right.id === "cline") {
-								return 1;
-							}
-							return left.name.localeCompare(right.name);
-						}),
+						})),
 				)
 				.catch(() => []);
+
+			// Inject a first-class "OpenAI Compatible" entry so users can
+			// configure any OpenAI-compatible endpoint (vLLM, Ollama,
+			// LM Studio, llama.cpp, etc.) directly from the provider dropdown.
+			// The SDK handler layer already routes unknown providerIds with a
+			// baseUrl to the OpenAI base handler, so no additional plumbing
+			// is required.
+			if (!providers.some((p) => p.id === "openai-compatible")) {
+				providers.push({
+					id: "openai-compatible",
+					name: "OpenAI Compatible",
+					oauthSupported: false,
+					enabled:
+						selectedProviderId.length > 0
+							? selectedProviderId === "openai-compatible"
+							: false,
+					defaultModelId: null,
+				});
+			}
+
+			providers.sort((left, right) => {
+				// "cline" always first
+				if (left.id === "cline") {
+					return -1;
+				}
+				if (right.id === "cline") {
+					return 1;
+				}
+				// "openai-compatible" always second (right after "cline")
+				if (left.id === "openai-compatible") {
+					return -1;
+				}
+				if (right.id === "openai-compatible") {
+					return 1;
+				}
+				return left.name.localeCompare(right.name);
+			});
 
 			if (selectedProviderId.length > 0 && !providers.some((provider) => provider.id === selectedProviderId)) {
 				providers.unshift({
