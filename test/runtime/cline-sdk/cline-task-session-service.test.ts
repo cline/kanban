@@ -11,6 +11,7 @@ import type {
 import { createSessionId } from "../../../src/cline-sdk/cline-session-state";
 import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
 import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
+import { createClineWatcherRegistry } from "../../../src/cline-sdk/cline-watcher-registry";
 import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../../../src/core/api-contract";
 
 const originalArgv = [...process.argv];
@@ -303,10 +304,15 @@ function createFakeRuntimeSetup(): FakeRuntimeSetupController {
 		reason: "approved in test",
 	}));
 	const disposeMock = vi.fn(async () => {});
+	const refreshAllMock = vi.fn(async () => {});
+	const getSnapshotMock = vi.fn((_type: string) => new Map());
 
 	return {
 		setup: {
-			watcher: {} as ClineRuntimeSetup["watcher"],
+			watcher: {
+				refreshAll: refreshAllMock,
+				getSnapshot: getSnapshotMock,
+			} as unknown as ClineRuntimeSetup["watcher"],
 			resolvePrompt: resolvePromptMock,
 			loadRules: loadRulesMock,
 			requestToolApproval: requestToolApprovalMock,
@@ -397,6 +403,53 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(summary.state).toBe("running");
 		expect(summary.workspacePath).toBe("/tmp/worktree");
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual(["Investigate startup"]);
+	});
+
+	it("disposes cached runtime setups when the service shuts down", async () => {
+		const runtime = createFakeClineSessionRuntime();
+		const runtimeSetup = createFakeRuntimeSetup();
+		const createRuntimeSetupMock = vi.fn(async (_workspacePath: string) => runtimeSetup.setup);
+		const service = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtime.createRuntime(options),
+			createRuntimeSetup: createRuntimeSetupMock,
+		});
+		services.push(service);
+
+		await service.listSlashCommands("/tmp/worktree");
+		await service.dispose();
+
+		expect(createRuntimeSetupMock).toHaveBeenCalledWith("/tmp/worktree");
+		expect(runtimeSetup.disposeMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("reuses one runtime setup per workspace across services when sharing a watcher registry", async () => {
+		const runtimeA = createFakeClineSessionRuntime();
+		const runtimeB = createFakeClineSessionRuntime();
+		const runtimeSetup = createFakeRuntimeSetup();
+		const createRuntimeSetupMock = vi.fn(async (_workspacePath: string) => runtimeSetup.setup);
+		const watcherRegistry = createClineWatcherRegistry({
+			createRuntimeSetup: createRuntimeSetupMock,
+		});
+		const serviceA = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtimeA.createRuntime(options),
+			watcherRegistry,
+		});
+		const serviceB = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtimeB.createRuntime(options),
+			watcherRegistry,
+		});
+		services.push(serviceA, serviceB);
+
+		await serviceA.listSlashCommands("/tmp/worktree");
+		await serviceB.listSlashCommands("/tmp/worktree");
+
+		expect(createRuntimeSetupMock).toHaveBeenCalledTimes(1);
+
+		await serviceA.dispose();
+		expect(runtimeSetup.disposeMock).toHaveBeenCalledTimes(0);
+
+		await serviceB.dispose();
+		expect(runtimeSetup.disposeMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("keeps resume-from-trash sessions awaiting review until the user sends a message", async () => {
@@ -860,17 +913,15 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 		services.push(service);
 
-		await service.startTaskSession({
-			taskId: "task-1",
-			cwd: "/tmp/worktree",
-			prompt: "Initial prompt",
-		});
-		await vi.waitFor(() => {
-			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
-		});
+			await service.startTaskSession({
+				taskId: "task-1",
+				cwd: "/tmp/worktree",
+				prompt: "Initial prompt",
+			});
+			await waitForTaskSessionId(runtime, "task-1");
 
-		runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
-		await service.sendTaskSessionInput("task-1", "/continue");
+			runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
+			await service.sendTaskSessionInput("task-1", "/continue");
 		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",

@@ -59,10 +59,12 @@ describe("InMemoryClineSessionRuntime", () => {
 		const onTaskEvent = vi.fn();
 		let subscribedListener: ((event: unknown) => void) | null = null;
 		let requestedSessionId: string | null = null;
+		let requestedSource: string | null = null;
 
 		const fakeHost = {
-			start: vi.fn(async (input: { config?: { sessionId?: string } }) => {
+			start: vi.fn(async (input: { source?: string; config?: { sessionId?: string } }) => {
 				requestedSessionId = input.config?.sessionId ?? null;
+				requestedSource = input.source ?? null;
 				return await startDeferred.promise;
 			}),
 			send: vi.fn(async () => ({})),
@@ -96,6 +98,7 @@ describe("InMemoryClineSessionRuntime", () => {
 		await vi.waitFor(() => {
 			expect(fakeHost.start).toHaveBeenCalledTimes(1);
 			expect(requestedSessionId).toBeTruthy();
+			expect(requestedSource).toBe(null);
 			expect(subscribedListener).toBeTruthy();
 		});
 

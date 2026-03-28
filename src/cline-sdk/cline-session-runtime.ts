@@ -14,6 +14,7 @@ import type {
 	ClineSdkPersistedMessage,
 	ClineSdkSessionHost,
 	ClineSdkSessionRecord,
+	ClineSdkStartSessionInput,
 	ClineSdkToolApprovalRequest,
 	ClineSdkToolApprovalResult,
 	ClineSdkUserInstructionWatcher,
@@ -22,7 +23,7 @@ import { createClineSdkSessionHost } from "./session-host";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;
 interface ClineSessionHostBoundary {
-	start(input: Parameters<ClineSdkSessionHost["start"]>[0]): Promise<{ sessionId: string; result?: unknown }>;
+	start(input: ClineSdkStartSessionInput): Promise<{ sessionId: string; result?: unknown }>;
 	send(input: Parameters<ClineSdkSessionHost["send"]>[0]): Promise<unknown>;
 	stop(sessionId: string): Promise<void>;
 	abort(sessionId: string): Promise<void>;
