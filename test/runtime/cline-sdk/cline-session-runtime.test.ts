@@ -553,4 +553,48 @@ describe("InMemoryClineSessionRuntime", () => {
 		expect(fakeHost.dispose).toHaveBeenCalledWith("kanban-runtime-dispose");
 		expect(runtime.getTaskSessionId("task-1")).toBeNull();
 	});
+
+	it("passes baseUrl through to the SDK session host for openai-compatible providers", async () => {
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => undefined),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await runtime.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Use local LLM",
+			providerId: "openai-compatible",
+			modelId: "llama-3.1-8b",
+			apiKey: "test-key",
+			baseUrl: "http://localhost:8000/v1",
+			systemPrompt: "You are a helpful coding assistant.",
+		});
+
+		expect(fakeHost.start).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					providerId: "openai-compatible",
+					modelId: "llama-3.1-8b",
+					apiKey: "test-key",
+					baseUrl: "http://localhost:8000/v1",
+				}),
+			}),
+		);
+	});
 });

@@ -434,6 +434,11 @@ export function createClineProviderService() {
 						oauthApiKey: oauthResolution?.apiKey ?? null,
 					})
 				: resolveVisibleApiKey(resolvedSettings);
+			if (normalizedProviderId === "openai-compatible" && !resolvedSettings.baseUrl?.trim()) {
+				throw new Error(
+					"The openai-compatible provider requires a Base URL. Open Settings and enter the endpoint URL for your OpenAI-compatible service.",
+				);
+			}
 			return {
 				providerId: normalizedProviderId,
 				modelId: resolvedSettings.model?.trim() || null,

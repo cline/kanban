@@ -1792,4 +1792,147 @@ describe("createRuntimeApi startTaskSession", () => {
 			rmSync(tempHome, { recursive: true, force: true });
 		}
 	});
+
+	it("saves openai-compatible settings with baseUrl, apiKey, modelId and resolves a correct launch config", async () => {
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
+
+		// Save openai-compatible settings
+		setSelectedProviderSettings(null);
+		oauthMocks.getProviderSettings.mockReturnValue(undefined);
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => {
+				const runtimeConfigState = createRuntimeConfigState();
+				runtimeConfigState.selectedAgentId = "cline";
+				return runtimeConfigState;
+			}),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		// Step 1: Save provider settings for openai-compatible
+		const saveResult = await api.saveClineProviderSettings(null, {
+			providerId: "openai-compatible",
+			baseUrl: "http://localhost:8000/v1",
+			apiKey: "test-key",
+			modelId: "llama-3.1-8b",
+		});
+
+		expect(saveResult.providerId).toBe("openai-compatible");
+		expect(saveResult.baseUrl).toBe("http://localhost:8000/v1");
+		expect(saveResult.apiKeyConfigured).toBe(true);
+		expect(saveResult.modelId).toBe("llama-3.1-8b");
+		expect(saveResult.oauthProvider).toBeNull();
+		expect(saveResult.oauthAccessTokenConfigured).toBe(false);
+
+		// Verify saveProviderSettings was called with correct settings (auth deleted for non-managed provider)
+		expect(oauthMocks.saveProviderSettings).toHaveBeenCalledWith(
+			expect.objectContaining({
+				provider: "openai-compatible",
+				baseUrl: "http://localhost:8000/v1",
+				apiKey: "test-key",
+				model: "llama-3.1-8b",
+			}),
+			expect.objectContaining({
+				setLastUsed: true,
+			}),
+		);
+		// The saved settings should not have an auth property (non-managed provider)
+		const savedSettings = oauthMocks.saveProviderSettings.mock.calls[0][0];
+		expect(savedSettings.auth).toBeUndefined();
+
+		// Step 2: Configure mocks to return the persisted settings and resolve launch config
+		setSelectedProviderSettings({
+			provider: "openai-compatible",
+			baseUrl: "http://localhost:8000/v1",
+			apiKey: "test-key",
+			model: "llama-3.1-8b",
+		});
+
+		// Start a task session to exercise the full resolveLaunchConfig path
+		const response = await api.startTaskSession(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "Use the local LLM",
+			},
+		);
+
+		expect(response.ok).toBe(true);
+		expect(clineTaskSessionService.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				providerId: "openai-compatible",
+				baseUrl: "http://localhost:8000/v1",
+				apiKey: "test-key",
+				modelId: "llama-3.1-8b",
+			}),
+		);
+	});
+
+	it("throws a clear error when resolving openai-compatible launch config without a baseUrl", async () => {
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
+
+		// Configure openai-compatible without baseUrl
+		setSelectedProviderSettings({
+			provider: "openai-compatible",
+			apiKey: "test-key",
+			model: "llama-3.1-8b",
+		});
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => {
+				const runtimeConfigState = createRuntimeConfigState();
+				runtimeConfigState.selectedAgentId = "cline";
+				return runtimeConfigState;
+			}),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.startTaskSession(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "Use the local LLM",
+			},
+		);
+
+		expect(response.ok).toBe(false);
+		expect(response.summary).toBeNull();
+		expect(response.error).toContain("openai-compatible");
+		expect(response.error).toContain("Base URL");
+		expect(clineTaskSessionService.startTaskSession).not.toHaveBeenCalled();
+		expect(terminalManager.startTaskSession).not.toHaveBeenCalled();
+	});
 });
