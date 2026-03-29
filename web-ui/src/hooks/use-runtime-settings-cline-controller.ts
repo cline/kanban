@@ -99,17 +99,13 @@ function normalizeBaseUrlForProvider(providerId: string, baseUrl: string | null 
 	return baseUrl ?? "";
 }
 
-function getDefaultBaseUrlForProvider(
-	providers: RuntimeClineProviderCatalogItem[],
-	providerId: string,
-): string {
+function getDefaultBaseUrlForProvider(providers: RuntimeClineProviderCatalogItem[], providerId: string): string {
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	if (!normalizedProviderId) {
 		return "";
 	}
 	return (
-		providers.find((provider) => provider.id.trim().toLowerCase() === normalizedProviderId)?.baseUrl?.trim() ??
-		""
+		providers.find((provider) => provider.id.trim().toLowerCase() === normalizedProviderId)?.baseUrl?.trim() ?? ""
 	);
 }
 
@@ -164,7 +160,11 @@ export function useRuntimeSettingsClineController(
 	const configProviderSettings = getRuntimeClineProviderSettings(config);
 	const initialProviderId = effectiveProviderSettings?.providerId ?? effectiveProviderSettings?.oauthProvider ?? "";
 	const initialModelId = effectiveProviderSettings?.modelId ?? "";
-	const initialBaseUrl = resolveBaseUrlForProvider(providerCatalog, initialProviderId, effectiveProviderSettings?.baseUrl);
+	const initialBaseUrl = resolveBaseUrlForProvider(
+		providerCatalog,
+		initialProviderId,
+		effectiveProviderSettings?.baseUrl,
+	);
 	const initialReasoningEffort = effectiveProviderSettings?.reasoningEffort ?? "";
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	const managedOauthProvider = toManagedClineOauthProvider(normalizedProviderId);
@@ -219,7 +219,6 @@ export function useRuntimeSettingsClineController(
 		setReasoningEffort(configProviderSettings.reasoningEffort ?? "");
 		setProviderSettingsOverride(null);
 	}, [
-		providerCatalog,
 		configProviderSettings.baseUrl,
 		configProviderSettings.modelId,
 		configProviderSettings.oauthProvider,

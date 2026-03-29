@@ -538,7 +538,9 @@ describe("createRuntimeApi startTaskSession", () => {
 				return runtimeConfigState;
 			}),
 			setActiveRuntimeConfig: vi.fn(),
-			getScopedTerminalManager: vi.fn(async () => ({ startTaskSession: vi.fn(), applyTurnCheckpoint: vi.fn() }) as never),
+			getScopedTerminalManager: vi.fn(
+				async () => ({ startTaskSession: vi.fn(), applyTurnCheckpoint: vi.fn() }) as never,
+			),
 			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
 			resolveInteractiveShellCommand: vi.fn(),
 			runCommand: vi.fn(),

@@ -44,14 +44,17 @@ function parseUsageSummary(message: ClineChatMessage): UsageSummaryUI | null {
 
 function UsageSummaryBlock({ summary }: { summary: UsageSummaryUI }): ReactElement {
 	return (
-		<div className={cn(
-			"w-full p-1",
-			summary.status === "failed" ? "border-red-500/70 bg-red-500/10" : ""
-		)}>
-			<div  id={`usage-summary-${summary.iterations}`} className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-				<span className="text-text-secondary">In <span className="text-text-primary">{summary.token.input}</span></span>
-				<span className="text-text-secondary">Out <span className="text-text-primary">{summary.token.output}</span></span>
-				<span className="text-text-secondary">Cache <span className="text-text-primary">{summary.cache.input + summary.cache.output}</span></span>
+		<div className={cn("w-full p-1", summary.status === "failed" ? "border-red-500/70 bg-red-500/10" : "")}>
+			<div id={`usage-summary-${summary.iterations}`} className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+				<span className="text-text-secondary">
+					In <span className="text-text-primary">{summary.token.input}</span>
+				</span>
+				<span className="text-text-secondary">
+					Out <span className="text-text-primary">{summary.token.output}</span>
+				</span>
+				<span className="text-text-secondary">
+					Cache <span className="text-text-primary">{summary.cache.input + summary.cache.output}</span>
+				</span>
 			</div>
 		</div>
 	);

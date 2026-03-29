@@ -427,7 +427,6 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: assigned for cleanup in disconnect()
 	private transport: SdkTransport | null = null;
 
-
 	constructor(
 		private readonly server: RuntimeClineMcpServer,
 		private readonly oauthSettingsPath: string,
