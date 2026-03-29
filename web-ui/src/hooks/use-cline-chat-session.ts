@@ -25,7 +25,10 @@ interface UseClineChatSessionResult {
 	isSending: boolean;
 	isCanceling: boolean;
 	error: string | null;
-	sendMessage: (text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }) => Promise<boolean>;
+	sendMessage: (
+		text: string,
+		options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] },
+	) => Promise<boolean>;
 	cancelTurn: () => Promise<boolean>;
 }
 
@@ -52,14 +55,8 @@ function upsertMessage(currentMessages: ClineChatMessage[], nextMessage: ClineCh
 	return nextMessages;
 }
 
-function mergeMessages(
-	baseMessages: ClineChatMessage[],
-	additionalMessages: ClineChatMessage[],
-): ClineChatMessage[] {
-	return additionalMessages.reduce(
-		(nextMessages, message) => upsertMessage(nextMessages, message),
-		[...baseMessages],
-	);
+function mergeMessages(baseMessages: ClineChatMessage[], additionalMessages: ClineChatMessage[]): ClineChatMessage[] {
+	return additionalMessages.reduce((nextMessages, message) => upsertMessage(nextMessages, message), [...baseMessages]);
 }
 
 export function useClineChatSession({
@@ -150,7 +147,10 @@ export function useClineChatSession({
 	}, [isCanceling, onCancelTurn, taskId]);
 
 	const sendMessage = useCallback(
-		async (text: string, options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] }): Promise<boolean> => {
+		async (
+			text: string,
+			options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] },
+		): Promise<boolean> => {
 			const trimmed = text.trim();
 			const hasImages = Boolean(options?.images && options.images.length > 0);
 			if ((!trimmed && !hasImages) || !onSendMessage) {

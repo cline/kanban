@@ -139,16 +139,7 @@ export function usePersistentTerminalSession({
 				terminalRef.current = null;
 			}
 		};
-	}, [
-		autoFocus,
-		cursorColor,
-		enabled,
-		isVisible,
-		sessionStartedAt,
-		taskId,
-		terminalBackgroundColor,
-		workspaceId,
-	]);
+	}, [autoFocus, cursorColor, enabled, isVisible, sessionStartedAt, taskId, terminalBackgroundColor, workspaceId]);
 
 	useEffect(() => {
 		return registerTerminalController(taskId, {

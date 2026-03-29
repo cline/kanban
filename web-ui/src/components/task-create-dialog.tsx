@@ -28,7 +28,6 @@ import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 
-
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
 	{ value: "pr", label: "Make PR" },
@@ -55,9 +54,15 @@ function ButtonShortcut({
 }): ReactElement {
 	return (
 		<span className="inline-flex items-center gap-0.5 ml-1.5" aria-hidden>
-			{modifier === "alt"
-				? (isMacPlatform ? <Option size={12} /> : <span className="text-[10px] font-medium leading-none">Alt</span>)
-				: <Command size={12} />}
+			{modifier === "alt" ? (
+				isMacPlatform ? (
+					<Option size={12} />
+				) : (
+					<span className="text-[10px] font-medium leading-none">Alt</span>
+				)
+			) : (
+				<Command size={12} />
+			)}
 			{includeShift ? <ArrowBigUp size={12} /> : null}
 			<CornerDownLeft size={12} />
 		</span>
@@ -150,10 +155,7 @@ export function TaskCreateDialog({
 	);
 
 	const detectedItems = useMemo(() => parseListItems(prompt), [prompt]);
-	const validTaskCount = useMemo(
-		() => taskPrompts.filter((p) => p.trim()).length,
-		[taskPrompts],
-	);
+	const validTaskCount = useMemo(() => taskPrompts.filter((p) => p.trim()).length, [taskPrompts]);
 	const effectivePrimaryStartAction =
 		onCreateStartAndOpen || primaryStartAction === "start" ? primaryStartAction : DEFAULT_PRIMARY_START_ACTION;
 	const secondaryStartAction = effectivePrimaryStartAction === "start" ? "start_and_open" : "start";
@@ -374,9 +376,7 @@ export function TaskCreateDialog({
 		[open, mode, handleRunSingleStartAction, onCreateStartAndOpen],
 	);
 
-	const dialogTitle = mode === "multi"
-		? `New tasks${validTaskCount > 0 ? ` (${validTaskCount})` : ""}`
-		: "New task";
+	const dialogTitle = mode === "multi" ? `New tasks${validTaskCount > 0 ? ` (${validTaskCount})` : ""}` : "New task";
 
 	const taskCountLabel = validTaskCount === 1 ? "task" : "tasks";
 	const primaryStartLabel = effectivePrimaryStartAction === "start" ? "Start task" : "Start and open";
@@ -405,9 +405,12 @@ export function TaskCreateDialog({
 						/>
 						<div className="flex items-center justify-between mt-1.5">
 							<p className="text-[11px] text-text-tertiary">
-								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference
-								files. Drag and drop or <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to
-								add images.
+								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
+								reference files. Drag and drop or{" "}
+								<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">
+									{pasteShortcutLabel}
+								</code>{" "}
+								to add images.
 							</p>
 							{detectedItems.length >= 2 ? (
 								<button
@@ -425,10 +428,7 @@ export function TaskCreateDialog({
 					<div>
 						<div className="flex flex-col gap-1.5">
 							{taskPrompts.map((taskPrompt, index) => (
-								<div
-									key={index}
-									className="flex items-center gap-1.5"
-								>
+								<div key={index} className="flex items-center gap-1.5">
 									<span className="text-[12px] text-text-tertiary text-right shrink-0 tabular-nums">
 										{index + 1}.
 									</span>
@@ -558,11 +558,7 @@ export function TaskCreateDialog({
 				</label>
 				{mode === "single" ? (
 					<>
-						<Button
-							size="sm"
-							onClick={handleCreateSingle}
-							disabled={!prompt.trim() || !branchRef}
-						>
+						<Button size="sm" onClick={handleCreateSingle} disabled={!prompt.trim() || !branchRef}>
 							<span className="inline-flex items-center">
 								Create
 								<ButtonShortcut />
@@ -611,9 +607,15 @@ export function TaskCreateDialog({
 										>
 											{secondaryStartLabel}
 											<span className="inline-flex items-center gap-0.5 text-text-tertiary" aria-hidden>
-												{secondaryStartShortcutModifier === "alt"
-													? (isMacPlatform ? <Option size={10} /> : <span className="text-[10px] font-medium leading-none">Alt</span>)
-													: <Command size={10} />}
+												{secondaryStartShortcutModifier === "alt" ? (
+													isMacPlatform ? (
+														<Option size={10} />
+													) : (
+														<span className="text-[10px] font-medium leading-none">Alt</span>
+													)
+												) : (
+													<Command size={10} />
+												)}
 												<ArrowBigUp size={10} />
 												<CornerDownLeft size={10} />
 											</span>
@@ -625,11 +627,7 @@ export function TaskCreateDialog({
 					</>
 				) : (
 					<>
-						<Button
-							size="sm"
-							onClick={handleCreateAll}
-							disabled={validTaskCount === 0 || !branchRef}
-						>
+						<Button size="sm" onClick={handleCreateAll} disabled={validTaskCount === 0 || !branchRef}>
 							<span className="inline-flex items-center">
 								Create {validTaskCount} {taskCountLabel}
 								<ButtonShortcut />

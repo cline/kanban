@@ -401,7 +401,7 @@ export function CardDetailView({
 		selection.card.baseRef,
 		diffMode,
 		taskWorkspaceStateVersion,
-		isDocumentVisible && !gitHistoryPanel ? DETAIL_DIFF_POLL_INTERVAL_MS : null,
+		isDocumentVisible && !gitHistoryPanel && selection.column.id !== "trash" ? DETAIL_DIFF_POLL_INTERVAL_MS : null,
 		lastTurnViewKey,
 		true,
 	);
@@ -639,7 +639,12 @@ export function CardDetailView({
 						) : null}
 						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 							<div
-								style={{ display: isDiffExpanded ? "none" : "flex", width: agentPanelPercent, minWidth: 0, minHeight: 0 }}
+								style={{
+									display: isDiffExpanded ? "none" : "flex",
+									width: agentPanelPercent,
+									minWidth: 0,
+									minHeight: 0,
+								}}
 							>
 								{showReviewerSessionPane && reviewerTaskId ? (
 									<AgentTerminalPanel
@@ -656,72 +661,72 @@ export function CardDetailView({
 										taskColumnId={selection.column.id}
 									/>
 								) : showClineAgentChatPanel ? (
-										<ClineAgentChatPanel
-											ref={clineAgentChatPanelRef}
-											taskId={selection.card.id}
-											summary={sessionSummary}
-											taskColumnId={selection.column.id}
-											defaultMode={selection.card.startInPlanMode ? "plan" : "act"}
-											workspaceId={currentProjectId}
-											runtimeConfig={runtimeConfig}
-											onClineSettingsSaved={onClineSettingsSaved}
-											onSendMessage={onSendClineChatMessage}
-											onCancelTurn={onCancelClineChatTurn}
-											onLoadMessages={onLoadClineChatMessages}
-											incomingMessages={streamedClineChatMessages}
-											incomingMessage={latestClineChatMessage}
-											onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
-											onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
-											isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
-											isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
-											showMoveToTrash={showMoveToTrashActions}
-											onMoveToTrash={onMoveToTrash}
-											isMoveToTrashLoading={isMoveToTrashLoading}
-											onCancelAutomaticAction={
-												selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
-													? () => onCancelAutomaticTaskAction(selection.card.id)
-													: undefined
-											}
-											cancelAutomaticActionLabel={
-												selection.card.autoReviewEnabled === true
-													? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
-													: null
-											}
-										/>
-									) : (
-										<AgentTerminalPanel
-											taskId={selection.card.id}
-											workspaceId={currentProjectId}
-											terminalEnabled={isTaskTerminalEnabled}
-											summary={sessionSummary}
-											onSummary={onSessionSummary}
-											onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
-											onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
-											isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
-											isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
-											showSessionToolbar={false}
-											autoFocus
-											showMoveToTrash={showMoveToTrashActions}
-											onMoveToTrash={onMoveToTrash}
-											isMoveToTrashLoading={isMoveToTrashLoading}
-											onCancelAutomaticAction={
-												selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
-													? () => onCancelAutomaticTaskAction(selection.card.id)
-													: undefined
-											}
-											cancelAutomaticActionLabel={
-												selection.card.autoReviewEnabled === true
-													? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
-													: null
-											}
-											reviewState={selection.card.agentReview ?? null}
-											panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-											terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-											showRightBorder={false}
-											taskColumnId={selection.column.id}
-										/>
+									<ClineAgentChatPanel
+										ref={clineAgentChatPanelRef}
+										taskId={selection.card.id}
+										summary={sessionSummary}
+										taskColumnId={selection.column.id}
+										defaultMode={selection.card.startInPlanMode ? "plan" : "act"}
+										workspaceId={currentProjectId}
+										runtimeConfig={runtimeConfig}
+										onClineSettingsSaved={onClineSettingsSaved}
+										onSendMessage={onSendClineChatMessage}
+										onCancelTurn={onCancelClineChatTurn}
+										onLoadMessages={onLoadClineChatMessages}
+										incomingMessages={streamedClineChatMessages}
+										incomingMessage={latestClineChatMessage}
+										onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
+										onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
+										isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
+										isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
+										showMoveToTrash={showMoveToTrashActions}
+										onMoveToTrash={onMoveToTrash}
+										isMoveToTrashLoading={isMoveToTrashLoading}
+										onCancelAutomaticAction={
+											selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
+												? () => onCancelAutomaticTaskAction(selection.card.id)
+												: undefined
+										}
+										cancelAutomaticActionLabel={
+											selection.card.autoReviewEnabled === true
+												? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
+												: null
+										}
+									/>
+								) : (
+									<AgentTerminalPanel
+										taskId={selection.card.id}
+										workspaceId={currentProjectId}
+										terminalEnabled={isTaskTerminalEnabled}
+										summary={sessionSummary}
+										onSummary={onSessionSummary}
+										onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
+										onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
+										isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
+										isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
+										showSessionToolbar={false}
+										autoFocus
+										showMoveToTrash={showMoveToTrashActions}
+										onMoveToTrash={onMoveToTrash}
+										isMoveToTrashLoading={isMoveToTrashLoading}
+										onCancelAutomaticAction={
+											selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
+												? () => onCancelAutomaticTaskAction(selection.card.id)
+												: undefined
+										}
+										cancelAutomaticActionLabel={
+											selection.card.autoReviewEnabled === true
+												? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
+												: null
+										}
+										reviewState={selection.card.agentReview ?? null}
+										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										showRightBorder={false}
+										taskColumnId={selection.column.id}
+									/>
 								)}
-								</div>
+							</div>
 							{!isDiffExpanded ? (
 								<div
 									role="separator"
@@ -758,13 +763,13 @@ export function CardDetailView({
 								}}
 							>
 								{isRuntimeAvailable ? (
-								<DiffToolbar
-									mode={diffMode}
-									onModeChange={setDiffMode}
-									isExpanded={isDiffExpanded}
-									onToggleExpand={handleToggleDiffExpand}
-								/>
-							) : null}
+									<DiffToolbar
+										mode={diffMode}
+										onModeChange={setDiffMode}
+										isExpanded={isDiffExpanded}
+										onToggleExpand={handleToggleDiffExpand}
+									/>
+								) : null}
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
 									{isWorkspaceChangesPending ? (
 										<WorkspaceChangesLoadingPanel panelFlex={fileTreePanelFlex} />
@@ -777,9 +782,17 @@ export function CardDetailView({
 												selectedPath={selectedPath}
 												onSelectedPathChange={setSelectedPath}
 												viewMode={isDiffExpanded ? "split" : "unified"}
-												onAddToTerminal={onAddReviewComments || showClineAgentChatPanel ? handleAddDiffComments : undefined}
-											onSendToTerminal={onSendReviewComments || showClineAgentChatPanel ? handleSendDiffComments : undefined}
-											comments={diffComments}
+												onAddToTerminal={
+													onAddReviewComments || showClineAgentChatPanel
+														? handleAddDiffComments
+														: undefined
+												}
+												onSendToTerminal={
+													onSendReviewComments || showClineAgentChatPanel
+														? handleSendDiffComments
+														: undefined
+												}
+												comments={diffComments}
 												onCommentsChange={setDiffComments}
 											/>
 											<FileTreePanel

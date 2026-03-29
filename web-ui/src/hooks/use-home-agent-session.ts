@@ -2,19 +2,16 @@
 // It keeps one in-memory session identity stable per workspace while the app
 // stays open and rotates it only when the selected agent configuration
 // meaningfully changes.
+
+import { createHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useRef } from "react";
-import { createHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";
 
 import { notifyError } from "@/components/app-toaster";
 import { getRuntimeClineProviderSettings, isNativeClineAgentSelected } from "@/runtime/native-agent";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type {
-	RuntimeConfigResponse,
-	RuntimeGitRepositoryInfo,
-	RuntimeTaskSessionSummary,
-} from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 
 type HomeAgentPanelMode = "chat" | "terminal";
 
@@ -260,8 +257,8 @@ export function useHomeAgentSession({
 		}
 
 		let cancelled = false;
-		void getRuntimeTrpcClient(currentProjectId).runtime.reloadTaskChatSession
-			.mutate({
+		void getRuntimeTrpcClient(currentProjectId)
+			.runtime.reloadTaskChatSession.mutate({
 				taskId: descriptor.taskId,
 			})
 			.then((response) => {
@@ -302,11 +299,6 @@ export function useHomeAgentSession({
 		}
 
 		if (startedSessionKeysRef.current.has(sessionKey)) {
-			return;
-		}
-
-		if (sessionSummaries[session.taskId]) {
-			startedSessionKeysRef.current.add(sessionKey);
 			return;
 		}
 
@@ -355,7 +347,10 @@ export function useHomeAgentSession({
 					return;
 				}
 				pendingStartRequestIdsRef.current.delete(sessionKey);
-				if (disposedRef.current || desiredTaskIdByWorkspaceRef.current.get(session.workspaceId) !== session.taskId) {
+				if (
+					disposedRef.current ||
+					desiredTaskIdByWorkspaceRef.current.get(session.workspaceId) !== session.taskId
+				) {
 					return;
 				}
 				const message = error instanceof Error ? error.message : String(error);

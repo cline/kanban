@@ -1,4 +1,3 @@
-import { AttachAddon } from "@xterm/addon-attach";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -14,7 +13,11 @@ import type {
 } from "@/runtime/types";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
-import { appendTerminalHeuristicText, hasInterruptAcknowledgement, hasLikelyShellPrompt } from "@/terminal/terminal-prompt-heuristics";
+import {
+	appendTerminalHeuristicText,
+	hasInterruptAcknowledgement,
+	hasLikelyShellPrompt,
+} from "@/terminal/terminal-prompt-heuristics";
 import { isMacPlatform } from "@/utils/platform";
 
 const SHIFT_ENTER_SEQUENCE = "\n";
@@ -44,19 +47,28 @@ interface EnsurePersistentTerminalInput extends PersistentTerminalAppearance {
 	workspaceId: string;
 }
 
-function getTerminalIoWebSocketUrl(taskId: string, workspaceId: string): string {
+function generateTerminalClientId(): string {
+	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+		return crypto.randomUUID();
+	}
+	return `terminal-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getTerminalIoWebSocketUrl(taskId: string, workspaceId: string, clientId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/io`);
 	url.searchParams.set("taskId", taskId);
 	url.searchParams.set("workspaceId", workspaceId);
+	url.searchParams.set("clientId", clientId);
 	return url.toString();
 }
 
-function getTerminalControlWebSocketUrl(taskId: string, workspaceId: string): string {
+function getTerminalControlWebSocketUrl(taskId: string, workspaceId: string, clientId: string): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/api/terminal/control`);
 	url.searchParams.set("taskId", taskId);
 	url.searchParams.set("workspaceId", workspaceId);
+	url.searchParams.set("clientId", clientId);
 	return url.toString();
 }
 
@@ -68,6 +80,26 @@ function decodeTerminalSocketChunk(decoder: TextDecoder, data: string | ArrayBuf
 		return decoder.decode(new Uint8Array(data), { stream: true });
 	}
 	return "";
+}
+
+function getTerminalSocketWriteData(data: string | ArrayBuffer | Blob): string | Uint8Array | null {
+	if (typeof data === "string") {
+		return data;
+	}
+	if (data instanceof ArrayBuffer) {
+		return new Uint8Array(data);
+	}
+	return null;
+}
+
+function getTerminalSocketChunkByteLength(data: string | ArrayBuffer | Blob): number {
+	if (typeof data === "string") {
+		return new TextEncoder().encode(data).byteLength;
+	}
+	if (data instanceof ArrayBuffer) {
+		return data.byteLength;
+	}
+	return 0;
 }
 
 function isCopyShortcut(event: KeyboardEvent): boolean {
@@ -111,6 +143,10 @@ class PersistentTerminal {
 	private readonly subscribers = new Set<PersistentTerminalSubscriber>();
 	private readonly parkingRoot: HTMLDivElement;
 	private readonly unicode11Addon = new Unicode11Addon();
+	// This identifies one browser viewer, not the PTY session itself.
+	// The server uses it to keep per-tab restore and socket state while all tabs
+	// still share the same taskId backed PTY.
+	private readonly clientId = generateTerminalClientId();
 	private appearance: PersistentTerminalAppearance;
 	private latestSummary: RuntimeTaskSessionSummary | null = null;
 	private lastError: string | null = null;
@@ -119,9 +155,10 @@ class PersistentTerminal {
 	private visibleContainer: HTMLDivElement | null = null;
 	private ioSocket: WebSocket | null = null;
 	private controlSocket: WebSocket | null = null;
-	private attachAddon: AttachAddon | null = null;
 	private connectionReady = false;
+	private restoreCompleted = false;
 	private outputTextDecoder = new TextDecoder();
+	private terminalWriteQueue: Promise<void> = Promise.resolve();
 	private disposed = false;
 
 	constructor(
@@ -154,6 +191,16 @@ class PersistentTerminal {
 		this.terminal.loadAddon(this.unicode11Addon);
 		this.terminal.unicode.activeVersion = "11";
 		this.terminal.open(this.hostElement);
+		this.terminal.onData((data) => {
+			this.sendIoData(data);
+		});
+		this.terminal.onBinary((data) => {
+			const bytes = new Uint8Array(data.length);
+			for (let index = 0; index < data.length; index += 1) {
+				bytes[index] = data.charCodeAt(index) & 0xff;
+			}
+			this.sendIoData(bytes);
+		});
 		this.terminal.attachCustomKeyEventHandler((event) => {
 			if (event.key === "Enter" && event.shiftKey) {
 				if (event.type === "keydown") {
@@ -216,6 +263,65 @@ class PersistentTerminal {
 		this.controlSocket.send(JSON.stringify(message));
 	}
 
+	private sendIoData(data: string | Uint8Array): boolean {
+		if (!this.ioSocket || this.ioSocket.readyState !== WebSocket.OPEN) {
+			return false;
+		}
+		this.ioSocket.send(data);
+		return true;
+	}
+
+	private enqueueTerminalWrite(
+		data: string | Uint8Array,
+		options: {
+			ackBytes?: number;
+			notifyText?: string | null;
+		} = {},
+	): Promise<void> {
+		const ackBytes = options.ackBytes ?? 0;
+		const notifyText = options.notifyText ?? null;
+		this.terminalWriteQueue = this.terminalWriteQueue
+			.catch(() => undefined)
+			.then(
+				async () =>
+					await new Promise<void>((resolve) => {
+						if (this.disposed) {
+							resolve();
+							return;
+						}
+						this.terminal.write(data, () => {
+							if (notifyText) {
+								this.notifyOutputText(notifyText);
+							}
+							if (ackBytes > 0) {
+								this.sendControlMessage({
+									type: "output_ack",
+									bytes: ackBytes,
+								});
+							}
+							resolve();
+						});
+					}),
+			);
+		return this.terminalWriteQueue;
+	}
+
+	private async applyRestore(
+		snapshot: string,
+		cols: number | null | undefined,
+		rows: number | null | undefined,
+	): Promise<void> {
+		await this.terminalWriteQueue.catch(() => undefined);
+		this.terminal.reset();
+		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
+			this.terminal.resize(cols, rows);
+		}
+		if (!snapshot) {
+			return;
+		}
+		await this.enqueueTerminalWrite(snapshot);
+	}
+
 	private requestResize(): void {
 		if (!this.visibleContainer) {
 			return;
@@ -238,29 +344,38 @@ class PersistentTerminal {
 	}
 
 	private connectIo(): void {
-		const ioSocket = new WebSocket(getTerminalIoWebSocketUrl(this.taskId, this.workspaceId));
+		if (this.ioSocket) {
+			return;
+		}
+		const ioSocket = new WebSocket(getTerminalIoWebSocketUrl(this.taskId, this.workspaceId, this.clientId));
 		ioSocket.binaryType = "arraybuffer";
 		ioSocket.addEventListener("message", (event) => {
 			if (this.disposed || this.ioSocket !== ioSocket) {
 				return;
 			}
-			const decoded = decodeTerminalSocketChunk(this.outputTextDecoder, event.data);
-			if (!decoded) {
+			const writeData = getTerminalSocketWriteData(event.data);
+			if (!writeData) {
 				return;
 			}
-			this.notifyOutputText(decoded);
+			const decoded = decodeTerminalSocketChunk(this.outputTextDecoder, event.data);
+			void this.enqueueTerminalWrite(writeData, {
+				ackBytes: getTerminalSocketChunkByteLength(event.data),
+				notifyText: decoded || null,
+			});
 		});
 		this.ioSocket = ioSocket;
 		ioSocket.onopen = () => {
 			if (this.disposed || this.ioSocket !== ioSocket) {
 				return;
 			}
-			const attachAddon = new AttachAddon(ioSocket);
-			this.attachAddon = attachAddon;
-			this.terminal.loadAddon(attachAddon);
 			this.lastError = null;
 			this.notifyLastError();
-			this.notifyConnectionReady();
+			if (this.restoreCompleted && this.visibleContainer) {
+				this.requestResize();
+			}
+			if (this.restoreCompleted) {
+				this.notifyConnectionReady();
+			}
 		};
 		ioSocket.onerror = () => {
 			if (this.disposed || this.ioSocket !== ioSocket) {
@@ -275,18 +390,15 @@ class PersistentTerminal {
 			}
 			this.ioSocket = null;
 			this.outputTextDecoder = new TextDecoder();
-			if (this.attachAddon) {
-				this.attachAddon.dispose();
-				this.attachAddon = null;
-			}
 			this.connectionReady = false;
+			this.restoreCompleted = false;
 			this.lastError = "Terminal stream closed. Close and reopen to reconnect.";
 			this.notifyLastError();
 		};
 	}
 
 	private connectControl(): void {
-		const controlSocket = new WebSocket(getTerminalControlWebSocketUrl(this.taskId, this.workspaceId));
+		const controlSocket = new WebSocket(getTerminalControlWebSocketUrl(this.taskId, this.workspaceId, this.clientId));
 		this.controlSocket = controlSocket;
 		controlSocket.onopen = () => {
 			if (this.disposed || this.controlSocket !== controlSocket) {
@@ -294,29 +406,54 @@ class PersistentTerminal {
 			}
 			this.lastError = null;
 			this.notifyLastError();
-			if (this.visibleContainer) {
-				this.requestResize();
-			}
 		};
 		controlSocket.onmessage = (event) => {
+			let payload: RuntimeTerminalWsServerMessage;
 			try {
-				const payload = JSON.parse(String(event.data)) as RuntimeTerminalWsServerMessage;
-				if (payload.type === "state") {
-					this.notifySummary(payload.summary);
-					return;
-				}
-				if (payload.type === "exit") {
-					const label = payload.code == null ? "session exited" : `session exited with code ${payload.code}`;
-					this.terminal.writeln(`\r\n[kanban] ${label}\r\n`);
-					return;
-				}
-				if (payload.type === "error") {
-					this.lastError = payload.message;
-					this.notifyLastError();
-					this.terminal.writeln(`\r\n[kanban] ${payload.message}\r\n`);
-				}
+				payload = JSON.parse(String(event.data)) as RuntimeTerminalWsServerMessage;
 			} catch {
 				// Ignore malformed control frames.
+				return;
+			}
+
+			if (payload.type === "restore") {
+				this.restoreCompleted = false;
+				void this.applyRestore(payload.snapshot, payload.cols, payload.rows)
+					.then(() => {
+						if (this.disposed || this.controlSocket !== controlSocket) {
+							return;
+						}
+						this.restoreCompleted = true;
+						this.sendControlMessage({ type: "restore_complete" });
+						if (this.ioSocket && this.visibleContainer) {
+							this.requestResize();
+						}
+						if (this.ioSocket) {
+							this.notifyConnectionReady();
+						}
+					})
+					.catch(() => {
+						if (this.disposed || this.controlSocket !== controlSocket) {
+							return;
+						}
+						this.lastError = "Terminal restore failed.";
+						this.notifyLastError();
+					});
+				return;
+			}
+			if (payload.type === "state") {
+				this.notifySummary(payload.summary);
+				return;
+			}
+			if (payload.type === "exit") {
+				const label = payload.code == null ? "session exited" : `session exited with code ${payload.code}`;
+				void this.enqueueTerminalWrite(`\r\n[kanban] ${label}\r\n`);
+				return;
+			}
+			if (payload.type === "error") {
+				this.lastError = payload.message;
+				this.notifyLastError();
+				void this.enqueueTerminalWrite(`\r\n[kanban] ${payload.message}\r\n`);
 			}
 		};
 		controlSocket.onerror = () => {
@@ -456,11 +593,25 @@ class PersistentTerminal {
 	}
 
 	clear(): void {
-		this.terminal.clear();
+		this.terminalWriteQueue = this.terminalWriteQueue
+			.catch(() => undefined)
+			.then(() => {
+				if (this.disposed) {
+					return;
+				}
+				this.terminal.clear();
+			});
 	}
 
 	reset(): void {
-		this.terminal.reset();
+		this.terminalWriteQueue = this.terminalWriteQueue
+			.catch(() => undefined)
+			.then(() => {
+				if (this.disposed) {
+					return;
+				}
+				this.terminal.reset();
+			});
 	}
 
 	waitForLikelyPrompt(timeoutMs: number): Promise<boolean> {
@@ -531,10 +682,6 @@ class PersistentTerminal {
 		}
 		this.disposed = true;
 		this.unmount(this.visibleContainer);
-		if (this.attachAddon) {
-			this.attachAddon.dispose();
-			this.attachAddon = null;
-		}
 		this.ioSocket?.close();
 		this.controlSocket?.close();
 		this.ioSocket = null;

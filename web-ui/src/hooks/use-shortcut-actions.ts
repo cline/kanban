@@ -2,8 +2,8 @@ import { useCallback, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import { waitForTerminalLikelyPrompt } from "@/terminal/terminal-controller-registry";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 
 const TERMINAL_INTERRUPT_SEQUENCE = "\u0003";
 const TERMINAL_PROMPT_WAIT_TIMEOUT_MS = 3000;
@@ -48,21 +48,24 @@ export function useShortcutActions({
 }: UseShortcutActionsInput): UseShortcutActionsResult {
 	const [runningShortcutLabel, setRunningShortcutLabel] = useState<string | null>(null);
 
-	const getNextShortcutLabel = useCallback((baseLabel: string): string => {
-		const normalizedTakenLabels = new Set(
-			shortcuts.map((shortcut) => shortcut.label.trim().toLowerCase()).filter((label) => label.length > 0),
-		);
-		const normalizedBaseLabel = baseLabel.trim().toLowerCase();
-		if (!normalizedTakenLabels.has(normalizedBaseLabel)) {
-			return baseLabel;
-		}
+	const getNextShortcutLabel = useCallback(
+		(baseLabel: string): string => {
+			const normalizedTakenLabels = new Set(
+				shortcuts.map((shortcut) => shortcut.label.trim().toLowerCase()).filter((label) => label.length > 0),
+			);
+			const normalizedBaseLabel = baseLabel.trim().toLowerCase();
+			if (!normalizedTakenLabels.has(normalizedBaseLabel)) {
+				return baseLabel;
+			}
 
-		let suffix = 2;
-		while (normalizedTakenLabels.has(`${normalizedBaseLabel} ${suffix}`)) {
-			suffix += 1;
-		}
-		return `${baseLabel} ${suffix}`;
-	}, [shortcuts]);
+			let suffix = 2;
+			while (normalizedTakenLabels.has(`${normalizedBaseLabel} ${suffix}`)) {
+				suffix += 1;
+			}
+			return `${baseLabel} ${suffix}`;
+		},
+		[shortcuts],
+	);
 
 	const saveSelectedShortcutPreference = useCallback(
 		async (nextShortcutLabel: string | null): Promise<boolean> => {

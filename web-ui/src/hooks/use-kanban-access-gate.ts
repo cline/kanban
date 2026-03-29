@@ -10,11 +10,11 @@ export function useKanbanAccessGate(input: UseKanbanAccessGateInput): { isBlocke
 	const { workspaceId } = input;
 	const [isBlocked, setIsBlocked] = useState(false);
 
-	useEffect(() => {	
+	useEffect(() => {
 		let cancelled = false;
 		void fetchClineKanbanAccess(workspaceId)
 			.then((response) => {
-				console.log(response)
+				console.log(response);
 				if (cancelled) {
 					return;
 				}

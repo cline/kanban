@@ -8,7 +8,7 @@ vi.mock("node-pty", () => ({
 	spawn: ptyMocks.spawn,
 }));
 
-import { PtySession } from "../../../src/terminal/pty-session.js";
+import { PtySession } from "../../../src/terminal/pty-session";
 
 const originalPlatform = process.platform;
 const originalComSpec = process.env.ComSpec;

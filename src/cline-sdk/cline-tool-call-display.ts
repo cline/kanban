@@ -67,7 +67,7 @@ function appendReadFileSummary(summaries: string[], value: unknown): void {
 				? value.file_path.trim()
 				: typeof value.filePath === "string"
 					? value.filePath.trim()
-				: "";
+					: "";
 	if (path.length === 0) {
 		return;
 	}
@@ -226,7 +226,10 @@ export function getClineToolCallDisplay(toolName: string | null | undefined, inp
 	};
 }
 
-export function formatClineToolCallLabel(toolName: string | null | undefined, inputSummary: string | null | undefined): string {
+export function formatClineToolCallLabel(
+	toolName: string | null | undefined,
+	inputSummary: string | null | undefined,
+): string {
 	const normalizedToolName = normalizeDisplayToolName(toolName);
 	const normalizedInputSummary = typeof inputSummary === "string" ? inputSummary.trim() : "";
 	return normalizedInputSummary ? `${normalizedToolName}(${normalizedInputSummary})` : normalizedToolName;

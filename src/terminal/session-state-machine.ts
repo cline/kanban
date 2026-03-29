@@ -1,4 +1,4 @@
-import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core/api-contract.js";
+import type { RuntimeTaskSessionReviewReason, RuntimeTaskSessionSummary } from "../core/api-contract";
 
 export type SessionTransitionEvent =
 	| { type: "hook.to_review" }

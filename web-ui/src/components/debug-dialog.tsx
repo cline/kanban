@@ -1,5 +1,5 @@
 import { Bug, RotateCcw } from "lucide-react";
-import { useEffect, useState, type ReactElement } from "react";
+import { type ReactElement, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -49,7 +49,13 @@ export function DebugDialog({
 						<p className="mt-1 text-xs text-text-secondary">
 							Reopen the startup onboarding dialog so you can verify onboarding flows.
 						</p>
-						<Button variant="default" size="sm" disabled={isResetAllStatePending} onClick={onShowStartupOnboardingDialog} className="mt-3">
+						<Button
+							variant="default"
+							size="sm"
+							disabled={isResetAllStatePending}
+							onClick={onShowStartupOnboardingDialog}
+							className="mt-3"
+						>
 							Show onboarding
 						</Button>
 					</div>
@@ -84,8 +90,8 @@ export function DebugDialog({
 				</AlertDialogHeader>
 				<AlertDialogBody>
 					<AlertDialogDescription>
-						This removes local browser storage and deletes <code>~/.cline/data</code>, <code>~/.cline/kanban</code>,
-						and <code>~/.cline/worktrees</code>.
+						This removes local browser storage and deletes <code>~/.cline/data</code>,{" "}
+						<code>~/.cline/kanban</code>, and <code>~/.cline/worktrees</code>.
 					</AlertDialogDescription>
 					<p className="text-text-primary">This action cannot be undone.</p>
 				</AlertDialogBody>

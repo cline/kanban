@@ -1,4 +1,4 @@
-import type { RuntimeAgentId } from "./api-contract.js";
+import type { RuntimeAgentId } from "./api-contract";
 
 // The home sidebar agent panel is not backed by a real task card.
 // We mint a synthetic home agent session id so the existing task-scoped

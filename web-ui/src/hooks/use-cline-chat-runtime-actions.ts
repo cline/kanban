@@ -4,7 +4,12 @@
 import { useCallback } from "react";
 
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeTaskChatMessage, RuntimeTaskImage, RuntimeTaskSessionMode, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type {
+	RuntimeTaskChatMessage,
+	RuntimeTaskImage,
+	RuntimeTaskSessionMode,
+	RuntimeTaskSessionSummary,
+} from "@/runtime/types";
 
 export interface ClineChatActionResult {
 	ok: boolean;

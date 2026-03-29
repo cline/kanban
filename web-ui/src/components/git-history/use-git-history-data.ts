@@ -340,7 +340,7 @@ export function useGitHistoryData({
 			return;
 		}
 		const preferredCommit = activeRef
-			? commits.find((commit) => commit.hash === activeRef.hash) ?? commits[0]
+			? (commits.find((commit) => commit.hash === activeRef.hash) ?? commits[0])
 			: commits[0];
 		setSelectedCommitHash(preferredCommit?.hash ?? null);
 		setSelectedDiffPath(null);

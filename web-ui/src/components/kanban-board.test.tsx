@@ -7,11 +7,9 @@ import { KanbanBoard, type RequestProgrammaticCardMove } from "@/components/kanb
 import type { BoardData } from "@/types";
 
 const dndMock = vi.hoisted(() => ({
-	sensorApi: null as
-		| {
-				tryGetLock: ReturnType<typeof vi.fn>;
-		  }
-		| null,
+	sensorApi: null as {
+		tryGetLock: ReturnType<typeof vi.fn>;
+	} | null,
 }));
 
 vi.mock("@hello-pangea/dnd", async () => {

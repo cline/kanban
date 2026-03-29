@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { type ButtonHTMLAttributes, forwardRef, type ReactNode } from "react";
 
 import { cn } from "@/components/ui/cn";
 
@@ -16,12 +16,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const variantStyles: Record<ButtonVariant, string> = {
 	default:
 		"bg-surface-2 border border-border-bright text-text-primary hover:bg-surface-3 hover:border-border-bright active:bg-surface-4",
-	primary:
-		"bg-accent text-white border border-transparent hover:bg-accent-hover active:brightness-90",
+	primary: "bg-accent text-white border border-transparent hover:bg-accent-hover active:brightness-90",
 	danger:
 		"bg-status-red/10 text-status-red border border-status-red/30 hover:bg-status-red/20 active:bg-status-red/30",
-	ghost:
-		"bg-transparent text-text-secondary border border-transparent hover:text-text-primary hover:bg-surface-3 active:bg-surface-4",
+	ghost: "bg-transparent text-text-secondary border border-transparent hover:text-text-primary hover:bg-surface-3 active:bg-surface-4",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

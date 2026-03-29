@@ -1,9 +1,7 @@
 // Translates raw SDK session events into Kanban summary and message mutations.
 // Keep protocol-specific parsing here so the runtime and repository can stay
 // focused on lifecycle, storage, and task-facing orchestration.
-import type { RuntimeTaskSessionSummary } from "../core/api-contract.js";
-import { formatClineToolCallLabel, getClineToolCallDisplay } from "./cline-tool-call-display.js";
-import type { ClineSdkAgentEvent, ClineSdkSessionEvent } from "./sdk-runtime-boundary.js";
+import type { RuntimeTaskSessionSummary } from "../core/api-contract";
 import {
 	appendAssistantChunk,
 	appendReasoningChunk,
@@ -22,7 +20,9 @@ import {
 	setOrCreateReasoningMessage,
 	startToolCallMessage,
 	updateSummary,
-} from "./cline-session-state.js";
+} from "./cline-session-state";
+import { formatClineToolCallLabel, getClineToolCallDisplay } from "./cline-tool-call-display";
+import type { ClineSdkAgentEvent, ClineSdkSessionEvent } from "./sdk-runtime-boundary";
 
 function normalizePreviewText(value: string | null | undefined): string | null {
 	if (typeof value !== "string") {
@@ -178,8 +178,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 	const statusEvent = readStatusEvent(event);
 
 	if (agentEvent?.type === "error") {
-		const errorMessage =
-			"error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
+		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
 		const recoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		if (!recoverable) {

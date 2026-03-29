@@ -1,17 +1,17 @@
 import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../../../src/core/api-contract.js";
-import type { ClineRuntimeSetup } from "../../../src/cline-sdk/cline-runtime-setup.js";
+import type { ClineRuntimeSetup } from "../../../src/cline-sdk/cline-runtime-setup";
 import type {
 	ClinePersistedTaskSessionSnapshot,
 	ClineSessionRuntime,
 	CreateInMemoryClineSessionRuntimeOptions,
 	StartClineSessionRuntimeRequest,
 	StartClineSessionRuntimeResult,
-} from "../../../src/cline-sdk/cline-session-runtime.js";
-import { createSessionId } from "../../../src/cline-sdk/cline-session-state.js";
-import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
-import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service.js";
+} from "../../../src/cline-sdk/cline-session-runtime";
+import { createSessionId } from "../../../src/cline-sdk/cline-session-state";
+import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
+import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
+import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../../../src/core/api-contract";
 
 const originalArgv = [...process.argv];
 const originalExecArgv = [...process.execArgv];
@@ -199,11 +199,10 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 					if (!lastStartRequestByTaskId.has(taskId)) {
 						const record =
 							snapshot.record && typeof snapshot.record === "object"
-								? (snapshot.record as Record<string, unknown>)
+								? (snapshot.record as unknown as Record<string, unknown>)
 								: null;
 						const persistedCwd = typeof record?.cwd === "string" ? record.cwd : "";
-						const persistedWorkspaceRoot =
-							typeof record?.workspaceRoot === "string" ? record.workspaceRoot : "";
+						const persistedWorkspaceRoot = typeof record?.workspaceRoot === "string" ? record.workspaceRoot : "";
 						lastStartRequestByTaskId.set(taskId, {
 							taskId,
 							cwd: persistedCwd || persistedWorkspaceRoot,
@@ -342,12 +341,14 @@ describe("InMemoryClineTaskSessionService", () => {
 	beforeEach(() => {
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
 		turnCheckpointMocks.deleteTaskTurnCheckpointRef.mockReset();
-		turnCheckpointMocks.captureTaskTurnCheckpoint.mockImplementation(async (input: { taskId: string; turn: number }) => ({
-			turn: input.turn,
-			ref: `refs/kanban/checkpoints/${input.taskId}/turn/${input.turn}`,
-			commit: `commit-${input.turn}`,
-			createdAt: input.turn,
-		}));
+		turnCheckpointMocks.captureTaskTurnCheckpoint.mockImplementation(
+			async (input: { taskId: string; turn: number }) => ({
+				turn: input.turn,
+				ref: `refs/kanban/checkpoints/${input.taskId}/turn/${input.turn}`,
+				commit: `commit-${input.turn}`,
+				createdAt: input.turn,
+			}),
+		);
 		turnCheckpointMocks.deleteTaskTurnCheckpointRef.mockResolvedValue(undefined);
 	});
 
@@ -418,11 +419,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
 			record: {
 				sessionId: "task-1-persisted",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 				status: "completed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
 				cwd: "/tmp/worktree",
 				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
 			},
 			messages: [
 				{
@@ -585,7 +594,9 @@ describe("InMemoryClineTaskSessionService", () => {
 				"queue",
 			);
 		});
-		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK send failed"))).toBe(false);
+		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK send failed"))).toBe(
+			false,
+		);
 	});
 
 	it("reuses the current task mode when follow-up input does not provide a mode override", async () => {
@@ -733,7 +744,9 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				systemPrompt: expect.stringContaining("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create"),
+				systemPrompt: expect.stringContaining(
+					"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
+				),
 			}),
 		);
 	});
@@ -789,11 +802,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
 			record: {
 				sessionId: "task-1-persisted",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 				status: "completed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
 				cwd: "task-1-persisted-cwd",
 				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
 			},
 			messages: [
 				{
@@ -876,11 +897,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
 			record: {
 				sessionId: "task-1-persisted",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 				status: "completed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
 				cwd: "/tmp/worktree",
 				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
 			},
 			messages: [
 				{
@@ -1140,7 +1169,7 @@ describe("InMemoryClineTaskSessionService", () => {
 
 	it("keeps the task resumable when native Cline startup throws", async () => {
 		const { service, runtime } = createTrackedService();
-		runtime.startTaskSessionMock.mockRejectedValueOnce(new Error("Missing API key for provider \"cline\"."));
+		runtime.startTaskSessionMock.mockRejectedValueOnce(new Error('Missing API key for provider "cline".'));
 
 		await service.startTaskSession({
 			taskId: "task-1",
@@ -1190,11 +1219,19 @@ describe("InMemoryClineTaskSessionService", () => {
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
 			record: {
 				sessionId: "task-1-failed",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
 				status: "failed",
 				startedAt: "2026-03-17T10:00:00.000Z",
 				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
 				cwd: "/tmp/worktree",
 				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
 			},
 			messages: [
 				{

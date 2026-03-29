@@ -20,8 +20,8 @@ import {
 	type ClineComposerCompletionSuggestion,
 	detectActiveClineComposerToken,
 } from "@/components/detail-panels/cline-chat-composer-completion";
-import { InlineCompletionPicker, type InlineCompletionItem } from "@/components/inline-completion-picker";
 import { ClineChatModelSelector } from "@/components/detail-panels/cline-chat-model-selector";
+import { type InlineCompletionItem, InlineCompletionPicker } from "@/components/inline-completion-picker";
 import type { SearchSelectOption } from "@/components/search-select-dropdown";
 import { collectImageFilesFromDataTransfer, extractImagesFromDataTransfer } from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";

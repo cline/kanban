@@ -3,7 +3,7 @@
 // shared API contract, and fans out workspace-scoped snapshots and deltas.
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import type { ClineTaskMessage, ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
+import type { ClineTaskMessage, ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type {
 	RuntimeClineMcpServerAuthStatus,
 	RuntimeStateStreamClineSessionContextUpdatedMessage,
@@ -18,10 +18,10 @@ import type {
 	RuntimeStateStreamWorkspaceMetadataMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionSummary,
-} from "../core/api-contract.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor.js";
-import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry.js";
+} from "../core/api-contract";
+import type { TerminalSessionManager } from "../terminal/session-manager";
+import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor";
+import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
 

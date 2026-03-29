@@ -3,9 +3,9 @@ import type {
 	RuntimeGitSyncSummary,
 	RuntimeTaskWorkspaceMetadata,
 	RuntimeWorkspaceMetadata,
-} from "../core/api-contract.js";
-import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-sync.js";
-import { getTaskWorkspacePathInfo } from "../workspace/task-worktree.js";
+} from "../core/api-contract";
+import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-sync";
+import { getTaskWorkspacePathInfo } from "../workspace/task-worktree";
 
 const WORKSPACE_METADATA_POLL_INTERVAL_MS = 1_000;
 

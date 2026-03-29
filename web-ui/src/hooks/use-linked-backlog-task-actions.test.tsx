@@ -112,7 +112,13 @@ function HookHarness({
 			confirmMoveTaskToTrash: actions.confirmMoveTaskToTrash,
 			requestMoveTaskToTrash: actions.requestMoveTaskToTrash,
 		});
-	}, [actions.confirmMoveTaskToTrash, actions.handleCreateDependency, actions.requestMoveTaskToTrash, board, onSnapshot]);
+	}, [
+		actions.confirmMoveTaskToTrash,
+		actions.handleCreateDependency,
+		actions.requestMoveTaskToTrash,
+		board,
+		onSnapshot,
+	]);
 
 	return null;
 }

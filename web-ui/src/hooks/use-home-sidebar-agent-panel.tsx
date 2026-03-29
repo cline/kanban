@@ -7,8 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import { Spinner } from "@/components/ui/spinner";
-import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import { createIdleTaskSession } from "@/hooks/app-utils";
+import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
 import { selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
@@ -91,11 +91,7 @@ export function useHomeSidebarAgentPanel({
 	useEffect(() => {
 		currentTaskIdRef.current = taskId;
 	}, [taskId]);
-	const {
-		sendTaskChatMessage,
-		loadTaskChatMessages,
-		cancelTaskChatTurn,
-	} = useClineChatRuntimeActions({
+	const { sendTaskChatMessage, loadTaskChatMessages, cancelTaskChatTurn } = useClineChatRuntimeActions({
 		currentProjectId,
 		onSessionSummary: upsertSessionSummary,
 	});

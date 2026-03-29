@@ -119,9 +119,9 @@
 							"level": "error",
 							"options": {
 								"paths": {
-											"@/runtime/trpc-client": {
-												"importNames": ["createWorkspaceTrpcClient"],
-												"message": "Use getRuntimeTrpcClient in components and hooks. Reserve createWorkspaceTrpcClient for the runtime query helpers."
+									"@/runtime/trpc-client": {
+										"importNames": ["createWorkspaceTrpcClient"],
+										"message": "Use getRuntimeTrpcClient in components and hooks. Reserve createWorkspaceTrpcClient for the runtime query helpers."
 									}
 								}
 							}

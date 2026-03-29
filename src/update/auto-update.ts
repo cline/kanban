@@ -484,10 +484,7 @@ function spawnDetachedUpdate(command: string, args: string[]): void {
 	child.unref();
 }
 
-export function resolveUpdateCommandForPlatform(
-	command: string,
-	platform: NodeJS.Platform = process.platform,
-): string {
+export function resolveUpdateCommandForPlatform(command: string, platform: NodeJS.Platform = process.platform): string {
 	if (platform !== "win32") {
 		return command;
 	}

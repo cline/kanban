@@ -1,22 +1,21 @@
 // Owns the Cline-specific settings state machine inside the settings dialog.
 // It loads provider data, drives model selection, saves settings, and runs
 // OAuth login flows so the dialog component can stay presentation-focused.
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
+import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import {
 	fetchClineProviderCatalog,
 	fetchClineProviderModels,
 	runClineProviderOauthLogin,
 	saveClineProviderSettings,
 } from "@/runtime/runtime-config-query";
-import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeClineOauthProvider,
-	RuntimeClineReasoningEffort,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
+	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
 } from "@/runtime/types";
 
@@ -91,10 +90,7 @@ function getEffectiveProviderSettings(
 	return override ?? getRuntimeClineProviderSettings(config);
 }
 
-function getDefaultModelIdForProvider(
-	providers: RuntimeClineProviderCatalogItem[],
-	providerId: string,
-): string {
+function getDefaultModelIdForProvider(providers: RuntimeClineProviderCatalogItem[], providerId: string): string {
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	if (!normalizedProviderId) {
 		return "";
@@ -156,7 +152,18 @@ export function useRuntimeSettingsClineController(
 			return true;
 		}
 		return apiKey.trim().length > 0;
-	}, [apiKey, baseUrl, config, initialBaseUrl, initialModelId, initialProviderId, initialReasoningEffort, modelId, providerId, reasoningEffort]);
+	}, [
+		apiKey,
+		baseUrl,
+		config,
+		initialBaseUrl,
+		initialModelId,
+		initialProviderId,
+		initialReasoningEffort,
+		modelId,
+		providerId,
+		reasoningEffort,
+	]);
 
 	useEffect(() => {
 		if (!open) {
@@ -216,9 +223,7 @@ export function useRuntimeSettingsClineController(
 			return;
 		}
 		const defaultProvider =
-			providerCatalog.find((provider) => provider.id.trim().toLowerCase() === "cline") ??
-			providerCatalog[0] ??
-			null;
+			providerCatalog.find((provider) => provider.id.trim().toLowerCase() === "cline") ?? providerCatalog[0] ?? null;
 		if (!defaultProvider) {
 			return;
 		}
@@ -280,53 +285,57 @@ export function useRuntimeSettingsClineController(
 		};
 	}, [open, providerId, selectedAgentId, workspaceId]);
 
-	const saveProviderSettingsDraft = useCallback(async (overrides?: SaveProviderSettingsOverrides): Promise<SaveResult> => {
-		if (!overrides && !hasUnsavedChanges) {
-			return { ok: true };
-		}
-		const trimmedProviderId = (overrides?.providerId ?? providerId).trim();
-		if (trimmedProviderId.length === 0) {
-			return {
-				ok: false,
-				message: "Choose a Cline provider before saving.",
-			};
-		}
-		const trimmedBaseUrl = toManagedClineOauthProvider(trimmedProviderId)
-			? null
-			: overrides && "baseUrl" in overrides
-				? overrides.baseUrl?.trim() || null
-				: baseUrl.trim() || null;
-		const trimmedModelId =
-			overrides && "modelId" in overrides ? overrides.modelId?.trim() || null : modelId.trim() || null;
-		const trimmedApiKey =
-			overrides && "apiKey" in overrides
-				? overrides.apiKey?.trim() || null
-				: managedOauthProvider
-					? null
-					: apiKey.trim() || null;
-		const nextReasoningEffort = overrides && "reasoningEffort" in overrides ? overrides.reasoningEffort ?? null : reasoningEffort || null;
-		try {
-			const savedSettings = await saveClineProviderSettings(workspaceId, {
-				providerId: trimmedProviderId,
-				modelId: trimmedModelId,
-				apiKey: trimmedApiKey,
-				baseUrl: trimmedBaseUrl,
-				reasoningEffort: nextReasoningEffort,
-			});
-			setProviderId(savedSettings.providerId ?? savedSettings.oauthProvider ?? trimmedProviderId);
-			setModelId(savedSettings.modelId ?? "");
-			setApiKey("");
-			setBaseUrl(savedSettings.baseUrl ?? "");
-			setReasoningEffort(savedSettings.reasoningEffort ?? "");
-			setProviderSettingsOverride(savedSettings);
-			return { ok: true };
-		} catch (error) {
-			return {
-				ok: false,
-				message: error instanceof Error ? error.message : String(error),
-			};
-		}
-	}, [apiKey, baseUrl, hasUnsavedChanges, managedOauthProvider, modelId, providerId, reasoningEffort, workspaceId]);
+	const saveProviderSettingsDraft = useCallback(
+		async (overrides?: SaveProviderSettingsOverrides): Promise<SaveResult> => {
+			if (!overrides && !hasUnsavedChanges) {
+				return { ok: true };
+			}
+			const trimmedProviderId = (overrides?.providerId ?? providerId).trim();
+			if (trimmedProviderId.length === 0) {
+				return {
+					ok: false,
+					message: "Choose a Cline provider before saving.",
+				};
+			}
+			const trimmedBaseUrl = toManagedClineOauthProvider(trimmedProviderId)
+				? null
+				: overrides && "baseUrl" in overrides
+					? overrides.baseUrl?.trim() || null
+					: baseUrl.trim() || null;
+			const trimmedModelId =
+				overrides && "modelId" in overrides ? overrides.modelId?.trim() || null : modelId.trim() || null;
+			const trimmedApiKey =
+				overrides && "apiKey" in overrides
+					? overrides.apiKey?.trim() || null
+					: managedOauthProvider
+						? null
+						: apiKey.trim() || null;
+			const nextReasoningEffort =
+				overrides && "reasoningEffort" in overrides ? (overrides.reasoningEffort ?? null) : reasoningEffort || null;
+			try {
+				const savedSettings = await saveClineProviderSettings(workspaceId, {
+					providerId: trimmedProviderId,
+					modelId: trimmedModelId,
+					apiKey: trimmedApiKey,
+					baseUrl: trimmedBaseUrl,
+					reasoningEffort: nextReasoningEffort,
+				});
+				setProviderId(savedSettings.providerId ?? savedSettings.oauthProvider ?? trimmedProviderId);
+				setModelId(savedSettings.modelId ?? "");
+				setApiKey("");
+				setBaseUrl(savedSettings.baseUrl ?? "");
+				setReasoningEffort(savedSettings.reasoningEffort ?? "");
+				setProviderSettingsOverride(savedSettings);
+				return { ok: true };
+			} catch (error) {
+				return {
+					ok: false,
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
+		},
+		[apiKey, baseUrl, hasUnsavedChanges, managedOauthProvider, modelId, providerId, reasoningEffort, workspaceId],
+	);
 
 	const runOauthLogin = useCallback(async (): Promise<SaveResult> => {
 		if (!managedOauthProvider) {

@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree.js";
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 function expectMirroredPathBehavior(path: string): void {
 	const exists = existsSync(path);
@@ -406,12 +406,7 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(deleted.ok).toBe(true);
 
-				const patchesDir = join(
-					process.env.HOME ?? sandboxRoot,
-					".cline",
-					"kanban",
-					"trashed-task-patches",
-				);
+				const patchesDir = join(process.env.HOME ?? sandboxRoot, ".cline", "kanban", "trashed-task-patches");
 				mkdirSync(patchesDir, { recursive: true });
 				const patchPath = join(patchesDir, `${taskId}.${createdCommit}.patch`);
 				writeFileSync(

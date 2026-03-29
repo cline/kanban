@@ -103,8 +103,8 @@ function useRecentAssistantStreamActivity(
 	const latestAssistantLikeIncomingMessage = isAssistantLikeIncomingMessage(incomingMessage)
 		? incomingMessage
 		: getLatestAssistantLikeIncomingMessage(incomingMessages);
-	const [hasRecentIncomingAssistantActivity, setHasRecentIncomingAssistantActivity] = useState(() =>
-		latestAssistantLikeIncomingMessage !== null,
+	const [hasRecentIncomingAssistantActivity, setHasRecentIncomingAssistantActivity] = useState(
+		() => latestAssistantLikeIncomingMessage !== null,
 	);
 	const [hasRecentAssistantSummaryActivity, setHasRecentAssistantSummaryActivity] = useState(() =>
 		hasFreshAssistantSummarySignal(summary),
@@ -188,7 +188,11 @@ export function useClineChatPanelController({
 		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0 &&
 		Boolean(onCommit) &&
 		Boolean(onOpenPr);
-	const hasRecentAssistantStreamActivity = useRecentAssistantStreamActivity(summary, incomingMessages, incomingMessage);
+	const hasRecentAssistantStreamActivity = useRecentAssistantStreamActivity(
+		summary,
+		incomingMessages,
+		incomingMessage,
+	);
 	const showAgentProgressIndicator =
 		summary?.state === "running" &&
 		!hasVisibleStreamingMessage(messages, incomingMessage, hasRecentAssistantStreamActivity);
@@ -201,22 +205,25 @@ export function useClineChatPanelController({
 				text,
 				mode || images?.length
 					? {
-						...(mode ? { mode } : {}),
-						...(images?.length ? { images } : {}),
-					}
+							...(mode ? { mode } : {}),
+							...(images?.length ? { images } : {}),
+						}
 					: undefined,
 			);
 		},
 		[sendMessage],
 	);
 
-	const handleSendDraft = useCallback(async (mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]): Promise<boolean> => {
-		const sent = await handleSendText(draft, mode, images);
-		if (sent) {
-			setDraft("");
-		}
-		return sent;
-	}, [draft, handleSendText]);
+	const handleSendDraft = useCallback(
+		async (mode?: RuntimeTaskSessionMode, images?: RuntimeTaskImage[]): Promise<boolean> => {
+			const sent = await handleSendText(draft, mode, images);
+			if (sent) {
+				setDraft("");
+			}
+			return sent;
+		},
+		[draft, handleSendText],
+	);
 
 	const handleCancelTurn = useCallback(() => {
 		void cancelTurn();

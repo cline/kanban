@@ -1,9 +1,9 @@
 import { ChevronLeft, ChevronRight, Circle, CircleDot } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { type ReactElement, useCallback, useEffect, useState } from "react";
 
 import {
-	TaskStartAgentOnboardingCarousel,
 	TASK_START_ONBOARDING_SLIDES,
+	TaskStartAgentOnboardingCarousel,
 } from "@/components/task-start-agent-onboarding-carousel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -37,7 +37,9 @@ export function StartupOnboardingDialog({
 }): ReactElement {
 	const [onboardingSlideIndex, setOnboardingSlideIndex] = useState(0);
 	const [isCompletingOnboarding, setIsCompletingOnboarding] = useState(false);
-	const [onboardingDoneAction, setOnboardingDoneAction] = useState<(() => Promise<{ ok: boolean; message?: string }>) | null>(null);
+	const [onboardingDoneAction, setOnboardingDoneAction] = useState<
+		(() => Promise<{ ok: boolean; message?: string }>) | null
+	>(null);
 	const onboardingSlideCount = TASK_START_ONBOARDING_SLIDES.length;
 	const isFirstOnboardingSlide = onboardingSlideIndex === 0;
 	const isLastOnboardingSlide = onboardingSlideIndex === onboardingSlideCount - 1;
@@ -79,7 +81,9 @@ export function StartupOnboardingDialog({
 	return (
 		<Dialog
 			open={open}
-			onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}
+			onOpenChange={(isOpen) => {
+				if (!isOpen) onClose();
+			}}
 		>
 			<DialogHeader title="Get started" />
 			<DialogBody className="px-4 pt-2 pb-4">

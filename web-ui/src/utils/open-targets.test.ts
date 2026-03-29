@@ -1,5 +1,5 @@
-import { buildOpenCommand, getOpenTargetOption, getOpenTargetOptions } from "@/utils/open-targets";
 import { describe, expect, it } from "vitest";
+import { buildOpenCommand, getOpenTargetOption, getOpenTargetOptions } from "@/utils/open-targets";
 
 describe("open-targets", () => {
 	it("filters unsupported options on windows", () => {
@@ -29,8 +29,6 @@ describe("open-targets", () => {
 	});
 
 	it("falls back to default command when target is unsupported on windows", () => {
-		expect(buildOpenCommand("iterm2", "C:\\Users\\dev\\my repo", "windows")).toBe(
-			'code "C:\\Users\\dev\\my repo"',
-		);
+		expect(buildOpenCommand("iterm2", "C:\\Users\\dev\\my repo", "windows")).toBe('code "C:\\Users\\dev\\my repo"');
 	});
 });

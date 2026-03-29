@@ -1,15 +1,12 @@
-import type { RuntimeConfigState } from "../config/runtime-config.js";
-import {
-	getRuntimeLaunchSupportedAgentCatalog,
-	RUNTIME_AGENT_CATALOG,
-} from "../core/agent-catalog.js";
+import type { RuntimeConfigState } from "../config/runtime-config";
+import { getRuntimeLaunchSupportedAgentCatalog, RUNTIME_AGENT_CATALOG } from "../core/agent-catalog";
 import type {
 	RuntimeAgentDefinition,
 	RuntimeAgentId,
 	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
-} from "../core/api-contract.js";
-import { isBinaryAvailableOnPath } from "./command-discovery.js";
+} from "../core/api-contract";
+import { isBinaryAvailableOnPath } from "./command-discovery";
 
 export interface ResolvedAgentCommand {
 	agentId: RuntimeAgentId;

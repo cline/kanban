@@ -4,7 +4,7 @@ import {
 	createTerminalProtocolFilterState,
 	disableOsc11BackgroundQueryIntercept,
 	filterTerminalProtocolOutput,
-} from "../../../src/terminal/terminal-protocol-filter.js";
+} from "../../../src/terminal/terminal-protocol-filter";
 
 describe("terminal protocol filter", () => {
 	it("suppresses primary and secondary device attribute queries when enabled", () => {

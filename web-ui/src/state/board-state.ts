@@ -12,9 +12,9 @@ import {
 	type BoardDependency,
 	type CardSelection,
 	DEFAULT_TASK_AUTO_REVIEW_MODE,
-	type TaskAgentReviewState,
-	resolveTaskAutoReviewMode,
 	resolveTaskAgentReviewStatus,
+	resolveTaskAutoReviewMode,
+	type TaskAgentReviewState,
 	type TaskAutoReviewMode,
 	type TaskImage,
 } from "@/types";
@@ -525,7 +525,12 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 				startInPlanMode: Boolean(draft.startInPlanMode),
 				autoReviewEnabled: Boolean(draft.autoReviewEnabled),
 				autoReviewMode: resolveTaskAutoReviewMode(draft.autoReviewMode ?? DEFAULT_TASK_AUTO_REVIEW_MODE),
-				images: draft.images === undefined ? card.images : draft.images.length > 0 ? draft.images.map((image) => ({ ...image })) : undefined,
+				images:
+					draft.images === undefined
+						? card.images
+						: draft.images.length > 0
+							? draft.images.map((image) => ({ ...image }))
+							: undefined,
 				baseRef,
 				updatedAt: Date.now(),
 			};

@@ -1,10 +1,10 @@
-import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
-import { updateTaskDependencies } from "../core/task-board-mutations.js";
-import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { deleteTaskWorktree } from "../workspace/task-worktree.js";
-import type { WorkspaceRegistry } from "./workspace-registry.js";
-import { collectProjectWorktreeTaskIdsForRemoval } from "./workspace-registry.js";
+import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract";
+import { updateTaskDependencies } from "../core/task-board-mutations";
+import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state";
+import type { TerminalSessionManager } from "../terminal/session-manager";
+import { deleteTaskWorktree } from "../workspace/task-worktree";
+import type { WorkspaceRegistry } from "./workspace-registry";
+import { collectProjectWorktreeTaskIdsForRemoval } from "./workspace-registry";
 
 export interface RuntimeShutdownCoordinatorDependencies {
 	workspaceRegistry: Pick<WorkspaceRegistry, "listManagedWorkspaces">;
@@ -206,10 +206,14 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 
 	await Promise.all(
 		interruptedByWorkspace.map(async (workspace) => {
-			const worktreeTaskIds = await persistInterruptedSessions(workspace.workspacePath, workspace.interruptedTaskIds, {
-				workspaceState: workspace.workspaceState,
-				resolveSummary: workspace.resolveSummary,
-			});
+			const worktreeTaskIds = await persistInterruptedSessions(
+				workspace.workspacePath,
+				workspace.interruptedTaskIds,
+				{
+					workspaceState: workspace.workspaceState,
+					resolveSummary: workspace.resolveSummary,
+				},
+			);
 			await cleanupInterruptedTaskWorktrees(workspace.workspacePath, worktreeTaskIds, deps.warn);
 		}),
 	);

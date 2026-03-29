@@ -1,5 +1,4 @@
-import { forwardRef, useImperativeHandle, type ReactNode } from "react";
-import { act } from "react";
+import { act, forwardRef, type ReactNode, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,7 +7,13 @@ import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
 
 const mockUseRuntimeWorkspaceChanges = vi.fn();
-const { mockAgentTerminalPanel, mockClineAgentChatPanel, mockDiffViewerPanel, mockClineAppendToDraft, mockClineSendText } = vi.hoisted(() => ({
+const {
+	mockAgentTerminalPanel,
+	mockClineAgentChatPanel,
+	mockDiffViewerPanel,
+	mockClineAppendToDraft,
+	mockClineSendText,
+} = vi.hoisted(() => ({
 	mockAgentTerminalPanel: vi.fn((_props: { panelBackgroundColor?: string; terminalBackgroundColor?: string }) => null),
 	mockClineAgentChatPanel: vi.fn((..._args: unknown[]) => null),
 	mockDiffViewerPanel: vi.fn((..._args: unknown[]) => null),

@@ -191,7 +191,11 @@ export function buildUnifiedDiffRows(oldText: string | null | undefined, newText
 	const rows: UnifiedDiffRow[] = [];
 	let oldLine = 1;
 	let newLine = 1;
-	const changes = diffLines(oldText ?? "", newText, { ignoreWhitespace: false, stripTrailingCr: true, ignoreNewlineAtEof: true });
+	const changes = diffLines(oldText ?? "", newText, {
+		ignoreWhitespace: false,
+		stripTrailingCr: true,
+		ignoreNewlineAtEof: true,
+	});
 
 	for (let index = 0; index < changes.length; index += 1) {
 		const change = changes[index];
@@ -233,10 +237,20 @@ export function buildUnifiedDiffRows(oldText: string | null | undefined, newText
 					localOldLine += 1;
 					localNewLine += 1;
 				} else if (removedLine != null) {
-					removedRows.push({ key: `o-${localOldLine}`, lineNumber: localOldLine, variant: "removed", text: removedLine });
+					removedRows.push({
+						key: `o-${localOldLine}`,
+						lineNumber: localOldLine,
+						variant: "removed",
+						text: removedLine,
+					});
 					localOldLine += 1;
 				} else if (addedLine != null) {
-					addedRows.push({ key: `n-${localNewLine}`, lineNumber: localNewLine, variant: "added", text: addedLine });
+					addedRows.push({
+						key: `n-${localNewLine}`,
+						lineNumber: localNewLine,
+						variant: "added",
+						text: addedLine,
+					});
 					localNewLine += 1;
 				}
 			}
@@ -430,7 +444,11 @@ export function countAddedRemoved(
 ): { added: number; removed: number } {
 	let added = 0;
 	let removed = 0;
-	const changes = diffLines(oldText ?? "", newText, { ignoreWhitespace: false, stripTrailingCr: true, ignoreNewlineAtEof: true });
+	const changes = diffLines(oldText ?? "", newText, {
+		ignoreWhitespace: false,
+		stripTrailingCr: true,
+		ignoreNewlineAtEof: true,
+	});
 	for (const change of changes) {
 		if (!change) {
 			continue;
@@ -471,12 +489,7 @@ export function DiffRowText({
 }): React.ReactElement {
 	if (!row.segments) {
 		if (highlightedLineHtml) {
-			return (
-				<span
-					className="font-mono kb-diff-text"
-					dangerouslySetInnerHTML={{ __html: highlightedLineHtml }}
-				/>
-			);
+			return <span className="font-mono kb-diff-text" dangerouslySetInnerHTML={{ __html: highlightedLineHtml }} />;
 		}
 		return <span className="font-mono kb-diff-text">{row.text || " "}</span>;
 	}

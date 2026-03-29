@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.51]
+
+- Task terminals now support multiple simultaneous viewers, so opening the same task in several browser tabs no longer causes disconnections
+- Terminal TUI state is now preserved across reconnects, so you no longer lose your terminal view when the connection drops and re-establishes
+- Fixed Codex CLI content disappearing or rendering incorrectly -- PTY sessions are now fully server-side, so you can refresh the page, switch between tasks, and unmount terminals without losing any output
+- Fixed home sidebar terminal sessions not reconnecting after navigation
+- Switched to esbuild for faster builds
+- Claude agent hyperlinks now render correctly in Kanban terminals
+- Fixed screen flickering and unnecessary polling when viewing trashed tasks
+- Fixed restoring tasks from trash using the wrong agent
+- Fixed stale git worktree registrations that could cause worktree operations to fail
+
+## [0.1.50]
+
+- Updated Cline SDK from 0.0.21 to 0.0.22, which includes: fixed hook worker process launching to use a more robust internal launch mechanism
+
+## [0.1.49]
+
+- Updated Cline SDK from 0.0.16 to 0.0.21, which includes: organization fetching support, SDK declaration maps for better type resolution, OpenAI Compatible provider migration and cleanup of the legacy provider, agent telemetry events with agent ID and metadata, bash tool and home directory fixes on Windows, and exposed LoggerTelemetryAdapter in the node package
+
+## [0.1.48]
+
+- Fixed sidebar agent attempting to edit files and write code instead of staying focused on Kanban board management
+
 ## [0.1.47]
 
 - Fixed browser open failing on Linux systems where `xdg-open` is not available

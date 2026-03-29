@@ -237,7 +237,9 @@ describe("useWorkspaceSync", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					streamedWorkspaceState={createWorkspaceStateWithSessions("persisted-task", 1, { "task-1": existingSummary })}
+					streamedWorkspaceState={createWorkspaceStateWithSessions("persisted-task", 1, {
+						"task-1": existingSummary,
+					})}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}

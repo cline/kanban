@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { inferHookSourceFromPayload } from "../../src/commands/hooks.js";
+import { inferHookSourceFromPayload } from "../../src/commands/hooks";
 
 describe("inferHookSourceFromPayload", () => {
 	it("infers claude from unix transcript path", () => {

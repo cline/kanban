@@ -2,21 +2,26 @@ import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract.js";
-import { buildKanbanCommandParts } from "../core/kanban-command.js";
-import { quoteShellArg } from "../core/shell.js";
-import { lockedFileSystem } from "../fs/locked-file-system.js";
-import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
-import { getRuntimeHomePath } from "../state/workspace-state.js";
-import { createHookRuntimeEnv } from "./hook-runtime-context.js";
+import type {
+	RuntimeAgentId,
+	RuntimeHookEvent,
+	RuntimeTaskImage,
+	RuntimeTaskSessionSummary,
+} from "../core/api-contract";
+import { buildKanbanCommandParts } from "../core/kanban-command";
+import { quoteShellArg } from "../core/shell";
+import { lockedFileSystem } from "../fs/locked-file-system";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
+import { getRuntimeHomePath } from "../state/workspace-state";
+import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
 	getOpenCodeAuthPathCandidates,
 	getOpenCodeConfigPathCandidates,
 	getOpenCodeModelStatePathCandidates,
-} from "./opencode-paths.js";
-import { stripAnsi } from "./output-utils.js";
-import type { SessionTransitionEvent } from "./session-state-machine.js";
-import { prepareTaskPromptWithImages } from "./task-image-prompt.js";
+} from "./opencode-paths";
+import { stripAnsi } from "./output-utils";
+import type { SessionTransitionEvent } from "./session-state-machine";
+import { prepareTaskPromptWithImages } from "./task-image-prompt";
 
 export interface AgentAdapterLaunchInput {
 	taskId: string;
@@ -606,7 +611,9 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
-		const env: Record<string, string | undefined> = {};
+		const env: Record<string, string | undefined> = {
+			FORCE_HYPERLINK: "1",
+		};
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 		if (
 			input.autonomousModeEnabled &&
@@ -725,9 +732,7 @@ function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): 
 function shouldInspectCodexOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
 	return (
 		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "attention" ||
-			summary.reviewReason === "hook" ||
-			summary.reviewReason === "error")
+		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
 	);
 }
 

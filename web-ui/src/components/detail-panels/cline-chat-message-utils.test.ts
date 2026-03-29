@@ -1,19 +1,15 @@
-import { describe, expect, it } from "vitest";
-
-import { formatToolInputForDisplay, getToolSummary, parseToolMessageContent } from "@/components/detail-panels/cline-chat-message-utils";
 import { getClineToolCallDisplay } from "@runtime-cline-tool-call-display";
+import { describe, expect, it } from "vitest";
+import {
+	formatToolInputForDisplay,
+	getToolSummary,
+	parseToolMessageContent,
+} from "@/components/detail-panels/cline-chat-message-utils";
 
 describe("parseToolMessageContent", () => {
 	it("parses tool name input output and duration", () => {
 		const parsed = parseToolMessageContent(
-			[
-				"Tool: Read",
-				"Input:",
-				'{"file":"src/index.ts"}',
-				"Output:",
-				'{"ok":true}',
-				"Duration: 21ms",
-			].join("\n"),
+			["Tool: Read", "Input:", '{"file":"src/index.ts"}', "Output:", '{"ok":true}', "Duration: 21ms"].join("\n"),
 		);
 
 		expect(parsed.toolName).toBe("Read");
@@ -25,13 +21,7 @@ describe("parseToolMessageContent", () => {
 
 	it("parses tool errors", () => {
 		const parsed = parseToolMessageContent(
-			[
-				"Tool: Execute",
-				"Input:",
-				"npm run test",
-				"Error:",
-				"Command failed",
-			].join("\n"),
+			["Tool: Execute", "Input:", "npm run test", "Error:", "Command failed"].join("\n"),
 		);
 
 		expect(parsed.toolName).toBe("Execute");
@@ -58,13 +48,7 @@ describe("parseToolMessageContent", () => {
 
 	it("strips ANSI escape codes from error", () => {
 		const parsed = parseToolMessageContent(
-			[
-				"Tool: Bash",
-				"Input:",
-				"npm test",
-				"Error:",
-				"\x1b[31mFailed\x1b[39m: test suite crashed",
-			].join("\n"),
+			["Tool: Bash", "Input:", "npm test", "Error:", "\x1b[31mFailed\x1b[39m: test suite crashed"].join("\n"),
 		);
 
 		expect(parsed.error).toBe("Failed: test suite crashed");
@@ -94,9 +78,7 @@ describe("getToolSummary", () => {
 	});
 
 	it("shows the full readfiles path list from top level array input", () => {
-		expect(getToolSummary("readfiles", JSON.stringify(["/tmp/a.ts", "/tmp/b.ts"]))).toBe(
-			"/tmp/a.ts, /tmp/b.ts",
-		);
+		expect(getToolSummary("readfiles", JSON.stringify(["/tmp/a.ts", "/tmp/b.ts"]))).toBe("/tmp/a.ts, /tmp/b.ts");
 	});
 
 	it("shows ranged read_files requests from the SDK files payload", () => {
@@ -128,10 +110,7 @@ describe("getToolSummary", () => {
 describe("formatToolInputForDisplay", () => {
 	it("returns the full command list for run_commands", () => {
 		const input = JSON.stringify({
-			commands: [
-				"find /some/very/long/path -type f -name '*.ts' | head -80",
-				"cat /some/other/file.txt",
-			],
+			commands: ["find /some/very/long/path -type f -name '*.ts' | head -80", "cat /some/other/file.txt"],
 		});
 		expect(formatToolInputForDisplay("run_commands", input)).toBe(
 			"find /some/very/long/path -type f -name '*.ts' | head -80\ncat /some/other/file.txt",

@@ -3,37 +3,30 @@ import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
-import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service.js";
+import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service";
 import {
 	type ClineTaskSessionService,
 	createInMemoryClineTaskSessionService,
-} from "../cline-sdk/cline-task-session-service.js";
-import type { RuntimeConfigState } from "../config/runtime-config.js";
+} from "../cline-sdk/cline-task-session-service";
+import type { RuntimeConfigState } from "../config/runtime-config";
 import type {
 	RuntimeAgentId,
-	RuntimeBoardData,
 	RuntimeBoardColumnId,
+	RuntimeBoardData,
 	RuntimeCommandRunResponse,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
-} from "../core/api-contract.js";
-import { moveTaskToColumn } from "../core/task-board-mutations.js";
+} from "../core/api-contract";
 import {
 	buildKanbanRuntimeUrl,
 	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
-} from "../core/runtime-endpoint.js";
-import { loadWorkspaceContextById, loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { resolveAgentCommand, resolveAgentCommandForAgentId } from "../terminal/agent-registry.js";
-import { createTerminalWebSocketBridge } from "../terminal/ws-server.js";
-import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router.js";
-import { createHooksApi } from "../trpc/hooks-api.js";
-import { createProjectsApi } from "../trpc/projects-api.js";
-import { createRuntimeApi } from "../trpc/runtime-api.js";
-import { createWorkspaceApi } from "../trpc/workspace-api.js";
+} from "../core/runtime-endpoint";
+import { moveTaskToColumn } from "../core/task-board-mutations";
 import {
+	type AgentReviewRunnerResult,
+	type AgentReviewState,
 	buildCodeReviewPrompt,
 	createAgentReviewCoordinator,
 	ensureCodeReviewDocument,
@@ -41,14 +34,21 @@ import {
 	hasAgentReviewableChanges,
 	readCodeReviewDocument,
 	resolveAgentReviewGitRange,
-	type AgentReviewRunnerResult,
-	type AgentReviewState,
-} from "../review/index.js";
-import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets.js";
-import type { RuntimeStateHub } from "./runtime-state-hub.js";
-import type { WorkspaceRegistry } from "./workspace-registry.js";
-import { resolveTaskCwd } from "../workspace/task-worktree.js";
-import { stripAnsi } from "../terminal/output-utils.js";
+} from "../review/index";
+import { loadWorkspaceContextById, loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state";
+import { resolveAgentCommand, resolveAgentCommandForAgentId } from "../terminal/agent-registry";
+import { stripAnsi } from "../terminal/output-utils";
+import type { TerminalSessionManager } from "../terminal/session-manager";
+import { createTerminalWebSocketBridge } from "../terminal/ws-server";
+import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router";
+import { createHooksApi } from "../trpc/hooks-api";
+import { createProjectsApi } from "../trpc/projects-api";
+import { createRuntimeApi } from "../trpc/runtime-api";
+import { createWorkspaceApi } from "../trpc/workspace-api";
+import { resolveTaskCwd } from "../workspace/task-worktree";
+import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import type { RuntimeStateHub } from "./runtime-state-hub";
+import type { WorkspaceRegistry } from "./workspace-registry";
 
 interface DisposeTrackedWorkspaceResult {
 	terminalManager: TerminalSessionManager | null;
@@ -340,10 +340,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		if (!taskRecord) {
 			return null;
 		}
-		const policy = (await deps.workspaceRegistry.loadScopedRuntimeConfig({
-			workspaceId: input.workspaceId,
-			workspacePath,
-		})).agentReviewPolicy;
+		const policy = (
+			await deps.workspaceRegistry.loadScopedRuntimeConfig({
+				workspaceId: input.workspaceId,
+				workspacePath,
+			})
+		).agentReviewPolicy;
 		return {
 			currentColumnId: taskRecord.columnId,
 			policy,

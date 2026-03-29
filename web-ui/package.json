@@ -14,7 +14,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "@clinebot/shared": "^0.0.20",
+    "@clinebot/shared": "^0.0.22",
     "@hello-pangea/dnd": "^18.0.1",
     "@posthog/react": "^1.8.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -30,7 +30,6 @@
     "@sentry/react": "^10.45.0",
     "@tailwindcss/vite": "^4.2.1",
     "@trpc/client": "^11.11.0",
-    "@xterm/addon-attach": "^0.12.0",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode11": "^0.9.0",

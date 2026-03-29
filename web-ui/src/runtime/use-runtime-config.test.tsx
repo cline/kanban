@@ -271,7 +271,6 @@ describe("useRuntimeConfig", () => {
 		expect(snapshot.config?.selectedAgentId).toBe("codex");
 		expect(snapshot.isLoading).toBe(false);
 	});
-
 	it("saves agent review policy updates", async () => {
 		const startupConfig = createRuntimeConfigResponse("codex");
 		saveRuntimeConfigMock.mockResolvedValue({

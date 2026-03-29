@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
-import { buildShellCommandLine } from "../../../src/core/shell.js";
-import { TerminalSessionManager } from "../../../src/terminal/session-manager.js";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
+import { buildShellCommandLine } from "../../../src/core/shell";
+import { TerminalSessionManager } from "../../../src/terminal/session-manager";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {
@@ -69,7 +69,6 @@ describe("TerminalSessionManager", () => {
 		expect(typeof updated?.lastHookAt).toBe("number");
 	});
 
-
 	it("resets stale running sessions without active processes", () => {
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({
@@ -80,7 +79,7 @@ describe("TerminalSessionManager", () => {
 
 		expect(recovered?.state).toBe("idle");
 		expect(recovered?.pid).toBeNull();
-		expect(recovered?.agentId).toBeNull();
+		expect(recovered?.agentId).toBe("claude");
 		expect(recovered?.workspacePath).toBeNull();
 		expect(recovered?.reviewReason).toBeNull();
 	});
@@ -109,23 +108,20 @@ describe("TerminalSessionManager", () => {
 		expect(summary?.previousTurnCheckpoint?.turn).toBe(1);
 	});
 
-	it("replies to OSC 11 probe from replayed output history and hides the query", () => {
+	it("does not replay raw PTY history when attaching an output listener", () => {
 		const manager = new TerminalSessionManager();
 		const onOutput = vi.fn();
-		const writeSpy = vi.fn();
 		const entry = {
 			summary: createSummary({ taskId: "task-probe", state: "running" }),
 			active: {
-				session: {
-					getOutputHistory: () => [Buffer.from("\u001b]11;?\u0007", "utf8"), Buffer.from("ready", "utf8")],
-					write: writeSpy,
-				},
+				session: {},
 				terminalProtocolFilter: {
 					pendingChunk: null,
 					interceptOsc11BackgroundQueries: true,
 					suppressDeviceAttributeQueries: false,
 				},
 			},
+			terminalStateMirror: null,
 			listenerIdCounter: 1,
 			listeners: new Map(),
 		};
@@ -139,11 +135,8 @@ describe("TerminalSessionManager", () => {
 			onOutput,
 		});
 
-		expect(writeSpy).toHaveBeenCalledWith("\u001b]11;rgb:1717/1717/2121\u001b\\");
-		expect(onOutput).toHaveBeenCalledTimes(1);
-		expect((onOutput.mock.calls[0]?.[0] as Buffer).toString("utf8")).toBe("ready");
+		expect(onOutput).not.toHaveBeenCalled();
 		expect(entry.active.terminalProtocolFilter.interceptOsc11BackgroundQueries).toBe(false);
-		expect(entry.active.terminalProtocolFilter.pendingChunk).toBeNull();
 	});
 
 	it("keeps the startup probe filter enabled when only a non-output listener attaches", () => {
@@ -152,7 +145,6 @@ describe("TerminalSessionManager", () => {
 			summary: createSummary({ taskId: "task-control-first", state: "running" }),
 			active: {
 				session: {
-					getOutputHistory: () => [Buffer.from("\u001b]11;?\u0007", "utf8")],
 					write: vi.fn(),
 				},
 				terminalProtocolFilter: {
@@ -161,6 +153,7 @@ describe("TerminalSessionManager", () => {
 					suppressDeviceAttributeQueries: false,
 				},
 			},
+			terminalStateMirror: null,
 			listenerIdCounter: 1,
 			listeners: new Map(),
 		};
@@ -182,6 +175,7 @@ describe("TerminalSessionManager", () => {
 	it("forwards pixel dimensions through resize when provided", () => {
 		const manager = new TerminalSessionManager();
 		const resizeSpy = vi.fn();
+		const resizeMirrorSpy = vi.fn();
 		const entry = {
 			summary: createSummary({ taskId: "task-resize", state: "running" }),
 			active: {
@@ -190,6 +184,9 @@ describe("TerminalSessionManager", () => {
 				},
 				cols: 80,
 				rows: 24,
+			},
+			terminalStateMirror: {
+				resize: resizeMirrorSpy,
 			},
 			listenerIdCounter: 1,
 			listeners: new Map(),
@@ -203,5 +200,38 @@ describe("TerminalSessionManager", () => {
 		const resized = manager.resize("task-resize", 100, 30, 1200, 720);
 		expect(resized).toBe(true);
 		expect(resizeSpy).toHaveBeenCalledWith(100, 30, 1200, 720);
+		expect(resizeMirrorSpy).toHaveBeenCalledWith(100, 30);
+	});
+
+	it("returns the latest terminal restore snapshot when available", async () => {
+		const manager = new TerminalSessionManager();
+		const getSnapshotSpy = vi.fn(async () => ({
+			snapshot: "serialized terminal",
+			cols: 120,
+			rows: 40,
+		}));
+		const entry = {
+			summary: createSummary({ taskId: "task-restore", state: "running" }),
+			active: null,
+			terminalStateMirror: {
+				getSnapshot: getSnapshotSpy,
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-restore", entry);
+
+		const snapshot = await manager.getRestoreSnapshot("task-restore");
+
+		expect(snapshot).toEqual({
+			snapshot: "serialized terminal",
+			cols: 120,
+			rows: 40,
+		});
+		expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
 	});
 });

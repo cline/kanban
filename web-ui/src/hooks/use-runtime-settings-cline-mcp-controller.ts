@@ -326,9 +326,7 @@ export function useRuntimeSettingsClineMcpController(
 			? mcpAuthStatusByServerName[server.name]
 			: mcpAuthStatusByServerName[LINEAR_MCP_SERVER_NAME];
 		const isCorrectlyConfigured =
-			server?.disabled === false &&
-			server.type === "streamableHttp" &&
-			server.url.trim() === LINEAR_MCP_SERVER_URL;
+			server?.disabled === false && server.type === "streamableHttp" && server.url.trim() === LINEAR_MCP_SERVER_URL;
 		const isSettingUp = (authenticatingMcpServerName?.trim().toLowerCase() ?? "") === normalizedName;
 
 		let status: LinearMcpPresetStatus;

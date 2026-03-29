@@ -7,21 +7,21 @@ import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { TRPCError } from "@trpc/server";
-import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service.js";
-import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service.js";
-import { createClineProviderService } from "../cline-sdk/cline-provider-service.js";
-import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service.js";
+import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service";
+import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service";
+import { createClineProviderService } from "../cline-sdk/cline-provider-service";
+import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import {
 	createClineSdkUserInstructionWatcher,
 	listClineSdkWorkflowSlashCommands,
-} from "../cline-sdk/sdk-runtime-boundary.js";
-import type { RuntimeConfigState } from "../config/runtime-config.js";
-import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config.js";
+} from "../cline-sdk/sdk-runtime-boundary";
+import type { RuntimeConfigState } from "../config/runtime-config";
+import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
 import type {
 	RuntimeAgentReviewPolicy,
 	RuntimeCommandRunResponse,
 	RuntimeTaskAgentReviewTriggerResponse,
-} from "../core/api-contract.js";
+} from "../core/api-contract";
 import {
 	parseClineMcpOAuthRequest,
 	parseClineMcpSettingsSaveRequest,
@@ -33,21 +33,21 @@ import {
 	parseShellSessionStartRequest,
 	parseTaskAgentReviewTriggerRequest,
 	parseTaskChatAbortRequest,
-	parseTaskChatReloadRequest,
 	parseTaskChatCancelRequest,
 	parseTaskChatMessagesRequest,
+	parseTaskChatReloadRequest,
 	parseTaskChatSendRequest,
 	parseTaskSessionInputRequest,
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
-} from "../core/api-validation.js";
-import { isHomeAgentSessionId } from "../core/home-agent-session.js";
-import { openInBrowser } from "../server/browser.js";
-import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry.js";
-import type { TerminalSessionManager } from "../terminal/session-manager.js";
-import { resolveTaskCwd } from "../workspace/task-worktree.js";
-import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints.js";
-import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router.js";
+} from "../core/api-validation";
+import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { openInBrowser } from "../server/browser";
+import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
+import type { TerminalSessionManager } from "../terminal/session-manager";
+import { resolveTaskCwd } from "../workspace/task-worktree";
+import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
+import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
 
 interface RuntimeAgentReviewCoordinator {
 	triggerTaskReview: (input: {
@@ -183,7 +183,26 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						});
 				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeAgentSessionId(body.taskId);
 
-				if (scopedRuntimeConfig.selectedAgentId === "cline") {
+				// When restoring from trash, resume with the original agent so conversation
+				// history is preserved. Terminal agents have their agentId preserved in the
+				// hydrated session summary; Cline tasks are detected via persisted SDK sessions.
+				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+				const previousTerminalAgentId = body.resumeFromTrash
+					? (terminalManager.getSummary(body.taskId)?.agentId ?? null)
+					: null;
+				const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
+				let useClinePath = effectiveAgentId === "cline";
+				if (body.resumeFromTrash && !useClinePath) {
+					const clineSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+					const persistedSession = await clineSessionService
+						.rebindPersistedTaskSession(body.taskId)
+						.catch(() => null);
+					if (persistedSession) {
+						useClinePath = true;
+					}
+				}
+
+				if (useClinePath) {
 					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const summary = await clineTaskSessionService.startTaskSession({
@@ -221,7 +240,11 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					};
 				}
 
-				const resolved = resolveAgentCommand(scopedRuntimeConfig);
+				const resolvedConfig =
+					effectiveAgentId !== scopedRuntimeConfig.selectedAgentId
+						? { ...scopedRuntimeConfig, selectedAgentId: effectiveAgentId }
+						: scopedRuntimeConfig;
+				const resolved = resolveAgentCommand(resolvedConfig);
 				if (!resolved) {
 					return {
 						ok: false,
@@ -229,7 +252,6 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
 					};
 				}
-				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = await terminalManager.startTaskSession({
 					taskId: body.taskId,
 					agentId: resolved.agentId,

@@ -2,11 +2,11 @@ import { realpathSync } from "node:fs";
 
 import packageJson from "../../package.json" with { type: "json" };
 
-import type { RuntimeAgentId } from "../core/api-contract.js";
-import { resolveKanbanCommandParts } from "../core/kanban-command.js";
-import { buildShellCommandLine } from "../core/shell.js";
-import { isHomeAgentSessionId } from "../core/home-agent-session.js";
-import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update.js";
+import type { RuntimeAgentId } from "../core/api-contract";
+import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { resolveKanbanCommandParts } from "../core/kanban-command";
+import { buildShellCommandLine } from "../core/shell";
+import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update";
 
 const DEFAULT_COMMAND_PREFIX = "kanban";
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
@@ -24,14 +24,7 @@ export interface RenderAppendSystemPromptOptions {
 	agentId?: RuntimeAgentId | null;
 }
 
-const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
-	"claude",
-	"codex",
-	"cline",
-	"droid",
-	"gemini",
-	"opencode",
-];
+const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "cline", "droid", "gemini", "opencode"];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
 	return APPEND_PROMPT_AGENT_IDS.includes(value as RuntimeAgentId);
@@ -121,10 +114,7 @@ export function resolveAppendSystemPromptCommandPrefix(
 	return fallbackCommandPrefix;
 }
 
-export function renderAppendSystemPrompt(
-	commandPrefix: string,
-	options: RenderAppendSystemPromptOptions = {},
-): string {
+export function renderAppendSystemPrompt(commandPrefix: string, options: RenderAppendSystemPromptOptions = {}): string {
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
 	const selectedAgentId = options.agentId ?? null;
 	return `# Kanban Sidebar
@@ -133,7 +123,13 @@ You are the Kanban sidebar agent for this workspace. Help the user interact with
 
 Kanban is a CLI tool for orchestrating multiple coding agents working on tasks in parallel on a kanban board. It manages git worktrees automatically so that each task can run a dedicated CLI agent in its own worktree.
 
-You should not edit files or do coding work yourself. You are a Kanban board management helper: your job is to create, organize, link, start, and manage tasks using the Kanban CLI. If the user asks you to write code, fix bugs, refactor, or do other implementation work directly, let them know that you are best suited to help manage their Kanban board and suggest they create a task on the board so a dedicated agent can do the work in its own worktree.
+You are a Kanban board management helper: your job is to create, organize, link, start, and manage tasks using the Kanban CLI.
+
+# CRITICAL: You are NOT a coding agent
+
+NEVER edit, create, delete, or modify any files in the workspace. NEVER write code, fix bugs, refactor, or do any implementation work yourself. You do not have the role of a coding assistant. Your only job is to manage the Kanban board using the Kanban CLI commands listed below.
+
+If the user asks you to write code, fix a bug, implement a feature, refactor, or do any hands-on development work, do NOT attempt it. Instead, help them by creating tasks on the Kanban board so a dedicated coding agent can do that work in its own worktree. Always redirect implementation requests to task creation.
 
 - If the user asks to add tasks to kb, ask kb, kanban, or says add tasks without other context, they likely want to add tasks in Kanban. This includes phrases like "create tasks", "make 3 tasks", "add a task", "break down into tasks", "split into tasks", "decompose into tasks", and "turn into tasks".
 - Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. If both linked tasks are in backlog, Kanban preserves the order you pass to the command: \`--task-id\` waits on \`--linked-task-id\`, and on the board the arrow points into \`--linked-task-id\`. Once only one linked task remains in backlog, Kanban reorients the saved dependency so the backlog task is the waiting dependent task and the other task is the prerequisite. The board arrow points into the prerequisite task so the user can see what must finish first. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start.
@@ -149,6 +145,7 @@ Use this prefix for every Kanban command in this session:
 
 # Tool Invocation Notes
 
+- NEVER use file-editing tools. You are not a coding agent. If you catch yourself about to edit a file, stop and suggest creating a Kanban task instead.
 - When using the \`run_commands\` tool, always pass \`commands\` as an array, even when running only one command.
 
 # GitHub and Linear Guidance

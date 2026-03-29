@@ -155,10 +155,7 @@ export function splitPromptToTitleDescriptionByWidth(
 	};
 }
 
-export function clampTextWithInlineSuffix(
-	text: string,
-	options: InlineSuffixClampOptions,
-): InlineSuffixClampResult {
+export function clampTextWithInlineSuffix(text: string, options: InlineSuffixClampOptions): InlineSuffixClampResult {
 	const normalizedText = normalizePromptForDisplay(text);
 	if (!normalizedText) {
 		return {

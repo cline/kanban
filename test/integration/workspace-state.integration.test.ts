@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract.js";
-import type { WorkspaceStateConflictError } from "../../src/state/workspace-state.js";
+import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract";
+import type { WorkspaceStateConflictError } from "../../src/state/workspace-state";
 import {
 	getWorkspacesRootPath,
 	listWorkspaceIndexEntries,
@@ -14,9 +14,9 @@ import {
 	loadWorkspaceState,
 	removeWorkspaceIndexEntry,
 	saveWorkspaceState,
-} from "../../src/state/workspace-state.js";
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+} from "../../src/state/workspace-state";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 function createBoard(title: string): RuntimeBoardData {
 	return {

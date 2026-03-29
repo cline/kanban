@@ -58,9 +58,7 @@ export function buildClineAgentModelPickerOptions(
 	};
 }
 
-export function formatClineReasoningEffortLabel(
-	value: RuntimeClineReasoningEffort | "" | null | undefined,
-): string {
+export function formatClineReasoningEffortLabel(value: RuntimeClineReasoningEffort | "" | null | undefined): string {
 	return CLINE_REASONING_EFFORT_OPTIONS.find((option) => option.value === (value ?? ""))?.label ?? "Default";
 }
 

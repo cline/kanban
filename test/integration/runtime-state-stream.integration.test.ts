@@ -25,9 +25,9 @@ import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorktreeEnsureResponse,
-} from "../../src/core/api-contract.js";
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+} from "../../src/core/api-contract";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -259,12 +259,7 @@ async function waitForExit(childProcess: ChildProcess, timeoutMs: number): Promi
 	});
 }
 
-async function startKanbanServer(input: {
-	cwd: string;
-	homeDir: string;
-	port: number;
-	extraArgs?: string[];
-}): Promise<{
+async function startKanbanServer(input: { cwd: string; homeDir: string; port: number; extraArgs?: string[] }): Promise<{
 	runtimeUrl: string;
 	stop: () => Promise<void>;
 }> {
@@ -283,13 +278,13 @@ async function startKanbanServer(input: {
 			...(input.extraArgs ?? []),
 		],
 		{
-		cwd: input.cwd,
-		env: createGitTestEnv({
-			HOME: input.homeDir,
-			USERPROFILE: input.homeDir,
-			KANBAN_RUNTIME_PORT: String(input.port),
-		}),
-		stdio: ["ignore", "pipe", "pipe", "ipc"],
+			cwd: input.cwd,
+			env: createGitTestEnv({
+				HOME: input.homeDir,
+				USERPROFILE: input.homeDir,
+				KANBAN_RUNTIME_PORT: String(input.port),
+			}),
+			stdio: ["ignore", "pipe", "pipe", "ipc"],
 		},
 	);
 	const { runtimeUrl } = await waitForProcessStart(child);

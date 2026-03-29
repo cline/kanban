@@ -1,6 +1,6 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
-import { useCallback, useRef, useState, type Dispatch, type ReactElement, type SetStateAction } from "react";
+import { type Dispatch, type ReactElement, type SetStateAction, useCallback, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
@@ -13,7 +13,6 @@ import { useDocumentEvent, useMeasure } from "@/utils/react-use";
 export type TaskInlineCardMode = "create" | "edit";
 
 export type TaskBranchOption = BranchSelectOption;
-
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
@@ -173,7 +172,8 @@ export function TaskInlineCreateCard({
 				/>
 				<p className="text-[11px] text-text-tertiary mt-1 mb-0">
 					Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference
-					files. Drag and drop or <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to
+					files. Drag and drop or{" "}
+					<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to
 					add images.
 				</p>
 			</div>

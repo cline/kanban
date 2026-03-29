@@ -1,12 +1,12 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
 import { Check } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import { cn } from "@/components/ui/cn";
-import { isClineProviderAuthenticated } from "@/runtime/native-agent";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
+import { isClineProviderAuthenticated } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentDefinition,
 	RuntimeAgentId,
@@ -79,8 +79,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	{
 		kind: "agent-selection",
 		title: "Choose your agent",
-		description:
-			"Choose a coding agent to complete your tasks. You can change this anytime in Settings.",
+		description: "Choose a coding agent to complete your tasks. You can change this anytime in Settings.",
 	},
 ];
 
@@ -147,21 +146,20 @@ function OnboardingMedia({
 	const frameHeight = assetFrameHeightPx ?? assetHeightPx;
 	const objectFitClassName = assetObjectFit === "cover" ? "object-cover" : "object-contain";
 	const hasFrameSize = typeof frameWidth === "number" && typeof frameHeight === "number";
-	const mediaContainerStyle =
-		hasFrameSize
+	const mediaContainerStyle = hasFrameSize
+		? {
+				aspectRatio: `${frameWidth} / ${frameHeight}`,
+				maxWidth: `${frameWidth}px`,
+				width: "100%",
+			}
+		: typeof frameWidth === "number"
 			? {
-					aspectRatio: `${frameWidth} / ${frameHeight}`,
 					maxWidth: `${frameWidth}px`,
 					width: "100%",
 				}
-			: typeof frameWidth === "number"
-				? {
-						maxWidth: `${frameWidth}px`,
-						width: "100%",
-					}
-				: {
-						width: "100%",
-					};
+			: {
+					width: "100%",
+				};
 	const missingStateStyle =
 		typeof frameWidth === "number" && typeof frameHeight === "number"
 			? {
@@ -175,9 +173,9 @@ function OnboardingMedia({
 						maxWidth: "100%",
 						width: "auto",
 					}
-			: {
-					width: "100%",
-				};
+				: {
+						width: "100%",
+					};
 
 	useEffect(() => {
 		setAssetMode("video");
@@ -201,14 +199,14 @@ function OnboardingMedia({
 	if (assetMode === "video") {
 		if (!videoPath) {
 			if (!imagePath) {
-					return (
-						<div className="flex w-full justify-center">
-							<div
-								className="flex min-h-[180px] w-full items-center justify-center rounded-md border border-dashed border-border-bright bg-surface-1 p-4 text-center"
-								style={mediaContainerStyle}
-							>
-								<p className="m-0 text-xs text-text-secondary">
-									Add onboarding media by setting a valid slide video or gif source.
+				return (
+					<div className="flex w-full justify-center">
+						<div
+							className="flex min-h-[180px] w-full items-center justify-center rounded-md border border-dashed border-border-bright bg-surface-1 p-4 text-center"
+							style={mediaContainerStyle}
+						>
+							<p className="m-0 text-xs text-text-secondary">
+								Add onboarding media by setting a valid slide video or gif source.
 							</p>
 						</div>
 					</div>
@@ -336,9 +334,7 @@ export function TaskStartAgentOnboardingCarousel({
 	}, [selectedAgentId]);
 
 	const currentSlide =
-		TASK_START_ONBOARDING_SLIDES[activeSlideIndex] ??
-		TASK_START_ONBOARDING_SLIDES[0] ??
-		FALLBACK_ONBOARDING_SLIDE;
+		TASK_START_ONBOARDING_SLIDES[activeSlideIndex] ?? TASK_START_ONBOARDING_SLIDES[0] ?? FALLBACK_ONBOARDING_SLIDE;
 	const clineAuthenticated = isClineProviderAuthenticated(clineProviderSettings);
 	const clineSettings = useRuntimeSettingsClineController({
 		open,
@@ -510,15 +506,9 @@ export function TaskStartAgentOnboardingCarousel({
 										/>
 									) : null
 								) : agent.installed ? (
-									<AgentStatusBadge
-										label="Detected"
-										statusClassName="bg-status-green/10 text-status-green"
-									/>
+									<AgentStatusBadge label="Detected" statusClassName="bg-status-green/10 text-status-green" />
 								) : (
-									<AgentStatusBadge
-										label="Not installed"
-										statusClassName="bg-surface-3 text-text-secondary"
-									/>
+									<AgentStatusBadge label="Not installed" statusClassName="bg-surface-3 text-text-secondary" />
 								)}
 							</div>
 							<p className="mt-2 mb-0 text-[12px] text-text-secondary">

@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createTempDir } from "../utilities/temp-dir.js";
+import { createTempDir } from "../utilities/temp-dir";
 
 const lockfileMocks = vi.hoisted(() => ({
 	lock: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock("proper-lockfile", () => ({
 	lock: lockfileMocks.lock,
 }));
 
-import { LockedFileSystem } from "../../src/fs/locked-file-system.js";
+import { LockedFileSystem } from "../../src/fs/locked-file-system";
 
 describe("LockedFileSystem", () => {
 	beforeEach(() => {

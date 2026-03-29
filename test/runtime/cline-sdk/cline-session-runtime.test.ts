@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryClineSessionRuntime } from "../../../src/cline-sdk/cline-session-runtime.js";
+import { createInMemoryClineSessionRuntime } from "../../../src/cline-sdk/cline-session-runtime";
+import type { ClineSdkSessionRecord } from "../../../src/cline-sdk/sdk-runtime-boundary";
 
 function createNoopMcpRuntimeService() {
 	return {
@@ -25,6 +26,30 @@ function createDeferred<T>() {
 		promise,
 		resolve,
 		reject,
+	};
+}
+
+function createPersistedRecord(input: {
+	sessionId: string;
+	status: ClineSdkSessionRecord["status"];
+	startedAt: string;
+	updatedAt: string;
+}): ClineSdkSessionRecord {
+	return {
+		sessionId: input.sessionId,
+		source: "core" as ClineSdkSessionRecord["source"],
+		status: input.status,
+		startedAt: input.startedAt,
+		updatedAt: input.updatedAt,
+		interactive: true,
+		provider: "anthropic",
+		model: "claude-sonnet-4-6",
+		cwd: "/tmp/worktree",
+		workspaceRoot: "/tmp/workspace-root",
+		enableTools: true,
+		enableSpawn: false,
+		enableTeams: false,
+		isSubagent: false,
 	};
 }
 
@@ -427,24 +452,24 @@ describe("InMemoryClineSessionRuntime", () => {
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => [
-				{
+				createPersistedRecord({
 					sessionId: "task-1-older",
 					status: "completed",
 					startedAt: "2026-03-17T10:00:00.000Z",
 					updatedAt: "2026-03-17T10:05:00.000Z",
-				},
-				{
+				}),
+				createPersistedRecord({
 					sessionId: "task-1-newer",
 					status: "completed",
 					startedAt: "2026-03-17T10:10:00.000Z",
 					updatedAt: "2026-03-17T10:15:00.000Z",
-				},
-				{
+				}),
+				createPersistedRecord({
 					sessionId: "task-2-1",
 					status: "completed",
 					startedAt: "2026-03-17T09:00:00.000Z",
 					updatedAt: "2026-03-17T09:05:00.000Z",
-				},
+				}),
 			]),
 			readMessages: vi.fn(async () => [
 				{
@@ -484,12 +509,12 @@ describe("InMemoryClineSessionRuntime", () => {
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => [
-				{
+				createPersistedRecord({
 					sessionId: "task-1-newer",
 					status: "completed",
 					startedAt: "2026-03-17T10:10:00.000Z",
 					updatedAt: "2026-03-17T10:15:00.000Z",
-				},
+				}),
 			]),
 			readMessages: vi.fn(async () => [
 				{

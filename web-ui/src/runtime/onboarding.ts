@@ -1,5 +1,5 @@
-import type { RuntimeAgentId, RuntimeClineProviderSettings } from "@/runtime/types";
 import { isClineProviderAuthenticated } from "@/runtime/native-agent";
+import type { RuntimeAgentId, RuntimeClineProviderSettings } from "@/runtime/types";
 
 export function isSelectedAgentAuthenticated(
 	selectedAgentId: RuntimeAgentId | null | undefined,

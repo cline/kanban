@@ -949,9 +949,22 @@ export const runtimeTerminalWsStopMessageSchema = z.object({
 });
 export type RuntimeTerminalWsStopMessage = z.infer<typeof runtimeTerminalWsStopMessageSchema>;
 
+export const runtimeTerminalWsOutputAckMessageSchema = z.object({
+	type: z.literal("output_ack"),
+	bytes: z.number().int().nonnegative(),
+});
+export type RuntimeTerminalWsOutputAckMessage = z.infer<typeof runtimeTerminalWsOutputAckMessageSchema>;
+
+export const runtimeTerminalWsRestoreCompleteMessageSchema = z.object({
+	type: z.literal("restore_complete"),
+});
+export type RuntimeTerminalWsRestoreCompleteMessage = z.infer<typeof runtimeTerminalWsRestoreCompleteMessageSchema>;
+
 export const runtimeTerminalWsClientMessageSchema = z.discriminatedUnion("type", [
 	runtimeTerminalWsResizeMessageSchema,
 	runtimeTerminalWsStopMessageSchema,
+	runtimeTerminalWsOutputAckMessageSchema,
+	runtimeTerminalWsRestoreCompleteMessageSchema,
 ]);
 export type RuntimeTerminalWsClientMessage = z.infer<typeof runtimeTerminalWsClientMessageSchema>;
 
@@ -973,10 +986,19 @@ export const runtimeTerminalWsExitMessageSchema = z.object({
 });
 export type RuntimeTerminalWsExitMessage = z.infer<typeof runtimeTerminalWsExitMessageSchema>;
 
+export const runtimeTerminalWsRestoreMessageSchema = z.object({
+	type: z.literal("restore"),
+	snapshot: z.string(),
+	cols: z.number().int().positive().nullable().optional(),
+	rows: z.number().int().positive().nullable().optional(),
+});
+export type RuntimeTerminalWsRestoreMessage = z.infer<typeof runtimeTerminalWsRestoreMessageSchema>;
+
 export const runtimeTerminalWsServerMessageSchema = z.discriminatedUnion("type", [
 	runtimeTerminalWsStateMessageSchema,
 	runtimeTerminalWsErrorMessageSchema,
 	runtimeTerminalWsExitMessageSchema,
+	runtimeTerminalWsRestoreMessageSchema,
 ]);
 export type RuntimeTerminalWsServerMessage = z.infer<typeof runtimeTerminalWsServerMessageSchema>;
 

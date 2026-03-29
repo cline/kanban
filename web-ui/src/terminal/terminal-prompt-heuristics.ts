@@ -23,9 +23,7 @@ export function sanitizeTerminalHeuristicText(text: string): string {
 
 export function appendTerminalHeuristicText(buffer: string, chunk: string): string {
 	const combined = `${buffer}${sanitizeTerminalHeuristicText(chunk)}`;
-	return combined.length > MAX_HEURISTIC_BUFFER_CHARS
-		? combined.slice(-MAX_HEURISTIC_BUFFER_CHARS)
-		: combined;
+	return combined.length > MAX_HEURISTIC_BUFFER_CHARS ? combined.slice(-MAX_HEURISTIC_BUFFER_CHARS) : combined;
 }
 
 export function hasInterruptAcknowledgement(text: string): boolean {

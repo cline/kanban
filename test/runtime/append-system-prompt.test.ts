@@ -4,7 +4,7 @@ import {
 	renderAppendSystemPrompt,
 	resolveAppendSystemPromptCommandPrefix,
 	resolveHomeAgentAppendSystemPrompt,
-} from "../../src/prompts/append-system-prompt.js";
+} from "../../src/prompts/append-system-prompt";
 
 describe("resolveAppendSystemPromptCommandPrefix", () => {
 	it("returns npx prefix for npx transient installs", () => {

@@ -82,7 +82,9 @@ function runDirectoryPickerCommand(
 	return { kind: "selected", path: selectedPath };
 }
 
-export function pickDirectoryPathFromSystemDialog(options: PickDirectoryPathFromSystemDialogOptions = {}): string | null {
+export function pickDirectoryPathFromSystemDialog(
+	options: PickDirectoryPathFromSystemDialogOptions = {},
+): string | null {
 	const platform = options.platform ?? process.platform;
 	const cwd = options.cwd ?? process.cwd();
 	const runCommand = options.runCommand ?? defaultRunCommand;
