@@ -6,6 +6,7 @@ import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
+import { triggerTaskAgentReview } from "@/runtime/runtime-config-query";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import {
@@ -20,7 +21,7 @@ import {
 import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
-import { resolveTaskAutoReviewMode } from "@/types";
+import { isTaskAgentReviewPinnedToReview, resolveTaskAutoReviewMode, resolveTaskAgentReviewStatus } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import {
 	getBrowserNotificationPermission,
@@ -45,6 +46,53 @@ interface PendingProgrammaticStartMoveCompletion {
 	timeoutId: number;
 }
 
+function moveTaskIfStillInColumn(
+	board: BoardData,
+	taskId: string,
+	expectedColumnId: BoardColumnId,
+	targetColumnId: BoardColumnId,
+	options?: { insertAtTop?: boolean },
+): BoardData {
+	const currentColumnId = getTaskColumnId(board, taskId);
+	if (currentColumnId !== expectedColumnId) {
+		return board;
+	}
+	const reverted = moveTaskToColumn(board, taskId, targetColumnId, options);
+	return reverted.moved ? reverted.board : board;
+}
+
+function updateTaskAgentReviewState(
+	board: BoardData,
+	taskId: string,
+	agentReview: BoardCard["agentReview"] | undefined,
+): BoardData {
+	return {
+		...board,
+		columns: board.columns.map((column) => ({
+			...column,
+			cards: column.cards.map((card) => (card.id === taskId ? { ...card, agentReview } : card)),
+		})),
+	};
+}
+
+function showWarningToast(message: string, timeout = 7000): void {
+	showAppToast({
+		intent: "warning",
+		icon: "warning-sign",
+		message,
+		timeout,
+	});
+}
+
+function showSuccessToast(message: string, timeout = 4000): void {
+	showAppToast({
+		intent: "success",
+		icon: "tick-circle",
+		message,
+		timeout,
+	});
+}
+
 interface UseBoardInteractionsInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
@@ -67,6 +115,7 @@ interface UseBoardInteractionsInput {
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 	readyForReviewNotificationsEnabled: boolean;
+	agentReviewEnabled: boolean;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 }
@@ -85,6 +134,7 @@ export interface UseBoardInteractionsResult {
 	handleMoveReviewCardToTrash: (taskId: string) => void;
 	handleRestoreTaskFromTrash: (taskId: string) => void;
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
+	handleTriggerAgentReview: (taskId: string) => Promise<void>;
 	handleOpenClearTrash: () => void;
 	handleConfirmClearTrash: () => void;
 	handleAddReviewComments: (taskId: string, text: string) => Promise<void>;
@@ -111,6 +161,7 @@ export function useBoardInteractions({
 	fetchTaskWorkspaceInfo,
 	sendTaskSessionInput,
 	readyForReviewNotificationsEnabled,
+	agentReviewEnabled,
 	taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
@@ -261,6 +312,44 @@ export function useBoardInteractions({
 		[sendTaskSessionInput],
 	);
 
+	const handleTriggerAgentReview = useCallback(
+		async (taskId: string): Promise<void> => {
+			if (!currentProjectId) {
+				showWarningToast("Select a project before starting agent review.", 5000);
+				return;
+			}
+
+			try {
+				const response = await triggerTaskAgentReview(currentProjectId, taskId);
+				if (response.state) {
+					setBoard((currentBoard) => updateTaskAgentReviewState(currentBoard, taskId, response.state ?? undefined));
+				}
+
+				if (!response.ok) {
+					showWarningToast(response.error ?? "Could not start agent review for this card.");
+					return;
+				}
+
+				const reviewStatus = resolveTaskAgentReviewStatus(response.state?.status);
+				if (reviewStatus === "skipped") {
+					showWarningToast("This card is not eligible for agent review yet.");
+					return;
+				}
+
+				if (reviewStatus === "pending" || reviewStatus === "reviewing") {
+					showSuccessToast("Agent review started.");
+					return;
+				}
+
+				showWarningToast(response.error ?? "Agent review is already active for this card.");
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				notifyError(message);
+			}
+		},
+		[currentProjectId, setBoard],
+	);
+
 	const trashTaskIds = useMemo(() => {
 		const trashColumn = board.columns.find((column) => column.id === "trash");
 		return trashColumn ? trashColumn.cards.map((card) => card.id) : [];
@@ -294,14 +383,7 @@ export function useBoardInteractions({
 			if (!ensured.ok) {
 				notifyError(ensured.message ?? "Could not set up task workspace.");
 				if (optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "in_progress") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
-					});
+					setBoard((currentBoard) => moveTaskIfStillInColumn(currentBoard, taskId, "in_progress", fromColumnId));
 				}
 				return false;
 			}
@@ -334,14 +416,7 @@ export function useBoardInteractions({
 			if (!started.ok) {
 				notifyError(started.message ?? "Could not start task session.");
 				if (optimisticMove) {
-					setBoard((currentBoard) => {
-						const currentColumnId = getTaskColumnId(currentBoard, taskId);
-						if (currentColumnId !== "in_progress") {
-							return currentBoard;
-						}
-						const reverted = moveTaskToColumn(currentBoard, taskId, fromColumnId);
-						return reverted.moved ? reverted.board : currentBoard;
-					});
+					setBoard((currentBoard) => moveTaskIfStillInColumn(currentBoard, taskId, "in_progress", fromColumnId));
 				}
 				return false;
 			}
@@ -440,6 +515,8 @@ export function useBoardInteractions({
 					continue;
 				}
 				const columnId = getTaskColumnId(nextBoard, summary.taskId);
+				const taskSelection = findCardSelection(nextBoard, summary.taskId);
+				const reviewPinned = isTaskAgentReviewPinnedToReview(taskSelection?.card.agentReview);
 				if (summary.state === "awaiting_review" && columnId === "in_progress") {
 					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "review");
 					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
@@ -451,7 +528,7 @@ export function useBoardInteractions({
 					}
 					continue;
 				}
-				if (summary.state === "running" && columnId === "review") {
+				if (summary.state === "running" && columnId === "review" && !reviewPinned) {
 					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
 						skipKickoff: true,
 					});
@@ -525,6 +602,7 @@ export function useBoardInteractions({
 
 	useReviewAutoActions({
 		board,
+		agentReviewEnabled,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
 		requestMoveTaskToTrash: requestMoveTaskToTrashWithAnimation,
@@ -539,16 +617,9 @@ export function useBoardInteractions({
 				if (!options?.optimisticMoveApplied) {
 					return;
 				}
-				setBoard((currentBoard) => {
-					const currentColumnId = getTaskColumnId(currentBoard, taskId);
-					if (currentColumnId !== "review") {
-						return currentBoard;
-					}
-					const reverted = moveTaskToColumn(currentBoard, taskId, "trash", {
-						insertAtTop: true,
-					});
-					return reverted.moved ? reverted.board : currentBoard;
-				});
+				setBoard((currentBoard) =>
+					moveTaskIfStillInColumn(currentBoard, taskId, "review", "trash", { insertAtTop: true }),
+				);
 				return;
 			}
 			if (ensured.response?.warning) {
@@ -572,16 +643,9 @@ export function useBoardInteractions({
 			if (!options?.optimisticMoveApplied) {
 				return;
 			}
-			setBoard((currentBoard) => {
-				const currentColumnId = getTaskColumnId(currentBoard, taskId);
-				if (currentColumnId !== "review") {
-					return currentBoard;
-				}
-				const reverted = moveTaskToColumn(currentBoard, taskId, "trash", {
-					insertAtTop: true,
-				});
-				return reverted.moved ? reverted.board : currentBoard;
-			});
+			setBoard((currentBoard) =>
+				moveTaskIfStillInColumn(currentBoard, taskId, "review", "trash", { insertAtTop: true }),
+			);
 		},
 		[ensureTaskWorkspace, setBoard, startTaskSession],
 	);
@@ -888,6 +952,7 @@ export function useBoardInteractions({
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
 		handleCancelAutomaticTaskAction,
+		handleTriggerAgentReview,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
 		handleAddReviewComments,

@@ -62,6 +62,8 @@ As agents work, Kanban uses hooks to display the latest message or tool call on 
 ### 5. Review changes
 Click a card to view the agent's TUI and a diff of all the changes in that worktree. Kanban includes its own checkpointing system so you can also see a diff from the last messages you've sent. Click on lines to leave comments and send them back to the agent.
 
+If you want an autonomous second pass before shipping, enable the project **Agent Reviewer** in Settings. When enabled, tasks that reach **Review** automatically run a reviewer agent that writes `CODE_REVIEW.md`, sends requested fixes back to the original implementation agent, and keeps the card pinned in **Review** until it passes or exhausts the configured max rounds. You can also right-click an individual review card to trigger the reviewer on demand without changing the project default.
+
 To easily test and debug your app, create a Script Shortcut in settings. Use a command like `npm run dev` so that all you have to do is hit a play button in the navbar instead of remembering commands or asking your agent to do it.
 
 ### 6. Ship it

@@ -8,14 +8,36 @@ import {
 	type ClineTaskSessionService,
 	createInMemoryClineTaskSessionService,
 } from "../cline-sdk/cline-task-session-service";
-import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
+import type { RuntimeConfigState } from "../config/runtime-config";
+import type {
+	RuntimeAgentId,
+	RuntimeBoardColumnId,
+	RuntimeBoardData,
+	RuntimeCommandRunResponse,
+	RuntimeTaskSessionSummary,
+	RuntimeWorkspaceStateResponse,
+} from "../core/api-contract";
 import {
 	buildKanbanRuntimeUrl,
 	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
 } from "../core/runtime-endpoint";
-import { loadWorkspaceContextById } from "../state/workspace-state";
+import { moveTaskToColumn } from "../core/task-board-mutations";
+import {
+	type AgentReviewRunnerResult,
+	type AgentReviewState,
+	buildCodeReviewPrompt,
+	createAgentReviewCoordinator,
+	ensureCodeReviewDocument,
+	getAgentReviewWorkspaceChanges,
+	hasAgentReviewableChanges,
+	readCodeReviewDocument,
+	resolveAgentReviewGitRange,
+} from "../review/index";
+import { loadWorkspaceContextById, loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state";
+import { resolveAgentCommand, resolveAgentCommandForAgentId } from "../terminal/agent-registry";
+import { stripAnsi } from "../terminal/output-utils";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { createTerminalWebSocketBridge } from "../terminal/ws-server";
 import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router";
@@ -23,6 +45,7 @@ import { createHooksApi } from "../trpc/hooks-api";
 import { createProjectsApi } from "../trpc/projects-api";
 import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
+import { resolveTaskCwd } from "../workspace/task-worktree";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";
@@ -74,6 +97,73 @@ function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): 
 		}
 	}
 	return null;
+}
+
+function findBoardCard(
+	board: RuntimeBoardData,
+	taskId: string,
+): { columnId: RuntimeBoardColumnId; card: RuntimeBoardData["columns"][number]["cards"][number] } | null {
+	for (const column of board.columns) {
+		const card = column.cards.find((candidate) => candidate.id === taskId);
+		if (card) {
+			return {
+				columnId: column.id,
+				card,
+			};
+		}
+	}
+	return null;
+}
+
+function selectPreferredTaskSummary(input: {
+	persisted: RuntimeTaskSessionSummary | null;
+	terminal: RuntimeTaskSessionSummary | null;
+	cline: RuntimeTaskSessionSummary | null;
+}): RuntimeTaskSessionSummary | null {
+	const candidates = [input.cline, input.terminal, input.persisted].filter(
+		(summary): summary is RuntimeTaskSessionSummary => summary !== null,
+	);
+	if (candidates.length === 0) {
+		return null;
+	}
+	return candidates.sort((left, right) => right.updatedAt - left.updatedAt)[0] ?? null;
+}
+
+const REVIEWER_TASK_SESSION_PREFIX = "__agent_reviewer__:";
+
+function buildAgentReviewTaskSessionId(taskId: string, runId: string): string {
+	return `${REVIEWER_TASK_SESSION_PREFIX}${taskId}:${runId}`;
+}
+
+async function waitForAgentReviewRoundDocument(
+	workspacePath: string,
+	runId: string,
+	roundNumber: number,
+): Promise<{
+	document: NonNullable<Awaited<ReturnType<typeof readCodeReviewDocument>>>;
+	latestRound: NonNullable<Awaited<ReturnType<typeof readCodeReviewDocument>>>["rounds"][number];
+}> {
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+		const document = await readCodeReviewDocument(workspacePath);
+		if (!document || document.runId !== runId) {
+			await new Promise<void>((resolve) => {
+				setTimeout(resolve, 100);
+			});
+			continue;
+		}
+		const latestRound = document?.rounds.find((round) => round.round === roundNumber) ?? null;
+		if (document && latestRound) {
+			return {
+				document,
+				latestRound,
+			};
+		}
+		await new Promise<void>((resolve) => {
+			setTimeout(resolve, 100);
+		});
+	}
+
+	throw new Error(`Reviewer did not produce a parseable CODE_REVIEW.md entry for round ${roundNumber}.`);
 }
 
 export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
@@ -140,6 +230,419 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const disposeClineTaskSessionService = (workspaceId: string): void => {
 		void disposeClineTaskSessionServiceAsync(workspaceId);
 	};
+	const persistAgentReviewState = async (input: {
+		workspaceId: string;
+		taskId: string;
+		state: AgentReviewState;
+	}): Promise<void> => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			throw new Error(`Workspace "${input.workspaceId}" is not available.`);
+		}
+		await mutateWorkspaceState(workspacePath, (currentState) => {
+			const nextColumns = currentState.board.columns.map((column) => ({
+				...column,
+				cards: column.cards.map((card) =>
+					card.id === input.taskId ? { ...card, agentReview: { ...input.state } } : card,
+				),
+			}));
+			return {
+				board: {
+					...currentState.board,
+					columns: nextColumns,
+				},
+				value: null,
+			};
+		});
+		void deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(input.workspaceId, workspacePath);
+		void deps.runtimeStateHub.broadcastRuntimeProjectsUpdated(input.workspaceId);
+	};
+	const ensureTaskMovedToReviewForAgentReview = async (input: {
+		workspaceId: string;
+		workspacePath: string;
+		taskId: string;
+	}): Promise<void> => {
+		await mutateWorkspaceState(input.workspacePath, (currentState) => {
+			const moved = moveTaskToColumn(currentState.board, input.taskId, "review");
+			return {
+				board: moved.board,
+				value: null,
+				save: moved.moved,
+			};
+		});
+		void deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(input.workspaceId, input.workspacePath);
+		void deps.runtimeStateHub.broadcastRuntimeProjectsUpdated(input.workspaceId);
+	};
+	const moveTaskToInProgressForAgentReviewFollowUp = async (input: {
+		workspaceId: string;
+		taskId: string;
+	}): Promise<void> => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			return;
+		}
+		await mutateWorkspaceState(workspacePath, (currentState) => {
+			const moved = moveTaskToColumn(currentState.board, input.taskId, "in_progress");
+			return {
+				board: moved.board,
+				value: null,
+				save: moved.moved,
+			};
+		});
+		void deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(input.workspaceId, workspacePath);
+		void deps.runtimeStateHub.broadcastRuntimeProjectsUpdated(input.workspaceId);
+	};
+	const sendAgentReviewFollowUp = async (input: {
+		workspaceId: string;
+		taskId: string;
+		text: string;
+	}): Promise<{ ok: boolean; message?: string }> => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			return { ok: false, message: `Workspace "${input.workspaceId}" is not available.` };
+		}
+		const scope = {
+			workspaceId: input.workspaceId,
+			workspacePath,
+		} satisfies RuntimeTrpcWorkspaceScope;
+		const clineTaskSessionService = await getScopedClineTaskSessionService(scope);
+		const clineSummary = await clineTaskSessionService.sendTaskSessionInput(input.taskId, input.text);
+		if (clineSummary) {
+			return { ok: true };
+		}
+		const terminalManager = await getScopedTerminalManager(scope);
+		const pasted = terminalManager.writeInput(input.taskId, Buffer.from(input.text, "utf8"));
+		if (!pasted) {
+			return {
+				ok: false,
+				message: "Task session is not running.",
+			};
+		}
+		const submitted = terminalManager.writeInput(input.taskId, Buffer.from("\r", "utf8"));
+		if (!submitted) {
+			return {
+				ok: false,
+				message: "Task session did not accept the follow-up submission.",
+			};
+		}
+		return { ok: true };
+	};
+	const refreshAgentReviewSnapshot = async (input: {
+		workspaceId: string;
+		taskId: string;
+	}): Promise<{ currentColumnId: RuntimeBoardColumnId; policy: RuntimeConfigState["agentReviewPolicy"] } | null> => {
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			return null;
+		}
+		const state = await loadWorkspaceState(workspacePath);
+		const taskRecord = findBoardCard(state.board, input.taskId);
+		if (!taskRecord) {
+			return null;
+		}
+		const policy = (
+			await deps.workspaceRegistry.loadScopedRuntimeConfig({
+				workspaceId: input.workspaceId,
+				workspacePath,
+			})
+		).agentReviewPolicy;
+		return {
+			currentColumnId: taskRecord.columnId,
+			policy,
+		};
+	};
+	const runManagedAgentReviewRound = async (input: {
+		workspaceId: string;
+		taskId: string;
+		runId: string;
+		round: number;
+		workspacePath: string;
+		baseRef: string;
+		reviewer: {
+			agentId: RuntimeAgentId;
+			binary: string;
+			args: string[];
+			autonomousModeEnabled?: boolean;
+		};
+		whatWasImplemented: string;
+		requirementsReference: string;
+	}): Promise<AgentReviewRunnerResult> => {
+		const gitRange = await resolveAgentReviewGitRange(input.workspacePath, input.baseRef);
+		const reportPath = await ensureCodeReviewDocument(input.workspacePath, input.taskId, input.runId);
+		const reviewerTaskId = buildAgentReviewTaskSessionId(input.taskId, input.runId);
+		const prompt = buildCodeReviewPrompt({
+			taskId: input.taskId,
+			round: input.round,
+			reportPath,
+			workspacePath: input.workspacePath,
+			reviewerAgentId: input.reviewer.agentId,
+			baseSha: gitRange.baseSha,
+			headSha: gitRange.headSha,
+			whatWasImplemented: input.whatWasImplemented,
+			requirementsReference: input.requirementsReference,
+		});
+		const scope = {
+			workspaceId: input.workspaceId,
+			workspacePath: input.workspacePath,
+		} satisfies RuntimeTrpcWorkspaceScope;
+		const terminalManager = await getScopedTerminalManager(scope);
+		const outputChunks: Buffer[] = [];
+		let latestSummary = terminalManager.getSummary(reviewerTaskId);
+		let settled = false;
+		let resolveCompletion!: () => void;
+		const completionPromise = new Promise<void>((resolve) => {
+			resolveCompletion = resolve;
+		});
+		const resolveFromReviewArtifact = () => {
+			if (
+				settled ||
+				!latestSummary ||
+				latestSummary.state === "running" ||
+				latestSummary.latestHookActivity?.hookEventName !== "Stop"
+			) {
+				return;
+			}
+			settled = true;
+			resolveCompletion();
+		};
+		const detach = terminalManager.attach(reviewerTaskId, {
+			onOutput: (chunk) => {
+				outputChunks.push(chunk);
+			},
+			onState: (summary) => {
+				latestSummary = summary;
+				resolveFromReviewArtifact();
+			},
+			onExit: () => {
+				if (!settled) {
+					settled = true;
+					resolveCompletion();
+				}
+			},
+		});
+
+		try {
+			const startedSummary = await terminalManager.startTaskSession({
+				taskId: reviewerTaskId,
+				agentId: input.reviewer.agentId,
+				binary: input.reviewer.binary,
+				args: input.reviewer.args,
+				autonomousModeEnabled: input.reviewer.autonomousModeEnabled,
+				cwd: input.workspacePath,
+				prompt,
+				workspaceId: input.workspaceId,
+				autoRestartEnabled: false,
+			});
+			latestSummary = startedSummary;
+			resolveFromReviewArtifact();
+			await completionPromise;
+		} catch (error) {
+			if (!settled) {
+				settled = true;
+			}
+			throw error;
+		} finally {
+			detach?.();
+		}
+
+		const capturedOutput = stripAnsi(Buffer.concat(outputChunks).toString("utf8"));
+		try {
+			const { document, latestRound } = await waitForAgentReviewRoundDocument(
+				input.workspacePath,
+				input.runId,
+				input.round,
+			);
+			terminalManager.stopTaskSession(reviewerTaskId);
+			return {
+				reportPath,
+				baseSha: gitRange.baseSha,
+				headSha: gitRange.headSha,
+				reviewedRef: latestRound.reviewedRef,
+				output: capturedOutput,
+				exitCode: latestSummary?.exitCode ?? 0,
+				document,
+				latestRound,
+			};
+		} catch (error) {
+			const finalMessage =
+				latestSummary?.latestHookActivity?.finalMessage ?? latestSummary?.latestHookActivity?.activityText ?? "";
+			const recoveredOutput = finalMessage.trim().length > 0 ? finalMessage.trim() : capturedOutput.trim();
+			const wrappedError = error instanceof Error ? error : new Error(String(error));
+			Object.assign(wrappedError, {
+				output: recoveredOutput || wrappedError.message,
+			});
+			terminalManager.stopTaskSession(reviewerTaskId);
+			throw wrappedError;
+		}
+	};
+	const resolveAgentReviewTaskSnapshot = async (input: {
+		workspaceId: string;
+		workspacePath: string;
+		taskId: string;
+	}) => {
+		const scope = {
+			workspaceId: input.workspaceId,
+			workspacePath: input.workspacePath,
+		} satisfies RuntimeTrpcWorkspaceScope;
+		const runtimeConfig = await deps.workspaceRegistry.loadScopedRuntimeConfig(scope);
+		const state = await loadWorkspaceState(input.workspacePath);
+		const taskRecord = findBoardCard(state.board, input.taskId);
+		if (!taskRecord) {
+			return null;
+		}
+		const terminalManager = await getScopedTerminalManager(scope);
+		const clineTaskSessionService = await getScopedClineTaskSessionService(scope);
+		const summary = selectPreferredTaskSummary({
+			persisted: state.sessions[input.taskId] ?? null,
+			terminal: terminalManager.getSummary(input.taskId),
+			cline: clineTaskSessionService.getSummary(input.taskId),
+		});
+		const taskWorkspacePath = await resolveTaskCwd({
+			cwd: input.workspacePath,
+			taskId: input.taskId,
+			baseRef: taskRecord.card.baseRef,
+			ensure: false,
+		}).catch(() => null);
+		const workspaceChanges =
+			taskWorkspacePath !== null
+				? await getAgentReviewWorkspaceChanges({
+						workspacePath: taskWorkspacePath,
+						baseRef: taskRecord.card.baseRef,
+					})
+				: null;
+		const hasReviewableChanges = hasAgentReviewableChanges(workspaceChanges);
+		const existingState = taskRecord.card.agentReview ?? null;
+		const originalAgentId = summary?.agentId ?? existingState?.originalAgentId ?? null;
+
+		return {
+			workspaceId: input.workspaceId,
+			workspacePath: taskWorkspacePath ?? input.workspacePath,
+			taskId: input.taskId,
+			taskPrompt: taskRecord.card.prompt,
+			baseRef: taskRecord.card.baseRef,
+			currentColumnId: taskRecord.columnId,
+			originalAgentId: hasReviewableChanges ? originalAgentId : null,
+			existingState,
+			policy: runtimeConfig.agentReviewPolicy,
+			requirementsReference: `Task prompt:\n${taskRecord.card.prompt}`,
+		};
+	};
+	const baseAgentReviewCoordinator = createAgentReviewCoordinator({
+		resolveLaunchCommand: async (input) => {
+			const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+			if (!workspacePath) {
+				return null;
+			}
+			const runtimeConfig = await deps.workspaceRegistry.loadScopedRuntimeConfig({
+				workspaceId: input.workspaceId,
+				workspacePath,
+			});
+			if (input.preferredAgentId) {
+				const preferred = resolveAgentCommandForAgentId(input.preferredAgentId);
+				if (preferred) {
+					return {
+						...preferred,
+						autonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
+					};
+				}
+			}
+			const resolved = resolveAgentCommand(runtimeConfig);
+			return resolved
+				? {
+						...resolved,
+						autonomousModeEnabled: runtimeConfig.agentAutonomousModeEnabled,
+					}
+				: null;
+		},
+		persistState: persistAgentReviewState,
+		sendFollowUpToOriginalAgent: sendAgentReviewFollowUp,
+		resumeTaskAfterChangesRequested: moveTaskToInProgressForAgentReviewFollowUp,
+		refreshSnapshotAfterRound: refreshAgentReviewSnapshot,
+		runReviewRound: async (input) =>
+			await runManagedAgentReviewRound({
+				workspaceId: input.workspaceId,
+				taskId: input.taskId,
+				runId: input.runId,
+				round: input.round,
+				workspacePath: input.workspacePath,
+				baseRef: input.baseRef,
+				reviewer: input.reviewer,
+				whatWasImplemented: input.whatWasImplemented,
+				requirementsReference: input.requirementsReference,
+			}),
+	});
+	const agentReviewCoordinator = {
+		async triggerTaskReview(input: {
+			workspaceId: string;
+			workspacePath: string;
+			taskId: string;
+			triggerSource: "automatic" | "manual";
+		}) {
+			let snapshot = await resolveAgentReviewTaskSnapshot(input);
+			if (!snapshot) {
+				return {
+					ok: false,
+					taskId: input.taskId,
+					state: null,
+					error: `Task "${input.taskId}" was not found.`,
+				};
+			}
+			if (input.triggerSource === "automatic") {
+				if (snapshot.policy.enabled !== true) {
+					return {
+						ok: true,
+						taskId: input.taskId,
+						state: snapshot.existingState,
+					};
+				}
+				if (snapshot.currentColumnId !== "review") {
+					await ensureTaskMovedToReviewForAgentReview(input);
+					const refreshedSnapshot = await resolveAgentReviewTaskSnapshot(input);
+					if (!refreshedSnapshot) {
+						return {
+							ok: false,
+							taskId: input.taskId,
+							state: null,
+							error: `Task "${input.taskId}" was not found after moving to Review.`,
+						};
+					}
+					snapshot = refreshedSnapshot;
+				}
+			} else if (snapshot.currentColumnId !== "review") {
+				return {
+					ok: false,
+					taskId: input.taskId,
+					state: snapshot.existingState,
+					error: "Agent review can only be triggered for tasks in Review.",
+				};
+			}
+			const result = await baseAgentReviewCoordinator.executeRound(snapshot, input.triggerSource);
+			return {
+				ok: result.ok,
+				taskId: input.taskId,
+				state: result.state,
+				...(result.error ? { error: result.error } : {}),
+			};
+		},
+		async reconcilePolicyUpdate(): Promise<void> {
+			// The coordinator re-reads policy after each completed round, so no eager action is required here.
+		},
+	};
+	deps.runtimeStateHub.setTaskReadyHandler((input) => {
+		if (input.taskId.startsWith(REVIEWER_TASK_SESSION_PREFIX)) {
+			return;
+		}
+		const workspacePath = deps.workspaceRegistry.getWorkspacePathById(input.workspaceId);
+		if (!workspacePath) {
+			return;
+		}
+		void agentReviewCoordinator.triggerTaskReview({
+			workspaceId: input.workspaceId,
+			workspacePath,
+			taskId: input.taskId,
+			triggerSource: "automatic",
+		});
+	});
 	const prepareForStateReset = async (): Promise<void> => {
 		const workspaceIds = new Set<string>();
 		for (const { workspaceId } of deps.workspaceRegistry.listManagedWorkspaces()) {
@@ -176,6 +679,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				getScopedClineTaskSessionService,
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
+				agentReviewCoordinator,
 				broadcastClineMcpAuthStatusesUpdated: deps.runtimeStateHub.broadcastClineMcpAuthStatusesUpdated,
 				bumpClineSessionContextVersion: deps.runtimeStateHub.bumpClineSessionContextVersion,
 				prepareForStateReset,

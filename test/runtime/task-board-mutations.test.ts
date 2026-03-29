@@ -103,3 +103,48 @@ describe("task images", () => {
 		]);
 	});
 });
+
+describe("agent review state", () => {
+	it("preserves existing agent review state when updating a task", () => {
+		const created = addTaskToColumn(createBoard(), "review", { prompt: "Task", baseRef: "main" }, () => "aaaaa111");
+		const boardWithReviewState: RuntimeBoardData = {
+			...created.board,
+			columns: created.board.columns.map((column) =>
+				column.id === "review"
+					? {
+							...column,
+							cards: column.cards.map((card) =>
+								card.id === created.task.id
+									? {
+											...card,
+											agentReview: {
+												status: "changes_requested",
+												triggerSource: "automatic",
+												currentRound: 1,
+												maxRoundsSnapshot: 2,
+												stopAfterCurrentRound: false,
+												passedBannerVisible: false,
+											},
+										}
+									: card,
+							),
+						}
+					: column,
+			),
+		};
+
+		const updated = updateTask(boardWithReviewState, created.task.id, {
+			prompt: "Task updated",
+			baseRef: "main",
+		});
+
+		expect(updated.task?.agentReview).toEqual({
+			status: "changes_requested",
+			triggerSource: "automatic",
+			currentRound: 1,
+			maxRoundsSnapshot: 2,
+			stopAfterCurrentRound: false,
+			passedBannerVisible: false,
+		});
+	});
+});

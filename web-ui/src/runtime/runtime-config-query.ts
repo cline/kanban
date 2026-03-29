@@ -21,27 +21,44 @@ import type {
 	RuntimeConfigResponse,
 	RuntimeDebugResetAllStateResponse,
 	RuntimeProjectShortcut,
+	RuntimeTaskAgentReviewTriggerResponse,
 } from "@/runtime/types";
+import type { TaskAgentReviewPolicy } from "@/types";
 
-export async function fetchRuntimeConfig(workspaceId: string | null): Promise<RuntimeConfigResponse> {
+export type RuntimeConfigWithAgentReview = RuntimeConfigResponse;
+
+export type RuntimeConfigSaveInput = {
+	selectedAgentId?: RuntimeAgentId;
+	selectedShortcutLabel?: string | null;
+	agentAutonomousModeEnabled?: boolean;
+	shortcuts?: RuntimeProjectShortcut[];
+	readyForReviewNotificationsEnabled?: boolean;
+	commitPromptTemplate?: string;
+	openPrPromptTemplate?: string;
+	agentReviewPolicy?: Partial<TaskAgentReviewPolicy>;
+};
+
+export async function fetchRuntimeConfig(workspaceId: string | null): Promise<RuntimeConfigWithAgentReview> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.getConfig.query();
 }
 
 export async function saveRuntimeConfig(
 	workspaceId: string | null,
-	nextConfig: {
-		selectedAgentId?: RuntimeAgentId;
-		selectedShortcutLabel?: string | null;
-		agentAutonomousModeEnabled?: boolean;
-		shortcuts?: RuntimeProjectShortcut[];
-		readyForReviewNotificationsEnabled?: boolean;
-		commitPromptTemplate?: string;
-		openPrPromptTemplate?: string;
-	},
-): Promise<RuntimeConfigResponse> {
+	nextConfig: RuntimeConfigSaveInput,
+): Promise<RuntimeConfigWithAgentReview> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
-	return await trpcClient.runtime.saveConfig.mutate(nextConfig);
+	return await trpcClient.runtime.saveConfig.mutate(
+		nextConfig as Parameters<typeof trpcClient.runtime.saveConfig.mutate>[0],
+	);
+}
+
+export async function triggerTaskAgentReview(
+	workspaceId: string | null,
+	taskId: string,
+): Promise<RuntimeTaskAgentReviewTriggerResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.triggerTaskAgentReview.mutate({ taskId });
 }
 
 export async function saveClineProviderSettings(

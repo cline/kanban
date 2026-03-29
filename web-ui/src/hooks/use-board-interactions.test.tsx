@@ -11,6 +11,7 @@ const notifyErrorMock = vi.hoisted(() => vi.fn());
 const showAppToastMock = vi.hoisted(() => vi.fn());
 const useLinkedBacklogTaskActionsMock = vi.hoisted(() => vi.fn());
 const useProgrammaticCardMovesMock = vi.hoisted(() => vi.fn());
+const triggerTaskAgentReviewMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/app-toaster", () => ({
 	notifyError: notifyErrorMock,
@@ -29,6 +30,10 @@ vi.mock("@/hooks/use-review-auto-actions", () => ({
 	useReviewAutoActions: () => ({}) as ReturnType<typeof useBoardInteractions>,
 }));
 
+vi.mock("@/runtime/runtime-config-query", () => ({
+	triggerTaskAgentReview: triggerTaskAgentReviewMock,
+}));
+
 function createTask(taskId: string, prompt: string, createdAt: number): BoardCard {
 	return {
 		id: taskId,
@@ -36,6 +41,7 @@ function createTask(taskId: string, prompt: string, createdAt: number): BoardCar
 		startInPlanMode: false,
 		autoReviewEnabled: false,
 		autoReviewMode: "commit",
+		agentReview: undefined,
 		baseRef: "main",
 		createdAt,
 		updatedAt: createdAt,
@@ -67,6 +73,7 @@ const NOOP_RUN_AUTO_REVIEW = async (): Promise<boolean> => false;
 interface HookSnapshot {
 	handleRestoreTaskFromTrash: (taskId: string) => void;
 	handleStartTask: (taskId: string) => void;
+	handleTriggerAgentReview: (taskId: string) => Promise<void>;
 }
 
 function createRect(width: number, height: number): DOMRect {
@@ -121,6 +128,7 @@ function HookHarness({
 		fetchTaskWorkspaceInfo: NOOP_FETCH_WORKSPACE_INFO,
 		sendTaskSessionInput: NOOP_SEND_TASK_INPUT,
 		readyForReviewNotificationsEnabled: false,
+		agentReviewEnabled: false,
 		taskGitActionLoadingByTaskId: {},
 		runAutoReviewGitAction: NOOP_RUN_AUTO_REVIEW,
 	});
@@ -129,8 +137,9 @@ function HookHarness({
 		onSnapshot?.({
 			handleRestoreTaskFromTrash: actions.handleRestoreTaskFromTrash,
 			handleStartTask: actions.handleStartTask,
+			handleTriggerAgentReview: actions.handleTriggerAgentReview,
 		});
-	}, [actions.handleRestoreTaskFromTrash, actions.handleStartTask, onSnapshot]);
+	}, [actions.handleRestoreTaskFromTrash, actions.handleStartTask, actions.handleTriggerAgentReview, onSnapshot]);
 
 	return null;
 }
@@ -155,6 +164,7 @@ describe("useBoardInteractions", () => {
 		showAppToastMock.mockReset();
 		useLinkedBacklogTaskActionsMock.mockReset();
 		useProgrammaticCardMovesMock.mockReset();
+		triggerTaskAgentReviewMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -509,5 +519,142 @@ describe("useBoardInteractions", () => {
 			message: "Saved task changes could not be reapplied automatically.",
 			timeout: 7000,
 		});
+	});
+
+	it("keeps review-managed cards in review while the task session is running", async () => {
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		const reviewTask = createTask("task-review", "Review task", 2);
+		reviewTask.agentReview = {
+			status: "reviewing",
+			currentRound: 1,
+			stopAfterCurrentRound: false,
+			passedBannerVisible: false,
+		};
+		const board: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [reviewTask] },
+				{ id: "trash", title: "Trash", cards: [] },
+			],
+			dependencies: [],
+		};
+
+		const snapshots: BoardData[] = [];
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((nextBoardOrUpdater) => {
+			const nextBoard =
+				typeof nextBoardOrUpdater === "function" ? nextBoardOrUpdater(board) : nextBoardOrUpdater;
+			snapshots.push(nextBoard);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={board}
+					setBoard={setBoard}
+					ensureTaskWorkspace={async () => ({
+						ok: true,
+						response: {
+							ok: true,
+							path: "/tmp/task-review",
+							baseRef: "main",
+							baseCommit: "abc1234",
+						},
+					})}
+					startTaskSession={async () => ({ ok: true })}
+				/>,
+			);
+		});
+
+		const reviewSnapshot = snapshots.at(-1) ?? board;
+		expect(reviewSnapshot.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-review");
+		expect(reviewSnapshot.columns.find((column) => column.id === "in_progress")?.cards).toEqual([]);
+	});
+
+	it("shows manual trigger feedback when the task is not eligible for agent review", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+		triggerTaskAgentReviewMock.mockResolvedValue({
+			ok: true,
+			taskId: "task-1",
+			state: {
+				status: "skipped",
+				currentRound: 0,
+				stopAfterCurrentRound: false,
+				passedBannerVisible: false,
+			},
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard()}
+					setBoard={vi.fn()}
+					ensureTaskWorkspace={async () => ({
+						ok: true,
+						response: {
+							ok: true,
+							path: "/tmp/task-1",
+							baseRef: "main",
+							baseCommit: "abc1234",
+						},
+					})}
+					startTaskSession={async () => ({ ok: true })}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			await latestSnapshot?.handleTriggerAgentReview("task-1");
+		});
+
+		expect(triggerTaskAgentReviewMock).toHaveBeenCalledWith("project-1", "task-1");
+		expect(showAppToastMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				intent: "warning",
+				message: "This card is not eligible for agent review yet.",
+			}),
+		);
 	});
 });

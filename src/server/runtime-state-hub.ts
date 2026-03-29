@@ -35,12 +35,14 @@ export interface CreateRuntimeStateHubDependencies {
 		WorkspaceRegistry,
 		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot"
 	>;
+	onTaskReadyForReview?: (input: { workspaceId: string; taskId: string }) => void;
 }
 
 export interface RuntimeStateHub {
 	trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => void;
 	trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => void;
 	broadcastTaskChatMessage: (workspaceId: string, taskId: string, message: ClineTaskMessage) => void;
+	setTaskReadyHandler: (handler: ((input: { workspaceId: string; taskId: string }) => void) | null) => void;
 	handleUpgrade: (
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
@@ -60,6 +62,7 @@ export interface RuntimeStateHub {
 
 export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): RuntimeStateHub {
 	const terminalSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
+	const terminalPreviousSummaryByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const clineSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
 	const clineMessageUnsubscribeByWorkspaceId = new Map<string, () => void>();
 	const clinePreviousSummaryByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
@@ -69,6 +72,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const runtimeStateClients = new Set<WebSocket>();
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
 	let clineSessionContextVersion = 0;
+	let taskReadyHandler = deps.onTaskReadyForReview ?? null;
 	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
 	const workspaceMetadataMonitor = createWorkspaceMetadataMonitor({
 		onMetadataUpdated: (workspaceId, workspaceMetadata) => {
@@ -231,6 +235,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			}
 		}
 		terminalSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
+		terminalPreviousSummaryByWorkspaceId.delete(workspaceId);
 		const unsubscribeClineSummary = clineSummaryUnsubscribeByWorkspaceId.get(workspaceId);
 		if (unsubscribeClineSummary) {
 			try {
@@ -306,6 +311,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	};
 
 	const broadcastTaskReadyForReview = (workspaceId: string, taskId: string) => {
+		taskReadyHandler?.({ workspaceId, taskId });
 		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
 		if (!runtimeClients || runtimeClients.size === 0) {
 			return;
@@ -319,6 +325,13 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		for (const client of runtimeClients) {
 			sendRuntimeStateMessage(client, payload);
 		}
+	};
+
+	const isSummaryReadyForReview = (summary: RuntimeTaskSessionSummary | null | undefined): boolean => {
+		return (
+			summary?.state === "awaiting_review" &&
+			(summary.reviewReason === "hook" || summary.reviewReason === "attention" || summary.reviewReason === "error")
+		);
 	};
 
 	runtimeStateWebSocketServer.on("connection", async (client: WebSocket, context: unknown) => {
@@ -480,8 +493,22 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			if (terminalSummaryUnsubscribeByWorkspaceId.has(workspaceId)) {
 				return;
 			}
-			const unsubscribe = manager.onSummary((summary) => {
+			const previousSummariesByTaskId = new Map<string, RuntimeTaskSessionSummary>();
+			terminalPreviousSummaryByWorkspaceId.set(workspaceId, previousSummariesByTaskId);
+			for (const summary of manager.listSummaries()) {
+				previousSummariesByTaskId.set(summary.taskId, summary);
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+				if (isSummaryReadyForReview(summary)) {
+					broadcastTaskReadyForReview(workspaceId, summary.taskId);
+				}
+			}
+			const unsubscribe = manager.onSummary((summary) => {
+				const previousSummary = previousSummariesByTaskId.get(summary.taskId);
+				previousSummariesByTaskId.set(summary.taskId, summary);
+				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+				if (isSummaryReadyForReview(summary) && !isSummaryReadyForReview(previousSummary)) {
+					broadcastTaskReadyForReview(workspaceId, summary.taskId);
+				}
 			});
 			terminalSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
 		},
@@ -494,6 +521,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			for (const summary of service.listSummaries()) {
 				previousSummariesByTaskId.set(summary.taskId, summary);
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+				if (isSummaryReadyForReview(summary)) {
+					broadcastTaskReadyForReview(workspaceId, summary.taskId);
+				}
 			}
 			const unsubscribe = service.onSummary((summary) => {
 				const previousSummary = previousSummariesByTaskId.get(summary.taskId);
@@ -505,14 +535,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				if (didCheckpointChange) {
 					void broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
 				}
-				if (
-					previousSummary &&
-					previousSummary.state !== "awaiting_review" &&
-					summary.state === "awaiting_review" &&
-					(summary.reviewReason === "hook" ||
-						summary.reviewReason === "attention" ||
-						summary.reviewReason === "error")
-				) {
+				if (isSummaryReadyForReview(summary) && !isSummaryReadyForReview(previousSummary)) {
 					broadcastTaskReadyForReview(workspaceId, summary.taskId);
 				}
 			});
@@ -523,6 +546,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			clineMessageUnsubscribeByWorkspaceId.set(workspaceId, unsubscribeMessage);
 		},
 		broadcastTaskChatMessage,
+		setTaskReadyHandler: (handler) => {
+			taskReadyHandler = handler;
+		},
 		handleUpgrade: (request, socket, head, context) => {
 			runtimeStateWebSocketServer.handleUpgrade(request, socket, head, (ws) => {
 				runtimeStateWebSocketServer.emit("connection", ws, context);

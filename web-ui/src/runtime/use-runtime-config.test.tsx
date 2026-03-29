@@ -6,10 +6,11 @@ import type { RuntimeConfigResponse } from "@/runtime/types";
 import { type UseRuntimeConfigResult, useRuntimeConfig } from "@/runtime/use-runtime-config";
 
 const fetchRuntimeConfigMock = vi.hoisted(() => vi.fn());
+const saveRuntimeConfigMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/runtime-config-query", () => ({
 	fetchRuntimeConfig: fetchRuntimeConfigMock,
-	saveRuntimeConfig: vi.fn(),
+	saveRuntimeConfig: saveRuntimeConfigMock,
 }));
 
 type HookSnapshot = UseRuntimeConfigResult;
@@ -19,6 +20,7 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 		selectedAgentId,
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
+		agentReviewPolicy: { enabled: false, maxRounds: 2 },
 		effectiveCommand: selectedAgentId,
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
@@ -74,7 +76,7 @@ function HookHarness({
 	initialConfig?: RuntimeConfigResponse | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
-	const snapshot = useRuntimeConfig(open, workspaceId, initialConfig);
+	const snapshot = useRuntimeConfig(open, workspaceId, initialConfig ?? null);
 
 	useEffect(() => {
 		onSnapshot(snapshot);
@@ -90,6 +92,7 @@ describe("useRuntimeConfig", () => {
 
 	beforeEach(() => {
 		fetchRuntimeConfigMock.mockReset();
+		saveRuntimeConfigMock.mockReset();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -267,5 +270,56 @@ describe("useRuntimeConfig", () => {
 		const snapshot = latestSnapshot as HookSnapshot;
 		expect(snapshot.config?.selectedAgentId).toBe("codex");
 		expect(snapshot.isLoading).toBe(false);
+	});
+	it("saves agent review policy updates", async () => {
+		const startupConfig = createRuntimeConfigResponse("codex");
+		saveRuntimeConfigMock.mockResolvedValue({
+			...startupConfig,
+			agentReviewPolicy: {
+				enabled: true,
+				maxRounds: 4,
+			},
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={false}
+					workspaceId="project-1"
+					initialConfig={startupConfig}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot before save.");
+		}
+		const stableSnapshot = latestSnapshot as HookSnapshot;
+
+		let savedConfig: RuntimeConfigResponse | null = null;
+		await act(async () => {
+			savedConfig = await stableSnapshot.save({
+				agentReviewPolicy: {
+					enabled: true,
+					maxRounds: 4,
+				},
+			});
+		});
+
+		expect(saveRuntimeConfigMock).toHaveBeenCalledWith("project-1", {
+			agentReviewPolicy: {
+				enabled: true,
+				maxRounds: 4,
+			},
+		});
+		expect(savedConfig).not.toBeNull();
+		expect((savedConfig as unknown as RuntimeConfigResponse).agentReviewPolicy).toEqual({
+			enabled: true,
+			maxRounds: 4,
+		});
 	});
 });

@@ -23,7 +23,12 @@ import type {
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
-import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+import {
+	type BoardCard,
+	type CardSelection,
+	getTaskAgentReviewStatusLabel,
+	getTaskAutoReviewCancelButtonLabel,
+} from "@/types";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 // We still poll the open detail diff because line content can change without changing
@@ -34,6 +39,8 @@ const EXPANDED_FILE_TREE_PANEL_BASIS = "16%";
 const DEFAULT_AGENT_PANEL_RATIO = 0.4;
 const MIN_AGENT_PANEL_RATIO = 0.15;
 const MAX_AGENT_PANEL_RATIO = 0.75;
+
+type AgentPaneView = "task" | "reviewer";
 
 function isTypingTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) {
@@ -188,6 +195,8 @@ export function CardDetailView({
 	selectedAgentId = null,
 	runtimeConfig = null,
 	sessionSummary,
+	reviewerTaskId = null,
+	reviewerSessionSummary = null,
 	taskSessions,
 	onSessionSummary,
 	onCardSelect,
@@ -243,6 +252,8 @@ export function CardDetailView({
 	selectedAgentId?: RuntimeAgentId | null;
 	runtimeConfig?: RuntimeConfigResponse | null;
 	sessionSummary: RuntimeTaskSessionSummary | null;
+	reviewerTaskId?: string | null;
+	reviewerSessionSummary?: RuntimeTaskSessionSummary | null;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
 	onCardSelect: (taskId: string) => void;
@@ -302,6 +313,7 @@ export function CardDetailView({
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
 	const [agentPanelRatio, setAgentPanelRatio] = useState(DEFAULT_AGENT_PANEL_RATIO);
 	const [isResizing, setIsResizing] = useState(false);
+	const [activeAgentPaneView, setActiveAgentPaneView] = useState<AgentPaneView>("task");
 	const resizeDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
 	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
@@ -403,7 +415,11 @@ export function CardDetailView({
 	const fileTreePanelFlex = `0 0 ${isDiffExpanded ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
-	const showClineAgentChatPanel = isNativeClineAgentSelected(sessionSummary?.agentId ?? selectedAgentId);
+	const showTaskAgentPane = activeAgentPaneView === "task";
+	const showReviewerSessionPane = activeAgentPaneView === "reviewer" && Boolean(reviewerTaskId);
+	const showClineAgentChatPanel =
+		showTaskAgentPane && isNativeClineAgentSelected(sessionSummary?.agentId ?? selectedAgentId);
+	const reviewStatusLabel = getTaskAgentReviewStatusLabel(selection.card.agentReview);
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];
@@ -490,6 +506,16 @@ export function CardDetailView({
 		setDiffMode("working_copy");
 	}, [selection.card.id]);
 
+	useEffect(() => {
+		setActiveAgentPaneView("task");
+	}, [selection.card.id]);
+
+	useEffect(() => {
+		if (activeAgentPaneView === "reviewer" && !reviewerTaskId) {
+			setActiveAgentPaneView("task");
+		}
+	}, [activeAgentPaneView, reviewerTaskId]);
+
 	const handleToggleDiffExpand = useCallback(() => {
 		if (!isDiffExpanded && bottomTerminalOpen) {
 			onBottomTerminalClose();
@@ -521,6 +547,17 @@ export function CardDetailView({
 		},
 		[onSendReviewComments, selection.card.id, showClineAgentChatPanel],
 	);
+
+	const handleToggleReviewerTranscript = useCallback(() => {
+		if (!reviewerTaskId) {
+			return;
+		}
+		setActiveAgentPaneView((currentView) => (currentView === "reviewer" ? "task" : "reviewer"));
+	}, [reviewerTaskId]);
+
+	const handleShowTaskChat = useCallback(() => {
+		setActiveAgentPaneView("task");
+	}, []);
 
 	return (
 		<div
@@ -569,6 +606,37 @@ export function CardDetailView({
 					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
 				) : (
 					<>
+						{reviewStatusLabel ? (
+							<div className="border-b border-border bg-surface-1 px-4 py-3">
+								<div className="flex flex-wrap items-center gap-2">
+									<button
+										type="button"
+										onClick={handleShowTaskChat}
+										aria-pressed={showTaskAgentPane}
+										className={
+											showTaskAgentPane
+												? "inline-flex items-center rounded-full border border-border-bright bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-text-primary hover:bg-surface-3"
+												: "inline-flex items-center rounded-full border border-border-bright bg-surface-0 px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+										}
+									>
+										Task chat
+									</button>
+									<button
+										type="button"
+										onClick={handleToggleReviewerTranscript}
+										aria-pressed={showReviewerSessionPane}
+										disabled={!reviewerTaskId}
+										className={
+											showReviewerSessionPane
+												? "inline-flex items-center rounded-full border border-border-bright bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-text-primary hover:bg-surface-3 disabled:cursor-default disabled:opacity-70"
+												: "inline-flex items-center rounded-full border border-border-bright bg-surface-0 px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary disabled:cursor-default disabled:opacity-70"
+										}
+									>
+										{reviewStatusLabel}
+									</button>
+								</div>
+							</div>
+						) : null}
 						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 							<div
 								style={{
@@ -578,7 +646,21 @@ export function CardDetailView({
 									minHeight: 0,
 								}}
 							>
-								{showClineAgentChatPanel ? (
+								{showReviewerSessionPane && reviewerTaskId ? (
+									<AgentTerminalPanel
+										taskId={reviewerTaskId}
+										workspaceId={currentProjectId}
+										terminalEnabled
+										summary={reviewerSessionSummary}
+										onSummary={onSessionSummary}
+										showSessionToolbar={false}
+										autoFocus
+										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										showRightBorder={false}
+										taskColumnId={selection.column.id}
+									/>
+								) : showClineAgentChatPanel ? (
 									<ClineAgentChatPanel
 										ref={clineAgentChatPanelRef}
 										taskId={selection.card.id}
@@ -637,6 +719,7 @@ export function CardDetailView({
 												? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
 												: null
 										}
+										reviewState={selection.card.agentReview ?? null}
 										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 										showRightBorder={false}
@@ -758,6 +841,7 @@ export function CardDetailView({
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}
 										isExpanded={isBottomTerminalExpanded}
 										onToggleExpand={onBottomTerminalToggleExpand}
+										reviewState={selection.card.agentReview ?? null}
 									/>
 								</div>
 							</ResizableBottomPane>

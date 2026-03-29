@@ -128,6 +128,10 @@ function createRuntimeConfigState(): RuntimeConfigState {
 		selectedAgentId: "claude",
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
+		agentReviewPolicy: {
+			enabled: false,
+			maxRounds: 2,
+		},
 		readyForReviewNotificationsEnabled: true,
 		shortcuts: [],
 		commitPromptTemplate: "commit",
@@ -1973,5 +1977,77 @@ describe("createRuntimeApi startTaskSession", () => {
 			}
 			rmSync(tempHome, { recursive: true, force: true });
 		}
+	});
+
+	it("delegates manual task agent review triggers to the coordinator", async () => {
+		const triggerTaskReview = vi.fn(async () => ({
+			ok: true,
+			taskId: "task-1",
+			state: {
+				status: "reviewing" as const,
+				triggerSource: "manual" as const,
+				currentRound: 1,
+				maxRoundsSnapshot: 2,
+				stopAfterCurrentRound: false,
+				passedBannerVisible: false,
+			},
+		}));
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+			agentReviewCoordinator: {
+				triggerTaskReview,
+				reconcilePolicyUpdate: vi.fn(async () => undefined),
+			},
+		});
+
+		const response = await api.triggerTaskAgentReview(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+			},
+		);
+
+		expect(triggerTaskReview).toHaveBeenCalledWith({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+			taskId: "task-1",
+			triggerSource: "manual",
+		});
+		expect(response.ok).toBe(true);
+		expect(response.state?.status).toBe("reviewing");
+	});
+
+	it("returns a clear error when manual task agent review is unavailable", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.triggerTaskAgentReview(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+			},
+		);
+
+		expect(response.ok).toBe(false);
+		expect(response.error).toContain("not available");
 	});
 });

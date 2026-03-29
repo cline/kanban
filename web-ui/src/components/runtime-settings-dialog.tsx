@@ -22,13 +22,9 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
+import type { RuntimeConfigWithAgentReview } from "@/runtime/runtime-config-query";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
-import type {
-	RuntimeAgentId,
-	RuntimeClineMcpServerAuthStatus,
-	RuntimeConfigResponse,
-	RuntimeProjectShortcut,
-} from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeClineMcpServerAuthStatus, RuntimeProjectShortcut } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import {
 	type BrowserNotificationPermission,
@@ -289,7 +285,7 @@ export function RuntimeSettingsDialog({
 }: {
 	open: boolean;
 	workspaceId: string | null;
-	initialConfig?: RuntimeConfigResponse | null;
+	initialConfig?: RuntimeConfigWithAgentReview | null;
 	liveMcpAuthStatuses?: RuntimeClineMcpServerAuthStatus[] | null;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
@@ -303,6 +299,8 @@ export function RuntimeSettingsDialog({
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
 	const [openPrPromptTemplate, setOpenPrPromptTemplate] = useState("");
+	const [agentReviewEnabled, setAgentReviewEnabled] = useState(false);
+	const [agentReviewMaxRounds, setAgentReviewMaxRounds] = useState("2");
 	const [selectedPromptVariant, setSelectedPromptVariant] = useState<TaskGitAction>("commit");
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
@@ -366,6 +364,8 @@ export function RuntimeSettingsDialog({
 	const initialShortcuts = config?.shortcuts ?? [];
 	const initialCommitPromptTemplate = config?.commitPromptTemplate ?? "";
 	const initialOpenPrPromptTemplate = config?.openPrPromptTemplate ?? "";
+	const initialAgentReviewEnabled = config?.agentReviewPolicy?.enabled ?? false;
+	const initialAgentReviewMaxRounds = String(config?.agentReviewPolicy?.maxRounds ?? 2);
 	const clineSettings = useRuntimeSettingsClineController({
 		open,
 		workspaceId,
@@ -400,6 +400,12 @@ export function RuntimeSettingsDialog({
 		if (!areRuntimeProjectShortcutsEqual(shortcuts, initialShortcuts)) {
 			return true;
 		}
+		if (agentReviewEnabled !== initialAgentReviewEnabled) {
+			return true;
+		}
+		if (agentReviewMaxRounds !== initialAgentReviewMaxRounds) {
+			return true;
+		}
 		if (
 			normalizeTemplateForComparison(commitPromptTemplate) !==
 			normalizeTemplateForComparison(initialCommitPromptTemplate)
@@ -412,11 +418,15 @@ export function RuntimeSettingsDialog({
 		);
 	}, [
 		agentAutonomousModeEnabled,
+		agentReviewEnabled,
+		agentReviewMaxRounds,
 		clineMcpSettings.hasUnsavedChanges,
 		clineSettings.hasUnsavedChanges,
 		commitPromptTemplate,
 		config,
 		initialAgentAutonomousModeEnabled,
+		initialAgentReviewEnabled,
+		initialAgentReviewMaxRounds,
 		initialCommitPromptTemplate,
 		initialOpenPrPromptTemplate,
 		initialReadyForReviewNotificationsEnabled,
@@ -438,9 +448,13 @@ export function RuntimeSettingsDialog({
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
 		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
+		setAgentReviewEnabled(config?.agentReviewPolicy?.enabled ?? false);
+		setAgentReviewMaxRounds(String(config?.agentReviewPolicy?.maxRounds ?? 2));
 		setSaveError(null);
 	}, [
 		config?.agentAutonomousModeEnabled,
+		config?.agentReviewPolicy?.enabled,
+		config?.agentReviewPolicy?.maxRounds,
 		config?.commitPromptTemplate,
 		config?.openPrPromptTemplate,
 		config?.readyForReviewNotificationsEnabled,
@@ -544,6 +558,11 @@ export function RuntimeSettingsDialog({
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
 		}
+		const parsedAgentReviewMaxRounds = Number.parseInt(agentReviewMaxRounds, 10);
+		if (!Number.isInteger(parsedAgentReviewMaxRounds) || parsedAgentReviewMaxRounds < 1) {
+			setSaveError("Agent review max rounds must be a whole number greater than 0.");
+			return;
+		}
 		if (selectedAgentId === "cline" && clineSettings.providerId.trim().length === 0) {
 			setSaveError("Choose a Cline provider before saving.");
 			return;
@@ -567,6 +586,10 @@ export function RuntimeSettingsDialog({
 			shortcuts,
 			commitPromptTemplate,
 			openPrPromptTemplate,
+			agentReviewPolicy: {
+				enabled: agentReviewEnabled,
+				maxRounds: parsedAgentReviewMaxRounds,
+			},
 		});
 		if (!saved) {
 			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
@@ -753,6 +776,49 @@ export function RuntimeSettingsDialog({
 						: "<project>/.cline/kanban/config.json"}
 					{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 				</p>
+
+				<div className="flex items-center justify-between mt-3 mb-2">
+					<h6 className="font-semibold text-text-primary m-0">Agent reviewer</h6>
+				</div>
+				<div className="rounded-lg border border-border bg-surface-1 px-3 py-3">
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<div className="min-w-0">
+							<p className="m-0 text-[13px] font-medium text-text-primary">Enable project agent reviewer</p>
+							<p className="mt-1 mb-0 text-[12px] text-text-secondary">
+								Automatically review eligible cards when they enter Review.
+							</p>
+						</div>
+						<RadixSwitch.Root
+							checked={agentReviewEnabled}
+							disabled={controlsDisabled}
+							onCheckedChange={setAgentReviewEnabled}
+							className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+						>
+							<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
+						</RadixSwitch.Root>
+					</div>
+					<div className="mt-3 flex flex-wrap items-center gap-3">
+						<label htmlFor="agent-review-max-rounds" className="text-[12px] font-medium text-text-secondary">
+							Max review rounds
+						</label>
+						<input
+							id="agent-review-max-rounds"
+							type="number"
+							min={1}
+							step={1}
+							inputMode="numeric"
+							disabled={controlsDisabled}
+							value={agentReviewMaxRounds}
+							onChange={(event) => {
+								setAgentReviewMaxRounds(event.target.value);
+							}}
+							className="h-9 w-24 rounded-md border border-border bg-surface-2 px-3 text-[13px] text-text-primary focus:border-border-focus focus:outline-none disabled:opacity-40"
+						/>
+						<p className="m-0 text-[12px] text-text-secondary">
+							Active runs apply higher or lower limits after the current round finishes.
+						</p>
+					</div>
+				</div>
 
 				<div className="flex items-center justify-between mt-3 mb-2">
 					<h6 ref={shortcutsSectionRef} className="font-semibold text-text-primary m-0">

@@ -7,12 +7,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { ContextMenu, useTaskAgentReviewTrigger } from "@/components/ui/context-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
-import { getTaskAutoReviewCancelButtonLabel } from "@/types";
+import { getTaskAgentReviewStatusLabel, getTaskAutoReviewCancelButtonLabel, hasTaskPassedAgentReview } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { useMeasure } from "@/utils/react-use";
 import {
@@ -129,7 +130,6 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	const activityText = hookActivity?.activityText?.trim();
 	const toolName = hookActivity?.toolName?.trim() ?? null;
 	const toolInputSummary = hookActivity?.toolInputSummary?.trim() ?? null;
-	const source = hookActivity?.source?.trim() ?? null;
 	const finalMessage = hookActivity?.finalMessage?.trim();
 	const hookEventName = hookActivity?.hookEventName?.trim() ?? null;
 	if (summary.state === "awaiting_review" && finalMessage) {
@@ -422,6 +422,10 @@ export function BoardCard({
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const cancelAutomaticActionLabel =
 		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
+	const agentReviewStatusLabel = getTaskAgentReviewStatusLabel(card.agentReview);
+	const hasPassedAgentReview = hasTaskPassedAgentReview(card.agentReview);
+	const triggerAgentReview = useTaskAgentReviewTrigger();
+	const canOpenAgentReviewMenu = columnId === "review" && triggerAgentReview !== null;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -436,6 +440,7 @@ export function BoardCard({
 						data-task-id={card.id}
 						data-column-id={columnId}
 						data-selected={selected}
+						tabIndex={isCardInteractive ? 0 : -1}
 						onMouseDownCapture={(event) => {
 							if (!isCardInteractive) {
 								return;
@@ -496,6 +501,11 @@ export function BoardCard({
 								isDependencyTarget && "kb-board-card-dependency-target",
 							)}
 						>
+							{hasPassedAgentReview ? (
+								<div className="mb-2 rounded-md border border-status-green/30 bg-status-green/10 px-2 py-1 text-[11px] font-medium text-status-green">
+									Passed code review by agent
+								</div>
+							) : null}
 							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
 								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
 								<div ref={titleContainerRef} className="flex-1 min-w-0">
@@ -508,6 +518,11 @@ export function BoardCard({
 									>
 										{displayPromptSplit.title}
 									</p>
+									{agentReviewStatusLabel ? (
+										<div className="mt-1 inline-flex items-center rounded-full border border-border-bright bg-surface-1 px-2 py-0.5 text-[11px] font-medium text-text-primary">
+											{agentReviewStatusLabel}
+										</div>
+									) : null}
 								</div>
 								{columnId === "backlog" ? (
 									<Button
@@ -787,10 +802,30 @@ export function BoardCard({
 					</div>
 				);
 
+				const wrappedContent =
+					canOpenAgentReviewMenu && triggerAgentReview ? (
+						<ContextMenu
+							ariaLabel="Task agent review menu"
+							items={[
+								{
+									id: "run-agent-review",
+									label: "Run Agent Review",
+									onSelect: () => {
+										void triggerAgentReview(card.id);
+									},
+								},
+							]}
+						>
+							{draggableContent}
+						</ContextMenu>
+					) : (
+						draggableContent
+					);
+
 				if (isDragging && typeof document !== "undefined") {
-					return createPortal(draggableContent, document.body);
+					return createPortal(wrappedContent, document.body);
 				}
-				return draggableContent;
+				return wrappedContent;
 			}}
 		</Draggable>
 	);

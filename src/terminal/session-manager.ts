@@ -88,6 +88,7 @@ export interface StartTaskSessionRequest {
 	rows?: number;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	autoRestartEnabled?: boolean;
 }
 
 export interface StartShellSessionRequest {
@@ -932,6 +933,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return false;
 		}
 		if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
+			return false;
+		}
+		if (entry.restartRequest.request.autoRestartEnabled === false) {
 			return false;
 		}
 		const currentTime = now();

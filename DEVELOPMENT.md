@@ -7,9 +7,19 @@
 
 ## Install
 
+Primary checkout:
+
 ```bash
 npm run install:all
 ```
+
+Secondary git worktree:
+
+```bash
+bash ./scripts/setup-worktree-env.sh
+```
+
+Use `bash ./scripts/setup-worktree-env.sh` in new worktrees instead of `npm install`. It relinks `node_modules` from the primary checkout so the worktree reuses the already-installed dependencies instead of replacing the shared install with a local copy.
 
 ## Hot reload workflow
 

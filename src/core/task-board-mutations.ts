@@ -3,6 +3,7 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeBoardDependency,
+	RuntimeTaskAgentReviewState,
 	RuntimeTaskAutoReviewMode,
 	RuntimeTaskImage,
 } from "./api-contract";
@@ -36,6 +37,10 @@ function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | u
 // Copy image metadata so board tasks do not retain caller-owned array or object references.
 function cloneTaskImages(images?: RuntimeTaskImage[]): RuntimeTaskImage[] | undefined {
 	return images && images.length > 0 ? images.map((image) => ({ ...image })) : undefined;
+}
+
+function cloneTaskAgentReviewState(state?: RuntimeTaskAgentReviewState): RuntimeTaskAgentReviewState | undefined {
+	return state ? { ...state } : undefined;
 }
 
 export interface RuntimeCreateTaskResult {
@@ -278,6 +283,7 @@ export function addTaskToColumn(
 		startInPlanMode: Boolean(input.startInPlanMode),
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
 		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+		agentReview: undefined,
 		images: cloneTaskImages(input.images),
 		baseRef,
 		createdAt: now,
@@ -591,6 +597,7 @@ export function updateTask(
 				startInPlanMode: Boolean(input.startInPlanMode),
 				autoReviewEnabled: Boolean(input.autoReviewEnabled),
 				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
+				agentReview: cloneTaskAgentReviewState(card.agentReview),
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
 				updatedAt: now,
