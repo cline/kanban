@@ -715,21 +715,55 @@ const claudeAdapter: AgentSessionAdapter = {
 	},
 };
 
-function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null {
-	if (summary.state !== "awaiting_review") {
+function codexChunkHasPrompt(strippedChunk: string): boolean {
+	return /(?:^|\n)\s*›/.test(strippedChunk);
+}
+
+function codexChunkHasNonPromptOutput(strippedChunk: string): boolean {
+	const withoutPromptLines = strippedChunk.replace(/(?:^|\n)\s*›[^\n]*/g, "\n");
+	return /\S/.test(withoutPromptLines);
+}
+
+function createCodexPromptDetector(): AgentOutputTransitionDetector {
+	let hasSeenWorkOutputSincePrompt = false;
+
+	return (data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null => {
+		const stripped = stripAnsi(data);
+		if (!stripped) {
+			return null;
+		}
+
+		const hasPrompt = codexChunkHasPrompt(stripped);
+		const hasNonPromptOutput = codexChunkHasNonPromptOutput(stripped);
+
+		if (summary.state === "running") {
+			if (hasPrompt && hasSeenWorkOutputSincePrompt) {
+				hasSeenWorkOutputSincePrompt = false;
+				return { type: "hook.to_review" };
+			}
+			if (hasNonPromptOutput) {
+				hasSeenWorkOutputSincePrompt = true;
+			}
+			return null;
+		}
+
+		if (
+			summary.state === "awaiting_review" &&
+			(summary.reviewReason === "attention" || summary.reviewReason === "hook")
+		) {
+			if (hasPrompt) {
+				return { type: "agent.prompt-ready" };
+			}
+		}
+
 		return null;
-	}
-	if (summary.reviewReason !== "attention" && summary.reviewReason !== "hook") {
-		return null;
-	}
-	const stripped = stripAnsi(data);
-	if (/(?:^|\n)\s*›/.test(stripped)) {
-		return { type: "agent.prompt-ready" };
-	}
-	return null;
+	};
 }
 
 function shouldInspectCodexOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
+	if (summary.state === "running") {
+		return true;
+	}
 	return (
 		summary.state === "awaiting_review" &&
 		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
@@ -741,6 +775,7 @@ const codexAdapter: AgentSessionAdapter = {
 		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
 		let binary = input.binary;
+		const detectOutputTransition = createCodexPromptDetector();
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 
 		if (input.autonomousModeEnabled && !hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox")) {
@@ -791,7 +826,7 @@ const codexAdapter: AgentSessionAdapter = {
 				binary,
 				args,
 				env,
-				detectOutputTransition: codexPromptDetector,
+				detectOutputTransition,
 				shouldInspectOutputForTransition: shouldInspectCodexOutputForTransition,
 			};
 		}
@@ -800,7 +835,7 @@ const codexAdapter: AgentSessionAdapter = {
 			binary,
 			args: codexArgs,
 			env,
-			detectOutputTransition: codexPromptDetector,
+			detectOutputTransition,
 			shouldInspectOutputForTransition: shouldInspectCodexOutputForTransition,
 		};
 	},

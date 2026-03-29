@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
 
 const originalHome = process.env.HOME;
@@ -27,6 +28,29 @@ function setKanbanProcessContext(): void {
 		configurable: true,
 		value: "/usr/local/bin/node",
 	});
+}
+
+function createCodexSummary(
+	state: RuntimeTaskSessionSummary["state"],
+	reviewReason: RuntimeTaskSessionSummary["reviewReason"],
+): RuntimeTaskSessionSummary {
+	return {
+		taskId: "task-codex",
+		state,
+		agentId: "codex",
+		workspacePath: "/tmp",
+		pid: 123,
+		startedAt: Date.now(),
+		updatedAt: Date.now(),
+		lastOutputAt: Date.now(),
+		reviewReason,
+		exitCode: null,
+		lastHookAt: null,
+		latestHookActivity: null,
+		warningMessage: null,
+		latestTurnCheckpoint: null,
+		previousTurnCheckpoint: null,
+	};
 }
 
 afterEach(() => {
@@ -458,6 +482,72 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeFromTrash: true,
 		});
 		expect(clineLaunch.args).toContain("--continue");
+	});
+
+	it("maps codex running prompt back to review after activity", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-detector",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const detect = launch.detectOutputTransition;
+		expect(detect).toBeDefined();
+		if (!detect) {
+			return;
+		}
+
+		const running = createCodexSummary("running", null);
+
+		expect(detect("› ", running)).toBeNull();
+		expect(detect("Running command: npm run test\n", running)).toBeNull();
+		expect(detect("\u001b[32m›\u001b[0m ", running)).toEqual({ type: "hook.to_review" });
+	});
+
+	it("keeps codex awaiting-review prompt-ready transition", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-awaiting-review",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const detect = launch.detectOutputTransition;
+		expect(detect).toBeDefined();
+		if (!detect) {
+			return;
+		}
+
+		const awaitingReview = createCodexSummary("awaiting_review", "hook");
+		expect(detect("\u001b[36m›\u001b[0m", awaitingReview)).toEqual({ type: "agent.prompt-ready" });
+	});
+
+	it("inspects codex output while running", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-inspect-running",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const shouldInspect = launch.shouldInspectOutputForTransition;
+		expect(shouldInspect).toBeDefined();
+		if (!shouldInspect) {
+			return;
+		}
+
+		expect(shouldInspect(createCodexSummary("running", null))).toBe(true);
+		expect(shouldInspect(createCodexSummary("idle", null))).toBe(false);
 	});
 
 	it("applies autonomous mode flags in adapters for non-droid CLIs", async () => {
