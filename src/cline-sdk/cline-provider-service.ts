@@ -17,6 +17,7 @@ import type {
 } from "../core/api-contract";
 import { openInBrowser } from "../server/browser";
 import {
+	addSdkCustomProvider,
 	fetchSdkClineAccountProfile,
 	fetchSdkClineUserRemoteConfig,
 	fetchSdkOrgData,
@@ -27,6 +28,7 @@ import {
 	loginManagedOauthProvider,
 	type ManagedClineOauthProviderId,
 	refreshManagedOauthCredentials,
+	type SdkCustomProviderCapability,
 	type SdkProviderModelRecord,
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
@@ -53,6 +55,19 @@ export interface ResolvedClineLaunchConfig {
 	apiKey: string | null;
 	baseUrl: string | null;
 	reasoningEffort: RuntimeClineReasoningEffort | null;
+}
+
+export interface AddCustomClineProviderInput {
+	providerId: string;
+	name: string;
+	baseUrl: string;
+	apiKey?: string | null;
+	headers?: Record<string, string>;
+	timeoutMs?: number;
+	models: string[];
+	defaultModelId?: string | null;
+	modelsSourceUrl?: string | null;
+	capabilities?: SdkCustomProviderCapability[];
 }
 
 function toErrorMessage(error: unknown): string {
@@ -522,6 +537,36 @@ export function createClineProviderService() {
 				providerId: normalizedProviderId || providerId,
 				models: [],
 			};
+		},
+
+		async addCustomProvider(input: AddCustomClineProviderInput): Promise<RuntimeClineProviderSettings> {
+			const providerId = input.providerId.trim().toLowerCase();
+			const existingProviders = await listSdkProviderCatalog().catch(() => []);
+			if (existingProviders.some((provider) => provider.id.trim().toLowerCase() === providerId)) {
+				throw new Error(`Provider "${providerId}" already exists.`);
+			}
+
+			await addSdkCustomProvider({
+				providerId,
+				name: input.name,
+				baseUrl: input.baseUrl,
+				apiKey: input.apiKey ?? null,
+				headers: input.headers,
+				timeoutMs: input.timeoutMs,
+				models: input.models,
+				defaultModelId: input.defaultModelId ?? null,
+				modelsSourceUrl: input.modelsSourceUrl ?? null,
+				capabilities: input.capabilities,
+			});
+
+			const existingSettings = getSdkProviderSettings(providerId) ?? { provider: providerId };
+			saveSdkProviderSettings({
+				settings: existingSettings,
+				tokenSource: hasOauthAccessToken(existingSettings) ? "oauth" : "manual",
+				setLastUsed: true,
+			});
+
+			return toProviderSettingsSummary(getSdkProviderSettings(providerId));
 		},
 
 		saveProviderSettings(input: {

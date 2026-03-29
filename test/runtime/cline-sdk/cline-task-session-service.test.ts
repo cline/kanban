@@ -724,7 +724,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		setKanbanProcessContext();
 
 		await service.startTaskSession({
-			taskId: "__home_agent__:workspace-1:cline:abc123",
+			taskId: "__home_agent__:workspace-1:cline",
 			cwd: "/tmp/worktree",
 			prompt: "Add a task",
 		});

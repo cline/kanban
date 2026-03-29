@@ -43,6 +43,7 @@ export function SearchSelectDropdown({
 	dropdownStyle,
 	menuStyle,
 	onPopoverOpenChange,
+	footerAction,
 }: {
 	options: readonly SearchSelectOption[];
 	selectedValue?: string | null;
@@ -68,6 +69,10 @@ export function SearchSelectDropdown({
 	dropdownStyle?: CSSProperties;
 	menuStyle?: CSSProperties;
 	onPopoverOpenChange?: (isOpen: boolean) => void;
+	footerAction?: {
+		label: string;
+		onClick: () => void;
+	};
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -330,6 +335,20 @@ export function SearchSelectDropdown({
 								{(showRecommendedSection ? recommendedItems : filteredItems).map((option) =>
 									renderOptionButton(option),
 								)}
+								{footerAction ? (
+									<div className="border-t border-border p-1">
+										<button
+											type="button"
+											className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-[13px] text-text-secondary hover:bg-surface-3 hover:text-text-primary"
+											onClick={() => {
+												footerAction.onClick();
+												handleOpenChange(false);
+											}}
+										>
+											{footerAction.label}
+										</button>
+									</div>
+								) : null}
 								{showRecommendedSection && recommendedItems.length > 0 && otherItems.length > 0 ? (
 									<>
 										<div className="my-1 border-t border-border" />

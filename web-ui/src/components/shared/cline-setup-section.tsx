@@ -1,12 +1,13 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { Check, ExternalLink, Plus, X } from "lucide-react";
-import { type ReactElement, useMemo } from "react";
+import { type ReactElement, useMemo, useState } from "react";
 
 import {
 	buildClineAgentModelPickerOptions,
 	CLINE_REASONING_EFFORT_OPTIONS,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
+import { ClineAddProviderDialog } from "@/components/shared/cline-add-provider-dialog";
 import { Button } from "@/components/ui/button";
 import type { UseRuntimeSettingsClineControllerResult } from "@/hooks/use-runtime-settings-cline-controller";
 import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-runtime-settings-cline-mcp-controller";
@@ -57,6 +58,7 @@ export function ClineSetupSection({
 	onSaved?: () => void;
 }): ReactElement {
 	const mcpControlsDisabled = controlsDisabled || (mcpController?.isSavingMcpSettings ?? false);
+	const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
 
 	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
 		const items: SearchSelectOption[] = controller.providerCatalog.map((provider) => ({
@@ -196,6 +198,13 @@ export function ClineSetupSection({
 						noResultsText="No matching providers"
 						placeholder="Search providers..."
 						showSelectedIndicator
+						footerAction={{
+							label: "Add OpenAI-compatible provider",
+							onClick: () => {
+								onError?.(null);
+								setIsAddProviderDialogOpen(true);
+							},
+						}}
 					/>
 				</div>
 				{controller.isLoadingProviderCatalog ? (
@@ -597,6 +606,21 @@ export function ClineSetupSection({
 					})}
 				</>
 			) : null}
+			<ClineAddProviderDialog
+				open={isAddProviderDialogOpen}
+				onOpenChange={setIsAddProviderDialogOpen}
+				existingProviderIds={controller.providerCatalog.map((provider) => provider.id)}
+				onSubmit={async (input) => {
+					onError?.(null);
+					const result = await controller.addCustomProvider(input);
+					if (!result.ok) {
+						onError?.(result.message ?? "Failed to add provider.");
+						return result;
+					}
+					onSaved?.();
+					return result;
+				}}
+			/>
 		</>
 	);
 }

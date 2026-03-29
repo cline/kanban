@@ -19,6 +19,8 @@ const turnCheckpointMocks = vi.hoisted(() => ({
 }));
 
 const oauthMocks = vi.hoisted(() => ({
+	addLocalProvider: vi.fn(),
+	ensureCustomProvidersLoaded: vi.fn(),
 	getValidClineCredentials: vi.fn(),
 	getValidOcaCredentials: vi.fn(),
 	getValidOpenAICodexCredentials: vi.fn(),
@@ -62,6 +64,8 @@ vi.mock("../../../src/workspace/turn-checkpoints.js", () => ({
 }));
 
 vi.mock("@clinebot/core/node", () => ({
+	addLocalProvider: oauthMocks.addLocalProvider,
+	ensureCustomProvidersLoaded: oauthMocks.ensureCustomProvidersLoaded,
 	getValidClineCredentials: oauthMocks.getValidClineCredentials,
 	getValidOcaCredentials: oauthMocks.getValidOcaCredentials,
 	getValidOpenAICodexCredentials: oauthMocks.getValidOpenAICodexCredentials,
@@ -206,6 +210,8 @@ describe("createRuntimeApi startTaskSession", () => {
 		agentRegistryMocks.buildRuntimeConfigResponse.mockReset();
 		taskWorktreeMocks.resolveTaskCwd.mockReset();
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
+		oauthMocks.addLocalProvider.mockReset();
+		oauthMocks.ensureCustomProvidersLoaded.mockReset();
 		oauthMocks.loginClineOAuth.mockReset();
 		oauthMocks.loginOcaOAuth.mockReset();
 		oauthMocks.loginOpenAICodex.mockReset();
@@ -273,6 +279,15 @@ describe("createRuntimeApi startTaskSession", () => {
 			expires: 1_700_000_000_000,
 			accountId: "codex-acct",
 		});
+		oauthMocks.addLocalProvider.mockResolvedValue({
+			providerId: "custom-provider",
+			settingsPath: "/tmp/providers.json",
+			modelsPath: "/tmp/models.json",
+			modelsCount: 1,
+		});
+		oauthMocks.ensureCustomProvidersLoaded.mockResolvedValue(undefined);
+		llmsModelMocks.getAllProviders.mockResolvedValue([]);
+		llmsModelMocks.getModelsForProvider.mockResolvedValue({});
 		oauthMocks.resolveDefaultMcpSettingsPath.mockReturnValue(mcpSettingsPath);
 		oauthMocks.loadMcpSettingsFile.mockReturnValue({
 			mcpServers: {},
@@ -601,7 +616,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("starts home agent sessions in the workspace root without resolving a task worktree", async () => {
-		const homeTaskId = "__home_agent__:workspace-1:codex:abc123";
+		const homeTaskId = "__home_agent__:workspace-1:codex";
 		const terminalManager = {
 			startTaskSession: vi.fn(async () => createSummary({ taskId: homeTaskId })),
 			applyTurnCheckpoint: vi.fn(),
@@ -1285,6 +1300,92 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 		expect(modelsResponse.providerId).toBe("cline");
 		expect(modelsResponse.models.some((model) => model.id === "claude-sonnet-4-6")).toBe(true);
+	});
+
+	it("adds a custom OpenAI-compatible provider through the SDK-backed flow", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		llmsModelMocks.getAllProviders.mockResolvedValue([
+			{
+				id: "cline",
+				name: "Cline",
+				defaultModelId: "claude-sonnet-4-6",
+				capabilities: ["oauth"],
+			},
+		]);
+		oauthMocks.addLocalProvider.mockImplementation(async (_manager: unknown, request: Record<string, unknown>) => {
+			oauthMocks.getProviderSettings.mockImplementation((providerId: string) =>
+				providerId === request.providerId
+					? {
+							provider: request.providerId,
+							model: request.defaultModelId,
+							apiKey: request.apiKey,
+							baseUrl: request.baseUrl,
+						}
+					: undefined,
+			);
+			return {
+				providerId: request.providerId,
+				settingsPath: "/tmp/providers.json",
+				modelsPath: "/tmp/models.json",
+				modelsCount: 1,
+			};
+		});
+
+		const response = await api.addClineProvider(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{
+				providerId: "my-provider",
+				name: "My Provider",
+				baseUrl: "http://localhost:8000/v1",
+				apiKey: "secret-key",
+				models: ["qwen2.5-coder:32b"],
+				defaultModelId: "qwen2.5-coder:32b",
+				capabilities: ["tools", "streaming"],
+			},
+		);
+
+		expect(response).toEqual(
+			expect.objectContaining({
+				providerId: "my-provider",
+				modelId: "qwen2.5-coder:32b",
+				baseUrl: "http://localhost:8000/v1",
+				apiKeyConfigured: true,
+			}),
+		);
+		expect(oauthMocks.addLocalProvider).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.objectContaining({
+				action: "addProvider",
+				providerId: "my-provider",
+				name: "My Provider",
+				baseUrl: "http://localhost:8000/v1",
+				apiKey: "secret-key",
+				models: ["qwen2.5-coder:32b"],
+				defaultModelId: "qwen2.5-coder:32b",
+				capabilities: ["tools", "streaming"],
+			}),
+		);
+		expect(oauthMocks.ensureCustomProvidersLoaded).toHaveBeenCalled();
+		expect(oauthMocks.saveProviderSettings).toHaveBeenCalledWith(
+			expect.objectContaining({
+				provider: "my-provider",
+				model: "qwen2.5-coder:32b",
+				apiKey: "secret-key",
+				baseUrl: "http://localhost:8000/v1",
+			}),
+			expect.objectContaining({
+				tokenSource: "manual",
+				setLastUsed: true,
+			}),
+		);
 	});
 
 	it("returns cline account profile for cline OAuth users", async () => {

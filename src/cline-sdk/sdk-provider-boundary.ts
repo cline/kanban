@@ -4,6 +4,7 @@
 
 import { type CreateMcpToolsOptions, createMcpTools, type Tool } from "@clinebot/agents";
 import {
+	addLocalProvider,
 	ClineAccountService,
 	type ClineAccountUser,
 	type ClineOrganization,
@@ -13,6 +14,7 @@ import {
 	DEFAULT_INTERNAL_IDCS_CLIENT_ID,
 	DEFAULT_INTERNAL_IDCS_SCOPES,
 	DEFAULT_INTERNAL_IDCS_URL,
+	ensureCustomProvidersLoaded,
 	getValidClineCredentials,
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
@@ -57,11 +59,25 @@ export interface SdkUserRemoteConfigResponse {
 export type SdkProviderModelRecord = Record<string, LlmsProviders.ModelInfo>;
 
 export type SdkProviderSettings = LlmsProviders.ProviderSettings;
+export type SdkCustomProviderCapability = "streaming" | "tools" | "reasoning" | "vision" | "prompt-cache";
 
 export interface SaveSdkProviderSettingsInput {
 	settings: SdkProviderSettings;
 	tokenSource?: "oauth" | "manual";
 	setLastUsed?: boolean;
+}
+
+export interface AddSdkCustomProviderInput {
+	providerId: string;
+	name: string;
+	baseUrl: string;
+	apiKey?: string | null;
+	headers?: Record<string, string>;
+	timeoutMs?: number;
+	models: string[];
+	defaultModelId?: string | null;
+	modelsSourceUrl?: string | null;
+	capabilities?: SdkCustomProviderCapability[];
 }
 
 export type SdkMcpTool = Tool;
@@ -208,10 +224,12 @@ export async function loginManagedOauthProvider(input: {
 }
 
 export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
+	await ensureCustomProvidersLoaded(providerManager);
 	return await llmsModels.getAllProviders();
 }
 
 export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
+	await ensureCustomProvidersLoaded(providerManager);
 	return await llmsModels.getModelsForProvider(providerId);
 }
 
@@ -220,6 +238,23 @@ export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): bo
 }
 
 const providerManager = new ProviderSettingsManager();
+
+export async function addSdkCustomProvider(input: AddSdkCustomProviderInput): Promise<void> {
+	await addLocalProvider(providerManager, {
+		action: "addProvider",
+		providerId: input.providerId,
+		name: input.name,
+		baseUrl: input.baseUrl,
+		apiKey: input.apiKey ?? undefined,
+		headers: input.headers,
+		timeoutMs: input.timeoutMs,
+		models: input.models,
+		defaultModelId: input.defaultModelId ?? undefined,
+		modelsSourceUrl: input.modelsSourceUrl ?? undefined,
+		capabilities: input.capabilities,
+	});
+	await ensureCustomProvidersLoaded(providerManager);
+}
 
 export function getSdkProviderSettings(providerId: string): SdkProviderSettings | null {
 	return (providerManager.getProviderSettings(providerId) as SdkProviderSettings | undefined) ?? null;

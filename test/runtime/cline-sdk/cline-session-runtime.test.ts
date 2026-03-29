@@ -339,7 +339,7 @@ describe("InMemoryClineSessionRuntime", () => {
 		});
 
 		await runtime.startTaskSession({
-			taskId: "__home_agent__:workspace-1:cline:abc123",
+			taskId: "__home_agent__:workspace-1:cline",
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
 			providerId: "anthropic",
@@ -349,7 +349,7 @@ describe("InMemoryClineSessionRuntime", () => {
 
 		expect(requestedSessionId).toBeTruthy();
 		expect(requestedSessionId ?? "").not.toMatch(/[<>:"/\\|?*]/);
-		expect(requestedSessionId ?? "").toMatch(/^__home_agent___workspace-1_cline_abc123-/);
+		expect(requestedSessionId ?? "").toMatch(/^__home_agent___workspace-1_cline-/);
 	});
 
 	it("clears the pending task binding when start fails", async () => {

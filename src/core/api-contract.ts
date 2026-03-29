@@ -611,6 +611,32 @@ export const runtimeClineProviderModelsResponseSchema = z.object({
 });
 export type RuntimeClineProviderModelsResponse = z.infer<typeof runtimeClineProviderModelsResponseSchema>;
 
+export const runtimeClineProviderCapabilitySchema = z.enum([
+	"streaming",
+	"tools",
+	"reasoning",
+	"vision",
+	"prompt-cache",
+]);
+export type RuntimeClineProviderCapability = z.infer<typeof runtimeClineProviderCapabilitySchema>;
+
+export const runtimeClineAddProviderRequestSchema = z.object({
+	providerId: z.string(),
+	name: z.string(),
+	baseUrl: z.string(),
+	apiKey: z.string().nullable().optional(),
+	headers: z.record(z.string(), z.string()).optional(),
+	timeoutMs: z.number().int().positive().optional(),
+	models: z.array(z.string()),
+	defaultModelId: z.string().nullable().optional(),
+	modelsSourceUrl: z.string().nullable().optional(),
+	capabilities: z.array(runtimeClineProviderCapabilitySchema).optional(),
+});
+export type RuntimeClineAddProviderRequest = z.infer<typeof runtimeClineAddProviderRequestSchema>;
+
+export const runtimeClineAddProviderResponseSchema = runtimeClineProviderSettingsSchema;
+export type RuntimeClineAddProviderResponse = z.infer<typeof runtimeClineAddProviderResponseSchema>;
+
 export const runtimeClineOauthLoginRequestSchema = z.object({
 	provider: runtimeClineOauthProviderSchema,
 	baseUrl: z.string().nullable().optional(),

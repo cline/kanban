@@ -23,6 +23,7 @@ import type {
 	RuntimeTaskAgentReviewTriggerResponse,
 } from "../core/api-contract";
 import {
+	parseClineAddProviderRequest,
 	parseClineMcpOAuthRequest,
 	parseClineMcpSettingsSaveRequest,
 	parseClineOauthLoginRequest,
@@ -168,6 +169,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		saveClineProviderSettings: async (_workspaceScope, input) => {
 			const body = parseClineProviderSettingsSaveRequest(input);
 			return clineProviderService.saveProviderSettings(body);
+		},
+		addClineProvider: async (_workspaceScope, input) => {
+			const body = parseClineAddProviderRequest(input);
+			return await clineProviderService.addCustomProvider(body);
 		},
 		startTaskSession: async (workspaceScope, input) => {
 			try {

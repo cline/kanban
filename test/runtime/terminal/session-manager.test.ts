@@ -117,7 +117,7 @@ describe("TerminalSessionManager", () => {
 				session: {},
 				terminalProtocolFilter: {
 					pendingChunk: null,
-					interceptOsc11BackgroundQueries: true,
+					interceptOscColorQueries: true,
 					suppressDeviceAttributeQueries: false,
 				},
 			},
@@ -136,7 +136,7 @@ describe("TerminalSessionManager", () => {
 		});
 
 		expect(onOutput).not.toHaveBeenCalled();
-		expect(entry.active.terminalProtocolFilter.interceptOsc11BackgroundQueries).toBe(false);
+		expect(entry.active.terminalProtocolFilter.interceptOscColorQueries).toBe(false);
 	});
 
 	it("keeps the startup probe filter enabled when only a non-output listener attaches", () => {
@@ -149,7 +149,7 @@ describe("TerminalSessionManager", () => {
 				},
 				terminalProtocolFilter: {
 					pendingChunk: null,
-					interceptOsc11BackgroundQueries: true,
+					interceptOscColorQueries: true,
 					suppressDeviceAttributeQueries: false,
 				},
 			},
@@ -168,7 +168,7 @@ describe("TerminalSessionManager", () => {
 			onExit: vi.fn(),
 		});
 
-		expect(entry.active.terminalProtocolFilter.interceptOsc11BackgroundQueries).toBe(true);
+		expect(entry.active.terminalProtocolFilter.interceptOscColorQueries).toBe(true);
 		expect(entry.active.terminalProtocolFilter.pendingChunk).toBeNull();
 	});
 
