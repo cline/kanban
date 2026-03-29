@@ -7,7 +7,6 @@ import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
 import { getClineDefaultSystemPrompt } from "@clinebot/agents";
 import {
 	buildWorkspaceMetadata,
-	createSessionHost,
 	createUserInstructionConfigWatcher,
 	listAvailableWorkflowsFromWatcher,
 	loadRulesForSystemPromptFromWatcher,
@@ -16,6 +15,9 @@ import {
 	type UserInstructionConfigWatcher,
 } from "@clinebot/core/node";
 import type { LlmsProviders as ClineSdkProviders } from "@clinebot/llms";
+
+export { createSessionHost, LoggerTelemetryAdapter } from "@clinebot/core";
+export { createConfiguredTelemetryService } from "@clinebot/core/telemetry/opentelemetry";
 
 export type ClineSdkSessionHost = SessionHost;
 export interface ClineSdkContentStartTextEvent {
@@ -193,13 +195,6 @@ export interface ClineSdkSlashCommand {
 }
 export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
 export type ClineSdkToolApprovalResult = ToolApprovalResult;
-
-export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
-	return await createSessionHost({
-		backendMode: "auto",
-		autoStartRpcServer: true,
-	});
-}
 
 export async function buildClineSdkWorkspaceMetadata(cwd: string): Promise<string> {
 	return await buildWorkspaceMetadata(cwd);

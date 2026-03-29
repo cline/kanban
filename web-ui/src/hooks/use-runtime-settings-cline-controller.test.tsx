@@ -210,6 +210,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 		fetchClineProviderModelsMock.mockResolvedValue([
@@ -258,6 +259,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 		fetchClineProviderModelsMock.mockResolvedValue([
@@ -303,6 +305,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 
@@ -375,6 +378,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 
@@ -399,6 +403,49 @@ describe("useRuntimeSettingsClineController", () => {
 
 		expect(requireSnapshot(latestSnapshot).providerId).toBe("cline");
 		expect(requireSnapshot(latestSnapshot).modelId).toBe("claude-sonnet-4-6");
+	});
+
+	it("fills the provider base url from the catalog when the saved settings are blank", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "openrouter",
+			oauthProvider: null,
+			modelId: "gpt-5",
+			baseUrl: null,
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "openrouter",
+				name: "OpenRouter",
+				oauthSupported: false,
+				enabled: true,
+				defaultModelId: "gpt-5",
+				baseUrl: "https://openrouter.ai/api/v1",
+			},
+		]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).providerId).toBe("openrouter");
+		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("https://openrouter.ai/api/v1");
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
 	});
 
 	it("saves the current provider draft and clears dirty state using the saved override", async () => {
@@ -651,6 +698,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 		runClineProviderOauthLoginMock.mockResolvedValue({
@@ -714,6 +762,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "openai/gpt-5.4",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 		fetchClineProviderModelsMock.mockResolvedValue([

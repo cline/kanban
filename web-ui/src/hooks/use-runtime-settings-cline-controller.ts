@@ -99,6 +99,28 @@ function normalizeBaseUrlForProvider(providerId: string, baseUrl: string | null 
 	return baseUrl ?? "";
 }
 
+function getDefaultBaseUrlForProvider(providers: RuntimeClineProviderCatalogItem[], providerId: string): string {
+	const normalizedProviderId = providerId.trim().toLowerCase();
+	if (!normalizedProviderId) {
+		return "";
+	}
+	return (
+		providers.find((provider) => provider.id.trim().toLowerCase() === normalizedProviderId)?.baseUrl?.trim() ?? ""
+	);
+}
+
+function resolveBaseUrlForProvider(
+	providers: RuntimeClineProviderCatalogItem[],
+	providerId: string,
+	baseUrl: string | null | undefined,
+): string {
+	const normalizedBaseUrl = normalizeBaseUrlForProvider(providerId, baseUrl).trim();
+	if (normalizedBaseUrl.length > 0) {
+		return normalizedBaseUrl;
+	}
+	return normalizeBaseUrlForProvider(providerId, getDefaultBaseUrlForProvider(providers, providerId));
+}
+
 function getEffectiveProviderSettings(
 	config: RuntimeConfigResponse | null,
 	override: RuntimeClineProviderSettings | null,
@@ -138,7 +160,11 @@ export function useRuntimeSettingsClineController(
 	const configProviderSettings = getRuntimeClineProviderSettings(config);
 	const initialProviderId = effectiveProviderSettings?.providerId ?? effectiveProviderSettings?.oauthProvider ?? "";
 	const initialModelId = effectiveProviderSettings?.modelId ?? "";
-	const initialBaseUrl = normalizeBaseUrlForProvider(initialProviderId, effectiveProviderSettings?.baseUrl);
+	const initialBaseUrl = resolveBaseUrlForProvider(
+		providerCatalog,
+		initialProviderId,
+		effectiveProviderSettings?.baseUrl,
+	);
 	const initialReasoningEffort = effectiveProviderSettings?.reasoningEffort ?? "";
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	const managedOauthProvider = toManagedClineOauthProvider(normalizedProviderId);
@@ -189,7 +215,7 @@ export function useRuntimeSettingsClineController(
 		setProviderId(nextProviderId);
 		setModelId(configProviderSettings.modelId ?? "");
 		setApiKey("");
-		setBaseUrl(normalizeBaseUrlForProvider(nextProviderId, configProviderSettings.baseUrl));
+		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, configProviderSettings.baseUrl));
 		setReasoningEffort(configProviderSettings.reasoningEffort ?? "");
 		setProviderSettingsOverride(null);
 	}, [
@@ -249,6 +275,7 @@ export function useRuntimeSettingsClineController(
 		}
 		setProviderId(nextProviderId);
 		setModelId(defaultProvider.defaultModelId?.trim() ?? "");
+		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, null));
 	}, [open, providerCatalog, providerId, selectedAgentId]);
 
 	useEffect(() => {
@@ -264,6 +291,20 @@ export function useRuntimeSettingsClineController(
 		}
 		setModelId(defaultModelId);
 	}, [modelId, open, providerCatalog, providerId, selectedAgentId]);
+
+	useEffect(() => {
+		if (!open || selectedAgentId !== "cline") {
+			return;
+		}
+		if (providerId.trim().length === 0 || baseUrl.trim().length > 0) {
+			return;
+		}
+		const defaultBaseUrl = getDefaultBaseUrlForProvider(providerCatalog, providerId);
+		if (!defaultBaseUrl) {
+			return;
+		}
+		setBaseUrl(normalizeBaseUrlForProvider(providerId, defaultBaseUrl));
+	}, [baseUrl, open, providerCatalog, providerId, selectedAgentId]);
 
 	useEffect(() => {
 		if (!open || selectedAgentId !== "cline") {

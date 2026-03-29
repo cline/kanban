@@ -9,15 +9,15 @@ import {
 	createClineMcpRuntimeService,
 } from "./cline-mcp-runtime-service";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
-import {
-	type ClineSdkPersistedMessage,
-	type ClineSdkSessionHost,
-	type ClineSdkSessionRecord,
-	type ClineSdkToolApprovalRequest,
-	type ClineSdkToolApprovalResult,
-	type ClineSdkUserInstructionWatcher,
-	createClineSdkSessionHost,
-} from "./sdk-runtime-boundary";
+import type {
+	ClineSdkPersistedMessage,
+	ClineSdkSessionHost,
+	ClineSdkSessionRecord,
+	ClineSdkToolApprovalRequest,
+	ClineSdkToolApprovalResult,
+	ClineSdkUserInstructionWatcher,
+} from "./sdk-runtime-boundary.js";
+import { createClineSdkSessionHost } from "./session-host";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;
 interface ClineSessionHostBoundary {

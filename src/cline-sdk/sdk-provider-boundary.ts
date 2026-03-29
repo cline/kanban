@@ -49,6 +49,8 @@ export interface SdkProviderCatalogItem {
 	id: string;
 	name: string;
 	defaultModelId?: string;
+	baseUrl?: string;
+	env?: string[];
 	capabilities?: string[];
 }
 
