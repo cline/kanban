@@ -29,6 +29,8 @@ import { LlmsProviders, LlmsModels as llmsModels } from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
+export const SDK_DEFAULT_PROVIDER_ID = "cline";
+export const SDK_DEFAULT_MODEL_ID = llmsModels.CLINE_DEFAULT_MODEL;
 
 export interface ManagedOauthCredentials {
 	access: string;

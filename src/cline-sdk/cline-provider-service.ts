@@ -28,6 +28,8 @@ import {
 	loginManagedOauthProvider,
 	type ManagedClineOauthProviderId,
 	refreshManagedOauthCredentials,
+	SDK_DEFAULT_MODEL_ID,
+	SDK_DEFAULT_PROVIDER_ID,
 	type SdkCustomProviderCapability,
 	type SdkProviderModelRecord,
 	type SdkProviderSettings,
@@ -243,7 +245,31 @@ function toProviderSettingsSummary(settings: SdkProviderSettings | null): Runtim
 }
 
 function getSelectedProviderSettings(): SdkProviderSettings | null {
-	return getLastUsedSdkProviderSettings();
+	const lastUsedSettings = getLastUsedSdkProviderSettings();
+	const resolvedProviderId = lastUsedSettings?.provider?.trim().toLowerCase() || SDK_DEFAULT_PROVIDER_ID;
+	return (
+		getSdkProviderSettings(resolvedProviderId) ??
+		lastUsedSettings ?? {
+			provider: resolvedProviderId,
+		}
+	);
+}
+
+async function resolveDefaultModelIdForProvider(providerId: string): Promise<string | null> {
+	const normalizedProviderId = providerId.trim().toLowerCase();
+	if (!normalizedProviderId) {
+		return SDK_DEFAULT_MODEL_ID;
+	}
+	try {
+		const provider = (await listSdkProviderCatalog()).find((candidate) => candidate.id === normalizedProviderId);
+		const defaultModelId = provider?.defaultModelId?.trim();
+		if (defaultModelId) {
+			return defaultModelId;
+		}
+	} catch {
+		// Fall through to the stable built-in defaults.
+	}
+	return normalizedProviderId === SDK_DEFAULT_PROVIDER_ID ? SDK_DEFAULT_MODEL_ID : null;
 }
 
 function createRuntimeOauthCallbacks(providerId: ManagedClineOauthProviderId) {
@@ -458,7 +484,7 @@ export function createClineProviderService() {
 				: resolveVisibleApiKey(resolvedSettings);
 			return {
 				providerId: normalizedProviderId,
-				modelId: resolvedSettings.model?.trim() || null,
+				modelId: resolvedSettings.model?.trim() || (await resolveDefaultModelIdForProvider(normalizedProviderId)),
 				apiKey,
 				baseUrl: resolvedSettings.baseUrl?.trim() || null,
 				reasoningEffort: toRuntimeReasoningEffort(resolvedSettings.reasoning?.effort),

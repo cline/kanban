@@ -36,6 +36,7 @@ import {
 	setOrCreateAssistantMessage,
 	updateSummary,
 } from "./cline-session-state";
+import { SDK_DEFAULT_MODEL_ID, SDK_DEFAULT_PROVIDER_ID } from "./sdk-provider-boundary";
 import { resolveClineSdkSystemPrompt } from "./sdk-runtime-boundary";
 
 export type { ClineTaskMessage } from "./cline-session-state";
@@ -225,8 +226,8 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			return cloneSummary(existing.summary);
 		}
 
-		const providerId = request.providerId?.trim() || "anthropic";
-		const modelId = request.modelId?.trim() || "claude-sonnet-4-6";
+		const providerId = request.providerId?.trim().toLowerCase() || SDK_DEFAULT_PROVIDER_ID;
+		const modelId = request.modelId?.trim() || SDK_DEFAULT_MODEL_ID;
 		const resolvedMode: RuntimeTaskSessionMode = request.mode ?? "act";
 		const persistedResumeSnapshot = request.resumeFromTrash
 			? await this.sessionRuntime.readPersistedTaskSession(request.taskId).catch(() => null)
