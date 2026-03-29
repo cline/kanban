@@ -89,11 +89,11 @@ export function ClineSetupSection({
 			) ?? null,
 		[controller.normalizedProviderId, controller.providerCatalog],
 	);
-	const apiKeyPlaceholder = controller.apiKeyConfigured
-		? "Saved"
-		: selectedProvider?.env?.length
-			? `Enter API key or use ${selectedProvider.env[0]}`
-			: "Enter API key";
+	const apiKeyPlaceholder = controller.apiKeyConfigured ? "Saved" : "Enter API key";
+	const providerEnvHint = (selectedProvider?.env ?? [])
+		.map((value) => value.trim())
+		.filter((value) => value.length > 0)
+		.join(", ");
 	const shouldShowBaseUrlField =
 		!controller.isOauthProviderSelected &&
 		(selectedProvider?.supportsBaseUrl ?? controller.baseUrl.trim().length > 0);
@@ -242,6 +242,9 @@ export function ClineSetupSection({
 								disabled={controlsDisabled}
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
+							{providerEnvHint ? (
+								<p className="text-text-tertiary text-[11px] mt-1 mb-0 break-all">Or use {providerEnvHint}</p>
+							) : null}
 						</div>
 					)}
 					{shouldShowBaseUrlField ? (
