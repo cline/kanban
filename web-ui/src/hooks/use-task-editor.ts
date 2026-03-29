@@ -343,6 +343,7 @@ export function useTaskEditor({
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskPrompt,
+			newTaskSchedule,
 			newTaskStartInPlanMode,
 			resolvedDefaultTaskBranchRef,
 			selectedAgentId,
@@ -369,6 +370,7 @@ export function useTaskEditor({
 					autoReviewEnabled: newTaskAutoReviewEnabled,
 					autoReviewMode: newTaskAutoReviewMode,
 					images: newTaskImages,
+					schedule: newTaskSchedule,
 					baseRef,
 				});
 				updatedBoard = created.board;
@@ -404,6 +406,7 @@ export function useTaskEditor({
 			newTaskAutoReviewMode,
 			newTaskBranchRef,
 			newTaskImages,
+			newTaskSchedule,
 			newTaskStartInPlanMode,
 			resolvedDefaultTaskBranchRef,
 			selectedAgentId,
