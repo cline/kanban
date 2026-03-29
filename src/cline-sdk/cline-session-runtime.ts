@@ -9,13 +9,13 @@ import {
 	createClineMcpRuntimeService,
 } from "./cline-mcp-runtime-service";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
-import {
-	type ClineSdkPersistedMessage,
-	type ClineSdkSessionHost,
-	type ClineSdkSessionRecord,
-	type ClineSdkToolApprovalRequest,
-	type ClineSdkToolApprovalResult,
-	type ClineSdkUserInstructionWatcher,
+import type {
+	ClineSdkPersistedMessage,
+	ClineSdkSessionHost,
+	ClineSdkSessionRecord,
+	ClineSdkToolApprovalRequest,
+	ClineSdkToolApprovalResult,
+	ClineSdkUserInstructionWatcher,
 } from "./sdk-runtime-boundary.js";
 import { createClineSdkSessionHost } from "./session-host";
 

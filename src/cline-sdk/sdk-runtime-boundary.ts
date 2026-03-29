@@ -7,7 +7,6 @@ import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
 import { getClineDefaultSystemPrompt } from "@clinebot/agents";
 import {
 	buildWorkspaceMetadata,
-	createSessionHost,
 	createUserInstructionConfigWatcher,
 	listAvailableWorkflowsFromWatcher,
 	loadRulesForSystemPromptFromWatcher,
@@ -17,8 +16,8 @@ import {
 } from "@clinebot/core/node";
 import type { LlmsProviders as ClineSdkProviders } from "@clinebot/llms";
 
+export { createSessionHost, LoggerTelemetryAdapter } from "@clinebot/core";
 export { createConfiguredTelemetryService } from "@clinebot/core/telemetry/opentelemetry";
-export {createSessionHost, LoggerTelemetryAdapter} from '@clinebot/core'
 
 export type ClineSdkSessionHost = SessionHost;
 export interface ClineSdkContentStartTextEvent {

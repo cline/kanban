@@ -1,11 +1,7 @@
 import * as os from "node:os";
-import {
-	type BasicLogger,
-	createClineTelemetryServiceConfig,
-	type ITelemetryService,
-} from "@clinebot/shared";
+import { type BasicLogger, createClineTelemetryServiceConfig, type ITelemetryService } from "@clinebot/shared";
 import packageJson from "../../package.json" with { type: "json" };
-import { ClineSdkSessionHost, createConfiguredTelemetryService, createSessionHost, LoggerTelemetryAdapter } from "./sdk-runtime-boundary.js";
+import { createConfiguredTelemetryService, LoggerTelemetryAdapter } from "./sdk-runtime-boundary.js";
 
 type MutableTelemetryService = ITelemetryService & {
 	addAdapter?: (adapter: LoggerTelemetryAdapter) => void;
@@ -21,9 +17,7 @@ let telemetrySingleton:
 	  }
 	| undefined;
 
-export function getCliTelemetryService(
-	logger?: BasicLogger,
-): ITelemetryService {
+export function getCliTelemetryService(logger?: BasicLogger): ITelemetryService {
 	if (!telemetrySingleton) {
 		const config = createClineTelemetryServiceConfig({
 			metadata: {
@@ -50,12 +44,9 @@ export function getCliTelemetryService(
 	if (
 		logger &&
 		telemetrySingleton.loggerAttached !== true &&
-		typeof (telemetrySingleton.telemetry as MutableTelemetryService)
-			.addAdapter === "function"
+		typeof (telemetrySingleton.telemetry as MutableTelemetryService).addAdapter === "function"
 	) {
-		(telemetrySingleton.telemetry as MutableTelemetryService).addAdapter?.(
-			new LoggerTelemetryAdapter({ logger }),
-		);
+		(telemetrySingleton.telemetry as MutableTelemetryService).addAdapter?.(new LoggerTelemetryAdapter({ logger }));
 		telemetrySingleton.loggerAttached = true;
 	}
 	return telemetrySingleton.telemetry;
