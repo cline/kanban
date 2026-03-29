@@ -302,11 +302,6 @@ export function useHomeAgentSession({
 			return;
 		}
 
-		if (sessionSummaries[session.taskId]) {
-			startedSessionKeysRef.current.add(sessionKey);
-			return;
-		}
-
 		if (pendingStartRequestIdsRef.current.has(sessionKey)) {
 			return;
 		}

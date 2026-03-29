@@ -7,6 +7,8 @@ import { z } from "zod";
 
 import type {
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineAddProviderRequest,
+	RuntimeClineAddProviderResponse,
 	RuntimeClineKanbanAccessResponse,
 	RuntimeClineMcpAuthStatusResponse,
 	RuntimeClineMcpOAuthRequest,
@@ -82,6 +84,8 @@ import type {
 } from "../core/api-contract";
 import {
 	runtimeClineAccountProfileResponseSchema,
+	runtimeClineAddProviderRequestSchema,
+	runtimeClineAddProviderResponseSchema,
 	runtimeClineKanbanAccessResponseSchema,
 	runtimeClineMcpAuthStatusResponseSchema,
 	runtimeClineMcpOAuthRequestSchema,
@@ -174,6 +178,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineProviderSettingsSaveRequest,
 		) => Promise<RuntimeClineProviderSettingsSaveResponse>;
+		addClineProvider: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+			input: RuntimeClineAddProviderRequest,
+		) => Promise<RuntimeClineAddProviderResponse>;
 		startTaskSession: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskSessionStartRequest,
@@ -382,6 +390,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeClineProviderSettingsSaveResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.saveClineProviderSettings(ctx.workspaceScope, input);
+			}),
+		addClineProvider: t.procedure
+			.input(runtimeClineAddProviderRequestSchema)
+			.output(runtimeClineAddProviderResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.addClineProvider(ctx.workspaceScope, input);
 			}),
 		startTaskSession: workspaceProcedure
 			.input(runtimeTaskSessionStartRequestSchema)

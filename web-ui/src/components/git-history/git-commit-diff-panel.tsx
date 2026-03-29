@@ -161,9 +161,9 @@ export function GitCommitDiffPanel({
 			return;
 		}
 		programmaticScrollUntilRef.current = Date.now() + 320;
-		const containerStyle = window.getComputedStyle(container);
-		const paddingTop = Number.parseFloat(containerStyle.paddingTop) || 0;
-		const targetScrollTop = Math.max(0, getSectionTopWithinScrollContainer(container, section) - paddingTop);
+		const sectionStyle = window.getComputedStyle(section);
+		const marginTop = Number.parseFloat(sectionStyle.marginTop) || 0;
+		const targetScrollTop = Math.max(0, getSectionTopWithinScrollContainer(container, section) - marginTop);
 		container.scrollTop = targetScrollTop;
 	}, []);
 
@@ -298,7 +298,13 @@ export function GitCommitDiffPanel({
 				<div
 					ref={scrollContainerRef}
 					onScroll={handleDiffScroll}
-					style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: 12 }}
+					style={{
+						flex: "1 1 0",
+						minHeight: 0,
+						overflowY: "auto",
+						overscrollBehavior: "contain",
+						padding: "0 12px 12px",
+					}}
 				>
 					{filePaths.map((path) => {
 						const isExpanded = expandedPaths[path] ?? true;
@@ -313,55 +319,53 @@ export function GitCommitDiffPanel({
 								ref={(node) => {
 									sectionElementsRef.current[path] = node;
 								}}
-								style={{ marginBottom: 12 }}
+								style={{ marginTop: 12 }}
 							>
-								<div
-									className="rounded-md border border-border bg-surface-1"
-									style={{ overflow: "hidden", padding: 0 }}
+								<button
+									type="button"
+									className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
+									aria-expanded={isExpanded}
+									aria-current={selectedPath === path ? "true" : undefined}
+									onClick={() => {
+										const container = scrollContainerRef.current;
+										const sectionEl = sectionElementsRef.current[path];
+										const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
+										const nextExpanded = !(expandedPaths[path] ?? true);
+										suppressScrollSyncUntilRef.current = Date.now() + 250;
+										setExpandedPaths((prev) => ({ ...prev, [path]: nextExpanded }));
+										requestAnimationFrame(() => {
+											if (previousTop == null || !container || !sectionEl) {
+												return;
+											}
+											const nextTop = sectionEl.getBoundingClientRect().top;
+											container.scrollTop += nextTop - previousTop;
+										});
+									}}
 								>
-									<button
-										type="button"
-										className="kb-diff-file-header flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-3"
-										aria-expanded={isExpanded}
-										aria-current={selectedPath === path ? "true" : undefined}
-										onClick={() => {
-											const container = scrollContainerRef.current;
-											const sectionEl = sectionElementsRef.current[path];
-											const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
-											const nextExpanded = !(expandedPaths[path] ?? true);
-											suppressScrollSyncUntilRef.current = Date.now() + 250;
-											setExpandedPaths((prev) => ({ ...prev, [path]: nextExpanded }));
-											requestAnimationFrame(() => {
-												if (previousTop == null || !container || !sectionEl) {
-													return;
-												}
-												const nextTop = sectionEl.getBoundingClientRect().top;
-												container.scrollTop += nextTop - previousTop;
-											});
-										}}
+									{isExpanded ? (
+										<ChevronDown size={12} className="shrink-0" />
+									) : (
+										<ChevronRight size={12} className="shrink-0" />
+									)}
+									<span className="truncate flex-1" title={path}>
+										{truncatePathMiddle(path)}
+									</span>
+									<span className="shrink-0 text-xs">
+										{stats.additions > 0 ? (
+											<span className="text-status-green">+{stats.additions}</span>
+										) : null}
+										{stats.additions > 0 && stats.deletions > 0 ? " " : null}
+										{stats.deletions > 0 ? <span className="text-status-red">-{stats.deletions}</span> : null}
+										{stats.additions === 0 && stats.deletions === 0 && isBinaryFile ? (
+											<span className="text-text-tertiary">Binary</span>
+										) : null}
+									</span>
+								</button>
+								{isExpanded && diffSource ? (
+									<div
+										className="rounded-b-md border-x border-b border-border bg-surface-1"
+										style={{ overflow: "hidden" }}
 									>
-										{isExpanded ? (
-											<ChevronDown size={12} className="shrink-0" />
-										) : (
-											<ChevronRight size={12} className="shrink-0" />
-										)}
-										<span className="truncate flex-1" title={path}>
-											{truncatePathMiddle(path)}
-										</span>
-										<span className="shrink-0 text-xs">
-											{stats.additions > 0 ? (
-												<span className="text-status-green">+{stats.additions}</span>
-											) : null}
-											{stats.additions > 0 && stats.deletions > 0 ? " " : null}
-											{stats.deletions > 0 ? (
-												<span className="text-status-red">-{stats.deletions}</span>
-											) : null}
-											{stats.additions === 0 && stats.deletions === 0 && isBinaryFile ? (
-												<span className="text-text-tertiary">Binary</span>
-											) : null}
-										</span>
-									</button>
-									{isExpanded && diffSource ? (
 										<div className="kb-diff-entry">
 											{commitFile?.status === "renamed" && commitFile.previousPath ? (
 												<div
@@ -388,8 +392,8 @@ export function GitCommitDiffPanel({
 												</div>
 											) : null}
 										</div>
-									) : null}
-								</div>
+									</div>
+								) : null}
 							</section>
 						);
 					})}

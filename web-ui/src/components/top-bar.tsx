@@ -392,7 +392,7 @@ export function TopBar({
 	return (
 		<>
 			<nav
-				className="flex flex-nowrap items-center h-10 min-h-[40px] min-w-0 bg-surface-1"
+				className="kb-top-bar flex flex-nowrap items-center h-10 min-h-[40px] min-w-0 bg-surface-1"
 				style={{
 					paddingLeft: onBack ? 6 : 12,
 					paddingRight: 8,

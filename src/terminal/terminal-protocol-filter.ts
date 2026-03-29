@@ -7,16 +7,17 @@ const DEVICE_ATTRIBUTES_FINAL = 0x63;
 
 export interface TerminalProtocolFilterState {
 	pendingChunk: Buffer | null;
-	interceptOsc11BackgroundQueries: boolean;
+	interceptOscColorQueries: boolean;
 	suppressDeviceAttributeQueries: boolean;
 }
 
 export interface CreateTerminalProtocolFilterStateOptions {
-	interceptOsc11BackgroundQueries?: boolean;
+	interceptOscColorQueries?: boolean;
 	suppressDeviceAttributeQueries?: boolean;
 }
 
 export interface FilterTerminalProtocolOutputOptions {
+	onOsc10ForegroundQuery?: () => void;
 	onOsc11BackgroundQuery?: () => void;
 }
 
@@ -25,13 +26,13 @@ export function createTerminalProtocolFilterState(
 ): TerminalProtocolFilterState {
 	return {
 		pendingChunk: null,
-		interceptOsc11BackgroundQueries: options.interceptOsc11BackgroundQueries ?? false,
+		interceptOscColorQueries: options.interceptOscColorQueries ?? false,
 		suppressDeviceAttributeQueries: options.suppressDeviceAttributeQueries ?? false,
 	};
 }
 
-export function disableOsc11BackgroundQueryIntercept(state: TerminalProtocolFilterState): void {
-	state.interceptOsc11BackgroundQueries = false;
+export function disableOscColorQueryIntercept(state: TerminalProtocolFilterState): void {
+	state.interceptOscColorQueries = false;
 }
 
 function isCsiFinalByte(byte: number): boolean {
@@ -111,7 +112,9 @@ export function filterTerminalProtocolOutput(
 			}
 
 			const content = source.subarray(sequenceStart + 2, contentEnd).toString("utf8");
-			if (state.interceptOsc11BackgroundQueries && content === "11;?") {
+			if (state.interceptOscColorQueries && content === "10;?") {
+				options.onOsc10ForegroundQuery?.();
+			} else if (state.interceptOscColorQueries && content === "11;?") {
 				options.onOsc11BackgroundQuery?.();
 			} else {
 				segments.push(source.subarray(sequenceStart, sequenceEnd));

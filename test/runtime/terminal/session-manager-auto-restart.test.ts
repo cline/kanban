@@ -22,7 +22,6 @@ interface MockSpawnRequest {
 function createMockPtySession(pid: number, request: MockSpawnRequest) {
 	return {
 		pid,
-		getOutputHistory: vi.fn(() => []),
 		write: vi.fn(),
 		resize: vi.fn(),
 		pause: vi.fn(),
