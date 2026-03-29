@@ -89,8 +89,9 @@ vi.mock("@clinebot/core/node", () => ({
 	},
 }));
 
-vi.mock("@clinebot/llms/node", () => ({
-	models: {
+vi.mock("@clinebot/llms", () => ({
+	LlmsModels: {
+		CLINE_DEFAULT_MODEL: "anthropic/claude-sonnet-4.6",
 		getAllProviders: llmsModelMocks.getAllProviders,
 		getModelsForProvider: llmsModelMocks.getModelsForProvider,
 	},
@@ -514,6 +515,61 @@ describe("createRuntimeApi startTaskSession", () => {
 			}),
 		);
 		expect(terminalManager.startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("uses saved cline settings even when no last-used provider is recorded", async () => {
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
+		oauthMocks.getLastUsedProviderSettings.mockReturnValue(undefined);
+		oauthMocks.getProviderSettings.mockImplementation((providerId: string) =>
+			providerId === "cline"
+				? {
+						provider: "cline",
+						model: "anthropic/claude-opus-4.6",
+						apiKey: "saved-cline-api-key",
+					}
+				: undefined,
+		);
+
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => {
+				const runtimeConfigState = createRuntimeConfigState();
+				runtimeConfigState.selectedAgentId = "cline";
+				return runtimeConfigState;
+			}),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(
+				async () => ({ startTaskSession: vi.fn(), applyTurnCheckpoint: vi.fn() }) as never,
+			),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.startTaskSession(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "Continue task",
+			},
+		);
+
+		expect(response.ok).toBe(true);
+		expect(clineTaskSessionService.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				providerId: "cline",
+				modelId: "anthropic/claude-opus-4.6",
+				apiKey: "saved-cline-api-key",
+			}),
+		);
 	});
 
 	it("fails early when the cline provider is selected without cline credentials", async () => {
