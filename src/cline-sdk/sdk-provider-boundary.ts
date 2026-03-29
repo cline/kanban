@@ -47,6 +47,8 @@ export interface SdkProviderCatalogItem {
 	id: string;
 	name: string;
 	defaultModelId?: string;
+	baseUrl?: string;
+	env?: string[];
 	capabilities?: string[];
 }
 
@@ -255,7 +257,6 @@ export async function addSdkCustomProvider(input: AddSdkCustomProviderInput): Pr
 	});
 	await ensureCustomProvidersLoaded(providerManager);
 }
-
 export function getSdkProviderSettings(providerId: string): SdkProviderSettings | null {
 	return (providerManager.getProviderSettings(providerId) as SdkProviderSettings | undefined) ?? null;
 }

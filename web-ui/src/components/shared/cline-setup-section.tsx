@@ -82,6 +82,21 @@ export function ClineSetupSection({
 		[controller.providerId, controller.providerModels],
 	);
 	const clineModelOptions = modelPickerOptions.options;
+	const selectedProvider = useMemo(
+		() =>
+			controller.providerCatalog.find(
+				(provider) => provider.id.trim().toLowerCase() === controller.normalizedProviderId,
+			) ?? null,
+		[controller.normalizedProviderId, controller.providerCatalog],
+	);
+	const apiKeyPlaceholder = controller.apiKeyConfigured
+		? "Saved"
+		: selectedProvider?.env?.length
+			? `Enter API key or use ${selectedProvider.env[0]}`
+			: "Enter API key";
+	const shouldShowBaseUrlField =
+		!controller.isOauthProviderSelected &&
+		(selectedProvider?.supportsBaseUrl ?? controller.baseUrl.trim().length > 0);
 
 	const handleAddMcpServer = () => {
 		if (!mcpController) {
@@ -184,7 +199,9 @@ export function ClineSetupSection({
 									(provider) => provider.id.trim().toLowerCase() === normalizedProviderId,
 								) ?? null;
 							const defaultModelId = selectedProvider?.defaultModelId?.trim() ?? "";
+							const defaultBaseUrl = selectedProvider?.baseUrl?.trim() ?? "";
 							controller.setModelId(defaultModelId);
+							controller.setBaseUrl(defaultBaseUrl);
 						}}
 						disabled={controlsDisabled || controller.isLoadingProviderCatalog}
 						fill
@@ -221,13 +238,13 @@ export function ClineSetupSection({
 								type="password"
 								value={controller.apiKey}
 								onChange={(event) => controller.setApiKey(event.target.value)}
-								placeholder={controller.apiKeyConfigured ? "Saved" : "Enter API key"}
+								placeholder={apiKeyPlaceholder}
 								disabled={controlsDisabled}
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 					)}
-					{controller.isOauthProviderSelected ? null : (
+					{shouldShowBaseUrlField ? (
 						<div className="min-w-0">
 							<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
 							<input
@@ -238,7 +255,7 @@ export function ClineSetupSection({
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
-					)}
+					) : null}
 				</div>
 				{controller.isOauthProviderSelected ? (
 					<>
