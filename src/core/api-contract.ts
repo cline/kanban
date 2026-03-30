@@ -543,6 +543,11 @@ export const runtimeClineKanbanAccessResponseSchema = z.object({
 });
 export type RuntimeClineKanbanAccessResponse = z.infer<typeof runtimeClineKanbanAccessResponseSchema>;
 
+export const runtimeFeaturebaseTokenResponseSchema = z.object({
+	featurebaseJwt: z.string(),
+});
+export type RuntimeFeaturebaseTokenResponse = z.infer<typeof runtimeFeaturebaseTokenResponseSchema>;
+
 export const runtimeClineProviderCatalogItemSchema = z.object({
 	id: z.string(),
 	name: z.string(),

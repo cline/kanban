@@ -452,6 +452,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		getClineKanbanAccess: async (_workspaceScope) => {
 			return await clineProviderService.getClineKanbanAccess();
 		},
+		getFeaturebaseToken: async (_workspaceScope) => {
+			return await clineProviderService.getFeaturebaseToken();
+		},
 		getClineProviderModels: async (_workspaceScope, input) => {
 			const body = parseClineProviderModelsRequest(input);
 			return await clineProviderService.getProviderModels(body.providerId);
