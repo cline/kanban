@@ -1,6 +1,9 @@
 // Service worker for the Cline PWA.
-// Catches navigation failures (server not running / crashed) and serves a
-// branded fallback page that auto-refreshes once the server is reachable.
+// Caches the app shell for offline use and serves a branded fallback
+// when the dev server is unreachable.
+
+const CACHE_VERSION = "v1";
+const CACHE_NAME = `cline-pwa-${CACHE_VERSION}`;
 
 const FALLBACK_HTML = `<!doctype html>
 <html lang="en">
@@ -63,19 +66,85 @@ const FALLBACK_HTML = `<!doctype html>
 </body>
 </html>`;
 
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+// App shell URLs to precache on install.
+// Vite-generated assets have content hashes so they're safe to cache long-term.
+// index.html is fetched network-first at runtime, but we cache a copy as fallback.
+const APP_SHELL_URLS = ["/", "/manifest.json", "/assets/icon-192.png", "/assets/icon-512.png"];
+
+self.addEventListener("install", (event) => {
+	event.waitUntil(
+		caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_URLS))
+	);
+	self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+	// Clean up old caches from previous versions.
+	event.waitUntil(
+		caches.keys().then((keys) =>
+			Promise.all(
+				keys
+					.filter((key) => key.startsWith("cline-pwa-") && key !== CACHE_NAME)
+					.map((key) => caches.delete(key))
+			)
+		)
+	);
+	self.clients.claim();
+});
 
 self.addEventListener("fetch", (event) => {
-  // Only intercept navigation requests (page loads), not API calls or assets.
-  if (event.request.mode !== "navigate") return;
+	const { request } = event;
+	const url = new URL(request.url);
 
-  event.respondWith(
-    fetch(event.request).catch(() =>
-      new Response(FALLBACK_HTML, {
-        status: 503,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      })
-    )
-  );
+	// Only handle same-origin requests.
+	if (url.origin !== self.location.origin) return;
+
+	// Navigation requests: network-first, fall back to cached index.html, then fallback page.
+	if (request.mode === "navigate") {
+		event.respondWith(
+			fetch(request)
+				.then((response) => {
+					// Cache a fresh copy of index.html on successful navigation.
+					const clone = response.clone();
+					caches.open(CACHE_NAME).then((cache) => cache.put("/", clone));
+					return response;
+				})
+				.catch(() =>
+					caches.match("/").then(
+						(cached) =>
+							cached ||
+							new Response(FALLBACK_HTML, {
+								status: 503,
+								headers: { "Content-Type": "text/html; charset=utf-8" },
+							})
+					)
+				)
+		);
+		return;
+	}
+
+	// Static assets (JS, CSS, images, fonts): cache-first.
+	// Vite hashes filenames, so cached versions are inherently correct.
+	if (
+		request.destination === "script" ||
+		request.destination === "style" ||
+		request.destination === "image" ||
+		request.destination === "font" ||
+		url.pathname.startsWith("/assets/")
+	) {
+		event.respondWith(
+			caches.match(request).then(
+				(cached) =>
+					cached ||
+					fetch(request).then((response) => {
+						const clone = response.clone();
+						caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+						return response;
+					})
+			)
+		);
+		return;
+	}
+
+	// Everything else (API calls, etc.): network only, no caching.
 });
