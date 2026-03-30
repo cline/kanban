@@ -1,4 +1,4 @@
-import type { ReactElement, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { ReactElement, MouseEvent as ReactMouseEvent, ReactNode, TouchEvent as ReactTouchEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
@@ -96,18 +96,45 @@ export function ResizableBottomPane({
 		}
 		stopDrag();
 	}, [isDragging, stopDrag]);
+	const handleTouchMove = useCallback(
+		(event: TouchEvent) => {
+			if (!isDragging) {
+				return;
+			}
+			event.preventDefault();
+			const touch = event.touches[0];
+			if (!touch) {
+				return;
+			}
+			const dragState = dragStateRef.current;
+			if (!dragState) {
+				return;
+			}
+			const deltaY = touch.clientY - dragState.startY;
+			const nextHeight = clampHeight(dragState.startHeight - deltaY, minHeight);
+			setHeight(nextHeight);
+		},
+		[isDragging, minHeight],
+	);
+
+	const handleTouchEnd = useCallback(() => {
+		if (!isDragging) {
+			return;
+		}
+		stopDrag();
+	}, [isDragging, stopDrag]);
+
 	useWindowEvent("mousemove", isDragging ? handleMouseMove : null);
 	useWindowEvent("mouseup", isDragging ? handleMouseUp : null);
+	useWindowEvent("touchmove", isDragging ? handleTouchMove : null, { passive: false });
+	useWindowEvent("touchend", isDragging ? handleTouchEnd : null);
 
-	const handleResizeMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			event.preventDefault();
+	const startDragFromPoint = useCallback(
+		(clientY: number) => {
 			if (isDragging) {
 				stopDrag();
 			}
-			const startY = event.clientY;
-			const startHeight = height;
-			dragStateRef.current = { startY, startHeight };
+			dragStateRef.current = { startY: clientY, startHeight: height };
 			setIsDragging(true);
 
 			previousBodyStyleRef.current = {
@@ -118,6 +145,25 @@ export function ResizableBottomPane({
 			document.body.style.cursor = "ns-resize";
 		},
 		[height, isDragging, stopDrag],
+	);
+
+	const handleResizeMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			startDragFromPoint(event.clientY);
+		},
+		[startDragFromPoint],
+	);
+
+	const handleResizeTouchStart = useCallback(
+		(event: ReactTouchEvent<HTMLDivElement>) => {
+			const touch = event.touches[0];
+			if (!touch) {
+				return;
+			}
+			startDragFromPoint(touch.clientY);
+		},
+		[startDragFromPoint],
 	);
 
 	return (
@@ -138,12 +184,13 @@ export function ResizableBottomPane({
 				aria-orientation="horizontal"
 				aria-label="Resize terminal pane"
 				onMouseDown={handleResizeMouseDown}
+				onTouchStart={handleResizeTouchStart}
 				style={{
 					position: "absolute",
-					top: 0,
+					top: -10,
 					left: 0,
 					right: 0,
-					height: 10,
+					height: 22,
 					cursor: "ns-resize",
 					zIndex: 2,
 				}}

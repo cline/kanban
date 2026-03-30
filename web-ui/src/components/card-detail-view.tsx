@@ -1,6 +1,6 @@
 import type { DropResult } from "@hello-pangea/dnd";
 import { Files, GitCompareArrows, Maximize2, MessageSquare, Minimize2, Terminal, X } from "lucide-react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode, TouchEvent as ReactTouchEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
@@ -399,12 +399,42 @@ export function CardDetailView({
 		stopResize();
 	}, [isResizing, stopResize]);
 
+	const handleResizeTouchMove = useCallback(
+		(event: TouchEvent) => {
+			const dragState = resizeDragRef.current;
+			if (!isResizing || !dragState) {
+				return;
+			}
+			event.preventDefault();
+			const touch = event.touches[0];
+			if (!touch) {
+				return;
+			}
+			const deltaX = touch.clientX - dragState.startX;
+			const deltaRatio = deltaX / dragState.containerWidth;
+			const nextRatio = Math.max(
+				MIN_AGENT_PANEL_RATIO,
+				Math.min(MAX_AGENT_PANEL_RATIO, dragState.startRatio + deltaRatio),
+			);
+			setAgentPanelRatio(nextRatio);
+		},
+		[isResizing],
+	);
+
+	const handleResizeTouchEnd = useCallback(() => {
+		if (!isResizing) {
+			return;
+		}
+		stopResize();
+	}, [isResizing, stopResize]);
+
 	useWindowEvent("mousemove", isResizing ? handleResizeMouseMove : null);
 	useWindowEvent("mouseup", isResizing ? handleResizeMouseUp : null);
+	useWindowEvent("touchmove", isResizing ? handleResizeTouchMove : null, { passive: false });
+	useWindowEvent("touchend", isResizing ? handleResizeTouchEnd : null);
 
-	const handleSeparatorMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			event.preventDefault();
+	const startResizeFromPoint = useCallback(
+		(clientX: number) => {
 			if (isResizing) {
 				stopResize();
 			}
@@ -413,7 +443,7 @@ export function CardDetailView({
 				return;
 			}
 			resizeDragRef.current = {
-				startX: event.clientX,
+				startX: clientX,
 				startRatio: agentPanelRatio,
 				containerWidth: container.offsetWidth,
 			};
@@ -426,6 +456,25 @@ export function CardDetailView({
 			document.body.style.cursor = "ew-resize";
 		},
 		[agentPanelRatio, isResizing, stopResize],
+	);
+
+	const handleSeparatorMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			startResizeFromPoint(event.clientX);
+		},
+		[startResizeFromPoint],
+	);
+
+	const handleSeparatorTouchStart = useCallback(
+		(event: ReactTouchEvent<HTMLDivElement>) => {
+			const touch = event.touches[0];
+			if (!touch) {
+				return;
+			}
+			startResizeFromPoint(touch.clientX);
+		},
+		[startResizeFromPoint],
 	);
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
 	const lastTurnViewKey =
@@ -820,11 +869,12 @@ export function CardDetailView({
 								>
 									<div
 										onMouseDown={handleSeparatorMouseDown}
+										onTouchStart={handleSeparatorTouchStart}
 										className="hover:bg-accent/30"
 										style={{
 											position: "absolute",
-											left: -2,
-											right: -2,
+											left: -10,
+											right: -10,
 											top: 0,
 											bottom: 0,
 											cursor: "ew-resize",

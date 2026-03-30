@@ -1,7 +1,15 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, Plus } from "lucide-react";
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+	type MouseEvent as ReactMouseEvent,
+	type ReactNode,
+	type TouchEvent as ReactTouchEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
@@ -181,16 +189,54 @@ export function ProjectNavigationPanel({
 		stopDrag();
 	}, [isDragging, stopDrag]);
 
+	const handleTouchMove = useCallback(
+		(event: TouchEvent) => {
+			if (!isDragging) {
+				return;
+			}
+			event.preventDefault();
+			const touch = event.touches[0];
+			if (!touch) {
+				return;
+			}
+			const dragState = dragRef.current;
+			if (!dragState) {
+				return;
+			}
+			const delta = touch.clientX - dragState.startX;
+			const newWidth = dragState.startWidth + delta;
+			if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
+				if (!isCollapsed) {
+					setSidebarCollapsed(true);
+				}
+				return;
+			}
+			if (isCollapsed) {
+				setSidebarCollapsed(false);
+			}
+			setExpandedSidebarWidth(newWidth);
+		},
+		[isCollapsed, isDragging, setExpandedSidebarWidth, setSidebarCollapsed],
+	);
+
+	const handleTouchEnd = useCallback(() => {
+		if (!isDragging) {
+			return;
+		}
+		stopDrag();
+	}, [isDragging, stopDrag]);
+
 	useWindowEvent("mousemove", isDragging ? handleMouseMove : null);
 	useWindowEvent("mouseup", isDragging ? handleMouseUp : null);
+	useWindowEvent("touchmove", isDragging ? handleTouchMove : null, { passive: false });
+	useWindowEvent("touchend", isDragging ? handleTouchEnd : null);
 
-	const startDrag = useCallback(
-		(e: ReactMouseEvent) => {
-			e.preventDefault();
+	const startDragFromPoint = useCallback(
+		(clientX: number) => {
 			if (isDragging) {
 				stopDrag();
 			}
-			dragRef.current = { startX: e.clientX, startWidth: isCollapsed ? COLLAPSED_WIDTH : sidebarWidth };
+			dragRef.current = { startX: clientX, startWidth: isCollapsed ? COLLAPSED_WIDTH : sidebarWidth };
 			setIsDragging(true);
 			previousBodyStyleRef.current = {
 				userSelect: document.body.style.userSelect,
@@ -200,6 +246,25 @@ export function ProjectNavigationPanel({
 			document.body.style.cursor = "ew-resize";
 		},
 		[isCollapsed, isDragging, sidebarWidth, stopDrag],
+	);
+
+	const startDrag = useCallback(
+		(e: ReactMouseEvent) => {
+			e.preventDefault();
+			startDragFromPoint(e.clientX);
+		},
+		[startDragFromPoint],
+	);
+
+	const startDragTouch = useCallback(
+		(e: ReactTouchEvent) => {
+			const touch = e.touches[0];
+			if (!touch) {
+				return;
+			}
+			startDragFromPoint(touch.clientX);
+		},
+		[startDragFromPoint],
 	);
 
 	if (isCollapsed) {
@@ -281,7 +346,8 @@ export function ProjectNavigationPanel({
 					aria-orientation="vertical"
 					aria-label="Resize sidebar"
 					onMouseDown={startDrag}
-					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
+					onTouchStart={startDragTouch}
+					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20 before:content-[''] before:absolute before:inset-y-0 before:-left-5 before:-right-5"
 				/>
 			)}
 			<div style={{ padding: "12px 12px 8px" }}>
