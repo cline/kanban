@@ -29,7 +29,10 @@ function normalizeLogPath(): string {
 
 function isLoggingEnabled(): boolean {
 	const configured = process.env.CLINE_LOG_ENABLED?.trim().toLowerCase();
-	return configured !== "0" && configured !== "false";
+	if (configured === undefined) {
+		return false;
+	}
+	return configured === "1" || configured === "true" || configured === "yes" || configured === "on";
 }
 
 function safeSerializeMetadata(metadata: Record<string, unknown> | undefined): string | undefined {
