@@ -25,12 +25,25 @@ import {
 	type OcaOAuthProviderOptions,
 	ProviderSettingsManager,
 } from "@clinebot/core/node";
-import { LlmsProviders, LlmsModels as llmsModels } from "@clinebot/llms";
+import { LlmsModels, LlmsProviders } from "@clinebot/llms";
+
+// Register models not yet in the generated @clinebot/llms catalog.
+// Remove entries here once the upstream package includes them.
+// Ref: https://github.com/cline/cline/pull/10050
+LlmsModels.registerModel("zai", "glm-5.1", {
+	id: "glm-5.1",
+	name: "GLM-5.1",
+	contextWindow: 204_800,
+	maxTokens: 131_072,
+	capabilities: ["tools", "reasoning", "temperature"],
+	pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	releaseDate: "2026-03-29",
+});
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
 export const SDK_DEFAULT_PROVIDER_ID = "cline";
-export const SDK_DEFAULT_MODEL_ID = llmsModels.CLINE_DEFAULT_MODEL;
+export const SDK_DEFAULT_MODEL_ID = LlmsModels.CLINE_DEFAULT_MODEL;
 
 export interface ManagedOauthCredentials {
 	access: string;
@@ -229,12 +242,12 @@ export async function loginManagedOauthProvider(input: {
 
 export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
 	await ensureCustomProvidersLoaded(providerManager);
-	return await llmsModels.getAllProviders();
+	return await LlmsModels.getAllProviders();
 }
 
 export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
 	await ensureCustomProvidersLoaded(providerManager);
-	return await llmsModels.getModelsForProvider(providerId);
+	return await LlmsModels.getModelsForProvider(providerId);
 }
 
 export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): boolean {

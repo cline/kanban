@@ -91,6 +91,7 @@ vi.mock("@clinebot/core/node", () => ({
 
 vi.mock("@clinebot/llms", () => ({
 	LlmsModels: {
+		registerModel: vi.fn(),
 		CLINE_DEFAULT_MODEL: "anthropic/claude-sonnet-4.6",
 		getAllProviders: llmsModelMocks.getAllProviders,
 		getModelsForProvider: llmsModelMocks.getModelsForProvider,
