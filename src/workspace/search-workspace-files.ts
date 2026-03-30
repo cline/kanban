@@ -88,12 +88,16 @@ async function loadFileIndex(cwd: string): Promise<{ files: string[]; changedPat
 
 	try {
 		const [filesResult, statusResult] = await Promise.all([
-			execFileAsync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
-				cwd,
-				maxBuffer: 8 * 1024 * 1024,
-				env: createGitProcessEnv(),
-			}),
-			execFileAsync("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
+			execFileAsync(
+				"git",
+				["-c", "core.quotepath=false", "ls-files", "--cached", "--others", "--exclude-standard"],
+				{
+					cwd,
+					maxBuffer: 8 * 1024 * 1024,
+					env: createGitProcessEnv(),
+				},
+			),
+			execFileAsync("git", ["-c", "core.quotepath=false", "status", "--porcelain=v1", "--untracked-files=all"], {
 				cwd,
 				maxBuffer: 8 * 1024 * 1024,
 				env: createGitProcessEnv(),

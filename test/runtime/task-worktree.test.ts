@@ -71,17 +71,30 @@ function createGitError(message: string): NodeJS.ErrnoException & { stdout: stri
 	return error as NodeJS.ErrnoException & { stdout: string; stderr: string; code: number };
 }
 
+function stripConfigFlags(args: readonly string[]): string[] {
+	const result: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === "-c" && i + 1 < args.length) {
+			i += 1;
+			continue;
+		}
+		result.push(args[i] as string);
+	}
+	return result;
+}
+
 function getCommandArgs(args: readonly string[], options?: ExecFileOptions): { cwd: string; command: string[] } {
-	if (args[0] === "-C" && typeof args[1] === "string") {
+	const cleaned = stripConfigFlags(args);
+	if (cleaned[0] === "-C" && typeof cleaned[1] === "string") {
 		return {
-			cwd: args[1],
-			command: args.slice(2),
+			cwd: cleaned[1],
+			command: cleaned.slice(2),
 		};
 	}
 	if (typeof options?.cwd === "string") {
 		return {
 			cwd: options.cwd,
-			command: [...args],
+			command: cleaned,
 		};
 	}
 	throw new Error(`Unexpected git args: ${args.join(" ")}`);
