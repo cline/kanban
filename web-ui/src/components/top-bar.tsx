@@ -1,5 +1,6 @@
 import * as RadixPopover from "@radix-ui/react-popover";
 import {
+	Activity,
 	ArrowDown,
 	ArrowLeft,
 	ArrowUp,
@@ -292,6 +293,8 @@ export function TopBar({
 	isTerminalLoading,
 	onToggleGitHistory,
 	isGitHistoryOpen,
+	onToggleJobsDashboard,
+	isJobsDashboardOpen,
 	onOpenSettings,
 	showDebugButton,
 	onOpenDebugDialog,
@@ -326,6 +329,8 @@ export function TopBar({
 	isTerminalLoading?: boolean;
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
+	onToggleJobsDashboard?: () => void;
+	isJobsDashboardOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
 	showDebugButton?: boolean;
 	onOpenDebugDialog?: () => void;
@@ -598,6 +603,17 @@ export function TopBar({
 							aria-label="Debug"
 							data-testid="open-debug-dialog-button"
 							className="ml-0.5 mr-0.5"
+						/>
+					) : null}
+					{onToggleJobsDashboard ? (
+						<Button
+							variant={isJobsDashboardOpen ? "primary" : "ghost"}
+							size="sm"
+							icon={<Activity size={16} />}
+							onClick={onToggleJobsDashboard}
+							aria-label={isJobsDashboardOpen ? "Close job queue" : "Open job queue"}
+							data-testid="toggle-jobs-dashboard-button"
+							className={cn("ml-0.5 mr-0.5", isJobsDashboardOpen ? "ring-1 ring-accent" : "")}
 						/>
 					) : null}
 					<Button

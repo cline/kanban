@@ -97,6 +97,12 @@ export const runtimeBoardCardSchema = z.object({
 	baseRef: z.string(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
+	/** Unix-ms timestamp when this card was submitted to the job queue for deferred start. */
+	scheduledAt: z.number().nullable().optional(),
+	/** Job-queue job ID that will start this task when the scheduled time arrives. */
+	scheduledJobId: z.string().nullable().optional(),
+	/** Unix-ms timestamp when the job is due to fire. */
+	scheduledDueAt: z.number().nullable().optional(),
 });
 export type RuntimeBoardCard = z.infer<typeof runtimeBoardCardSchema>;
 

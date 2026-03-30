@@ -17,6 +17,11 @@ import type {
 	RuntimeWorkspaceStateResponse,
 } from "@/runtime/types";
 
+export interface JobQueueStatus {
+	sidecarRunning: boolean;
+	health: Record<string, unknown> | null;
+}
+
 const STREAM_RECONNECT_BASE_DELAY_MS = 500;
 const STREAM_RECONNECT_MAX_DELAY_MS = 5_000;
 
@@ -56,6 +61,7 @@ export interface UseRuntimeStateStreamResult {
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestMcpAuthStatuses: RuntimeClineMcpServerAuthStatus[] | null;
 	clineSessionContextVersion: number;
+	jobQueueStatus: JobQueueStatus | null;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -71,6 +77,7 @@ interface RuntimeStateStreamStore {
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestMcpAuthStatuses: RuntimeClineMcpServerAuthStatus[] | null;
 	clineSessionContextVersion: number;
+	jobQueueStatus: JobQueueStatus | null;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -93,6 +100,7 @@ type RuntimeStateStreamAction =
 	| { type: "cline_session_context_updated"; payload: RuntimeStateStreamClineSessionContextUpdatedMessage }
 	| { type: "workspace_state_updated"; workspaceState: RuntimeWorkspaceStateResponse }
 	| { type: "task_sessions_updated"; summaries: RuntimeTaskSessionSummary[] }
+	| { type: "job_queue_status_updated"; status: JobQueueStatus }
 	| { type: "stream_error"; message: string }
 	| { type: "stream_disconnected"; message: string };
 
@@ -107,6 +115,7 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		latestTaskReadyForReview: null,
 		latestMcpAuthStatuses: null,
 		clineSessionContextVersion: 0,
+		jobQueueStatus: null,
 		streamError: null,
 		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
@@ -191,6 +200,7 @@ function runtimeStateStreamReducer(
 			latestTaskReadyForReview: state.latestTaskReadyForReview,
 			latestMcpAuthStatuses: state.latestMcpAuthStatuses,
 			clineSessionContextVersion: action.payload.clineSessionContextVersion,
+			jobQueueStatus: state.jobQueueStatus,
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: true,
@@ -276,6 +286,12 @@ function runtimeStateStreamReducer(
 				...state.workspaceState,
 				sessions: mergeTaskSessionSummaries(state.workspaceState.sessions, action.summaries),
 			},
+		};
+	}
+	if (action.type === "job_queue_status_updated") {
+		return {
+			...state,
+			jobQueueStatus: action.status,
 		};
 	}
 	if (action.type === "stream_error") {
@@ -457,6 +473,16 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 						});
 						return;
 					}
+					if (payload.type === "job_queue_status_updated") {
+						dispatch({
+							type: "job_queue_status_updated",
+							status: {
+								sidecarRunning: payload.sidecarRunning,
+								health: payload.health as Record<string, unknown> | null,
+							},
+						});
+						return;
+					}
 					if (payload.type === "error") {
 						dispatch({
 							type: "stream_error",
@@ -509,6 +535,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		latestTaskReadyForReview: state.latestTaskReadyForReview,
 		latestMcpAuthStatuses: state.latestMcpAuthStatuses,
 		clineSessionContextVersion: state.clineSessionContextVersion,
+		jobQueueStatus: state.jobQueueStatus,
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,

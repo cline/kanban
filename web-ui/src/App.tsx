@@ -11,6 +11,7 @@ import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
+import { JobsDashboard } from "@/components/jobs-dashboard";
 import { KanbanBoard } from "@/components/kanban-board";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
@@ -85,6 +86,7 @@ export default function App(): ReactElement {
 	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [isJobsDashboardOpen, setIsJobsDashboardOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
@@ -119,6 +121,7 @@ export default function App(): ReactElement {
 		handleRemoveProject,
 		pendingGitInitializationPath,
 		isInitializingGitProject,
+		jobQueueStatus,
 		resetProjectNavigationState,
 	} = useProjectNavigation({
 		onProjectSwitchStart: handleProjectSwitchStart,
@@ -545,6 +548,9 @@ export default function App(): ReactElement {
 	const handleCloseGitHistory = useCallback(() => {
 		setIsGitHistoryOpen(false);
 	}, []);
+	const handleToggleJobsDashboard = useCallback(() => {
+		setIsJobsDashboardOpen((current) => !current);
+	}, []);
 
 	const {
 		handleProgrammaticCardMoveReady,
@@ -813,6 +819,8 @@ export default function App(): ReactElement {
 					isOpeningWorkspace={isOpeningWorkspace}
 					onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
 					isGitHistoryOpen={isGitHistoryOpen}
+					onToggleJobsDashboard={handleToggleJobsDashboard}
+					isJobsDashboardOpen={isJobsDashboardOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 				/>
 				<div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -846,7 +854,9 @@ export default function App(): ReactElement {
 						) : (
 							<div className="flex flex-1 flex-col min-h-0 min-w-0">
 								<div className="flex flex-1 min-h-0 min-w-0">
-									{isGitHistoryOpen ? (
+									{isJobsDashboardOpen ? (
+										<JobsDashboard jobQueueStatus={jobQueueStatus} workspaceId={currentProjectId} />
+									) : isGitHistoryOpen ? (
 										<GitHistoryView
 											workspaceId={currentProjectId}
 											gitHistory={gitHistory}
