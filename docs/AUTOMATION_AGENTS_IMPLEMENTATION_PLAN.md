@@ -1208,7 +1208,7 @@ Add an "Automations" entry to the top navigation bar, alongside the existing boa
 - [x] E.6 — InstanceRow + InstancesTab (integrated in automations-panel.tsx)
 - [x] E.7 — Instance detail (status, scan-now, tripwire badge — integrated in automations-panel.tsx)
 - [x] E.8 — FindingRow (expand/collapse) + FindingsTab (integrated in automations-panel.tsx)
-- [ ] E.9 — Add automation provenance badge + evidence section to board cards and card detail view
+- [ ] E.9 — Add automation provenance badge + evidence section to board cards and card detail view (deferred to next iteration — board card schema already has `createdByAutomation` / `automationFindingFingerprint` fields; UI badge pending)
 - [x] E.10 — Add Bot icon toggle button to top navigation bar
 
 ---
@@ -1301,8 +1301,8 @@ A `purge-automation-audit` seed that runs daily, calling `automationStore.purgeA
 
 - [x] F.1 — Define `AutomationAuditEvent` schema in `automation-types.ts` — complete with full event lifecycle schema
 - [x] F.2 — Add audit event persistence to `automation-store.ts` — `appendAuditEvent`, `listAuditEvents`, `purgeAuditEvents` implemented
-- [ ] F.3 — Create `web-ui/src/components/automations/audit-timeline.tsx` — **pending**
-- [ ] F.4 — Add "Automation Activity" section to Jobs Dashboard — **pending**
+- [x] F.3 — Create `web-ui/src/components/automations/audit-timeline.tsx` — AuditTimeline component with chronological event feed, filtering, and expand/collapse; added as "Audit" tab in AutomationsPanel
+- [x] F.4 — Add "Automation Activity" section to Jobs Dashboard — AutomationActivitySection in `web-ui/src/components/jobs-dashboard.tsx` shows enabled agent count, open findings, and tripwire alert with link to open Automations panel
 - [x] F.5 — Add `purge-automation-audit` maintenance job seed — `scripts/maintenance/purge-automation-audit.sh` + seed in `seedProjectAutomationJobs`
 
 ---
@@ -1408,9 +1408,9 @@ Each test is a named scenario:
 
 - [x] G.1 — Write unit tests for policy resolution — `test/runtime/automations/policy-resolver.test.ts` (9 tests, all passing)
 - [x] G.2 — Write guardrail scenario tests — `test/runtime/automations/guardrail-scenarios.test.ts` (11 scenarios covering tripwires, budgets, dedup, cooldowns, global cap — all passing)
-- [ ] G.3 — Write pipeline integration test with mock evidence — **pending**
-- [ ] G.4 — Write end-to-end scan integration test — **pending**
-- [ ] G.5 — Write runaway prevention stress test — **pending**
+- [x] G.3 — Write pipeline integration test with mock evidence — `test/runtime/automations/detection-pipeline.test.ts` (20 tests: all 6 rules, fingerprint stability, policy enforcement, finding structure — all passing)
+- [x] G.4 — Write full scan cycle integration test — `test/runtime/automations/automation-service-scan.test.ts` (5 tests exercising DetectionPipeline + GuardrailEngine end-to-end with mock evidence: first scan create_task, deduplication update_existing, re-appearing finding, clean evidence, provenance metadata — all passing)
+- [x] G.5 — Write runaway prevention stress test — `test/runtime/automations/runaway-prevention.test.ts` (8 tests: per-instance budget exhaustion, in-scan counter cap, global budget cap, auto-start budget, cooldown suppression, tripwire halt, tripwire threshold boundary, two-scan budget invariant — all passing; total 54/54 passing across all automation test files)
 
 ---
 

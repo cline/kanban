@@ -6,6 +6,7 @@
 import {
 	Activity,
 	AlertCircle,
+	Bot,
 	CheckCircle2,
 	Clock,
 	Cpu,
@@ -13,6 +14,7 @@ import {
 	Pause,
 	Play,
 	RefreshCw,
+	ShieldAlert,
 	XCircle,
 } from "lucide-react";
 import type { ReactElement } from "react";
@@ -20,7 +22,7 @@ import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { JobQueueStatus } from "@/runtime/use-runtime-state-stream";
+import type { AutomationStatus, JobQueueStatus } from "@/runtime/use-runtime-state-stream";
 
 // ─── Helper types from the job queue sidecar JSON output ──────────────────────
 
@@ -176,12 +178,94 @@ function AdminControls({
 
 // ─── Main dashboard ────────────────────────────────────────────────────────────
 
+// ─── Automation Activity section ──────────────────────────────────────────────
+
+function AutomationActivitySection({
+	automationStatus,
+	onOpenAutomationsPanel,
+}: {
+	automationStatus: AutomationStatus | null;
+	onOpenAutomationsPanel?: () => void;
+}): ReactElement {
+	const hasData = automationStatus !== null;
+	const enabledCount = automationStatus?.enabledInstancesCount ?? 0;
+	const openFindings = automationStatus?.openFindingsCount ?? 0;
+	const tripwiredCount = automationStatus?.recentlyDisabledInstanceIds.length ?? 0;
+
+	return (
+		<div className="flex flex-col gap-2">
+			<p className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+				<Bot size={12} />
+				Automation Agents
+			</p>
+			<div className="rounded-lg border border-border bg-surface-1 px-4 py-3">
+				{!hasData ? (
+					<p className="text-xs text-text-tertiary">No automation status received yet.</p>
+				) : (
+					<div className="flex flex-col gap-2">
+						<div className="flex items-center gap-4">
+							<div className="flex flex-col gap-0.5">
+								<span className="text-[11px] uppercase tracking-wide text-text-tertiary">Active agents</span>
+								<span className="text-lg font-semibold tabular-nums text-status-blue">{enabledCount}</span>
+							</div>
+							<div className="flex flex-col gap-0.5">
+								<span className="text-[11px] uppercase tracking-wide text-text-tertiary">Open findings</span>
+								<span
+									className={cn(
+										"text-lg font-semibold tabular-nums",
+										openFindings > 0 ? "text-status-gold" : "text-text-secondary",
+									)}
+								>
+									{openFindings}
+								</span>
+							</div>
+							{tripwiredCount > 0 && (
+								<div className="flex flex-col gap-0.5">
+									<span className="text-[11px] uppercase tracking-wide text-text-tertiary">Halted</span>
+									<span className="text-lg font-semibold tabular-nums text-status-red">{tripwiredCount}</span>
+								</div>
+							)}
+						</div>
+						{tripwiredCount > 0 && (
+							<div className="flex items-center gap-1.5 rounded-md bg-status-red/10 px-2.5 py-1.5 text-xs text-status-red">
+								<ShieldAlert size={11} />
+								<span>
+									{tripwiredCount} agent{tripwiredCount !== 1 ? "s" : ""} halted by tripwire — open Automation
+									Agents panel to review.
+								</span>
+							</div>
+						)}
+						{onOpenAutomationsPanel && (
+							<Button
+								size="sm"
+								variant="ghost"
+								icon={<Bot size={12} />}
+								onClick={onOpenAutomationsPanel}
+								className="self-start text-text-tertiary hover:text-text-primary"
+							>
+								Open Automation Agents panel
+							</Button>
+						)}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
 export interface JobsDashboardProps {
 	jobQueueStatus: JobQueueStatus | null;
 	workspaceId: string | null;
+	automationStatus?: AutomationStatus | null;
+	onOpenAutomationsPanel?: () => void;
 }
 
-export function JobsDashboard({ jobQueueStatus, workspaceId }: JobsDashboardProps): ReactElement {
+export function JobsDashboard({
+	jobQueueStatus,
+	workspaceId,
+	automationStatus,
+	onOpenAutomationsPanel,
+}: JobsDashboardProps): ReactElement {
 	const [refreshNonce, setRefreshNonce] = useState(0);
 	const handleRefresh = useCallback(() => setRefreshNonce((n) => n + 1), []);
 
@@ -258,6 +342,12 @@ export function JobsDashboard({ jobQueueStatus, workspaceId }: JobsDashboardProp
 					</div>
 				</>
 			)}
+
+			{/* Automation activity — always visible regardless of sidecar state */}
+			<AutomationActivitySection
+				automationStatus={automationStatus ?? null}
+				onOpenAutomationsPanel={onOpenAutomationsPanel}
+			/>
 		</div>
 	);
 }

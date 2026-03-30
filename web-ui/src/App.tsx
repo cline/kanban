@@ -952,7 +952,15 @@ export default function App(): ReactElement {
 									{isAutomationsPanelOpen ? (
 										<AutomationsPanel automationStatus={automationStatus} workspaceId={currentProjectId} />
 									) : isJobsDashboardOpen ? (
-										<JobsDashboard jobQueueStatus={jobQueueStatus} workspaceId={currentProjectId} />
+										<JobsDashboard
+											jobQueueStatus={jobQueueStatus}
+											workspaceId={currentProjectId}
+											automationStatus={automationStatus}
+											onOpenAutomationsPanel={() => {
+												setIsJobsDashboardOpen(false);
+												setIsAutomationsPanelOpen(true);
+											}}
+										/>
 									) : isGitHistoryOpen ? (
 										<GitHistoryView
 											workspaceId={currentProjectId}

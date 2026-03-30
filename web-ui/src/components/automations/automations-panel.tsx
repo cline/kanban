@@ -26,6 +26,7 @@ import {
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useState } from "react";
 
+import { AuditTimeline } from "@/components/automations/audit-timeline";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -92,7 +93,7 @@ interface AutomationTemplate {
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = "instances" | "findings" | "templates";
+type Tab = "instances" | "findings" | "templates" | "audit";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -616,7 +617,7 @@ export function AutomationsPanel({ automationStatus, workspaceId }: AutomationsP
 
 			{/* Tab bar */}
 			<div className="flex shrink-0 border-b border-border px-4">
-				{(["instances", "findings", "templates"] as Tab[]).map((tab) => (
+				{(["instances", "findings", "templates", "audit"] as Tab[]).map((tab) => (
 					<button
 						key={tab}
 						type="button"
@@ -660,6 +661,8 @@ export function AutomationsPanel({ automationStatus, workspaceId }: AutomationsP
 					/>
 				) : activeTab === "findings" ? (
 					<FindingsTab findings={openFindings} onSuppress={handleSuppress} />
+				) : activeTab === "audit" ? (
+					<AuditTimeline workspaceId={workspaceId} />
 				) : (
 					<TemplatesTab
 						templates={templates}
