@@ -163,6 +163,8 @@ function parseArgs(argv) {
 	let skipBuild = false;
 	/** @type {string[]} Unrecognized flags forwarded to the Kanban CLI */
 	const passthrough = [];
+	/** Flags whose values are file paths that must be resolved to absolute before forwarding */
+	const pathValueFlags = new Set(["--cert", "--key"]);
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -215,6 +217,23 @@ function parseArgs(argv) {
 		}
 		if (arg === "--skip-build") {
 			skipBuild = true;
+			continue;
+		}
+		// Resolve file-path values to absolute so they survive cwd changes
+		if (pathValueFlags.has(arg)) {
+			const value = argv[index + 1];
+			if (!value) {
+				throw new Error(`Missing value for ${arg}.`);
+			}
+			passthrough.push(arg, resolve(value));
+			index += 1;
+			continue;
+		}
+		if (Array.from(pathValueFlags).some((f) => arg.startsWith(`${f}=`))) {
+			const eqIdx = arg.indexOf("=");
+			const flag = arg.slice(0, eqIdx);
+			const value = arg.slice(eqIdx + 1);
+			passthrough.push(`${flag}=${resolve(value)}`);
 			continue;
 		}
 		// Collect unrecognized flags to forward to the Kanban CLI

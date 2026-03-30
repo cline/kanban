@@ -1,6 +1,8 @@
-import { spawn, spawnSync } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
+import { join, resolve } from "node:path";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
@@ -20,9 +22,11 @@ import {
 	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
+	getRuntimeFetch,
 	parseRuntimePort,
 	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
+	setKanbanRuntimeTls,
 } from "./core/runtime-endpoint";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
@@ -34,6 +38,9 @@ interface CliOptions {
 	skipShutdownCleanup: boolean;
 	host: string | null;
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
+	https: boolean;
+	cert: string | null;
+	key: string | null;
 }
 
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
@@ -58,6 +65,9 @@ interface RootCommandOptions {
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
 	skipShutdownCleanup?: boolean;
+	https?: boolean;
+	cert?: string;
+	key?: string;
 }
 
 type ShutdownIndicatorResult = "done" | "interrupted" | "failed";
@@ -75,8 +85,8 @@ interface ShutdownIndicator {
  * unexpected argument is treated as a command-style invocation instead.
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
-	const launchFlags = new Set(["--open", "--no-open", "--skip-shutdown-cleanup"]);
-	const launchOptionsWithValues = new Set(["--host", "--port", "--agent"]);
+	const launchFlags = new Set(["--open", "--no-open", "--skip-shutdown-cleanup", "--https"]);
+	const launchOptionsWithValues = new Set(["--host", "--port", "--agent", "--cert", "--key"]);
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -184,6 +194,66 @@ async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<n
 	return autoPort;
 }
 
+async function resolveRuntimeTls(options: CliOptions): Promise<boolean> {
+	const wantsHttps = options.https || options.cert !== null || options.key !== null;
+	if (!wantsHttps) {
+		return false;
+	}
+	if (options.cert !== null || options.key !== null) {
+		if (!options.cert || !options.key) {
+			throw new Error("Both --cert and --key must be provided together.");
+		}
+		const cert = readFileSync(resolve(options.cert), "utf8");
+		const key = readFileSync(resolve(options.key), "utf8");
+		setKanbanRuntimeTls({ cert, key });
+		return true;
+	}
+	const host = getKanbanRuntimeHost();
+	const altNames: Array<{ type: 1 | 2 | 6 | 7; value?: string; ip?: string }> = [];
+	if (/^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(":")) {
+		altNames.push({ type: 7, ip: host });
+	} else {
+		altNames.push({ type: 2, value: host });
+	}
+	if (host !== "localhost" && host !== "127.0.0.1") {
+		altNames.push({ type: 2, value: "localhost" });
+		altNames.push({ type: 7, ip: "127.0.0.1" });
+	}
+
+	let caCert: string | undefined;
+	let caKey: string | undefined;
+	try {
+		const caroot = execSync("mkcert -CAROOT", { encoding: "utf8" }).trim();
+		const caCertPath = join(caroot, "rootCA.pem");
+		const caKeyPath = join(caroot, "rootCA-key.pem");
+		if (existsSync(caCertPath) && existsSync(caKeyPath)) {
+			caCert = readFileSync(caCertPath, "utf8");
+			caKey = readFileSync(caKeyPath, "utf8");
+		}
+	} catch {
+		// mkcert not available — fall through to plain self-signed
+	}
+
+	const selfsigned = await import("selfsigned");
+	const notBeforeDate = new Date();
+	const notAfterDate = new Date(notBeforeDate.getTime() + 365 * 24 * 60 * 60 * 1000);
+	const pems = await selfsigned.generate([{ name: "commonName", value: host }], {
+		notBeforeDate,
+		notAfterDate,
+		keySize: 2048,
+		algorithm: "sha256",
+		extensions: [{ name: "subjectAltName", altNames }],
+		...(caCert && caKey ? { ca: { cert: caCert, key: caKey } } : {}),
+	});
+	setKanbanRuntimeTls({ cert: pems.cert, key: pems.private });
+	if (caCert) {
+		console.log("Generated HTTPS certificate signed by mkcert CA (browser-trusted).");
+	} else {
+		console.log("Generated self-signed HTTPS certificate (browser will show a warning).");
+	}
+	return true;
+}
+
 async function assertPathIsDirectory(path: string): Promise<void> {
 	const info = await stat(path);
 	if (!info.isDirectory()) {
@@ -225,7 +295,8 @@ async function canReachKanbanServer(workspaceId: string | null): Promise<boolean
 		if (workspaceId) {
 			headers["x-kanban-workspace-id"] = workspaceId;
 		}
-		const response = await fetch(buildKanbanRuntimeUrl("/api/trpc/projects.list"), {
+		const runtimeFetch = await getRuntimeFetch();
+		const response = await runtimeFetch(buildKanbanRuntimeUrl("/api/trpc/projects.list"), {
 			method: "GET",
 			headers,
 			signal: AbortSignal.timeout(1_500),
@@ -474,6 +545,11 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		console.log(`Using runtime port ${selectedPort}.`);
 	}
 
+	const httpsEnabled = await resolveRuntimeTls(options);
+	if (httpsEnabled) {
+		console.log(`HTTPS enabled on ${getKanbanRuntimeOrigin()}`);
+	}
+
 	autoUpdateOnStartup({
 		currentVersion: KANBAN_VERSION,
 	});
@@ -568,6 +644,9 @@ function createProgram(invocationArgs: string[]): Command {
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
+		.option("--https", "Enable HTTPS with an auto-generated self-signed certificate.")
+		.option("--cert <path>", "Path to a TLS certificate PEM file (implies HTTPS).")
+		.option("--key <path>", "Path to a TLS private key PEM file (implies HTTPS).")
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
 
@@ -590,6 +669,9 @@ function createProgram(invocationArgs: string[]): Command {
 				port: options.port ?? null,
 				noOpen: options.open === false,
 				skipShutdownCleanup: options.skipShutdownCleanup === true,
+				https: options.https === true,
+				cert: options.cert ?? null,
+				key: options.key ?? null,
 			},
 			shouldAutoOpenBrowser,
 		);
