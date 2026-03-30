@@ -8,23 +8,26 @@ import {
 	type ClineMcpToolBundle,
 	createClineMcpRuntimeService,
 } from "./cline-mcp-runtime-service";
+import { createKanbanClineLogger } from "./cline-runtime-logger";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
-import {
-	type ClineSdkPersistedMessage,
-	type ClineSdkSessionHost,
-	type ClineSdkSessionRecord,
-	type ClineSdkToolApprovalRequest,
-	type ClineSdkToolApprovalResult,
-	type ClineSdkUserInstructionWatcher,
-	createClineSdkSessionHost,
-} from "./sdk-runtime-boundary";
+import type {
+	ClineSdkPersistedMessage,
+	ClineSdkSessionHost,
+	ClineSdkSessionRecord,
+	ClineSdkStartSessionInput,
+	ClineSdkToolApprovalRequest,
+	ClineSdkToolApprovalResult,
+	ClineSdkUserInstructionWatcher,
+} from "./sdk-runtime-boundary.js";
+import { createClineSdkSessionHost } from "./session-host";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;
 interface ClineSessionHostBoundary {
-	start(input: Parameters<ClineSdkSessionHost["start"]>[0]): Promise<{ sessionId: string; result?: unknown }>;
+	start(input: ClineSdkStartSessionInput): Promise<{ sessionId: string; result?: unknown }>;
 	send(input: Parameters<ClineSdkSessionHost["send"]>[0]): Promise<unknown>;
 	stop(sessionId: string): Promise<void>;
 	abort(sessionId: string): Promise<void>;
+	delete(sessionId: string): Promise<boolean>;
 	dispose(reason?: string): Promise<void>;
 	get(sessionId: string): Promise<ClineSdkSessionRecord | undefined>;
 	list(limit?: number): Promise<ClineSdkSessionRecord[]>;
@@ -96,6 +99,7 @@ export interface ClineSessionRuntime {
 	resumeTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	stopTaskSession(taskId: string): Promise<void>;
 	abortTaskSession(taskId: string): Promise<void>;
+	clearTaskSessions(taskId: string): Promise<void>;
 	getTaskSessionId(taskId: string): string | null;
 	readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	dispose(): Promise<void>;
@@ -179,6 +183,13 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					enableAgentTeams: false,
 					maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
 					systemPrompt: request.systemPrompt,
+					logger: createKanbanClineLogger({
+						runtime: "kanban",
+						taskId: request.taskId,
+						requestedSessionId,
+						providerId: request.providerId,
+						modelId: request.modelId,
+					}),
 					...(mcpToolBundle && mcpToolBundle.tools.length > 0 ? { extraTools: mcpToolBundle.tools } : {}),
 				},
 				prompt: request.prompt,
@@ -284,6 +295,27 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		}
 		const sessionHost = await this.ensureSessionHost();
 		await sessionHost.abort(sessionId);
+		await this.releaseTaskMcpToolBundle(taskId);
+	}
+
+	async clearTaskSessions(taskId: string): Promise<void> {
+		const sessionHost = await this.ensureSessionHost();
+		const sessionIdPrefix = buildSessionIdPrefix(taskId);
+		const records = await sessionHost.list();
+		const matchingSessionIds = new Set(
+			records.filter((record) => record.sessionId.startsWith(sessionIdPrefix)).map((record) => record.sessionId),
+		);
+		const activeSessionId = this.sessionIdByTaskId.get(taskId);
+		if (activeSessionId) {
+			matchingSessionIds.add(activeSessionId);
+			await sessionHost.abort(activeSessionId).catch(() => undefined);
+		}
+
+		for (const sessionId of matchingSessionIds) {
+			await sessionHost.delete(sessionId).catch(() => false);
+			this.taskIdBySessionId.delete(sessionId);
+		}
+		this.clearTaskSessionBinding(taskId);
 		await this.releaseTaskMcpToolBundle(taskId);
 	}
 

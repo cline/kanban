@@ -363,6 +363,13 @@ export const runtimeStateStreamTaskChatMessageSchema = z.object({
 });
 export type RuntimeStateStreamTaskChatMessage = z.infer<typeof runtimeStateStreamTaskChatMessageSchema>;
 
+export const runtimeStateStreamTaskChatClearedMessageSchema = z.object({
+	type: z.literal("task_chat_cleared"),
+	workspaceId: z.string(),
+	taskId: z.string(),
+});
+export type RuntimeStateStreamTaskChatClearedMessage = z.infer<typeof runtimeStateStreamTaskChatClearedMessageSchema>;
+
 export const runtimeStateStreamMcpAuthUpdatedMessageSchema = z.object({
 	type: z.literal("mcp_auth_updated"),
 	statuses: z.array(runtimeClineMcpServerAuthStatusSchema),
@@ -391,6 +398,7 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamWorkspaceMetadataMessageSchema,
 	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamTaskChatMessageSchema,
+	runtimeStateStreamTaskChatClearedMessageSchema,
 	runtimeStateStreamMcpAuthUpdatedMessageSchema,
 	runtimeStateStreamClineSessionContextUpdatedMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
@@ -541,6 +549,9 @@ export const runtimeClineProviderCatalogItemSchema = z.object({
 	oauthSupported: z.boolean(),
 	enabled: z.boolean(),
 	defaultModelId: z.string().nullable(),
+	baseUrl: z.string().nullable(),
+	supportsBaseUrl: z.boolean(),
+	env: z.array(z.string()).optional(),
 });
 export type RuntimeClineProviderCatalogItem = z.infer<typeof runtimeClineProviderCatalogItemSchema>;
 

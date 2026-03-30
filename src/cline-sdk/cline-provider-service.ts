@@ -503,6 +503,9 @@ export function createClineProviderService() {
 							enabled:
 								selectedProviderId.length > 0 ? selectedProviderId === provider.id : provider.id === "cline",
 							defaultModelId: provider.defaultModelId ?? null,
+							baseUrl: provider.baseUrl?.trim() || null,
+							supportsBaseUrl: (provider.baseUrl?.trim().length ?? 0) > 0,
+							env: provider.env,
 						}))
 						.sort((left, right) => {
 							if (left.id === "cline") {
@@ -523,6 +526,9 @@ export function createClineProviderService() {
 					oauthSupported: false,
 					enabled: true,
 					defaultModelId: getProviderSettingsSummary().modelId,
+					baseUrl: getProviderSettingsSummary().baseUrl,
+					supportsBaseUrl: (getProviderSettingsSummary().baseUrl?.trim().length ?? 0) > 0,
+					env: undefined,
 				});
 			}
 

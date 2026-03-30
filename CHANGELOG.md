@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.53]
+
+- Added `/clear` slash command to reset the Cline agent chat session
+- Added hints for environment variables in Cline provider setup
+- Aligned Cline provider and model fallbacks with SDK defaults for more reliable configuration
+- Fixed Codex plan mode not working
+- Fixed slash command file watchers to reuse a single watcher per workspace instead of creating duplicates
+- Show loading skeleton in onboarding carousel while videos load
+- Added VS Code Insiders as a file open target
+
 ## [0.1.52]
 
 - Added support for custom OpenAI-compatible providers, so you can connect any OpenAI-compatible API as a Cline model provider

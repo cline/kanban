@@ -177,6 +177,7 @@ function createClineTaskSessionServiceMock() {
 		abortTaskSession: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(async () => null),
 		cancelTaskTurn: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(async () => null),
 		sendTaskSessionInput: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(async () => null),
+		clearTaskSession: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(async () => null),
 		reloadTaskSession: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(async () => null),
 		rebindPersistedTaskSession: vi.fn<(...args: unknown[]) => Promise<RuntimeTaskSessionSummary | null>>(
 			async () => null,
@@ -1065,6 +1066,39 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 		expect(cancelResponse.ok).toBe(true);
 		expect(clineTaskSessionService.cancelTaskTurn).toHaveBeenCalledWith("task-1");
+	});
+
+	it("handles clear slash commands without sending them to the model", async () => {
+		const summary = createSummary({ agentId: "cline", pid: null, state: "idle" });
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.clearTaskSession.mockResolvedValue(summary);
+		const broadcastTaskChatCleared = vi.fn();
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+			broadcastTaskChatCleared,
+		});
+
+		const response = await api.sendTaskChatMessage(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "__home_agent__:workspace-1", text: "  /clear  " },
+		);
+
+		expect(response).toEqual({
+			ok: true,
+			summary,
+			message: null,
+		});
+		expect(clineTaskSessionService.clearTaskSession).toHaveBeenCalledWith("__home_agent__:workspace-1");
+		expect(broadcastTaskChatCleared).toHaveBeenCalledWith("workspace-1", "__home_agent__:workspace-1");
+		expect(clineTaskSessionService.sendTaskSessionInput).not.toHaveBeenCalled();
+		expect(clineTaskSessionService.startTaskSession).not.toHaveBeenCalled();
 	});
 
 	it("forwards chat images through the cline service send path", async () => {

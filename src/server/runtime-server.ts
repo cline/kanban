@@ -8,6 +8,7 @@ import {
 	type ClineTaskSessionService,
 	createInMemoryClineTaskSessionService,
 } from "../cline-sdk/cline-task-session-service";
+import { createClineWatcherRegistry } from "../cline-sdk/cline-watcher-registry";
 import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import {
 	buildKanbanRuntimeUrl,
@@ -118,12 +119,15 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const getScopedTerminalManager = async (scope: RuntimeTrpcWorkspaceScope): Promise<TerminalSessionManager> =>
 		await deps.ensureTerminalManagerForWorkspace(scope.workspaceId, scope.workspacePath);
 	const clineTaskSessionServiceByWorkspaceId = new Map<string, ClineTaskSessionService>();
+	const clineWatcherRegistry = createClineWatcherRegistry();
 	const getScopedClineTaskSessionService = async (
 		scope: RuntimeTrpcWorkspaceScope,
 	): Promise<ClineTaskSessionService> => {
 		let service = clineTaskSessionServiceByWorkspaceId.get(scope.workspaceId);
 		if (!service) {
-			service = createInMemoryClineTaskSessionService();
+			service = createInMemoryClineTaskSessionService({
+				watcherRegistry: clineWatcherRegistry,
+			});
 			clineTaskSessionServiceByWorkspaceId.set(scope.workspaceId, service);
 			deps.runtimeStateHub.trackClineTaskSessionService(scope.workspaceId, scope.workspacePath, service);
 		}
@@ -177,6 +181,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				resolveInteractiveShellCommand: deps.resolveInteractiveShellCommand,
 				runCommand: deps.runCommand,
 				broadcastClineMcpAuthStatusesUpdated: deps.runtimeStateHub.broadcastClineMcpAuthStatusesUpdated,
+				broadcastTaskChatCleared: deps.runtimeStateHub.broadcastTaskChatCleared,
 				bumpClineSessionContextVersion: deps.runtimeStateHub.bumpClineSessionContextVersion,
 				prepareForStateReset,
 			}),
@@ -313,6 +318,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				}),
 			);
 			clineTaskSessionServiceByWorkspaceId.clear();
+			await clineWatcherRegistry.close();
 			await deps.runtimeStateHub.close();
 			await terminalWebSocketBridge.close();
 			await new Promise<void>((resolveClose, rejectClose) => {

@@ -320,6 +320,41 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(readFileSync(imagePath).toString("utf8")).toBe("hello");
 	});
 
+	it("defers Codex plan-mode startup input until startup UI is ready", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-plan",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Audit the deployment pipeline",
+			startInPlanMode: true,
+		});
+
+		expect(launch.args).not.toContain("Audit the deployment pipeline");
+		expect(launch.deferredStartupInput).toContain("\u001b[200~");
+		expect(launch.deferredStartupInput).toContain("/plan Audit the deployment pipeline");
+		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
+	});
+
+	it("defers a bare /plan command when Codex plan mode has no prompt text", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-plan-empty",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			startInPlanMode: true,
+		});
+
+		expect(launch.deferredStartupInput).toContain("/plan");
+		expect(launch.deferredStartupInput).not.toContain("/plan ");
+		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

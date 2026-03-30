@@ -14,6 +14,7 @@ import {
 	resolveCodexRolloutFinalMessageForCwd,
 	startCodexSessionWatcher,
 } from "./codex-hook-events";
+import { enrichDroidReviewMetadata } from "./droid-hook-events";
 
 export {
 	createCodexWatcherState,
@@ -29,6 +30,7 @@ interface HooksIngestArgs {
 	taskId: string;
 	workspaceId: string;
 	metadata?: Partial<RuntimeTaskHookActivity>;
+	payload?: Record<string, unknown> | null;
 }
 
 interface HookCommandMetadataOptionValues {
@@ -170,15 +172,27 @@ function extractToolInput(payload: Record<string, unknown>): Record<string, unkn
 	if (direct) {
 		return direct;
 	}
+	const directCamel = asRecord(payload.toolInput);
+	if (directCamel) {
+		return directCamel;
+	}
 	const preTool = asRecord(payload.preToolUse);
 	const preParams = preTool ? asRecord(preTool.parameters) : null;
 	if (preParams) {
 		return preParams;
 	}
+	const preInput = preTool ? asRecord(preTool.input) : null;
+	if (preInput) {
+		return preInput;
+	}
 	const postTool = asRecord(payload.postToolUse);
 	const postParams = postTool ? asRecord(postTool.parameters) : null;
 	if (postParams) {
 		return postParams;
+	}
+	const postInput = postTool ? asRecord(postTool.input) : null;
+	if (postInput) {
+		return postInput;
 	}
 	const output = asRecord(payload.output);
 	const outputArgs = output ? asRecord(output.args) : null;
@@ -288,7 +302,9 @@ function inferActivityText(
 }
 
 export function inferHookSourceFromPayload(payload: Record<string, unknown> | null): string | null {
-	const transcriptPath = payload ? readStringField(payload, "transcript_path") : null;
+	const transcriptPath = payload
+		? (readStringField(payload, "transcript_path") ?? readStringField(payload, "transcriptPath"))
+		: null;
 	const normalizedTranscriptPath = transcriptPath?.replaceAll("\\", "/").toLowerCase() ?? null;
 	if (normalizedTranscriptPath?.includes("/.claude/")) {
 		return "claude";
@@ -314,19 +330,23 @@ function normalizeHookMetadata(
 		: null;
 	const toolName = payload
 		? (readStringField(payload, "tool_name") ??
+			readStringField(payload, "toolName") ??
 			readNestedString(payload, ["preToolUse", "tool"]) ??
 			readNestedString(payload, ["preToolUse", "toolName"]) ??
 			readNestedString(payload, ["postToolUse", "tool"]) ??
 			readNestedString(payload, ["postToolUse", "toolName"]) ??
-			readNestedString(payload, ["input", "tool"]))
+			readNestedString(payload, ["input", "tool"]) ??
+			readNestedString(payload, ["input", "toolName"]))
 		: null;
 	const notificationType = payload
 		? (readStringField(payload, "notification_type") ??
+			readStringField(payload, "notificationType") ??
 			readNestedString(payload, ["event", "type"]) ??
 			readNestedString(payload, ["notification", "event"]))
 		: null;
 	const finalMessage = payload
 		? (readStringField(payload, "last_assistant_message") ??
+			readStringField(payload, "lastAssistantMessage") ??
 			readStringField(payload, "last-assistant-message") ??
 			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
 			readNestedString(payload, ["taskComplete", "result"]))
@@ -370,6 +390,7 @@ function parseHooksIngestArgs(
 		taskId: context.taskId,
 		workspaceId: context.workspaceId,
 		metadata,
+		payload,
 	};
 }
 
@@ -492,7 +513,8 @@ async function runHooksNotify(
 	try {
 		const stdinPayload = await readStdinText();
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		const args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
+		const codexEnrichedArgs = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
+		const args = await enrichDroidReviewMetadata(codexEnrichedArgs);
 		await ingestHookEvent(args);
 	} catch {
 		// Best effort only.
@@ -714,7 +736,8 @@ async function runHooksIngest(
 	try {
 		const stdinPayload = await readStdinText();
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
-		args = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
+		const codexEnrichedArgs = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
+		args = await enrichDroidReviewMetadata(codexEnrichedArgs);
 	} catch (error) {
 		process.stderr.write(`kanban hooks ingest: ${formatError(error)}\n`);
 		process.exitCode = 1;

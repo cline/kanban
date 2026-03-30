@@ -10,11 +10,8 @@ import { TRPCError } from "@trpc/server";
 import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service";
 import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service";
 import { createClineProviderService } from "../cline-sdk/cline-provider-service";
+import { isClineClearSlashCommand } from "../cline-sdk/cline-slash-commands";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
-import {
-	createClineSdkUserInstructionWatcher,
-	listClineSdkWorkflowSlashCommands,
-} from "../cline-sdk/sdk-runtime-boundary";
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
 import type { RuntimeCommandRunResponse } from "../core/api-contract";
@@ -57,6 +54,7 @@ export interface CreateRuntimeApiDependencies {
 	broadcastClineMcpAuthStatusesUpdated?: (
 		statuses: Awaited<ReturnType<ReturnType<typeof createClineMcpRuntimeService>["getAuthStatuses"]>>,
 	) => void;
+	broadcastTaskChatCleared?: (workspaceId: string, taskId: string) => void;
 	bumpClineSessionContextVersion?: () => void;
 	prepareForStateReset?: () => Promise<void>;
 }
@@ -360,14 +358,14 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			}
 		},
 		getClineSlashCommands: async (workspaceScope) => {
-			const watcher = workspaceScope
-				? createClineSdkUserInstructionWatcher(workspaceScope.workspacePath)
-				: undefined;
-			if (watcher) {
-				await watcher.refreshAll();
+			if (!workspaceScope) {
+				return {
+					commands: [],
+				};
 			}
+			const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 			return {
-				commands: listClineSdkWorkflowSlashCommands(watcher),
+				commands: await clineTaskSessionService.listSlashCommands(workspaceScope.workspacePath),
 			};
 		},
 		reloadTaskChatSession: async (workspaceScope, input) => {
@@ -494,8 +492,17 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		sendTaskChatMessage: async (workspaceScope, input) => {
 			try {
 				const body = parseTaskChatSendRequest(input);
-				const requestedMode = body.mode;
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				if (isClineClearSlashCommand(body.text)) {
+					const summary = await clineTaskSessionService.clearTaskSession(body.taskId);
+					deps.broadcastTaskChatCleared?.(workspaceScope.workspaceId, body.taskId);
+					return {
+						ok: true,
+						summary,
+						message: null,
+					};
+				}
+				const requestedMode = body.mode;
 				let summary = await clineTaskSessionService.sendTaskSessionInput(
 					body.taskId,
 					body.text,

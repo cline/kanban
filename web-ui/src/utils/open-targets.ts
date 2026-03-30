@@ -17,6 +17,7 @@ export type OpenTargetPlatform = "mac" | "windows" | "linux" | "other";
 
 export type OpenTargetId =
 	| "vscode"
+	| "vscode-insiders"
 	| "cursor"
 	| "windsurf"
 	| "finder"
@@ -42,6 +43,11 @@ const DEFAULT_OPEN_TARGET: OpenTargetOption = {
 
 const OPEN_TARGET_OPTIONS: readonly OpenTargetOption[] = [
 	DEFAULT_OPEN_TARGET,
+	{
+		id: "vscode-insiders",
+		label: "VS Code Insiders",
+		iconSrc: vscodeIcon,
+	},
 	{
 		id: "cursor",
 		label: "Cursor",
@@ -106,11 +112,12 @@ const OPEN_TARGET_IDS_BY_PLATFORM: Record<OpenTargetPlatform, readonly OpenTarge
 		"warp",
 		"xcode",
 		"intellijidea",
+		"vscode-insiders",
 		"zed",
 	],
-	windows: ["vscode", "cursor", "windsurf", "finder", "zed"],
-	linux: ["vscode", "cursor", "windsurf", "finder", "zed"],
-	other: ["vscode", "finder"],
+	windows: ["vscode", "cursor", "windsurf", "finder", "vscode-insiders", "zed"],
+	linux: ["vscode", "cursor", "windsurf", "finder", "vscode-insiders", "zed"],
+	other: ["vscode", "vscode-insiders", "finder"],
 };
 
 const openTargetById = new Map<OpenTargetId, OpenTargetOption>(
@@ -208,6 +215,9 @@ function buildOpenLinuxCommand(targetId: OpenTargetId, path: string): string {
 	if (targetId === "vscode") {
 		return `code ${quotedPath}`;
 	}
+	if (targetId === "vscode-insiders") {
+		return `code-insiders ${quotedPath}`;
+	}
 	if (targetId === "cursor") {
 		return `cursor ${quotedPath}`;
 	}
@@ -227,6 +237,9 @@ function buildOpenWindowsCommand(targetId: OpenTargetId, path: string): string {
 	}
 	if (targetId === "vscode") {
 		return `code ${quotedPath}`;
+	}
+	if (targetId === "vscode-insiders") {
+		return `code-insiders ${quotedPath}`;
 	}
 	if (targetId === "cursor") {
 		return `cursor ${quotedPath}`;
@@ -292,6 +305,9 @@ export function buildOpenCommand(targetId: OpenTargetId, path: string, platform:
 
 	if (targetId === "vscode") {
 		return buildOpenAppCommand(path, "Visual Studio Code");
+	}
+	if (targetId === "vscode-insiders") {
+		return buildOpenAppCommand(path, "Visual Studio Code - Insiders");
 	}
 	if (targetId === "cursor") {
 		return buildOpenAppCommand(path, "Cursor");

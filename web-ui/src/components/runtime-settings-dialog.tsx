@@ -72,7 +72,7 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 
 export type RuntimeSettingsSection = "shortcuts";
 
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex"];
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid"];
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -345,8 +345,10 @@ export function RuntimeSettingsDialog({
 				binary: agent.binary,
 				installed: agent.id === "cline" ? true : null,
 			}));
+		// FIXME: remove after adding droid support
+		const visibleAgents = agents.filter((agent) => agent.id !== "droid" || agent.installed === true);
 		const orderIndexByAgentId = new Map(SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));
-		const orderedAgents = [...agents].sort((left, right) => {
+		const orderedAgents = [...visibleAgents].sort((left, right) => {
 			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
 			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
 			return leftOrderIndex - rightOrderIndex;

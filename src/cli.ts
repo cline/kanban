@@ -4,6 +4,7 @@ import { createServer as createNetServer } from "node:net";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
+import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerTaskCommand } from "./commands/task";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
@@ -25,7 +26,7 @@ import {
 } from "./core/runtime-endpoint";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
-import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node";
+import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import type { TerminalSessionManager } from "./terminal/session-manager";
 
 interface CliOptions {
@@ -519,6 +520,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		await runtime.shutdown({
 			skipSessionCleanup: options.skipShutdownCleanup,
 		});
+		await disposeCliTelemetryService().catch(() => {});
 	};
 
 	installGracefulShutdownHandlers({
@@ -604,7 +606,7 @@ async function run(): Promise<void> {
 
 void run().catch(async (error) => {
 	captureNodeException(error, { area: "startup" });
-	await flushNodeTelemetry();
+	await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(`Failed to start Kanban: ${message}`);
 	process.exit(1);

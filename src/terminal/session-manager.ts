@@ -22,6 +22,7 @@ import {
 	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
 } from "./claude-workspace-trust";
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
+import { stripAnsi } from "./output-utils";
 import { PtySession } from "./pty-session";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
 import {
@@ -54,6 +55,7 @@ interface ActiveProcessState {
 	rows: number;
 	terminalProtocolFilter: TerminalProtocolFilterState;
 	onSessionCleanup: (() => Promise<void>) | null;
+	deferredStartupInput: string | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
 	awaitingCodexPromptAfterEnter: boolean;
@@ -190,9 +192,39 @@ function buildTerminalEnvironment(
 	};
 }
 
+function hasCodexInteractivePrompt(text: string): boolean {
+	const stripped = stripAnsi(text);
+	return /(?:^|[\n\r])\s*›\s*/u.test(stripped);
+}
+
+function hasCodexStartupUiRendered(text: string): boolean {
+	const stripped = stripAnsi(text).toLowerCase();
+	return stripped.includes("openai codex (v");
+}
+
 export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
+
+	private trySendDeferredCodexStartupInput(taskId: string): boolean {
+		const entry = this.entries.get(taskId);
+		const active = entry?.active;
+		if (!entry || !active || entry.summary.agentId !== "codex") {
+			return false;
+		}
+		if (active.deferredStartupInput === null) {
+			return false;
+		}
+		const trustPromptVisible =
+			active.workspaceTrustBuffer !== null && hasCodexWorkspaceTrustPrompt(active.workspaceTrustBuffer);
+		if (trustPromptVisible) {
+			return false;
+		}
+		const deferredInput = active.deferredStartupInput;
+		active.deferredStartupInput = null;
+		active.session.write(deferredInput);
+		return true;
+	}
 
 	private hasLiveOutputListener(entry: SessionEntry): boolean {
 		for (const listener of entry.listeners.values()) {
@@ -361,12 +393,32 @@ export class TerminalSessionManager implements TerminalSessionService {
 										return;
 									}
 									activeEntry.session.write("\r");
+									// Trust text can remain in the rolling buffer after we auto-confirm.
+									// Clear it so later startup/prompt checks do not match stale trust output.
+									if (activeEntry.workspaceTrustBuffer !== null) {
+										activeEntry.workspaceTrustBuffer = "";
+									}
 									activeEntry.workspaceTrustConfirmTimer = null;
 								}, trustConfirmDelayMs);
 							}
 						}
 					}
 					updateSummary(entry, { lastOutputAt: now() });
+
+					// Codex plan-mode startup input is deferred until we know the TUI rendered.
+					// Trigger on either the interactive prompt marker or the startup header text.
+					if (
+						entry.summary.agentId === "codex" &&
+						entry.active.deferredStartupInput !== null &&
+						data.length > 0 &&
+						(hasCodexInteractivePrompt(data) ||
+							hasCodexStartupUiRendered(data) ||
+							(entry.active.workspaceTrustBuffer !== null &&
+								(hasCodexInteractivePrompt(entry.active.workspaceTrustBuffer) ||
+									hasCodexStartupUiRendered(entry.active.workspaceTrustBuffer))))
+					) {
+						this.trySendDeferredCodexStartupInput(request.taskId);
+					}
 
 					const adapterEvent = entry.active.detectOutputTransition?.(data, entry.summary) ?? null;
 					if (adapterEvent) {
@@ -467,6 +519,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				suppressDeviceAttributeQueries: request.agentId === "droid",
 			}),
 			onSessionCleanup: launch.cleanup ?? null,
+			deferredStartupInput: launch.deferredStartupInput ?? null,
 			detectOutputTransition: launch.detectOutputTransition ?? null,
 			shouldInspectOutputForTransition: launch.shouldInspectOutputForTransition ?? null,
 			awaitingCodexPromptAfterEnter: false,
@@ -619,6 +672,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				interceptOscColorQueries: true,
 			}),
 			onSessionCleanup: null,
+			deferredStartupInput: null,
 			detectOutputTransition: null,
 			shouldInspectOutputForTransition: null,
 			awaitingCodexPromptAfterEnter: false,
