@@ -330,6 +330,16 @@ export function CardDetailView({
 		writeLocalStorageItem(LocalStorageKey.DetailAgentPanelRatio, String(normalizedRatio));
 	}, []);
 
+	const getDragRatio = useCallback((clientX: number): number | null => {
+		const dragState = resizeDragRef.current;
+		if (!dragState) {
+			return null;
+		}
+		const deltaX = clientX - dragState.startX;
+		const deltaRatio = deltaX / dragState.containerWidth;
+		return clampAgentPanelRatio(dragState.startRatio + deltaRatio);
+	}, []);
+
 	const stopResize = useCallback(() => {
 		setIsResizing(false);
 		const previousBodyStyle = previousBodyStyleRef.current;
@@ -347,30 +357,31 @@ export function CardDetailView({
 
 	const handleResizeMouseMove = useCallback(
 		(event: MouseEvent) => {
-			const dragState = resizeDragRef.current;
-			if (!isResizing || !dragState) {
+			const nextRatio = getDragRatio(event.clientX);
+			if (nextRatio === null) {
 				return;
 			}
-			const deltaX = event.clientX - dragState.startX;
-			const deltaRatio = deltaX / dragState.containerWidth;
-			const nextRatio = Math.max(
-				MIN_AGENT_PANEL_RATIO,
-				Math.min(MAX_AGENT_PANEL_RATIO, dragState.startRatio + deltaRatio),
-			);
 			setAgentPanelRatioAndPersist(nextRatio);
 		},
-		[isResizing, setAgentPanelRatioAndPersist],
+		[getDragRatio, setAgentPanelRatioAndPersist],
 	);
 
-	const handleResizeMouseUp = useCallback(() => {
-		if (!isResizing) {
-			return;
-		}
-		stopResize();
-	}, [isResizing, stopResize]);
+	const handleResizeMouseUp = useCallback(
+		(event: MouseEvent) => {
+			if (!resizeDragRef.current) {
+				return;
+			}
+			const finalRatio = getDragRatio(event.clientX);
+			if (finalRatio !== null) {
+				setAgentPanelRatioAndPersist(finalRatio);
+			}
+			stopResize();
+		},
+		[getDragRatio, setAgentPanelRatioAndPersist, stopResize],
+	);
 
-	useWindowEvent("mousemove", isResizing ? handleResizeMouseMove : null);
-	useWindowEvent("mouseup", isResizing ? handleResizeMouseUp : null);
+	useWindowEvent("mousemove", handleResizeMouseMove);
+	useWindowEvent("mouseup", handleResizeMouseUp);
 
 	const handleSeparatorMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {

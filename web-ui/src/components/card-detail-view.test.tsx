@@ -581,4 +581,55 @@ describe("CardDetailView", () => {
 		expect(savedRatio).toBeLessThanOrEqual(0.75);
 		expect(requireAgentPanel(container).style.width).not.toBe("40%");
 	});
+
+	it("keeps the saved divider position after leaving and reopening task detail", async () => {
+		const renderDetail = async (): Promise<void> => {
+			await act(async () => {
+				root.render(
+					<CardDetailView
+						selection={createSelection()}
+						currentProjectId="workspace-1"
+						sessionSummary={null}
+						taskSessions={{}}
+						onSessionSummary={() => {}}
+						onCardSelect={() => {}}
+						onTaskDragEnd={() => {}}
+						onMoveToTrash={() => {}}
+						bottomTerminalOpen={false}
+						bottomTerminalTaskId={null}
+						bottomTerminalSummary={null}
+						onBottomTerminalClose={() => {}}
+					/>,
+				);
+			});
+		};
+
+		await renderDetail();
+
+		const separator = requireResizeSeparator(container);
+		const dragHandle = separator.firstElementChild;
+		expect(dragHandle).toBeInstanceOf(HTMLDivElement);
+		if (!(dragHandle instanceof HTMLDivElement)) {
+			throw new Error("Expected a draggable resize handle.");
+		}
+
+		await act(async () => {
+			dragHandle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 200 }));
+			window.dispatchEvent(new MouseEvent("mouseup", { clientX: 420 }));
+		});
+
+		const expectedRatio = window.localStorage.getItem(LocalStorageKey.DetailAgentPanelRatio);
+		expect(expectedRatio).not.toBeNull();
+
+		await act(async () => {
+			root.unmount();
+			root = createRoot(container);
+		});
+
+		await renderDetail();
+
+		const restoredWidth = requireAgentPanel(container).style.width;
+		const restoredRatio = Number.parseFloat(restoredWidth) / 100;
+		expect(restoredRatio).toBeCloseTo(Number(expectedRatio), 2);
+	});
 });
