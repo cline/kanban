@@ -67,6 +67,28 @@ body,
 	padding: 8px;
 }
 
+@media (max-width: 768px) {
+	.kb-board {
+		overflow-x: auto;
+		overflow-y: hidden;
+		scroll-snap-type: x mandatory;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.kb-board > section {
+		flex: 0 0 auto !important;
+		min-width: 280px;
+		width: 85vw;
+		max-width: 360px;
+		scroll-snap-align: start;
+	}
+
+	/* Hide column resize handles on mobile */
+	.kb-board > [role="separator"] {
+		display: none;
+	}
+}
+
 .kb-dependency-surface {
 	position: relative;
 }
