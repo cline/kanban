@@ -437,10 +437,17 @@ describe("InMemoryClineTaskSessionService", () => {
 				{
 					role: "user",
 					content: "Recovered prompt",
+					metrics: {
+						inputTokens: 120,
+					},
 				},
 				{
 					role: "assistant",
 					content: "Recovered answer",
+					metrics: {
+						outputTokens: 80,
+						cost: 0.0095,
+					},
 				},
 			],
 		});
@@ -470,10 +477,17 @@ describe("InMemoryClineTaskSessionService", () => {
 						{
 							role: "user",
 							content: "Recovered prompt",
+							metrics: {
+								inputTokens: 120,
+							},
 						},
 						{
 							role: "assistant",
 							content: "Recovered answer",
+							metrics: {
+								outputTokens: 80,
+								cost: 0.0095,
+							},
 						},
 					],
 				}),
@@ -820,10 +834,17 @@ describe("InMemoryClineTaskSessionService", () => {
 				{
 					role: "user",
 					content: "Recovered prompt",
+					metrics: {
+						inputTokens: 120,
+					},
 				},
 				{
 					role: "assistant",
 					content: "Recovered answer",
+					metrics: {
+						outputTokens: 80,
+						cost: 0.0095,
+					},
 				},
 			],
 		});
@@ -833,6 +854,9 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(reboundSummary?.state).toBe("awaiting_review");
 		expect(reboundSummary?.reviewReason).toBe("attention");
 		expect(reboundSummary?.workspacePath).toBe("task-1-persisted-cwd");
+		expect(reboundSummary?.totalInputTokens).toBe(120);
+		expect(reboundSummary?.totalOutputTokens).toBe(80);
+		expect(reboundSummary?.totalCost).toBeCloseTo(0.0095, 8);
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
 			"Recovered prompt",
 			"Recovered answer",
@@ -847,6 +871,65 @@ describe("InMemoryClineTaskSessionService", () => {
 				"Recovered answer",
 				"Continue",
 			]);
+		});
+	});
+
+	it("refreshes totals from persisted message metrics when a turn completes", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.readPersistedTaskSessionMock.mockResolvedValue({
+			record: {
+				sessionId: "task-1-persisted",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
+				status: "completed",
+				startedAt: "2026-03-17T10:00:00.000Z",
+				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
+				cwd: "/tmp/worktree",
+				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
+			},
+			messages: [
+				{
+					role: "user",
+					content: "Recovered prompt",
+					metrics: {
+						inputTokens: 240,
+					},
+				},
+				{
+					role: "assistant",
+					content: "Recovered answer",
+					metrics: {
+						outputTokens: 160,
+						cost: 0.021,
+					},
+				},
+			],
+		});
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
+
+		runtime.emitAgentEvent(sessionId, {
+			type: "done",
+			reason: "completed",
+			text: "Done",
+		});
+
+		await vi.waitFor(() => {
+			const summary = service.getSummary("task-1");
+			expect(summary?.totalInputTokens).toBe(240);
+			expect(summary?.totalOutputTokens).toBe(160);
+			expect(summary?.totalCost).toBeCloseTo(0.021, 8);
 		});
 	});
 

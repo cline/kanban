@@ -69,6 +69,9 @@ export function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary 
 		lastHookAt: null,
 		latestHookActivity: null,
 		warningMessage: null,
+		totalInputTokens: null,
+		totalOutputTokens: null,
+		totalCost: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};
