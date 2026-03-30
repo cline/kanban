@@ -1,12 +1,13 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { Check, ExternalLink, Plus, X } from "lucide-react";
-import { type ReactElement, useMemo } from "react";
+import { type ReactElement, useMemo, useState } from "react";
 
 import {
 	buildClineAgentModelPickerOptions,
 	CLINE_REASONING_EFFORT_OPTIONS,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
+import { ClineAddProviderDialog } from "@/components/shared/cline-add-provider-dialog";
 import { Button } from "@/components/ui/button";
 import type { UseRuntimeSettingsClineControllerResult } from "@/hooks/use-runtime-settings-cline-controller";
 import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-runtime-settings-cline-mcp-controller";
@@ -57,6 +58,7 @@ export function ClineSetupSection({
 	onSaved?: () => void;
 }): ReactElement {
 	const mcpControlsDisabled = controlsDisabled || (mcpController?.isSavingMcpSettings ?? false);
+	const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
 
 	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
 		const items: SearchSelectOption[] = controller.providerCatalog.map((provider) => ({
@@ -80,6 +82,21 @@ export function ClineSetupSection({
 		[controller.providerId, controller.providerModels],
 	);
 	const clineModelOptions = modelPickerOptions.options;
+	const selectedProvider = useMemo(
+		() =>
+			controller.providerCatalog.find(
+				(provider) => provider.id.trim().toLowerCase() === controller.normalizedProviderId,
+			) ?? null,
+		[controller.normalizedProviderId, controller.providerCatalog],
+	);
+	const apiKeyPlaceholder = controller.apiKeyConfigured ? "Saved" : "Enter API key";
+	const providerEnvHint = (selectedProvider?.env ?? [])
+		.map((value) => value.trim())
+		.filter((value) => value.length > 0)
+		.join(", ");
+	const shouldShowBaseUrlField =
+		!controller.isOauthProviderSelected &&
+		(selectedProvider?.supportsBaseUrl ?? controller.baseUrl.trim().length > 0);
 
 	const handleAddMcpServer = () => {
 		if (!mcpController) {
@@ -182,7 +199,9 @@ export function ClineSetupSection({
 									(provider) => provider.id.trim().toLowerCase() === normalizedProviderId,
 								) ?? null;
 							const defaultModelId = selectedProvider?.defaultModelId?.trim() ?? "";
+							const defaultBaseUrl = selectedProvider?.baseUrl?.trim() ?? "";
 							controller.setModelId(defaultModelId);
+							controller.setBaseUrl(defaultBaseUrl);
 						}}
 						disabled={controlsDisabled || controller.isLoadingProviderCatalog}
 						fill
@@ -196,6 +215,13 @@ export function ClineSetupSection({
 						noResultsText="No matching providers"
 						placeholder="Search providers..."
 						showSelectedIndicator
+						footerAction={{
+							label: "Add OpenAI-compatible provider",
+							onClick: () => {
+								onError?.(null);
+								setIsAddProviderDialogOpen(true);
+							},
+						}}
 					/>
 				</div>
 				{controller.isLoadingProviderCatalog ? (
@@ -212,13 +238,16 @@ export function ClineSetupSection({
 								type="password"
 								value={controller.apiKey}
 								onChange={(event) => controller.setApiKey(event.target.value)}
-								placeholder={controller.apiKeyConfigured ? "Saved" : "Enter API key"}
+								placeholder={apiKeyPlaceholder}
 								disabled={controlsDisabled}
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
+							{providerEnvHint ? (
+								<p className="text-text-tertiary text-[11px] mt-1 mb-0 break-all">Or use {providerEnvHint}</p>
+							) : null}
 						</div>
 					)}
-					{controller.isOauthProviderSelected ? null : (
+					{shouldShowBaseUrlField ? (
 						<div className="min-w-0">
 							<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
 							<input
@@ -229,7 +258,7 @@ export function ClineSetupSection({
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
-					)}
+					) : null}
 				</div>
 				{controller.isOauthProviderSelected ? (
 					<>
@@ -597,6 +626,21 @@ export function ClineSetupSection({
 					})}
 				</>
 			) : null}
+			<ClineAddProviderDialog
+				open={isAddProviderDialogOpen}
+				onOpenChange={setIsAddProviderDialogOpen}
+				existingProviderIds={controller.providerCatalog.map((provider) => provider.id)}
+				onSubmit={async (input) => {
+					onError?.(null);
+					const result = await controller.addCustomProvider(input);
+					if (!result.ok) {
+						onError?.(result.message ?? "Failed to add provider.");
+						return result;
+					}
+					onSaved?.();
+					return result;
+				}}
+			/>
 		</>
 	);
 }

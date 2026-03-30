@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.52]
+
+- Added support for custom OpenAI-compatible providers, so you can connect any OpenAI-compatible API as a Cline model provider
+- Added PWA support -- the web UI can now be installed as a standalone desktop app from Chrome, with window controls overlay and an offline fallback page that auto-reconnects when the server comes back
+- Sticky file headers in the diff viewer now pin under the toolbar while scrolling through large diffs
+- Show a cleanup spinner during Ctrl+C shutdown instead of silently hanging
+- Fixed Codex status monitoring to reliably track the latest tool call
+- Fixed terminal color detection for TUI apps like Codex CLI that query both foreground and background colors at startup
+- Fixed activity preview text getting truncated in hooks
+- Fixed project column sizing not persisting across sessions
+- Fixed home sidebar session IDs not matching the current format
+
 ## [0.1.51]
 
 - Task terminals now support multiple simultaneous viewers, so opening the same task in several browser tabs no longer causes disconnections

@@ -1,7 +1,7 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, Plus } from "lucide-react";
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
@@ -17,10 +17,48 @@ import {
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
-import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import type { RuntimeProjectSummary } from "@/runtime/types";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
+import { useUnmount, useWindowEvent } from "@/utils/react-use";
+
+const COLLAPSED_WIDTH = 48;
+const SIDEBAR_COLLAPSE_THRESHOLD = 120;
+const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
+const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
+const SIDEBAR_DEFAULT_EXPANDED_WIDTH_FALLBACK = 280;
+const BOARD_SURFACE_HORIZONTAL_PADDING_PX = 16;
+const BOARD_SURFACE_COLUMN_GAPS_PX = 24;
+const BOARD_SURFACE_HORIZONTAL_CHROME_PX = BOARD_SURFACE_HORIZONTAL_PADDING_PX + BOARD_SURFACE_COLUMN_GAPS_PX;
+
+function clampExpandedSidebarWidth(width: number): number {
+	return Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, width));
+}
+
+function getDefaultExpandedSidebarWidth(): number {
+	if (typeof window === "undefined" || !Number.isFinite(window.innerWidth)) {
+		return SIDEBAR_DEFAULT_EXPANDED_WIDTH_FALLBACK;
+	}
+	const proportionalWidth = Math.round((window.innerWidth - BOARD_SURFACE_HORIZONTAL_CHROME_PX) / 5);
+	return clampExpandedSidebarWidth(proportionalWidth);
+}
+
+function loadExpandedSidebarWidth(): number {
+	const storedValue = readLocalStorageItem(LocalStorageKey.ProjectNavigationPanelWidth);
+	if (!storedValue) {
+		return getDefaultExpandedSidebarWidth();
+	}
+	const parsedWidth = Number(storedValue);
+	if (!Number.isFinite(parsedWidth)) {
+		return getDefaultExpandedSidebarWidth();
+	}
+	return clampExpandedSidebarWidth(parsedWidth);
+}
+
+function loadSidebarCollapsed(): boolean {
+	return readLocalStorageItem(LocalStorageKey.ProjectNavigationPanelCollapsed) === "true";
+}
 
 interface TaskCountBadge {
 	id: string;
@@ -66,50 +104,88 @@ export function ProjectNavigationPanel({
 			pendingProjectRemoval.taskCounts.trash
 		: 0;
 
-	const [sidebarWidth, setSidebarWidth] = useState(260);
-	const [isCollapsed, setIsCollapsed] = useState(false);
+	const [sidebarWidth, setSidebarWidth] = useState(loadExpandedSidebarWidth);
+	const [isCollapsed, setIsCollapsed] = useState(loadSidebarCollapsed);
 	const [isDragging, setIsDragging] = useState(false);
 	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-	const COLLAPSED_WIDTH = 48;
-	const COLLAPSE_THRESHOLD = 120;
-	const MIN_EXPANDED = 180;
-	const MAX_WIDTH = 400;
+	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
+
+	const setSidebarCollapsed = useCallback((collapsed: boolean) => {
+		setIsCollapsed(collapsed);
+		writeLocalStorageItem(LocalStorageKey.ProjectNavigationPanelCollapsed, String(collapsed));
+	}, []);
+
+	const setExpandedSidebarWidth = useCallback((width: number) => {
+		const normalizedWidth = clampExpandedSidebarWidth(width);
+		setSidebarWidth(normalizedWidth);
+		writeLocalStorageItem(LocalStorageKey.ProjectNavigationPanelWidth, String(normalizedWidth));
+	}, []);
+
+	const stopDrag = useCallback(() => {
+		setIsDragging(false);
+		const previousStyle = previousBodyStyleRef.current;
+		if (previousStyle) {
+			document.body.style.userSelect = previousStyle.userSelect;
+			document.body.style.cursor = previousStyle.cursor;
+			previousBodyStyleRef.current = null;
+		}
+		dragRef.current = null;
+	}, []);
+
+	useUnmount(stopDrag);
+
+	const handleMouseMove = useCallback(
+		(event: MouseEvent) => {
+			if (!isDragging) {
+				return;
+			}
+			const dragState = dragRef.current;
+			if (!dragState) {
+				return;
+			}
+			const delta = event.clientX - dragState.startX;
+			const newWidth = dragState.startWidth + delta;
+			if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
+				if (!isCollapsed) {
+					setSidebarCollapsed(true);
+				}
+				return;
+			}
+			if (isCollapsed) {
+				setSidebarCollapsed(false);
+			}
+			setExpandedSidebarWidth(newWidth);
+		},
+		[isCollapsed, isDragging, setExpandedSidebarWidth, setSidebarCollapsed],
+	);
+
+	const handleMouseUp = useCallback(() => {
+		if (!isDragging) {
+			return;
+		}
+		stopDrag();
+	}, [isDragging, stopDrag]);
+
+	useWindowEvent("mousemove", isDragging ? handleMouseMove : null);
+	useWindowEvent("mouseup", isDragging ? handleMouseUp : null);
+
 	const startDrag = useCallback(
 		(e: ReactMouseEvent) => {
 			e.preventDefault();
+			if (isDragging) {
+				stopDrag();
+			}
 			dragRef.current = { startX: e.clientX, startWidth: isCollapsed ? COLLAPSED_WIDTH : sidebarWidth };
 			setIsDragging(true);
+			previousBodyStyleRef.current = {
+				userSelect: document.body.style.userSelect,
+				cursor: document.body.style.cursor,
+			};
 			document.body.style.userSelect = "none";
 			document.body.style.cursor = "ew-resize";
 		},
-		[sidebarWidth, isCollapsed],
+		[isCollapsed, isDragging, sidebarWidth, stopDrag],
 	);
-	useEffect(() => {
-		if (!isDragging) return;
-		const onMouseMove = (e: MouseEvent) => {
-			if (!dragRef.current) return;
-			const delta = e.clientX - dragRef.current.startX;
-			const newWidth = dragRef.current.startWidth + delta;
-			if (newWidth < COLLAPSE_THRESHOLD) {
-				setIsCollapsed(true);
-			} else {
-				setIsCollapsed(false);
-				setSidebarWidth(Math.max(MIN_EXPANDED, Math.min(MAX_WIDTH, newWidth)));
-			}
-		};
-		const onMouseUp = () => {
-			setIsDragging(false);
-			document.body.style.userSelect = "";
-			document.body.style.cursor = "";
-			dragRef.current = null;
-		};
-		window.addEventListener("mousemove", onMouseMove);
-		window.addEventListener("mouseup", onMouseUp);
-		return () => {
-			window.removeEventListener("mousemove", onMouseMove);
-			window.removeEventListener("mouseup", onMouseUp);
-		};
-	}, [isDragging]);
 
 	if (isCollapsed) {
 		return (
@@ -122,6 +198,9 @@ export function ProjectNavigationPanel({
 				}}
 			>
 				<div
+					role="separator"
+					aria-orientation="vertical"
+					aria-label="Resize sidebar"
 					onMouseDown={startDrag}
 					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
 				/>
@@ -163,12 +242,15 @@ export function ProjectNavigationPanel({
 			className="flex flex-col min-h-0 overflow-hidden bg-surface-1 relative shrink-0"
 			style={{
 				width: sidebarWidth,
-				minWidth: MIN_EXPANDED,
-				maxWidth: MAX_WIDTH,
+				minWidth: SIDEBAR_MIN_EXPANDED_WIDTH,
+				maxWidth: SIDEBAR_MAX_EXPANDED_WIDTH,
 				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
 			<div
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="Resize sidebar"
 				onMouseDown={startDrag}
 				className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
 			/>
@@ -347,7 +429,7 @@ const ALT = isMacPlatform ? "⌥" : "Alt";
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
 	{ keys: [MOD, "B"], label: "Start backlog tasks" },
-	{ keys: [MOD, "Shift", "S"], label: "Settings (Select Agent)" },
+	{ keys: [MOD, "Shift", "S"], label: "Settings" },
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "G"], label: "Toggle git view" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },

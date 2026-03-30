@@ -7,17 +7,24 @@ import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/agents";
 import { getClineDefaultSystemPrompt } from "@clinebot/agents";
 import {
 	buildWorkspaceMetadata,
-	createSessionHost,
 	createUserInstructionConfigWatcher,
 	listAvailableWorkflowsFromWatcher,
 	loadRulesForSystemPromptFromWatcher,
 	resolveWorkflowSlashCommandFromWatcher,
 	type SessionHost,
+	type StartSessionInput,
 	type UserInstructionConfigWatcher,
-} from "@clinebot/core/node";
+} from "@clinebot/core";
 import type { LlmsProviders as ClineSdkProviders } from "@clinebot/llms";
+import type { BasicLogger } from "@clinebot/shared";
+import { resolveClineDataDir } from "@clinebot/shared/storage";
+
+export { createSessionHost, LoggerTelemetryAdapter } from "@clinebot/core";
+export { createConfiguredTelemetryService } from "@clinebot/core/telemetry/opentelemetry";
 
 export type ClineSdkSessionHost = SessionHost;
+export type ClineSdkStartSessionInput = StartSessionInput;
+export type ClineSdkBasicLogger = BasicLogger;
 export interface ClineSdkContentStartTextEvent {
 	type: "content_start";
 	contentType: "text";
@@ -194,13 +201,9 @@ export interface ClineSdkSlashCommand {
 export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
 export type ClineSdkToolApprovalResult = ToolApprovalResult;
 
-export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
-	return await createSessionHost({
-		backendMode: "auto",
-		autoStartRpcServer: true,
-	});
+export function resolveClineSdkDataDir(): string {
+	return resolveClineDataDir();
 }
-
 export async function buildClineSdkWorkspaceMetadata(cwd: string): Promise<string> {
 	return await buildWorkspaceMetadata(cwd);
 }

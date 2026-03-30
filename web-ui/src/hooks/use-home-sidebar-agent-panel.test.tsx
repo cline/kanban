@@ -5,7 +5,7 @@ import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 function createSummary(state: RuntimeTaskSessionSummary["state"], updatedAt: number): RuntimeTaskSessionSummary {
 	return {
-		taskId: "__home_agent__:workspace:cline:nonce",
+		taskId: "__home_agent__:workspace:cline",
 		state,
 		agentId: "cline",
 		workspacePath: "/tmp/repo",

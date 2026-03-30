@@ -88,7 +88,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		setKanbanProcessContext();
 		const launch = await prepareAgentLaunch({
-			taskId: "__home_agent__:workspace-1:claude:abc123",
+			taskId: "__home_agent__:workspace-1:claude",
 			agentId: "claude",
 			binary: "claude",
 			args: [],
@@ -108,7 +108,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		setKanbanProcessContext();
 		const launch = await prepareAgentLaunch({
-			taskId: "__home_agent__:workspace-1:codex:abc123",
+			taskId: "__home_agent__:workspace-1:codex",
 			agentId: "codex",
 			binary: "codex",
 			args: [],

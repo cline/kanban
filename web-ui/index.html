@@ -7,10 +7,17 @@
 			rel="icon"
 			href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 92 95%22><path fill=%22%23E6EDF3%22 fill-rule=%22nonzero%22 d=%22M65.45 15.8c10.89 0 19.71 8.865 19.71 19.8v6.6l5.74 11.465a4.8 4.8 0 0 1-.007 4.595L85.16 68.6v6.6c0 10.935-8.83 19.8-19.71 19.8H26.02c-10.89 0-19.71-8.865-19.71-19.8v-6.6L.45 57.295a4.8 4.8 0 0 1-.008-3.666L6.31 42.2v-6.6c0-10.935 8.83-19.8 19.71-19.8h39.43ZM30.73 38c-4.97 0-9 4.03-9 9v16c0 4.97 4.03 9 9 9s9-4.03 9-9V47c0-4.97-4.03-9-9-9Zm29 0c-4.97 0-9 4.03-9 9v16c0 4.97 4.03 9 9 9s9-4.03 9-9V47c0-4.97-4.03-9-9-9Z%22/><circle fill=%22%23E6EDF3%22 cx=%2245.735%22 cy=%2211%22 r=%2211%22/></svg>'
 		/>
+		<link rel="manifest" href="/manifest.json" />
+		<meta name="theme-color" content="#24292E" />
 		<title>Kanban</title>
 	</head>
 	<body>
 		<div id="root"></div>
 		<script type="module" src="/src/main.tsx"></script>
+		<script>
+			if ("serviceWorker" in navigator) {
+				navigator.serviceWorker.register("/sw.js");
+			}
+		</script>
 	</body>
 </html>

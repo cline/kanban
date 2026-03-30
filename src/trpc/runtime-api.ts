@@ -11,14 +11,11 @@ import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-ser
 import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service";
 import { createClineProviderService } from "../cline-sdk/cline-provider-service";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
-import {
-	createClineSdkUserInstructionWatcher,
-	listClineSdkWorkflowSlashCommands,
-} from "../cline-sdk/sdk-runtime-boundary";
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
 import type { RuntimeCommandRunResponse } from "../core/api-contract";
 import {
+	parseClineAddProviderRequest,
 	parseClineMcpOAuthRequest,
 	parseClineMcpSettingsSaveRequest,
 	parseClineOauthLoginRequest,
@@ -141,6 +138,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		saveClineProviderSettings: async (_workspaceScope, input) => {
 			const body = parseClineProviderSettingsSaveRequest(input);
 			return clineProviderService.saveProviderSettings(body);
+		},
+		addClineProvider: async (_workspaceScope, input) => {
+			const body = parseClineAddProviderRequest(input);
+			return await clineProviderService.addCustomProvider(body);
 		},
 		startTaskSession: async (workspaceScope, input) => {
 			try {
@@ -355,14 +356,14 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			}
 		},
 		getClineSlashCommands: async (workspaceScope) => {
-			const watcher = workspaceScope
-				? createClineSdkUserInstructionWatcher(workspaceScope.workspacePath)
-				: undefined;
-			if (watcher) {
-				await watcher.refreshAll();
+			if (!workspaceScope) {
+				return {
+					commands: [],
+				};
 			}
+			const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 			return {
-				commands: listClineSdkWorkflowSlashCommands(watcher),
+				commands: await clineTaskSessionService.listSlashCommands(workspaceScope.workspacePath),
 			};
 		},
 		reloadTaskChatSession: async (workspaceScope, input) => {

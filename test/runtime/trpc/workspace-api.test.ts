@@ -291,4 +291,37 @@ describe("createWorkspaceApi loadChanges", () => {
 			toRef: "cline-3",
 		});
 	});
+
+	it("returns an empty diff when the task worktree does not exist yet", async () => {
+		workspaceTaskWorktreeMocks.resolveTaskCwd.mockRejectedValue(
+			new Error('Task worktree not found for task "task-1".'),
+		);
+
+		const emptyResponse = createChangesResponse();
+		workspaceChangesMocks.createEmptyWorkspaceChangesResponse.mockResolvedValue(emptyResponse);
+
+		const api = createWorkspaceApi({
+			ensureTerminalManagerForWorkspace: vi.fn(),
+			getScopedClineTaskSessionService: vi.fn(),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastRuntimeProjectsUpdated: vi.fn(),
+			buildWorkspaceStateSnapshot: vi.fn(),
+		});
+
+		const response = await api.loadChanges(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				mode: "working_copy",
+			},
+		);
+
+		expect(response).toBe(emptyResponse);
+		expect(workspaceChangesMocks.createEmptyWorkspaceChangesResponse).toHaveBeenCalledWith("/tmp/repo");
+		expect(workspaceChangesMocks.getWorkspaceChanges).not.toHaveBeenCalled();
+	});
 });

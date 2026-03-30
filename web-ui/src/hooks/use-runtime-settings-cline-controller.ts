@@ -4,6 +4,7 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import {
+	addClineProvider,
 	fetchClineProviderCatalog,
 	fetchClineProviderModels,
 	runClineProviderOauthLogin,
@@ -12,6 +13,7 @@ import {
 import type {
 	RuntimeAgentId,
 	RuntimeClineOauthProvider,
+	RuntimeClineProviderCapability,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
@@ -37,6 +39,19 @@ interface SaveProviderSettingsOverrides {
 	apiKey?: string | null;
 	baseUrl?: string | null;
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
+}
+
+export interface AddClineProviderInput {
+	providerId: string;
+	name: string;
+	baseUrl: string;
+	apiKey?: string | null;
+	headers?: Record<string, string>;
+	timeoutMs?: number;
+	models: string[];
+	defaultModelId?: string | null;
+	modelsSourceUrl?: string | null;
+	capabilities?: RuntimeClineProviderCapability[];
 }
 
 export interface UseRuntimeSettingsClineControllerResult {
@@ -65,6 +80,7 @@ export interface UseRuntimeSettingsClineControllerResult {
 	selectedModelSupportsReasoningEffort: boolean;
 	hasUnsavedChanges: boolean;
 	saveProviderSettings: (overrides?: SaveProviderSettingsOverrides) => Promise<SaveResult>;
+	addCustomProvider: (input: AddClineProviderInput) => Promise<SaveResult>;
 	runOauthLogin: () => Promise<SaveResult>;
 }
 
@@ -81,6 +97,28 @@ function normalizeBaseUrlForProvider(providerId: string, baseUrl: string | null 
 		return "";
 	}
 	return baseUrl ?? "";
+}
+
+function getDefaultBaseUrlForProvider(providers: RuntimeClineProviderCatalogItem[], providerId: string): string {
+	const normalizedProviderId = providerId.trim().toLowerCase();
+	if (!normalizedProviderId) {
+		return "";
+	}
+	return (
+		providers.find((provider) => provider.id.trim().toLowerCase() === normalizedProviderId)?.baseUrl?.trim() ?? ""
+	);
+}
+
+function resolveBaseUrlForProvider(
+	providers: RuntimeClineProviderCatalogItem[],
+	providerId: string,
+	baseUrl: string | null | undefined,
+): string {
+	const normalizedBaseUrl = normalizeBaseUrlForProvider(providerId, baseUrl).trim();
+	if (normalizedBaseUrl.length > 0) {
+		return normalizedBaseUrl;
+	}
+	return normalizeBaseUrlForProvider(providerId, getDefaultBaseUrlForProvider(providers, providerId));
 }
 
 function getEffectiveProviderSettings(
@@ -122,7 +160,11 @@ export function useRuntimeSettingsClineController(
 	const configProviderSettings = getRuntimeClineProviderSettings(config);
 	const initialProviderId = effectiveProviderSettings?.providerId ?? effectiveProviderSettings?.oauthProvider ?? "";
 	const initialModelId = effectiveProviderSettings?.modelId ?? "";
-	const initialBaseUrl = normalizeBaseUrlForProvider(initialProviderId, effectiveProviderSettings?.baseUrl);
+	const initialBaseUrl = resolveBaseUrlForProvider(
+		providerCatalog,
+		initialProviderId,
+		effectiveProviderSettings?.baseUrl,
+	);
 	const initialReasoningEffort = effectiveProviderSettings?.reasoningEffort ?? "";
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	const managedOauthProvider = toManagedClineOauthProvider(normalizedProviderId);
@@ -173,7 +215,7 @@ export function useRuntimeSettingsClineController(
 		setProviderId(nextProviderId);
 		setModelId(configProviderSettings.modelId ?? "");
 		setApiKey("");
-		setBaseUrl(normalizeBaseUrlForProvider(nextProviderId, configProviderSettings.baseUrl));
+		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, configProviderSettings.baseUrl));
 		setReasoningEffort(configProviderSettings.reasoningEffort ?? "");
 		setProviderSettingsOverride(null);
 	}, [
@@ -233,6 +275,7 @@ export function useRuntimeSettingsClineController(
 		}
 		setProviderId(nextProviderId);
 		setModelId(defaultProvider.defaultModelId?.trim() ?? "");
+		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, null));
 	}, [open, providerCatalog, providerId, selectedAgentId]);
 
 	useEffect(() => {
@@ -248,6 +291,20 @@ export function useRuntimeSettingsClineController(
 		}
 		setModelId(defaultModelId);
 	}, [modelId, open, providerCatalog, providerId, selectedAgentId]);
+
+	useEffect(() => {
+		if (!open || selectedAgentId !== "cline") {
+			return;
+		}
+		if (providerId.trim().length === 0 || baseUrl.trim().length > 0) {
+			return;
+		}
+		const defaultBaseUrl = getDefaultBaseUrlForProvider(providerCatalog, providerId);
+		if (!defaultBaseUrl) {
+			return;
+		}
+		setBaseUrl(normalizeBaseUrlForProvider(providerId, defaultBaseUrl));
+	}, [baseUrl, open, providerCatalog, providerId, selectedAgentId]);
 
 	useEffect(() => {
 		if (!open || selectedAgentId !== "cline") {
@@ -337,6 +394,43 @@ export function useRuntimeSettingsClineController(
 		[apiKey, baseUrl, hasUnsavedChanges, managedOauthProvider, modelId, providerId, reasoningEffort, workspaceId],
 	);
 
+	const addCustomProvider = useCallback(
+		async (input: AddClineProviderInput): Promise<SaveResult> => {
+			try {
+				const savedSettings = await addClineProvider(workspaceId, input);
+				const nextProviderId = savedSettings.providerId ?? input.providerId.trim().toLowerCase();
+				setProviderId(nextProviderId);
+				setModelId(savedSettings.modelId ?? input.defaultModelId?.trim() ?? input.models[0] ?? "");
+				setApiKey("");
+				setBaseUrl(savedSettings.baseUrl ?? input.baseUrl);
+				setReasoningEffort(savedSettings.reasoningEffort ?? "");
+				setProviderSettingsOverride(savedSettings);
+
+				setIsLoadingProviderCatalog(true);
+				try {
+					setProviderCatalog(await fetchClineProviderCatalog(workspaceId));
+				} finally {
+					setIsLoadingProviderCatalog(false);
+				}
+
+				setIsLoadingProviderModels(true);
+				try {
+					setProviderModels(await fetchClineProviderModels(workspaceId, nextProviderId));
+				} finally {
+					setIsLoadingProviderModels(false);
+				}
+
+				return { ok: true };
+			} catch (error) {
+				return {
+					ok: false,
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
+		},
+		[workspaceId],
+	);
+
 	const runOauthLogin = useCallback(async (): Promise<SaveResult> => {
 		if (!managedOauthProvider) {
 			return {
@@ -402,6 +496,7 @@ export function useRuntimeSettingsClineController(
 		selectedModelSupportsReasoningEffort,
 		hasUnsavedChanges,
 		saveProviderSettings: saveProviderSettingsDraft,
+		addCustomProvider,
 		runOauthLogin,
 	};
 }

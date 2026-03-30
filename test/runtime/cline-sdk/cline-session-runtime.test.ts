@@ -59,10 +59,12 @@ describe("InMemoryClineSessionRuntime", () => {
 		const onTaskEvent = vi.fn();
 		let subscribedListener: ((event: unknown) => void) | null = null;
 		let requestedSessionId: string | null = null;
+		let requestedSource: string | null = null;
 
 		const fakeHost = {
-			start: vi.fn(async (input: { config?: { sessionId?: string } }) => {
+			start: vi.fn(async (input: { source?: string; config?: { sessionId?: string } }) => {
 				requestedSessionId = input.config?.sessionId ?? null;
+				requestedSource = input.source ?? null;
 				return await startDeferred.promise;
 			}),
 			send: vi.fn(async () => ({})),
@@ -96,6 +98,7 @@ describe("InMemoryClineSessionRuntime", () => {
 		await vi.waitFor(() => {
 			expect(fakeHost.start).toHaveBeenCalledTimes(1);
 			expect(requestedSessionId).toBeTruthy();
+			expect(requestedSource).toBe(null);
 			expect(subscribedListener).toBeTruthy();
 		});
 
@@ -222,6 +225,11 @@ describe("InMemoryClineSessionRuntime", () => {
 				userImages: ["data:image/png;base64,abc123"],
 				config: expect.objectContaining({
 					maxConsecutiveMistakes: 6,
+					logger: expect.objectContaining({
+						info: expect.any(Function),
+						warn: expect.any(Function),
+						error: expect.any(Function),
+					}),
 				}),
 			}),
 		);
@@ -339,7 +347,7 @@ describe("InMemoryClineSessionRuntime", () => {
 		});
 
 		await runtime.startTaskSession({
-			taskId: "__home_agent__:workspace-1:cline:abc123",
+			taskId: "__home_agent__:workspace-1:cline",
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
 			providerId: "anthropic",
@@ -349,7 +357,7 @@ describe("InMemoryClineSessionRuntime", () => {
 
 		expect(requestedSessionId).toBeTruthy();
 		expect(requestedSessionId ?? "").not.toMatch(/[<>:"/\\|?*]/);
-		expect(requestedSessionId ?? "").toMatch(/^__home_agent___workspace-1_cline_abc123-/);
+		expect(requestedSessionId ?? "").toMatch(/^__home_agent___workspace-1_cline-/);
 	});
 
 	it("clears the pending task binding when start fails", async () => {

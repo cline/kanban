@@ -5,6 +5,7 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineAddProviderResponse,
 	RuntimeClineKanbanAccessResponse,
 	RuntimeClineMcpAuthStatusResponse,
 	RuntimeClineMcpOAuthResponse,
@@ -12,6 +13,7 @@ import type {
 	RuntimeClineMcpSettingsResponse,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineOauthProvider,
+	RuntimeClineProviderCapability,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
@@ -54,6 +56,25 @@ export async function saveClineProviderSettings(
 ): Promise<RuntimeClineProviderSettings> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.saveClineProviderSettings.mutate(input);
+}
+
+export async function addClineProvider(
+	workspaceId: string | null,
+	input: {
+		providerId: string;
+		name: string;
+		baseUrl: string;
+		apiKey?: string | null;
+		headers?: Record<string, string>;
+		timeoutMs?: number;
+		models: string[];
+		defaultModelId?: string | null;
+		modelsSourceUrl?: string | null;
+		capabilities?: RuntimeClineProviderCapability[];
+	},
+): Promise<RuntimeClineAddProviderResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.addClineProvider.mutate(input);
 }
 
 export async function fetchClineProviderCatalog(

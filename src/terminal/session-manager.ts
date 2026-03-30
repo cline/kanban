@@ -26,7 +26,7 @@ import { PtySession } from "./pty-session";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
 import {
 	createTerminalProtocolFilterState,
-	disableOsc11BackgroundQueryIntercept,
+	disableOscColorQueryIntercept,
 	filterTerminalProtocolOutput,
 	type TerminalProtocolFilterState,
 } from "./terminal-protocol-filter";
@@ -36,9 +36,11 @@ import { TerminalStateMirror } from "./terminal-state-mirror";
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
 const AUTO_RESTART_WINDOW_MS = 5_000;
 const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
-// OpenCode can query OSC 11 before the browser terminal is attached and ready to answer.
-// We intercept that startup probe during early PTY output, synthesize a background-color
-// reply, then disable the filter once a live terminal listener has attached.
+// TUI apps (Codex, OpenCode) can query OSC 10/11 before the browser terminal is attached
+// and ready to answer. We intercept those startup probes during early PTY output, synthesize
+// foreground/background color replies, then disable the filter once a live terminal listener
+// has attached.
+const OSC_FOREGROUND_QUERY_REPLY = "\u001b]10;rgb:e6e6/eded/f3f3\u001b\\";
 const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
 
 type RestartableSessionRequest =
@@ -238,7 +240,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 		listener.onState?.(cloneSummary(entry.summary));
 		if (entry.active && listener.onOutput) {
-			disableOsc11BackgroundQueryIntercept(entry.active.terminalProtocolFilter);
+			disableOscColorQueryIntercept(entry.active.terminalProtocolFilter);
 		}
 
 		const listenerId = entry.listenerIdCounter;
@@ -326,6 +328,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 
 					const filteredChunk = filterTerminalProtocolOutput(entry.active.terminalProtocolFilter, chunk, {
+						onOsc10ForegroundQuery: () => entry.active?.session.write(OSC_FOREGROUND_QUERY_REPLY),
 						onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
 					});
 					if (filteredChunk.byteLength === 0) {
@@ -460,7 +463,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			cols,
 			rows,
 			terminalProtocolFilter: createTerminalProtocolFilterState({
-				interceptOsc11BackgroundQueries: true,
+				interceptOscColorQueries: true,
 				suppressDeviceAttributeQueries: request.agentId === "droid",
 			}),
 			onSessionCleanup: launch.cleanup ?? null,
@@ -539,6 +542,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 
 					const filteredChunk = filterTerminalProtocolOutput(entry.active.terminalProtocolFilter, chunk, {
+						onOsc10ForegroundQuery: () => entry.active?.session.write(OSC_FOREGROUND_QUERY_REPLY),
 						onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
 					});
 					if (filteredChunk.byteLength === 0) {
@@ -612,7 +616,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			cols,
 			rows,
 			terminalProtocolFilter: createTerminalProtocolFilterState({
-				interceptOsc11BackgroundQueries: true,
+				interceptOscColorQueries: true,
 			}),
 			onSessionCleanup: null,
 			detectOutputTransition: null,

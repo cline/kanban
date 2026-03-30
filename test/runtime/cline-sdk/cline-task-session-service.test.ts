@@ -11,6 +11,7 @@ import type {
 import { createSessionId } from "../../../src/cline-sdk/cline-session-state";
 import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
 import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
+import { createClineWatcherRegistry } from "../../../src/cline-sdk/cline-watcher-registry";
 import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../../../src/core/api-contract";
 
 const originalArgv = [...process.argv];
@@ -206,8 +207,8 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 						lastStartRequestByTaskId.set(taskId, {
 							taskId,
 							cwd: persistedCwd || persistedWorkspaceRoot,
-							providerId: typeof record?.provider === "string" ? record.provider : "anthropic",
-							modelId: typeof record?.model === "string" ? record.model : "claude-sonnet-4-6",
+							providerId: typeof record?.provider === "string" ? record.provider : "cline",
+							modelId: typeof record?.model === "string" ? record.model : "anthropic/claude-sonnet-4.6",
 							mode: undefined,
 							apiKey: undefined,
 							baseUrl: undefined,
@@ -303,10 +304,15 @@ function createFakeRuntimeSetup(): FakeRuntimeSetupController {
 		reason: "approved in test",
 	}));
 	const disposeMock = vi.fn(async () => {});
+	const refreshAllMock = vi.fn(async () => {});
+	const getSnapshotMock = vi.fn((_type: string) => new Map());
 
 	return {
 		setup: {
-			watcher: {} as ClineRuntimeSetup["watcher"],
+			watcher: {
+				refreshAll: refreshAllMock,
+				getSnapshot: getSnapshotMock,
+			} as unknown as ClineRuntimeSetup["watcher"],
 			resolvePrompt: resolvePromptMock,
 			loadRules: loadRulesMock,
 			requestToolApproval: requestToolApprovalMock,
@@ -399,6 +405,53 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(service.listMessages("task-1").map((message) => message.content)).toEqual(["Investigate startup"]);
 	});
 
+	it("disposes cached runtime setups when the service shuts down", async () => {
+		const runtime = createFakeClineSessionRuntime();
+		const runtimeSetup = createFakeRuntimeSetup();
+		const createRuntimeSetupMock = vi.fn(async (_workspacePath: string) => runtimeSetup.setup);
+		const service = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtime.createRuntime(options),
+			createRuntimeSetup: createRuntimeSetupMock,
+		});
+		services.push(service);
+
+		await service.listSlashCommands("/tmp/worktree");
+		await service.dispose();
+
+		expect(createRuntimeSetupMock).toHaveBeenCalledWith("/tmp/worktree");
+		expect(runtimeSetup.disposeMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("reuses one runtime setup per workspace across services when sharing a watcher registry", async () => {
+		const runtimeA = createFakeClineSessionRuntime();
+		const runtimeB = createFakeClineSessionRuntime();
+		const runtimeSetup = createFakeRuntimeSetup();
+		const createRuntimeSetupMock = vi.fn(async (_workspacePath: string) => runtimeSetup.setup);
+		const watcherRegistry = createClineWatcherRegistry({
+			createRuntimeSetup: createRuntimeSetupMock,
+		});
+		const serviceA = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtimeA.createRuntime(options),
+			watcherRegistry,
+		});
+		const serviceB = createInMemoryClineTaskSessionService({
+			createSessionRuntime: (options) => runtimeB.createRuntime(options),
+			watcherRegistry,
+		});
+		services.push(serviceA, serviceB);
+
+		await serviceA.listSlashCommands("/tmp/worktree");
+		await serviceB.listSlashCommands("/tmp/worktree");
+
+		expect(createRuntimeSetupMock).toHaveBeenCalledTimes(1);
+
+		await serviceA.dispose();
+		expect(runtimeSetup.disposeMock).toHaveBeenCalledTimes(0);
+
+		await serviceB.dispose();
+		expect(runtimeSetup.disposeMock).toHaveBeenCalledTimes(1);
+	});
+
 	it("keeps resume-from-trash sessions awaiting review until the user sends a message", async () => {
 		const { service } = createTrackedService();
 
@@ -481,7 +534,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 	});
 
-	it("defaults to anthropic provider when provider is not explicitly configured", async () => {
+	it("defaults to the SDK cline provider when provider is not explicitly configured", async () => {
 		const { service, runtime } = createTrackedService();
 
 		await service.startTaskSession({
@@ -495,7 +548,7 @@ describe("InMemoryClineTaskSessionService", () => {
 
 		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				providerId: "anthropic",
+				providerId: "cline",
 				systemPrompt: expect.stringContaining("You are Cline, an AI coding agent."),
 			}),
 		);
@@ -724,7 +777,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		setKanbanProcessContext();
 
 		await service.startTaskSession({
-			taskId: "__home_agent__:workspace-1:cline:abc123",
+			taskId: "__home_agent__:workspace-1:cline",
 			cwd: "/tmp/worktree",
 			prompt: "Add a task",
 		});
@@ -860,14 +913,15 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 		services.push(service);
 
-		await service.startTaskSession({
-			taskId: "task-1",
-			cwd: "/tmp/worktree",
-			prompt: "Initial prompt",
-		});
+			await service.startTaskSession({
+				taskId: "task-1",
+				cwd: "/tmp/worktree",
+				prompt: "Initial prompt",
+			});
+			await waitForTaskSessionId(runtime, "task-1");
 
-		runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
-		await service.sendTaskSessionInput("task-1", "/continue");
+			runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
+			await service.sendTaskSessionInput("task-1", "/continue");
 		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",

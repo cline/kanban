@@ -570,7 +570,7 @@ export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; pa
 							size="sm"
 							fill
 							icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-							className="justify-start text-xs rounded-none mt-0.5 mb-0.5"
+							className="justify-start text-xs rounded-none mt-0.5 mb-0.5 !bg-surface-0"
 							onClick={() => toggleBlock(item.block.id)}
 						>
 							{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
