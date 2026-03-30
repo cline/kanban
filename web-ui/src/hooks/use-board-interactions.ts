@@ -15,6 +15,7 @@ import {
 	findCardSelection,
 	getTaskColumnId,
 	moveTaskToColumn,
+	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "@/state/board-state";
 import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
@@ -83,6 +84,7 @@ export interface UseBoardInteractionsResult {
 	handleCardSelect: (taskId: string) => void;
 	handleMoveToTrash: () => void;
 	handleMoveReviewCardToTrash: (taskId: string) => void;
+	handleForceTrashScheduledTask: (taskId: string) => void;
 	handleRestoreTaskFromTrash: (taskId: string) => void;
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
 	handleOpenClearTrash: () => void;
@@ -470,6 +472,17 @@ export function useBoardInteractions({
 					columnId &&
 					columnId !== "trash"
 				) {
+					// If the task has an enabled schedule, recycle it to backlog instead of
+					// trashing so it can restart at the next scheduled time.
+					const interruptedSelection = findCardSelection(nextBoard, summary.taskId);
+					if (interruptedSelection?.card.schedule?.enabled) {
+						const recycled = trashTaskAndGetReadyLinkedTaskIds(nextBoard, summary.taskId);
+						if (recycled.moved) {
+							nextBoard = recycled.board;
+						}
+						continue;
+					}
+
 					const nextTaskId = getNextDetailTaskIdAfterTrashMove(nextBoard, summary.taskId);
 					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "trash", {
 						skipTrashWorkflow: true,
@@ -767,6 +780,36 @@ export function useBoardInteractions({
 		[requestMoveTaskToTrashWithAnimation, setTaskMoveToTrashLoading],
 	);
 
+	const handleForceTrashScheduledTask = useCallback(
+		(taskId: string) => {
+			if (moveToTrashLoadingByIdRef.current[taskId]) {
+				return;
+			}
+			// Disable the schedule so trashTaskAndGetReadyLinkedTaskIds will actually trash.
+			setBoard((currentBoard) => {
+				const selection = findCardSelection(currentBoard, taskId);
+				if (!selection?.card.schedule?.enabled) {
+					return currentBoard;
+				}
+				const updated = updateTask(currentBoard, taskId, {
+					prompt: selection.card.prompt,
+					startInPlanMode: selection.card.startInPlanMode,
+					autoReviewEnabled: selection.card.autoReviewEnabled,
+					autoReviewMode: resolveTaskAutoReviewMode(selection.card.autoReviewMode),
+					images: selection.card.images,
+					baseRef: selection.card.baseRef,
+					schedule: { ...selection.card.schedule, enabled: false },
+				});
+				return updated.updated ? updated.board : currentBoard;
+			});
+			setTaskMoveToTrashLoading(taskId, true);
+			void requestMoveTaskToTrashWithAnimation(taskId, "review").finally(() => {
+				setTaskMoveToTrashLoading(taskId, false);
+			});
+		},
+		[requestMoveTaskToTrashWithAnimation, setBoard, setTaskMoveToTrashLoading],
+	);
+
 	const handleRestoreTaskFromTrash = useCallback(
 		(taskId: string) => {
 			const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, "trash", "review");
@@ -886,6 +929,7 @@ export function useBoardInteractions({
 		handleCardSelect,
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
+		handleForceTrashScheduledTask,
 		handleRestoreTaskFromTrash,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,

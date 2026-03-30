@@ -200,7 +200,11 @@ describe("BoardCard", () => {
 
 	it("shows a loading state on the review trash button while moving to trash", async () => {
 		await act(async () => {
-			root.render(<BoardCard card={createCard()} index={0} columnId="review" isMoveToTrashLoading />);
+			root.render(
+				<TooltipProvider>
+					<BoardCard card={createCard()} index={0} columnId="review" isMoveToTrashLoading />
+				</TooltipProvider>,
+			);
 		});
 
 		const trashButton = container.querySelector('button[aria-label="Move task to trash"]');

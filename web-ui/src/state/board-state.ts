@@ -15,6 +15,7 @@ import {
 	resolveTaskAutoReviewMode,
 	type TaskAutoReviewMode,
 	type TaskImage,
+	type TaskSchedule,
 } from "@/types";
 
 export interface TaskDraft {
@@ -24,6 +25,7 @@ export interface TaskDraft {
 	autoReviewMode?: TaskAutoReviewMode;
 	images?: TaskImage[];
 	baseRef: string;
+	schedule?: TaskSchedule;
 }
 
 export interface TaskMoveEvent {
@@ -274,6 +276,7 @@ export function addTaskToColumnWithResult(
 			autoReviewMode: draft.autoReviewMode,
 			images: draft.images,
 			baseRef: draft.baseRef,
+			schedule: draft.schedule,
 		},
 		createBrowserUuid,
 	);
@@ -469,6 +472,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 							: undefined,
 				baseRef,
 				updatedAt: Date.now(),
+				schedule: draft.schedule === undefined ? card.schedule : draft.schedule,
 			};
 		});
 		return columnUpdated ? { ...column, cards } : column;
@@ -551,4 +555,8 @@ export function findCardSelection(board: BoardData, taskId: string): CardSelecti
 
 export function getTaskColumnId(board: BoardData, taskId: string): BoardColumnId | null {
 	return runtimeTaskState.getTaskColumnId(board, taskId);
+}
+
+export function getScheduledTasksDue(board: BoardData, now: number = Date.now()): string[] {
+	return runtimeTaskState.getScheduledTasksDue(board, now);
 }

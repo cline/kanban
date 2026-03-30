@@ -32,7 +32,9 @@ export interface AgentTerminalPanelProps {
 	isOpenPrLoading?: boolean;
 	taskColumnId?: string;
 	onMoveToTrash?: () => void;
+	onForceTrash?: () => void;
 	isMoveToTrashLoading?: boolean;
+	isScheduledTask?: boolean;
 	onCancelAutomaticAction?: () => void;
 	cancelAutomaticActionLabel?: string | null;
 	showMoveToTrash?: boolean;
@@ -153,7 +155,9 @@ function AgentTerminalPanelLayout({
 	isOpenPrLoading = false,
 	taskColumnId = "in_progress",
 	onMoveToTrash,
+	onForceTrash,
 	isMoveToTrashLoading = false,
+	isScheduledTask = false,
 	onCancelAutomaticAction,
 	cancelAutomaticActionLabel,
 	showMoveToTrash,
@@ -332,9 +336,22 @@ function AgentTerminalPanelLayout({
 							{cancelAutomaticActionLabel}
 						</Button>
 					) : null}
-					<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
-						{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
-					</Button>
+					{isScheduledTask ? (
+						<>
+							<Button variant="primary" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
+								{isMoveToTrashLoading ? <Spinner size={14} /> : "Move to Backlog"}
+							</Button>
+							{onForceTrash ? (
+								<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onForceTrash}>
+									Move to Trash
+								</Button>
+							) : null}
+						</>
+					) : (
+						<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
+							{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
+						</Button>
+					)}
 				</div>
 			) : null}
 		</div>

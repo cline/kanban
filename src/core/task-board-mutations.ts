@@ -5,6 +5,7 @@ import type {
 	RuntimeBoardDependency,
 	RuntimeTaskAutoReviewMode,
 	RuntimeTaskImage,
+	RuntimeTaskSchedule,
 } from "./api-contract";
 import { createUniqueTaskId } from "./task-id";
 
@@ -16,6 +17,7 @@ export interface RuntimeCreateTaskInput {
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	schedule?: RuntimeTaskSchedule;
 }
 
 export interface RuntimeUpdateTaskInput {
@@ -25,6 +27,7 @@ export interface RuntimeUpdateTaskInput {
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	schedule?: RuntimeTaskSchedule;
 }
 
 function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
@@ -37,6 +40,11 @@ function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | u
 // Copy image metadata so board tasks do not retain caller-owned array or object references.
 function cloneTaskImages(images?: RuntimeTaskImage[]): RuntimeTaskImage[] | undefined {
 	return images && images.length > 0 ? images.map((image) => ({ ...image })) : undefined;
+}
+
+// Clone schedule so board tasks do not retain caller-owned object references.
+function cloneSchedule(schedule?: RuntimeTaskSchedule): RuntimeTaskSchedule | undefined {
+	return schedule ? { ...schedule } : undefined;
 }
 
 export interface RuntimeCreateTaskResult {
@@ -69,8 +77,16 @@ export interface RuntimeRemoveTaskDependencyResult {
 	removed: boolean;
 }
 
+export interface RuntimeRecycleTaskResult {
+	board: RuntimeBoardData;
+	recycled: boolean;
+	task: RuntimeBoardCard | null;
+	fromColumnId: RuntimeBoardColumnId | null;
+}
+
 export interface RuntimeTrashTaskResult extends RuntimeMoveTaskResult {
 	readyTaskIds: string[];
+	recycledToBacklog: boolean;
 }
 
 export interface RuntimeDeleteTasksResult {
@@ -287,6 +303,7 @@ export function addTaskToColumn(
 		baseRef,
 		createdAt: now,
 		updatedAt: now,
+		schedule: cloneSchedule(input.schedule),
 	};
 
 	const targetColumnIndex = board.columns.findIndex((column) => column.id === columnId);
@@ -394,12 +411,29 @@ export function trashTaskAndGetReadyLinkedTaskIds(
 	taskId: string,
 	now: number = Date.now(),
 ): RuntimeTrashTaskResult {
+	// If the task has an enabled schedule, recycle it to backlog instead of trashing.
+	const taskLocation = findTaskLocation(board, taskId);
+	if (taskLocation && taskLocation.task.schedule?.enabled) {
+		const fromColumnId = taskLocation.columnId;
+		const readyTaskIds = getLinkedBacklogTaskIdsReadyAfterTaskTrashed(board, taskId, fromColumnId);
+		const recycled = recycleScheduledTaskToBacklog(board, taskId, now);
+		return {
+			moved: recycled.recycled,
+			board: recycled.board,
+			task: recycled.task,
+			fromColumnId: recycled.fromColumnId,
+			readyTaskIds: recycled.recycled ? readyTaskIds : [],
+			recycledToBacklog: recycled.recycled,
+		};
+	}
+
 	const fromColumnId = getTaskColumnId(board, taskId);
 	const readyTaskIds = getLinkedBacklogTaskIdsReadyAfterTaskTrashed(board, taskId, fromColumnId);
 	const movedToTrash = moveTaskToColumn(board, taskId, "trash", now);
 	return {
 		...movedToTrash,
 		readyTaskIds: movedToTrash.moved ? readyTaskIds : [],
+		recycledToBacklog: false,
 	};
 }
 
@@ -599,6 +633,7 @@ export function updateTask(
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
 				updatedAt: now,
+				schedule: input.schedule === undefined ? card.schedule : cloneSchedule(input.schedule),
 			};
 			return updatedTask;
 		});
@@ -621,4 +656,179 @@ export function updateTask(
 		task: updatedTask,
 		updated: true,
 	};
+}
+
+/**
+ * Parse a basic cron field value against a candidate number.
+ * Supports: "*" (any), a single number, or comma-separated numbers.
+ */
+function cronFieldMatches(field: string, value: number): boolean {
+	if (field === "*") {
+		return true;
+	}
+	return field.split(",").some((part) => {
+		const parsed = Number.parseInt(part.trim(), 10);
+		return !Number.isNaN(parsed) && parsed === value;
+	});
+}
+
+/**
+ * Parse a basic 5-field cron expression (minute hour day-of-month month day-of-week)
+ * and compute the next matching timestamp after `now`.
+ * Supports numbers, "*", and comma-separated numbers for each field.
+ * Returns a timestamp in milliseconds.
+ */
+function computeNextCronRun(cronExpression: string, now: number): number {
+	const fields = cronExpression.trim().split(/\s+/);
+	if (fields.length !== 5) {
+		// Invalid cron expression – fall back to 24 hours from now.
+		return now + 86400000;
+	}
+
+	const [minuteField, hourField, domField, monthField, dowField] = fields as [string, string, string, string, string];
+
+	// Start searching from the next minute after `now`.
+	const start = new Date(now);
+	start.setSeconds(0, 0);
+	start.setMinutes(start.getMinutes() + 1);
+
+	// Search up to 366 days ahead to avoid infinite loops.
+	const maxIterations = 366 * 24 * 60;
+	const candidate = new Date(start.getTime());
+
+	for (let i = 0; i < maxIterations; i++) {
+		const minute = candidate.getMinutes();
+		const hour = candidate.getHours();
+		const dom = candidate.getDate();
+		const month = candidate.getMonth() + 1; // 1-based
+		const dow = candidate.getDay(); // 0=Sunday
+
+		if (
+			cronFieldMatches(minuteField, minute) &&
+			cronFieldMatches(hourField, hour) &&
+			cronFieldMatches(domField, dom) &&
+			cronFieldMatches(monthField, month) &&
+			cronFieldMatches(dowField, dow)
+		) {
+			return candidate.getTime();
+		}
+
+		candidate.setMinutes(candidate.getMinutes() + 1);
+	}
+
+	// If no match found, fall back to 24 hours from now.
+	return now + 86400000;
+}
+
+/**
+ * Compute the next run time for a scheduled task.
+ * - If `intervalMs` is set, returns `now + intervalMs`.
+ * - If `cronExpression` is set, computes the next cron match.
+ * - Falls back to `now + 86400000` (24 hours) if neither is specified.
+ */
+export function computeNextRunAt(schedule: RuntimeTaskSchedule, now: number): number {
+	if (schedule.intervalMs != null && schedule.intervalMs > 0) {
+		return now + schedule.intervalMs;
+	}
+	if (schedule.cronExpression != null && schedule.cronExpression.trim().length > 0) {
+		return computeNextCronRun(schedule.cronExpression, now);
+	}
+	return now + 86400000;
+}
+
+/**
+ * Recycle a scheduled task from its current column back to backlog.
+ * Updates the schedule fields: sets lastRunAt, increments runCount, computes nextRunAt.
+ * For "once" type schedules, sets enabled = false after recycling.
+ * This is a pure function operating only on the board data structure.
+ */
+export function recycleScheduledTaskToBacklog(
+	board: RuntimeBoardData,
+	taskId: string,
+	now: number = Date.now(),
+): RuntimeRecycleTaskResult {
+	const found = findTaskLocation(board, taskId);
+	if (!found) {
+		return { board, recycled: false, task: null, fromColumnId: null };
+	}
+
+	const task = found.task;
+	if (!task.schedule) {
+		return { board, recycled: false, task, fromColumnId: found.columnId };
+	}
+
+	// Already in backlog – nothing to move.
+	if (found.columnId === "backlog") {
+		return { board, recycled: false, task, fromColumnId: found.columnId };
+	}
+
+	const isOnce = task.schedule.type === "once";
+	const newRunCount = (task.schedule.runCount ?? 0) + 1;
+	const nextRunAt = isOnce ? task.schedule.nextRunAt : computeNextRunAt(task.schedule, now);
+
+	const updatedSchedule: RuntimeTaskSchedule = {
+		...task.schedule,
+		lastRunAt: now,
+		runCount: newRunCount,
+		nextRunAt,
+		enabled: isOnce ? false : task.schedule.enabled,
+	};
+
+	const recycledTask: RuntimeBoardCard = {
+		...task,
+		updatedAt: now,
+		schedule: updatedSchedule,
+	};
+
+	// Find the backlog column index.
+	const backlogColumnIndex = board.columns.findIndex((column) => column.id === "backlog");
+	if (backlogColumnIndex === -1) {
+		return { board, recycled: false, task, fromColumnId: found.columnId };
+	}
+
+	const columns = board.columns.map((column, index) => {
+		if (index === found.columnIndex) {
+			// Remove from source column.
+			return {
+				...column,
+				cards: column.cards.filter((card) => card.id !== taskId),
+			};
+		}
+		if (index === backlogColumnIndex) {
+			// Add to backlog (at the end).
+			return {
+				...column,
+				cards: [...column.cards, recycledTask],
+			};
+		}
+		return column;
+	});
+
+	return {
+		board: updateTaskDependencies({
+			...board,
+			columns,
+		}),
+		recycled: true,
+		task: recycledTask,
+		fromColumnId: found.columnId,
+	};
+}
+
+/**
+ * Returns task IDs of backlog tasks whose schedule is enabled and nextRunAt <= now.
+ * This is a pure function operating only on the board data structure.
+ */
+export function getScheduledTasksDue(board: RuntimeBoardData, now: number = Date.now()): string[] {
+	const backlogColumn = board.columns.find((column) => column.id === "backlog");
+	if (!backlogColumn) {
+		return [];
+	}
+	const dueTaskIds: string[] = [];
+	for (const card of backlogColumn.cards) {
+		if (card.schedule?.enabled && card.schedule.runCount > 0 && card.schedule.nextRunAt <= now) {
+			dueTaskIds.push(card.id);
+		}
+	}
+	return dueTaskIds;
 }

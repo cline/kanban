@@ -80,7 +80,9 @@ export interface ClineAgentChatPanelProps {
 	isCommitLoading?: boolean;
 	isOpenPrLoading?: boolean;
 	onMoveToTrash?: () => void;
+	onForceTrash?: () => void;
 	isMoveToTrashLoading?: boolean;
+	isScheduledTask?: boolean;
 	onCancelAutomaticAction?: () => void;
 	cancelAutomaticActionLabel?: string | null;
 	showMoveToTrash?: boolean;
@@ -109,7 +111,9 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			isCommitLoading = false,
 			isOpenPrLoading = false,
 			onMoveToTrash,
+			onForceTrash,
 			isMoveToTrashLoading = false,
+			isScheduledTask = false,
 			onCancelAutomaticAction,
 			cancelAutomaticActionLabel,
 			showMoveToTrash = false,
@@ -471,9 +475,22 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 								{cancelAutomaticActionLabel}
 							</Button>
 						) : null}
-						<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
-							{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
-						</Button>
+						{isScheduledTask ? (
+							<>
+								<Button variant="primary" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
+									{isMoveToTrashLoading ? <Spinner size={14} /> : "Move to Backlog"}
+								</Button>
+								{onForceTrash ? (
+									<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onForceTrash}>
+										Move to Trash
+									</Button>
+								) : null}
+							</>
+						) : (
+							<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
+								{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
+							</Button>
+						)}
 					</div>
 				) : null}
 			</div>

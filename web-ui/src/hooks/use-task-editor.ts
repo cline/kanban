@@ -10,7 +10,7 @@ import {
 import type { RuntimeAgentId } from "@/runtime/types";
 import { addTaskToColumnWithResult, findCardSelection, updateTask } from "@/state/board-state";
 import { toTelemetrySelectedAgentId, trackTaskCreated } from "@/telemetry/events";
-import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
+import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage, TaskSchedule } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
 import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/utils/react-use";
 
@@ -46,6 +46,8 @@ export interface UseTaskEditorResult {
 	newTaskAutoReviewMode: TaskAutoReviewMode;
 	setNewTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
 	isNewTaskStartInPlanModeDisabled: boolean;
+	newTaskSchedule: TaskSchedule | undefined;
+	setNewTaskSchedule: Dispatch<SetStateAction<TaskSchedule | undefined>>;
 	newTaskBranchRef: string;
 	setNewTaskBranchRef: Dispatch<SetStateAction<string>>;
 	editingTaskId: string | null;
@@ -60,6 +62,8 @@ export interface UseTaskEditorResult {
 	editTaskAutoReviewMode: TaskAutoReviewMode;
 	setEditTaskAutoReviewMode: Dispatch<SetStateAction<TaskAutoReviewMode>>;
 	isEditTaskStartInPlanModeDisabled: boolean;
+	editTaskSchedule: TaskSchedule | undefined;
+	setEditTaskSchedule: Dispatch<SetStateAction<TaskSchedule | undefined>>;
 	editTaskBranchRef: string;
 	setEditTaskBranchRef: Dispatch<SetStateAction<string>>;
 	handleOpenCreateTask: () => void;
@@ -100,6 +104,7 @@ export function useTaskEditor({
 		normalizeStoredTaskAutoReviewMode,
 	);
 	const isNewTaskStartInPlanModeDisabled = newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
+	const [newTaskSchedule, setNewTaskSchedule] = useState<TaskSchedule | undefined>(undefined);
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -109,6 +114,7 @@ export function useTaskEditor({
 	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
 	const [editTaskAutoReviewMode, setEditTaskAutoReviewMode] = useState<TaskAutoReviewMode>("commit");
 	const isEditTaskStartInPlanModeDisabled = editTaskAutoReviewEnabled && editTaskAutoReviewMode === "move_to_trash";
+	const [editTaskSchedule, setEditTaskSchedule] = useState<TaskSchedule | undefined>(undefined);
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
 	const lastCreatedTaskBranchRef = useMemo(() => {
@@ -182,6 +188,7 @@ export function useTaskEditor({
 			setEditTaskAutoReviewEnabled(false);
 			setEditTaskAutoReviewMode("commit");
 			setEditTaskImages([]);
+			setEditTaskSchedule(undefined);
 			setEditTaskBranchRef("");
 		}
 	}, [board, editingTaskId]);
@@ -197,6 +204,7 @@ export function useTaskEditor({
 		setIsInlineTaskCreateOpen(false);
 		setNewTaskPrompt("");
 		setNewTaskImages([]);
+		setNewTaskSchedule(undefined);
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
 	}, [resolvedDefaultTaskBranchRef]);
 
@@ -215,6 +223,7 @@ export function useTaskEditor({
 			setEditTaskStartInPlanMode(task.startInPlanMode);
 			setEditTaskAutoReviewEnabled(task.autoReviewEnabled === true);
 			setEditTaskAutoReviewMode(resolveTaskAutoReviewMode(task.autoReviewMode));
+			setEditTaskSchedule(task.schedule);
 			const fallbackBranch = task.baseRef || resolvedDefaultTaskBranchRef;
 			setEditTaskBranchRef(fallbackBranch);
 		},
@@ -228,6 +237,7 @@ export function useTaskEditor({
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
 		setEditTaskImages([]);
+		setEditTaskSchedule(undefined);
 		setEditTaskBranchRef("");
 	}, []);
 
@@ -253,6 +263,7 @@ export function useTaskEditor({
 				autoReviewEnabled: editTaskAutoReviewEnabled,
 				autoReviewMode: editTaskAutoReviewMode,
 				images: editTaskImages,
+				schedule: editTaskSchedule,
 				baseRef,
 			});
 			return updated.updated ? updated.board : currentBoard;
@@ -269,6 +280,7 @@ export function useTaskEditor({
 		editTaskBranchRef,
 		editTaskPrompt,
 		editTaskImages,
+		editTaskSchedule,
 		editTaskStartInPlanMode,
 		editingTaskId,
 		resolvedDefaultTaskBranchRef,
@@ -299,6 +311,7 @@ export function useTaskEditor({
 				autoReviewEnabled: newTaskAutoReviewEnabled,
 				autoReviewMode: newTaskAutoReviewMode,
 				images: newTaskImages,
+				schedule: newTaskSchedule,
 				baseRef,
 			});
 			setBoard(created.board);
@@ -330,6 +343,7 @@ export function useTaskEditor({
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskPrompt,
+			newTaskSchedule,
 			newTaskStartInPlanMode,
 			resolvedDefaultTaskBranchRef,
 			selectedAgentId,
@@ -356,6 +370,7 @@ export function useTaskEditor({
 					autoReviewEnabled: newTaskAutoReviewEnabled,
 					autoReviewMode: newTaskAutoReviewMode,
 					images: newTaskImages,
+					schedule: newTaskSchedule,
 					baseRef,
 				});
 				updatedBoard = created.board;
@@ -391,6 +406,7 @@ export function useTaskEditor({
 			newTaskAutoReviewMode,
 			newTaskBranchRef,
 			newTaskImages,
+			newTaskSchedule,
 			newTaskStartInPlanMode,
 			resolvedDefaultTaskBranchRef,
 			selectedAgentId,
@@ -406,8 +422,10 @@ export function useTaskEditor({
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
 		setEditTaskImages([]);
+		setEditTaskSchedule(undefined);
 		setEditTaskBranchRef("");
 		setNewTaskImages([]);
+		setNewTaskSchedule(undefined);
 	}, []);
 
 	return {
@@ -423,6 +441,8 @@ export function useTaskEditor({
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
 		isNewTaskStartInPlanModeDisabled,
+		newTaskSchedule,
+		setNewTaskSchedule,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
@@ -437,6 +457,8 @@ export function useTaskEditor({
 		editTaskAutoReviewMode,
 		setEditTaskAutoReviewMode,
 		isEditTaskStartInPlanModeDisabled,
+		editTaskSchedule,
+		setEditTaskSchedule,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,

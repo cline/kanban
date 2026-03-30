@@ -21,10 +21,11 @@ import { useHotkeys } from "react-hotkeys-hook";
 import type { BranchSelectOption } from "@/components/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
+import { TaskScheduleSection } from "@/components/task-schedule-section";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { LocalStorageKey } from "@/storage/local-storage-store";
-import type { TaskAutoReviewMode, TaskImage } from "@/types";
+import type { TaskAutoReviewMode, TaskImage, TaskSchedule } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 
@@ -111,6 +112,8 @@ export function TaskCreateDialog({
 	autoReviewMode,
 	onAutoReviewModeChange,
 	startInPlanModeDisabled = false,
+	schedule,
+	onScheduleChange,
 	workspaceId,
 	branchRef,
 	branchOptions,
@@ -134,6 +137,8 @@ export function TaskCreateDialog({
 	autoReviewMode: TaskAutoReviewMode;
 	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
 	startInPlanModeDisabled?: boolean;
+	schedule?: TaskSchedule;
+	onScheduleChange?: (schedule: TaskSchedule | undefined) => void;
 	workspaceId: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
@@ -539,6 +544,10 @@ export function TaskCreateDialog({
 							/>
 						</div>
 					</div>
+
+					{onScheduleChange ? (
+						<TaskScheduleSection schedule={schedule} onScheduleChange={onScheduleChange} />
+					) : null}
 				</div>
 			</DialogBody>
 			<DialogFooter>

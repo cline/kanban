@@ -1,7 +1,12 @@
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import type { Command } from "commander";
 
-import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract";
+import type {
+	RuntimeBoardCard,
+	RuntimeBoardDependency,
+	RuntimeTaskSchedule,
+	RuntimeWorkspaceStateResponse,
+} from "../core/api-contract";
 import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
 import {
 	addTaskDependency,
@@ -68,6 +73,80 @@ function parseAutoReviewMode(value: string | undefined): "commit" | "pr" | "move
 		return value;
 	}
 	throw new Error(`Invalid auto review mode "${value}". Expected: commit, pr, move_to_trash.`);
+}
+
+function parseScheduleType(value: string | undefined): "once" | "recurring" | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (value === "once" || value === "recurring") {
+		return value;
+	}
+	throw new Error(`Invalid schedule type "${value}". Expected: once, recurring.`);
+}
+
+interface ScheduleCliOptions {
+	scheduleType?: string;
+	scheduleCron?: string;
+	scheduleInterval?: string;
+	scheduleAt?: string;
+	scheduleEnabled?: unknown;
+}
+
+function parseScheduleOptions(options: ScheduleCliOptions): RuntimeTaskSchedule | undefined {
+	const scheduleType = parseScheduleType(options.scheduleType);
+	const scheduleCron = options.scheduleCron?.trim() || undefined;
+	const scheduleInterval = options.scheduleInterval?.trim() || undefined;
+	const scheduleAt = options.scheduleAt?.trim() || undefined;
+	const scheduleEnabled = options.scheduleEnabled;
+
+	const hasAnyScheduleOption =
+		scheduleType !== undefined ||
+		scheduleCron !== undefined ||
+		scheduleInterval !== undefined ||
+		scheduleAt !== undefined ||
+		scheduleEnabled !== undefined;
+
+	if (!hasAnyScheduleOption) {
+		return undefined;
+	}
+
+	if (!scheduleType) {
+		throw new Error("--schedule-type is required when any schedule option is provided.");
+	}
+
+	const intervalMs = scheduleInterval !== undefined ? Number(scheduleInterval) : undefined;
+	if (intervalMs !== undefined && (Number.isNaN(intervalMs) || intervalMs <= 0)) {
+		throw new Error(
+			`Invalid --schedule-interval value "${options.scheduleInterval}". Must be a positive number of milliseconds.`,
+		);
+	}
+
+	let nextRunAt: number;
+	if (scheduleAt !== undefined) {
+		const parsed = new Date(scheduleAt).getTime();
+		if (Number.isNaN(parsed)) {
+			throw new Error(`Invalid --schedule-at value "${scheduleAt}". Must be a valid ISO-8601 date/time.`);
+		}
+		nextRunAt = parsed;
+	} else {
+		nextRunAt = Date.now();
+	}
+
+	const enabled =
+		scheduleEnabled !== undefined
+			? (parseOptionalBooleanOption(scheduleEnabled, "--schedule-enabled") ?? true)
+			: true;
+
+	return {
+		type: scheduleType,
+		cronExpression: scheduleCron,
+		intervalMs,
+		nextRunAt,
+		lastRunAt: undefined,
+		runCount: 0,
+		enabled,
+	};
 }
 
 function resolveTaskCommandTarget(input: TaskCommandTarget, commandName: string): ResolvedTaskCommandTarget {
@@ -192,6 +271,17 @@ function formatTaskRecord(state: RuntimeWorkspaceStateResponse, task: RuntimeBoa
 		autoReviewMode: task.autoReviewMode ?? "commit",
 		createdAt: task.createdAt,
 		updatedAt: task.updatedAt,
+		schedule: task.schedule
+			? {
+					type: task.schedule.type,
+					cronExpression: task.schedule.cronExpression ?? null,
+					intervalMs: task.schedule.intervalMs ?? null,
+					nextRunAt: task.schedule.nextRunAt,
+					lastRunAt: task.schedule.lastRunAt ?? null,
+					runCount: task.schedule.runCount ?? 0,
+					enabled: task.schedule.enabled ?? true,
+				}
+			: null,
 		session: session
 			? {
 					state: session.state,
@@ -317,6 +407,7 @@ async function createTask(input: {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: "commit" | "pr" | "move_to_trash";
+	schedule?: RuntimeTaskSchedule;
 }): Promise<JsonRecord> {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
@@ -335,6 +426,7 @@ async function createTask(input: {
 				autoReviewEnabled: input.autoReviewEnabled,
 				autoReviewMode: input.autoReviewMode,
 				baseRef: resolvedBaseRef,
+				schedule: input.schedule,
 			},
 			() => globalThis.crypto.randomUUID(),
 		);
@@ -355,6 +447,17 @@ async function createTask(input: {
 			startInPlanMode: created.startInPlanMode,
 			autoReviewEnabled: created.autoReviewEnabled === true,
 			autoReviewMode: created.autoReviewMode ?? "commit",
+			schedule: created.schedule
+				? {
+						type: created.schedule.type,
+						cronExpression: created.schedule.cronExpression ?? null,
+						intervalMs: created.schedule.intervalMs ?? null,
+						nextRunAt: created.schedule.nextRunAt,
+						lastRunAt: created.schedule.lastRunAt ?? null,
+						runCount: created.schedule.runCount ?? 0,
+						enabled: created.schedule.enabled ?? true,
+					}
+				: null,
 		},
 	};
 }
@@ -368,13 +471,15 @@ async function updateTaskCommand(input: {
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: "commit" | "pr" | "move_to_trash";
+	schedule?: RuntimeTaskSchedule;
 }): Promise<JsonRecord> {
 	if (
 		input.prompt === undefined &&
 		input.baseRef === undefined &&
 		input.startInPlanMode === undefined &&
 		input.autoReviewEnabled === undefined &&
-		input.autoReviewMode === undefined
+		input.autoReviewMode === undefined &&
+		input.schedule === undefined
 	) {
 		throw new Error("task update requires at least one field to change.");
 	}
@@ -394,6 +499,7 @@ async function updateTaskCommand(input: {
 			startInPlanMode: input.startInPlanMode ?? taskRecord.task.startInPlanMode,
 			autoReviewEnabled: input.autoReviewEnabled ?? taskRecord.task.autoReviewEnabled === true,
 			autoReviewMode: input.autoReviewMode ?? taskRecord.task.autoReviewMode ?? "commit",
+			schedule: input.schedule ?? taskRecord.task.schedule,
 		});
 		if (!updatedTask.updated || !updatedTask.task) {
 			throw new Error(`Task "${input.taskId}" could not be updated.`);
@@ -574,6 +680,7 @@ interface TrashTaskExecutionResult {
 	worktreeDeleted: boolean;
 	worktreeDeleteError?: string;
 	alreadyInTrash: boolean;
+	recycledToBacklog: boolean;
 }
 
 async function trashTaskById(input: {
@@ -596,6 +703,7 @@ async function trashTaskById(input: {
 					task: formatTaskRecord(latestState, latestRecord.task, latestRecord.columnId),
 					readyTaskIds: [] as string[],
 					alreadyInTrash: true,
+					recycledToBacklog: false,
 				},
 				save: false,
 			};
@@ -606,6 +714,7 @@ async function trashTaskById(input: {
 			throw new Error(`Task "${input.taskId}" could not be moved to trash.`);
 		}
 
+		const recycled = trashed.recycledToBacklog === true;
 		const nextState: RuntimeWorkspaceStateResponse = {
 			...latestState,
 			board: trashed.board,
@@ -613,9 +722,10 @@ async function trashTaskById(input: {
 		return {
 			board: trashed.board,
 			value: {
-				task: formatTaskRecord(nextState, trashed.task, "trash"),
+				task: formatTaskRecord(nextState, trashed.task, recycled ? "backlog" : "trash"),
 				readyTaskIds: trashed.readyTaskIds,
 				alreadyInTrash: false,
+				recycledToBacklog: recycled,
 			},
 		};
 	});
@@ -632,6 +742,7 @@ async function trashTaskById(input: {
 			autoStartedTasks: [],
 			worktreeDeleted: false,
 			alreadyInTrash: true,
+			recycledToBacklog: false,
 		};
 	}
 
@@ -645,6 +756,8 @@ async function trashTaskById(input: {
 		autoStartedTasks.push(started);
 	}
 
+	// Always clean up the worktree – even when recycled to backlog so the next
+	// scheduled run starts with a fresh worktree from the base ref.
 	const deletedWorkspace = await deleteTaskWorkspace(input.runtimeClient, input.taskId);
 
 	return {
@@ -655,6 +768,7 @@ async function trashTaskById(input: {
 		worktreeDeleted: deletedWorkspace.removed,
 		worktreeDeleteError: deletedWorkspace.error,
 		alreadyInTrash: false,
+		recycledToBacklog: mutation.value.recycledToBacklog,
 	};
 }
 
@@ -685,6 +799,7 @@ async function trashTask(input: {
 				workspacePath: workspaceRepoPath,
 				readyTaskIds: [],
 				autoStartedTasks: [],
+				recycledToBacklog: false,
 			};
 		}
 		return {
@@ -695,6 +810,7 @@ async function trashTask(input: {
 			autoStartedTasks: trashed.autoStartedTasks,
 			worktreeDeleted: trashed.worktreeDeleted,
 			worktreeDeleteError: trashed.worktreeDeleteError,
+			recycledToBacklog: trashed.recycledToBacklog,
 		};
 	}
 
@@ -902,6 +1018,11 @@ export function registerTaskCommand(program: Command): void {
 		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
 		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
 		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr | move_to_trash.", parseAutoReviewMode)
+		.option("--schedule-type <type>", "Schedule type: once | recurring.", parseScheduleType)
+		.option("--schedule-cron <expression>", "Cron expression for scheduling (5-field).")
+		.option("--schedule-interval <ms>", "Interval in milliseconds between scheduled runs.")
+		.option("--schedule-at <iso-date>", "ISO-8601 date/time for the first scheduled run.")
+		.option("--schedule-enabled [value]", "Enable or disable the schedule (true|false). Defaults to true.")
 		.action(
 			async (options: {
 				prompt: string;
@@ -910,6 +1031,11 @@ export function registerTaskCommand(program: Command): void {
 				startInPlanMode?: unknown;
 				autoReviewEnabled?: unknown;
 				autoReviewMode?: "commit" | "pr" | "move_to_trash";
+				scheduleType?: string;
+				scheduleCron?: string;
+				scheduleInterval?: string;
+				scheduleAt?: string;
+				scheduleEnabled?: unknown;
 			}) => {
 				await runTaskCommand(
 					async () =>
@@ -921,6 +1047,7 @@ export function registerTaskCommand(program: Command): void {
 							startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
 							autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
 							autoReviewMode: options.autoReviewMode,
+							schedule: parseScheduleOptions(options),
 						}),
 				);
 			},
@@ -936,6 +1063,11 @@ export function registerTaskCommand(program: Command): void {
 		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
 		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
 		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr | move_to_trash.", parseAutoReviewMode)
+		.option("--schedule-type <type>", "Schedule type: once | recurring.", parseScheduleType)
+		.option("--schedule-cron <expression>", "Cron expression for scheduling (5-field).")
+		.option("--schedule-interval <ms>", "Interval in milliseconds between scheduled runs.")
+		.option("--schedule-at <iso-date>", "ISO-8601 date/time for the first scheduled run.")
+		.option("--schedule-enabled [value]", "Enable or disable the schedule (true|false). Defaults to true.")
 		.action(
 			async (options: {
 				taskId: string;
@@ -945,6 +1077,11 @@ export function registerTaskCommand(program: Command): void {
 				startInPlanMode?: unknown;
 				autoReviewEnabled?: unknown;
 				autoReviewMode?: "commit" | "pr" | "move_to_trash";
+				scheduleType?: string;
+				scheduleCron?: string;
+				scheduleInterval?: string;
+				scheduleAt?: string;
+				scheduleEnabled?: unknown;
 			}) => {
 				await runTaskCommand(
 					async () =>
@@ -957,6 +1094,7 @@ export function registerTaskCommand(program: Command): void {
 							startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
 							autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
 							autoReviewMode: options.autoReviewMode,
+							schedule: parseScheduleOptions(options),
 						}),
 				);
 			},

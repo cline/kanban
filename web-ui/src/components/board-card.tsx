@@ -1,7 +1,7 @@
 import { Draggable } from "@hello-pangea/dnd";
 import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
-import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, GitBranch, Play, RotateCcw, Timer, Trash2, Undo2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
-import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
+import type { BoardCard as BoardCardModel, BoardColumnId, TaskSchedule } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { useMeasure } from "@/utils/react-use";
@@ -186,6 +186,37 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
 	}
 	return null;
+}
+
+function formatScheduleTooltip(schedule: TaskSchedule): string {
+	if (schedule.type === "once") {
+		return "Once";
+	}
+	if (schedule.cronExpression) {
+		return `Recurring: ${schedule.cronExpression}`;
+	}
+	if (schedule.intervalMs != null && schedule.intervalMs > 0) {
+		const ms = schedule.intervalMs;
+		const seconds = Math.floor(ms / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+		const weeks = Math.floor(days / 7);
+		if (weeks > 0 && days % 7 === 0) {
+			return `Recurring every ${weeks} ${weeks === 1 ? "week" : "weeks"}`;
+		}
+		if (days > 0 && hours % 24 === 0) {
+			return `Recurring every ${days} ${days === 1 ? "day" : "days"}`;
+		}
+		if (hours > 0 && minutes % 60 === 0) {
+			return `Recurring every ${hours} ${hours === 1 ? "hour" : "hours"}`;
+		}
+		if (minutes > 0) {
+			return `Recurring every ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+		}
+		return `Recurring every ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+	}
+	return "Recurring";
 }
 
 export function BoardCard({
@@ -509,6 +540,13 @@ export function BoardCard({
 										{displayPromptSplit.title}
 									</p>
 								</div>
+								{!isTrashCard && card.schedule?.enabled ? (
+									<Tooltip side="bottom" content={formatScheduleTooltip(card.schedule)}>
+										<span className="inline-flex items-center text-text-tertiary">
+											<Timer size={11} />
+										</span>
+									</Tooltip>
+								) : null}
 								{columnId === "backlog" ? (
 									<Button
 										icon={<Play size={14} />}
@@ -522,18 +560,31 @@ export function BoardCard({
 										}}
 									/>
 								) : columnId === "review" ? (
-									<Button
-										icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
-										variant="ghost"
-										size="sm"
-										disabled={isMoveToTrashLoading}
-										aria-label="Move task to trash"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onMoveToTrash?.(card.id);
-										}}
-									/>
+									<Tooltip
+										side="bottom"
+										content={card.schedule?.enabled ? "Move to Backlog" : "Move to Trash"}
+									>
+										<Button
+											icon={
+												isMoveToTrashLoading ? (
+													<Spinner size={13} />
+												) : card.schedule?.enabled ? (
+													<Undo2 size={13} />
+												) : (
+													<Trash2 size={13} />
+												)
+											}
+											variant="ghost"
+											size="sm"
+											disabled={isMoveToTrashLoading}
+											aria-label={card.schedule?.enabled ? "Move task to backlog" : "Move task to trash"}
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												onMoveToTrash?.(card.id);
+											}}
+										/>
+									</Tooltip>
 								) : columnId === "trash" ? (
 									<Tooltip
 										side="bottom"

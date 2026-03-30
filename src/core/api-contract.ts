@@ -87,6 +87,17 @@ export const runtimeTaskImageSchema = z.object({
 });
 export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
 
+export const runtimeTaskScheduleSchema = z.object({
+	type: z.enum(["once", "recurring"]),
+	cronExpression: z.string().optional(),
+	intervalMs: z.number().optional(),
+	nextRunAt: z.number(),
+	lastRunAt: z.number().optional(),
+	runCount: z.number().default(0),
+	enabled: z.boolean().default(true),
+});
+export type RuntimeTaskSchedule = z.infer<typeof runtimeTaskScheduleSchema>;
+
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
 	prompt: z.string(),
@@ -97,6 +108,7 @@ export const runtimeBoardCardSchema = z.object({
 	baseRef: z.string(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
+	schedule: runtimeTaskScheduleSchema.optional(),
 });
 export type RuntimeBoardCard = z.infer<typeof runtimeBoardCardSchema>;
 

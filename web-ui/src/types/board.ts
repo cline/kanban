@@ -1,9 +1,10 @@
-import type { RuntimeBoardColumnId, RuntimeTaskAutoReviewMode, RuntimeTaskImage } from "@/runtime/types";
+import type { RuntimeBoardColumnId, RuntimeTaskAutoReviewMode, RuntimeTaskImage, RuntimeTaskSchedule } from "@/runtime/types";
 
 export type BoardColumnId = RuntimeBoardColumnId;
 
 export type TaskAutoReviewMode = RuntimeTaskAutoReviewMode;
 export type TaskImage = RuntimeTaskImage;
+export type TaskSchedule = RuntimeTaskSchedule;
 
 export const DEFAULT_TASK_AUTO_REVIEW_MODE: TaskAutoReviewMode = "commit";
 
@@ -46,6 +47,7 @@ export interface BoardCard {
 	baseRef: string;
 	createdAt: number;
 	updatedAt: number;
+	schedule?: TaskSchedule;
 }
 
 export interface BoardColumn {

@@ -46,6 +46,7 @@ import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
 import { useReviewReadyNotifications } from "@/hooks/use-review-ready-notifications";
+import { useScheduledTaskStarter } from "@/hooks/use-scheduled-task-starter";
 import { useShortcutActions } from "@/hooks/use-shortcut-actions";
 import { useStartupOnboarding } from "@/hooks/use-startup-onboarding";
 import { useTaskBranchOptions } from "@/hooks/use-task-branch-options";
@@ -286,6 +287,8 @@ export default function App(): ReactElement {
 		newTaskAutoReviewMode,
 		setNewTaskAutoReviewMode,
 		isNewTaskStartInPlanModeDisabled,
+		newTaskSchedule,
+		setNewTaskSchedule,
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
@@ -300,6 +303,8 @@ export default function App(): ReactElement {
 		editTaskAutoReviewMode,
 		setEditTaskAutoReviewMode,
 		isEditTaskStartInPlanModeDisabled,
+		editTaskSchedule,
+		setEditTaskSchedule,
 		editTaskBranchRef,
 		setEditTaskBranchRef,
 		handleOpenCreateTask,
@@ -557,6 +562,7 @@ export default function App(): ReactElement {
 		handleCardSelect,
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
+		handleForceTrashScheduledTask,
 		handleRestoreTaskFromTrash,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
@@ -600,6 +606,11 @@ export default function App(): ReactElement {
 		handleStartTask,
 		handleStartAllBacklogTasks,
 		setSelectedTaskId,
+	});
+
+	useScheduledTaskStarter({
+		board,
+		startBacklogTasks: handleStartAllBacklogTasks,
 	});
 
 	useAppHotkeys({
@@ -722,6 +733,8 @@ export default function App(): ReactElement {
 			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
 			autoReviewMode={editTaskAutoReviewMode}
 			onAutoReviewModeChange={setEditTaskAutoReviewMode}
+			schedule={editTaskSchedule}
+			onScheduleChange={setEditTaskSchedule}
 			workspaceId={currentProjectId}
 			branchRef={editTaskBranchRef}
 			branchOptions={createTaskBranchOptions}
@@ -963,6 +976,7 @@ export default function App(): ReactElement {
 								agentOpenPrTaskLoadingById={agentOpenPrTaskLoadingById}
 								moveToTrashLoadingById={moveToTrashLoadingById}
 								onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
+								onForceTrashScheduledTask={handleForceTrashScheduledTask}
 								onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
 								onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 								onAddReviewComments={(taskId: string, text: string) => {
@@ -1046,6 +1060,8 @@ export default function App(): ReactElement {
 				onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 				autoReviewMode={newTaskAutoReviewMode}
 				onAutoReviewModeChange={setNewTaskAutoReviewMode}
+				schedule={newTaskSchedule}
+				onScheduleChange={setNewTaskSchedule}
 				workspaceId={currentProjectId}
 				branchRef={newTaskBranchRef}
 				branchOptions={createTaskBranchOptions}
