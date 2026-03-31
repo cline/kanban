@@ -115,7 +115,8 @@ export interface CreateInMemoryClineTaskSessionServiceOptions {
 	createMessageRepository?: () => ClineMessageRepository;
 	createRuntimeSetup?: (workspacePath: string) => Promise<ClineRuntimeSetup>;
 	watcherRegistry?: ClineWatcherRegistry;
-	onTeamEvent?: (event: { type: string; [key: string]: unknown }) => void;
+	/** Called with the Kanban task ID of the lead agent and the team event it fired. */
+	onTeamEvent?: (taskId: string, event: { type: string; [key: string]: unknown }) => void;
 	handleSubAgentStart?: (rootSessionId: string, context: unknown) => Promise<void>;
 	handleSubAgentEnd?: (rootSessionId: string, context: unknown) => Promise<void>;
 }
@@ -166,6 +167,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 	private readonly messageRepository: ClineMessageRepository;
 	private readonly watcherRegistry: ClineWatcherRegistry;
 	private readonly runtimeSetupLeaseByWorkspacePath = new Map<string, Promise<ClineRuntimeSetupLease>>();
+	// Per-task team event handler — called with (taskId, event) so the board sync
+	// knows which lead agent session spawned the team.
+	private readonly onTeamEventForTask:
+		| ((taskId: string, event: { type: string; [key: string]: unknown }) => void)
+		| null;
 
 	// Optional sub-agent lifecycle hooks — called by DefaultSessionManager via invokeOptional
 	handleSubAgentStart?: (rootSessionId: string, context: unknown) => Promise<void>;
@@ -179,11 +185,13 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			createClineWatcherRegistry({
 				createRuntimeSetup: options.createRuntimeSetup ?? createClineRuntimeSetup,
 			});
+		// Store per-task handler separately; do NOT pass onTeamEvent globally to the session
+		// runtime because the handler needs the task ID which is only known at start time.
+		this.onTeamEventForTask = options.onTeamEvent ?? null;
 		this.sessionRuntime = createSessionRuntime({
 			onTaskEvent: (taskId: string, event: unknown) => {
 				this.handleTaskEvent(taskId, event);
 			},
-			onTeamEvent: options.onTeamEvent,
 		});
 		this.messageRepository = createMessageRepository();
 		if (options.handleSubAgentStart) {
@@ -360,6 +368,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				// Derive team support from the catalog rather than hardcoding it here.
 				// This ensures the catalog is the single source of truth for agent capabilities.
 				const clineEntry = getRuntimeAgentCatalogEntry("cline");
+				// Bind the task ID into the team event handler so the board sync can group
+				// teammate cards under the correct parent task card.
+				const onTeamEvent = this.onTeamEventForTask
+					? (event: { type: string; [key: string]: unknown }) => this.onTeamEventForTask!(request.taskId, event)
+					: undefined;
 				const startResult = await this.sessionRuntime.startTaskSession({
 					taskId: request.taskId,
 					cwd: request.cwd,
@@ -374,6 +387,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					reasoningEffort: request.reasoningEffort,
 					systemPrompt,
 					enableAgentTeams: clineEntry?.supportsTeams ?? false,
+					onTeamEvent,
 					userInstructionWatcher: runtimeSetup.watcher,
 					requestToolApproval: runtimeSetup.requestToolApproval,
 				});

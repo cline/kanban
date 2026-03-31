@@ -268,11 +268,13 @@ async function resolveBaseRef(workspacePath: string): Promise<string> {
 
 /**
  * Creates a team-event handler that mirrors agent team tasks onto the Kanban board.
+ * The returned function accepts the rootTaskId of the lead agent per call so that
+ * teammate cards can be grouped under their parent task without a fixed workspace-level binding.
  */
 export function createTeamEventSink(
 	workspacePath: string,
 	options: KanbanAgentSyncNotificationOptions = {},
-): (event: OpaqueTeamEvent) => void {
+): (rootTaskId: string | undefined, event: OpaqueTeamEvent) => void {
 	let baseRefPromise: Promise<string> | null = null;
 
 	const getBaseRef = (): Promise<string> => {
@@ -282,7 +284,7 @@ export function createTeamEventSink(
 		return baseRefPromise;
 	};
 
-	return (event: OpaqueTeamEvent): void => {
+	return (rootTaskId: string | undefined, event: OpaqueTeamEvent): void => {
 		void (async () => {
 			try {
 				const baseRef = await getBaseRef();
@@ -308,15 +310,15 @@ export function createTeamEventSink(
 							const teammateEvent = event as TeammateSpawnedEvent;
 							const teammateTaskId = makeTeammateCardId(teammateEvent.agentId);
 							const teammateRole =
-								teammateEvent.role ??
-								teammateEvent.teammate.rolePrompt?.split("\n")[0]?.slice(0, 80);
+								teammateEvent.role ?? teammateEvent.teammate.rolePrompt?.split("\n")[0]?.slice(0, 80);
 							const result = syncSyntheticCard({
 								board,
 								taskId: teammateTaskId,
 								targetColumn: "backlog",
 								prompt: buildTeammatePrompt(teammateEvent),
 								baseRef,
-								parentTaskId: options.rootTaskId,
+								// rootTaskId is passed per-call so the correct parent task is always used.
+								parentTaskId: rootTaskId,
 								role: teammateRole,
 							});
 							return result.changed || cleanup.changed
@@ -541,7 +543,6 @@ export interface SubAgentPlugin {
 }
 
 interface KanbanAgentSyncNotificationOptions {
-	rootTaskId?: string;
 	onBoardChanged?: () => Promise<void> | void;
 	onTeammateDiscovered?: (input: {
 		taskId: string;
@@ -664,12 +665,13 @@ function buildSubAgentPrompt(context: SubAgentStartContext): string {
 
 export interface KanbanAgentSync {
 	/**
-	 * Pass as CoreSessionConfig.onTeamEvent to sync team_task events.
-	 * Typed as (event: unknown) => void so it's assignable to the real
-	 * CoreSessionConfig.onTeamEvent: (event: TeamEvent) => void without
-	 * importing @clinebot/agents here.
+	 * Call with the lead agent's Kanban task ID and the team event.
+	 * The rootTaskId is passed per-call so teammate cards are grouped under the
+	 * correct parent task without needing a fixed workspace-level binding.
+	 * Typed as (rootTaskId, event: unknown) => void so it's assignable to a
+	 * CoreSessionConfig.onTeamEvent wrapper without importing @clinebot/agents here.
 	 */
-	onTeamEvent: (event: OpaqueTeamEvent) => void;
+	onTeamEvent: (rootTaskId: string | undefined, event: OpaqueTeamEvent) => void;
 	/**
 	 * Mix into your session service to receive sub-agent lifecycle hooks.
 	 * Example:
@@ -683,7 +685,6 @@ export interface KanbanAgentSync {
  */
 export function createKanbanAgentSync(options: {
 	workspacePath: string;
-	rootTaskId?: string;
 	onBoardChanged?: () => Promise<void> | void;
 	onTeammateDiscovered?: (input: {
 		taskId: string;
@@ -693,9 +694,9 @@ export function createKanbanAgentSync(options: {
 	}) => Promise<void> | void;
 	onTeammateEvent?: (input: { taskId: string; event: OpaqueTeamEvent; workspacePath: string }) => Promise<void> | void;
 }): KanbanAgentSync {
-	const { workspacePath, rootTaskId, onBoardChanged, onTeammateDiscovered, onTeammateEvent } = options;
+	const { workspacePath, onBoardChanged, onTeammateDiscovered, onTeammateEvent } = options;
 	return {
-		onTeamEvent: createTeamEventSink(workspacePath, { rootTaskId, onBoardChanged, onTeammateDiscovered, onTeammateEvent }),
+		onTeamEvent: createTeamEventSink(workspacePath, { onBoardChanged, onTeammateDiscovered, onTeammateEvent }),
 		sessionServicePlugin: createSubAgentPlugin(workspacePath, { onBoardChanged }),
 	};
 }

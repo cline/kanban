@@ -175,7 +175,7 @@ describe.sequential("kanban agent sync", () => {
 
 				const onBoardChanged = vi.fn(async () => undefined);
 				const onTeamEvent = createTeamEventSink(workspacePath, { onBoardChanged });
-				onTeamEvent(createTeamTaskEvent("task-123", "pending"));
+				onTeamEvent(undefined, createTeamTaskEvent("task-123", "pending"));
 
 				await waitForAssertion(async () => {
 					const workspaceState = await loadWorkspaceState(workspacePath);
@@ -202,7 +202,7 @@ describe.sequential("kanban agent sync", () => {
 				const onBoardChanged = vi.fn(async () => undefined);
 				const onTeamEvent = createTeamEventSink(workspacePath, { onBoardChanged });
 
-				onTeamEvent(createTeammateSpawnedEvent("models-investigator"));
+				onTeamEvent(undefined, createTeammateSpawnedEvent("models-investigator"));
 				await waitForAssertion(async () => {
 					const workspaceState = await loadWorkspaceState(workspacePath);
 					expect(workspaceState.board.columns.find((column) => column.id === "backlog")?.cards).toEqual(
@@ -210,7 +210,7 @@ describe.sequential("kanban agent sync", () => {
 					);
 				});
 
-				onTeamEvent(createTeamRunEvent("run_queued", "queued"));
+				onTeamEvent(undefined, createTeamRunEvent("run_queued", "queued"));
 				await waitForAssertion(async () => {
 					const workspaceState = await loadWorkspaceState(workspacePath);
 					expect(workspaceState.board.columns.find((column) => column.id === "in_progress")?.cards).toEqual(
@@ -223,7 +223,7 @@ describe.sequential("kanban agent sync", () => {
 					);
 				});
 
-				onTeamEvent(createTeamRunEvent("run_completed", "completed"));
+				onTeamEvent(undefined, createTeamRunEvent("run_completed", "completed"));
 				await waitForAssertion(async () => {
 					const workspaceState = await loadWorkspaceState(workspacePath);
 					expect(workspaceState.board.columns.find((column) => column.id === "backlog")?.cards).toEqual(
@@ -269,7 +269,7 @@ describe.sequential("kanban agent sync", () => {
 					value: null,
 				}));
 
-				onTeamEvent(createTeammateSpawnedEvent("models-investigator"));
+				onTeamEvent(undefined, createTeammateSpawnedEvent("models-investigator"));
 
 				await waitForAssertion(async () => {
 					const workspaceState = await loadWorkspaceState(workspacePath);
@@ -332,10 +332,11 @@ describe.sequential("kanban agent sync", () => {
 				initGitRepository(workspacePath);
 				await loadWorkspaceContext(workspacePath);
 
+				// rootTaskId is now passed per-call, not fixed in options.
 				const rootTaskId = "root-task-abc123";
-				const onTeamEvent = createTeamEventSink(workspacePath, { rootTaskId });
+				const onTeamEvent = createTeamEventSink(workspacePath);
 
-				onTeamEvent(createTeammateSpawnedEvent("specialist-agent"));
+				onTeamEvent(rootTaskId, createTeammateSpawnedEvent("specialist-agent"));
 
 				await waitForAssertion(async () => {
 					const workspaceState = await loadWorkspaceState(workspacePath);

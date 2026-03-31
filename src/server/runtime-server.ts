@@ -128,7 +128,6 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		if (!service) {
 			const sync = createKanbanAgentSync({
 				workspacePath: scope.workspacePath,
-				rootTaskId: undefined,
 				onBoardChanged: async () => {
 					await deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
 				},
@@ -147,7 +146,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			});
 			service = createInMemoryClineTaskSessionService({
 				watcherRegistry: clineWatcherRegistry,
-				onTeamEvent: sync.onTeamEvent,
+				// Pass rootTaskId per-call so teammate cards are grouped under the
+				// correct parent task. The task session service binds taskId at start time.
+				onTeamEvent: (rootTaskId, event) => sync.onTeamEvent(rootTaskId, event),
 				handleSubAgentStart: sync.sessionServicePlugin.handleSubAgentStart.bind(sync.sessionServicePlugin),
 				handleSubAgentEnd: sync.sessionServicePlugin.handleSubAgentEnd.bind(sync.sessionServicePlugin),
 			});

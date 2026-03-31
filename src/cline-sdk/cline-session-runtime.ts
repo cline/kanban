@@ -155,6 +155,11 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			baseUrl: request.baseUrl,
 			reasoningEffort: request.reasoningEffort,
 			systemPrompt: request.systemPrompt,
+			// Persist per-task team-event handler and team-enable flag so that session
+			// restarts (triggered by sendTaskSessionInput when the session is gone)
+			// continue to route events to the correct parent task and preserve team mode.
+			enableAgentTeams: request.enableAgentTeams,
+			onTeamEvent: request.onTeamEvent,
 			userInstructionWatcher: request.userInstructionWatcher,
 			requestToolApproval: request.requestToolApproval,
 		});
