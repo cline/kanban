@@ -21,6 +21,7 @@ import type {
 	RuntimeWorkspaceChangesMode,
 } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
@@ -34,6 +35,22 @@ const EXPANDED_FILE_TREE_PANEL_BASIS = "16%";
 const DEFAULT_AGENT_PANEL_RATIO = 0.4;
 const MIN_AGENT_PANEL_RATIO = 0.15;
 const MAX_AGENT_PANEL_RATIO = 0.75;
+
+function clampAgentPanelRatio(ratio: number): number {
+	return Math.max(MIN_AGENT_PANEL_RATIO, Math.min(MAX_AGENT_PANEL_RATIO, ratio));
+}
+
+function loadAgentPanelRatio(): number {
+	const storedValue = readLocalStorageItem(LocalStorageKey.DetailAgentPanelRatio);
+	if (!storedValue) {
+		return DEFAULT_AGENT_PANEL_RATIO;
+	}
+	const parsedValue = Number(storedValue);
+	if (!Number.isFinite(parsedValue)) {
+		return DEFAULT_AGENT_PANEL_RATIO;
+	}
+	return clampAgentPanelRatio(parsedValue);
+}
 
 function isTypingTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) {
@@ -300,12 +317,28 @@ export function CardDetailView({
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
-	const [agentPanelRatio, setAgentPanelRatio] = useState(DEFAULT_AGENT_PANEL_RATIO);
+	const [agentPanelRatio, setAgentPanelRatio] = useState(loadAgentPanelRatio);
 	const [isResizing, setIsResizing] = useState(false);
 	const resizeDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
 	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
 	const clineAgentChatPanelRef = useRef<ClineAgentChatPanelHandle | null>(null);
+
+	const setAgentPanelRatioAndPersist = useCallback((ratio: number) => {
+		const normalizedRatio = clampAgentPanelRatio(ratio);
+		setAgentPanelRatio(normalizedRatio);
+		writeLocalStorageItem(LocalStorageKey.DetailAgentPanelRatio, String(normalizedRatio));
+	}, []);
+
+	const getDragRatio = useCallback((clientX: number): number | null => {
+		const dragState = resizeDragRef.current;
+		if (!dragState) {
+			return null;
+		}
+		const deltaX = clientX - dragState.startX;
+		const deltaRatio = deltaX / dragState.containerWidth;
+		return clampAgentPanelRatio(dragState.startRatio + deltaRatio);
+	}, []);
 
 	const stopResize = useCallback(() => {
 		setIsResizing(false);
@@ -324,30 +357,31 @@ export function CardDetailView({
 
 	const handleResizeMouseMove = useCallback(
 		(event: MouseEvent) => {
-			const dragState = resizeDragRef.current;
-			if (!isResizing || !dragState) {
+			const nextRatio = getDragRatio(event.clientX);
+			if (nextRatio === null) {
 				return;
 			}
-			const deltaX = event.clientX - dragState.startX;
-			const deltaRatio = deltaX / dragState.containerWidth;
-			const nextRatio = Math.max(
-				MIN_AGENT_PANEL_RATIO,
-				Math.min(MAX_AGENT_PANEL_RATIO, dragState.startRatio + deltaRatio),
-			);
-			setAgentPanelRatio(nextRatio);
+			setAgentPanelRatioAndPersist(nextRatio);
 		},
-		[isResizing],
+		[getDragRatio, setAgentPanelRatioAndPersist],
 	);
 
-	const handleResizeMouseUp = useCallback(() => {
-		if (!isResizing) {
-			return;
-		}
-		stopResize();
-	}, [isResizing, stopResize]);
+	const handleResizeMouseUp = useCallback(
+		(event: MouseEvent) => {
+			if (!resizeDragRef.current) {
+				return;
+			}
+			const finalRatio = getDragRatio(event.clientX);
+			if (finalRatio !== null) {
+				setAgentPanelRatioAndPersist(finalRatio);
+			}
+			stopResize();
+		},
+		[getDragRatio, setAgentPanelRatioAndPersist, stopResize],
+	);
 
-	useWindowEvent("mousemove", isResizing ? handleResizeMouseMove : null);
-	useWindowEvent("mouseup", isResizing ? handleResizeMouseUp : null);
+	useWindowEvent("mousemove", handleResizeMouseMove);
+	useWindowEvent("mouseup", handleResizeMouseUp);
 
 	const handleSeparatorMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {

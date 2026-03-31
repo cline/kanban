@@ -4,6 +4,7 @@ export enum LocalStorageKey {
 	TaskAutoReviewMode = "kanban.task-auto-review-mode",
 	TaskCreatePrimaryStartAction = "kanban.task-create-primary-start-action",
 	BottomTerminalPaneHeight = "kanban.bottom-terminal-pane-height",
+	DetailAgentPanelRatio = "kanban.detail-agent-panel-ratio",
 	ProjectNavigationPanelWidth = "kb-sidebar-width",
 	ProjectNavigationPanelCollapsed = "kanban.project-navigation-panel-collapsed",
 	OnboardingDialogShown = "kanban.onboarding.dialog.shown",

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.54]
+
+- Task agent chat panel resizing now persists when navigating between tasks
+
 ## [0.1.53]
 
 - Added `/clear` slash command to reset the Cline agent chat session

@@ -126,3 +126,26 @@ jobs:
 
             ${{ steps.compare.outputs.link }}
           prerelease: ${{ contains(steps.resolve_tag.outputs.tag, '-') }}
+
+      - name: Post release to Slack
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_RELEASE_BOT_TOKEN }}
+          payload: |
+            channel: "C0APVKGGZFC"
+            text: "Kanban ${{ steps.resolve_tag.outputs.tag }}"
+            blocks:
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "*Kanban ${{ steps.resolve_tag.outputs.tag }}*"
+              - type: "divider"
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: ${{ toJSON(steps.changelog.outputs.body) }}
+              - type: "context"
+                elements:
+                  - type: "mrkdwn"
+                    text: "<https://github.com/${{ github.repository }}/releases/tag/${{ steps.resolve_tag.outputs.tag }}|Full Changelog>: ${{ steps.compare.outputs.link }}"

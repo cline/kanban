@@ -44,7 +44,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	},
 	{
 		id: "droid",
-		label: "Factor Droid",
+		label: "Factory Droid",
 		binary: "droid",
 		baseArgs: [],
 		autonomousArgs: ["--auto", "high"],
