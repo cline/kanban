@@ -814,6 +814,54 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.close();
 	});
 
+	it("does not auto-trash a task that already left review before the trash mutation", async () => {
+		getBoardColumn(workspaceState, "in_progress").cards = [];
+		getBoardColumn(workspaceState, "review").cards = [
+			{
+				id: "task-1",
+				prompt: "Primary task",
+				startInPlanMode: false,
+				autoReviewEnabled: true,
+				autoReviewMode: "move_to_trash",
+				baseRef: "main",
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		];
+		mutateWorkspaceStateMock.mockImplementation(async (_cwd, mutate) => {
+			const latestState = structuredClone(workspaceState);
+			const review = latestState.board.columns.find((column) => column.id === "review");
+			const backlog = latestState.board.columns.find((column) => column.id === "backlog");
+			const movedTask = review?.cards.find((card) => card.id === "task-1");
+			if (review && backlog && movedTask) {
+				review.cards = review.cards.filter((card) => card.id !== "task-1");
+				backlog.cards = [...backlog.cards, movedTask];
+			}
+			const mutation = mutate(latestState);
+			return {
+				value: mutation.value,
+				state: structuredClone(workspaceState),
+				saved: mutation.save !== false,
+			};
+		});
+
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(2_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.workspace.deleteWorktree.mutate).not.toHaveBeenCalled();
+		expect(runtimeClient.runtime.startTaskSession.mutate).not.toHaveBeenCalled();
+		expect(runtimeClient.runtime.stopTaskSession.mutate).not.toHaveBeenCalled();
+
+		automation.close();
+	});
+
 	it("clears stale auto-cleanup state after a dirty review task returns from an auto git action", async () => {
 		getBoardColumn(workspaceState, "in_progress").cards = [];
 		getBoardColumn(workspaceState, "review").cards = [
@@ -974,6 +1022,24 @@ describe("createRuntimeTaskAutomation", () => {
 
 		expect(loadWorkspaceStateMock).toHaveBeenCalledTimes(1);
 		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+
+		automation.close();
+	});
+
+	it("only evaluates idle remembered workspaces once unless automation work appears", async () => {
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+		expect(loadWorkspaceStateMock).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(3_000);
+		await flushMicrotasks();
+
+		expect(loadWorkspaceStateMock).toHaveBeenCalledTimes(1);
 
 		automation.close();
 	});

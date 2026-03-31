@@ -351,7 +351,9 @@ async function trashTaskAndStartLinkedTasks(input: {
 }): Promise<boolean> {
 	const mutation = await mutateWorkspaceState(input.workspacePath, (latestState) => {
 		const record = findTaskRecord(latestState, input.taskId);
-		if (!record || record.columnId === "trash") {
+		const canRecoverFromInProgress = input.sourceColumnId === "review" && record?.columnId === "in_progress";
+		const isEligibleSourceColumn = record?.columnId === input.sourceColumnId || canRecoverFromInProgress;
+		if (!record || record.columnId === "trash" || !isEligibleSourceColumn) {
 			return {
 				board: latestState.board,
 				value: {
@@ -555,6 +557,25 @@ function isWaitingForAutoCleanupSessionChange(
  */
 function clearPendingAutoCleanupSessionVersion(entry: TrackedWorkspaceAutomation, taskId: string): void {
 	entry.pendingAutoCleanupSessionVersionByTaskId.delete(taskId);
+}
+
+/**
+ * Returns whether a workspace still needs a background poller after the current automation pass.
+ */
+function shouldKeepWorkspacePoller(
+	entry: TrackedWorkspaceAutomation,
+	state: RuntimeWorkspaceStateResponse,
+): boolean {
+	if (
+		entry.scheduledActionByTaskId.size > 0 ||
+		entry.blockedAutoReviewSessionVersionByTaskId.size > 0 ||
+		entry.pendingAutoCleanupSessionVersionByTaskId.size > 0 ||
+		entry.moveToTrashInFlightTaskIds.size > 0
+	) {
+		return true;
+	}
+	const reviewColumn = state.board.columns.find((column) => column.id === "review");
+	return (reviewColumn?.cards ?? []).some((task) => task.autoReviewEnabled === true);
 }
 
 /**
@@ -809,6 +830,7 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 					state: automationState,
 					nowValue: Date.now(),
 				});
+				syncWorkspacePoller(entry, automationState);
 			} while (entry.rerunRequested);
 		})().finally(() => {
 			entry.runningTick = null;
@@ -830,6 +852,20 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 	}
 
 	/**
+	 * Starts or stops the background poller to match the workspace's current automation workload.
+	 */
+	function syncWorkspacePoller(entry: TrackedWorkspaceAutomation, state: RuntimeWorkspaceStateResponse): void {
+		if (shouldKeepWorkspacePoller(entry, state)) {
+			ensureWorkspacePoller(entry);
+			return;
+		}
+		if (entry.pollTimer) {
+			clearInterval(entry.pollTimer);
+			entry.pollTimer = null;
+		}
+	}
+
+	/**
 	 * Disposes all subscriptions, timers, and queued task state for one workspace.
 	 */
 	function disposeWorkspace(workspaceId: string): void {
@@ -848,8 +884,7 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 
 	return {
 		trackWorkspace: (workspaceId) => {
-			const entry = getTrackedWorkspace(workspaceId);
-			ensureWorkspacePoller(entry);
+			getTrackedWorkspace(workspaceId);
 			queueWorkspaceTick(workspaceId);
 		},
 		trackTerminalManager: (workspaceId, manager) => {
@@ -859,7 +894,6 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 			entry.terminalSummaryUnsubscribe = manager.onSummary(() => {
 				queueWorkspaceTick(workspaceId);
 			});
-			ensureWorkspacePoller(entry);
 			queueWorkspaceTick(workspaceId);
 		},
 		trackClineTaskSessionService: (workspaceId, service) => {
@@ -869,7 +903,6 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 			entry.clineSummaryUnsubscribe = service.onSummary(() => {
 				queueWorkspaceTick(workspaceId);
 			});
-			ensureWorkspacePoller(entry);
 			queueWorkspaceTick(workspaceId);
 		},
 		disposeWorkspace,

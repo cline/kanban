@@ -363,6 +363,7 @@ async function startServer(): Promise<{
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+		{ listWorkspaceIndexEntries },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/runtime-task-automation.js"),
@@ -373,6 +374,7 @@ async function startServer(): Promise<{
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
 		import("./server/workspace-registry.js"),
+		import("./state/workspace-state.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	let runtimeTaskAutomation: ReturnType<typeof createRuntimeTaskAutomation> | undefined;
@@ -437,9 +439,8 @@ async function startServer(): Promise<{
 		getWorkspacePathById: workspaceRegistry.getWorkspacePathById,
 		taskGitActionCoordinator,
 	});
-	const activeWorkspaceId = workspaceRegistry.getActiveWorkspaceId();
-	if (activeWorkspaceId) {
-		runtimeTaskAutomation.trackWorkspace(activeWorkspaceId);
+	for (const { workspaceId, repoPath } of await listWorkspaceIndexEntries()) {
+		workspaceRegistry.rememberWorkspace(workspaceId, repoPath);
 	}
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
 		runtimeTaskAutomation.trackTerminalManager(workspaceId, terminalManager);
