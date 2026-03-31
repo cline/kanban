@@ -391,8 +391,12 @@ describe("createRuntimeTaskAutomation", () => {
 		await vi.advanceTimersByTimeAsync(2_000);
 		await flushMicrotasks();
 
-		expect(runtimeClient.runtime.stopTaskSession.mutate).toHaveBeenCalledWith({
+		expect(runtimeClient.runtime.stopTaskSession.mutate).toHaveBeenCalledTimes(2);
+		expect(runtimeClient.runtime.stopTaskSession.mutate).toHaveBeenNthCalledWith(1, {
 			taskId: "task-1",
+		});
+		expect(runtimeClient.runtime.stopTaskSession.mutate).toHaveBeenNthCalledWith(2, {
+			taskId: "__detail_terminal__:task-1",
 		});
 		expect(runtimeClient.workspace.deleteWorktree.mutate).toHaveBeenCalledWith({
 			taskId: "task-1",
@@ -471,10 +475,6 @@ describe("createRuntimeTaskAutomation", () => {
 		await flushMicrotasks();
 
 		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(true);
-		taskGitActionCoordinator.completeTaskGitAction("workspace-1", "task-1", "commit", {
-			dispatched: true,
-			armAutoCleanup: false,
-		});
 
 		await vi.advanceTimersByTimeAsync(2_000);
 		await flushMicrotasks();
@@ -560,6 +560,8 @@ describe("createRuntimeTaskAutomation", () => {
 			dispatched: true,
 			armAutoCleanup: false,
 		});
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "pr")).toBe(true);
+		taskGitActionCoordinator.clearTaskGitAction("workspace-1", "task-1");
 
 		automation.trackWorkspace("workspace-1");
 		await flushMicrotasks();

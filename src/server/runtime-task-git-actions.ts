@@ -11,7 +11,6 @@ interface TaskGitPromptTemplates {
 
 interface TaskGitActionState {
 	inFlightAction: RuntimeTaskGitAction | null;
-	pendingAction: RuntimeTaskGitAction | null;
 	autoCleanupAction: RuntimeTaskGitAction | null;
 }
 
@@ -91,7 +90,6 @@ export function createRuntimeTaskGitActionCoordinator(): RuntimeTaskGitActionCoo
 		if (!taskState) {
 			taskState = {
 				inFlightAction: null,
-				pendingAction: null,
 				autoCleanupAction: null,
 			};
 			taskStateByTaskId.set(taskId, taskState);
@@ -108,11 +106,7 @@ export function createRuntimeTaskGitActionCoordinator(): RuntimeTaskGitActionCoo
 		if (!taskStateByTaskId || !taskState) {
 			return;
 		}
-		if (
-			taskState.inFlightAction !== null ||
-			taskState.pendingAction !== null ||
-			taskState.autoCleanupAction !== null
-		) {
+		if (taskState.inFlightAction !== null || taskState.autoCleanupAction !== null) {
 			return;
 		}
 		taskStateByTaskId.delete(taskId);
@@ -124,7 +118,7 @@ export function createRuntimeTaskGitActionCoordinator(): RuntimeTaskGitActionCoo
 	return {
 		beginTaskGitAction: (workspaceId, taskId, action) => {
 			const taskState = getTaskState(workspaceId, taskId);
-			if (taskState.inFlightAction !== null || taskState.pendingAction !== null) {
+			if (taskState.inFlightAction !== null) {
 				return false;
 			}
 			taskState.inFlightAction = action;
@@ -136,10 +130,8 @@ export function createRuntimeTaskGitActionCoordinator(): RuntimeTaskGitActionCoo
 				taskState.inFlightAction = null;
 			}
 			if (options.dispatched) {
-				taskState.pendingAction = action;
 				taskState.autoCleanupAction = options.armAutoCleanup ? action : null;
 			} else {
-				taskState.pendingAction = null;
 				taskState.autoCleanupAction = null;
 			}
 			pruneTaskState(workspaceId, taskId);
@@ -149,12 +141,7 @@ export function createRuntimeTaskGitActionCoordinator(): RuntimeTaskGitActionCoo
 		},
 		isTaskGitActionBlocked: (workspaceId, taskId) => {
 			const taskState = taskStateByWorkspaceId.get(workspaceId)?.get(taskId);
-			return Boolean(
-				taskState &&
-					(taskState.inFlightAction !== null ||
-						taskState.pendingAction !== null ||
-						taskState.autoCleanupAction !== null),
-			);
+			return Boolean(taskState && (taskState.inFlightAction !== null || taskState.autoCleanupAction !== null));
 		},
 		clearTaskGitAction: (workspaceId, taskId) => {
 			const taskState = taskStateByWorkspaceId.get(workspaceId)?.get(taskId);
@@ -162,7 +149,6 @@ export function createRuntimeTaskGitActionCoordinator(): RuntimeTaskGitActionCoo
 				return;
 			}
 			taskState.inFlightAction = null;
-			taskState.pendingAction = null;
 			taskState.autoCleanupAction = null;
 			pruneTaskState(workspaceId, taskId);
 		},

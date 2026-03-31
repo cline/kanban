@@ -159,6 +159,13 @@ function createTrackedWorkspaceAutomation(workspaceId: string): TrackedWorkspace
 }
 
 /**
+ * Resolves the companion terminal-session id used for the task detail shell.
+ */
+function getDetailTerminalTaskId(taskId: string): string {
+	return `__detail_terminal__:${taskId}`;
+}
+
+/**
  * Loads the current worktree changed-file count for a task without creating a missing worktree.
  */
 async function loadTaskChangedFileCount(task: RuntimeBoardCard, workspacePath: string): Promise<number | null> {
@@ -307,11 +314,18 @@ async function trashTaskAndStartLinkedTasks(input: {
 	await notifyRuntimeWorkspaceStateUpdated(input.runtimeClient);
 
 	if (mutation.value.previousColumnId === "in_progress" || mutation.value.previousColumnId === "review") {
-		await input.runtimeClient.runtime.stopTaskSession
-			.mutate({
-				taskId: input.taskId,
-			})
-			.catch(() => null);
+		await Promise.all([
+			input.runtimeClient.runtime.stopTaskSession
+				.mutate({
+					taskId: input.taskId,
+				})
+				.catch(() => null),
+			input.runtimeClient.runtime.stopTaskSession
+				.mutate({
+					taskId: getDetailTerminalTaskId(input.taskId),
+				})
+				.catch(() => null),
+		]);
 	}
 
 	for (const readyTaskId of mutation.value.readyTaskIds) {
