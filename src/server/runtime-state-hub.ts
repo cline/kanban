@@ -350,6 +350,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 								title: "Task Ready for Review",
 								body: task.prompt.slice(0, 80),
 								url: "/",
+								tag: `task-review-${taskId}`,
 							});
 						}
 					})

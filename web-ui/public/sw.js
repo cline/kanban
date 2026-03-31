@@ -164,6 +164,8 @@ self.addEventListener("push", (event) => {
 		body: payload.body || "Something happened",
 		icon: "/assets/icon-192.png",
 		badge: "/assets/icon-192.png",
+		tag: payload.tag || "kanban-default",
+		renotify: true,
 		data: { url: payload.url || "/" },
 	};
 
@@ -172,5 +174,25 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
 	event.notification.close();
-	event.waitUntil(clients.openWindow(event.notification.data.url));
+	const targetUrl = event.notification.data.url || "/";
+
+	event.waitUntil(
+		// On iOS standalone PWAs, openWindow() may not work.  Try to find an
+		// existing window client and focus it first.
+		clients
+			.matchAll({ type: "window", includeUncontrolled: true })
+			.then((windowClients) => {
+				for (const client of windowClients) {
+					if (new URL(client.url).pathname === targetUrl && "focus" in client) {
+						return client.focus();
+					}
+				}
+				// Fallback: focus any existing window, or open a new one.
+				if (windowClients.length > 0 && "focus" in windowClients[0]) {
+					windowClients[0].navigate(targetUrl);
+					return windowClients[0].focus();
+				}
+				return clients.openWindow(targetUrl);
+			})
+	);
 });

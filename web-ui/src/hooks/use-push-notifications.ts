@@ -54,7 +54,10 @@ export function usePushNotifications({ workspaceId }: UsePushNotificationsOption
 		};
 	}, []);
 
-	// Check existing subscription on mount
+	// Check existing subscription on mount and re-sync it to the server.
+	// iOS can rotate push subscription endpoints when the service worker is
+	// killed and restarted in the background.  Re-sending on every page load
+	// ensures the server always has the current endpoint.
 	useEffect(() => {
 		if (!isPushSupported()) {
 			return;
@@ -78,7 +81,23 @@ export function usePushNotifications({ workspaceId }: UsePushNotificationsOption
 				}
 
 				if (existingSubscription) {
-					setState("subscribed");
+					// Re-sync the subscription to the server so stale endpoints
+					// (e.g. after iOS restarts the service worker) are replaced.
+					const json = existingSubscription.toJSON();
+					if (json.endpoint && json.keys && workspaceId) {
+						const client = getRuntimeTrpcClient(workspaceId);
+						await client.push.subscribe.mutate({
+							endpoint: json.endpoint,
+							expirationTime: json.expirationTime ?? null,
+							keys: {
+								p256dh: json.keys.p256dh ?? "",
+								auth: json.keys.auth ?? "",
+							},
+						});
+					}
+					if (mountedRef.current) {
+						setState("subscribed");
+					}
 				} else if (permission === "default") {
 					setState("default");
 				} else {
@@ -91,7 +110,7 @@ export function usePushNotifications({ workspaceId }: UsePushNotificationsOption
 				}
 			}
 		})();
-	}, []);
+	}, [workspaceId]);
 
 	const subscribe = useCallback(async () => {
 		if (!isPushSupported()) {
