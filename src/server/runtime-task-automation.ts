@@ -348,10 +348,14 @@ async function trashTaskAndStartLinkedTasks(input: {
 	workspacePath: string;
 	taskId: string;
 	sourceColumnId: RuntimeBoardColumnId;
+	allowInProgressRecovery?: boolean;
 }): Promise<boolean> {
 	const mutation = await mutateWorkspaceState(input.workspacePath, (latestState) => {
 		const record = findTaskRecord(latestState, input.taskId);
-		const canRecoverFromInProgress = input.sourceColumnId === "review" && record?.columnId === "in_progress";
+		const canRecoverFromInProgress =
+			input.allowInProgressRecovery === true &&
+			input.sourceColumnId === "review" &&
+			record?.columnId === "in_progress";
 		const isEligibleSourceColumn = record?.columnId === input.sourceColumnId || canRecoverFromInProgress;
 		if (!record || record.columnId === "trash" || !isEligibleSourceColumn) {
 			return {
@@ -365,7 +369,7 @@ async function trashTaskAndStartLinkedTasks(input: {
 			};
 		}
 		const boardForTrashMutation =
-			input.sourceColumnId === "review" && record.columnId === "in_progress"
+			canRecoverFromInProgress
 				? (moveTaskToColumn(latestState.board, input.taskId, "review").board ?? latestState.board)
 				: latestState.board;
 		const trashed = trashTaskAndGetReadyLinkedTaskIds(boardForTrashMutation, input.taskId);
@@ -691,6 +695,7 @@ async function evaluateWorkspaceAutoReview(input: {
 					workspacePath: input.workspacePath,
 					taskId: task.id,
 					sourceColumnId: "review",
+					allowInProgressRecovery: liveSession?.state === "awaiting_review",
 				}).catch(() => false);
 				if (!moved) {
 					input.entry.moveToTrashInFlightTaskIds.delete(task.id);

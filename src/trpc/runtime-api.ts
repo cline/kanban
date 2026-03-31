@@ -450,9 +450,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					};
 				}
 
-				const terminalPromptBuffer =
-					body.source === "manual" ? encodeTerminalPasteInput(prompt) : Buffer.from(prompt, "utf8");
-				const typedSummary = terminalManager.writeInput(body.taskId, terminalPromptBuffer);
+				const typedSummary = terminalManager.writeInput(body.taskId, encodeTerminalPasteInput(prompt));
 				if (!typedSummary) {
 					deps.taskGitActionCoordinator?.completeTaskGitAction(
 						workspaceScope.workspaceId,
