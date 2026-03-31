@@ -593,7 +593,9 @@ async function evaluateWorkspaceAutoReview(input: {
 				input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 				continue;
 			}
-			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			if (!input.taskGitActionCoordinator.isTaskGitActionInFlight(input.workspaceId, task.id)) {
+				input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			}
 			clearScheduledTaskAction(input.entry, task.id);
 			clearBlockedAutoReview(input.entry, task.id);
 			clearPendingAutoCleanupSessionVersion(input.entry, task.id);
@@ -604,7 +606,9 @@ async function evaluateWorkspaceAutoReview(input: {
 	for (const taskId of Array.from(input.entry.scheduledActionByTaskId.keys())) {
 		if (!reviewTaskIds.has(taskId) && !inProgressCleanupTaskIds.has(taskId)) {
 			clearScheduledTaskAction(input.entry, taskId);
-			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, taskId);
+			if (!input.taskGitActionCoordinator.isTaskGitActionInFlight(input.workspaceId, taskId)) {
+				input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, taskId);
+			}
 			clearBlockedAutoReview(input.entry, taskId);
 			clearPendingAutoCleanupSessionVersion(input.entry, taskId);
 		}
@@ -627,7 +631,9 @@ async function evaluateWorkspaceAutoReview(input: {
 
 	for (const task of reviewCards) {
 		if (task.autoReviewEnabled !== true) {
-			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			if (!input.taskGitActionCoordinator.isTaskGitActionInFlight(input.workspaceId, task.id)) {
+				input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			}
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 			clearScheduledTaskAction(input.entry, task.id);
 			clearBlockedAutoReview(input.entry, task.id);
@@ -697,7 +703,9 @@ async function evaluateWorkspaceAutoReview(input: {
 
 		const liveSession = input.state.sessions[task.id] ?? null;
 		if (!liveSession) {
-			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			if (!input.taskGitActionCoordinator.isTaskGitActionInFlight(input.workspaceId, task.id)) {
+				input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			}
 			clearPendingAutoCleanupSessionVersion(input.entry, task.id);
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 			clearScheduledTaskAction(input.entry, task.id);

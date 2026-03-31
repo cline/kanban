@@ -23,6 +23,7 @@ export interface RuntimeTaskGitActionCoordinator {
 		options: { dispatched: boolean; armAutoCleanup: boolean },
 	) => void;
 	getAutoCleanupTaskGitAction: (workspaceId: string, taskId: string) => RuntimeTaskGitAction | null;
+	isTaskGitActionInFlight: (workspaceId: string, taskId: string) => boolean;
 	isTaskGitActionBlocked: (workspaceId: string, taskId: string) => boolean;
 	clearTaskGitAction: (workspaceId: string, taskId: string) => void;
 	disposeWorkspace: (workspaceId: string) => void;
@@ -138,6 +139,9 @@ export function createRuntimeTaskGitActionCoordinator(): RuntimeTaskGitActionCoo
 		},
 		getAutoCleanupTaskGitAction: (workspaceId, taskId) => {
 			return taskStateByWorkspaceId.get(workspaceId)?.get(taskId)?.autoCleanupAction ?? null;
+		},
+		isTaskGitActionInFlight: (workspaceId, taskId) => {
+			return taskStateByWorkspaceId.get(workspaceId)?.get(taskId)?.inFlightAction !== null;
 		},
 		isTaskGitActionBlocked: (workspaceId, taskId) => {
 			const taskState = taskStateByWorkspaceId.get(workspaceId)?.get(taskId);

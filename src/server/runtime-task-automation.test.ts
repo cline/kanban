@@ -589,6 +589,53 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.close();
 	});
 
+	it("preserves an in-flight manual git action when review automation is disabled", async () => {
+		getBoardColumn(workspaceState, "in_progress").cards = [];
+		getBoardColumn(workspaceState, "review").cards = [
+			{
+				id: "task-1",
+				prompt: "Primary task",
+				startInPlanMode: false,
+				autoReviewEnabled: false,
+				autoReviewMode: "commit",
+				baseRef: "main",
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		];
+
+		const { manager } = createTerminalManager([
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 5,
+			}),
+		]);
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(true);
+
+		automation.trackTerminalManager("workspace-1", manager as never);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(2_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "pr")).toBe(false);
+
+		taskGitActionCoordinator.completeTaskGitAction("workspace-1", "task-1", "commit", {
+			dispatched: false,
+			armAutoCleanup: false,
+		});
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "pr")).toBe(true);
+		taskGitActionCoordinator.clearTaskGitAction("workspace-1", "task-1");
+
+		automation.close();
+	});
+
 	it("keeps auto git actions blocked until the session changes after dispatch", async () => {
 		const { manager, emitter } = createTerminalManager([
 			createSummary("task-1", {
