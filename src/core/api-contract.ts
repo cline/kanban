@@ -87,6 +87,16 @@ export const runtimeTaskImageSchema = z.object({
 });
 export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
 
+export const runtimeBoardCardCreatedBySchema = z.object({
+	uuid: z.string(),
+	displayName: z.string(),
+	email: z.string(),
+});
+export type RuntimeBoardCardCreatedBy = z.infer<typeof runtimeBoardCardCreatedBySchema>;
+
+export const runtimeBoardCardVisibilitySchema = z.enum(["shared", "private"]);
+export type RuntimeBoardCardVisibility = z.infer<typeof runtimeBoardCardVisibilitySchema>;
+
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
 	prompt: z.string(),
@@ -97,6 +107,11 @@ export const runtimeBoardCardSchema = z.object({
 	baseRef: z.string(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
+	// Identity of whoever created this card. Optional for backwards compatibility.
+	createdBy: runtimeBoardCardCreatedBySchema.optional(),
+	// Visibility of the card. Defaults to "shared". Private cards are only
+	// visible to their creator and admins (localhost users).
+	visibility: runtimeBoardCardVisibilitySchema.optional(),
 });
 export type RuntimeBoardCard = z.infer<typeof runtimeBoardCardSchema>;
 
@@ -370,6 +385,14 @@ export const runtimeStateStreamTaskChatClearedMessageSchema = z.object({
 });
 export type RuntimeStateStreamTaskChatClearedMessage = z.infer<typeof runtimeStateStreamTaskChatClearedMessageSchema>;
 
+// Team chat — workspace-scoped inter-user messages (not sent to the AI model).
+export const runtimeStateStreamTeamChatMessageSchema = z.object({
+	type: z.literal("team_chat_message"),
+	workspaceId: z.string(),
+	message: z.lazy(() => runtimeTeamChatMessageSchema),
+});
+export type RuntimeStateStreamTeamChatMessage = z.infer<typeof runtimeStateStreamTeamChatMessageSchema>;
+
 export const runtimeStateStreamMcpAuthUpdatedMessageSchema = z.object({
 	type: z.literal("mcp_auth_updated"),
 	statuses: z.array(runtimeClineMcpServerAuthStatusSchema),
@@ -399,6 +422,7 @@ export const runtimeStateStreamMessageSchema = z.discriminatedUnion("type", [
 	runtimeStateStreamTaskReadyForReviewMessageSchema,
 	runtimeStateStreamTaskChatMessageSchema,
 	runtimeStateStreamTaskChatClearedMessageSchema,
+	runtimeStateStreamTeamChatMessageSchema,
 	runtimeStateStreamMcpAuthUpdatedMessageSchema,
 	runtimeStateStreamClineSessionContextUpdatedMessageSchema,
 	runtimeStateStreamErrorMessageSchema,
@@ -431,6 +455,27 @@ export const runtimeProjectDirectoryPickerResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeProjectDirectoryPickerResponse = z.infer<typeof runtimeProjectDirectoryPickerResponseSchema>;
+
+// In-browser directory browser — powers the custom folder picker UI.
+export const runtimeDirectoryListRequestSchema = z.object({
+	// Absolute path to list. Accepts "~" and "~/..." as home-directory shorthand.
+	path: z.string(),
+});
+export type RuntimeDirectoryListRequest = z.infer<typeof runtimeDirectoryListRequestSchema>;
+
+export const runtimeDirectoryListResponseSchema = z.object({
+	// Resolved absolute path that was actually read.
+	path: z.string(),
+	entries: z.array(
+		z.object({
+			name: z.string(), // directory name only (no path prefix)
+			path: z.string(), // full absolute path
+			isDirectory: z.boolean(), // always true — only directories are returned
+		}),
+	),
+	error: z.string().optional(),
+});
+export type RuntimeDirectoryListResponse = z.infer<typeof runtimeDirectoryListResponseSchema>;
 
 export const runtimeProjectRemoveRequestSchema = z.object({
 	projectId: z.string(),
@@ -822,6 +867,14 @@ export const runtimeTaskChatMessageSchema = z.object({
 			messageKind: z.string().nullable().optional(),
 			displayRole: z.string().nullable().optional(),
 			reason: z.string().nullable().optional(),
+			sender: z
+				.object({
+					uuid: z.string(),
+					displayName: z.string(),
+					email: z.string(),
+				})
+				.nullable()
+				.optional(),
 		})
 		.nullable()
 		.optional(),
@@ -1063,3 +1116,134 @@ export const runtimeHookIngestResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeHookIngestResponse = z.infer<typeof runtimeHookIngestResponseSchema>;
+
+// ── Team chat ──────────────────────────────────────────────────────────────
+// Workspace-scoped inter-user chat. Messages are NOT sent to any AI model.
+// Uses the same sender attribution as task chat (meta.sender).
+
+export const runtimeTeamChatSenderSchema = z.object({
+	uuid: z.string(),
+	displayName: z.string(),
+	email: z.string(),
+});
+export type RuntimeTeamChatSender = z.infer<typeof runtimeTeamChatSenderSchema>;
+
+export const runtimeTeamChatMessageSchema = z.object({
+	id: z.string(),
+	workspaceId: z.string(),
+	text: z.string(),
+	sender: runtimeTeamChatSenderSchema,
+	createdAt: z.number(),
+});
+export type RuntimeTeamChatMessage = z.infer<typeof runtimeTeamChatMessageSchema>;
+
+export const runtimeTeamChatGetMessagesResponseSchema = z.object({
+	ok: z.boolean(),
+	messages: z.array(runtimeTeamChatMessageSchema),
+	error: z.string().optional(),
+});
+export type RuntimeTeamChatGetMessagesResponse = z.infer<typeof runtimeTeamChatGetMessagesResponseSchema>;
+
+export const runtimeTeamChatSendRequestSchema = z.object({
+	text: z.string().min(1).max(10_000),
+});
+export type RuntimeTeamChatSendRequest = z.infer<typeof runtimeTeamChatSendRequestSchema>;
+
+export const runtimeTeamChatSendResponseSchema = z.object({
+	ok: z.boolean(),
+	message: runtimeTeamChatMessageSchema.optional(),
+	error: z.string().optional(),
+});
+export type RuntimeTeamChatSendResponse = z.infer<typeof runtimeTeamChatSendResponseSchema>;
+
+// ── Push notifications (VAPID) ─────────────────────────────────────────────
+
+// The five notification event types that can be individually toggled per subscription.
+export const runtimePushNotificationEventSchema = z.enum([
+	"ready_for_review",
+	"agent_question",
+	"session_started",
+	"team_chat",
+	"moved_to_review",
+]);
+export type RuntimePushNotificationEvent = z.infer<typeof runtimePushNotificationEventSchema>;
+
+// Per-event notification preferences stored with each push subscription.
+export const runtimePushPreferencesSchema = z.object({
+	notifyReadyForReview: z.boolean().optional(),
+	notifyAgentQuestion: z.boolean().optional(),
+	notifySessionStarted: z.boolean().optional(),
+	notifyTeamChat: z.boolean().optional(),
+	notifyMovedToReview: z.boolean().optional(),
+});
+export type RuntimePushPreferences = z.infer<typeof runtimePushPreferencesSchema>;
+
+// Full subscription record returned in list responses.
+export const runtimePushSubscriptionRecordSchema = z.object({
+	id: z.string(),
+	userUuid: z.string(),
+	userEmail: z.string(),
+	endpoint: z.string(),
+	createdAt: z.number(),
+	lastUsed: z.number().nullable(),
+	preferences: z.object({
+		notifyReadyForReview: z.boolean(),
+		notifyAgentQuestion: z.boolean(),
+		notifySessionStarted: z.boolean(),
+		notifyTeamChat: z.boolean(),
+		notifyMovedToReview: z.boolean(),
+	}),
+});
+export type RuntimePushSubscriptionRecord = z.infer<typeof runtimePushSubscriptionRecordSchema>;
+
+// POST remote.push.subscribe — register a browser push subscription.
+export const runtimePushSubscribeRequestSchema = z.object({
+	endpoint: z.string().url(),
+	keys: z.object({
+		p256dh: z.string(),
+		auth: z.string(),
+	}),
+});
+export type RuntimePushSubscribeRequest = z.infer<typeof runtimePushSubscribeRequestSchema>;
+
+export const runtimePushSubscribeResponseSchema = z.object({
+	ok: z.boolean(),
+	subscriptionId: z.string().optional(),
+	error: z.string().optional(),
+});
+export type RuntimePushSubscribeResponse = z.infer<typeof runtimePushSubscribeResponseSchema>;
+
+// POST remote.push.unsubscribe — remove a subscription by endpoint.
+export const runtimePushUnsubscribeRequestSchema = z.object({
+	endpoint: z.string(),
+});
+export type RuntimePushUnsubscribeRequest = z.infer<typeof runtimePushUnsubscribeRequestSchema>;
+
+export const runtimePushUnsubscribeResponseSchema = z.object({
+	ok: z.boolean(),
+});
+export type RuntimePushUnsubscribeResponse = z.infer<typeof runtimePushUnsubscribeResponseSchema>;
+
+// POST remote.push.updatePreferences — toggle per-event preferences.
+export const runtimePushUpdatePreferencesRequestSchema = z.object({
+	subscriptionId: z.string(),
+	preferences: runtimePushPreferencesSchema,
+});
+export type RuntimePushUpdatePreferencesRequest = z.infer<typeof runtimePushUpdatePreferencesRequestSchema>;
+
+export const runtimePushUpdatePreferencesResponseSchema = z.object({
+	ok: z.boolean(),
+});
+export type RuntimePushUpdatePreferencesResponse = z.infer<typeof runtimePushUpdatePreferencesResponseSchema>;
+
+// GET remote.push.listSubscriptions — caller's own subscriptions.
+export const runtimePushListSubscriptionsResponseSchema = z.object({
+	subscriptions: z.array(runtimePushSubscriptionRecordSchema),
+});
+export type RuntimePushListSubscriptionsResponse = z.infer<typeof runtimePushListSubscriptionsResponseSchema>;
+
+// GET remote.push.getVapidPublicKey — VAPID public key for frontend subscription setup.
+export const runtimePushVapidPublicKeyResponseSchema = z.object({
+	vapidPublicKey: z.string(),
+});
+export type RuntimePushVapidPublicKeyResponse = z.infer<typeof runtimePushVapidPublicKeyResponseSchema>;

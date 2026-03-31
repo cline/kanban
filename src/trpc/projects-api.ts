@@ -1,5 +1,11 @@
+import { readdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+
 import type {
 	RuntimeBoardData,
+	RuntimeDirectoryListRequest,
+	RuntimeDirectoryListResponse,
 	RuntimeProjectAddResponse,
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
@@ -225,6 +231,31 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					path: null,
 					error: message,
 				};
+			}
+		},
+
+		listDirectory: async (input: RuntimeDirectoryListRequest): Promise<RuntimeDirectoryListResponse> => {
+			// Resolve "~" and "~/..." to the real home directory.
+			let targetPath = input.path.trim();
+			if (targetPath === "~") {
+				targetPath = homedir();
+			} else if (targetPath.startsWith("~/") || targetPath.startsWith("~\\")) {
+				targetPath = join(homedir(), targetPath.slice(2));
+			} else if (!targetPath) {
+				targetPath = homedir();
+			}
+			targetPath = resolve(targetPath);
+
+			try {
+				const entries = await readdir(targetPath, { withFileTypes: true });
+				const dirs = entries
+					.filter((e) => e.isDirectory() && !e.name.startsWith("."))
+					.map((e) => ({ name: e.name, path: join(targetPath, e.name), isDirectory: true as const }))
+					.sort((a, b) => a.name.localeCompare(b.name));
+				return { path: targetPath, entries: dirs };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { path: targetPath, entries: [], error: message };
 			}
 		},
 	};

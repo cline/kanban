@@ -29,6 +29,13 @@ export interface ClineTaskMessage {
 		messageKind?: string | null;
 		displayRole?: string | null;
 		reason?: string | null;
+		// Identity of the user who sent this message. Populated for role === "user"
+		// when a CallerIdentity is available (local WorkOS account or remote session).
+		sender?: {
+			uuid: string;
+			displayName: string;
+			email: string;
+		} | null;
 	} | null;
 }
 

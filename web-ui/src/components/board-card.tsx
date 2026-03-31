@@ -737,6 +737,11 @@ export function BoardCard({
 									) : null}
 								</p>
 							) : null}
+							{card.createdBy && !isTrashCard ? (
+								<p className="text-xs text-text-tertiary" style={{ margin: "3px 0 0" }}>
+									Created by <span className="text-text-secondary">{card.createdBy.displayName}</span>
+								</p>
+							) : null}
 							{showReviewGitActions ? (
 								<div className="flex gap-1.5 mt-1.5">
 									<Button

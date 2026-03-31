@@ -10,10 +10,12 @@ import {
 	type RuntimeBoardData,
 	type RuntimeGitRepositoryInfo,
 	type RuntimeTaskSessionSummary,
+	type RuntimeTeamChatMessage,
 	type RuntimeWorkspaceStateResponse,
 	type RuntimeWorkspaceStateSaveRequest,
 	runtimeBoardDataSchema,
 	runtimeTaskSessionSummarySchema,
+	runtimeTeamChatMessageSchema,
 	runtimeWorkspaceStateSaveRequestSchema,
 } from "../core/api-contract";
 import { createGitProcessEnv } from "../core/git-process-env";
@@ -28,6 +30,10 @@ const INDEX_FILENAME = "index.json";
 const BOARD_FILENAME = "board.json";
 const SESSIONS_FILENAME = "sessions.json";
 const META_FILENAME = "meta.json";
+const TEAM_CHAT_FILENAME = "team-chat.json";
+
+// Maximum number of team chat messages kept per workspace.
+const TEAM_CHAT_MAX_MESSAGES = 1_000;
 const INDEX_VERSION = 1;
 const WORKSPACE_ID_COLLISION_SUFFIX_LENGTH = 4;
 
@@ -188,6 +194,41 @@ function getWorkspaceSessionsPath(workspaceId: string): string {
 
 function getWorkspaceMetaPath(workspaceId: string): string {
 	return join(getWorkspaceDirectoryPath(workspaceId), META_FILENAME);
+}
+
+function getWorkspaceTeamChatPath(workspaceId: string): string {
+	return join(getWorkspaceDirectoryPath(workspaceId), TEAM_CHAT_FILENAME);
+}
+
+export async function readWorkspaceTeamChatMessages(workspaceId: string): Promise<RuntimeTeamChatMessage[]> {
+	const path = getWorkspaceTeamChatPath(workspaceId);
+	try {
+		const raw = await readFile(path, "utf-8");
+		const parsed = JSON.parse(raw) as unknown;
+		if (!Array.isArray(parsed)) return [];
+		return parsed
+			.map((item: unknown) => {
+				const result = runtimeTeamChatMessageSchema.safeParse(item);
+				return result.success ? result.data : null;
+			})
+			.filter((m): m is RuntimeTeamChatMessage => m !== null);
+	} catch {
+		return [];
+	}
+}
+
+export async function appendWorkspaceTeamChatMessage(
+	workspaceId: string,
+	message: RuntimeTeamChatMessage,
+): Promise<RuntimeTeamChatMessage[]> {
+	return await lockedFileSystem.withLock(getWorkspaceDirectoryLockRequest(workspaceId), async () => {
+		const existing = await readWorkspaceTeamChatMessages(workspaceId);
+		const next = [...existing, message].slice(-TEAM_CHAT_MAX_MESSAGES);
+		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceTeamChatPath(workspaceId), next, {
+			lock: null,
+		});
+		return next;
+	});
 }
 
 function getWorkspaceIndexLockRequest(): LockRequest {

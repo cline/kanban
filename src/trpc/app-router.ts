@@ -1,9 +1,73 @@
 // Defines the typed TRPC boundary between the browser and the local runtime.
 // Keep request and response contracts plus workspace-scoped procedures here,
 // and delegate domain behavior to runtime-api.ts and lower-level services.
+
+import { randomBytes } from "node:crypto";
+import type { IncomingMessage } from "node:http";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
+
+import { loadRemoteConfig, saveRemoteConfig } from "../remote/config-store";
+import type { CallerIdentity, RemoteConfig } from "../remote/types";
+import { callerCanSetVisibility, filterBoardForCaller } from "../server/board-visibility";
+import type { PushManager } from "../server/push-manager";
+import type { RemoteAuth } from "../server/remote-auth";
+import { isLocalRequest } from "../server/remote-auth";
+import { appendWorkspaceTeamChatMessage, readWorkspaceTeamChatMessages } from "../state/workspace-state";
+
+// Generates a human-readable random password (adjective-noun-4digits pattern).
+function generateReadablePassword(): string {
+	const adjectives = [
+		"amber",
+		"brave",
+		"calm",
+		"dark",
+		"eager",
+		"fair",
+		"gold",
+		"jade",
+		"kind",
+		"lush",
+		"mute",
+		"nova",
+		"opal",
+		"pine",
+		"quiet",
+		"rose",
+		"sage",
+		"teal",
+		"umber",
+		"vivid",
+	];
+	const nouns = [
+		"atlas",
+		"birch",
+		"cedar",
+		"delta",
+		"echo",
+		"frost",
+		"grove",
+		"haze",
+		"inlet",
+		"jetty",
+		"knoll",
+		"ledge",
+		"marsh",
+		"nexus",
+		"orbit",
+		"prism",
+		"quill",
+		"ridge",
+		"stone",
+		"tower",
+	];
+	const buf = randomBytes(4);
+	const adj = adjectives[buf[0]! % adjectives.length]!;
+	const noun = nouns[buf[1]! % nouns.length]!;
+	const digits = ((buf[2]! << 8) | buf[3]!).toString().slice(-4).padStart(4, "0");
+	return `${adj}-${noun}-${digits}`;
+}
 
 import type {
 	RuntimeClineAccountProfileResponse,
@@ -83,6 +147,8 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract";
 import {
+	type RuntimeDirectoryListRequest,
+	type RuntimeDirectoryListResponse,
 	runtimeClineAccountProfileResponseSchema,
 	runtimeClineAddProviderRequestSchema,
 	runtimeClineAddProviderResponseSchema,
@@ -105,6 +171,8 @@ import {
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeDebugResetAllStateResponseSchema,
+	runtimeDirectoryListRequestSchema,
+	runtimeDirectoryListResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
@@ -126,6 +194,14 @@ import {
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
 	runtimeProjectsResponseSchema,
+	runtimePushListSubscriptionsResponseSchema,
+	runtimePushSubscribeRequestSchema,
+	runtimePushSubscribeResponseSchema,
+	runtimePushUnsubscribeRequestSchema,
+	runtimePushUnsubscribeResponseSchema,
+	runtimePushUpdatePreferencesRequestSchema,
+	runtimePushUpdatePreferencesResponseSchema,
+	runtimePushVapidPublicKeyResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
 	runtimeSlashCommandsResponseSchema,
@@ -147,6 +223,9 @@ import {
 	runtimeTaskSessionStopResponseSchema,
 	runtimeTaskWorkspaceInfoRequestSchema,
 	runtimeTaskWorkspaceInfoResponseSchema,
+	runtimeTeamChatGetMessagesResponseSchema,
+	runtimeTeamChatSendRequestSchema,
+	runtimeTeamChatSendResponseSchema,
 	runtimeWorkspaceChangesRequestSchema,
 	runtimeWorkspaceChangesResponseSchema,
 	runtimeWorkspaceFileSearchRequestSchema,
@@ -166,6 +245,15 @@ export interface RuntimeTrpcWorkspaceScope {
 }
 
 export interface RuntimeTrpcContext {
+	// The raw Node.js request — used by the localOnlyMiddleware to check origin.
+	req: IncomingMessage;
+	// Shared RemoteAuth instance — reused across all procedures, no new DB connections.
+	remoteAuth: RemoteAuth;
+	// VAPID push notification manager — accessed via ctx.pushManager in push procedures.
+	pushManager: PushManager;
+	// Resolved identity of whoever is making this request. Null if no identity
+	// can be determined (e.g. localhost with no Cline account signed in).
+	caller: CallerIdentity | null;
 	requestedWorkspaceId: string | null;
 	workspaceScope: RuntimeTrpcWorkspaceScope | null;
 	runtimeApi: {
@@ -185,6 +273,7 @@ export interface RuntimeTrpcContext {
 		startTaskSession: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskSessionStartRequest,
+			caller?: CallerIdentity | null,
 		) => Promise<RuntimeTaskSessionStartResponse>;
 		stopTaskSession: (
 			scope: RuntimeTrpcWorkspaceScope,
@@ -202,6 +291,7 @@ export interface RuntimeTrpcContext {
 		sendTaskChatMessage: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskChatSendRequest,
+			caller?: CallerIdentity | null,
 		) => Promise<RuntimeTaskChatSendResponse>;
 		reloadTaskChatSession: (
 			scope: RuntimeTrpcWorkspaceScope,
@@ -314,10 +404,16 @@ export interface RuntimeTrpcContext {
 			input: RuntimeProjectRemoveRequest,
 		) => Promise<RuntimeProjectRemoveResponse>;
 		pickProjectDirectory: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectDirectoryPickerResponse>;
+		listDirectory: (input: RuntimeDirectoryListRequest) => Promise<RuntimeDirectoryListResponse>;
 	};
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
 	};
+	// Used by team chat procedures to broadcast new messages to WebSocket clients.
+	broadcastTeamChatMessage: (
+		workspaceId: string,
+		message: import("../core/api-contract").RuntimeTeamChatMessage,
+	) => void;
 }
 
 interface RuntimeTrpcContextWithWorkspaceScope extends RuntimeTrpcContext {
@@ -347,6 +443,20 @@ const t = initTRPC.context<RuntimeTrpcContext>().create({
 		};
 	},
 });
+
+// Middleware that rejects requests from non-localhost origins.
+// Used to protect configuration procedures that must only be callable locally.
+const localOnlyMiddleware = t.middleware(({ ctx, next }) => {
+	if (!isLocalRequest(ctx.req)) {
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: "This operation is only available on localhost.",
+		});
+	}
+	return next({ ctx });
+});
+
+const localOnlyProcedure = t.procedure.use(localOnlyMiddleware);
 
 const workspaceProcedure = t.procedure.use(({ ctx, next }) => {
 	if (!ctx.requestedWorkspaceId) {
@@ -401,7 +511,7 @@ export const runtimeAppRouter = t.router({
 			.input(runtimeTaskSessionStartRequestSchema)
 			.output(runtimeTaskSessionStartResponseSchema)
 			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.startTaskSession(ctx.workspaceScope, input);
+				return await ctx.runtimeApi.startTaskSession(ctx.workspaceScope, input, ctx.caller);
 			}),
 		stopTaskSession: workspaceProcedure
 			.input(runtimeTaskSessionStopRequestSchema)
@@ -434,7 +544,7 @@ export const runtimeAppRouter = t.router({
 			.input(runtimeTaskChatSendRequestSchema)
 			.output(runtimeTaskChatSendResponseSchema)
 			.mutation(async ({ ctx, input }) => {
-				return await ctx.runtimeApi.sendTaskChatMessage(ctx.workspaceScope, input);
+				return await ctx.runtimeApi.sendTaskChatMessage(ctx.workspaceScope, input, ctx.caller);
 			}),
 		abortTaskChatTurn: workspaceProcedure
 			.input(runtimeTaskChatAbortRequestSchema)
@@ -565,7 +675,11 @@ export const runtimeAppRouter = t.router({
 				return await ctx.workspaceApi.searchFiles(ctx.workspaceScope, input);
 			}),
 		getState: workspaceProcedure.output(runtimeWorkspaceStateResponseSchema).query(async ({ ctx }) => {
-			return await ctx.workspaceApi.loadState(ctx.workspaceScope);
+			const state = await ctx.workspaceApi.loadState(ctx.workspaceScope);
+			return {
+				...state,
+				board: filterBoardForCaller(state.board, ctx.caller),
+			};
 		}),
 		notifyStateUpdated: workspaceProcedure
 			.output(runtimeWorkspaceStateNotifyResponseSchema)
@@ -576,7 +690,82 @@ export const runtimeAppRouter = t.router({
 			.input(runtimeWorkspaceStateSaveRequestSchema)
 			.output(runtimeWorkspaceStateResponseSchema)
 			.mutation(async ({ ctx, input }) => {
-				return await ctx.workspaceApi.saveState(ctx.workspaceScope, input);
+				// Load current board to check existing visibility values before the save.
+				const currentState = await ctx.workspaceApi.loadState(ctx.workspaceScope);
+				const currentCardsById = new Map(
+					currentState.board.columns.flatMap((col) => col.cards.map((card) => [card.id, card])),
+				);
+
+				const processedColumns = input.board.columns.map((col) => ({
+					...col,
+					cards: col.cards.map((card) => {
+						const current = currentCardsById.get(card.id);
+
+						// 1. Stamp createdBy on new cards (no existing record).
+						const createdBy =
+							card.createdBy ??
+							(ctx.caller && !current
+								? { uuid: ctx.caller.uuid, displayName: ctx.caller.displayName, email: ctx.caller.email }
+								: current?.createdBy);
+
+						// 2. Enforce visibility rules: strip unauthorised visibility changes.
+						//    If caller cannot set visibility, preserve the existing value.
+						let visibility = card.visibility;
+						if (visibility !== undefined && visibility !== (current?.visibility ?? "shared")) {
+							if (!callerCanSetVisibility(card, ctx.caller)) {
+								// Revert to existing visibility — the caller cannot change this.
+								visibility = current?.visibility;
+							}
+						}
+
+						return {
+							...card,
+							...(createdBy ? { createdBy } : {}),
+							...(visibility !== undefined ? { visibility } : {}),
+						};
+					}),
+				}));
+
+				const processedInput = { ...input, board: { ...input.board, columns: processedColumns } };
+
+				// Detect cards newly moved into the review column for push notifications.
+				const prevReviewCardIds = new Set(
+					(currentState.board.columns.find((c) => c.id === "review")?.cards ?? []).map((c) => c.id),
+				);
+				const nextReviewCards = processedColumns.find((c) => c.id === "review")?.cards ?? [];
+				const movedToReviewCards = nextReviewCards.filter((c) => !prevReviewCardIds.has(c.id));
+
+				// Filter the response so the saving caller only sees cards they're allowed to see.
+				const response = await ctx.workspaceApi.saveState(ctx.workspaceScope, processedInput);
+
+				// Fire push notifications for each card newly moved to review.
+				for (const card of movedToReviewCards) {
+					const isPrivate = card.visibility === "private";
+					const ownerUuid = card.createdBy?.uuid;
+					const callerUuid = ctx.caller?.uuid;
+					// Don't notify the person who moved it.
+					const targetUserUuids =
+						isPrivate && ownerUuid
+							? [ownerUuid]
+							: ctx.pushManager
+									.listAllSubscriptions()
+									.filter((s) => s.userUuid !== callerUuid)
+									.map((s) => s.userUuid)
+									.filter((uuid, i, arr) => arr.indexOf(uuid) === i);
+					void ctx.pushManager.send({
+						event: "moved_to_review",
+						workspaceId: ctx.workspaceScope.workspaceId,
+						title: "Task moved to review",
+						body: card.prompt ? card.prompt.slice(0, 80) : "A task is ready for review",
+						data: { taskId: card.id, url: `/${ctx.workspaceScope.workspaceId}` },
+						targetUserUuids,
+					});
+				}
+
+				return {
+					...response,
+					board: filterBoardForCaller(response.board, ctx.caller),
+				};
 			}),
 		getWorkspaceChanges: workspaceProcedure.output(runtimeWorkspaceChangesResponseSchema).query(async ({ ctx }) => {
 			return await ctx.workspaceApi.loadWorkspaceChanges(ctx.workspaceScope);
@@ -619,6 +808,15 @@ export const runtimeAppRouter = t.router({
 		pickDirectory: t.procedure.output(runtimeProjectDirectoryPickerResponseSchema).mutation(async ({ ctx }) => {
 			return await ctx.projectsApi.pickProjectDirectory(ctx.requestedWorkspaceId);
 		}),
+		// In-browser directory browser — used by the folder picker UI as a fallback
+		// when the OS-native dialog is unavailable (e.g. Windows, remote instances).
+		// Returns subdirectories only; hidden dirs (dot-prefixed) are excluded.
+		listDirectory: t.procedure
+			.input(runtimeDirectoryListRequestSchema)
+			.output(runtimeDirectoryListResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.projectsApi.listDirectory(input);
+			}),
 	}),
 	hooks: t.router({
 		ingest: t.procedure
@@ -627,6 +825,212 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.hooksApi.ingest(input);
 			}),
+	}),
+
+	// Workspace-scoped inter-user team chat. Messages are NOT sent to any AI model.
+	teamChat: t.router({
+		// Returns all persisted team chat messages for the current workspace.
+		getMessages: workspaceProcedure.output(runtimeTeamChatGetMessagesResponseSchema).query(async ({ ctx }) => {
+			try {
+				const messages = await readWorkspaceTeamChatMessages(ctx.workspaceScope.workspaceId);
+				return { ok: true, messages };
+			} catch (err) {
+				const error = err instanceof Error ? err.message : String(err);
+				return { ok: false, messages: [], error };
+			}
+		}),
+
+		// Sends a new team chat message. Persists it and broadcasts to all workspace clients.
+		sendMessage: workspaceProcedure
+			.input(runtimeTeamChatSendRequestSchema)
+			.output(runtimeTeamChatSendResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				if (!ctx.caller) {
+					return { ok: false, error: "No identity available. Sign in to Cline to send team chat messages." };
+				}
+				const message = {
+					id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+					workspaceId: ctx.workspaceScope.workspaceId,
+					text: input.text.trim(),
+					sender: {
+						uuid: ctx.caller.uuid,
+						displayName: ctx.caller.displayName,
+						email: ctx.caller.email,
+					},
+					createdAt: Date.now(),
+				};
+				try {
+					await appendWorkspaceTeamChatMessage(ctx.workspaceScope.workspaceId, message);
+					ctx.broadcastTeamChatMessage(ctx.workspaceScope.workspaceId, message);
+					// Push to all subscribers except the sender.
+					void ctx.pushManager.send({
+						event: "team_chat",
+						workspaceId: ctx.workspaceScope.workspaceId,
+						title: `${ctx.caller.displayName} in Team Chat`,
+						body: input.text.slice(0, 120),
+						data: { url: `/${ctx.workspaceScope.workspaceId}` },
+						targetUserUuids: ctx.pushManager
+							.listAllSubscriptions()
+							.filter((s) => s.userUuid !== ctx.caller?.uuid)
+							.map((s) => s.userUuid)
+							.filter((uuid, i, arr) => arr.indexOf(uuid) === i),
+					});
+					return { ok: true, message };
+				} catch (err) {
+					const error = err instanceof Error ? err.message : String(err);
+					return { ok: false, error };
+				}
+			}),
+	}),
+
+	// Remote access management — all procedures are localhost-only.
+	// All procedures use ctx.remoteAuth (the shared singleton) — no new DB connections.
+	remote: t.router({
+		// Returns the caller's identity. Available to all users (local and remote).
+		// Used by the frontend to stamp createdBy on newly created cards.
+		getCallerIdentity: t.procedure.query(({ ctx }) => {
+			return ctx.caller ?? null;
+		}),
+
+		// Returns current RemoteConfig. Password hash and localUser hashes are omitted.
+		getConfig: localOnlyProcedure.query(async () => {
+			const config = await loadRemoteConfig();
+			const { password: _password, localUsers, ...rest } = config;
+			const safeLocalUsers = localUsers.map(({ passwordHash: _hash, ...user }) => user);
+			return { ...rest, localUsers: safeLocalUsers };
+		}),
+
+		// Saves updated RemoteConfig fields. Password is updated separately via setPassword.
+		saveConfig: localOnlyProcedure
+			.input(
+				z.object({
+					authMode: z.enum(["workos", "password", "both"]).optional(),
+					allowedEmails: z.array(z.string()).optional(),
+					allowedEmailDomains: z.array(z.string()).optional(),
+					publicBaseUrl: z.string().optional(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const current = await loadRemoteConfig();
+				const next: RemoteConfig = {
+					...current,
+					...(input.authMode !== undefined && { authMode: input.authMode }),
+					...(input.allowedEmails !== undefined && { allowedEmails: input.allowedEmails }),
+					...(input.allowedEmailDomains !== undefined && { allowedEmailDomains: input.allowedEmailDomains }),
+					...(input.publicBaseUrl !== undefined && { publicBaseUrl: input.publicBaseUrl }),
+				};
+				await saveRemoteConfig(next);
+				return { ok: true };
+			}),
+
+		// Sets or updates the shared password. Pass empty string to disable password auth.
+		// The password is stored as a scrypt hash — never in plaintext.
+		setPassword: localOnlyProcedure.input(z.object({ password: z.string() })).mutation(async ({ input, ctx }) => {
+			const hash = input.password ? await ctx.remoteAuth.hashPassword(input.password) : "";
+			const current = await loadRemoteConfig();
+			await saveRemoteConfig({ ...current, password: hash });
+			return { ok: true };
+		}),
+
+		// Creates a new local user account and returns the one-time plaintext password.
+		// The password is hashed immediately; it is never stored in plaintext.
+		createUser: localOnlyProcedure.input(z.object({ email: z.string().email() })).mutation(async ({ input, ctx }) => {
+			const password = generateReadablePassword();
+			const passwordHash = await ctx.remoteAuth.hashPassword(password);
+			const current = await loadRemoteConfig();
+			const existing = current.localUsers.findIndex((u) => u.email.toLowerCase() === input.email.toLowerCase());
+			const newUser = { email: input.email, passwordHash, createdAt: Date.now() };
+			const localUsers =
+				existing !== -1
+					? current.localUsers.map((u, i) => (i === existing ? newUser : u))
+					: [...current.localUsers, newUser];
+			await saveRemoteConfig({ ...current, localUsers });
+			return { email: input.email, password };
+		}),
+
+		// Removes a local user account and revokes all their active sessions.
+		deleteUser: localOnlyProcedure.input(z.object({ email: z.string() })).mutation(async ({ input, ctx }) => {
+			const current = await loadRemoteConfig();
+			const localUsers = current.localUsers.filter((u) => u.email.toLowerCase() !== input.email.toLowerCase());
+			await saveRemoteConfig({ ...current, localUsers });
+			ctx.remoteAuth.revokeAllSessionsForEmail(input.email);
+			return { ok: true };
+		}),
+
+		// Lists all active remote sessions (for the management UI).
+		listSessions: localOnlyProcedure.query(({ ctx }) => {
+			return { sessions: ctx.remoteAuth.listSessions() };
+		}),
+
+		// Revokes a specific session by ID.
+		revokeSession: localOnlyProcedure.input(z.object({ sessionId: z.string() })).mutation(({ input, ctx }) => {
+			ctx.remoteAuth.revokeSession(input.sessionId);
+			return { ok: true };
+		}),
+
+		// ── Push notification procedures ───────────────────────────────────
+		push: t.router({
+			// Returns the VAPID public key. No auth required — needed to subscribe
+			// before the user has a session cookie.
+			getVapidPublicKey: t.procedure
+				.output(runtimePushVapidPublicKeyResponseSchema)
+				.query(({ ctx }) => ({ vapidPublicKey: ctx.pushManager.getPublicKey() })),
+
+			// Register a push subscription. Requires a valid session (CallerIdentity).
+			subscribe: t.procedure
+				.input(runtimePushSubscribeRequestSchema)
+				.output(runtimePushSubscribeResponseSchema)
+				.mutation(({ ctx, input }) => {
+					if (!ctx.caller) {
+						return { ok: false, error: "Sign in to enable push notifications." };
+					}
+					const subscriptionId = ctx.pushManager.saveSubscription(ctx.caller.uuid, ctx.caller.email, {
+						endpoint: input.endpoint,
+						keys: input.keys,
+					});
+					return { ok: true, subscriptionId };
+				}),
+
+			// Remove a subscription by endpoint.
+			unsubscribe: t.procedure
+				.input(runtimePushUnsubscribeRequestSchema)
+				.output(runtimePushUnsubscribeResponseSchema)
+				.mutation(({ ctx, input }) => {
+					ctx.pushManager.removeSubscription(input.endpoint);
+					return { ok: true };
+				}),
+
+			// Returns the caller's own push subscriptions with their preferences.
+			listSubscriptions: t.procedure.output(runtimePushListSubscriptionsResponseSchema).query(({ ctx }) => {
+				if (!ctx.caller) return { subscriptions: [] };
+				return { subscriptions: ctx.pushManager.listSubscriptionsForUser(ctx.caller.uuid) };
+			}),
+
+			// Update per-event notification preferences for a subscription.
+			updatePreferences: t.procedure
+				.input(runtimePushUpdatePreferencesRequestSchema)
+				.output(runtimePushUpdatePreferencesResponseSchema)
+				.mutation(({ ctx, input }) => {
+					ctx.pushManager.updatePreferences(input.subscriptionId, input.preferences);
+					return { ok: true };
+				}),
+
+			// Admin: list every subscription across all users.
+			listAllSubscriptions: localOnlyProcedure
+				.output(runtimePushListSubscriptionsResponseSchema)
+				.query(({ ctx }) => ({ subscriptions: ctx.pushManager.listAllSubscriptions() })),
+
+			// Admin: forcibly remove any subscription by ID.
+			removeSubscription: localOnlyProcedure
+				.input(z.object({ subscriptionId: z.string() }))
+				.output(z.object({ ok: z.boolean() }))
+				.mutation(({ ctx, input }) => {
+					const subs = ctx.pushManager.listAllSubscriptions();
+					const sub = subs.find((s) => s.id === input.subscriptionId);
+					if (sub) ctx.pushManager.removeSubscription(sub.endpoint);
+					return { ok: true };
+				}),
+		}),
 	}),
 });
 

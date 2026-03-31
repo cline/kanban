@@ -71,7 +71,7 @@ function logToConsole(level: LogLevel, message: string, metadata?: Record<string
 	if (serializedMetadata) {
 		parts.push(serializedMetadata);
 	}
-	const line = parts.join(" ");
+	const _line = parts.join(" ");
 	switch (level) {
 		case "debug":
 			// console.debug(line);

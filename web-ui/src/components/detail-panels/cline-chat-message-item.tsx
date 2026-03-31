@@ -150,12 +150,21 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 	if (message.role === "user") {
 		const hasText = message.content.trim().length > 0;
 		const hasImages = Boolean(message.images && message.images.length > 0);
+		const senderName = message.meta?.sender?.displayName ?? "User";
 		return (
-			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm text-text-primary">
-				{hasText ? <div className="whitespace-pre-wrap">{normalizeUserInput(message.content)}</div> : null}
-				{hasImages ? (
-					<TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} />
-				) : null}
+			<div className="ml-auto flex max-w-[85%] flex-col items-end gap-0.5">
+				<div className="w-full rounded-md bg-accent/20 px-3 py-2 text-sm text-text-primary">
+					{hasText ? (
+						<div className="whitespace-pre-wrap">
+							<span className="font-medium text-accent">{senderName}</span>
+							<span className="text-text-tertiary"> : </span>
+							{normalizeUserInput(message.content)}
+						</div>
+					) : null}
+					{hasImages ? (
+						<TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} />
+					) : null}
+				</div>
 			</div>
 		);
 	}

@@ -15,17 +15,17 @@ export function getRemoteConfigPath(): string {
 	return join(homedir(), RUNTIME_HOME_PARENT_DIR, RUNTIME_HOME_DIR, REMOTE_CONFIG_FILENAME);
 }
 
+export function getRemoteDbPath(): string {
+	return join(homedir(), RUNTIME_HOME_PARENT_DIR, RUNTIME_HOME_DIR, "remote.db");
+}
+
 export const DEFAULT_REMOTE_CONFIG: RemoteConfig = {
+	authMode: "workos",
 	password: "",
-	workosAllowedUserIds: [],
-	trustedDeviceMacs: [],
-	blockedDeviceMacs: [],
-	vapidKeysPath: join(homedir(), RUNTIME_HOME_PARENT_DIR, RUNTIME_HOME_DIR, "vapid-keys.json"),
-	cloudflare: {
-		enabled: false,
-		mode: "named",
-		tunnelName: "kanban",
-	},
+	allowedEmails: [],
+	allowedEmailDomains: [],
+	localUsers: [],
+	publicBaseUrl: "",
 };
 
 function isEnoent(err: unknown): boolean {

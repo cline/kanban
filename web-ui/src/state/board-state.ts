@@ -6,6 +6,8 @@ import { createInitialBoardData } from "@/data/board-data";
 import { isAllowedCrossColumnCardMove, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import {
 	type BoardCard,
+	type BoardCardCreatedBy,
+	type BoardCardVisibility,
 	type BoardColumn,
 	type BoardColumnId,
 	type BoardData,
@@ -24,6 +26,7 @@ export interface TaskDraft {
 	autoReviewMode?: TaskAutoReviewMode;
 	images?: TaskImage[];
 	baseRef: string;
+	createdBy?: BoardCardCreatedBy;
 }
 
 export interface TaskMoveEvent {
@@ -107,6 +110,8 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
+		createdBy?: unknown;
+		visibility?: unknown;
 	};
 	const prompt = typeof card.prompt === "string" ? card.prompt.trim() : "";
 	if (!prompt) {
@@ -118,6 +123,23 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	}
 
 	const now = Date.now();
+
+	// Preserve createdBy if it is a valid object with the expected shape.
+	const rawCreatedBy = card.createdBy;
+	const createdBy: BoardCardCreatedBy | undefined =
+		rawCreatedBy &&
+		typeof rawCreatedBy === "object" &&
+		"uuid" in rawCreatedBy &&
+		"displayName" in rawCreatedBy &&
+		"email" in rawCreatedBy &&
+		typeof (rawCreatedBy as Record<string, unknown>).uuid === "string" &&
+		typeof (rawCreatedBy as Record<string, unknown>).displayName === "string" &&
+		typeof (rawCreatedBy as Record<string, unknown>).email === "string"
+			? (rawCreatedBy as BoardCardCreatedBy)
+			: undefined;
+
+	const visibility: BoardCardVisibility | undefined =
+		card.visibility === "private" ? "private" : card.visibility === "shared" ? "shared" : undefined;
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
@@ -131,6 +153,8 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
+		...(createdBy ? { createdBy } : {}),
+		...(visibility ? { visibility } : {}),
 	};
 }
 
@@ -277,6 +301,20 @@ export function addTaskToColumnWithResult(
 		},
 		createBrowserUuid,
 	);
+
+	// Stamp createdBy on the new card if provided in the draft.
+	if (draft.createdBy) {
+		const taskWithCreatedBy: BoardCard = { ...result.task, createdBy: draft.createdBy };
+		const updatedBoard: BoardData = {
+			...result.board,
+			columns: result.board.columns.map((col) => ({
+				...col,
+				cards: col.cards.map((card) => (card.id === taskWithCreatedBy.id ? taskWithCreatedBy : card)),
+			})),
+		};
+		return { board: updatedBoard, task: taskWithCreatedBy };
+	}
+
 	return {
 		board: result.board,
 		task: result.task,

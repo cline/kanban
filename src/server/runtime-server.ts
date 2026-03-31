@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { join } from "node:path";
+import type { Duplex } from "node:stream";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service";
@@ -10,6 +11,7 @@ import {
 	createInMemoryClineTaskSessionService,
 } from "../cline-sdk/cline-task-session-service";
 import { createClineWatcherRegistry } from "../cline-sdk/cline-watcher-registry";
+import { getSdkProviderSettings } from "../cline-sdk/sdk-provider-boundary";
 import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import {
 	buildKanbanRuntimeUrl,
@@ -18,6 +20,7 @@ import {
 	getKanbanRuntimePort,
 	getKanbanRuntimeTls,
 } from "../core/runtime-endpoint";
+import type { CallerIdentity } from "../remote/types";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { createTerminalWebSocketBridge } from "../terminal/ws-server";
@@ -27,6 +30,8 @@ import { createProjectsApi } from "../trpc/projects-api";
 import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import { createLoginHandler } from "./login-handler";
+import { createRemoteAuth, isLocalRequest } from "./remote-auth";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";
 
@@ -79,6 +84,12 @@ function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): 
 	return null;
 }
 
+function jsonResponse(res: ServerResponse, status: number, body: unknown): void {
+	const json = JSON.stringify(body);
+	res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+	res.end(json);
+}
+
 export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
 	const webUiDir = getWebUiDir();
 
@@ -87,6 +98,112 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	} catch {
 		throw new Error("Could not find web UI assets. Run `npm run build` to generate and package the web UI.");
 	}
+
+	// Initialise remote auth (opens/creates the SQLite DB, loads signing secret).
+	const remoteAuth = await createRemoteAuth();
+	const loginHandler = createLoginHandler({ remoteAuth });
+
+	// Resolve the localhost user's identity from the stored Cline account credentials.
+	// Awaited before the server starts so the first request always has caller context.
+	// Falls back to locally-stored email/accountId if the network call fails.
+	let localCaller: CallerIdentity | null = null;
+	try {
+		const clineSettings = getSdkProviderSettings("cline");
+		const rawToken = clineSettings?.auth?.accessToken?.trim() ?? "";
+		if (rawToken) {
+			// Try to get full profile from the network first.
+			let resolved = false;
+			try {
+				const prefixed = rawToken.toLowerCase().startsWith("workos:") ? rawToken : `workos:${rawToken}`;
+				const res = await fetch("https://api.cline.bot/v1/users/me", {
+					headers: { Authorization: `Bearer ${prefixed}` },
+					signal: AbortSignal.timeout(5_000),
+				});
+				if (res.ok) {
+					const body = (await res.json()) as { id?: string; sub?: string; email?: string; displayName?: string };
+					const userId = (body.id ?? body.sub ?? "").trim();
+					const email = (body.email ?? "").trim();
+					if (userId && email) {
+						const displayName = body.displayName?.trim() || email.split("@")[0] || email;
+						const userRecord = remoteAuth.getOrCreateUserRecord(email, displayName);
+						localCaller = { uuid: userRecord.uuid, email, displayName, isLocal: true };
+						resolved = true;
+					}
+				}
+			} catch {
+				// Network unavailable — fall through to local fallback.
+			}
+			// Fallback: use locally stored accountId if network call failed.
+			if (!resolved) {
+				const accountId = clineSettings?.auth?.accountId?.trim() ?? "";
+				if (accountId) {
+					const fallbackEmail = `${accountId}@cline`;
+					const displayName = accountId;
+					const userRecord = remoteAuth.getOrCreateUserRecord(fallbackEmail, displayName);
+					localCaller = { uuid: userRecord.uuid, email: fallbackEmail, displayName, isLocal: true };
+				}
+			}
+		}
+	} catch {
+		// No Cline account on this machine — localhost requests have no identity.
+	}
+
+	// ── Push notification helpers ──────────────────────────────────────────
+	// These fire-and-forget helpers send push notifications alongside the
+	// existing WebSocket broadcasts. They are defined here because they need
+	// access to both pushManager and workspaceRegistry.
+
+	const pushReadyForReview = (workspaceId: string, taskId: string): void => {
+		const push = remoteAuth.pushManager;
+		void (async () => {
+			try {
+				// Find the card to determine visibility.
+				const workspacePath = deps.workspaceRegistry.getWorkspacePathById(workspaceId);
+				if (!workspacePath) return;
+				const snapshot = await deps.workspaceRegistry.buildWorkspaceStateSnapshot(workspaceId, workspacePath);
+				const card = snapshot.board.columns.flatMap((c) => c.cards).find((c) => c.id === taskId);
+				const isPrivate = card?.visibility === "private";
+				const ownerUuid = card?.createdBy?.uuid;
+
+				await push.send({
+					event: "ready_for_review",
+					workspaceId,
+					title: "Task ready for review",
+					body: card?.prompt ? card.prompt.slice(0, 80) : `Task ${taskId} is awaiting review`,
+					data: { taskId, url: `/${workspaceId}` },
+					targetUserUuids: isPrivate && ownerUuid ? [ownerUuid] : undefined,
+				});
+			} catch {
+				// Push failures are non-fatal.
+			}
+		})();
+	};
+
+	const pushAgentQuestion = (workspaceId: string, taskId: string): void => {
+		const push = remoteAuth.pushManager;
+		void (async () => {
+			try {
+				const workspacePath = deps.workspaceRegistry.getWorkspacePathById(workspaceId);
+				if (!workspacePath) return;
+				const snapshot = await deps.workspaceRegistry.buildWorkspaceStateSnapshot(workspaceId, workspacePath);
+				const card = snapshot.board.columns.flatMap((c) => c.cards).find((c) => c.id === taskId);
+				const isPrivate = card?.visibility === "private";
+				const ownerUuid = card?.createdBy?.uuid;
+
+				await push.send({
+					event: "agent_question",
+					workspaceId,
+					title: "Agent needs your input",
+					body: card?.prompt ? card.prompt.slice(0, 80) : `Task ${taskId} needs your attention`,
+					data: { taskId, url: `/${workspaceId}` },
+					targetUserUuids: isPrivate && ownerUuid ? [ownerUuid] : undefined,
+				});
+			} catch {
+				// Push failures are non-fatal.
+			}
+		})();
+	};
+	// ── End push notification helpers ──────────────────────────────────────
 
 	const resolveWorkspaceScopeFromRequest = async (
 		request: IncomingMessage,
@@ -132,6 +249,34 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			});
 			clineTaskSessionServiceByWorkspaceId.set(scope.workspaceId, service);
 			deps.runtimeStateHub.trackClineTaskSessionService(scope.workspaceId, scope.workspacePath, service);
+
+			// Parallel onSummary listener for push notifications.
+			// The hub's own listener handles ready_for_review; this one handles
+			// agent_question (attention) and session_started.
+			const previousStateByTaskId = new Map<string, string>();
+			service.onSummary((summary) => {
+				const prev = previousStateByTaskId.get(summary.taskId);
+				previousStateByTaskId.set(summary.taskId, summary.state);
+				// Agent question: transition to awaiting_review with reason "attention".
+				if (
+					prev &&
+					prev !== "awaiting_review" &&
+					summary.state === "awaiting_review" &&
+					summary.reviewReason === "attention"
+				) {
+					pushAgentQuestion(scope.workspaceId, summary.taskId);
+				}
+				// Session started: transition from idle/undefined to running.
+				if ((!prev || prev === "idle" || prev === "interrupted") && summary.state === "running") {
+					void remoteAuth.pushManager.send({
+						event: "session_started",
+						workspaceId: scope.workspaceId,
+						title: "Task session started",
+						body: `A task session has started`,
+						data: { taskId: summary.taskId, url: `/${scope.workspaceId}` },
+					});
+				}
+			});
 		}
 		return service;
 	};
@@ -170,7 +315,29 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
+
+		// Resolve caller identity: local users get the cached WorkOS profile;
+		// remote users get identity from their validated session cookie.
+		let caller: CallerIdentity | null = null;
+		if (isLocalRequest(req)) {
+			caller = localCaller;
+		} else {
+			const session = await remoteAuth.validateSession(req.headers.cookie ?? "");
+			if (session) {
+				caller = {
+					uuid: session.userUuid,
+					email: session.email,
+					displayName: session.displayName,
+					isLocal: false,
+				};
+			}
+		}
+
 		return {
+			req,
+			remoteAuth,
+			pushManager: remoteAuth.pushManager,
+			caller,
 			requestedWorkspaceId: scope.requestedWorkspaceId,
 			workspaceScope: scope.workspaceScope,
 			runtimeApi: createRuntimeApi({
@@ -220,8 +387,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				getWorkspacePathById: deps.workspaceRegistry.getWorkspacePathById,
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
-				broadcastTaskReadyForReview: deps.runtimeStateHub.broadcastTaskReadyForReview,
+				broadcastTaskReadyForReview: (workspaceId, taskId) => {
+					deps.runtimeStateHub.broadcastTaskReadyForReview(workspaceId, taskId);
+					pushReadyForReview(workspaceId, taskId);
+				},
 			}),
+			broadcastTeamChatMessage: deps.runtimeStateHub.broadcastTeamChatMessage,
 		};
 	};
 
@@ -236,6 +407,41 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		try {
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
+
+			// ── Auth gate ─────────────────────────────────────────────────────
+			// Localhost connections bypass auth entirely.
+			// Login/auth/logout routes are always reachable (needed to obtain a session).
+			// All other remote requests require a valid session cookie.
+			if (!isLocalRequest(req)) {
+				const isAuthRoute =
+					pathname === "/login" ||
+					pathname.startsWith("/login/") ||
+					pathname === "/logout" ||
+					pathname === "/auth/start" ||
+					pathname === "/auth/callback";
+
+				if (isAuthRoute) {
+					await loginHandler.handle(req, res);
+					return;
+				}
+
+				const session = await remoteAuth.validateSession(req.headers.cookie ?? "");
+				if (!session) {
+					const acceptsHtml = (req.headers.accept ?? "").includes("text/html");
+					if (acceptsHtml) {
+						res.writeHead(302, { Location: "/login" });
+						res.end();
+					} else {
+						jsonResponse(res, 401, { error: "Unauthorized." });
+					}
+					return;
+				}
+
+				// Touch the session on every authenticated request (refreshes rolling expiry).
+				await remoteAuth.touchSession(session.sessionId);
+			}
+			// ── End auth gate ─────────────────────────────────────────────────
+
 			const oauthCallbackResponse = await handleClineMcpOauthCallback(requestUrl);
 			if (oauthCallbackResponse) {
 				res.writeHead(oauthCallbackResponse.statusCode, {
@@ -269,6 +475,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const server = tlsConfig
 		? createHttpsServer({ key: tlsConfig.key, cert: tlsConfig.cert }, requestHandler)
 		: createServer(requestHandler);
+
 	server.on("upgrade", (request, socket, head) => {
 		let requestUrl: URL;
 		try {
@@ -277,13 +484,36 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			socket.destroy();
 			return;
 		}
+
+		// Auth gate for WebSocket upgrades — same logic as HTTP requests.
+		if (!isLocalRequest(request)) {
+			const cookieHeader = request.headers.cookie ?? "";
+			// validateSession is async; we must await before proceeding.
+			// Use a void-returning IIFE to keep the synchronous upgrade handler signature.
+			void (async () => {
+				const session = await remoteAuth.validateSession(cookieHeader);
+				if (!session) {
+					socket.destroy();
+					return;
+				}
+				await remoteAuth.touchSession(session.sessionId);
+				doUpgrade(request, socket, head, requestUrl);
+			})();
+			return;
+		}
+
+		doUpgrade(request, socket, head, requestUrl);
+	});
+
+	function doUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer, requestUrl: URL): void {
 		if (normalizeRequestPath(requestUrl.pathname) !== "/api/runtime/ws") {
 			return;
 		}
 		(request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled = true;
 		const requestedWorkspaceId = requestUrl.searchParams.get("workspaceId")?.trim() || null;
 		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedWorkspaceId });
-	});
+	}
+
 	const terminalWebSocketBridge = createTerminalWebSocketBridge({
 		server,
 		resolveTerminalManager: (workspaceId) => deps.workspaceRegistry.getTerminalManagerForWorkspace(workspaceId),
@@ -327,6 +557,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			await clineWatcherRegistry.close();
 			await deps.runtimeStateHub.close();
 			await terminalWebSocketBridge.close();
+			remoteAuth.close();
 			await new Promise<void>((resolveClose, rejectClose) => {
 				server.close((error) => {
 					if (error) {

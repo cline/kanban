@@ -1,9 +1,12 @@
 // Service worker for the Cline PWA.
 // Caches the app shell for offline use and serves a branded fallback
 // when the dev server is unreachable.
+// Also handles Web Push notifications (push, notificationclick, pushsubscriptionchange).
 
 const CACHE_VERSION = "v1";
 const CACHE_NAME = `cline-pwa-${CACHE_VERSION}`;
+
+// ── Navigation fallback page ───────────────────────────────────────────────
 
 const FALLBACK_HTML = `<!doctype html>
 <html lang="en">
@@ -71,6 +74,8 @@ const FALLBACK_HTML = `<!doctype html>
 // index.html is fetched network-first at runtime, but we cache a copy as fallback.
 const APP_SHELL_URLS = ["/", "/manifest.json", "/assets/icon-192.png", "/assets/icon-512.png"];
 
+// ── Lifecycle ─────────────────────────────────────────────────────────────
+
 self.addEventListener("install", (event) => {
 	event.waitUntil(
 		caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_URLS))
@@ -91,6 +96,8 @@ self.addEventListener("activate", (event) => {
 	);
 	self.clients.claim();
 });
+
+// ── Navigation fetch fallback ─────────────────────────────────────────────
 
 self.addEventListener("fetch", (event) => {
 	const { request } = event;
@@ -147,4 +154,130 @@ self.addEventListener("fetch", (event) => {
 	}
 
 	// Everything else (API calls, etc.): network only, no caching.
+});
+
+// ── Push notification receipt ─────────────────────────────────────────────
+//
+// Payload shape (from push-manager.ts):
+//   { title: string, body: string, data: { event, workspaceId, taskId?, url, ... } }
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    // Malformed payload — show a generic notification.
+  }
+
+  const title = payload.title || "Cline Kanban";
+  const body  = payload.body  || "";
+  const data  = payload.data  || {};
+
+  // Use a stable tag so that multiple rapid notifications for the same task
+  // replace each other rather than stacking up in the notification tray.
+  const tag = [
+    "kanban",
+    data.event  || "notification",
+    data.workspaceId || "",
+    data.taskId || String(Date.now()),
+  ].filter(Boolean).join("-");
+
+  const options = {
+    body,
+    icon:  "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data,
+    requireInteraction: true,   // stay visible until the user explicitly acts
+    tag,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// ── Notification click ────────────────────────────────────────────────────
+//
+// When the user taps a notification:
+//   • If the Kanban app is already open in a tab → focus it and send a
+//     message so the frontend can navigate to the relevant task/workspace.
+//   • If the app is closed → open it at the deep-link URL from data.url.
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const notifData = event.notification.data || {};
+  const targetUrl = notifData.url
+    ? String(notifData.url)
+    : "/";
+
+  const absoluteTarget = new URL(targetUrl, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((windowClients) => {
+        // Find an existing window on this origin.
+        for (const client of windowClients) {
+          if (new URL(client.url).origin === self.location.origin) {
+            // Post a message so the app can navigate to the right place.
+            client.postMessage({
+              type: "KANBAN_PUSH_CLICK",
+              data: notifData,
+            });
+            return client.focus();
+          }
+        }
+        // No open window — open one at the target URL.
+        return self.clients.openWindow(absoluteTarget);
+      })
+  );
+});
+
+// ── Subscription refresh ──────────────────────────────────────────────────
+//
+// If the push service rotates the subscription (e.g. after a long period of
+// inactivity), automatically re-subscribe and update the server so push
+// delivery continues uninterrupted.
+
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      let newSub;
+      try {
+        newSub = await self.registration.pushManager.subscribe(
+          event.oldSubscription
+            ? event.oldSubscription.options
+            : { userVisibleOnly: true }
+        );
+      } catch {
+        // Cannot resubscribe without a fresh applicationServerKey from the app.
+        // The user will be prompted to re-enable notifications on next visit.
+        return;
+      }
+
+      // Inform the server about the new subscription.
+      // The endpoint accepts the standard PushSubscription JSON.
+      const subJson = newSub.toJSON();
+      if (!subJson.endpoint || !subJson.keys) return;
+
+      try {
+        await fetch("/api/trpc/remote.push.subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // Note: the server re-reads the cookie for auth — no explicit token needed.
+          credentials: "include",
+          body: JSON.stringify({
+            "0": {
+              endpoint: subJson.endpoint,
+              keys: {
+                p256dh: subJson.keys.p256dh || "",
+                auth:   subJson.keys.auth   || "",
+              },
+            },
+          }),
+        });
+      } catch {
+        // Network unavailable — will retry on next push event.
+      }
+    })()
+  );
 });

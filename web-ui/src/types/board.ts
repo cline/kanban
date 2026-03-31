@@ -1,4 +1,10 @@
-import type { RuntimeBoardColumnId, RuntimeTaskAutoReviewMode, RuntimeTaskImage } from "@/runtime/types";
+import type {
+	RuntimeBoardCardCreatedBy,
+	RuntimeBoardCardVisibility,
+	RuntimeBoardColumnId,
+	RuntimeTaskAutoReviewMode,
+	RuntimeTaskImage,
+} from "@/runtime/types";
 
 export type BoardColumnId = RuntimeBoardColumnId;
 
@@ -36,6 +42,9 @@ export function getTaskAutoReviewCancelButtonLabel(mode: TaskAutoReviewMode | nu
 	return "Cancel Auto-commit";
 }
 
+export type BoardCardCreatedBy = RuntimeBoardCardCreatedBy;
+export type BoardCardVisibility = RuntimeBoardCardVisibility;
+
 export interface BoardCard {
 	id: string;
 	prompt: string;
@@ -46,6 +55,8 @@ export interface BoardCard {
 	baseRef: string;
 	createdAt: number;
 	updatedAt: number;
+	createdBy?: BoardCardCreatedBy;
+	visibility?: BoardCardVisibility;
 }
 
 export interface BoardColumn {

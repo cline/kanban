@@ -5,6 +5,7 @@ import { notifyError, showAppToast } from "@/components/app-toaster";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
+import { registerPushSubscription } from "@/hooks/use-push-subscription";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
@@ -277,10 +278,20 @@ export function useBoardInteractions({
 			return;
 		}
 		notificationPermissionPromptInFlightRef.current = true;
-		void requestBrowserNotificationPermission().finally(() => {
-			notificationPermissionPromptInFlightRef.current = false;
-		});
-	}, [readyForReviewNotificationsEnabled]);
+		void requestBrowserNotificationPermission()
+			.then((nextPermission) => {
+				// Auto-register for push notifications when the user grants permission
+				// via the lazy task-start prompt (no settings dialog interaction needed).
+				if (nextPermission === "granted") {
+					void registerPushSubscription(currentProjectId).catch(() => {
+						// Non-fatal — the settings dialog shows a re-register button if this fails.
+					});
+				}
+			})
+			.finally(() => {
+				notificationPermissionPromptInFlightRef.current = false;
+			});
+	}, [currentProjectId, readyForReviewNotificationsEnabled]);
 
 	const kickoffTaskInProgress = useCallback(
 		async (

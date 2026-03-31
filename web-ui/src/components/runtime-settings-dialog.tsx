@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import { registerPushSubscription, usePushSubscription } from "@/hooks/use-push-subscription";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
@@ -301,6 +302,7 @@ export function RuntimeSettingsDialog({
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
 	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>("unsupported");
+	const pushSubscription = usePushSubscription(workspaceId, open);
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
 	const [openPrPromptTemplate, setOpenPrPromptTemplate] = useState("");
@@ -546,6 +548,28 @@ export function RuntimeSettingsDialog({
 		if (shouldRequestNotificationPermission) {
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
+			// Auto-subscribe to push when permission is freshly granted on save.
+			if (nextPermission === "granted") {
+				try {
+					await registerPushSubscription(workspaceId);
+					pushSubscription.refresh();
+				} catch {
+					// Non-fatal.
+				}
+			}
+		} else if (
+			readyForReviewNotificationsEnabled &&
+			notificationPermission === "granted" &&
+			pushSubscription.status === "not-subscribed"
+		) {
+			// Notifications already enabled and permission already granted — make sure
+			// we are registered with the backend (handles re-saves after a server restart).
+			try {
+				await registerPushSubscription(workspaceId);
+				pushSubscription.refresh();
+			} catch {
+				// Non-fatal.
+			}
 		}
 		if (selectedAgentId === "cline" && clineSettings.providerId.trim().length === 0) {
 			setSaveError("Choose a Cline provider before saving.");
@@ -583,6 +607,15 @@ export function RuntimeSettingsDialog({
 		void (async () => {
 			const nextPermission = await requestBrowserNotificationPermission();
 			setNotificationPermission(nextPermission);
+			// Auto-subscribe to push notifications when permission is freshly granted.
+			if (nextPermission === "granted") {
+				try {
+					await registerPushSubscription(workspaceId);
+					pushSubscription.refresh();
+				} catch {
+					// Non-fatal — user can retry via the re-register button.
+				}
+			}
 		})();
 	};
 
@@ -728,7 +761,7 @@ export function RuntimeSettingsDialog({
 					</RadixSwitch.Root>
 					<span className="text-[13px] text-text-primary">Notify when a task is ready for review</span>
 				</div>
-				<div className="flex items-center gap-2 mt-2 mb-2">
+				<div className="flex items-center gap-2 mt-2">
 					<p className="text-text-secondary text-[13px] m-0">
 						Browser permission: {formatNotificationPermissionStatus(notificationPermission)}
 					</p>
@@ -740,6 +773,34 @@ export function RuntimeSettingsDialog({
 						/>
 					) : null}
 				</div>
+				{/* Push subscription status — shown only when browser permission is granted */}
+				{notificationPermission === "granted" ? (
+					<div className="flex items-center gap-2 mt-1.5 mb-2">
+						{pushSubscription.status === "subscribed" ? (
+							<p className="text-text-secondary text-[13px] m-0">
+								Push notifications: <span className="text-status-green">registered</span>
+							</p>
+						) : pushSubscription.status === "not-subscribed" ? (
+							<>
+								<p className="text-text-secondary text-[13px] m-0">
+									Push notifications: <span className="text-status-orange">not registered</span>
+								</p>
+								<InlineUtilityButton
+									text={pushSubscription.isRegistering ? "Registering…" : "Re-register"}
+									onClick={() => void pushSubscription.register()}
+									disabled={controlsDisabled || pushSubscription.isRegistering}
+								/>
+							</>
+						) : pushSubscription.status === "checking" ? (
+							<p className="text-text-secondary text-[13px] m-0">Push notifications: checking…</p>
+						) : null}
+						{pushSubscription.error ? (
+							<p className="text-status-red text-[12px] m-0">{pushSubscription.error}</p>
+						) : null}
+					</div>
+				) : (
+					<div className="mb-2" />
+				)}
 
 				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
 				<p

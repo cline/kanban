@@ -7,6 +7,7 @@ import {
 	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 } from "@/hooks/app-utils";
+import { useCallerIdentity } from "@/runtime/caller-identity-query";
 import type { RuntimeAgentId } from "@/runtime/types";
 import { addTaskToColumnWithResult, findCardSelection, updateTask } from "@/state/board-state";
 import { toTelemetrySelectedAgentId, trackTaskCreated } from "@/telemetry/events";
@@ -83,6 +84,9 @@ export function useTaskEditor({
 	setSelectedTaskId,
 	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
+	// Resolved once per session — used to stamp createdBy on new cards.
+	const callerIdentity = useCallerIdentity(currentProjectId);
+
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskImages, setNewTaskImages] = useState<TaskImage[]>([]);
@@ -300,6 +304,7 @@ export function useTaskEditor({
 				autoReviewMode: newTaskAutoReviewMode,
 				images: newTaskImages,
 				baseRef,
+				createdBy: callerIdentity ?? undefined,
 			});
 			setBoard(created.board);
 			trackTaskCreated({
@@ -324,6 +329,7 @@ export function useTaskEditor({
 		},
 		[
 			board,
+			callerIdentity,
 			currentProjectId,
 			newTaskAutoReviewEnabled,
 			newTaskAutoReviewMode,
@@ -357,6 +363,7 @@ export function useTaskEditor({
 					autoReviewMode: newTaskAutoReviewMode,
 					images: newTaskImages,
 					baseRef,
+					createdBy: callerIdentity ?? undefined,
 				});
 				updatedBoard = created.board;
 				createdTaskIds.push(created.task.id);
@@ -386,6 +393,7 @@ export function useTaskEditor({
 		},
 		[
 			board,
+			callerIdentity,
 			currentProjectId,
 			newTaskAutoReviewEnabled,
 			newTaskAutoReviewMode,

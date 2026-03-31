@@ -16,9 +16,11 @@ import type {
 	RuntimeStateStreamTaskChatMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
+	RuntimeStateStreamTeamChatMessage,
 	RuntimeStateStreamWorkspaceMetadataMessage,
 	RuntimeStateStreamWorkspaceStateMessage,
 	RuntimeTaskSessionSummary,
+	RuntimeTeamChatMessage,
 } from "../core/api-contract";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor";
@@ -57,6 +59,11 @@ export interface RuntimeStateHub {
 	broadcastClineMcpAuthStatusesUpdated: (statuses: RuntimeClineMcpServerAuthStatus[]) => void;
 	bumpClineSessionContextVersion: () => void;
 	broadcastTaskReadyForReview: (workspaceId: string, taskId: string) => void;
+	// Fired when an agent session transitions to reviewReason === "attention"
+	// (the agent is waiting for user input). Used to trigger push notifications.
+	broadcastAgentQuestion: (workspaceId: string, taskId: string) => void;
+	// Broadcasts a team chat message to all workspace clients.
+	broadcastTeamChatMessage: (workspaceId: string, message: RuntimeTeamChatMessage) => void;
 	close: () => Promise<void>;
 }
 
@@ -191,6 +198,21 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			type: "task_chat_message",
 			workspaceId,
 			taskId,
+			message,
+		};
+		for (const client of runtimeClients) {
+			sendRuntimeStateMessage(client, payload);
+		}
+	};
+
+	const broadcastTeamChatMessage = (workspaceId: string, message: RuntimeTeamChatMessage) => {
+		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+		if (!runtimeClients || runtimeClients.size === 0) {
+			return;
+		}
+		const payload: RuntimeStateStreamTeamChatMessage = {
+			type: "team_chat_message",
+			workspaceId,
 			message,
 		};
 		for (const client of runtimeClients) {
@@ -336,6 +358,17 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		for (const client of runtimeClients) {
 			sendRuntimeStateMessage(client, payload);
 		}
+	};
+
+	// Fired when a session transitions to reviewReason === "attention" — the
+	// agent is blocked waiting for user input. No WebSocket message is sent
+	// (the summary broadcast already captures the state); this hook exists
+	// solely so push notifications can be sent to subscribers who are offline.
+	const broadcastAgentQuestion = (_workspaceId: string, _taskId: string) => {
+		// Intentionally a no-op at the WebSocket layer — the summary broadcast
+		// already contains all the information the connected UI needs.
+		// Push notification callers register an external listener via the
+		// RuntimeStateHub interface.
 	};
 
 	runtimeStateWebSocketServer.on("connection", async (client: WebSocket, context: unknown) => {
@@ -532,6 +565,15 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				) {
 					broadcastTaskReadyForReview(workspaceId, summary.taskId);
 				}
+				// Agent question: session transitions to "attention" (agent is waiting for user input).
+				if (
+					previousSummary &&
+					previousSummary.state === "running" &&
+					summary.state === "awaiting_review" &&
+					summary.reviewReason === "attention"
+				) {
+					broadcastAgentQuestion(workspaceId, summary.taskId);
+				}
 			});
 			clineSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
 			const unsubscribeMessage = service.onMessage((taskId, message) => {
@@ -541,6 +583,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		},
 		broadcastTaskChatMessage,
 		broadcastTaskChatCleared,
+		broadcastTeamChatMessage,
 		handleUpgrade: (request, socket, head, context) => {
 			runtimeStateWebSocketServer.handleUpgrade(request, socket, head, (ws) => {
 				runtimeStateWebSocketServer.emit("connection", ws, context);
@@ -552,6 +595,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		broadcastClineMcpAuthStatusesUpdated,
 		bumpClineSessionContextVersion,
 		broadcastTaskReadyForReview,
+		broadcastAgentQuestion,
 		close: async () => {
 			for (const timer of taskSessionBroadcastTimersByWorkspaceId.values()) {
 				clearTimeout(timer);

@@ -31,7 +31,7 @@ import type {
 	RuntimeTaskSessionMode,
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
-import type { TaskImage } from "@/types";
+import type { BoardCardCreatedBy, TaskImage } from "@/types";
 
 const BOTTOM_LOCK_THRESHOLD_PX = 24;
 
@@ -84,6 +84,8 @@ export interface ClineAgentChatPanelProps {
 	onCancelAutomaticAction?: () => void;
 	cancelAutomaticActionLabel?: string | null;
 	showMoveToTrash?: boolean;
+	// Identity of whoever created this task card. Shown above the message list.
+	createdBy?: BoardCardCreatedBy;
 }
 
 export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, ClineAgentChatPanelProps>(
@@ -113,6 +115,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			onCancelAutomaticAction,
 			cancelAutomaticActionLabel,
 			showMoveToTrash = false,
+			createdBy,
 		},
 		ref,
 	): ReactElement {
@@ -399,6 +402,11 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 					className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3"
 					onScroll={handleMessageListScroll}
 				>
+					{createdBy ? (
+						<div className="mb-1 rounded-md border border-border bg-surface-1 px-3 py-2 text-xs text-text-tertiary">
+							Created by <span className="font-medium text-text-secondary">{createdBy.displayName}</span>
+						</div>
+					) : null}
 					{messages.map((message) => (
 						<ClineChatMessageItem key={message.id} message={message} />
 					))}

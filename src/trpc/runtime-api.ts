@@ -35,6 +35,7 @@ import {
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
+import type { CallerIdentity } from "../remote/types";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
@@ -145,7 +146,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			const body = parseClineAddProviderRequest(input);
 			return await clineProviderService.addCustomProvider(body);
 		},
-		startTaskSession: async (workspaceScope, input) => {
+		startTaskSession: async (workspaceScope, input, caller?: CallerIdentity | null) => {
 			try {
 				const body = parseTaskSessionStartRequest(input);
 				const requestedTaskMode = body.mode ?? (body.startInPlanMode ? "plan" : "act");
@@ -158,6 +159,17 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							baseRef: body.baseRef,
 						});
 				const shouldCaptureTurnCheckpoint = !body.resumeFromTrash && !isHomeAgentSessionId(body.taskId);
+
+				// Build a caller-aware prompt. When a caller is known, prepend a
+				// system message so the agent can address the user by name, and
+				// tag the user message with sender metadata for the UI.
+				const callerSystemPrompt = caller
+					? `[Context: You are working with ${caller.displayName} (${caller.email}). Address them by first name in your responses.]`
+					: null;
+				const effectivePrompt = callerSystemPrompt ? `${callerSystemPrompt}\n\n${body.prompt}`.trim() : body.prompt;
+				const senderMeta = caller
+					? { uuid: caller.uuid, displayName: caller.displayName, email: caller.email }
+					: null;
 
 				// When restoring from trash, resume with the original agent so conversation
 				// history is preserved. Terminal agents have their agentId preserved in the
@@ -184,7 +196,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					const summary = await clineTaskSessionService.startTaskSession({
 						taskId: body.taskId,
 						cwd: taskCwd,
-						prompt: body.prompt,
+						prompt: effectivePrompt,
 						images: body.images,
 						resumeFromTrash: body.resumeFromTrash,
 						providerId: clineLaunchConfig.providerId,
@@ -194,6 +206,16 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						baseUrl: clineLaunchConfig.baseUrl,
 						reasoningEffort: clineLaunchConfig.reasoningEffort,
 					});
+
+					// Tag the first user message with sender metadata so the UI can
+					// show a byline above the chat bubble.
+					if (senderMeta) {
+						const msgs = clineTaskSessionService.listMessages(body.taskId);
+						const firstUserMsg = msgs.find((m) => m.role === "user");
+						if (firstUserMsg) {
+							firstUserMsg.meta = { ...(firstUserMsg.meta ?? {}), sender: senderMeta };
+						}
+					}
 
 					let nextSummary = summary;
 					if (shouldCaptureTurnCheckpoint) {
@@ -489,10 +511,14 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				baseUrl: body.baseUrl,
 			});
 		},
-		sendTaskChatMessage: async (workspaceScope, input) => {
+		sendTaskChatMessage: async (workspaceScope, input, caller?: CallerIdentity | null) => {
 			try {
 				const body = parseTaskChatSendRequest(input);
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+				const senderMeta = caller
+					? { uuid: caller.uuid, displayName: caller.displayName, email: caller.email }
+					: null;
+
 				if (isClineClearSlashCommand(body.text)) {
 					const summary = await clineTaskSessionService.clearTaskSession(body.taskId);
 					deps.broadcastTaskChatCleared?.(workspaceScope.workspaceId, body.taskId);
@@ -503,6 +529,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					};
 				}
 				const requestedMode = body.mode;
+				const messageCountBefore = clineTaskSessionService.listMessages(body.taskId).length;
 				let summary = await clineTaskSessionService.sendTaskSessionInput(
 					body.taskId,
 					body.text,
@@ -543,6 +570,16 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						});
 					}
 				}
+
+				// Tag the newly added user message with sender metadata.
+				if (senderMeta) {
+					const allMessages = clineTaskSessionService.listMessages(body.taskId);
+					const newUserMsg = allMessages.slice(messageCountBefore).find((m) => m.role === "user");
+					if (newUserMsg) {
+						newUserMsg.meta = { ...(newUserMsg.meta ?? {}), sender: senderMeta };
+					}
+				}
+
 				const latestMessage = clineTaskSessionService.listMessages(body.taskId).at(-1) ?? null;
 				return {
 					ok: true,
