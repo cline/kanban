@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import { createRuntimeTaskAutomation } from "./runtime-task-automation";
+import { createRuntimeTaskGitActionCoordinator } from "./runtime-task-git-actions";
 
 const createTrpcProxyClientMock = vi.hoisted(() => vi.fn());
 const httpBatchLinkMock = vi.hoisted(() => vi.fn(() => ({})));
@@ -216,20 +217,18 @@ describe("createRuntimeTaskAutomation", () => {
 	let workspaceState: RuntimeWorkspaceStateResponse;
 	let runtimeClient: {
 		runtime: {
-			getConfig: { query: ReturnType<typeof vi.fn> };
-			sendTaskChatMessage: { mutate: ReturnType<typeof vi.fn> };
-			sendTaskSessionInput: { mutate: ReturnType<typeof vi.fn> };
+			runTaskGitAction: { mutate: ReturnType<typeof vi.fn> };
 			startTaskSession: { mutate: ReturnType<typeof vi.fn> };
 			stopTaskSession: { mutate: ReturnType<typeof vi.fn> };
 		};
 		workspace: {
-			getTaskContext: { query: ReturnType<typeof vi.fn> };
 			ensureWorktree: { mutate: ReturnType<typeof vi.fn> };
 			deleteWorktree: { mutate: ReturnType<typeof vi.fn> };
 			notifyStateUpdated: { mutate: ReturnType<typeof vi.fn> };
 		};
 	};
 	let changedFilesByTaskPath: Record<string, number>;
+	let taskGitActionCoordinator: ReturnType<typeof createRuntimeTaskGitActionCoordinator>;
 
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -238,42 +237,24 @@ describe("createRuntimeTaskAutomation", () => {
 			"/repo/task-1": 2,
 			"/repo/task-2": 0,
 		};
+		taskGitActionCoordinator = createRuntimeTaskGitActionCoordinator();
 		runtimeClient = {
 			runtime: {
-				getConfig: {
-					query: vi.fn(async () => ({
-						selectedAgentId: "codex",
-						selectedShortcutLabel: null,
-						agentAutonomousModeEnabled: true,
-						effectiveCommand: null,
-						globalConfigPath: "/tmp/global-config.json",
-						projectConfigPath: "/tmp/project-config.json",
-						readyForReviewNotificationsEnabled: true,
-						detectedCommands: [],
-						agents: [],
-						shortcuts: [],
-						clineProviderSettings: {
-							providerId: "anthropic",
-							modelId: "claude-sonnet-4",
-							baseUrl: null,
-							apiKeyConfigured: true,
-							oauthProvider: null,
-							oauthAccessTokenConfigured: false,
-							oauthRefreshTokenConfigured: false,
-							oauthAccountId: null,
-							oauthExpiresAt: null,
-						},
-						commitPromptTemplate: "commit {{base_ref}}",
-						openPrPromptTemplate: "open pr {{base_ref}}",
-						commitPromptTemplateDefault: "commit {{base_ref}}",
-						openPrPromptTemplateDefault: "open pr {{base_ref}}",
-					})),
-				},
-				sendTaskChatMessage: {
-					mutate: vi.fn(async () => ({ ok: true })),
-				},
-				sendTaskSessionInput: {
-					mutate: vi.fn(async () => ({ ok: true })),
+				runTaskGitAction: {
+					mutate: vi.fn(async ({ taskId, action }) => {
+						const started = taskGitActionCoordinator.beginTaskGitAction("workspace-1", taskId, action);
+						if (!started) {
+							return {
+								ok: false,
+								summary: null,
+								error: "Task git action already pending.",
+							};
+						}
+						taskGitActionCoordinator.completeTaskGitAction("workspace-1", taskId, action, {
+							triggered: true,
+						});
+						return { ok: true, summary: null };
+					}),
 				},
 				startTaskSession: {
 					mutate: vi.fn(async ({ taskId }) => ({
@@ -292,17 +273,6 @@ describe("createRuntimeTaskAutomation", () => {
 				},
 			},
 			workspace: {
-				getTaskContext: {
-					query: vi.fn(async ({ taskId, baseRef }) => ({
-						taskId,
-						path: `/repo/${taskId}`,
-						exists: true,
-						baseRef,
-						branch: taskId,
-						isDetached: false,
-						headCommit: "abc1234",
-					})),
-				},
 				ensureWorktree: {
 					mutate: vi.fn(async () => ({
 						ok: true,
@@ -377,6 +347,7 @@ describe("createRuntimeTaskAutomation", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		vi.restoreAllMocks();
+		taskGitActionCoordinator.close();
 	});
 
 	it("moves review-ready tasks on the server, auto-commits them, and starts linked tasks after trashing", async () => {
@@ -389,6 +360,7 @@ describe("createRuntimeTaskAutomation", () => {
 		]);
 		const automation = createRuntimeTaskAutomation({
 			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
 		});
 
 		automation.trackTerminalManager("workspace-1", manager as never);
@@ -399,15 +371,10 @@ describe("createRuntimeTaskAutomation", () => {
 		await vi.advanceTimersByTimeAsync(1_200);
 		await flushMicrotasks();
 
-		expect(runtimeClient.runtime.sendTaskSessionInput.mutate).toHaveBeenNthCalledWith(1, {
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledWith({
 			taskId: "task-1",
-			text: "commit main",
-			appendNewline: false,
-		});
-		expect(runtimeClient.runtime.sendTaskSessionInput.mutate).toHaveBeenNthCalledWith(2, {
-			taskId: "task-1",
-			text: "\r",
-			appendNewline: false,
+			baseRef: "main",
+			action: "commit",
 		});
 
 		changedFilesByTaskPath["/repo/task-1"] = 0;
@@ -442,7 +409,7 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.close();
 	});
 
-	it("routes auto-pr through the native cline chat API", async () => {
+	it("routes auto-pr through the shared runtime git-action API", async () => {
 		getBoardColumn(workspaceState, "in_progress").cards = [];
 		getBoardColumn(workspaceState, "review").cards = [
 			{
@@ -467,6 +434,7 @@ describe("createRuntimeTaskAutomation", () => {
 		]);
 		const automation = createRuntimeTaskAutomation({
 			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
 		});
 
 		automation.trackClineTaskSessionService("workspace-1", service as ClineTaskSessionService);
@@ -475,12 +443,127 @@ describe("createRuntimeTaskAutomation", () => {
 		await vi.advanceTimersByTimeAsync(1_000);
 		await flushMicrotasks();
 
-		expect(runtimeClient.runtime.sendTaskChatMessage.mutate).toHaveBeenCalledWith({
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledWith({
 			taskId: "task-1",
-			text: "open pr main",
-			mode: "act",
+			baseRef: "main",
+			action: "pr",
 		});
-		expect(runtimeClient.runtime.sendTaskSessionInput.mutate).not.toHaveBeenCalled();
+
+		automation.close();
+	});
+
+	it("suppresses auto-review while a manual git action is already pending", async () => {
+		const { manager, emitter } = createTerminalManager([
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 5,
+			}),
+		]);
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackTerminalManager("workspace-1", manager as never);
+		await flushMicrotasks();
+
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(true);
+		taskGitActionCoordinator.completeTaskGitAction("workspace-1", "task-1", "commit", {
+			triggered: true,
+		});
+
+		await vi.advanceTimersByTimeAsync(2_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+
+		taskGitActionCoordinator.clearTaskGitAction("workspace-1", "task-1");
+		emitter.emitSummary(
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 6,
+			}),
+		);
+		await flushMicrotasks();
+
+		await vi.advanceTimersByTimeAsync(1_200);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledWith({
+			taskId: "task-1",
+			baseRef: "main",
+			action: "commit",
+		});
+
+		automation.close();
+	});
+
+	it("polls persisted workspaces before any terminal manager is created", async () => {
+		workspaceState.sessions = {
+			"task-1": createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 5,
+			}),
+		};
+
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+
+		expect(getBoardColumn(workspaceState, "review").cards[0]?.id).toBe("task-1");
+
+		await vi.advanceTimersByTimeAsync(1_200);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledWith({
+			taskId: "task-1",
+			baseRef: "main",
+			action: "commit",
+		});
+
+		automation.close();
+	});
+
+	it("moves interrupted tasks to trash before evaluating review automation", async () => {
+		getBoardColumn(workspaceState, "in_progress").cards = [];
+		getBoardColumn(workspaceState, "review").cards = [
+			{
+				id: "task-1",
+				prompt: "Primary task",
+				startInPlanMode: false,
+				autoReviewEnabled: true,
+				autoReviewMode: "commit",
+				baseRef: "main",
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		];
+		workspaceState.sessions = {
+			"task-1": createSummary("task-1", {
+				state: "interrupted",
+				reviewReason: "interrupted",
+				updatedAt: 5,
+			}),
+		};
+
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+
+		expect(getBoardColumn(workspaceState, "trash").cards[0]?.id).toBe("task-1");
+		expect(getBoardColumn(workspaceState, "review").cards).toHaveLength(0);
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
 
 		automation.close();
 	});

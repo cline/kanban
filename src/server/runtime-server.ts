@@ -26,6 +26,7 @@ import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import type { RuntimeStateHub } from "./runtime-state-hub";
+import type { RuntimeTaskGitActionCoordinator } from "./runtime-task-git-actions";
 import type { WorkspaceRegistry } from "./workspace-registry";
 
 interface DisposeTrackedWorkspaceResult {
@@ -36,6 +37,7 @@ interface DisposeTrackedWorkspaceResult {
 export interface CreateRuntimeServerDependencies {
 	workspaceRegistry: WorkspaceRegistry;
 	runtimeStateHub: RuntimeStateHub;
+	taskGitActionCoordinator: RuntimeTaskGitActionCoordinator;
 	onClineTaskSessionServiceReady?: (workspaceId: string, service: ClineTaskSessionService) => void;
 	warn: (message: string) => void;
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
@@ -189,6 +191,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcastTaskChatCleared: deps.runtimeStateHub.broadcastTaskChatCleared,
 				bumpClineSessionContextVersion: deps.runtimeStateHub.bumpClineSessionContextVersion,
 				prepareForStateReset,
+				taskGitActionCoordinator: deps.taskGitActionCoordinator,
 			}),
 			workspaceApi: createWorkspaceApi({
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,

@@ -19,6 +19,7 @@ import {
 	type RuntimeTaskChatMessagesRequest,
 	type RuntimeTaskChatReloadRequest,
 	type RuntimeTaskChatSendRequest,
+	type RuntimeTaskGitActionRequest,
 	type RuntimeTaskSessionInputRequest,
 	type RuntimeTaskSessionStartRequest,
 	type RuntimeTaskSessionStopRequest,
@@ -47,6 +48,7 @@ import {
 	runtimeTaskChatMessagesRequestSchema,
 	runtimeTaskChatReloadRequestSchema,
 	runtimeTaskChatSendRequestSchema,
+	runtimeTaskGitActionRequestSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionStartRequestSchema,
 	runtimeTaskSessionStopRequestSchema,
@@ -245,6 +247,23 @@ export function parseTaskSessionInputRequest(value: unknown): RuntimeTaskSession
 	return {
 		...parsed,
 		taskId,
+	};
+}
+
+export function parseTaskGitActionRequest(value: unknown): RuntimeTaskGitActionRequest {
+	const parsed = parseWithSchema(runtimeTaskGitActionRequestSchema, value);
+	const taskId = parsed.taskId.trim();
+	const baseRef = parsed.baseRef.trim();
+	if (!taskId) {
+		throw new Error("Task git action taskId cannot be empty.");
+	}
+	if (!baseRef) {
+		throw new Error("Task git action baseRef cannot be empty.");
+	}
+	return {
+		...parsed,
+		taskId,
+		baseRef,
 	};
 }
 

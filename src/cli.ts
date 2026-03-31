@@ -356,24 +356,29 @@ async function startServer(): Promise<{
 	const [
 		{ resolveProjectInputPath },
 		{ createRuntimeTaskAutomation },
+		{ createRuntimeTaskGitActionCoordinator },
 		{ pickDirectoryPathFromSystemDialog },
 		{ createRuntimeServer },
 		{ createRuntimeStateHub },
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+		{ listWorkspaceIndexEntries },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/runtime-task-automation.js"),
+		import("./server/runtime-task-git-actions.js"),
 		import("./server/directory-picker.js"),
 		import("./server/runtime-server.js"),
 		import("./server/runtime-state-hub.js"),
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
 		import("./server/workspace-registry.js"),
+		import("./state/workspace-state.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	let runtimeTaskAutomation: ReturnType<typeof createRuntimeTaskAutomation> | undefined;
+	const taskGitActionCoordinator = createRuntimeTaskGitActionCoordinator();
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
 		loadGlobalRuntimeConfig,
@@ -410,6 +415,7 @@ async function startServer(): Promise<{
 	const runtimeServer = await createRuntimeServer({
 		workspaceRegistry,
 		runtimeStateHub: runtimeHub,
+		taskGitActionCoordinator,
 		onClineTaskSessionServiceReady: (workspaceId, service) => {
 			runtimeTaskAutomation?.trackClineTaskSessionService(workspaceId, service);
 		},
@@ -428,13 +434,19 @@ async function startServer(): Promise<{
 	});
 	runtimeTaskAutomation = createRuntimeTaskAutomation({
 		getWorkspacePathById: workspaceRegistry.getWorkspacePathById,
+		taskGitActionCoordinator,
 	});
+	for (const { workspaceId, repoPath } of await listWorkspaceIndexEntries()) {
+		workspaceRegistry.rememberWorkspace(workspaceId, repoPath);
+		runtimeTaskAutomation.trackWorkspace(workspaceId);
+	}
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
 		runtimeTaskAutomation.trackTerminalManager(workspaceId, terminalManager);
 	}
 
 	const close = async () => {
 		runtimeTaskAutomation?.close();
+		taskGitActionCoordinator.close();
 		await runtimeServer.close();
 	};
 

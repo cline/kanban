@@ -363,10 +363,6 @@ export default function App(): ReactElement {
 		currentProjectId,
 		board,
 		selectedCard,
-		runtimeProjectConfig,
-		sendTaskSessionInput,
-		sendTaskChatMessage,
-		fetchTaskWorkspaceInfo,
 		isGitHistoryOpen,
 		refreshWorkspaceState,
 	});

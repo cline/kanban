@@ -6,7 +6,6 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeTaskAutoReviewMode,
 	RuntimeTaskSessionSummary,
-	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
 import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint";
@@ -16,18 +15,10 @@ import type { TerminalSessionManager } from "../terminal/session-manager";
 import type { RuntimeAppRouter } from "../trpc/app-router";
 import { getGitSyncSummary } from "../workspace/git-sync";
 import { resolveTaskCwd } from "../workspace/task-worktree";
+import type { RuntimeTaskGitAction, RuntimeTaskGitActionCoordinator } from "./runtime-task-git-actions";
 
 const AUTO_REVIEW_ACTION_DELAY_MS = 500;
 const WORKSPACE_AUTOMATION_POLL_INTERVAL_MS = 1_000;
-
-type TaskGitAction = Extract<RuntimeTaskAutoReviewMode, "commit" | "pr">;
-
-interface TaskGitPromptTemplates {
-	commitPromptTemplate?: string | null;
-	openPrPromptTemplate?: string | null;
-	commitPromptTemplateDefault?: string | null;
-	openPrPromptTemplateDefault?: string | null;
-}
 
 interface ScheduledTaskAction {
 	action: RuntimeTaskAutoReviewMode;
@@ -42,14 +33,13 @@ interface TrackedWorkspaceAutomation {
 	runningTick: Promise<void> | null;
 	rerunRequested: boolean;
 	scheduledActionByTaskId: Map<string, ScheduledTaskAction>;
-	awaitingCleanActionByTaskId: Map<string, TaskGitAction>;
-	inFlightGitActionByTaskId: Map<string, TaskGitAction>;
 	moveToTrashInFlightTaskIds: Set<string>;
 	terminalSummaryUnsubscribe: (() => void) | null;
 	clineSummaryUnsubscribe: (() => void) | null;
 }
 
 export interface RuntimeTaskAutomation {
+	trackWorkspace: (workspaceId: string) => void;
 	trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => void;
 	trackClineTaskSessionService: (workspaceId: string, service: ClineTaskSessionService) => void;
 	disposeWorkspace: (workspaceId: string) => void;
@@ -58,6 +48,7 @@ export interface RuntimeTaskAutomation {
 
 export interface CreateRuntimeTaskAutomationDependencies {
 	getWorkspacePathById: (workspaceId: string) => string | null;
+	taskGitActionCoordinator: RuntimeTaskGitActionCoordinator;
 }
 
 /**
@@ -82,47 +73,6 @@ function resolveTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | und
 		return value;
 	}
 	return "commit";
-}
-
-/**
- * Resolves the prompt template string that should drive a commit or PR agent action.
- */
-function resolveTaskGitActionTemplate(
-	action: TaskGitAction,
-	templates: TaskGitPromptTemplates | null | undefined,
-): string {
-	if (action === "commit") {
-		const template = templates?.commitPromptTemplate?.trim();
-		if (template) {
-			return template;
-		}
-		const defaultTemplate = templates?.commitPromptTemplateDefault?.trim();
-		if (defaultTemplate) {
-			return defaultTemplate;
-		}
-		return "Handle this commit action using the provided git context.";
-	}
-	const template = templates?.openPrPromptTemplate?.trim();
-	if (template) {
-		return template;
-	}
-	const defaultTemplate = templates?.openPrPromptTemplateDefault?.trim();
-	if (defaultTemplate) {
-		return defaultTemplate;
-	}
-	return "Handle this pull request action using the provided git context.";
-}
-
-/**
- * Builds the agent prompt used for commit and PR automation.
- */
-function buildTaskGitActionPrompt(input: {
-	action: TaskGitAction;
-	workspaceInfo: RuntimeTaskWorkspaceInfoResponse;
-	templates?: TaskGitPromptTemplates | null;
-}): string {
-	const template = resolveTaskGitActionTemplate(input.action, input.templates);
-	return template.replaceAll("{{base_ref}}", input.workspaceInfo.baseRef);
 }
 
 /**
@@ -202,8 +152,6 @@ function createTrackedWorkspaceAutomation(workspaceId: string): TrackedWorkspace
 		runningTick: null,
 		rerunRequested: false,
 		scheduledActionByTaskId: new Map(),
-		awaitingCleanActionByTaskId: new Map(),
-		inFlightGitActionByTaskId: new Map(),
 		moveToTrashInFlightTaskIds: new Set(),
 		terminalSummaryUnsubscribe: null,
 		clineSummaryUnsubscribe: null,
@@ -238,64 +186,21 @@ async function notifyRuntimeWorkspaceStateUpdated(
 }
 
 /**
- * Sends the existing commit/PR prompt through the same runtime APIs the web UI already uses.
+ * Triggers a runtime-owned commit or PR action for a review task.
  */
-async function sendTaskGitActionPrompt(input: {
+async function runTaskGitAction(input: {
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
 	task: RuntimeBoardCard;
-	action: TaskGitAction;
-	summary: RuntimeTaskSessionSummary | null;
+	action: RuntimeTaskGitAction;
 }): Promise<boolean> {
-	try {
-		const [config, workspaceInfo] = await Promise.all([
-			input.runtimeClient.runtime.getConfig.query(),
-			input.runtimeClient.workspace.getTaskContext.query({
-				taskId: input.task.id,
-				baseRef: input.task.baseRef,
-			}),
-		]);
-		const prompt = buildTaskGitActionPrompt({
+	const response = await input.runtimeClient.runtime.runTaskGitAction
+		.mutate({
+			taskId: input.task.id,
+			baseRef: input.task.baseRef,
 			action: input.action,
-			workspaceInfo,
-			templates: {
-				commitPromptTemplate: config.commitPromptTemplate,
-				openPrPromptTemplate: config.openPrPromptTemplate,
-				commitPromptTemplateDefault: config.commitPromptTemplateDefault,
-				openPrPromptTemplateDefault: config.openPrPromptTemplateDefault,
-			},
-		});
-
-		if (input.summary?.agentId === "cline") {
-			const sent = await input.runtimeClient.runtime.sendTaskChatMessage.mutate({
-				taskId: input.task.id,
-				text: prompt,
-				mode: "act",
-			});
-			return sent.ok === true;
-		}
-
-		const typed = await input.runtimeClient.runtime.sendTaskSessionInput.mutate({
-			taskId: input.task.id,
-			text: prompt,
-			appendNewline: false,
-		});
-		if (!typed.ok) {
-			return false;
-		}
-
-		await new Promise<void>((resolve) => {
-			setTimeout(resolve, 200);
-		});
-
-		const submitted = await input.runtimeClient.runtime.sendTaskSessionInput.mutate({
-			taskId: input.task.id,
-			text: "\r",
-			appendNewline: false,
-		});
-		return submitted.ok === true;
-	} catch {
-		return false;
-	}
+		})
+		.catch(() => null);
+	return response?.ok === true;
 }
 
 /**
@@ -458,6 +363,14 @@ async function reconcileBoardWithLiveSessions(input: {
 					nextBoard = moved.board;
 					changed = true;
 				}
+				continue;
+			}
+			if (summary.state === "interrupted" && record.columnId !== "trash") {
+				const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
+				if (moved.moved) {
+					nextBoard = moved.board;
+					changed = true;
+				}
 			}
 		}
 
@@ -520,26 +433,30 @@ function clearScheduledTaskAction(entry: TrackedWorkspaceAutomation, taskId: str
 async function evaluateWorkspaceAutoReview(input: {
 	entry: TrackedWorkspaceAutomation;
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
+	taskGitActionCoordinator: RuntimeTaskGitActionCoordinator;
+	workspaceId: string;
 	workspacePath: string;
 	state: RuntimeWorkspaceStateResponse;
-	liveSessions: Record<string, RuntimeTaskSessionSummary>;
 	nowValue: number;
 }): Promise<void> {
 	const reviewColumn = input.state.board.columns.find((column) => column.id === "review");
 	const reviewCards = reviewColumn?.cards ?? [];
 	const reviewTaskIds = new Set(reviewCards.map((card) => card.id));
-
-	for (const taskId of Array.from(input.entry.awaitingCleanActionByTaskId.keys())) {
-		if (!reviewTaskIds.has(taskId)) {
-			input.entry.awaitingCleanActionByTaskId.delete(taskId);
-			clearScheduledTaskAction(input.entry, taskId);
-			input.entry.inFlightGitActionByTaskId.delete(taskId);
-			input.entry.moveToTrashInFlightTaskIds.delete(taskId);
+	for (const column of input.state.board.columns) {
+		if (column.id === "review") {
+			continue;
+		}
+		for (const task of column.cards) {
+			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			clearScheduledTaskAction(input.entry, task.id);
+			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 		}
 	}
+
 	for (const taskId of Array.from(input.entry.scheduledActionByTaskId.keys())) {
 		if (!reviewTaskIds.has(taskId)) {
 			clearScheduledTaskAction(input.entry, taskId);
+			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, taskId);
 		}
 	}
 	for (const taskId of Array.from(input.entry.moveToTrashInFlightTaskIds)) {
@@ -550,18 +467,36 @@ async function evaluateWorkspaceAutoReview(input: {
 
 	for (const task of reviewCards) {
 		if (task.autoReviewEnabled !== true) {
-			input.entry.awaitingCleanActionByTaskId.delete(task.id);
-			input.entry.inFlightGitActionByTaskId.delete(task.id);
+			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 			clearScheduledTaskAction(input.entry, task.id);
 			continue;
 		}
 
 		const autoReviewMode = resolveTaskAutoReviewMode(task.autoReviewMode);
-		const awaitingCleanAction = input.entry.awaitingCleanActionByTaskId.get(task.id) ?? null;
-		if (awaitingCleanAction && awaitingCleanAction !== autoReviewMode) {
-			input.entry.awaitingCleanActionByTaskId.delete(task.id);
-			clearScheduledTaskAction(input.entry, task.id);
+		const pendingGitAction = input.taskGitActionCoordinator.getPendingTaskGitAction(input.workspaceId, task.id);
+		if (pendingGitAction) {
+			const changedFiles = await loadTaskChangedFileCount(task, input.workspacePath);
+			if (changedFiles === 0 && !input.entry.moveToTrashInFlightTaskIds.has(task.id)) {
+				if (!shouldRunScheduledTaskAction(input.entry, task.id, "move_to_trash", input.nowValue)) {
+					continue;
+				}
+				clearScheduledTaskAction(input.entry, task.id);
+				input.entry.moveToTrashInFlightTaskIds.add(task.id);
+				const moved = await trashTaskAndStartLinkedTasks({
+					runtimeClient: input.runtimeClient,
+					workspacePath: input.workspacePath,
+					taskId: task.id,
+				}).catch(() => false);
+				if (!moved) {
+					input.entry.moveToTrashInFlightTaskIds.delete(task.id);
+				} else {
+					input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+				}
+			} else {
+				clearScheduledTaskAction(input.entry, task.id);
+			}
+			continue;
 		}
 
 		if (autoReviewMode === "move_to_trash") {
@@ -585,32 +520,10 @@ async function evaluateWorkspaceAutoReview(input: {
 		}
 
 		const changedFiles = await loadTaskChangedFileCount(task, input.workspacePath);
-		if (input.entry.awaitingCleanActionByTaskId.has(task.id)) {
-			if (
-				changedFiles === 0 &&
-				!input.entry.inFlightGitActionByTaskId.has(task.id) &&
-				!input.entry.moveToTrashInFlightTaskIds.has(task.id)
-			) {
-				if (!shouldRunScheduledTaskAction(input.entry, task.id, "move_to_trash", input.nowValue)) {
-					continue;
-				}
-				clearScheduledTaskAction(input.entry, task.id);
-				input.entry.moveToTrashInFlightTaskIds.add(task.id);
-				const moved = await trashTaskAndStartLinkedTasks({
-					runtimeClient: input.runtimeClient,
-					workspacePath: input.workspacePath,
-					taskId: task.id,
-				}).catch(() => false);
-				if (!moved) {
-					input.entry.moveToTrashInFlightTaskIds.delete(task.id);
-				}
-			} else {
-				clearScheduledTaskAction(input.entry, task.id);
-			}
-			continue;
-		}
-
-		if ((changedFiles ?? 0) <= 0 || input.entry.inFlightGitActionByTaskId.has(task.id)) {
+		if (
+			(changedFiles ?? 0) <= 0 ||
+			input.taskGitActionCoordinator.isTaskGitActionBlocked(input.workspaceId, task.id)
+		) {
 			clearScheduledTaskAction(input.entry, task.id);
 			continue;
 		}
@@ -620,18 +533,11 @@ async function evaluateWorkspaceAutoReview(input: {
 		}
 
 		clearScheduledTaskAction(input.entry, task.id);
-		input.entry.inFlightGitActionByTaskId.set(task.id, autoReviewMode);
-		const summary = input.liveSessions[task.id] ?? null;
-		const triggered = await sendTaskGitActionPrompt({
+		await runTaskGitAction({
 			runtimeClient: input.runtimeClient,
 			task,
 			action: autoReviewMode,
-			summary,
 		}).catch(() => false);
-		input.entry.inFlightGitActionByTaskId.delete(task.id);
-		if (triggered) {
-			input.entry.awaitingCleanActionByTaskId.set(task.id, autoReviewMode);
-		}
 	}
 }
 
@@ -693,9 +599,10 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 				await evaluateWorkspaceAutoReview({
 					entry,
 					runtimeClient,
+					taskGitActionCoordinator: deps.taskGitActionCoordinator,
+					workspaceId,
 					workspacePath,
 					state: reconciledState,
-					liveSessions,
 					nowValue: Date.now(),
 				});
 			} while (entry.rerunRequested);
@@ -731,10 +638,16 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 		}
 		entry.terminalSummaryUnsubscribe?.();
 		entry.clineSummaryUnsubscribe?.();
+		deps.taskGitActionCoordinator.disposeWorkspace(workspaceId);
 		trackedWorkspaces.delete(workspaceId);
 	}
 
 	return {
+		trackWorkspace: (workspaceId) => {
+			const entry = getTrackedWorkspace(workspaceId);
+			ensureWorkspacePoller(entry);
+			queueWorkspaceTick(workspaceId);
+		},
 		trackTerminalManager: (workspaceId, manager) => {
 			const entry = getTrackedWorkspace(workspaceId);
 			entry.terminalManager = manager;
