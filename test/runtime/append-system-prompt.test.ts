@@ -108,16 +108,17 @@ describe("renderAppendSystemPrompt", () => {
 		expect(rendered).toContain("Choose agentId from the registry");
 	});
 
-	it("renders custom specialists when provided via agents.json", () => {
-		// Write a temporary agents.json and temporarily chdir so loadAgentSpecialists picks it up.
+	it("renders custom specialists when provided via .cline/agents/ markdown files", () => {
+		// Write temporary .md specialist files and temporarily chdir so loadAgentSpecialists picks them up.
 		const tmpDir = mkdtempSync(join(tmpdir(), "kb-test-"));
-		mkdirSync(join(tmpDir, ".cline", "kanban"), { recursive: true });
+		mkdirSync(join(tmpDir, ".cline", "agents"), { recursive: true });
 		writeFileSync(
-			join(tmpDir, ".cline", "kanban", "agents.json"),
-			JSON.stringify([
-				{ id: "planner", baseAgentId: "claude", description: "Plans and breaks down tasks" },
-				{ id: "poet", baseAgentId: "cline", description: "Writes creative copy", modelId: "claude-opus-4-5" },
-			]),
+			join(tmpDir, ".cline", "agents", "planner.md"),
+			"---\nname: planner\nbaseAgentId: claude\ndescription: Plans and breaks down tasks\n---\n",
+		);
+		writeFileSync(
+			join(tmpDir, ".cline", "agents", "poet.md"),
+			"---\nname: poet\nbaseAgentId: cline\ndescription: Writes creative copy\nmodelId: claude-opus-4-5\n---\n",
 		);
 		const origCwd = process.cwd();
 		process.chdir(tmpDir);

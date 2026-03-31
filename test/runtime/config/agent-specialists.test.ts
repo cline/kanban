@@ -6,77 +6,123 @@ import { describe, expect, it } from "vitest";
 import { loadAgentSpecialists } from "../../../src/config/agent-specialists";
 
 describe("loadAgentSpecialists", () => {
-	function makeTmpAgentsJson(entries: unknown[]): string {
+	/**
+	 * Creates a tmp directory, writes .cline/agents/<filename> for each entry,
+	 * and returns tmpDir (the projectRoot to pass to loadAgentSpecialists).
+	 */
+	function makeTmpAgentsDir(files: Record<string, string>): string {
 		const tmpDir = mkdtempSync(join(tmpdir(), "kb-specialists-test-"));
-		mkdirSync(join(tmpDir, ".cline", "kanban"), { recursive: true });
-		writeFileSync(join(tmpDir, ".cline", "kanban", "agents.json"), JSON.stringify(entries));
+		mkdirSync(join(tmpDir, ".cline", "agents"), { recursive: true });
+		for (const [filename, content] of Object.entries(files)) {
+			writeFileSync(join(tmpDir, ".cline", "agents", filename), content);
+		}
 		return tmpDir;
 	}
 
-	it("returns empty array when agents.json does not exist", () => {
+	it("returns [] when .cline/agents/ directory does not exist", () => {
 		const tmpDir = mkdtempSync(join(tmpdir(), "kb-specialists-test-"));
 		expect(loadAgentSpecialists(tmpDir)).toEqual([]);
 	});
 
-	it("loads valid specialists without modelId", () => {
-		const tmpDir = makeTmpAgentsJson([{ id: "planner", baseAgentId: "claude", description: "Plans tasks" }]);
+	it("loads a valid specialist from a .md file without modelId", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"planner.md": "---\nname: planner\nbaseAgentId: claude\ndescription: Plans tasks\n---\n",
+		});
 		const result = loadAgentSpecialists(tmpDir);
 		expect(result).toHaveLength(1);
-		expect(result[0]).toEqual({ id: "planner", baseAgentId: "claude", description: "Plans tasks" });
+		expect(result[0]).toEqual({ name: "planner", baseAgentId: "claude", description: "Plans tasks" });
 		expect(result[0]?.modelId).toBeUndefined();
+		expect(result[0]?.instructions).toBeUndefined();
 	});
 
-	it("loads valid specialists with modelId", () => {
-		const tmpDir = makeTmpAgentsJson([
-			{ id: "poet", baseAgentId: "cline", description: "Writes beautiful prose", modelId: "claude-opus-4-5" },
-		]);
+	it("loads a valid specialist from a .md file with modelId", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"poet.md":
+				"---\nname: poet\nbaseAgentId: cline\ndescription: Writes beautiful prose\nmodelId: claude-opus-4-5\n---\n",
+		});
 		const result = loadAgentSpecialists(tmpDir);
 		expect(result).toHaveLength(1);
 		expect(result[0]).toEqual({
-			id: "poet",
+			name: "poet",
 			baseAgentId: "cline",
 			description: "Writes beautiful prose",
 			modelId: "claude-opus-4-5",
 		});
 	});
 
-	it("filters out entries with empty-string modelId", () => {
-		const tmpDir = makeTmpAgentsJson([
-			{ id: "bad", baseAgentId: "cline", description: "Has blank model", modelId: "" },
-			{ id: "good", baseAgentId: "cline", description: "No model field" },
-		]);
+	it("captures instructions from the Markdown body", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"reviewer.md":
+				"---\nname: reviewer\nbaseAgentId: claude\ndescription: Reviews code\n---\n\nAlways check for security issues first.\nThen review style and correctness.\n",
+		});
 		const result = loadAgentSpecialists(tmpDir);
 		expect(result).toHaveLength(1);
-		expect(result[0]?.id).toBe("good");
+		expect(result[0]?.instructions).toBe(
+			"Always check for security issues first.\nThen review style and correctness.",
+		);
 	});
 
-	it("filters out entries with whitespace-only modelId", () => {
-		const tmpDir = makeTmpAgentsJson([
-			{ id: "bad", baseAgentId: "cline", description: "Has whitespace model", modelId: "   " },
-		]);
+	it("filters out a file with empty-string modelId in frontmatter", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"bad.md": "---\nname: bad\nbaseAgentId: cline\ndescription: Has blank model\nmodelId: \n---\n",
+			"good.md": "---\nname: good\nbaseAgentId: cline\ndescription: No model field\n---\n",
+		});
+		const result = loadAgentSpecialists(tmpDir);
+		expect(result).toHaveLength(1);
+		expect(result[0]?.name).toBe("good");
+	});
+
+	it("filters out a file with whitespace-only modelId", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"bad.md": "---\nname: bad\nbaseAgentId: cline\ndescription: Has whitespace model\nmodelId:    \n---\n",
+		});
 		expect(loadAgentSpecialists(tmpDir)).toHaveLength(0);
 	});
 
-	it("filters out entries with non-string modelId", () => {
-		const tmpDir = makeTmpAgentsJson([
-			{ id: "bad", baseAgentId: "cline", description: "Has numeric model", modelId: 42 },
-		]);
+	it("filters out a file missing name field", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"noname.md": "---\nbaseAgentId: claude\ndescription: Missing name\n---\n",
+		});
 		expect(loadAgentSpecialists(tmpDir)).toHaveLength(0);
 	});
 
-	it("filters out entries missing required fields", () => {
-		const tmpDir = makeTmpAgentsJson([
-			{ id: "no-base", description: "Missing baseAgentId" },
-			{ baseAgentId: "cline", description: "Missing id" },
-			{ id: "no-desc", baseAgentId: "cline" },
-		]);
+	it("filters out a file missing baseAgentId field", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"nobase.md": "---\nname: nobase\ndescription: Missing baseAgentId\n---\n",
+		});
 		expect(loadAgentSpecialists(tmpDir)).toHaveLength(0);
 	});
 
-	it("returns empty array when agents.json is not an array", () => {
-		const tmpDir = mkdtempSync(join(tmpdir(), "kb-specialists-test-"));
-		mkdirSync(join(tmpDir, ".cline", "kanban"), { recursive: true });
-		writeFileSync(join(tmpDir, ".cline", "kanban", "agents.json"), JSON.stringify({ id: "solo" }));
+	it("filters out a file missing description field", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"nodesc.md": "---\nname: nodesc\nbaseAgentId: cline\n---\n",
+		});
+		expect(loadAgentSpecialists(tmpDir)).toHaveLength(0);
+	});
+
+	it("skips a file with malformed frontmatter (no closing ---)", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"malformed.md": "---\nname: broken\nbaseAgentId: cline\ndescription: No closing delimiter\n",
+		});
+		expect(loadAgentSpecialists(tmpDir)).toHaveLength(0);
+	});
+
+	it("ignores non-.md files in the directory (.json, .txt)", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"agents.json": '[{"id":"planner","baseAgentId":"claude","description":"Old format"}]',
+			"notes.txt": "---\nname: text\nbaseAgentId: cline\ndescription: In a txt file\n---\n",
+			"valid.md": "---\nname: valid\nbaseAgentId: cline\ndescription: The only valid one\n---\n",
+		});
+		const result = loadAgentSpecialists(tmpDir);
+		expect(result).toHaveLength(1);
+		expect(result[0]?.name).toBe("valid");
+	});
+
+	it("returns [] when directory exists but has no .md files", () => {
+		const tmpDir = makeTmpAgentsDir({
+			"readme.txt": "nothing here",
+			"config.json": "{}",
+		});
 		expect(loadAgentSpecialists(tmpDir)).toHaveLength(0);
 	});
 });

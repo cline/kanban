@@ -81,13 +81,13 @@ function renderAgentTeamsSection(installedBinaries: Set<string>, specialists: Ag
 	// Build the custom specialists list if any are configured in agents.json.
 	const specialistLines = specialists.map((s) => {
 		const modelSuffix = s.modelId ? ` · model: ${s.modelId}` : "";
-		return `  - \`${s.id}\` → ${s.baseAgentId} — ${s.description}${modelSuffix}`;
+		return `  - \`${s.name}\` → ${s.baseAgentId} — ${s.description}${modelSuffix}`;
 	});
 
 	const specialistsSection =
 		specialistLines.length > 0
 			? `
-## Custom specialists (from .cline/kanban/agents.json)
+## Custom specialists (from .cline/agents/)
 
 Before spawning teammates, review this list. If a specialist description matches the role you need, prefer it over a generic built-in. When spawning a specialist that declares a model, pass it as the modelId option to team_spawn_teammate.
 
@@ -222,6 +222,11 @@ export function renderAppendSystemPrompt(commandPrefix: string, options: RenderA
 	const selectedAgentId = options.agentId ?? null;
 	const installedBinaries = new Set(detectInstalledCommands());
 	const specialists = loadAgentSpecialists(process.cwd());
+	const agentListLines = RUNTIME_AGENT_CATALOG.map((entry) => {
+		const installed = entry.id === "cline" || installedBinaries.has(entry.binary);
+		const statusTag = installed ? "installed" : "not on PATH";
+		return `     - \`${entry.id}\` (${entry.label}) [${statusTag}]`;
+	}).join("\n");
 	return `# Kanban Sidebar
 
 You are the Kanban sidebar agent for this workspace. Help the user interact with their Kanban board directly from this side panel. When the user asks to add tasks, create tasks, break work down, link tasks, or start tasks, prefer using the Kanban CLI yourself instead of describing manual steps.
@@ -393,6 +398,36 @@ Parameters:
 
 - Prefer \`task list\` first when task IDs or dependency IDs are needed.
 - To create multiple linked tasks, create tasks first, then call \`task link\` for each dependency edge.
+
+# Creating Specialist Agents
+
+Users can define custom specialist agents for team tasks by creating Markdown files in \`.cline/agents/\` in the project root.
+
+When the user asks to create a specialist agent (e.g. "create a reviewer agent", "add a planner specialist", "make a new teammate"):
+
+1. Ask for the following — do NOT skip model selection:
+   - **Name**: short identifier, no spaces (e.g. \`reviewer\`, \`planner\`)
+   - **Role/description**: one sentence describing what this agent does
+   - **Base agent**: which CLI agent runs it. Options (prefer installed):
+     ${agentListLines}
+   - **Model**: REQUIRED — not optional. Show the user their current provider and model, then ask them to confirm or change it:
+     > Current provider: \`{providerId}\` · Current model: \`{modelId}\`
+     > Enter a model ID to use for this specialist, or press Enter to use the current default.
+     The user may type any model ID or leave blank to use the current configured model as default.
+
+2. Once you have all four answers, create a Kanban task with this prompt:
+   "Create the file \`.cline/agents/<name>.md\` with the following exact content:
+   ---
+   name: <name>
+   baseAgentId: <baseAgentId>
+   description: <description>
+   modelId: <modelId>
+   ---
+
+   <role instructions in Markdown>
+   "
+
+3. The specialist will be available to the team leader immediately after the file is created.
 
 ${renderAgentTeamsSection(installedBinaries, specialists)}
 
