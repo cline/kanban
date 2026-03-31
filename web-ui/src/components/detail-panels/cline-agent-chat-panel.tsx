@@ -34,6 +34,41 @@ import type {
 import type { TaskImage } from "@/types";
 
 const BOTTOM_LOCK_THRESHOLD_PX = 24;
+const NUMBER_FORMATTER = new Intl.NumberFormat("en-US");
+
+function formatSessionCost(cost: number): string {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 4,
+	}).format(cost);
+}
+
+function buildUsageSummaryLine(summary: RuntimeTaskSessionSummary | null): string | null {
+	if (!summary) {
+		return null;
+	}
+	const usageParts: string[] = [];
+	const totalCost =
+		typeof summary.totalCost === "number" && Number.isFinite(summary.totalCost) ? summary.totalCost : null;
+	if (totalCost !== null) {
+		usageParts.push(`Total cost ${formatSessionCost(totalCost)}`);
+	}
+	const inputTokens =
+		typeof summary.totalInputTokens === "number" && Number.isFinite(summary.totalInputTokens)
+			? summary.totalInputTokens
+			: null;
+	const outputTokens =
+		typeof summary.totalOutputTokens === "number" && Number.isFinite(summary.totalOutputTokens)
+			? summary.totalOutputTokens
+			: null;
+	if (inputTokens !== null || outputTokens !== null) {
+		const totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0);
+		usageParts.push(`Total tokens ${NUMBER_FORMATTER.format(totalTokens)}`);
+	}
+	return usageParts.length > 0 ? usageParts.join(" . ") : null;
+}
 
 const ThinkingShimmer = React.memo(function ThinkingShimmer() {
 	return (
@@ -210,6 +245,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			draftImages.length > 0 && selectedModel?.supportsVision === false
 				? "The selected Cline model may not accept image input. Choose a vision-capable model to use these images."
 				: null;
+		const usageSummaryLine = buildUsageSummaryLine(summary);
 
 		const isPinnedToBottom = useCallback((container: HTMLDivElement): boolean => {
 			const remainingDistance = container.scrollHeight - container.scrollTop - container.clientHeight;
@@ -408,6 +444,9 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 					<div className="border-t border-status-red/30 bg-status-red/10 px-2 py-2 text-xs text-status-red">
 						{panelError}
 					</div>
+				) : null}
+				{usageSummaryLine ? (
+					<div className="px-2 pt-1 text-[11px] text-text-tertiary">{usageSummaryLine}</div>
 				) : null}
 				<div className="px-2 py-3">
 					<ClineChatComposer

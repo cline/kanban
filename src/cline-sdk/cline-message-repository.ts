@@ -150,13 +150,48 @@ export function createTaskEntryFromPersistedSession(
 	for (const message of messages) {
 		hydratePersistedMessage(entry, taskId, message);
 	}
+	const usageTotals = accumulatePersistedUsageTotals(messages);
 	entry.summary = {
 		...entry.summary,
+		...usageTotals,
 		...summaryPatch,
 		taskId,
 		updatedAt: Date.now(),
 	};
 	return entry;
+}
+
+export function accumulatePersistedUsageTotals(
+	messages: ClineSdkPersistedMessage[],
+): Pick<RuntimeTaskSessionSummary, "totalInputTokens" | "totalOutputTokens" | "totalCost"> {
+	let inputTokenTotal: number | null = null;
+	let outputTokenTotal: number | null = null;
+	let costTotal: number | null = null;
+
+	for (const message of messages) {
+		const metrics = message.metrics;
+		if (!metrics || typeof metrics !== "object") {
+			continue;
+		}
+		const inputTokens = metrics.inputTokens;
+		if (typeof inputTokens === "number" && Number.isFinite(inputTokens)) {
+			inputTokenTotal = (inputTokenTotal ?? 0) + inputTokens;
+		}
+		const outputTokens = metrics.outputTokens;
+		if (typeof outputTokens === "number" && Number.isFinite(outputTokens)) {
+			outputTokenTotal = (outputTokenTotal ?? 0) + outputTokens;
+		}
+		const cost = metrics.cost;
+		if (typeof cost === "number" && Number.isFinite(cost)) {
+			costTotal = (costTotal ?? 0) + cost;
+		}
+	}
+
+	return {
+		totalInputTokens: inputTokenTotal,
+		totalOutputTokens: outputTokenTotal,
+		totalCost: costTotal,
+	};
 }
 
 function hydratePersistedSessionMessages(taskId: string, messages: ClineSdkPersistedMessage[]): ClineTaskMessage[] {

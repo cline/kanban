@@ -14,6 +14,7 @@ import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-pro
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
 import { applyClineSessionEvent } from "./cline-event-adapter";
 import {
+	accumulatePersistedUsageTotals,
 	type ClineMessageRepository,
 	createInMemoryClineMessageRepository,
 	createTaskEntryFromPersistedSession,
@@ -136,6 +137,35 @@ function formatStartWarnings(warnings: readonly string[] | undefined): string | 
 		return normalized[0] ?? null;
 	}
 	return `${normalized[0]} (+${normalized.length - 1} more MCP warning${normalized.length === 2 ? "" : "s"})`;
+}
+
+function eventShouldRefreshUsageTotals(event: unknown): boolean {
+	if (!event || typeof event !== "object") {
+		return false;
+	}
+	const record = event as {
+		type?: unknown;
+		payload?: {
+			event?: {
+				type?: unknown;
+			};
+		};
+	};
+	if (record.type !== "agent_event") {
+		return false;
+	}
+	return record.payload?.event?.type === "done";
+}
+
+function usageTotalsChanged(
+	summary: RuntimeTaskSessionSummary,
+	totals: Pick<RuntimeTaskSessionSummary, "totalInputTokens" | "totalOutputTokens" | "totalCost">,
+): boolean {
+	return (
+		summary.totalInputTokens !== totals.totalInputTokens ||
+		summary.totalOutputTokens !== totals.totalOutputTokens ||
+		summary.totalCost !== totals.totalCost
+	);
 }
 
 export class InMemoryClineTaskSessionService implements ClineTaskSessionService {
@@ -768,6 +798,25 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		if (this.shouldCaptureReviewCheckpoint(previousSummary, latestSummary)) {
 			this.captureReviewCheckpoint(taskId, latestSummary);
 		}
+		if (eventShouldRefreshUsageTotals(event)) {
+			void this.refreshPersistedUsageTotals(taskId);
+		}
+	}
+
+	private async refreshPersistedUsageTotals(taskId: string): Promise<void> {
+		const entry = this.messageRepository.getTaskEntry(taskId);
+		if (!entry) {
+			return;
+		}
+		const snapshot = await this.sessionRuntime.readPersistedTaskSession(taskId).catch(() => null);
+		if (!snapshot) {
+			return;
+		}
+		const totals = accumulatePersistedUsageTotals(snapshot.messages);
+		if (!usageTotalsChanged(entry.summary, totals)) {
+			return;
+		}
+		this.emitSummary(updateSummary(entry, totals));
 	}
 }
 

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryClineMessageRepository } from "../../../src/cline-sdk/cline-message-repository";
+import {
+	accumulatePersistedUsageTotals,
+	createInMemoryClineMessageRepository,
+	createTaskEntryFromPersistedSession,
+} from "../../../src/cline-sdk/cline-message-repository";
 import type { ClinePersistedTaskSessionSnapshot } from "../../../src/cline-sdk/cline-session-runtime";
 import {
 	type ClineTaskSessionEntry,
@@ -130,5 +134,61 @@ describe("InMemoryClineMessageRepository", () => {
 
 		expect(messages.map((message) => message.content)).toEqual(["Live response"]);
 		expect(loadPersistedSession).not.toHaveBeenCalled();
+	});
+
+	it("accumulates persisted metrics into session usage totals", () => {
+		const messages = [
+			{
+				role: "user",
+				content: "Investigate startup",
+				metrics: {
+					inputTokens: 200,
+				},
+			},
+			{
+				role: "assistant",
+				content: "I found the issue.",
+				metrics: {
+					outputTokens: 50,
+					cost: 0.003,
+				},
+			},
+			{
+				role: "assistant",
+				content: "Applying the fix.",
+				metrics: {
+					inputTokens: 20,
+					outputTokens: 100,
+					cost: 0.01,
+				},
+			},
+		] satisfies NonNullable<ClinePersistedTaskSessionSnapshot>["messages"];
+
+		const totals = accumulatePersistedUsageTotals(messages);
+		const entry = createTaskEntryFromPersistedSession("task-1", messages);
+
+		expect(totals.totalInputTokens).toBe(220);
+		expect(totals.totalOutputTokens).toBe(150);
+		expect(totals.totalCost).toBeCloseTo(0.013, 8);
+		expect(entry.summary.totalInputTokens).toBe(220);
+		expect(entry.summary.totalOutputTokens).toBe(150);
+		expect(entry.summary.totalCost).toBeCloseTo(0.013, 8);
+	});
+
+	it("keeps persisted usage totals null when no message metrics are available", () => {
+		const entry = createTaskEntryFromPersistedSession("task-1", [
+			{
+				role: "user",
+				content: "No metrics yet",
+			},
+			{
+				role: "assistant",
+				content: "Still no metrics",
+			},
+		]);
+
+		expect(entry.summary.totalInputTokens).toBeNull();
+		expect(entry.summary.totalOutputTokens).toBeNull();
+		expect(entry.summary.totalCost).toBeNull();
 	});
 });

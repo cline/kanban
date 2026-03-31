@@ -206,6 +206,28 @@ describe("ClineAgentChatPanel", () => {
 		expect(container.textContent).toContain('Failed to load MCP server "linear"');
 	});
 
+	it("shows session totals below the composer when usage metrics are available", async () => {
+		await act(async () => {
+			renderPanel(
+				root,
+				<ClineAgentChatPanel
+					taskId="task-1"
+					summary={{
+						...createSummary("awaiting_review"),
+						totalInputTokens: 1200,
+						totalOutputTokens: 345,
+						totalCost: 0.0142,
+					}}
+					onLoadMessages={async () => []}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain("Total cost $0.0142");
+		expect(container.textContent).toContain("Total tokens 1,545");
+	});
+
 	it("renders user message images inline without a task header", async () => {
 		await act(async () => {
 			renderPanel(
