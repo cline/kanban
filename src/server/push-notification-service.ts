@@ -13,7 +13,10 @@ const PUSH_DIR_NAME = "push";
 const VAPID_KEYS_FILENAME = "vapid-keys.json";
 const SUBSCRIPTIONS_FILENAME = "subscriptions.json";
 
-const DEFAULT_VAPID_SUBJECT = "mailto:kanban@localhost";
+// APNs (iOS Web Push) validates the VAPID `sub` claim and rejects
+// `localhost` as an invalid domain, returning 403 BadJwtToken.
+// Use a real domain so the JWT is accepted by all push services.
+const DEFAULT_VAPID_SUBJECT = "mailto:push@cline.bot";
 
 const vapidKeysFileSchema = z.object({
 	publicKey: z.string(),
