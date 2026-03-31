@@ -154,6 +154,30 @@ describe("renderAppendSystemPrompt", () => {
 		// Recommendation note
 		expect(rendered).toContain("Cline is the only supported choice");
 	});
+
+	it("renders a numbered model list for specialist agent creation and requires selection", () => {
+		const rendered = renderAppendSystemPrompt("kanban");
+		// The Creating Specialist Agents section must be present
+		expect(rendered).toContain("# Creating Specialist Agents");
+		// Model selection step must require a pick, not allow skipping
+		expect(rendered).toContain("do NOT proceed to step 2 until the user has chosen a model");
+		// Numbered list of sidebar UI models
+		expect(rendered).toContain("1. `anthropic/claude-opus-4.6`");
+		expect(rendered).toContain("2. `anthropic/claude-sonnet-4.6`");
+		expect(rendered).toContain("3. `openai/gpt-5.3-codex`");
+		expect(rendered).toContain("4. `openai/gpt-5.4`");
+		expect(rendered).toContain("5. `google/gemini-3.1-pro-preview`");
+		expect(rendered).toContain("6. `google/gemini-3.1-flash-lite-preview`");
+		expect(rendered).toContain("7. `xiaomi/mimo-v2-pro`");
+		// Resolution rules are present
+		expect(rendered).toContain("If the user types a number 1\u20137, resolve it to the corresponding model ID");
+		expect(rendered).toContain("If the user types a non-numeric string, use it as the model ID exactly as typed");
+		// Mandatory — no default fallback
+		expect(rendered).toContain("do NOT proceed or assume a default if the user has not yet replied");
+		// Old placeholder text must be gone
+		expect(rendered).not.toContain("Current provider: `{providerId}`");
+		expect(rendered).not.toContain("press Enter to use the current default");
+	});
 });
 
 describe("resolveHomeAgentAppendSystemPrompt", () => {

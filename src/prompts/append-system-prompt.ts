@@ -410,10 +410,18 @@ When the user asks to create a specialist agent (e.g. "create a reviewer agent",
    - **Role/description**: one sentence describing what this agent does
    - **Base agent**: which CLI agent runs it. Options (prefer installed):
      ${agentListLines}
-   - **Model**: REQUIRED — not optional. Show the user their current provider and model, then ask them to confirm or change it:
-     > Current provider: \`{providerId}\` · Current model: \`{modelId}\`
-     > Enter a model ID to use for this specialist, or press Enter to use the current default.
-     The user may type any model ID or leave blank to use the current configured model as default.
+   - **Model**: REQUIRED — do NOT proceed to step 2 until the user has chosen a model. Present the following numbered list and ask the user to pick:
+     1. \`anthropic/claude-opus-4.6\`
+     2. \`anthropic/claude-sonnet-4.6\`
+     3. \`openai/gpt-5.3-codex\`
+     4. \`openai/gpt-5.4\`
+     5. \`google/gemini-3.1-pro-preview\`
+     6. \`google/gemini-3.1-flash-lite-preview\`
+     7. \`xiaomi/mimo-v2-pro\`
+     > Type a number (1–7) to select from the list above, or type any model ID string to use it as-is.
+     - If the user types a number 1–7, resolve it to the corresponding model ID from the list above.
+     - If the user types a non-numeric string, use it as the model ID exactly as typed.
+     - This field is mandatory — do NOT proceed or assume a default if the user has not yet replied.
 
 2. Once you have all four answers, create a Kanban task with this prompt:
    "Create the file \`.cline/agents/<name>.md\` with the following exact content:
