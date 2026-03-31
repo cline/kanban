@@ -16,6 +16,8 @@ export interface RuntimeCreateTaskInput {
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	parentTaskId?: string;
+	role?: string;
 }
 
 export interface RuntimeUpdateTaskInput {
@@ -25,6 +27,8 @@ export interface RuntimeUpdateTaskInput {
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
 	baseRef: string;
+	parentTaskId?: string;
+	role?: string;
 }
 
 function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
@@ -287,6 +291,8 @@ export function addTaskToColumn(
 		baseRef,
 		createdAt: now,
 		updatedAt: now,
+		parentTaskId: input.parentTaskId ?? undefined,
+		role: input.role ?? undefined,
 	};
 
 	const targetColumnIndex = board.columns.findIndex((column) => column.id === columnId);
@@ -599,6 +605,8 @@ export function updateTask(
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
 				baseRef,
 				updatedAt: now,
+				parentTaskId: input.parentTaskId !== undefined ? (input.parentTaskId ?? undefined) : card.parentTaskId,
+				role: input.role !== undefined ? (input.role ?? undefined) : card.role,
 			};
 			return updatedTask;
 		});

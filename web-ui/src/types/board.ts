@@ -46,6 +46,8 @@ export interface BoardCard {
 	baseRef: string;
 	createdAt: number;
 	updatedAt: number;
+	parentTaskId?: string | null;
+	role?: string | null;
 }
 
 export interface BoardColumn {

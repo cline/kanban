@@ -97,6 +97,8 @@ export const runtimeBoardCardSchema = z.object({
 	baseRef: z.string(),
 	createdAt: z.number(),
 	updatedAt: z.number(),
+	parentTaskId: z.string().nullable().optional(),
+	role: z.string().nullable().optional(),
 });
 export type RuntimeBoardCard = z.infer<typeof runtimeBoardCardSchema>;
 

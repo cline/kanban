@@ -103,3 +103,65 @@ describe("task images", () => {
 		]);
 	});
 });
+
+describe("parentTaskId and role fields", () => {
+	it("stores parentTaskId and role when creating a task", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"in_progress",
+			{ prompt: "Teammate task", baseRef: "main", parentTaskId: "lead-task-id", role: "reviewer" },
+			() => "child111",
+		);
+
+		expect(created.task.parentTaskId).toBe("lead-task-id");
+		expect(created.task.role).toBe("reviewer");
+	});
+
+	it("leaves parentTaskId and role undefined when not provided", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"backlog",
+			{ prompt: "Regular task", baseRef: "main" },
+			() => "plain111",
+		);
+
+		expect(created.task.parentTaskId).toBeUndefined();
+		expect(created.task.role).toBeUndefined();
+	});
+
+	it("updates parentTaskId and role via updateTask", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"in_progress",
+			{ prompt: "Teammate task", baseRef: "main", parentTaskId: "lead-task-id", role: "reviewer" },
+			() => "child222",
+		);
+
+		const updated = updateTask(created.board, created.task.id, {
+			prompt: "Teammate task updated",
+			baseRef: "main",
+			parentTaskId: "new-lead-id",
+			role: "test-writer",
+		});
+
+		expect(updated.task?.parentTaskId).toBe("new-lead-id");
+		expect(updated.task?.role).toBe("test-writer");
+	});
+
+	it("preserves existing parentTaskId and role when not supplied in updateTask", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"in_progress",
+			{ prompt: "Teammate task", baseRef: "main", parentTaskId: "lead-task-id", role: "frontend" },
+			() => "child333",
+		);
+
+		const updated = updateTask(created.board, created.task.id, {
+			prompt: "Teammate task updated",
+			baseRef: "main",
+		});
+
+		expect(updated.task?.parentTaskId).toBe("lead-task-id");
+		expect(updated.task?.role).toBe("frontend");
+	});
+});
