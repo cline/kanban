@@ -34,6 +34,7 @@ interface TrackedWorkspaceAutomation {
 	rerunRequested: boolean;
 	scheduledActionByTaskId: Map<string, ScheduledTaskAction>;
 	blockedAutoReviewSessionVersionByTaskId: Map<string, number>;
+	pendingAutoCleanupSessionVersionByTaskId: Map<string, number>;
 	moveToTrashInFlightTaskIds: Set<string>;
 	terminalSummaryUnsubscribe: (() => void) | null;
 	clineSummaryUnsubscribe: (() => void) | null;
@@ -183,6 +184,7 @@ function createTrackedWorkspaceAutomation(workspaceId: string): TrackedWorkspace
 		rerunRequested: false,
 		scheduledActionByTaskId: new Map(),
 		blockedAutoReviewSessionVersionByTaskId: new Map(),
+		pendingAutoCleanupSessionVersionByTaskId: new Map(),
 		moveToTrashInFlightTaskIds: new Set(),
 		terminalSummaryUnsubscribe: null,
 		clineSummaryUnsubscribe: null,
@@ -250,45 +252,83 @@ async function startLinkedBacklogTask(input: {
 	workspacePath: string;
 	taskId: string;
 }): Promise<boolean> {
-	const state = await loadWorkspaceState(input.workspacePath).catch(() => null);
-	const record = state ? findTaskRecord(state, input.taskId) : null;
-	if (!record || record.columnId !== "backlog") {
+	const mutation = await mutateWorkspaceState(input.workspacePath, (latestState) => {
+		const latestRecord = findTaskRecord(latestState, input.taskId);
+		if (!latestRecord || latestRecord.columnId !== "backlog") {
+			return {
+				board: latestState.board,
+				value: null,
+				save: false,
+			};
+		}
+		const moved = moveTaskToColumn(latestState.board, latestRecord.task.id, "in_progress");
+		return {
+			board: moved.moved ? moved.board : latestState.board,
+			value: moved.moved
+				? {
+						task: latestRecord.task,
+				  }
+				: null,
+			save: moved.moved,
+		};
+	}).catch(() => null);
+	if (!mutation?.saved || !mutation.value) {
 		return false;
 	}
 
+	await notifyRuntimeWorkspaceStateUpdated(input.runtimeClient);
+
 	const ensured = await input.runtimeClient.workspace.ensureWorktree
 		.mutate({
-			taskId: record.task.id,
-			baseRef: record.task.baseRef,
+			taskId: mutation.value.task.id,
+			baseRef: mutation.value.task.baseRef,
 		})
 		.catch(() => null);
 	if (!ensured?.ok) {
+		await rollbackLinkedBacklogTaskStart(input);
 		return false;
 	}
 
 	const started = await input.runtimeClient.runtime.startTaskSession
 		.mutate({
-			taskId: record.task.id,
-			prompt: record.task.prompt,
-			startInPlanMode: record.task.startInPlanMode,
-			baseRef: record.task.baseRef,
-			images: record.task.images,
+			taskId: mutation.value.task.id,
+			prompt: mutation.value.task.prompt,
+			startInPlanMode: mutation.value.task.startInPlanMode,
+			baseRef: mutation.value.task.baseRef,
+			images: mutation.value.task.images,
 		})
 		.catch(() => null);
 	if (!started?.ok || !started.summary) {
+		await input.runtimeClient.workspace.deleteWorktree
+			.mutate({
+				taskId: mutation.value.task.id,
+			})
+			.catch(() => null);
+		await rollbackLinkedBacklogTaskStart(input);
 		return false;
 	}
 
+	return true;
+}
+
+/**
+ * Rolls a linked task back to Backlog when automation reserved the card but could not start the session.
+ */
+async function rollbackLinkedBacklogTaskStart(input: {
+	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
+	workspacePath: string;
+	taskId: string;
+}): Promise<void> {
 	const mutation = await mutateWorkspaceState(input.workspacePath, (latestState) => {
 		const latestRecord = findTaskRecord(latestState, input.taskId);
-		if (!latestRecord || latestRecord.columnId !== "backlog") {
+		if (!latestRecord || latestRecord.columnId !== "in_progress") {
 			return {
 				board: latestState.board,
 				value: false,
 				save: false,
 			};
 		}
-		const moved = moveTaskToColumn(latestState.board, latestRecord.task.id, "in_progress");
+		const moved = moveTaskToColumn(latestState.board, latestRecord.task.id, "backlog");
 		return {
 			board: moved.moved ? moved.board : latestState.board,
 			value: moved.moved,
@@ -298,7 +338,6 @@ async function startLinkedBacklogTask(input: {
 	if (mutation?.saved) {
 		await notifyRuntimeWorkspaceStateUpdated(input.runtimeClient);
 	}
-	return mutation?.value === true;
 }
 
 /**
@@ -482,6 +521,43 @@ function clearBlockedAutoReview(entry: TrackedWorkspaceAutomation, taskId: strin
 }
 
 /**
+ * Records the session version that an auto git action was dispatched against so cleanup stays locked.
+ */
+function markPendingAutoCleanupSessionVersion(
+	entry: TrackedWorkspaceAutomation,
+	taskId: string,
+	session: RuntimeTaskSessionSummary,
+): void {
+	entry.pendingAutoCleanupSessionVersionByTaskId.set(taskId, session.updatedAt);
+}
+
+/**
+ * Returns whether the auto git action is still waiting for the session to reflect new agent activity.
+ */
+function isWaitingForAutoCleanupSessionChange(
+	entry: TrackedWorkspaceAutomation,
+	taskId: string,
+	session: RuntimeTaskSessionSummary,
+): boolean {
+	const pendingUpdatedAt = entry.pendingAutoCleanupSessionVersionByTaskId.get(taskId);
+	if (pendingUpdatedAt === undefined) {
+		return false;
+	}
+	if (pendingUpdatedAt === session.updatedAt) {
+		return true;
+	}
+	entry.pendingAutoCleanupSessionVersionByTaskId.delete(taskId);
+	return false;
+}
+
+/**
+ * Clears any pending auto-cleanup session version once the lock is no longer needed.
+ */
+function clearPendingAutoCleanupSessionVersion(entry: TrackedWorkspaceAutomation, taskId: string): void {
+	entry.pendingAutoCleanupSessionVersionByTaskId.delete(taskId);
+}
+
+/**
  * Evaluates review-column tasks and runs the runtime-owned auto-review state machine.
  */
 async function evaluateWorkspaceAutoReview(input: {
@@ -513,12 +589,14 @@ async function evaluateWorkspaceAutoReview(input: {
 			}
 			if (preserveAutoCleanupState) {
 				clearScheduledTaskAction(input.entry, task.id);
+				clearPendingAutoCleanupSessionVersion(input.entry, task.id);
 				input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 				continue;
 			}
 			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
 			clearScheduledTaskAction(input.entry, task.id);
 			clearBlockedAutoReview(input.entry, task.id);
+			clearPendingAutoCleanupSessionVersion(input.entry, task.id);
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 		}
 	}
@@ -528,6 +606,7 @@ async function evaluateWorkspaceAutoReview(input: {
 			clearScheduledTaskAction(input.entry, taskId);
 			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, taskId);
 			clearBlockedAutoReview(input.entry, taskId);
+			clearPendingAutoCleanupSessionVersion(input.entry, taskId);
 		}
 	}
 	for (const taskId of Array.from(input.entry.moveToTrashInFlightTaskIds)) {
@@ -540,6 +619,11 @@ async function evaluateWorkspaceAutoReview(input: {
 			clearBlockedAutoReview(input.entry, taskId);
 		}
 	}
+	for (const taskId of Array.from(input.entry.pendingAutoCleanupSessionVersionByTaskId.keys())) {
+		if (!reviewTaskIds.has(taskId)) {
+			clearPendingAutoCleanupSessionVersion(input.entry, taskId);
+		}
+	}
 
 	for (const task of reviewCards) {
 		if (task.autoReviewEnabled !== true) {
@@ -547,12 +631,18 @@ async function evaluateWorkspaceAutoReview(input: {
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 			clearScheduledTaskAction(input.entry, task.id);
 			clearBlockedAutoReview(input.entry, task.id);
+			clearPendingAutoCleanupSessionVersion(input.entry, task.id);
 			continue;
 		}
 
 		const autoReviewMode = resolveTaskAutoReviewMode(task.autoReviewMode);
 		const autoCleanupAction = input.taskGitActionCoordinator.getAutoCleanupTaskGitAction(input.workspaceId, task.id);
 		if (autoCleanupAction) {
+			const liveSession = input.state.sessions[task.id] ?? null;
+			if (liveSession && isWaitingForAutoCleanupSessionChange(input.entry, task.id, liveSession)) {
+				clearScheduledTaskAction(input.entry, task.id);
+				continue;
+			}
 			const changedFiles = await loadTaskChangedFileCount(task, input.workspacePath);
 			if (changedFiles === 0 && !input.entry.moveToTrashInFlightTaskIds.has(task.id)) {
 				if (!shouldRunScheduledTaskAction(input.entry, task.id, "move_to_trash", input.nowValue)) {
@@ -571,10 +661,11 @@ async function evaluateWorkspaceAutoReview(input: {
 				} else {
 					input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
 					clearBlockedAutoReview(input.entry, task.id);
+					clearPendingAutoCleanupSessionVersion(input.entry, task.id);
 				}
 			} else {
-				const liveSession = input.state.sessions[task.id] ?? null;
 				input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+				clearPendingAutoCleanupSessionVersion(input.entry, task.id);
 				if (liveSession) {
 					blockAutoReviewUntilSessionChanges(input.entry, task.id, liveSession);
 				}
@@ -607,6 +698,7 @@ async function evaluateWorkspaceAutoReview(input: {
 		const liveSession = input.state.sessions[task.id] ?? null;
 		if (!liveSession) {
 			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			clearPendingAutoCleanupSessionVersion(input.entry, task.id);
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 			clearScheduledTaskAction(input.entry, task.id);
 			continue;
@@ -638,7 +730,10 @@ async function evaluateWorkspaceAutoReview(input: {
 		}).catch(() => false);
 		if (!ranTaskGitAction) {
 			blockAutoReviewUntilSessionChanges(input.entry, task.id, liveSession);
+			clearPendingAutoCleanupSessionVersion(input.entry, task.id);
+			continue;
 		}
+		markPendingAutoCleanupSessionVersion(input.entry, task.id, liveSession);
 	}
 }
 

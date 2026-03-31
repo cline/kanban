@@ -589,6 +589,50 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.close();
 	});
 
+	it("keeps auto git actions blocked until the session changes after dispatch", async () => {
+		const { manager, emitter } = createTerminalManager([
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 5,
+			}),
+		]);
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackTerminalManager("workspace-1", manager as never);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(1_200);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledTimes(1);
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(false);
+
+		await vi.advanceTimersByTimeAsync(2_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledTimes(1);
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(false);
+
+		emitter.emitSummary(
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "error",
+				updatedAt: 6,
+			}),
+		);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(1_000);
+		await flushMicrotasks();
+
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(true);
+		taskGitActionCoordinator.clearTaskGitAction("workspace-1", "task-1");
+
+		automation.close();
+	});
+
 	it("ignores persisted review summaries until a live session service is attached", async () => {
 		workspaceState.sessions = {
 			"task-1": createSummary("task-1", {
@@ -883,6 +927,102 @@ describe("createRuntimeTaskAutomation", () => {
 
 		expect(loadWorkspaceStateMock).toHaveBeenCalledTimes(1);
 		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+
+		automation.close();
+	});
+
+	it("does not start a linked task session when another client moved the card before the board mutation", async () => {
+		const { manager, emitter } = createTerminalManager([
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 5,
+			}),
+		]);
+		let mutateCallCount = 0;
+		mutateWorkspaceStateMock.mockImplementation(async (_cwd, mutate) => {
+			mutateCallCount += 1;
+			const baseState = structuredClone(workspaceState);
+			const stateForMutation =
+				mutateCallCount === 2
+					? {
+							...baseState,
+							board: (() => {
+								const next = structuredClone(baseState.board);
+								const backlog = next.columns.find((column) => column.id === "backlog");
+								const review = next.columns.find((column) => column.id === "review");
+								const task = backlog?.cards.find((card) => card.id === "task-2");
+								if (backlog && review && task) {
+									backlog.cards = backlog.cards.filter((card) => card.id !== "task-2");
+									review.cards = [...review.cards, task];
+								}
+								return next;
+							})(),
+					  }
+					: baseState;
+			const mutation = mutate(stateForMutation);
+			const nextBoard = mutation.board;
+			const nextSessions = mutation.sessions ?? workspaceState.sessions;
+			const nextRevision = mutation.save === false ? workspaceState.revision : workspaceState.revision + 1;
+			if (mutation.save !== false) {
+				workspaceState = {
+					...workspaceState,
+					board: nextBoard,
+					sessions: nextSessions,
+					revision: nextRevision,
+				};
+			}
+			return {
+				value: mutation.value,
+				state: structuredClone(
+					mutation.save === false
+						? workspaceState
+						: {
+								...workspaceState,
+								board: nextBoard,
+								sessions: nextSessions,
+								revision: nextRevision,
+							},
+				),
+				saved: mutation.save !== false,
+			};
+		});
+
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackTerminalManager("workspace-1", manager as never);
+		await flushMicrotasks();
+
+		await vi.advanceTimersByTimeAsync(1_200);
+		await flushMicrotasks();
+
+		changedFilesByTaskPath["/repo/task-1"] = 0;
+		emitter.emitSummary(
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 6,
+			}),
+		);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(2_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.startTaskSession.mutate).not.toHaveBeenCalledWith({
+			taskId: "task-2",
+			prompt: "Follow-up task",
+			startInPlanMode: false,
+			baseRef: "main",
+			images: undefined,
+		});
+		expect(runtimeClient.workspace.ensureWorktree.mutate).not.toHaveBeenCalledWith({
+			taskId: "task-2",
+			baseRef: "main",
+		});
+		expect(getBoardColumn(workspaceState, "backlog").cards[0]?.id).toBe("task-2");
 
 		automation.close();
 	});
