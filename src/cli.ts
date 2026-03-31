@@ -334,6 +334,9 @@ async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCo
 	});
 }
 
+/**
+ * Boots the local Kanban runtime server and returns lifecycle helpers for shutdown flows.
+ */
 async function startServer(): Promise<{
 	url: string;
 	close: () => Promise<void>;
@@ -352,6 +355,7 @@ async function startServer(): Promise<{
 	*/
 	const [
 		{ resolveProjectInputPath },
+		{ createRuntimeTaskAutomation },
 		{ pickDirectoryPathFromSystemDialog },
 		{ createRuntimeServer },
 		{ createRuntimeStateHub },
@@ -360,6 +364,7 @@ async function startServer(): Promise<{
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
+		import("./server/runtime-task-automation.js"),
 		import("./server/directory-picker.js"),
 		import("./server/runtime-server.js"),
 		import("./server/runtime-state-hub.js"),
@@ -368,6 +373,7 @@ async function startServer(): Promise<{
 		import("./server/workspace-registry.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
+	let runtimeTaskAutomation: ReturnType<typeof createRuntimeTaskAutomation> | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
 		loadGlobalRuntimeConfig,
@@ -376,6 +382,7 @@ async function startServer(): Promise<{
 		pathIsDirectory,
 		onTerminalManagerReady: (workspaceId, manager) => {
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
+			runtimeTaskAutomation?.trackTerminalManager(workspaceId, manager);
 		},
 	});
 	runtimeStateHub = createRuntimeStateHub({
@@ -396,12 +403,16 @@ async function startServer(): Promise<{
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
 		runtimeHub.disposeWorkspace(workspaceId);
+		runtimeTaskAutomation?.disposeWorkspace(workspaceId);
 		return disposed;
 	};
 
 	const runtimeServer = await createRuntimeServer({
 		workspaceRegistry,
 		runtimeStateHub: runtimeHub,
+		onClineTaskSessionServiceReady: (workspaceId, service) => {
+			runtimeTaskAutomation?.trackClineTaskSessionService(workspaceId, service);
+		},
 		warn: (message) => {
 			console.warn(`[kanban] ${message}`);
 		},
@@ -415,8 +426,15 @@ async function startServer(): Promise<{
 		collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog,
 	});
+	runtimeTaskAutomation = createRuntimeTaskAutomation({
+		getWorkspacePathById: workspaceRegistry.getWorkspacePathById,
+	});
+	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
+		runtimeTaskAutomation.trackTerminalManager(workspaceId, terminalManager);
+	}
 
 	const close = async () => {
+		runtimeTaskAutomation?.close();
 		await runtimeServer.close();
 	};
 
