@@ -575,7 +575,16 @@ function shouldKeepWorkspacePoller(
 		return true;
 	}
 	const reviewColumn = state.board.columns.find((column) => column.id === "review");
-	return (reviewColumn?.cards ?? []).some((task) => task.autoReviewEnabled === true);
+	return (reviewColumn?.cards ?? []).some((task) => {
+		if (task.autoReviewEnabled !== true) {
+			return false;
+		}
+		const autoReviewMode = resolveTaskAutoReviewMode(task.autoReviewMode);
+		if (autoReviewMode === "move_to_trash") {
+			return true;
+		}
+		return state.sessions[task.id] != null;
+	});
 }
 
 /**

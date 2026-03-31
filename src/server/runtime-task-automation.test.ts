@@ -1044,6 +1044,66 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.close();
 	});
 
+	it("stops polling stale commit review cards that have no live session attached", async () => {
+		const baseState = createWorkspaceState();
+		workspaceState = {
+			...baseState,
+			board: {
+				...baseState.board,
+				columns: [
+					{
+						id: "backlog",
+						title: "Backlog",
+						cards: [],
+					},
+					{
+						id: "in_progress",
+						title: "In Progress",
+						cards: [],
+					},
+					{
+						id: "review",
+						title: "Review",
+						cards: [
+							{
+								id: "task-1",
+								prompt: "Primary task",
+								startInPlanMode: false,
+								autoReviewEnabled: true,
+								autoReviewMode: "commit",
+								baseRef: "main",
+								createdAt: 1,
+								updatedAt: 1,
+							},
+						],
+					},
+					{
+						id: "trash",
+						title: "Trash",
+						cards: [],
+					},
+				],
+			},
+			sessions: {},
+		};
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+		expect(loadWorkspaceStateMock).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(3_000);
+		await flushMicrotasks();
+
+		expect(loadWorkspaceStateMock).toHaveBeenCalledTimes(1);
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+
+		automation.close();
+	});
+
 	it("does not start a linked task session when another client moved the card before the board mutation", async () => {
 		const { manager, emitter } = createTerminalManager([
 			createSummary("task-1", {

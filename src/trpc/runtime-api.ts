@@ -62,6 +62,13 @@ export interface CreateRuntimeApiDependencies {
 	taskGitActionCoordinator?: RuntimeTaskGitActionCoordinator;
 }
 
+/**
+ * Wraps terminal input in xterm's bracketed-paste control sequences so multiline prompts stay intact.
+ */
+function encodeTerminalPasteInput(text: string): Buffer {
+	return Buffer.from(`\u001b[200~${text}\u001b[201~`, "utf8");
+}
+
 async function resolveExistingTaskCwdOrEnsure(options: {
 	cwd: string;
 	taskId: string;
@@ -443,7 +450,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					};
 				}
 
-				const typedSummary = terminalManager.writeInput(body.taskId, Buffer.from(prompt, "utf8"));
+				const terminalPromptBuffer =
+					body.source === "manual" ? encodeTerminalPasteInput(prompt) : Buffer.from(prompt, "utf8");
+				const typedSummary = terminalManager.writeInput(body.taskId, terminalPromptBuffer);
 				if (!typedSummary) {
 					deps.taskGitActionCoordinator?.completeTaskGitAction(
 						workspaceScope.workspaceId,

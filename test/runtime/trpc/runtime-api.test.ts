@@ -1013,7 +1013,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(terminalManager.stopTaskSession).not.toHaveBeenCalled();
 	});
 
-	it("routes task git actions to the active terminal session before stale cline history", async () => {
+	it("routes manual multiline task git actions to the active terminal session as bracketed paste", async () => {
 		const summary = createSummary({ agentId: "codex" });
 		const terminalManager = {
 			getSummary: vi.fn(() => summary),
@@ -1022,10 +1022,12 @@ describe("createRuntimeApi startTaskSession", () => {
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.getSummary.mockReturnValue(createSummary({ agentId: "cline", pid: null }));
+		const runtimeConfigState = createRuntimeConfigState();
+		runtimeConfigState.commitPromptTemplate = "line 1\nline 2";
 
 		const api = createRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
-			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			loadScopedRuntimeConfig: vi.fn(async () => runtimeConfigState),
 			setActiveRuntimeConfig: vi.fn(),
 			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
 			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
@@ -1042,7 +1044,12 @@ describe("createRuntimeApi startTaskSession", () => {
 			ok: true,
 			summary,
 		});
-		expect(terminalManager.writeInput).toHaveBeenCalledWith("task-1", Buffer.from("commit", "utf8"));
+		expect(terminalManager.writeInput).toHaveBeenNthCalledWith(
+			1,
+			"task-1",
+			Buffer.from("\u001b[200~line 1\nline 2\u001b[201~", "utf8"),
+		);
+		expect(terminalManager.writeInput).toHaveBeenNthCalledWith(2, "task-1", Buffer.from("\r", "utf8"));
 		expect(clineTaskSessionService.sendTaskSessionInput).not.toHaveBeenCalled();
 	});
 
