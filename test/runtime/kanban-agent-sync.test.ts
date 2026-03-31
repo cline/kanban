@@ -322,4 +322,37 @@ describe.sequential("kanban agent sync", () => {
 			}
 		});
 	});
+
+	it("sets parentTaskId and role on teammate card when rootTaskId is provided", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-teammate-parent-");
+			try {
+				const workspacePath = join(sandboxRoot, "project");
+				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
+				await loadWorkspaceContext(workspacePath);
+
+				const rootTaskId = "root-task-abc123";
+				const onTeamEvent = createTeamEventSink(workspacePath, { rootTaskId });
+
+				onTeamEvent(createTeammateSpawnedEvent("specialist-agent"));
+
+				await waitForAssertion(async () => {
+					const workspaceState = await loadWorkspaceState(workspacePath);
+					const backlogCards = workspaceState.board.columns.find((column) => column.id === "backlog")?.cards;
+					expect(backlogCards).toEqual(
+						expect.arrayContaining([
+							expect.objectContaining({
+								id: "teammate-specialist-agent",
+								parentTaskId: rootTaskId,
+								role: "Models investigator",
+							}),
+						]),
+					);
+				});
+			} finally {
+				cleanup();
+			}
+		});
+	});
 });

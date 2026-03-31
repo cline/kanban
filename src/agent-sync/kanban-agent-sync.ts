@@ -211,6 +211,8 @@ function syncSyntheticCard(input: {
 	targetColumn: RuntimeBoardColumnId;
 	prompt: string;
 	baseRef: string;
+	parentTaskId?: string;
+	role?: string;
 }): { board: RuntimeBoardData; changed: boolean } {
 	const existing = findCard(input.board, input.taskId);
 	if (!existing) {
@@ -222,6 +224,8 @@ function syncSyntheticCard(input: {
 				prompt: input.prompt,
 				baseRef: input.baseRef,
 				startInPlanMode: false,
+				parentTaskId: input.parentTaskId,
+				role: input.role,
 			},
 			() => input.taskId,
 		);
@@ -303,12 +307,17 @@ export function createTeamEventSink(
 						case TEAMMATE_SPAWNED: {
 							const teammateEvent = event as TeammateSpawnedEvent;
 							const teammateTaskId = makeTeammateCardId(teammateEvent.agentId);
+							const teammateRole =
+								teammateEvent.role ??
+								teammateEvent.teammate.rolePrompt?.split("\n")[0]?.slice(0, 80);
 							const result = syncSyntheticCard({
 								board,
 								taskId: teammateTaskId,
 								targetColumn: "backlog",
 								prompt: buildTeammatePrompt(teammateEvent),
 								baseRef,
+								parentTaskId: options.rootTaskId,
+								role: teammateRole,
 							});
 							return result.changed || cleanup.changed
 								? { board: result.board, value: null }
@@ -532,6 +541,7 @@ export interface SubAgentPlugin {
 }
 
 interface KanbanAgentSyncNotificationOptions {
+	rootTaskId?: string;
 	onBoardChanged?: () => Promise<void> | void;
 	onTeammateDiscovered?: (input: {
 		taskId: string;
@@ -673,6 +683,7 @@ export interface KanbanAgentSync {
  */
 export function createKanbanAgentSync(options: {
 	workspacePath: string;
+	rootTaskId?: string;
 	onBoardChanged?: () => Promise<void> | void;
 	onTeammateDiscovered?: (input: {
 		taskId: string;
@@ -682,9 +693,9 @@ export function createKanbanAgentSync(options: {
 	}) => Promise<void> | void;
 	onTeammateEvent?: (input: { taskId: string; event: OpaqueTeamEvent; workspacePath: string }) => Promise<void> | void;
 }): KanbanAgentSync {
-	const { workspacePath, onBoardChanged, onTeammateDiscovered, onTeammateEvent } = options;
+	const { workspacePath, rootTaskId, onBoardChanged, onTeammateDiscovered, onTeammateEvent } = options;
 	return {
-		onTeamEvent: createTeamEventSink(workspacePath, { onBoardChanged, onTeammateDiscovered, onTeammateEvent }),
+		onTeamEvent: createTeamEventSink(workspacePath, { rootTaskId, onBoardChanged, onTeammateDiscovered, onTeammateEvent }),
 		sessionServicePlugin: createSubAgentPlugin(workspacePath, { onBoardChanged }),
 	};
 }

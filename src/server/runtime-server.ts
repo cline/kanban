@@ -128,6 +128,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		if (!service) {
 			const sync = createKanbanAgentSync({
 				workspacePath: scope.workspacePath,
+				rootTaskId: undefined,
 				onBoardChanged: async () => {
 					await deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
 				},
