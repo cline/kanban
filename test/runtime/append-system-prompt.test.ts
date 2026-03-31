@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -85,7 +88,7 @@ describe("renderAppendSystemPrompt", () => {
 		expect(rendered).not.toContain("droid mcp add linear https://mcp.linear.app/mcp --type http");
 	});
 
-	it("renders the Agent Teams section", () => {
+	it("renders the Agent Teams section with agent registry", () => {
 		const rendered = renderAppendSystemPrompt("kanban");
 		expect(rendered).toContain("# Agent Teams");
 		expect(rendered).toContain("team_spawn_teammate");
@@ -96,6 +99,38 @@ describe("renderAppendSystemPrompt", () => {
 		expect(rendered).toContain("team_await_run");
 		expect(rendered).toContain("only Cline tasks support teams");
 		expect(rendered).toContain("teammate-*");
+		// Agent registry: built-in agents with capabilities are listed for team leader selection
+		expect(rendered).toContain("Agent registry");
+		expect(rendered).toContain("`cline`");
+		expect(rendered).toContain("`claude`");
+		expect(rendered).toContain("`codex`");
+		expect(rendered).toContain("coding, review");
+		expect(rendered).toContain("Choose agentId from the registry");
+	});
+
+	it("renders custom specialists when provided via agents.json", () => {
+		// Write a temporary agents.json and temporarily chdir so loadAgentSpecialists picks it up.
+		const tmpDir = mkdtempSync(join(tmpdir(), "kb-test-"));
+		mkdirSync(join(tmpDir, ".cline", "kanban"), { recursive: true });
+		writeFileSync(
+			join(tmpDir, ".cline", "kanban", "agents.json"),
+			JSON.stringify([
+				{ id: "planner", baseAgentId: "claude", description: "Plans and breaks down tasks" },
+				{ id: "poet", baseAgentId: "cline", description: "Writes creative copy" },
+			]),
+		);
+		const origCwd = process.cwd();
+		process.chdir(tmpDir);
+		try {
+			const rendered = renderAppendSystemPrompt("kanban");
+			expect(rendered).toContain("Custom specialists");
+			expect(rendered).toContain("`planner`");
+			expect(rendered).toContain("`poet`");
+			expect(rendered).toContain("Plans and breaks down tasks");
+			expect(rendered).toContain("Writes creative copy");
+		} finally {
+			process.chdir(origCwd);
+		}
 	});
 
 	it("renders the Available Agents section with all catalog entries", () => {

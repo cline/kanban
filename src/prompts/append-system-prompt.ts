@@ -1,9 +1,9 @@
 import { realpathSync } from "node:fs";
 
 import packageJson from "../../package.json" with { type: "json" };
-
-import type { RuntimeAgentId } from "../core/api-contract";
+import { type AgentSpecialist, loadAgentSpecialists } from "../config/agent-specialists";
 import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog";
+import type { RuntimeAgentId } from "../core/api-contract";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveKanbanCommandParts } from "../core/kanban-command";
 import { buildShellCommandLine } from "../core/shell";
@@ -63,7 +63,35 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 	}
 }
 
-function renderAgentTeamsSection(): string {
+/**
+ * Renders the Agent Teams section of the system prompt.
+ * Includes a registry of available teammate agents (built-ins from the catalog
+ * with their capabilities, and any custom specialists loaded from agents.json)
+ * so the team leader can choose the best agent for each role.
+ */
+function renderAgentTeamsSection(installedBinaries: Set<string>, specialists: AgentSpecialist[]): string {
+	// Build the built-in agents list from the catalog, showing id, label, install
+	// status, and capabilities so the team leader can make an informed choice.
+	const builtinLines = RUNTIME_AGENT_CATALOG.map((entry) => {
+		const installed = entry.id === "cline" || installedBinaries.has(entry.binary);
+		const statusTag = installed ? "installed" : "not on PATH";
+		return `  - \`${entry.id}\` (${entry.label}) [${statusTag}] — ${entry.capabilities.join(", ")}`;
+	});
+
+	// Build the custom specialists list if any are configured in agents.json.
+	const specialistLines = specialists.map((s) => `  - \`${s.id}\` → ${s.baseAgentId} — ${s.description}`);
+
+	const specialistsSection =
+		specialistLines.length > 0
+			? `
+## Custom specialists (from .cline/kanban/agents.json)
+
+Pre-configured specialist roles you can spawn by name:
+
+${specialistLines.join("\n")}
+`
+			: "";
+
 	return `# Agent Teams
 
 When a Cline task runs, it has access to team tools from the @clinebot/agents SDK team runtime. These tools let the agent spawn teammates, delegate work, manage a shared task list, and coordinate via mailbox — all from within a single task session.
@@ -78,13 +106,18 @@ Use agent teams for complex multi-step work that benefits from parallel executio
 
 ## Key team tools available to Cline tasks
 
-- \`team_spawn_teammate(agentId, rolePrompt)\` — spawn a teammate with a specialization
+- \`team_spawn_teammate(agentId, rolePrompt)\` — spawn a teammate. Choose agentId from the registry below.
 - \`team_task(action: create|list|claim|complete|block, ...)\` — manage a shared task list
 - \`team_run_task(agentId, task, runMode: sync|async)\` — delegate a run to a teammate
 - \`team_send_message\` / \`team_broadcast\` — inter-agent communication
 - \`team_log_update\` — mission log for progress tracking
 - \`team_await_run\` / \`team_await_all_runs\` — wait for async teammate runs
 
+## Agent registry (choose agentId from this list)
+
+Pick the agent whose capabilities best match the role. Prefer installed agents.
+
+${builtinLines.join("\n")}${specialistsSection}
 ## How teammates appear on the board
 
 When an agent uses teams, teammate lifecycle events create synthetic cards on the Kanban board grouped under the parent task (prefixed \`teammate-*\`). The board shows each teammate's role and current status.
@@ -119,7 +152,9 @@ function renderAvailableAgentsSection(installedBinaries: Set<string>): string {
 	}
 
 	lines.push("");
-	lines.push("Use this list to recommend the best agent for a given task. For tasks requiring team coordination, Cline is the only supported choice.");
+	lines.push(
+		"Use this list to recommend the best agent for a given task. For tasks requiring team coordination, Cline is the only supported choice.",
+	);
 
 	return lines.join("\n");
 }
@@ -181,6 +216,7 @@ export function renderAppendSystemPrompt(commandPrefix: string, options: RenderA
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
 	const selectedAgentId = options.agentId ?? null;
 	const installedBinaries = new Set(detectInstalledCommands());
+	const specialists = loadAgentSpecialists(process.cwd());
 	return `# Kanban Sidebar
 
 You are the Kanban sidebar agent for this workspace. Help the user interact with their Kanban board directly from this side panel. When the user asks to add tasks, create tasks, break work down, link tasks, or start tasks, prefer using the Kanban CLI yourself instead of describing manual steps.
@@ -353,7 +389,7 @@ Parameters:
 - Prefer \`task list\` first when task IDs or dependency IDs are needed.
 - To create multiple linked tasks, create tasks first, then call \`task link\` for each dependency edge.
 
-${renderAgentTeamsSection()}
+${renderAgentTeamsSection(installedBinaries, specialists)}
 
 ${renderAvailableAgentsSection(installedBinaries)}
 `;
