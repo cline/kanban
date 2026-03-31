@@ -563,6 +563,119 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.close();
 	});
 
+	it("skips auto-review for dirty review cards until a live task session is attached", async () => {
+		getBoardColumn(workspaceState, "in_progress").cards = [];
+		getBoardColumn(workspaceState, "review").cards = [
+			{
+				id: "task-1",
+				prompt: "Primary task",
+				startInPlanMode: false,
+				autoReviewEnabled: true,
+				autoReviewMode: "commit",
+				baseRef: "main",
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		];
+
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(3_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+
+		const { manager } = createTerminalManager([
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 5,
+			}),
+		]);
+		automation.trackTerminalManager("workspace-1", manager as never);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(1_200);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledWith({
+			taskId: "task-1",
+			baseRef: "main",
+			action: "commit",
+			source: "auto",
+		});
+
+		automation.close();
+	});
+
+	it("clears stale auto-cleanup state after a dirty review task returns from an auto git action", async () => {
+		getBoardColumn(workspaceState, "in_progress").cards = [];
+		getBoardColumn(workspaceState, "review").cards = [
+			{
+				id: "task-1",
+				prompt: "Primary task",
+				startInPlanMode: false,
+				autoReviewEnabled: true,
+				autoReviewMode: "commit",
+				baseRef: "main",
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		];
+
+		const { manager, emitter } = createTerminalManager([
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "error",
+				updatedAt: 5,
+			}),
+		]);
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(true);
+		taskGitActionCoordinator.completeTaskGitAction("workspace-1", "task-1", "commit", {
+			dispatched: true,
+			armAutoCleanup: true,
+		});
+
+		automation.trackTerminalManager("workspace-1", manager as never);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(2_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+		expect(taskGitActionCoordinator.isTaskGitActionBlocked("workspace-1", "task-1")).toBe(false);
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(true);
+		taskGitActionCoordinator.clearTaskGitAction("workspace-1", "task-1");
+
+		emitter.emitSummary(
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 6,
+			}),
+		);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(1_200);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledWith({
+			taskId: "task-1",
+			baseRef: "main",
+			action: "commit",
+			source: "auto",
+		});
+
+		automation.close();
+	});
+
 	it("does not auto-trash a clean review task after a manual git action is sent", async () => {
 		getBoardColumn(workspaceState, "in_progress").cards = [];
 		getBoardColumn(workspaceState, "review").cards = [

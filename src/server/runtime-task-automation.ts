@@ -33,6 +33,7 @@ interface TrackedWorkspaceAutomation {
 	runningTick: Promise<void> | null;
 	rerunRequested: boolean;
 	scheduledActionByTaskId: Map<string, ScheduledTaskAction>;
+	blockedAutoReviewSessionVersionByTaskId: Map<string, number>;
 	moveToTrashInFlightTaskIds: Set<string>;
 	terminalSummaryUnsubscribe: (() => void) | null;
 	clineSummaryUnsubscribe: (() => void) | null;
@@ -155,6 +156,7 @@ function createTrackedWorkspaceAutomation(workspaceId: string): TrackedWorkspace
 		runningTick: null,
 		rerunRequested: false,
 		scheduledActionByTaskId: new Map(),
+		blockedAutoReviewSessionVersionByTaskId: new Map(),
 		moveToTrashInFlightTaskIds: new Set(),
 		terminalSummaryUnsubscribe: null,
 		clineSummaryUnsubscribe: null,
@@ -417,6 +419,43 @@ function clearScheduledTaskAction(entry: TrackedWorkspaceAutomation, taskId: str
 }
 
 /**
+ * Marks a live session as needing new activity before automation can retry another git action.
+ */
+function blockAutoReviewUntilSessionChanges(
+	entry: TrackedWorkspaceAutomation,
+	taskId: string,
+	session: RuntimeTaskSessionSummary,
+): void {
+	entry.blockedAutoReviewSessionVersionByTaskId.set(taskId, session.updatedAt);
+}
+
+/**
+ * Returns whether automation should wait for new session activity before retrying a failed git action.
+ */
+function shouldWaitForSessionChangeBeforeAutoReview(
+	entry: TrackedWorkspaceAutomation,
+	taskId: string,
+	session: RuntimeTaskSessionSummary,
+): boolean {
+	const blockedUpdatedAt = entry.blockedAutoReviewSessionVersionByTaskId.get(taskId);
+	if (blockedUpdatedAt === undefined) {
+		return false;
+	}
+	if (blockedUpdatedAt === session.updatedAt) {
+		return true;
+	}
+	entry.blockedAutoReviewSessionVersionByTaskId.delete(taskId);
+	return false;
+}
+
+/**
+ * Clears any session-version block once a task leaves the failed auto-review state.
+ */
+function clearBlockedAutoReview(entry: TrackedWorkspaceAutomation, taskId: string): void {
+	entry.blockedAutoReviewSessionVersionByTaskId.delete(taskId);
+}
+
+/**
  * Evaluates review-column tasks and runs the runtime-owned auto-review state machine.
  */
 async function evaluateWorkspaceAutoReview(input: {
@@ -441,7 +480,8 @@ async function evaluateWorkspaceAutoReview(input: {
 				input.workspaceId,
 				task.id,
 			);
-			const preserveAutoCleanupState = autoCleanupAction !== null && column.id === "in_progress";
+			const preserveAutoCleanupState =
+				autoCleanupAction !== null && column.id === "in_progress" && input.state.sessions[task.id] != null;
 			if (preserveAutoCleanupState) {
 				inProgressCleanupTaskIds.add(task.id);
 			}
@@ -452,6 +492,7 @@ async function evaluateWorkspaceAutoReview(input: {
 			}
 			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
 			clearScheduledTaskAction(input.entry, task.id);
+			clearBlockedAutoReview(input.entry, task.id);
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 		}
 	}
@@ -460,6 +501,7 @@ async function evaluateWorkspaceAutoReview(input: {
 		if (!reviewTaskIds.has(taskId) && !inProgressCleanupTaskIds.has(taskId)) {
 			clearScheduledTaskAction(input.entry, taskId);
 			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, taskId);
+			clearBlockedAutoReview(input.entry, taskId);
 		}
 	}
 	for (const taskId of Array.from(input.entry.moveToTrashInFlightTaskIds)) {
@@ -467,9 +509,23 @@ async function evaluateWorkspaceAutoReview(input: {
 			input.entry.moveToTrashInFlightTaskIds.delete(taskId);
 		}
 	}
+	for (const taskId of Array.from(input.entry.blockedAutoReviewSessionVersionByTaskId.keys())) {
+		if (!reviewTaskIds.has(taskId)) {
+			clearBlockedAutoReview(input.entry, taskId);
+		}
+	}
 
 	for (const task of reviewCards) {
 		if (task.autoReviewEnabled !== true) {
+			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
+			clearScheduledTaskAction(input.entry, task.id);
+			clearBlockedAutoReview(input.entry, task.id);
+			continue;
+		}
+
+		const liveSession = input.state.sessions[task.id] ?? null;
+		if (!liveSession) {
 			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 			clearScheduledTaskAction(input.entry, task.id);
@@ -496,10 +552,18 @@ async function evaluateWorkspaceAutoReview(input: {
 					input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 				} else {
 					input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+					clearBlockedAutoReview(input.entry, task.id);
 				}
 			} else {
+				input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+				blockAutoReviewUntilSessionChanges(input.entry, task.id, liveSession);
 				clearScheduledTaskAction(input.entry, task.id);
 			}
+			continue;
+		}
+
+		if (shouldWaitForSessionChangeBeforeAutoReview(input.entry, task.id, liveSession)) {
+			clearScheduledTaskAction(input.entry, task.id);
 			continue;
 		}
 
@@ -538,11 +602,14 @@ async function evaluateWorkspaceAutoReview(input: {
 		}
 
 		clearScheduledTaskAction(input.entry, task.id);
-		await runTaskGitAction({
+		const ranTaskGitAction = await runTaskGitAction({
 			runtimeClient: input.runtimeClient,
 			task,
 			action: autoReviewMode,
 		}).catch(() => false);
+		if (!ranTaskGitAction) {
+			blockAutoReviewUntilSessionChanges(input.entry, task.id, liveSession);
+		}
 	}
 }
 
