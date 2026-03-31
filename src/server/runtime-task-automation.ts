@@ -588,6 +588,8 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 				const runtimeClient = createRuntimeTrpcClient(workspaceId);
 				const persistedState = await loadWorkspaceState(workspacePath).catch(() => null);
 				if (!persistedState) {
+					// A remembered workspace with unreadable state should stop polling until it is tracked again.
+					disposeWorkspace(workspaceId);
 					return;
 				}
 				const liveSessions = collectAutomationTaskSessionSummaries(

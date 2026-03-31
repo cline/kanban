@@ -641,4 +641,25 @@ describe("createRuntimeTaskAutomation", () => {
 
 		automation.close();
 	});
+
+	it("disposes a workspace after state loading fails so polling stops", async () => {
+		loadWorkspaceStateMock.mockRejectedValue(new Error("missing workspace"));
+
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+		expect(loadWorkspaceStateMock).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(3_000);
+		await flushMicrotasks();
+
+		expect(loadWorkspaceStateMock).toHaveBeenCalledTimes(1);
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+
+		automation.close();
+	});
 });

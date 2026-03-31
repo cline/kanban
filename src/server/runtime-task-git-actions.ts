@@ -118,7 +118,7 @@ export function createRuntimeTaskGitActionCoordinator(): RuntimeTaskGitActionCoo
 	return {
 		beginTaskGitAction: (workspaceId, taskId, action) => {
 			const taskState = getTaskState(workspaceId, taskId);
-			if (taskState.inFlightAction !== null) {
+			if (taskState.inFlightAction !== null || taskState.autoCleanupAction !== null) {
 				return false;
 			}
 			taskState.inFlightAction = action;
