@@ -8,7 +8,7 @@ import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { loadRemoteConfig, saveRemoteConfig } from "../remote/config-store";
+import { decryptApiKey, encryptApiKey, loadRemoteConfig, saveRemoteConfig } from "../remote/config-store";
 import type { CallerIdentity, RemoteConfig, RemoteUserRole } from "../remote/types";
 import { callerCanSetVisibility, filterBoardForCaller } from "../server/board-visibility";
 import type { PushManager } from "../server/push-manager";
@@ -202,6 +202,11 @@ import {
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
 	runtimeProjectsResponseSchema,
+	runtimeProviderOverrideListResponseSchema,
+	runtimeProviderOverrideOkResponseSchema,
+	runtimeProviderOverrideRemoveRequestSchema,
+	runtimeProviderOverrideSetEnforcedRequestSchema,
+	runtimeProviderOverrideSetRequestSchema,
 	runtimePushListSubscriptionsResponseSchema,
 	runtimePushSendRequestSchema,
 	runtimePushSendResponseSchema,
@@ -1268,6 +1273,74 @@ export const runtimeAppRouter = t.router({
 				await stopCloudflaredTunnel();
 				return { ok: true };
 			}),
+		}),
+
+		// ── Provider override management (admin/localhost only) ────────────
+		// Admins can pre-configure API keys for specific providers.
+		// When enforced=true, all task sessions use the admin's key.
+		providers: t.router({
+			// List all configured overrides. API keys are always masked.
+			list: adminOrLocalProcedure.output(runtimeProviderOverrideListResponseSchema).query(async () => {
+				const config = await loadRemoteConfig();
+				return {
+					overrides: config.providerOverrides.map((o) => ({
+						providerId: o.providerId,
+						modelId: o.modelId,
+						apiKeyMasked: "***",
+						baseUrl: o.baseUrl,
+						enforced: o.enforced,
+						label: o.label,
+						createdAt: o.createdAt,
+					})),
+				};
+			}),
+
+			// Add or update a provider override. The plain API key is encrypted before storage.
+			set: adminOrLocalProcedure
+				.input(runtimeProviderOverrideSetRequestSchema)
+				.output(runtimeProviderOverrideOkResponseSchema)
+				.mutation(async ({ input }) => {
+					const config = await loadRemoteConfig();
+					const existing = config.providerOverrides.find((o) => o.providerId === input.providerId);
+					const override = {
+						providerId: input.providerId,
+						modelId: input.modelId?.trim() ?? existing?.modelId ?? "",
+						apiKeyEncrypted: encryptApiKey(input.apiKey),
+						baseUrl: input.baseUrl?.trim() ?? existing?.baseUrl ?? "",
+						enforced: input.enforced ?? existing?.enforced ?? false,
+						label: input.label?.trim() ?? existing?.label ?? input.providerId,
+						createdAt: existing?.createdAt ?? Date.now(),
+					};
+					const overrides = existing
+						? config.providerOverrides.map((o) => (o.providerId === input.providerId ? override : o))
+						: [...config.providerOverrides, override];
+					await saveRemoteConfig({ ...config, providerOverrides: overrides });
+					return { ok: true };
+				}),
+
+			// Toggle the enforced flag without changing the key.
+			setEnforced: adminOrLocalProcedure
+				.input(runtimeProviderOverrideSetEnforcedRequestSchema)
+				.output(runtimeProviderOverrideOkResponseSchema)
+				.mutation(async ({ input }) => {
+					const config = await loadRemoteConfig();
+					const overrides = config.providerOverrides.map((o) =>
+						o.providerId === input.providerId ? { ...o, enforced: input.enforced } : o,
+					);
+					await saveRemoteConfig({ ...config, providerOverrides: overrides });
+					return { ok: true };
+				}),
+
+			// Remove a provider override entirely.
+			remove: adminOrLocalProcedure
+				.input(runtimeProviderOverrideRemoveRequestSchema)
+				.output(runtimeProviderOverrideOkResponseSchema)
+				.mutation(async ({ input }) => {
+					const config = await loadRemoteConfig();
+					const overrides = config.providerOverrides.filter((o) => o.providerId !== input.providerId);
+					await saveRemoteConfig({ ...config, providerOverrides: overrides });
+					return { ok: true };
+				}),
 		}),
 	}),
 });

@@ -15,6 +15,9 @@ export interface RemoteConfig {
 	// Public base URL for the server-side OAuth relay (Option B).
 	// Required for GET /auth/start to work. Empty = OAuth relay disabled.
 	publicBaseUrl: string;
+	// Admin-configured provider overrides. When an entry has enforced=true,
+	// all task sessions use that provider/key instead of users' own settings.
+	providerOverrides: RemoteProviderOverride[];
 }
 
 // Permission level for a remote user.
@@ -36,6 +39,26 @@ export interface CallerIdentity {
 	// Permission level. Localhost callers are always "admin".
 	// Remote users default to "viewer" until promoted by an admin.
 	role: RemoteUserRole;
+}
+
+// An admin-configured provider override that can be enforced globally.
+// When enforced, all users' task sessions use this provider/key instead of their own.
+export interface RemoteProviderOverride {
+	// Provider ID matching the Cline SDK's provider string (e.g. "cline", "anthropic", "openai").
+	providerId: string;
+	// Optional model lock. Empty string = use the user's own model selection.
+	modelId: string;
+	// API key — stored AES-256-GCM encrypted in remote-config.json via encryptApiKey().
+	// Never exposed to clients in plaintext; the list endpoint returns "***" for this field.
+	apiKeyEncrypted: string;
+	// Optional base URL override (for self-hosted / compatible providers).
+	baseUrl: string;
+	// When true, this key overrides all users' own provider settings for sessions.
+	// When false, it is stored but not applied (allows pre-configuration before enabling).
+	enforced: boolean;
+	// Optional human-readable label shown in the UI (e.g. "Shared Anthropic Key").
+	label: string;
+	createdAt: number;
 }
 
 // A host-created local account that logs in with email + password.

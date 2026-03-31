@@ -1252,21 +1252,39 @@ export function RuntimeSettingsDialog({
 				</DialogBody>
 			) : null}
 
-			{/* Footer — only on settings tab */}
-			{activeTab === "settings" ? (
-				<DialogFooter>
-					<Button onClick={() => onOpenChange(false)} disabled={controlsDisabled}>
-						Cancel
-					</Button>
+			{/* Footer */}
+			<DialogFooter>
+				{/* Logout — shown when there is a remote session (non-localhost) */}
+				{identity && !identity.isLocal ? (
 					<Button
-						variant="primary"
-						onClick={() => void handleSave()}
-						disabled={controlsDisabled || !hasUnsavedChanges}
+						variant="danger"
+						onClick={() => {
+							void fetch("/logout", { method: "POST", credentials: "include" }).then(() => {
+								window.location.reload();
+							});
+						}}
+						className="mr-auto"
 					>
-						Save
+						Sign out
 					</Button>
-				</DialogFooter>
-			) : null}
+				) : null}
+				{activeTab === "settings" ? (
+					<>
+						<Button onClick={() => onOpenChange(false)} disabled={controlsDisabled}>
+							Cancel
+						</Button>
+						<Button
+							variant="primary"
+							onClick={() => void handleSave()}
+							disabled={controlsDisabled || !hasUnsavedChanges}
+						>
+							Save
+						</Button>
+					</>
+				) : (
+					<Button onClick={() => onOpenChange(false)}>Close</Button>
+				)}
+			</DialogFooter>
 		</Dialog>
 	);
 }

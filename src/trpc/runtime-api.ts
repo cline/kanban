@@ -35,6 +35,7 @@ import {
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { decryptApiKey, loadRemoteConfig } from "../remote/config-store";
 import type { CallerIdentity } from "../remote/types";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
@@ -192,6 +193,27 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 
 				if (useClinePath) {
 					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
+
+					// Apply admin-enforced provider override if one is configured.
+					// When enforced=true, the admin's key replaces the user's own provider settings.
+					const launchProviderId = clineLaunchConfig.providerId;
+					let launchModelId = clineLaunchConfig.modelId;
+					let launchApiKey: string | null = clineLaunchConfig.apiKey;
+					let launchBaseUrl: string | null = clineLaunchConfig.baseUrl;
+					try {
+						const remoteConfig = await loadRemoteConfig();
+						const enforcedOverride = remoteConfig.providerOverrides.find(
+							(o) => o.enforced && o.providerId === clineLaunchConfig.providerId,
+						);
+						if (enforcedOverride) {
+							launchApiKey = decryptApiKey(enforcedOverride.apiKeyEncrypted);
+							if (enforcedOverride.modelId) launchModelId = enforcedOverride.modelId;
+							if (enforcedOverride.baseUrl) launchBaseUrl = enforcedOverride.baseUrl;
+						}
+					} catch {
+						// Override resolution failure is non-fatal — use the user's own settings.
+					}
+
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const summary = await clineTaskSessionService.startTaskSession({
 						taskId: body.taskId,
@@ -199,11 +221,11 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						prompt: effectivePrompt,
 						images: body.images,
 						resumeFromTrash: body.resumeFromTrash,
-						providerId: clineLaunchConfig.providerId,
-						modelId: clineLaunchConfig.modelId,
+						providerId: launchProviderId,
+						modelId: launchModelId,
 						mode: requestedTaskMode,
-						apiKey: clineLaunchConfig.apiKey,
-						baseUrl: clineLaunchConfig.baseUrl,
+						apiKey: launchApiKey,
+						baseUrl: launchBaseUrl,
 						reasoningEffort: clineLaunchConfig.reasoningEffort,
 					});
 

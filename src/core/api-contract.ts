@@ -1380,3 +1380,53 @@ export const runtimeTunnelStatusResponseSchema = z.object({
 	url: z.string().nullable(),
 });
 export type RuntimeTunnelStatusResponse = z.infer<typeof runtimeTunnelStatusResponseSchema>;
+
+// ── Admin provider overrides ───────────────────────────────────────────────
+// Admins can pre-configure API keys for specific providers.
+// When enforced=true, all task sessions use the admin's key instead of the user's.
+
+// What clients see — apiKey is always masked as "***"
+export const runtimeProviderOverrideRecordSchema = z.object({
+	providerId: z.string(),
+	modelId: z.string(),
+	// Always "***" — the real key is never sent to the frontend.
+	apiKeyMasked: z.string(),
+	baseUrl: z.string(),
+	enforced: z.boolean(),
+	label: z.string(),
+	createdAt: z.number(),
+});
+export type RuntimeProviderOverrideRecord = z.infer<typeof runtimeProviderOverrideRecordSchema>;
+
+// POST remote.providers.set — create or update a provider override.
+export const runtimeProviderOverrideSetRequestSchema = z.object({
+	providerId: z.string().min(1),
+	apiKey: z.string().min(1), // plaintext — encrypted server-side before storage
+	modelId: z.string().optional(),
+	baseUrl: z.string().optional(),
+	enforced: z.boolean().optional(),
+	label: z.string().optional(),
+});
+export type RuntimeProviderOverrideSetRequest = z.infer<typeof runtimeProviderOverrideSetRequestSchema>;
+
+// POST remote.providers.setEnforced — toggle enforced without changing the key.
+export const runtimeProviderOverrideSetEnforcedRequestSchema = z.object({
+	providerId: z.string(),
+	enforced: z.boolean(),
+});
+export type RuntimeProviderOverrideSetEnforcedRequest = z.infer<typeof runtimeProviderOverrideSetEnforcedRequestSchema>;
+
+// DELETE remote.providers.remove — remove an override entirely.
+export const runtimeProviderOverrideRemoveRequestSchema = z.object({
+	providerId: z.string(),
+});
+export type RuntimeProviderOverrideRemoveRequest = z.infer<typeof runtimeProviderOverrideRemoveRequestSchema>;
+
+// GET remote.providers.list — list all configured overrides.
+export const runtimeProviderOverrideListResponseSchema = z.object({
+	overrides: z.array(runtimeProviderOverrideRecordSchema),
+});
+export type RuntimeProviderOverrideListResponse = z.infer<typeof runtimeProviderOverrideListResponseSchema>;
+
+export const runtimeProviderOverrideOkResponseSchema = z.object({ ok: z.boolean() });
+export type RuntimeProviderOverrideOkResponse = z.infer<typeof runtimeProviderOverrideOkResponseSchema>;
