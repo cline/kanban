@@ -177,7 +177,10 @@ export async function createPushManager(
 	ensurePushSchema(db);
 
 	// Load or generate VAPID keys.
-	const VAPID_CONTACT = "mailto:kanban@cline.bot";
+	// APNs (iOS Web Push) validates the VAPID `sub` claim and rejects
+	// `localhost` as an invalid domain, returning 403 BadJwtToken.
+	// Use a real domain so the JWT is accepted by all push services.
+	const VAPID_CONTACT = "mailto:push@cline.bot";
 
 	let vapidPublicKey: string;
 	let vapidPrivateKey: string;
@@ -323,12 +326,25 @@ export async function createPushManager(
 						await webpush.sendNotification(
 							{ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
 							payload,
+							{ TTL: 60 * 60, urgency: "high" },
 						);
 						db.prepare("UPDATE remote_push_subscriptions SET last_used = ? WHERE id = ?").run(Date.now(), row.id);
 					} catch (err) {
 						const statusCode = (err as { statusCode?: number }).statusCode;
+						const body = (err as { body?: string }).body;
 						if (statusCode === 410 || statusCode === 404) {
 							expiredEndpoints.push(row.endpoint);
+						} else {
+							const endpointDomain = (() => {
+								try {
+									return new URL(row.endpoint).hostname;
+								} catch {
+									return row.endpoint;
+								}
+							})();
+							process.stderr.write(
+								`[push] Failed to deliver to ${endpointDomain}: ${statusCode ?? "unknown"} ${body ?? ""}\n`,
+							);
 						}
 						// Other errors (network timeout, etc.) are ignored — try again on next event.
 					}

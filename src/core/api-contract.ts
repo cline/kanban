@@ -1145,6 +1145,47 @@ export const runtimeHookIngestResponseSchema = z.object({
 });
 export type RuntimeHookIngestResponse = z.infer<typeof runtimeHookIngestResponseSchema>;
 
+// ── Push notification subscription (input shape from frontend) ─────────────
+// Used by push-notification-service.ts and push-api.ts.
+export const runtimePushSubscriptionSchema = z.object({
+	endpoint: z.string(),
+	expirationTime: z.number().nullable().optional(),
+	keys: z.object({
+		p256dh: z.string(),
+		auth: z.string(),
+	}),
+});
+export type RuntimePushSubscription = z.infer<typeof runtimePushSubscriptionSchema>;
+
+// push.getVapidPublicKey — frontend uses this to subscribe.
+// Uses vapidPublicKey to stay consistent with the remote.push.getVapidPublicKey endpoint.
+export const runtimePushVapidPublicKeyResponseSchema = z.object({
+	vapidPublicKey: z.string(),
+});
+export type RuntimePushVapidPublicKeyResponse = z.infer<typeof runtimePushVapidPublicKeyResponseSchema>;
+
+export const runtimePushSubscribeRequestSchema = runtimePushSubscriptionSchema;
+export type RuntimePushSubscribeRequest = z.infer<typeof runtimePushSubscribeRequestSchema>;
+
+export const runtimePushSubscribeResponseSchema = z.object({ ok: z.boolean() });
+export type RuntimePushSubscribeResponse = z.infer<typeof runtimePushSubscribeResponseSchema>;
+
+export const runtimePushUnsubscribeRequestSchema = z.object({ endpoint: z.string() });
+export type RuntimePushUnsubscribeRequest = z.infer<typeof runtimePushUnsubscribeRequestSchema>;
+
+export const runtimePushUnsubscribeResponseSchema = z.object({ ok: z.boolean() });
+export type RuntimePushUnsubscribeResponse = z.infer<typeof runtimePushUnsubscribeResponseSchema>;
+
+export const runtimePushSendRequestSchema = z.object({
+	title: z.string(),
+	body: z.string(),
+	url: z.string().optional(),
+});
+export type RuntimePushSendRequest = z.infer<typeof runtimePushSendRequestSchema>;
+
+export const runtimePushSendResponseSchema = z.object({ ok: z.boolean() });
+export type RuntimePushSendResponse = z.infer<typeof runtimePushSendResponseSchema>;
+
 // ── Team chat ──────────────────────────────────────────────────────────────
 // Workspace-scoped inter-user chat. Messages are NOT sent to any AI model.
 // Uses the same sender attribution as task chat (meta.sender).
@@ -1224,33 +1265,13 @@ export const runtimePushSubscriptionRecordSchema = z.object({
 });
 export type RuntimePushSubscriptionRecord = z.infer<typeof runtimePushSubscriptionRecordSchema>;
 
-// POST remote.push.subscribe — register a browser push subscription.
-export const runtimePushSubscribeRequestSchema = z.object({
-	endpoint: z.string().url(),
-	keys: z.object({
-		p256dh: z.string(),
-		auth: z.string(),
-	}),
-});
-export type RuntimePushSubscribeRequest = z.infer<typeof runtimePushSubscribeRequestSchema>;
-
-export const runtimePushSubscribeResponseSchema = z.object({
+// remote.push.subscribe response has subscriptionId for the management UI.
+export const runtimeRemotePushSubscribeResponseSchema = z.object({
 	ok: z.boolean(),
 	subscriptionId: z.string().optional(),
 	error: z.string().optional(),
 });
-export type RuntimePushSubscribeResponse = z.infer<typeof runtimePushSubscribeResponseSchema>;
-
-// POST remote.push.unsubscribe — remove a subscription by endpoint.
-export const runtimePushUnsubscribeRequestSchema = z.object({
-	endpoint: z.string(),
-});
-export type RuntimePushUnsubscribeRequest = z.infer<typeof runtimePushUnsubscribeRequestSchema>;
-
-export const runtimePushUnsubscribeResponseSchema = z.object({
-	ok: z.boolean(),
-});
-export type RuntimePushUnsubscribeResponse = z.infer<typeof runtimePushUnsubscribeResponseSchema>;
+export type RuntimeRemotePushSubscribeResponse = z.infer<typeof runtimeRemotePushSubscribeResponseSchema>;
 
 // POST remote.push.updatePreferences — toggle per-event preferences.
 export const runtimePushUpdatePreferencesRequestSchema = z.object({
@@ -1269,12 +1290,6 @@ export const runtimePushListSubscriptionsResponseSchema = z.object({
 	subscriptions: z.array(runtimePushSubscriptionRecordSchema),
 });
 export type RuntimePushListSubscriptionsResponse = z.infer<typeof runtimePushListSubscriptionsResponseSchema>;
-
-// GET remote.push.getVapidPublicKey — VAPID public key for frontend subscription setup.
-export const runtimePushVapidPublicKeyResponseSchema = z.object({
-	vapidPublicKey: z.string(),
-});
-export type RuntimePushVapidPublicKeyResponse = z.infer<typeof runtimePushVapidPublicKeyResponseSchema>;
 
 // ── User and device management ─────────────────────────────────────────────
 // Role-based access control for remote users.

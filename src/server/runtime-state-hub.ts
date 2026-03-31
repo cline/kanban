@@ -36,8 +36,9 @@ export interface DisposeRuntimeStateWorkspaceOptions {
 export interface CreateRuntimeStateHubDependencies {
 	workspaceRegistry: Pick<
 		WorkspaceRegistry,
-		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot"
+		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot" | "getWorkspacePathById"
 	>;
+	sendPushNotification?: (payload: { title: string; body: string; url?: string; tag?: string }) => Promise<void>;
 }
 
 export interface RuntimeStateHub {
@@ -346,17 +347,39 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 
 	const broadcastTaskReadyForReview = (workspaceId: string, taskId: string) => {
 		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-		if (!runtimeClients || runtimeClients.size === 0) {
-			return;
+		if (runtimeClients && runtimeClients.size > 0) {
+			const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
+				type: "task_ready_for_review",
+				workspaceId,
+				taskId,
+				triggeredAt: Date.now(),
+			};
+			for (const client of runtimeClients) {
+				sendRuntimeStateMessage(client, payload);
+			}
 		}
-		const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
-			type: "task_ready_for_review",
-			workspaceId,
-			taskId,
-			triggeredAt: Date.now(),
-		};
-		for (const client of runtimeClients) {
-			sendRuntimeStateMessage(client, payload);
+
+		// Fire-and-forget push notification for offline users.
+		if (deps.sendPushNotification) {
+			const workspacePath = deps.workspaceRegistry.getWorkspacePathById(workspaceId);
+			if (workspacePath) {
+				void deps.workspaceRegistry
+					.buildWorkspaceStateSnapshot(workspaceId, workspacePath)
+					.then((state) => {
+						const task = state.board.columns.flatMap((col) => col.cards).find((card) => card.id === taskId);
+						if (task) {
+							return deps.sendPushNotification?.({
+								title: "Task Ready for Review",
+								body: task.prompt.slice(0, 80),
+								url: "/",
+								tag: `task-review-${taskId}`,
+							});
+						}
+					})
+					.catch((error: unknown) => {
+						process.stderr.write(`[push] Error sending task review notification: ${String(error)}\n`);
+					});
+			}
 		}
 	};
 

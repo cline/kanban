@@ -156,80 +156,52 @@ self.addEventListener("fetch", (event) => {
 	// Everything else (API calls, etc.): network only, no caching.
 });
 
-// ── Push notification receipt ─────────────────────────────────────────────
-//
-// Payload shape (from push-manager.ts):
-//   { title: string, body: string, data: { event, workspaceId, taskId?, url, ... } }
+// --- Push notifications ---
 
 self.addEventListener("push", (event) => {
-  let payload = {};
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch {
-    // Malformed payload — show a generic notification.
-  }
+	let payload = {};
+	try {
+		payload = event.data ? event.data.json() : {};
+	} catch {
+		// If data isn't valid JSON, fall through to defaults.
+	}
 
-  const title = payload.title || "Cline Kanban";
-  const body  = payload.body  || "";
-  const data  = payload.data  || {};
+	const title = payload.title || "Kanban";
+	const options = {
+		body: payload.body || "Something happened",
+		icon: "/assets/icon-192.png",
+		badge: "/assets/icon-192.png",
+		tag: payload.tag || "kanban-default",
+		renotify: true,
+		data: { url: payload.url || "/" },
+	};
 
-  // Use a stable tag so that multiple rapid notifications for the same task
-  // replace each other rather than stacking up in the notification tray.
-  const tag = [
-    "kanban",
-    data.event  || "notification",
-    data.workspaceId || "",
-    data.taskId || String(Date.now()),
-  ].filter(Boolean).join("-");
-
-  const options = {
-    body,
-    icon:  "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
-    data,
-    requireInteraction: true,   // stay visible until the user explicitly acts
-    tag,
-  };
-
-  event.waitUntil(self.registration.showNotification(title, options));
+	event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// ── Notification click ────────────────────────────────────────────────────
-//
-// When the user taps a notification:
-//   • If the Kanban app is already open in a tab → focus it and send a
-//     message so the frontend can navigate to the relevant task/workspace.
-//   • If the app is closed → open it at the deep-link URL from data.url.
-
 self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
+	event.notification.close();
+	const targetUrl = event.notification.data.url || "/";
 
-  const notifData = event.notification.data || {};
-  const targetUrl = notifData.url
-    ? String(notifData.url)
-    : "/";
-
-  const absoluteTarget = new URL(targetUrl, self.location.origin).href;
-
-  event.waitUntil(
-    self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((windowClients) => {
-        // Find an existing window on this origin.
-        for (const client of windowClients) {
-          if (new URL(client.url).origin === self.location.origin) {
-            // Post a message so the app can navigate to the right place.
-            client.postMessage({
-              type: "KANBAN_PUSH_CLICK",
-              data: notifData,
-            });
-            return client.focus();
-          }
-        }
-        // No open window — open one at the target URL.
-        return self.clients.openWindow(absoluteTarget);
-      })
-  );
+	event.waitUntil(
+		// On iOS standalone PWAs, openWindow() may not work. Try to find an
+		// existing window client and focus it first.
+		clients
+			.matchAll({ type: "window", includeUncontrolled: true })
+			.then((windowClients) => {
+				for (const client of windowClients) {
+					if (new URL(client.url).pathname === targetUrl && "focus" in client) {
+						return client.focus();
+					}
+				}
+				// Fallback: focus any existing window, or open a new one.
+				if (windowClients.length > 0 && "focus" in windowClients[0]) {
+					windowClients[0].navigate(targetUrl);
+					return windowClients[0].focus();
+				}
+				return clients.openWindow(targetUrl);
+			})
+	);
 });
 
 // ── Subscription refresh ──────────────────────────────────────────────────

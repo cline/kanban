@@ -27,10 +27,12 @@ import { createTerminalWebSocketBridge } from "../terminal/ws-server";
 import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router";
 import { createHooksApi } from "../trpc/hooks-api";
 import { createProjectsApi } from "../trpc/projects-api";
+import { createPushApi } from "../trpc/push-api";
 import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import { createLoginHandler } from "./login-handler";
+import { createPushNotificationService, type PushNotificationService } from "./push-notification-service";
 import { createRemoteAuth, isLocalRequest } from "./remote-auth";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";
@@ -58,11 +60,13 @@ export interface CreateRuntimeServerDependencies {
 	) => DisposeTrackedWorkspaceResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
 	pickDirectoryPathFromSystemDialog: () => string | null;
+	pushNotificationService?: PushNotificationService;
 }
 
 export interface RuntimeServer {
 	url: string;
 	close: () => Promise<void>;
+	sendPushNotification: (payload: { title: string; body: string; url?: string }) => Promise<void>;
 }
 
 function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
@@ -101,6 +105,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	// Initialise remote auth (opens/creates the SQLite DB, loads signing secret).
 	const remoteAuth = await createRemoteAuth();
+	const pushService = deps.pushNotificationService ?? (await createPushNotificationService());
+	const pushApi = createPushApi({ pushService });
 
 	const loginHandler = createLoginHandler({
 		remoteAuth,
@@ -404,6 +410,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				},
 			}),
 			broadcastTeamChatMessage: deps.runtimeStateHub.broadcastTeamChatMessage,
+			pushApi,
 		};
 	};
 
@@ -573,6 +580,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	return {
 		url,
+		sendPushNotification: pushService.sendPushNotification,
 		close: async () => {
 			await Promise.all(
 				Array.from(clineTaskSessionServiceByWorkspaceId.values()).map(async (service) => {

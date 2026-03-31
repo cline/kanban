@@ -580,6 +580,21 @@ interface TrashTaskExecutionResult {
 	alreadyInTrash: boolean;
 }
 
+function truncatePrompt(prompt: string): string {
+	return prompt.slice(0, 80);
+}
+
+async function sendPushNotificationQuietly(
+	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
+	payload: { title: string; body: string; url?: string },
+): Promise<void> {
+	try {
+		await runtimeClient.push.send.mutate(payload);
+	} catch {
+		// Fire-and-forget: do not let push failures affect task lifecycle.
+	}
+}
+
 async function trashTaskById(input: {
 	cwd: string;
 	taskId: string;
@@ -588,7 +603,17 @@ async function trashTaskById(input: {
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
 }): Promise<TrashTaskExecutionResult> {
 	await stopTaskRuntimeSession(input.runtimeClient, input.taskId);
-	const mutation = await mutateWorkspaceState(input.workspaceRepoPath, (latestState) => {
+
+	interface TrashMutationValue {
+		task: JsonRecord;
+		readyTaskIds: string[];
+		alreadyInTrash: boolean;
+		fromColumnId: string;
+		taskPrompt: string;
+		readyTaskPrompts: Record<string, string>;
+	}
+
+	const mutation = await mutateWorkspaceState<TrashMutationValue>(input.workspaceRepoPath, (latestState) => {
 		const latestRecord = findTaskRecord(latestState, input.taskId);
 		if (!latestRecord) {
 			throw new Error(`Task "${input.taskId}" was not found in workspace ${input.workspaceRepoPath}.`);
@@ -598,8 +623,11 @@ async function trashTaskById(input: {
 				board: latestState.board,
 				value: {
 					task: formatTaskRecord(latestState, latestRecord.task, latestRecord.columnId),
-					readyTaskIds: [] as string[],
+					readyTaskIds: [],
 					alreadyInTrash: true,
+					fromColumnId: "trash",
+					taskPrompt: latestRecord.task.prompt,
+					readyTaskPrompts: {},
 				},
 				save: false,
 			};
@@ -614,12 +642,24 @@ async function trashTaskById(input: {
 			...latestState,
 			board: trashed.board,
 		};
+
+		const readyTaskPrompts: Record<string, string> = {};
+		for (const readyTaskId of trashed.readyTaskIds) {
+			const readyCard = trashed.board.columns.flatMap((col) => col.cards).find((card) => card.id === readyTaskId);
+			if (readyCard) {
+				readyTaskPrompts[readyTaskId] = readyCard.prompt;
+			}
+		}
+
 		return {
 			board: trashed.board,
 			value: {
 				task: formatTaskRecord(nextState, trashed.task, "trash"),
 				readyTaskIds: trashed.readyTaskIds,
 				alreadyInTrash: false,
+				fromColumnId: latestRecord.columnId,
+				taskPrompt: trashed.task.prompt,
+				readyTaskPrompts,
 			},
 		};
 	});
@@ -639,6 +679,13 @@ async function trashTaskById(input: {
 		};
 	}
 
+	if (mutation.value.fromColumnId === "review") {
+		void sendPushNotificationQuietly(input.runtimeClient, {
+			title: "Task Completed",
+			body: truncatePrompt(mutation.value.taskPrompt),
+		});
+	}
+
 	const autoStartedTasks: JsonRecord[] = [];
 	for (const readyTaskId of mutation.value.readyTaskIds) {
 		const started = await startTask({
@@ -647,6 +694,15 @@ async function trashTaskById(input: {
 			projectPath: input.projectPath,
 		});
 		autoStartedTasks.push(started);
+
+		const readyPrompt = mutation.value.readyTaskPrompts?.[readyTaskId];
+		if (readyPrompt) {
+			void sendPushNotificationQuietly(input.runtimeClient, {
+				title: "Task Auto-Started",
+				body: truncatePrompt(readyPrompt),
+				url: "/",
+			});
+		}
 	}
 
 	const deletedWorkspace = await deleteTaskWorkspace(input.runtimeClient, input.taskId);

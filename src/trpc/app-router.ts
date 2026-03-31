@@ -203,8 +203,11 @@ import {
 	runtimeProjectRemoveResponseSchema,
 	runtimeProjectsResponseSchema,
 	runtimePushListSubscriptionsResponseSchema,
+	runtimePushSendRequestSchema,
+	runtimePushSendResponseSchema,
 	runtimePushSubscribeRequestSchema,
 	runtimePushSubscribeResponseSchema,
+	runtimePushSubscriptionSchema,
 	runtimePushUnsubscribeRequestSchema,
 	runtimePushUnsubscribeResponseSchema,
 	runtimePushUpdatePreferencesRequestSchema,
@@ -213,6 +216,7 @@ import {
 	runtimeRemoteDevicesListResponseSchema,
 	runtimeRemoteDevicesRevokeRequestSchema,
 	runtimeRemoteOkResponseSchema,
+	runtimeRemotePushSubscribeResponseSchema,
 	runtimeRemoteUsersBlockRequestSchema,
 	runtimeRemoteUsersListResponseSchema,
 	runtimeRemoteUsersSetRoleRequestSchema,
@@ -429,6 +433,7 @@ export interface RuntimeTrpcContext {
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
 	};
+	pushApi: import("../trpc/push-api").PushApi;
 	// Used by team chat procedures to broadcast new messages to WebSocket clients.
 	broadcastTeamChatMessage: (
 		workspaceId: string,
@@ -907,6 +912,30 @@ export const runtimeAppRouter = t.router({
 			}),
 	}),
 
+	push: t.router({
+		getVapidPublicKey: t.procedure.output(runtimePushVapidPublicKeyResponseSchema).query(({ ctx }) => {
+			return ctx.pushApi.getVapidPublicKey();
+		}),
+		subscribe: t.procedure
+			.input(runtimePushSubscriptionSchema)
+			.output(runtimePushSubscribeResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.pushApi.subscribe(input);
+			}),
+		unsubscribe: t.procedure
+			.input(runtimePushUnsubscribeRequestSchema)
+			.output(runtimePushUnsubscribeResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.pushApi.unsubscribe(input);
+			}),
+		send: t.procedure
+			.input(runtimePushSendRequestSchema)
+			.output(runtimePushSendResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.pushApi.send(input);
+			}),
+	}),
+
 	// Workspace-scoped inter-user team chat. Messages are NOT sent to any AI model.
 	teamChat: t.router({
 		// Returns all persisted team chat messages for the current workspace.
@@ -1060,7 +1089,7 @@ export const runtimeAppRouter = t.router({
 			// Register a push subscription. Requires a valid session (CallerIdentity).
 			subscribe: t.procedure
 				.input(runtimePushSubscribeRequestSchema)
-				.output(runtimePushSubscribeResponseSchema)
+				.output(runtimeRemotePushSubscribeResponseSchema)
 				.mutation(({ ctx, input }) => {
 					if (!ctx.caller) {
 						return { ok: false, error: "Sign in to enable push notifications." };
