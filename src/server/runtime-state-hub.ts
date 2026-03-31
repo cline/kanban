@@ -25,6 +25,7 @@ import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor";
 import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
+const PROJECTS_STREAM_BATCH_MS = 500;
 
 export interface DisposeRuntimeStateWorkspaceOptions {
 	disconnectClients?: boolean;
@@ -67,6 +68,8 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const clinePreviousSummaryByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const pendingTaskSessionSummariesByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const taskSessionBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
+	let pendingProjectsUpdatePreferredCurrentProjectId: string | null = null;
+	let projectsBroadcastTimer: NodeJS.Timeout | null = null;
 	const runtimeStateClientsByWorkspaceId = new Map<string, Set<WebSocket>>();
 	const runtimeStateClients = new Set<WebSocket>();
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
@@ -101,6 +104,11 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	};
 
 	const broadcastRuntimeProjectsUpdated = async (preferredCurrentProjectId: string | null): Promise<void> => {
+		if (projectsBroadcastTimer) {
+			clearTimeout(projectsBroadcastTimer);
+			projectsBroadcastTimer = null;
+			pendingProjectsUpdatePreferredCurrentProjectId = null;
+		}
 		if (runtimeStateClients.size === 0) {
 			return;
 		}
@@ -116,6 +124,23 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		} catch {
 			// Ignore transient project summary failures; next update will resync.
 		}
+	};
+
+	const queueRuntimeProjectsUpdated = (preferredCurrentProjectId: string | null) => {
+		if (preferredCurrentProjectId !== null) {
+			pendingProjectsUpdatePreferredCurrentProjectId = preferredCurrentProjectId;
+		}
+		if (projectsBroadcastTimer) {
+			return;
+		}
+		const timer = setTimeout(() => {
+			projectsBroadcastTimer = null;
+			const projectId = pendingProjectsUpdatePreferredCurrentProjectId;
+			pendingProjectsUpdatePreferredCurrentProjectId = null;
+			void broadcastRuntimeProjectsUpdated(projectId);
+		}, PROJECTS_STREAM_BATCH_MS);
+		timer.unref();
+		projectsBroadcastTimer = timer;
 	};
 
 	const broadcastClineMcpAuthStatusesUpdated = (statuses: RuntimeClineMcpServerAuthStatus[]) => {
@@ -163,7 +188,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				sendRuntimeStateMessage(client, payload);
 			}
 		}
-		void broadcastRuntimeProjectsUpdated(workspaceId);
+		queueRuntimeProjectsUpdated(workspaceId);
 	};
 
 	const queueTaskSessionSummaryBroadcast = (workspaceId: string, summary: RuntimeTaskSessionSummary) => {
@@ -557,6 +582,11 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				clearTimeout(timer);
 			}
 			taskSessionBroadcastTimersByWorkspaceId.clear();
+			if (projectsBroadcastTimer) {
+				clearTimeout(projectsBroadcastTimer);
+				projectsBroadcastTimer = null;
+			}
+			pendingProjectsUpdatePreferredCurrentProjectId = null;
 			pendingTaskSessionSummariesByWorkspaceId.clear();
 			for (const unsubscribe of terminalSummaryUnsubscribeByWorkspaceId.values()) {
 				try {

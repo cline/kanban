@@ -29,7 +29,7 @@ import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 // We still poll the open detail diff because line content can change without changing
 // the overall file or line counts that drive the shared workspace metadata stream.
-const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
+const DETAIL_DIFF_POLL_INTERVAL_MS = 3_000;
 const COLLAPSED_FILE_TREE_PANEL_BASIS = "33.3333%";
 const EXPANDED_FILE_TREE_PANEL_BASIS = "16%";
 const DEFAULT_AGENT_PANEL_RATIO = 0.4;
@@ -417,13 +417,15 @@ export function CardDetailView({
 					sessionSummary?.previousTurnCheckpoint?.commit ?? "none",
 				].join(":")
 			: null;
+	const shouldPollWorkspaceChanges =
+		isDocumentVisible && !gitHistoryPanel && selection.column.id !== "trash" && selection.column.id !== "backlog";
 	const { changes: workspaceChanges, isRuntimeAvailable } = useRuntimeWorkspaceChanges(
 		selection.card.id,
 		currentProjectId,
 		selection.card.baseRef,
 		diffMode,
 		taskWorkspaceStateVersion,
-		isDocumentVisible && !gitHistoryPanel && selection.column.id !== "trash" ? DETAIL_DIFF_POLL_INTERVAL_MS : null,
+		shouldPollWorkspaceChanges ? DETAIL_DIFF_POLL_INTERVAL_MS : null,
 		lastTurnViewKey,
 		true,
 	);
