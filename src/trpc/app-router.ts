@@ -49,6 +49,8 @@ import type {
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectsResponse,
+	RuntimePushSendRequest,
+	RuntimePushSendResponse,
 	RuntimePushSubscribeRequest,
 	RuntimePushSubscribeResponse,
 	RuntimePushUnsubscribeRequest,
@@ -131,6 +133,8 @@ import {
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
 	runtimeProjectsResponseSchema,
+	runtimePushSendRequestSchema,
+	runtimePushSendResponseSchema,
 	runtimePushSubscribeRequestSchema,
 	runtimePushSubscribeResponseSchema,
 	runtimePushUnsubscribeRequestSchema,
@@ -332,6 +336,7 @@ export interface RuntimeTrpcContext {
 		getVapidPublicKey: () => RuntimePushVapidPublicKeyResponse;
 		subscribe: (input: RuntimePushSubscribeRequest) => Promise<RuntimePushSubscribeResponse>;
 		unsubscribe: (input: RuntimePushUnsubscribeRequest) => Promise<RuntimePushUnsubscribeResponse>;
+		send: (input: RuntimePushSendRequest) => Promise<RuntimePushSendResponse>;
 	};
 }
 
@@ -658,6 +663,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimePushUnsubscribeResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.pushApi.unsubscribe(input);
+			}),
+		send: t.procedure
+			.input(runtimePushSendRequestSchema)
+			.output(runtimePushSendResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.pushApi.send(input);
 			}),
 	}),
 });

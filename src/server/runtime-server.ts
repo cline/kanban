@@ -28,7 +28,7 @@ import { createPushApi } from "../trpc/push-api";
 import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
-import { createPushNotificationService } from "./push-notification-service";
+import { createPushNotificationService, type PushNotificationService } from "./push-notification-service";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";
 
@@ -55,6 +55,7 @@ export interface CreateRuntimeServerDependencies {
 	) => DisposeTrackedWorkspaceResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
 	pickDirectoryPathFromSystemDialog: () => string | null;
+	pushNotificationService?: PushNotificationService;
 }
 
 export interface RuntimeServer {
@@ -170,7 +171,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		deps.workspaceRegistry.clearActiveWorkspace();
 	};
 
-	const pushService = await createPushNotificationService();
+	const pushService = deps.pushNotificationService ?? (await createPushNotificationService());
 	const pushApi = createPushApi({ pushService });
 
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {

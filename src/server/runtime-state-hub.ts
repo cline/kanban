@@ -21,6 +21,7 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import type { PushNotificationPayload } from "./push-notification-service";
 import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor";
 import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry";
 
@@ -34,8 +35,9 @@ export interface DisposeRuntimeStateWorkspaceOptions {
 export interface CreateRuntimeStateHubDependencies {
 	workspaceRegistry: Pick<
 		WorkspaceRegistry,
-		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot"
+		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot" | "getWorkspacePathById"
 	>;
+	sendPushNotification?: (payload: PushNotificationPayload) => Promise<void>;
 }
 
 export interface RuntimeStateHub {
@@ -324,17 +326,37 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 
 	const broadcastTaskReadyForReview = (workspaceId: string, taskId: string) => {
 		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
-		if (!runtimeClients || runtimeClients.size === 0) {
-			return;
+		if (runtimeClients && runtimeClients.size > 0) {
+			const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
+				type: "task_ready_for_review",
+				workspaceId,
+				taskId,
+				triggeredAt: Date.now(),
+			};
+			for (const client of runtimeClients) {
+				sendRuntimeStateMessage(client, payload);
+			}
 		}
-		const payload: RuntimeStateStreamTaskReadyForReviewMessage = {
-			type: "task_ready_for_review",
-			workspaceId,
-			taskId,
-			triggeredAt: Date.now(),
-		};
-		for (const client of runtimeClients) {
-			sendRuntimeStateMessage(client, payload);
+
+		if (deps.sendPushNotification) {
+			const workspacePath = deps.workspaceRegistry.getWorkspacePathById(workspaceId);
+			if (workspacePath) {
+				void deps.workspaceRegistry
+					.buildWorkspaceStateSnapshot(workspaceId, workspacePath)
+					.then((state) => {
+						const task = state.board.columns.flatMap((col) => col.cards).find((card) => card.id === taskId);
+						if (task) {
+							return deps.sendPushNotification?.({
+								title: "Task Ready for Review",
+								body: task.prompt.slice(0, 80),
+								url: "/",
+							});
+						}
+					})
+					.catch(() => {
+						// Fire-and-forget: do not let push failures affect task lifecycle.
+					});
+			}
 		}
 	};
 

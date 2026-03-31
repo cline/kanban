@@ -429,6 +429,7 @@ async function startServer(): Promise<{
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+		{ createPushNotificationService },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -437,6 +438,7 @@ async function startServer(): Promise<{
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
 		import("./server/workspace-registry.js"),
+		import("./server/push-notification-service.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
@@ -449,8 +451,10 @@ async function startServer(): Promise<{
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
 		},
 	});
+	const pushService = await createPushNotificationService();
 	runtimeStateHub = createRuntimeStateHub({
 		workspaceRegistry,
+		sendPushNotification: (payload) => pushService.sendPushNotification(payload),
 	});
 	const runtimeHub = runtimeStateHub;
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
@@ -485,6 +489,7 @@ async function startServer(): Promise<{
 		disposeWorkspace: disposeTrackedWorkspace,
 		collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog,
+		pushNotificationService: pushService,
 	});
 
 	const close = async () => {

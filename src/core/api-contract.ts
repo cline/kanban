@@ -1098,3 +1098,15 @@ export const runtimePushUnsubscribeResponseSchema = z.object({
 	ok: z.boolean(),
 });
 export type RuntimePushUnsubscribeResponse = z.infer<typeof runtimePushUnsubscribeResponseSchema>;
+
+export const runtimePushSendRequestSchema = z.object({
+	title: z.string(),
+	body: z.string(),
+	url: z.string().optional(),
+});
+export type RuntimePushSendRequest = z.infer<typeof runtimePushSendRequestSchema>;
+
+export const runtimePushSendResponseSchema = z.object({
+	ok: z.boolean(),
+});
+export type RuntimePushSendResponse = z.infer<typeof runtimePushSendResponseSchema>;

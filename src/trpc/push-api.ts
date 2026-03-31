@@ -1,4 +1,6 @@
 import type {
+	RuntimePushSendRequest,
+	RuntimePushSendResponse,
 	RuntimePushSubscribeRequest,
 	RuntimePushSubscribeResponse,
 	RuntimePushUnsubscribeRequest,
@@ -15,6 +17,7 @@ export interface PushApi {
 	getVapidPublicKey: () => RuntimePushVapidPublicKeyResponse;
 	subscribe: (input: RuntimePushSubscribeRequest) => Promise<RuntimePushSubscribeResponse>;
 	unsubscribe: (input: RuntimePushUnsubscribeRequest) => Promise<RuntimePushUnsubscribeResponse>;
+	send: (input: RuntimePushSendRequest) => Promise<RuntimePushSendResponse>;
 }
 
 export function createPushApi(deps: PushApiDependencies): PushApi {
@@ -28,6 +31,10 @@ export function createPushApi(deps: PushApiDependencies): PushApi {
 		},
 		unsubscribe: async (input) => {
 			await deps.pushService.unsubscribe(input.endpoint);
+			return { ok: true };
+		},
+		send: async (input) => {
+			await deps.pushService.sendPushNotification(input);
 			return { ok: true };
 		},
 	};
