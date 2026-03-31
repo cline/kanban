@@ -734,6 +734,13 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return cloneSummary(summary);
 	}
 
+	/**
+	 * Reports whether the task currently has a live PTY session that can receive input.
+	 */
+	hasActiveTaskSession(taskId: string): boolean {
+		return this.entries.get(taskId)?.active != null;
+	}
+
 	writeInput(taskId: string, data: Buffer): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {

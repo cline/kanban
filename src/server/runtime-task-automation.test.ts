@@ -155,6 +155,7 @@ function createWorkspaceState(): RuntimeWorkspaceStateResponse {
  */
 function createTerminalManager(initialSummaries: RuntimeTaskSessionSummary[]): {
 	manager: {
+		hasActiveTaskSession: (taskId: string) => boolean;
 		listSummaries: () => RuntimeTaskSessionSummary[];
 		onSummary: (listener: (summary: RuntimeTaskSessionSummary) => void) => () => void;
 	};
@@ -164,6 +165,7 @@ function createTerminalManager(initialSummaries: RuntimeTaskSessionSummary[]): {
 	const listeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
 	return {
 		manager: {
+			hasActiveTaskSession: (taskId) => summaries.some((summary) => summary.taskId === taskId),
 			listSummaries: () => [...summaries],
 			onSummary: (listener) => {
 				listeners.add(listener);
@@ -517,7 +519,7 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.close();
 	});
 
-	it("polls persisted workspaces before any terminal manager is created", async () => {
+	it("ignores persisted review summaries until a live session service is attached", async () => {
 		workspaceState.sessions = {
 			"task-1": createSummary("task-1", {
 				state: "awaiting_review",
@@ -534,6 +536,20 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.trackWorkspace("workspace-1");
 		await flushMicrotasks();
 
+		await vi.advanceTimersByTimeAsync(1_200);
+		await flushMicrotasks();
+
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+
+		const { manager } = createTerminalManager([
+			createSummary("task-1", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				updatedAt: 6,
+			}),
+		]);
+		automation.trackTerminalManager("workspace-1", manager as never);
+		await flushMicrotasks();
 		await vi.advanceTimersByTimeAsync(1_200);
 		await flushMicrotasks();
 

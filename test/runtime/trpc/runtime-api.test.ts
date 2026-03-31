@@ -12,6 +12,7 @@ const agentRegistryMocks = vi.hoisted(() => ({
 
 const taskWorktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
+	getTaskWorkspaceInfo: vi.fn(),
 }));
 
 const turnCheckpointMocks = vi.hoisted(() => ({
@@ -57,6 +58,7 @@ vi.mock("../../../src/terminal/agent-registry.js", () => ({
 
 vi.mock("../../../src/workspace/task-worktree.js", () => ({
 	resolveTaskCwd: taskWorktreeMocks.resolveTaskCwd,
+	getTaskWorkspaceInfo: taskWorktreeMocks.getTaskWorkspaceInfo,
 }));
 
 vi.mock("../../../src/workspace/turn-checkpoints.js", () => ({
@@ -204,6 +206,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		agentRegistryMocks.resolveAgentCommand.mockReset();
 		agentRegistryMocks.buildRuntimeConfigResponse.mockReset();
 		taskWorktreeMocks.resolveTaskCwd.mockReset();
+		taskWorktreeMocks.getTaskWorkspaceInfo.mockReset();
 		turnCheckpointMocks.captureTaskTurnCheckpoint.mockReset();
 		oauthMocks.addLocalProvider.mockReset();
 		oauthMocks.ensureCustomProvidersLoaded.mockReset();
@@ -237,6 +240,15 @@ describe("createRuntimeApi startTaskSession", () => {
 			ref: "refs/kanban/checkpoints/task-1/turn/1",
 			commit: "1111111",
 			createdAt: Date.now(),
+		});
+		taskWorktreeMocks.getTaskWorkspaceInfo.mockResolvedValue({
+			taskId: "task-1",
+			path: "/tmp/existing-worktree",
+			exists: true,
+			baseRef: "main",
+			branch: "task-1",
+			isDetached: false,
+			headCommit: "1111111",
 		});
 		oauthMocks.loginClineOAuth.mockResolvedValue({
 			access: "oauth-access",
@@ -999,6 +1011,76 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(stopResponse.ok).toBe(true);
 		expect(clineTaskSessionService.stopTaskSession).toHaveBeenCalledWith("task-1");
 		expect(terminalManager.stopTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("routes task git actions to the active terminal session before stale cline history", async () => {
+		const summary = createSummary({ agentId: "codex" });
+		const terminalManager = {
+			getSummary: vi.fn(() => summary),
+			hasActiveTaskSession: vi.fn(() => true),
+			writeInput: vi.fn(() => summary),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.getSummary.mockReturnValue(createSummary({ agentId: "cline", pid: null }));
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.runTaskGitAction(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-1", baseRef: "main", action: "commit", source: "manual" },
+		);
+
+		expect(response).toEqual({
+			ok: true,
+			summary,
+		});
+		expect(terminalManager.writeInput).toHaveBeenCalledWith("task-1", Buffer.from("commit", "utf8"));
+		expect(clineTaskSessionService.sendTaskSessionInput).not.toHaveBeenCalled();
+	});
+
+	it("rebinds persisted cline git actions when no active terminal session exists", async () => {
+		const summary = createSummary({ agentId: "cline", pid: null });
+		const terminalManager = {
+			getSummary: vi.fn(() => createSummary({ agentId: "cline", pid: null })),
+			hasActiveTaskSession: vi.fn(() => false),
+			writeInput: vi.fn(() => null),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.getSummary.mockReturnValue(null);
+		clineTaskSessionService.sendTaskSessionInput.mockResolvedValueOnce(null).mockResolvedValueOnce(summary);
+		clineTaskSessionService.rebindPersistedTaskSession.mockResolvedValue(summary);
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.runTaskGitAction(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-1", baseRef: "main", action: "pr", source: "manual" },
+		);
+
+		expect(response).toEqual({
+			ok: true,
+			summary,
+		});
+		expect(terminalManager.writeInput).not.toHaveBeenCalled();
+		expect(clineTaskSessionService.rebindPersistedTaskSession).toHaveBeenCalledWith("task-1");
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "pr", "act");
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "pr", "act");
 	});
 
 	it("returns cline chat messages and sends chat message through cline service", async () => {

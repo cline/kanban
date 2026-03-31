@@ -86,20 +86,22 @@ async function resolveExistingTaskCwdOrEnsure(options: {
 
 /**
  * Chooses whether a task git action should be delivered through the native Cline chat path.
+ * Live terminal sessions always win over stale persisted Cline history.
  */
 function shouldUseClineChatForTaskGitAction(input: {
+	hasActiveTerminalSession: boolean;
 	terminalSummaryAgentId: string | null;
 	clineSummaryAgentId: string | null;
 }): boolean {
+	if (input.hasActiveTerminalSession) {
+		return input.terminalSummaryAgentId === "cline";
+	}
 	if (input.clineSummaryAgentId === "cline") {
 		return true;
 	}
-	if (input.terminalSummaryAgentId === null) {
-		// When no terminal summary exists, prefer the Cline path first so persisted
-		// native sessions can be rebound before falling back to terminal I/O.
-		return true;
-	}
 	if (input.terminalSummaryAgentId === "cline") {
+		// Persisted Cline tasks can still be rebound from SDK artifacts even when the
+		// in-memory Cline service has not loaded a summary yet.
 		return true;
 	}
 	return false;
@@ -394,9 +396,11 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				});
 				const terminalSummary = terminalManager.getSummary(body.taskId);
 				const clineSummary = clineTaskSessionService.getSummary(body.taskId);
+				const hasActiveTerminalSession = terminalManager.hasActiveTaskSession(body.taskId);
 
 				if (
 					shouldUseClineChatForTaskGitAction({
+						hasActiveTerminalSession,
 						terminalSummaryAgentId: terminalSummary?.agentId ?? null,
 						clineSummaryAgentId: clineSummary?.agentId ?? null,
 					})

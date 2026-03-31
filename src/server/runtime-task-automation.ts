@@ -98,15 +98,18 @@ function selectNewestTaskSessionSummary(
 }
 
 /**
- * Merges the persisted session map with the latest live terminal and Cline summaries.
+ * Collects the session summaries that automation can act on immediately.
+ * Disk-only terminal snapshots are excluded because they cannot receive input after restart.
  */
-function mergeLiveTaskSessionSummaries(
-	persistedSessions: Record<string, RuntimeTaskSessionSummary>,
+function collectAutomationTaskSessionSummaries(
 	terminalManager: TerminalSessionManager | null,
 	clineTaskSessionService: ClineTaskSessionService | null,
 ): Record<string, RuntimeTaskSessionSummary> {
-	const mergedSessions: Record<string, RuntimeTaskSessionSummary> = { ...persistedSessions };
+	const mergedSessions: Record<string, RuntimeTaskSessionSummary> = {};
 	for (const summary of terminalManager?.listSummaries() ?? []) {
+		if (!terminalManager?.hasActiveTaskSession(summary.taskId)) {
+			continue;
+		}
 		const newest = selectNewestTaskSessionSummary(mergedSessions[summary.taskId] ?? null, summary);
 		if (newest) {
 			mergedSessions[summary.taskId] = newest;
@@ -587,8 +590,7 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 				if (!persistedState) {
 					return;
 				}
-				const liveSessions = mergeLiveTaskSessionSummaries(
-					persistedState.sessions,
+				const liveSessions = collectAutomationTaskSessionSummaries(
 					entry.terminalManager,
 					entry.clineTaskSessionService,
 				);
