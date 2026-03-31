@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createSubAgentPlugin, createTeamEventSink } from "../../src/agent-sync/kanban-agent-sync";
-import { loadWorkspaceContext, loadWorkspaceState } from "../../src/state/workspace-state";
+import { addTaskToColumn } from "../../src/core/task-board-mutations";
+import { loadWorkspaceContext, loadWorkspaceState, mutateWorkspaceState } from "../../src/state/workspace-state";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
@@ -234,6 +235,50 @@ describe.sequential("kanban agent sync", () => {
 						]),
 					);
 					expect(onBoardChanged).toHaveBeenCalledTimes(3);
+				});
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("cleans up legacy split-model run cards when new team events arrive", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-team-run-cleanup-");
+			try {
+				const workspacePath = join(sandboxRoot, "project");
+				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
+				await loadWorkspaceContext(workspacePath);
+
+				const onBoardChanged = vi.fn(async () => undefined);
+				const onTeamEvent = createTeamEventSink(workspacePath, { onBoardChanged });
+
+				await mutateWorkspaceState(workspacePath, (state) => ({
+					board: addTaskToColumn(
+						state.board,
+						"in_progress",
+						{
+							taskId: "team-run-run-00001",
+							prompt: "Legacy run card",
+							baseRef: "main",
+							startInPlanMode: false,
+						},
+						() => "team-run-run-00001",
+					).board,
+					value: null,
+				}));
+
+				onTeamEvent(createTeammateSpawnedEvent("models-investigator"));
+
+				await waitForAssertion(async () => {
+					const workspaceState = await loadWorkspaceState(workspacePath);
+					expect(
+						workspaceState.board.columns.flatMap((column) => column.cards.map((card) => card.id)),
+					).not.toContain("team-run-run-00001");
+					expect(workspaceState.board.columns.find((column) => column.id === "backlog")?.cards).toEqual(
+						expect.arrayContaining([expect.objectContaining({ id: "teammate-models-investigator" })]),
+					);
 				});
 			} finally {
 				cleanup();

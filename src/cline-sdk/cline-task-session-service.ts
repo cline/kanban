@@ -44,6 +44,7 @@ import {
 } from "./cline-watcher-registry";
 import { SDK_DEFAULT_MODEL_ID, SDK_DEFAULT_PROVIDER_ID } from "./sdk-provider-boundary";
 import {
+	type ClineSdkAgentEvent,
 	type ClineSdkPersistedMessage,
 	type ClineSdkSlashCommand,
 	listClineSdkWorkflowSlashCommands,
@@ -97,6 +98,13 @@ export interface ClineTaskSessionService {
 			workspacePath?: string | null;
 		},
 	): Promise<RuntimeTaskSessionSummary | null>;
+	ingestSyntheticTaskEvent(
+		taskId: string,
+		input: {
+			workspacePath?: string | null;
+			event: { type: string; [key: string]: unknown };
+		},
+	): RuntimeTaskSessionSummary | null;
 	dispose(): Promise<void>;
 }
 
@@ -737,6 +745,52 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return cloneSummary(summary);
 	}
 
+	ingestSyntheticTaskEvent(
+		taskId: string,
+		input: {
+			workspacePath?: string | null;
+			event: { type: string; [key: string]: unknown };
+		},
+	): RuntimeTaskSessionSummary | null {
+		const entry = this.ensureTaskEntry(taskId, input.workspacePath ?? null);
+		const event = input.event;
+		switch (event.type) {
+			case "teammate_spawned":
+				return this.emitTeammateStatus(entry, taskId, "idle", "Teammate ready");
+			case "teammate_shutdown":
+				return this.emitTeammateStatus(entry, taskId, "interrupted", "Teammate stopped");
+			case "run_queued":
+				return this.emitTeammateStatus(entry, taskId, "idle", "Run queued");
+			case "run_started":
+			case "run_progress":
+				return this.emitTeammateStatus(
+					entry,
+					taskId,
+					"running",
+					this.readTeammateProgressText(event) ?? "Agent active",
+				);
+			case "run_completed":
+			case "run_cancelled":
+				return this.handleSyntheticRunEnd(entry, taskId, event, false);
+			case "run_failed":
+			case "run_interrupted":
+				return this.handleSyntheticRunEnd(entry, taskId, event, true);
+			case "task_start":
+				return this.emitTeammateStatus(
+					entry,
+					taskId,
+					"running",
+					this.readTeammateProgressText(event) ?? "Agent active",
+				);
+			case "task_end":
+				return this.handleTeammateTaskEnd(entry, taskId, event);
+			case "agent_event":
+				return this.handleTeammateAgentEvent(entry, taskId, event);
+			default:
+				return cloneSummary(entry.summary);
+		}
+	}
+
 	async dispose(): Promise<void> {
 		await this.sessionRuntime.dispose();
 		this.pendingTurnCancelTaskIds.clear();
@@ -808,6 +862,156 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		}
 		const lease = await leasePromise;
 		return lease.setup;
+	}
+
+	private ensureTaskEntry(taskId: string, workspacePath: string | null): ClineTaskSessionEntry {
+		const existingEntry = this.messageRepository.getTaskEntry(taskId);
+		if (existingEntry) {
+			if (!existingEntry.summary.workspacePath && workspacePath) {
+				const updatedSummary = updateSummary(existingEntry, {
+					workspacePath,
+				});
+				this.emitSummary(updatedSummary);
+			}
+			return existingEntry;
+		}
+		const entry: ClineTaskSessionEntry = {
+			summary: {
+				...createDefaultSummary(taskId),
+				workspacePath,
+			},
+			messages: [],
+			activeAssistantMessageId: null,
+			activeReasoningMessageId: null,
+			toolMessageIdByToolCallId: new Map<string, string>(),
+			toolInputByToolCallId: new Map<string, unknown>(),
+		};
+		this.messageRepository.setTaskEntry(taskId, entry);
+		this.emitSummary(entry.summary);
+		return entry;
+	}
+
+	private emitTeammateStatus(
+		entry: ClineTaskSessionEntry,
+		taskId: string,
+		state: RuntimeTaskSessionSummary["state"],
+		activityText: string,
+	): RuntimeTaskSessionSummary {
+		const summary = updateSummary(entry, {
+			state,
+			reviewReason: state === "awaiting_review" ? "attention" : state === "interrupted" ? "interrupted" : null,
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText,
+				toolName: null,
+				toolInputSummary: null,
+				finalMessage: activityText,
+				hookEventName: "team_event",
+				notificationType: null,
+				source: "cline-sdk",
+			},
+		});
+		this.emitSummary(summary);
+		return summary;
+	}
+
+	private readTeammateProgressText(event: { type: string; [key: string]: unknown }): string | null {
+		if (typeof event.message === "string" && event.message.trim()) {
+			return event.message.trim();
+		}
+		if (typeof event["message"] === "string" && event["message"].trim()) {
+			return event["message"].trim();
+		}
+		if (typeof event["reason"] === "string" && event["reason"].trim()) {
+			return event["reason"].trim();
+		}
+		if ("run" in event && event.run && typeof event.run === "object") {
+			const run = event.run as { currentActivity?: unknown; message?: unknown; lastProgressMessage?: unknown };
+			if (typeof run.currentActivity === "string" && run.currentActivity.trim()) {
+				return run.currentActivity.trim();
+			}
+			if (typeof run.lastProgressMessage === "string" && run.lastProgressMessage.trim()) {
+				return run.lastProgressMessage.trim();
+			}
+			if (typeof run.message === "string" && run.message.trim()) {
+				return run.message.trim();
+			}
+		}
+		return null;
+	}
+
+	private handleTeammateTaskEnd(
+		entry: ClineTaskSessionEntry,
+		taskId: string,
+		event: { type: string; [key: string]: unknown },
+	): RuntimeTaskSessionSummary {
+		const error =
+			"error" in event && event.error instanceof Error
+				? event.error.message
+				: typeof event.error === "string"
+					? event.error
+					: null;
+		const finishReason =
+			"result" in event &&
+			event.result &&
+			typeof event.result === "object" &&
+			"finishReason" in event.result &&
+			typeof (event.result as { finishReason?: unknown }).finishReason === "string"
+				? (event.result as { finishReason: string }).finishReason || "completed"
+				: "completed";
+		const statusMessage = error ? `[error] ${error}` : `[done] ${finishReason}`;
+		const systemMessage = createMessage(taskId, "system", statusMessage);
+		entry.messages.push(systemMessage);
+		this.emitMessage(taskId, systemMessage);
+		return this.emitTeammateStatus(entry, taskId, error ? "awaiting_review" : "idle", statusMessage);
+	}
+
+	private handleSyntheticRunEnd(
+		entry: ClineTaskSessionEntry,
+		taskId: string,
+		event: { type: string; [key: string]: unknown },
+		failed: boolean,
+	): RuntimeTaskSessionSummary {
+		const statusMessage =
+			this.readTeammateProgressText(event) ??
+			(failed ? `[error] ${event.type}` : `[done] ${event.type.replace("run_", "").replaceAll("_", " ")}`);
+		const systemMessage = createMessage(taskId, "system", statusMessage);
+		entry.messages.push(systemMessage);
+		this.emitMessage(taskId, systemMessage);
+		return this.emitTeammateStatus(entry, taskId, failed ? "awaiting_review" : "idle", statusMessage);
+	}
+
+	private handleTeammateAgentEvent(
+		entry: ClineTaskSessionEntry,
+		taskId: string,
+		event: { type: string; [key: string]: unknown },
+	): RuntimeTaskSessionSummary {
+		const agentEvent = event.event && typeof event.event === "object" ? (event.event as ClineSdkAgentEvent) : null;
+		if (!agentEvent) {
+			return cloneSummary(entry.summary);
+		}
+		let latestSummary = cloneSummary(entry.summary);
+		applyClineSessionEvent({
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: taskId,
+					event: agentEvent,
+				},
+			},
+			taskId,
+			entry,
+			pendingTurnCancelTaskIds: this.pendingTurnCancelTaskIds,
+			emitSummary: (summary) => {
+				latestSummary = summary;
+				this.emitSummary(summary);
+			},
+			emitMessage: (taskIdFromEvent, message) => {
+				this.emitMessage(taskIdFromEvent, message);
+			},
+		});
+		return latestSummary;
 	}
 
 	private resolveTaskId(taskId: string): string {

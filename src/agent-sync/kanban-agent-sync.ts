@@ -14,7 +14,7 @@
 //   Object.assign(sessionService, sync.sessionServicePlugin);
 
 import type { RuntimeBoardCard, RuntimeBoardColumnId, RuntimeBoardData } from "../core/api-contract";
-import { addTaskToColumn, moveTaskToColumn, updateTask } from "../core/task-board-mutations";
+import { addTaskToColumn, deleteTasksFromBoard, moveTaskToColumn, updateTask } from "../core/task-board-mutations";
 import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state";
 
 // Minimal local shapes — mirrors @clinebot/agents types without a direct import.
@@ -24,6 +24,9 @@ import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-s
 const TEAM_TASK_UPDATED = "team_task_updated" as const;
 const TEAMMATE_SPAWNED = "teammate_spawned" as const;
 const TEAMMATE_SHUTDOWN = "teammate_shutdown" as const;
+const TASK_START = "task_start" as const;
+const TASK_END = "task_end" as const;
+const AGENT_EVENT = "agent_event" as const;
 const RUN_QUEUED = "run_queued" as const;
 const RUN_STARTED = "run_started" as const;
 const RUN_PROGRESS = "run_progress" as const;
@@ -114,6 +117,7 @@ type OpaqueTeamEvent = { type: string; [key: string]: unknown };
 
 const AGENT_SYNC_CARD_PREFIX = "agent-";
 const TEAMMATE_SYNC_CARD_PREFIX = "teammate-";
+const LEGACY_TEAM_RUN_SYNC_CARD_PREFIX = "team-run-";
 
 /**
  * Formats the synthetic task id used for spawned sub-agent cards.
@@ -128,6 +132,38 @@ function makeAgentCardId(agentId: string): string {
  */
 function makeTeammateCardId(agentId: string): string {
 	return `${TEAMMATE_SYNC_CARD_PREFIX}${agentId.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 40)}`;
+}
+
+/**
+ * Resolves the synthetic task id associated with a team event when available.
+ */
+function getSyntheticTaskIdForEvent(event: OpaqueTeamEvent): string | null {
+	switch (event.type) {
+		case TEAMMATE_SPAWNED:
+		case TEAMMATE_SHUTDOWN:
+		case TASK_START:
+		case TASK_END:
+		case AGENT_EVENT: {
+			const agentId = typeof event.agentId === "string" ? event.agentId.trim() : "";
+			return agentId ? makeTeammateCardId(agentId) : null;
+		}
+		case RUN_QUEUED:
+		case RUN_STARTED:
+		case RUN_PROGRESS:
+		case RUN_COMPLETED:
+		case RUN_FAILED:
+		case RUN_CANCELLED:
+		case RUN_INTERRUPTED: {
+			const run = event.run;
+			const agentId =
+				run && typeof run === "object" && "agentId" in run && typeof run.agentId === "string"
+					? run.agentId.trim()
+					: "";
+			return agentId ? makeTeammateCardId(agentId) : null;
+		}
+		default:
+			return null;
+	}
 }
 
 /**
@@ -147,6 +183,23 @@ function findCard(
 		}
 	}
 	return null;
+}
+
+/**
+ * Removes stale split-model delegated run cards so the one-card teammate model stays consistent.
+ */
+function cleanupLegacyTeamRunCards(board: RuntimeBoardData): { board: RuntimeBoardData; changed: boolean } {
+	const legacyTaskIds = board.columns.flatMap((column) =>
+		column.cards.filter((card) => card.id.startsWith(LEGACY_TEAM_RUN_SYNC_CARD_PREFIX)).map((card) => card.id),
+	);
+	if (legacyTaskIds.length === 0) {
+		return { board, changed: false };
+	}
+	const result = deleteTasksFromBoard(board, legacyTaskIds);
+	return {
+		board: result.board,
+		changed: result.deleted,
+	};
 }
 
 /**
@@ -230,7 +283,8 @@ export function createTeamEventSink(
 			try {
 				const baseRef = await getBaseRef();
 				const mutation = await mutateWorkspaceState(workspacePath, (state) => {
-					const { board } = state;
+					const cleanup = cleanupLegacyTeamRunCards(state.board);
+					const board = cleanup.board;
 
 					switch (event.type) {
 						case TEAM_TASK_UPDATED: {
@@ -242,7 +296,9 @@ export function createTeamEventSink(
 								prompt: buildTeamTaskPrompt(task),
 								baseRef,
 							});
-							return result.changed ? { board: result.board, value: null } : { board, value: null, save: false };
+							return result.changed || cleanup.changed
+								? { board: result.board, value: null }
+								: { board, value: null, save: false };
 						}
 						case TEAMMATE_SPAWNED: {
 							const teammateEvent = event as TeammateSpawnedEvent;
@@ -254,7 +310,9 @@ export function createTeamEventSink(
 								prompt: buildTeammatePrompt(teammateEvent),
 								baseRef,
 							});
-							return result.changed ? { board: result.board, value: null } : { board, value: null, save: false };
+							return result.changed || cleanup.changed
+								? { board: result.board, value: null }
+								: { board, value: null, save: false };
 						}
 						case TEAMMATE_SHUTDOWN: {
 							const shutdownEvent = event as TeammateShutdownEvent;
@@ -269,7 +327,9 @@ export function createTeamEventSink(
 								prompt: buildTeammateShutdownPrompt(existing.card.prompt, shutdownEvent),
 								baseRef,
 							});
-							return result.changed ? { board: result.board, value: null } : { board, value: null, save: false };
+							return result.changed || cleanup.changed
+								? { board: result.board, value: null }
+								: { board, value: null, save: false };
 						}
 						case RUN_QUEUED:
 						case RUN_STARTED:
@@ -291,10 +351,12 @@ export function createTeamEventSink(
 								prompt: buildTeammateRunPrompt(existing.card.prompt, runEvent),
 								baseRef,
 							});
-							return result.changed ? { board: result.board, value: null } : { board, value: null, save: false };
+							return result.changed || cleanup.changed
+								? { board: result.board, value: null }
+								: { board, value: null, save: false };
 						}
 						default:
-							return { board, value: null, save: false };
+							return cleanup.changed ? { board, value: null } : { board, value: null, save: false };
 					}
 				});
 				if (event.type === TEAMMATE_SPAWNED) {
@@ -308,6 +370,14 @@ export function createTeamEventSink(
 							workspacePath,
 						});
 					}
+				}
+				const syntheticTaskId = getSyntheticTaskIdForEvent(event);
+				if (syntheticTaskId) {
+					await options.onTeammateEvent?.({
+						taskId: syntheticTaskId,
+						event,
+						workspacePath,
+					});
 				}
 				await notifyBoardChanged(mutation.saved, options);
 			} catch {
@@ -355,6 +425,7 @@ function buildTeamTaskPrompt(task: TeamTask): string {
 function teamRunStatusToColumn(eventType: TeamRunEvent["type"]): RuntimeBoardColumnId {
 	switch (eventType) {
 		case RUN_QUEUED:
+			return "in_progress";
 		case RUN_STARTED:
 		case RUN_PROGRESS:
 			return "in_progress";
@@ -468,6 +539,7 @@ interface KanbanAgentSyncNotificationOptions {
 		conversationId: string;
 		workspacePath: string;
 	}) => Promise<void> | void;
+	onTeammateEvent?: (input: { taskId: string; event: OpaqueTeamEvent; workspacePath: string }) => Promise<void> | void;
 }
 
 /**
@@ -608,10 +680,11 @@ export function createKanbanAgentSync(options: {
 		conversationId: string;
 		workspacePath: string;
 	}) => Promise<void> | void;
+	onTeammateEvent?: (input: { taskId: string; event: OpaqueTeamEvent; workspacePath: string }) => Promise<void> | void;
 }): KanbanAgentSync {
-	const { workspacePath, onBoardChanged, onTeammateDiscovered } = options;
+	const { workspacePath, onBoardChanged, onTeammateDiscovered, onTeammateEvent } = options;
 	return {
-		onTeamEvent: createTeamEventSink(workspacePath, { onBoardChanged, onTeammateDiscovered }),
+		onTeamEvent: createTeamEventSink(workspacePath, { onBoardChanged, onTeammateDiscovered, onTeammateEvent }),
 		sessionServicePlugin: createSubAgentPlugin(workspacePath, { onBoardChanged }),
 	};
 }

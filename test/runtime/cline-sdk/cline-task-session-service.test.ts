@@ -649,6 +649,36 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("streams teammate agent events into the synthetic teammate task chat", async () => {
+		const { service } = createTrackedService();
+
+		service.ingestSyntheticTaskEvent("teammate-models-analyst", {
+			workspacePath: "/tmp/worktree",
+			event: {
+				type: "task_start",
+				agentId: "models-analyst",
+				message: "Investigate the models directory",
+			},
+		});
+		service.ingestSyntheticTaskEvent("teammate-models-analyst", {
+			workspacePath: "/tmp/worktree",
+			event: {
+				type: "agent_event",
+				agentId: "models-analyst",
+				event: {
+					type: "content_start",
+					contentType: "text",
+					accumulated: "I am reading the models registry now.",
+				},
+			},
+		});
+
+		expect(
+			(await service.loadTaskSessionMessages("teammate-models-analyst")).map((message) => message.content),
+		).toContain("I am reading the models registry now.");
+		expect(service.getSummary("teammate-models-analyst")?.state).toBe("running");
+	});
+
 	it("defaults to the SDK cline provider when provider is not explicitly configured", async () => {
 		const { service, runtime } = createTrackedService();
 

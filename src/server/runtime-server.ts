@@ -137,6 +137,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 						workspacePath,
 					});
 				},
+				onTeammateEvent: async ({ taskId, event, workspacePath }) => {
+					service?.ingestSyntheticTaskEvent(taskId, {
+						event,
+						workspacePath,
+					});
+				},
 			});
 			service = createInMemoryClineTaskSessionService({
 				watcherRegistry: clineWatcherRegistry,
