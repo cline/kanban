@@ -81,7 +81,7 @@
   },
   "dependencies": {
     "@clinebot/agents": "^0.0.23",
-    "@clinebot/core":  "^0.0.23",
+    "@clinebot/core": "^0.0.23",
     "@clinebot/llms": "^0.0.23",
     "@clinebot/shared": "^0.0.23",
     "@modelcontextprotocol/sdk": "^1.27.1",
