@@ -84,6 +84,33 @@ describe("renderAppendSystemPrompt", () => {
 		expect(rendered).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
 		expect(rendered).not.toContain("droid mcp add linear https://mcp.linear.app/mcp --type http");
 	});
+
+	it("renders the Agent Teams section", () => {
+		const rendered = renderAppendSystemPrompt("kanban");
+		expect(rendered).toContain("# Agent Teams");
+		expect(rendered).toContain("team_spawn_teammate");
+		expect(rendered).toContain("team_run_task");
+		expect(rendered).toContain("team_task");
+		expect(rendered).toContain("team_send_message");
+		expect(rendered).toContain("team_log_update");
+		expect(rendered).toContain("team_await_run");
+		expect(rendered).toContain("only Cline tasks support teams");
+		expect(rendered).toContain("teammate-*");
+	});
+
+	it("renders the Available Agents section with all catalog entries", () => {
+		const rendered = renderAppendSystemPrompt("kanban");
+		expect(rendered).toContain("# Available Agents");
+		// Cline is always shown as installed and teams-supporting
+		expect(rendered).toContain("**Cline**");
+		expect(rendered).toContain("teams: yes");
+		// Other catalog entries are present
+		expect(rendered).toContain("Claude Code");
+		expect(rendered).toContain("OpenAI Codex");
+		expect(rendered).toContain("teams: no");
+		// Recommendation note
+		expect(rendered).toContain("Cline is the only supported choice");
+	});
 });
 
 describe("resolveHomeAgentAppendSystemPrompt", () => {
@@ -105,6 +132,9 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		expect(prompt).toContain("Current home agent: `codex`");
 		expect(prompt).toContain("codex mcp add linear --url https://mcp.linear.app/mcp");
 		expect(prompt).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
+		// Agent Teams and Available Agents sections are present in all home agent prompts
+		expect(prompt).toContain("# Agent Teams");
+		expect(prompt).toContain("# Available Agents");
 	});
 
 	it("returns active-agent guidance for droid home sidebar sessions", () => {

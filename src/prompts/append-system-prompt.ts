@@ -3,9 +3,11 @@ import { realpathSync } from "node:fs";
 import packageJson from "../../package.json" with { type: "json" };
 
 import type { RuntimeAgentId } from "../core/api-contract";
+import { RUNTIME_AGENT_CATALOG } from "../core/agent-catalog";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveKanbanCommandParts } from "../core/kanban-command";
 import { buildShellCommandLine } from "../core/shell";
+import { detectInstalledCommands } from "../terminal/agent-registry";
 import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update";
 
 const DEFAULT_COMMAND_PREFIX = "kanban";
@@ -59,6 +61,67 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 		default:
 			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
 	}
+}
+
+function renderAgentTeamsSection(): string {
+	return `# Agent Teams
+
+When a Cline task runs, it has access to team tools from the @clinebot/agents SDK team runtime. These tools let the agent spawn teammates, delegate work, manage a shared task list, and coordinate via mailbox — all from within a single task session.
+
+## When to structure tasks for teams
+
+Use agent teams for complex multi-step work that benefits from parallel execution or specialization:
+- Large refactors touching multiple modules
+- Features with separate backend, frontend, and test concerns
+- Code-then-review pipelines where a separate agent checks the work
+- Any workflow where tasks can run concurrently to save wall-clock time
+
+## Key team tools available to Cline tasks
+
+- \`team_spawn_teammate(agentId, rolePrompt)\` — spawn a teammate with a specialization
+- \`team_task(action: create|list|claim|complete|block, ...)\` — manage a shared task list
+- \`team_run_task(agentId, task, runMode: sync|async)\` — delegate a run to a teammate
+- \`team_send_message\` / \`team_broadcast\` — inter-agent communication
+- \`team_log_update\` — mission log for progress tracking
+- \`team_await_run\` / \`team_await_all_runs\` — wait for async teammate runs
+
+## How teammates appear on the board
+
+When an agent uses teams, teammate lifecycle events create synthetic cards on the Kanban board grouped under the parent task (prefixed \`teammate-*\`). The board shows each teammate's role and current status.
+
+## Prompt patterns for team tasks
+
+When creating a task prompt that should leverage teams, use one of these patterns:
+
+**Worker-reviewer:** "Use a teammate as a reviewer: spawn a teammate with a 'reviewer' role, implement the feature, then run team_run_task to have the reviewer check your work."
+
+**Parallel:** "Use agent teams to parallelize this work. Spawn teammates for [concern A] and [concern B], assign tasks, run them async, await all."
+
+**Pipeline:** "Spawn a planning teammate to break down the work, then execute each sub-task and have a reviewer teammate check the result."
+
+## Important: only Cline tasks support teams
+
+Other agents (Claude Code, Codex, Gemini, OpenCode, Droid) do not have access to team tools. Only recommend team patterns when the active task agent is Cline.`;
+}
+
+function renderAvailableAgentsSection(installedBinaries: Set<string>): string {
+	const lines: string[] = ["# Available Agents", "", "Agents supported by Kanban for running tasks:", ""];
+
+	for (const entry of RUNTIME_AGENT_CATALOG) {
+		const installed = entry.id === "cline" || installedBinaries.has(entry.binary);
+		const installStatus = installed ? "installed" : "not detected on PATH";
+		const teamsTag = entry.supportsTeams ? " · **teams: yes**" : " · teams: no";
+		lines.push(`- **${entry.label}** (\`${entry.id}\`) — ${installStatus}${teamsTag}`);
+		lines.push(`  Capabilities: ${entry.capabilities.join(", ")}`);
+		if (!installed) {
+			lines.push(`  Install: ${entry.installUrl}`);
+		}
+	}
+
+	lines.push("");
+	lines.push("Use this list to recommend the best agent for a given task. For tasks requiring team coordination, Cline is the only supported choice.");
+
+	return lines.join("\n");
 }
 
 export function resolveAppendSystemPromptCommandPrefix(
@@ -117,6 +180,7 @@ export function resolveAppendSystemPromptCommandPrefix(
 export function renderAppendSystemPrompt(commandPrefix: string, options: RenderAppendSystemPromptOptions = {}): string {
 	const kanbanCommand = commandPrefix.trim() || DEFAULT_COMMAND_PREFIX;
 	const selectedAgentId = options.agentId ?? null;
+	const installedBinaries = new Set(detectInstalledCommands());
 	return `# Kanban Sidebar
 
 You are the Kanban sidebar agent for this workspace. Help the user interact with their Kanban board directly from this side panel. When the user asks to add tasks, create tasks, break work down, link tasks, or start tasks, prefer using the Kanban CLI yourself instead of describing manual steps.
@@ -288,6 +352,10 @@ Parameters:
 
 - Prefer \`task list\` first when task IDs or dependency IDs are needed.
 - To create multiple linked tasks, create tasks first, then call \`task link\` for each dependency edge.
+
+${renderAgentTeamsSection()}
+
+${renderAvailableAgentsSection(installedBinaries)}
 `;
 }
 
