@@ -58,6 +58,7 @@ export interface CreateRuntimeServerDependencies {
 
 export interface RuntimeServer {
 	url: string;
+	ensureClineTaskSessionService: (workspaceId: string, workspacePath: string) => Promise<void>;
 	close: () => Promise<void>;
 }
 
@@ -170,6 +171,16 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			});
 		}
 		deps.workspaceRegistry.clearActiveWorkspace();
+	};
+
+	/**
+	 * Ensures a workspace-scoped native Cline service exists so automation can rebind persisted sessions after restart.
+	 */
+	const ensureClineTaskSessionService = async (workspaceId: string, workspacePath: string): Promise<void> => {
+		await getScopedClineTaskSessionService({
+			workspaceId,
+			workspacePath,
+		});
 	};
 
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
@@ -319,6 +330,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	return {
 		url,
+		ensureClineTaskSessionService,
 		close: async () => {
 			await Promise.all(
 				Array.from(clineTaskSessionServiceByWorkspaceId.values()).map(async (service) => {

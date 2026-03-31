@@ -439,12 +439,18 @@ async function startServer(): Promise<{
 		getWorkspacePathById: workspaceRegistry.getWorkspacePathById,
 		taskGitActionCoordinator,
 	});
-	for (const { workspaceId, repoPath } of await listWorkspaceIndexEntries()) {
+	const rememberedWorkspaces = await listWorkspaceIndexEntries();
+	for (const { workspaceId, repoPath } of rememberedWorkspaces) {
 		workspaceRegistry.rememberWorkspace(workspaceId, repoPath);
 	}
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
 		runtimeTaskAutomation.trackTerminalManager(workspaceId, terminalManager);
 	}
+	await Promise.all(
+		rememberedWorkspaces.map(async ({ workspaceId, repoPath }) => {
+			await runtimeServer.ensureClineTaskSessionService(workspaceId, repoPath);
+		}),
+	);
 
 	const close = async () => {
 		runtimeTaskAutomation?.close();
