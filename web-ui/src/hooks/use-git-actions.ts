@@ -227,6 +227,7 @@ export function useGitActions({
 					taskId,
 					baseRef: selection.card.baseRef,
 					action,
+					source: "manual",
 				});
 				if (!payload.ok) {
 					showAppToast({

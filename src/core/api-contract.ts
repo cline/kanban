@@ -810,10 +810,14 @@ export type RuntimeTaskSessionInputResponse = z.infer<typeof runtimeTaskSessionI
 export const runtimeTaskGitActionSchema = z.enum(["commit", "pr"]);
 export type RuntimeTaskGitAction = z.infer<typeof runtimeTaskGitActionSchema>;
 
+export const runtimeTaskGitActionSourceSchema = z.enum(["manual", "auto"]);
+export type RuntimeTaskGitActionSource = z.infer<typeof runtimeTaskGitActionSourceSchema>;
+
 export const runtimeTaskGitActionRequestSchema = z.object({
 	taskId: z.string(),
 	baseRef: z.string(),
 	action: runtimeTaskGitActionSchema,
+	source: runtimeTaskGitActionSourceSchema,
 });
 export type RuntimeTaskGitActionRequest = z.infer<typeof runtimeTaskGitActionRequestSchema>;
 

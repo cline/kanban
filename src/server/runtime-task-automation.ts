@@ -198,6 +198,7 @@ async function runTaskGitAction(input: {
 			taskId: input.task.id,
 			baseRef: input.task.baseRef,
 			action: input.action,
+			source: "auto",
 		})
 		.catch(() => null);
 	return response?.ok === true;
@@ -269,6 +270,7 @@ async function trashTaskAndStartLinkedTasks(input: {
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
 	workspacePath: string;
 	taskId: string;
+	sourceColumnId: RuntimeBoardColumnId;
 }): Promise<boolean> {
 	const mutation = await mutateWorkspaceState(input.workspacePath, (latestState) => {
 		const record = findTaskRecord(latestState, input.taskId);
@@ -283,7 +285,11 @@ async function trashTaskAndStartLinkedTasks(input: {
 				save: false,
 			};
 		}
-		const trashed = trashTaskAndGetReadyLinkedTaskIds(latestState.board, input.taskId);
+		const boardForTrashMutation =
+			input.sourceColumnId === "review" && record.columnId === "in_progress"
+				? (moveTaskToColumn(latestState.board, input.taskId, "review").board ?? latestState.board)
+				: latestState.board;
+		const trashed = trashTaskAndGetReadyLinkedTaskIds(boardForTrashMutation, input.taskId);
 		return {
 			board: trashed.moved ? trashed.board : latestState.board,
 			value: {
@@ -326,76 +332,42 @@ async function trashTaskAndStartLinkedTasks(input: {
 }
 
 /**
- * Reconciles the persisted board columns with the live session summaries owned by the runtime.
+ * Derives the board shape automation should evaluate without persisting session-driven column moves.
  */
-async function reconcileBoardWithLiveSessions(input: {
-	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
-	workspacePath: string;
+function deriveAutomationWorkspaceState(input: {
 	state: RuntimeWorkspaceStateResponse;
 	liveSessions: Record<string, RuntimeTaskSessionSummary>;
-}): Promise<RuntimeWorkspaceStateResponse> {
-	const mutation = await mutateWorkspaceState(input.workspacePath, (latestState) => {
-		let nextBoard = latestState.board;
-		let changed = false;
-
-		for (const summary of Object.values(input.liveSessions)) {
-			const record = findTaskRecord(
-				{
-					...latestState,
-					board: nextBoard,
-				},
-				summary.taskId,
-			);
-			if (!record) {
-				continue;
-			}
-			if (summary.state === "awaiting_review" && record.columnId === "in_progress") {
-				const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
-				if (moved.moved) {
-					nextBoard = moved.board;
-					changed = true;
-				}
-				continue;
-			}
-			if (summary.state === "running" && record.columnId === "review") {
-				const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress");
-				if (moved.moved) {
-					nextBoard = moved.board;
-					changed = true;
-				}
-				continue;
-			}
-			if (summary.state === "interrupted" && record.columnId !== "trash") {
-				const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
-				if (moved.moved) {
-					nextBoard = moved.board;
-					changed = true;
-				}
-			}
+}): RuntimeWorkspaceStateResponse {
+	let nextBoard = input.state.board;
+	for (const summary of Object.values(input.liveSessions)) {
+		const record = findTaskRecord(
+			{
+				...input.state,
+				board: nextBoard,
+			},
+			summary.taskId,
+		);
+		if (!record) {
+			continue;
 		}
-
-		return {
-			board: changed ? nextBoard : latestState.board,
-			value: changed,
-			save: changed,
-		};
-	}).catch(() => null);
-
-	if (!mutation) {
-		return {
-			...input.state,
-			sessions: input.liveSessions,
-		};
-	}
-	if (mutation.saved) {
-		await notifyRuntimeWorkspaceStateUpdated(input.runtimeClient);
-		return {
-			...mutation.state,
-			sessions: input.liveSessions,
-		};
+		if (summary.state === "awaiting_review" && record.columnId === "in_progress") {
+			const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
+			nextBoard = moved.moved ? moved.board : nextBoard;
+			continue;
+		}
+		if (summary.state === "running" && record.columnId === "review") {
+			const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress");
+			nextBoard = moved.moved ? moved.board : nextBoard;
+			continue;
+		}
+		if (summary.state === "interrupted" && record.columnId !== "trash") {
+			const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash");
+			nextBoard = moved.moved ? moved.board : nextBoard;
+		}
 	}
 	return {
 		...input.state,
+		board: nextBoard,
 		sessions: input.liveSessions,
 	};
 }
@@ -474,8 +446,8 @@ async function evaluateWorkspaceAutoReview(input: {
 		}
 
 		const autoReviewMode = resolveTaskAutoReviewMode(task.autoReviewMode);
-		const pendingGitAction = input.taskGitActionCoordinator.getPendingTaskGitAction(input.workspaceId, task.id);
-		if (pendingGitAction) {
+		const autoCleanupAction = input.taskGitActionCoordinator.getAutoCleanupTaskGitAction(input.workspaceId, task.id);
+		if (autoCleanupAction) {
 			const changedFiles = await loadTaskChangedFileCount(task, input.workspacePath);
 			if (changedFiles === 0 && !input.entry.moveToTrashInFlightTaskIds.has(task.id)) {
 				if (!shouldRunScheduledTaskAction(input.entry, task.id, "move_to_trash", input.nowValue)) {
@@ -487,6 +459,7 @@ async function evaluateWorkspaceAutoReview(input: {
 					runtimeClient: input.runtimeClient,
 					workspacePath: input.workspacePath,
 					taskId: task.id,
+					sourceColumnId: "review",
 				}).catch(() => false);
 				if (!moved) {
 					input.entry.moveToTrashInFlightTaskIds.delete(task.id);
@@ -512,6 +485,7 @@ async function evaluateWorkspaceAutoReview(input: {
 				runtimeClient: input.runtimeClient,
 				workspacePath: input.workspacePath,
 				taskId: task.id,
+				sourceColumnId: "review",
 			}).catch(() => false);
 			if (!moved) {
 				input.entry.moveToTrashInFlightTaskIds.delete(task.id);
@@ -590,9 +564,7 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 					entry.terminalManager,
 					entry.clineTaskSessionService,
 				);
-				const reconciledState = await reconcileBoardWithLiveSessions({
-					runtimeClient,
-					workspacePath,
+				const automationState = deriveAutomationWorkspaceState({
 					state: persistedState,
 					liveSessions,
 				});
@@ -602,7 +574,7 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 					taskGitActionCoordinator: deps.taskGitActionCoordinator,
 					workspaceId,
 					workspacePath,
-					state: reconciledState,
+					state: automationState,
 					nowValue: Date.now(),
 				});
 			} while (entry.rerunRequested);

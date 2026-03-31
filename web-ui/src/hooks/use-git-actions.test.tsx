@@ -171,6 +171,7 @@ describe("useGitActions", () => {
 			taskId: "task-1",
 			baseRef: "main",
 			action: "commit",
+			source: "manual",
 		});
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});

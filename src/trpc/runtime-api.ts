@@ -413,7 +413,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							workspaceScope.workspaceId,
 							body.taskId,
 							body.action,
-							{ triggered: false },
+							{
+								dispatched: false,
+								armAutoCleanup: false,
+							},
 						);
 						return {
 							ok: false,
@@ -425,7 +428,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						workspaceScope.workspaceId,
 						body.taskId,
 						body.action,
-						{ triggered: true },
+						{
+							dispatched: true,
+							armAutoCleanup: body.source === "auto",
+						},
 					);
 					return {
 						ok: true,
@@ -439,7 +445,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						workspaceScope.workspaceId,
 						body.taskId,
 						body.action,
-						{ triggered: false },
+						{
+							dispatched: false,
+							armAutoCleanup: false,
+						},
 					);
 					return {
 						ok: false,
@@ -458,7 +467,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						workspaceScope.workspaceId,
 						body.taskId,
 						body.action,
-						{ triggered: false },
+						{
+							dispatched: false,
+							armAutoCleanup: false,
+						},
 					);
 					return {
 						ok: false,
@@ -468,7 +480,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				}
 
 				deps.taskGitActionCoordinator?.completeTaskGitAction(workspaceScope.workspaceId, body.taskId, body.action, {
-					triggered: true,
+					dispatched: true,
+					armAutoCleanup: body.source === "auto",
 				});
 				return {
 					ok: true,
@@ -476,7 +489,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				};
 			} catch (error) {
 				deps.taskGitActionCoordinator?.completeTaskGitAction(workspaceScope.workspaceId, body.taskId, body.action, {
-					triggered: false,
+					dispatched: false,
+					armAutoCleanup: false,
 				});
 				const message = error instanceof Error ? error.message : String(error);
 				return {

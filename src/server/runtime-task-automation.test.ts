@@ -241,7 +241,7 @@ describe("createRuntimeTaskAutomation", () => {
 		runtimeClient = {
 			runtime: {
 				runTaskGitAction: {
-					mutate: vi.fn(async ({ taskId, action }) => {
+					mutate: vi.fn(async ({ taskId, action, source }) => {
 						const started = taskGitActionCoordinator.beginTaskGitAction("workspace-1", taskId, action);
 						if (!started) {
 							return {
@@ -251,7 +251,8 @@ describe("createRuntimeTaskAutomation", () => {
 							};
 						}
 						taskGitActionCoordinator.completeTaskGitAction("workspace-1", taskId, action, {
-							triggered: true,
+							dispatched: true,
+							armAutoCleanup: source === "auto",
 						});
 						return { ok: true, summary: null };
 					}),
@@ -350,7 +351,7 @@ describe("createRuntimeTaskAutomation", () => {
 		taskGitActionCoordinator.close();
 	});
 
-	it("moves review-ready tasks on the server, auto-commits them, and starts linked tasks after trashing", async () => {
+	it("derives review-ready tasks on the server, auto-commits them, and starts linked tasks after trashing", async () => {
 		const { manager, emitter } = createTerminalManager([
 			createSummary("task-1", {
 				state: "awaiting_review",
@@ -366,8 +367,6 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.trackTerminalManager("workspace-1", manager as never);
 		await flushMicrotasks();
 
-		expect(workspaceState.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("task-1");
-
 		await vi.advanceTimersByTimeAsync(1_200);
 		await flushMicrotasks();
 
@@ -375,7 +374,9 @@ describe("createRuntimeTaskAutomation", () => {
 			taskId: "task-1",
 			baseRef: "main",
 			action: "commit",
+			source: "auto",
 		});
+		expect(runtimeClient.workspace.notifyStateUpdated.mutate).not.toHaveBeenCalled();
 
 		changedFilesByTaskPath["/repo/task-1"] = 0;
 		emitter.emitSummary(
@@ -447,6 +448,7 @@ describe("createRuntimeTaskAutomation", () => {
 			taskId: "task-1",
 			baseRef: "main",
 			action: "pr",
+			source: "auto",
 		});
 
 		automation.close();
@@ -470,7 +472,8 @@ describe("createRuntimeTaskAutomation", () => {
 
 		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "commit")).toBe(true);
 		taskGitActionCoordinator.completeTaskGitAction("workspace-1", "task-1", "commit", {
-			triggered: true,
+			dispatched: true,
+			armAutoCleanup: false,
 		});
 
 		await vi.advanceTimersByTimeAsync(2_000);
@@ -495,6 +498,7 @@ describe("createRuntimeTaskAutomation", () => {
 			taskId: "task-1",
 			baseRef: "main",
 			action: "commit",
+			source: "auto",
 		});
 
 		automation.close();
@@ -517,8 +521,6 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.trackWorkspace("workspace-1");
 		await flushMicrotasks();
 
-		expect(getBoardColumn(workspaceState, "review").cards[0]?.id).toBe("task-1");
-
 		await vi.advanceTimersByTimeAsync(1_200);
 		await flushMicrotasks();
 
@@ -526,12 +528,52 @@ describe("createRuntimeTaskAutomation", () => {
 			taskId: "task-1",
 			baseRef: "main",
 			action: "commit",
+			source: "auto",
 		});
 
 		automation.close();
 	});
 
-	it("moves interrupted tasks to trash before evaluating review automation", async () => {
+	it("does not auto-trash a clean review task after a manual git action is sent", async () => {
+		getBoardColumn(workspaceState, "in_progress").cards = [];
+		getBoardColumn(workspaceState, "review").cards = [
+			{
+				id: "task-1",
+				prompt: "Primary task",
+				startInPlanMode: false,
+				autoReviewEnabled: true,
+				autoReviewMode: "pr",
+				baseRef: "main",
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		];
+		changedFilesByTaskPath["/repo/task-1"] = 0;
+
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		expect(taskGitActionCoordinator.beginTaskGitAction("workspace-1", "task-1", "pr")).toBe(true);
+		taskGitActionCoordinator.completeTaskGitAction("workspace-1", "task-1", "pr", {
+			dispatched: true,
+			armAutoCleanup: false,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(2_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.workspace.deleteWorktree.mutate).not.toHaveBeenCalled();
+		expect(runtimeClient.runtime.stopTaskSession.mutate).not.toHaveBeenCalled();
+		expect(getBoardColumn(workspaceState, "review").cards[0]?.id).toBe("task-1");
+
+		automation.close();
+	});
+
+	it("treats interrupted tasks as trashed during evaluation without persisting the board move", async () => {
 		getBoardColumn(workspaceState, "in_progress").cards = [];
 		getBoardColumn(workspaceState, "review").cards = [
 			{
@@ -561,9 +603,10 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.trackWorkspace("workspace-1");
 		await flushMicrotasks();
 
-		expect(getBoardColumn(workspaceState, "trash").cards[0]?.id).toBe("task-1");
-		expect(getBoardColumn(workspaceState, "review").cards).toHaveLength(0);
 		expect(runtimeClient.runtime.runTaskGitAction.mutate).not.toHaveBeenCalled();
+		expect(runtimeClient.workspace.notifyStateUpdated.mutate).not.toHaveBeenCalled();
+		expect(getBoardColumn(workspaceState, "review").cards[0]?.id).toBe("task-1");
+		expect(getBoardColumn(workspaceState, "trash").cards).toHaveLength(0);
 
 		automation.close();
 	});
