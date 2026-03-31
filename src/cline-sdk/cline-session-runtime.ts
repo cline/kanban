@@ -10,16 +10,16 @@ import {
 } from "./cline-mcp-runtime-service";
 import { createKanbanClineLogger } from "./cline-runtime-logger";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
-import type {
-	ClineSdkPersistedMessage,
-	ClineSdkSessionHost,
-	ClineSdkSessionRecord,
-	ClineSdkStartSessionInput,
-	ClineSdkToolApprovalRequest,
-	ClineSdkToolApprovalResult,
-	ClineSdkUserInstructionWatcher,
-} from "./sdk-runtime-boundary.js";
-import { createClineSdkSessionHost } from "./session-host";
+import {
+	type ClineSdkPersistedMessage,
+	type ClineSdkSessionHost,
+	type ClineSdkSessionRecord,
+	type ClineSdkStartSessionInput,
+	type ClineSdkToolApprovalRequest,
+	type ClineSdkToolApprovalResult,
+	type ClineSdkUserInstructionWatcher,
+	createClineSdkSessionHost,
+} from "./sdk-runtime-boundary";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;
 interface ClineSessionHostBoundary {
@@ -127,8 +127,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 
 	constructor(options: CreateInMemoryClineSessionRuntimeOptions = {}) {
 		this.onTaskEvent = options.onTaskEvent ?? null;
-		this.createSessionHost =
-			options.createSessionHost ?? (createClineSdkSessionHost as unknown as () => Promise<ClineSessionHostBoundary>);
+		this.createSessionHost = options.createSessionHost ?? createClineSdkSessionHost;
 		const createMcpRuntimeService = options.createMcpRuntimeService ?? createClineMcpRuntimeService;
 		this.clineMcpRuntimeService = createMcpRuntimeService();
 	}

@@ -602,6 +602,10 @@ async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
 	const program = createProgram(argv);
 	await program.parseAsync(argv, { from: "user" });
+	if (!shouldAutoOpenBrowserTabForInvocation(argv)) {
+		await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
+		process.exit(process.exitCode ?? 0);
+	}
 }
 
 void run().catch(async (error) => {

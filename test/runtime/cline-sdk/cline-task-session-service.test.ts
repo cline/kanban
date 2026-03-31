@@ -42,13 +42,6 @@ function createDeferred<T>() {
 	};
 }
 
-async function waitForAssertion(assertion: () => void | Promise<void>): Promise<void> {
-	await vi.waitFor(assertion, {
-		interval: 1,
-		timeout: 200,
-	});
-}
-
 type StartTaskSessionMock = Mock<
 	(request: StartClineSessionRuntimeRequest & { sessionId: string }) => Promise<StartClineSessionRuntimeResult>
 >;
@@ -341,7 +334,7 @@ function createFakeRuntimeSetup(): FakeRuntimeSetupController {
 }
 
 async function waitForTaskSessionId(runtime: FakeClineSessionRuntimeController, taskId: string): Promise<string> {
-	await waitForAssertion(() => {
+	await vi.waitFor(() => {
 		expect(runtime.getTaskSessionId(taskId)).toBeTruthy();
 	});
 	return runtime.getTaskSessionId(taskId) ?? "session-1";
@@ -574,7 +567,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			"Recovered prompt",
 			"Recovered answer",
 		]);
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 				expect.objectContaining({
 					prompt: "resolved:",
@@ -601,7 +594,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -628,7 +621,7 @@ describe("InMemoryClineTaskSessionService", () => {
 				},
 			],
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -653,7 +646,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -665,7 +658,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			},
 		]);
 
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"resolved:Continue",
@@ -690,14 +683,14 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
 		const nextSummary = await service.sendTaskSessionInput("task-1", "One more thing");
 
 		expect(nextSummary?.state).toBe("running");
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"resolved:One more thing",
@@ -720,12 +713,12 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "Investigate startup",
 			mode: "plan",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
 		await service.sendTaskSessionInput("task-1", "Continue");
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"resolved:Continue",
@@ -745,14 +738,14 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
 		await service.sendTaskSessionInput("task-1", "Switch mode", "plan");
 		await service.sendTaskSessionInput("task-1", "Keep going");
 
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenNthCalledWith(
 				1,
 				"task-1",
@@ -781,7 +774,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -793,7 +786,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			},
 		]);
 
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"resolved:",
@@ -824,7 +817,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "Investigate startup",
 		});
 
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(service.getSummary("task-1")?.warningMessage).toContain('Failed to load MCP server "linear"');
 		});
 
@@ -840,7 +833,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "Add a task",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -878,7 +871,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "/fix issue",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -953,7 +946,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		const nextSummary = await service.sendTaskSessionInput("task-1", "Continue");
 
 		expect(nextSummary?.state).toBe("running");
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
 				"Recovered prompt",
 				"Recovered answer",
@@ -981,7 +974,7 @@ describe("InMemoryClineTaskSessionService", () => {
 
 		runtimeSetup.resolvePromptMock.mockImplementation((prompt: string) => `workflow:${prompt}`);
 		await service.sendTaskSessionInput("task-1", "/continue");
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledWith(
 				"task-1",
 				"workflow:/continue",
@@ -1206,7 +1199,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(summary?.reviewReason).toBe("hook");
 		expect(summary?.latestHookActivity?.hookEventName).toBe("agent_end");
 		expect(summary?.latestHookActivity?.finalMessage).toBe("Done. Added the comment.");
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(turnCheckpointMocks.captureTaskTurnCheckpoint).toHaveBeenCalledWith({
 				cwd: "/tmp/worktree",
 				taskId: "task-1",
@@ -1264,7 +1257,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -1274,7 +1267,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		]);
 
 		expect(response).not.toBeNull();
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledTimes(1);
 		});
 		sendDeferred.resolve({ text: "done" });
@@ -1290,7 +1283,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "Initial prompt",
 		});
 
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
 		});
 
@@ -1313,14 +1306,14 @@ describe("InMemoryClineTaskSessionService", () => {
 			prompt: "Initial prompt",
 		});
 
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
 		});
 
 		const nextSummary = await service.sendTaskSessionInput("task-1", "Try again");
 
 		expect(nextSummary?.state).toBe("running");
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(2);
 		});
 		expect(runtime.sendTaskSessionInputMock).not.toHaveBeenCalled();
@@ -1363,7 +1356,7 @@ describe("InMemoryClineTaskSessionService", () => {
 			cwd: "/tmp/worktree",
 			prompt: "Initial prompt",
 		});
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -1377,7 +1370,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		const nextSummary = await service.sendTaskSessionInput("task-1", "Try again");
 
 		expect(nextSummary?.state).toBe("running");
-		await waitForAssertion(() => {
+		await vi.waitFor(() => {
 			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(2);
 		});
 		expect(runtime.sendTaskSessionInputMock).not.toHaveBeenCalled();

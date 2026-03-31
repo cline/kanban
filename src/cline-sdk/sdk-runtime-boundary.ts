@@ -21,8 +21,9 @@ import {
 import type { BasicLogger } from "@clinebot/shared";
 import { resolveClineDataDir } from "@clinebot/shared/storage";
 import { CLINE_BUILTIN_SLASH_COMMANDS } from "./cline-slash-commands";
+import { getCliTelemetryService } from "./cline-telemetry-service";
 
-export { createSessionHost, LoggerTelemetryAdapter, TelemetryService } from "@clinebot/core";
+export { LoggerTelemetryAdapter, TelemetryService } from "@clinebot/core";
 
 export type ClineSdkSessionHost = SessionHost;
 export type ClineSdkStartSessionInput = StartSessionInput;
@@ -206,9 +207,8 @@ export type ClineSdkToolApprovalResult = ToolApprovalResult;
 export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
 	return await createSessionHost({
 		backendMode: "auto",
-		rpc: {
-			autoStart: true,
-		},
+		rpc: { autoStart: true },
+		telemetry: getCliTelemetryService(),
 	});
 }
 

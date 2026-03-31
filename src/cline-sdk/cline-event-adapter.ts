@@ -176,30 +176,6 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 	const hookEvent = readHookEvent(event);
 	const endedEvent = readEndedEvent(event);
 	const statusEvent = readStatusEvent(event);
-	const turnCancelPending = input.pendingTurnCancelTaskIds.has(taskId);
-
-	if (turnCancelPending) {
-		if (agentEvent?.type === "done") {
-			const doneReason = typeof agentEvent.reason === "string" ? agentEvent.reason : "completed";
-			if (doneReason === "aborted") {
-				emitTurnCanceled(input);
-			}
-			return;
-		}
-
-		if (endedEvent) {
-			const interrupted =
-				endedEvent.payload.reason.includes("abort") || endedEvent.payload.reason.includes("interrupt");
-			if (interrupted) {
-				emitTurnCanceled(input);
-			}
-			return;
-		}
-
-		if (statusEvent || chunkEvent || hookEvent || agentEvent) {
-			return;
-		}
-	}
 
 	if (agentEvent?.type === "error") {
 		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
