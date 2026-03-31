@@ -28,6 +28,7 @@ export interface CreateWorkspaceRegistryDependencies {
 	hasGitRepository: (path: string) => boolean;
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	onTerminalManagerReady?: (workspaceId: string, manager: TerminalSessionManager) => void;
+	onWorkspaceRemembered?: (workspaceId: string, repoPath: string) => void;
 }
 
 export interface DisposeWorkspaceRegistryOptions {
@@ -206,6 +207,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 
 	const rememberWorkspace = (workspaceId: string, repoPath: string): void => {
 		workspacePathsById.set(workspaceId, repoPath);
+		deps.onWorkspaceRemembered?.(workspaceId, repoPath);
 	};
 
 	const notifyTerminalManagerReady = (workspaceId: string, manager: TerminalSessionManager): void => {

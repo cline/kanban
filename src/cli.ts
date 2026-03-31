@@ -385,6 +385,9 @@ async function startServer(): Promise<{
 		loadRuntimeConfig,
 		hasGitRepository,
 		pathIsDirectory,
+		onWorkspaceRemembered: (workspaceId) => {
+			runtimeTaskAutomation?.trackWorkspace(workspaceId);
+		},
 		onTerminalManagerReady: (workspaceId, manager) => {
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
 			runtimeTaskAutomation?.trackTerminalManager(workspaceId, manager);

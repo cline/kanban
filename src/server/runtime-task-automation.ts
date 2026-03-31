@@ -428,11 +428,25 @@ async function evaluateWorkspaceAutoReview(input: {
 	const reviewColumn = input.state.board.columns.find((column) => column.id === "review");
 	const reviewCards = reviewColumn?.cards ?? [];
 	const reviewTaskIds = new Set(reviewCards.map((card) => card.id));
+	const inProgressCleanupTaskIds = new Set<string>();
 	for (const column of input.state.board.columns) {
 		if (column.id === "review") {
 			continue;
 		}
 		for (const task of column.cards) {
+			const autoCleanupAction = input.taskGitActionCoordinator.getAutoCleanupTaskGitAction(
+				input.workspaceId,
+				task.id,
+			);
+			const preserveAutoCleanupState = autoCleanupAction !== null && column.id === "in_progress";
+			if (preserveAutoCleanupState) {
+				inProgressCleanupTaskIds.add(task.id);
+			}
+			if (preserveAutoCleanupState) {
+				clearScheduledTaskAction(input.entry, task.id);
+				input.entry.moveToTrashInFlightTaskIds.delete(task.id);
+				continue;
+			}
 			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
 			clearScheduledTaskAction(input.entry, task.id);
 			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
@@ -440,7 +454,7 @@ async function evaluateWorkspaceAutoReview(input: {
 	}
 
 	for (const taskId of Array.from(input.entry.scheduledActionByTaskId.keys())) {
-		if (!reviewTaskIds.has(taskId)) {
+		if (!reviewTaskIds.has(taskId) && !inProgressCleanupTaskIds.has(taskId)) {
 			clearScheduledTaskAction(input.entry, taskId);
 			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, taskId);
 		}

@@ -378,12 +378,25 @@ describe("createRuntimeTaskAutomation", () => {
 		});
 		expect(runtimeClient.workspace.notifyStateUpdated.mutate).not.toHaveBeenCalled();
 
+		emitter.emitSummary(
+			createSummary("task-1", {
+				state: "running",
+				reviewReason: null,
+				updatedAt: 6,
+			}),
+		);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(1_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.workspace.deleteWorktree.mutate).not.toHaveBeenCalled();
+
 		changedFilesByTaskPath["/repo/task-1"] = 0;
 		emitter.emitSummary(
 			createSummary("task-1", {
 				state: "awaiting_review",
 				reviewReason: "hook",
-				updatedAt: 6,
+				updatedAt: 7,
 			}),
 		);
 		await flushMicrotasks();
