@@ -24,9 +24,11 @@ import { createTerminalWebSocketBridge } from "../terminal/ws-server";
 import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router";
 import { createHooksApi } from "../trpc/hooks-api";
 import { createProjectsApi } from "../trpc/projects-api";
+import { createPushApi } from "../trpc/push-api";
 import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import { createPushNotificationService } from "./push-notification-service";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";
 
@@ -58,6 +60,7 @@ export interface CreateRuntimeServerDependencies {
 export interface RuntimeServer {
 	url: string;
 	close: () => Promise<void>;
+	sendPushNotification: (payload: { title: string; body: string; url?: string }) => Promise<void>;
 }
 
 function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): string | null {
@@ -167,6 +170,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		deps.workspaceRegistry.clearActiveWorkspace();
 	};
 
+	const pushService = await createPushNotificationService();
+	const pushApi = createPushApi({ pushService });
+
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
@@ -222,6 +228,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
 				broadcastTaskReadyForReview: deps.runtimeStateHub.broadcastTaskReadyForReview,
 			}),
+			pushApi,
 		};
 	};
 
@@ -317,6 +324,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	return {
 		url,
+		sendPushNotification: pushService.sendPushNotification,
 		close: async () => {
 			await Promise.all(
 				Array.from(clineTaskSessionServiceByWorkspaceId.values()).map(async (service) => {

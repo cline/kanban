@@ -49,6 +49,11 @@ import type {
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectsResponse,
+	RuntimePushSubscribeRequest,
+	RuntimePushSubscribeResponse,
+	RuntimePushUnsubscribeRequest,
+	RuntimePushUnsubscribeResponse,
+	RuntimePushVapidPublicKeyResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
 	RuntimeSlashCommandsResponse,
@@ -126,6 +131,11 @@ import {
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
 	runtimeProjectsResponseSchema,
+	runtimePushSubscribeRequestSchema,
+	runtimePushSubscribeResponseSchema,
+	runtimePushUnsubscribeRequestSchema,
+	runtimePushUnsubscribeResponseSchema,
+	runtimePushVapidPublicKeyResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
 	runtimeSlashCommandsResponseSchema,
@@ -317,6 +327,11 @@ export interface RuntimeTrpcContext {
 	};
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
+	};
+	pushApi: {
+		getVapidPublicKey: () => RuntimePushVapidPublicKeyResponse;
+		subscribe: (input: RuntimePushSubscribeRequest) => Promise<RuntimePushSubscribeResponse>;
+		unsubscribe: (input: RuntimePushUnsubscribeRequest) => Promise<RuntimePushUnsubscribeResponse>;
 	};
 }
 
@@ -626,6 +641,23 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeHookIngestResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.hooksApi.ingest(input);
+			}),
+	}),
+	push: t.router({
+		getVapidPublicKey: t.procedure.output(runtimePushVapidPublicKeyResponseSchema).query(({ ctx }) => {
+			return ctx.pushApi.getVapidPublicKey();
+		}),
+		subscribe: t.procedure
+			.input(runtimePushSubscribeRequestSchema)
+			.output(runtimePushSubscribeResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.pushApi.subscribe(input);
+			}),
+		unsubscribe: t.procedure
+			.input(runtimePushUnsubscribeRequestSchema)
+			.output(runtimePushUnsubscribeResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.pushApi.unsubscribe(input);
 			}),
 	}),
 });

@@ -1063,3 +1063,38 @@ export const runtimeHookIngestResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeHookIngestResponse = z.infer<typeof runtimeHookIngestResponseSchema>;
+
+// Push notification contracts
+
+export const runtimePushSubscriptionSchema = z.object({
+	endpoint: z.string(),
+	expirationTime: z.number().nullable().optional(),
+	keys: z.object({
+		p256dh: z.string(),
+		auth: z.string(),
+	}),
+});
+export type RuntimePushSubscription = z.infer<typeof runtimePushSubscriptionSchema>;
+
+export const runtimePushVapidPublicKeyResponseSchema = z.object({
+	publicKey: z.string(),
+});
+export type RuntimePushVapidPublicKeyResponse = z.infer<typeof runtimePushVapidPublicKeyResponseSchema>;
+
+export const runtimePushSubscribeRequestSchema = runtimePushSubscriptionSchema;
+export type RuntimePushSubscribeRequest = z.infer<typeof runtimePushSubscribeRequestSchema>;
+
+export const runtimePushSubscribeResponseSchema = z.object({
+	ok: z.boolean(),
+});
+export type RuntimePushSubscribeResponse = z.infer<typeof runtimePushSubscribeResponseSchema>;
+
+export const runtimePushUnsubscribeRequestSchema = z.object({
+	endpoint: z.string(),
+});
+export type RuntimePushUnsubscribeRequest = z.infer<typeof runtimePushUnsubscribeRequestSchema>;
+
+export const runtimePushUnsubscribeResponseSchema = z.object({
+	ok: z.boolean(),
+});
+export type RuntimePushUnsubscribeResponse = z.infer<typeof runtimePushUnsubscribeResponseSchema>;
