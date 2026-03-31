@@ -100,15 +100,16 @@ function selectNewestTaskSessionSummary(
 
 /**
  * Collects the session summaries that automation can act on immediately.
- * Disk-only terminal snapshots are excluded because they cannot receive input after restart.
+ * Disk-only terminal snapshots are excluded, while persisted Cline review sessions are rebound on demand.
  */
-function collectAutomationTaskSessionSummaries(
-	terminalManager: TerminalSessionManager | null,
-	clineTaskSessionService: ClineTaskSessionService | null,
-): Record<string, RuntimeTaskSessionSummary> {
+async function collectAutomationTaskSessionSummaries(input: {
+	persistedSessions: Record<string, RuntimeTaskSessionSummary>;
+	terminalManager: TerminalSessionManager | null;
+	clineTaskSessionService: ClineTaskSessionService | null;
+}): Promise<Record<string, RuntimeTaskSessionSummary>> {
 	const mergedSessions: Record<string, RuntimeTaskSessionSummary> = {};
-	for (const summary of terminalManager?.listSummaries() ?? []) {
-		if (!terminalManager?.hasActiveTaskSession(summary.taskId)) {
+	for (const summary of input.terminalManager?.listSummaries() ?? []) {
+		if (!input.terminalManager?.hasActiveTaskSession(summary.taskId)) {
 			continue;
 		}
 		const newest = selectNewestTaskSessionSummary(mergedSessions[summary.taskId] ?? null, summary);
@@ -116,10 +117,35 @@ function collectAutomationTaskSessionSummaries(
 			mergedSessions[summary.taskId] = newest;
 		}
 	}
-	for (const summary of clineTaskSessionService?.listSummaries() ?? []) {
+	for (const summary of input.clineTaskSessionService?.listSummaries() ?? []) {
 		const newest = selectNewestTaskSessionSummary(mergedSessions[summary.taskId] ?? null, summary);
 		if (newest) {
 			mergedSessions[summary.taskId] = newest;
+		}
+	}
+	if (!input.clineTaskSessionService) {
+		return mergedSessions;
+	}
+	for (const persistedSummary of Object.values(input.persistedSessions)) {
+		if (persistedSummary.agentId !== "cline" || mergedSessions[persistedSummary.taskId]) {
+			continue;
+		}
+		if (
+			persistedSummary.state !== "awaiting_review" &&
+			persistedSummary.state !== "running" &&
+			persistedSummary.state !== "interrupted"
+		) {
+			continue;
+		}
+		const reboundSummary = await input.clineTaskSessionService
+			.rebindPersistedTaskSession(persistedSummary.taskId)
+			.catch(() => null);
+		if (!reboundSummary) {
+			continue;
+		}
+		const newest = selectNewestTaskSessionSummary(mergedSessions[reboundSummary.taskId] ?? null, reboundSummary);
+		if (newest) {
+			mergedSessions[reboundSummary.taskId] = newest;
 		}
 	}
 	return mergedSessions;
@@ -524,14 +550,6 @@ async function evaluateWorkspaceAutoReview(input: {
 			continue;
 		}
 
-		const liveSession = input.state.sessions[task.id] ?? null;
-		if (!liveSession) {
-			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
-			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
-			clearScheduledTaskAction(input.entry, task.id);
-			continue;
-		}
-
 		const autoReviewMode = resolveTaskAutoReviewMode(task.autoReviewMode);
 		const autoCleanupAction = input.taskGitActionCoordinator.getAutoCleanupTaskGitAction(input.workspaceId, task.id);
 		if (autoCleanupAction) {
@@ -555,15 +573,13 @@ async function evaluateWorkspaceAutoReview(input: {
 					clearBlockedAutoReview(input.entry, task.id);
 				}
 			} else {
+				const liveSession = input.state.sessions[task.id] ?? null;
 				input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
-				blockAutoReviewUntilSessionChanges(input.entry, task.id, liveSession);
+				if (liveSession) {
+					blockAutoReviewUntilSessionChanges(input.entry, task.id, liveSession);
+				}
 				clearScheduledTaskAction(input.entry, task.id);
 			}
-			continue;
-		}
-
-		if (shouldWaitForSessionChangeBeforeAutoReview(input.entry, task.id, liveSession)) {
-			clearScheduledTaskAction(input.entry, task.id);
 			continue;
 		}
 
@@ -585,6 +601,19 @@ async function evaluateWorkspaceAutoReview(input: {
 			if (!moved) {
 				input.entry.moveToTrashInFlightTaskIds.delete(task.id);
 			}
+			continue;
+		}
+
+		const liveSession = input.state.sessions[task.id] ?? null;
+		if (!liveSession) {
+			input.taskGitActionCoordinator.clearTaskGitAction(input.workspaceId, task.id);
+			input.entry.moveToTrashInFlightTaskIds.delete(task.id);
+			clearScheduledTaskAction(input.entry, task.id);
+			continue;
+		}
+
+		if (shouldWaitForSessionChangeBeforeAutoReview(input.entry, task.id, liveSession)) {
+			clearScheduledTaskAction(input.entry, task.id);
 			continue;
 		}
 
@@ -659,10 +688,11 @@ export function createRuntimeTaskAutomation(deps: CreateRuntimeTaskAutomationDep
 					disposeWorkspace(workspaceId);
 					return;
 				}
-				const liveSessions = collectAutomationTaskSessionSummaries(
-					entry.terminalManager,
-					entry.clineTaskSessionService,
-				);
+				const liveSessions = await collectAutomationTaskSessionSummaries({
+					persistedSessions: persistedState.sessions,
+					terminalManager: entry.terminalManager,
+					clineTaskSessionService: entry.clineTaskSessionService,
+				});
 				const automationState = deriveAutomationWorkspaceState({
 					state: persistedState,
 					liveSessions,

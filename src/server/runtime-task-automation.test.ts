@@ -188,8 +188,13 @@ function createTerminalManager(initialSummaries: RuntimeTaskSessionSummary[]): {
 /**
  * Creates a fake Cline service with the subset of summary APIs used by the automation controller.
  */
-function createClineService(initialSummaries: RuntimeTaskSessionSummary[]): {
-	service: Pick<ClineTaskSessionService, "listSummaries" | "onSummary">;
+function createClineService(
+	initialSummaries: RuntimeTaskSessionSummary[],
+	options?: {
+		reboundSummaryByTaskId?: Record<string, RuntimeTaskSessionSummary>;
+	},
+): {
+	service: Pick<ClineTaskSessionService, "listSummaries" | "onSummary" | "rebindPersistedTaskSession">;
 	emitter: SummaryEmitter;
 } {
 	let summaries = [...initialSummaries];
@@ -203,6 +208,17 @@ function createClineService(initialSummaries: RuntimeTaskSessionSummary[]): {
 					listeners.delete(listener);
 				};
 			},
+			rebindPersistedTaskSession: vi.fn(async (taskId: string) => {
+				const reboundSummary = options?.reboundSummaryByTaskId?.[taskId] ?? null;
+				if (!reboundSummary) {
+					return null;
+				}
+				summaries = [
+					...summaries.filter((candidate) => candidate.taskId !== reboundSummary.taskId),
+					reboundSummary,
+				];
+				return reboundSummary;
+			}),
 		},
 		emitter: {
 			emitSummary: (summary) => {
@@ -473,6 +489,60 @@ describe("createRuntimeTaskAutomation", () => {
 		automation.close();
 	});
 
+	it("rebinds persisted cline review summaries before auto-reviewing them", async () => {
+		getBoardColumn(workspaceState, "in_progress").cards = [];
+		getBoardColumn(workspaceState, "review").cards = [
+			{
+				id: "task-1",
+				prompt: "Primary task",
+				startInPlanMode: false,
+				autoReviewEnabled: true,
+				autoReviewMode: "pr",
+				baseRef: "main",
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		];
+		workspaceState.sessions = {
+			"task-1": createSummary("task-1", {
+				state: "awaiting_review",
+				agentId: "cline",
+				reviewReason: "hook",
+				updatedAt: 5,
+			}),
+		};
+
+		const { service } = createClineService([], {
+			reboundSummaryByTaskId: {
+				"task-1": createSummary("task-1", {
+					state: "awaiting_review",
+					agentId: "cline",
+					reviewReason: "attention",
+					updatedAt: 6,
+				}),
+			},
+		});
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackClineTaskSessionService("workspace-1", service as ClineTaskSessionService);
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(1_200);
+		await flushMicrotasks();
+
+		expect(service.rebindPersistedTaskSession).toHaveBeenCalledWith("task-1");
+		expect(runtimeClient.runtime.runTaskGitAction.mutate).toHaveBeenCalledWith({
+			taskId: "task-1",
+			baseRef: "main",
+			action: "pr",
+			source: "auto",
+		});
+
+		automation.close();
+	});
+
 	it("suppresses auto-review while a manual git action is already pending", async () => {
 		const { manager, emitter } = createTerminalManager([
 			createSummary("task-1", {
@@ -608,6 +678,47 @@ describe("createRuntimeTaskAutomation", () => {
 			action: "commit",
 			source: "auto",
 		});
+
+		automation.close();
+	});
+
+	it("auto-trashes review cards configured for move_to_trash without a live session", async () => {
+		getBoardColumn(workspaceState, "in_progress").cards = [];
+		getBoardColumn(workspaceState, "review").cards = [
+			{
+				id: "task-1",
+				prompt: "Primary task",
+				startInPlanMode: false,
+				autoReviewEnabled: true,
+				autoReviewMode: "move_to_trash",
+				baseRef: "main",
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		];
+
+		const automation = createRuntimeTaskAutomation({
+			getWorkspacePathById: (workspaceId) => (workspaceId === "workspace-1" ? "/repo" : null),
+			taskGitActionCoordinator,
+		});
+
+		automation.trackWorkspace("workspace-1");
+		await flushMicrotasks();
+		await vi.advanceTimersByTimeAsync(2_000);
+		await flushMicrotasks();
+
+		expect(runtimeClient.workspace.deleteWorktree.mutate).toHaveBeenCalledWith({
+			taskId: "task-1",
+		});
+		expect(runtimeClient.runtime.startTaskSession.mutate).toHaveBeenCalledWith({
+			taskId: "task-2",
+			prompt: "Follow-up task",
+			startInPlanMode: false,
+			baseRef: "main",
+			images: undefined,
+		});
+		expect(getBoardColumn(workspaceState, "trash").cards[0]?.id).toBe("task-1");
+		expect(getBoardColumn(workspaceState, "in_progress").cards[0]?.id).toBe("task-2");
 
 		automation.close();
 	});
