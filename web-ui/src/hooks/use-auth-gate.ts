@@ -16,6 +16,7 @@ export interface AuthIdentity {
 	email: string;
 	displayName: string | null;
 	role: string;
+	isLocal: boolean;
 }
 
 export type AuthGateStatus = "loading" | "authenticated" | "unauthenticated";
@@ -59,11 +60,13 @@ export function useAuthGate(): UseAuthGateResult {
 						persistent?: boolean;
 						displayName?: string;
 						role?: string;
+						isLocal?: boolean;
 					};
 					setIdentity({
 						email: body.email ?? "",
 						displayName: body.displayName ?? null,
 						role: body.role ?? "viewer",
+						isLocal: body.isLocal === true,
 					});
 					setStatus("authenticated");
 				} else {

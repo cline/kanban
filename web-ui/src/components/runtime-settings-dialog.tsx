@@ -20,12 +20,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { registerPushSubscription, usePushSubscription } from "@/hooks/use-push-subscription";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
 	RuntimeClineMcpServerAuthStatus,
@@ -368,6 +370,164 @@ function ShortcutIconPicker({
 	);
 }
 
+// ── User Permissions Section ──────────────────────────────────────────────
+// Shown only to admins. Lets the host promote/demote connected users.
+
+type UserRole = "viewer" | "editor" | "admin";
+
+interface ManagedUser {
+	uuid: string;
+	email: string;
+	displayName: string | null;
+	role: UserRole;
+	activeSessions: number;
+}
+
+function UserPermissionsSection({ workspaceId }: { workspaceId: string | null }): React.ReactElement {
+	const [users, setUsers] = useState<ManagedUser[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [savingUuid, setSavingUuid] = useState<string | null>(null);
+
+	const load = useCallback(async () => {
+		if (!workspaceId) return;
+		setIsLoading(true);
+		setError(null);
+		try {
+			const trpc = getRuntimeTrpcClient(workspaceId);
+			const result = await trpc.remote.users.list.query();
+			setUsers(
+				result.users.map((u) => ({
+					uuid: u.uuid,
+					email: u.email,
+					displayName: u.displayName ?? null,
+					role: (u.role === "admin" || u.role === "editor" ? u.role : "viewer") as UserRole,
+					activeSessions: u.activeSessions,
+				})),
+			);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to load users.");
+		} finally {
+			setIsLoading(false);
+		}
+	}, [workspaceId]);
+
+	useEffect(() => {
+		void load();
+	}, [load]);
+
+	const handleRoleChange = useCallback(
+		async (uuid: string, role: UserRole) => {
+			if (!workspaceId) return;
+			setSavingUuid(uuid);
+			try {
+				const trpc = getRuntimeTrpcClient(workspaceId);
+				await trpc.remote.users.setRole.mutate({ uuid, role });
+				setUsers((prev) => prev.map((u) => (u.uuid === uuid ? { ...u, role } : u)));
+			} catch (err) {
+				setError(err instanceof Error ? err.message : "Failed to update role.");
+			} finally {
+				setSavingUuid(null);
+			}
+		},
+		[workspaceId],
+	);
+
+	const handleBlock = useCallback(
+		async (uuid: string) => {
+			if (!workspaceId) return;
+			setSavingUuid(uuid);
+			try {
+				const trpc = getRuntimeTrpcClient(workspaceId);
+				await trpc.remote.users.block.mutate({ uuid });
+				setUsers((prev) => prev.map((u) => (u.uuid === uuid ? { ...u, role: "viewer" } : u)));
+			} catch (err) {
+				setError(err instanceof Error ? err.message : "Failed to block user.");
+			} finally {
+				setSavingUuid(null);
+			}
+		},
+		[workspaceId],
+	);
+
+	return (
+		<div className="mt-4">
+			<div className="flex items-center justify-between mb-2">
+				<h5 className="font-semibold text-text-primary m-0">Users</h5>
+				<button
+					type="button"
+					className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+					onClick={() => void load()}
+					disabled={isLoading}
+				>
+					{isLoading ? "Loading…" : "Refresh"}
+				</button>
+			</div>
+
+			{error ? <p className="text-[12px] text-status-red mb-2">{error}</p> : null}
+
+			{users.length === 0 && !isLoading ? (
+				<p className="text-[13px] text-text-tertiary">No remote users have connected yet.</p>
+			) : (
+				<div className="flex flex-col gap-1">
+					{users.map((user) => {
+						const isSaving = savingUuid === user.uuid;
+						return (
+							<div
+								key={user.uuid}
+								className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2"
+							>
+								{/* Identity */}
+								<div className="flex min-w-0 flex-1 flex-col">
+									<span className="truncate text-[13px] font-medium text-text-primary">
+										{user.displayName ?? user.email}
+									</span>
+									{user.displayName ? (
+										<span className="truncate text-[11px] text-text-tertiary">{user.email}</span>
+									) : null}
+								</div>
+
+								{/* Session count badge */}
+								{user.activeSessions > 0 ? (
+									<span className="shrink-0 rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] text-accent">
+										{user.activeSessions} online
+									</span>
+								) : null}
+
+								{/* Role selector */}
+								<select
+									value={user.role}
+									disabled={isSaving}
+									onChange={(e) => void handleRoleChange(user.uuid, e.target.value as UserRole)}
+									className="shrink-0 cursor-pointer rounded border border-border bg-surface-3 px-2 py-1 text-[12px] text-text-primary focus:border-border-focus focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									<option value="viewer">Viewer</option>
+									<option value="editor">Editor</option>
+									<option value="admin">Admin</option>
+								</select>
+
+								{/* Block button */}
+								{user.role !== "viewer" ? (
+									<button
+										type="button"
+										disabled={isSaving}
+										onClick={() => void handleBlock(user.uuid)}
+										className="shrink-0 rounded border border-status-red/40 px-2 py-1 text-[11px] text-status-red transition-colors hover:bg-status-red/10 disabled:cursor-not-allowed disabled:opacity-40"
+									>
+										Block
+									</button>
+								) : null}
+
+								{isSaving ? <Spinner size={12} className="shrink-0 text-text-tertiary" /> : null}
+							</div>
+						);
+					})}
+				</div>
+			)}
+		</div>
+	);
+}
+
 export function RuntimeSettingsDialog({
 	open,
 	workspaceId,
@@ -376,6 +536,7 @@ export function RuntimeSettingsDialog({
 	onOpenChange,
 	onSaved,
 	initialSection,
+	identity = null,
 }: {
 	open: boolean;
 	workspaceId: string | null;
@@ -384,6 +545,7 @@ export function RuntimeSettingsDialog({
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
+	identity?: import("@/hooks/use-auth-gate").AuthIdentity | null;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
@@ -898,6 +1060,11 @@ export function RuntimeSettingsDialog({
 					onUnsubscribe={pushNotifications.unsubscribe}
 					disabled={controlsDisabled}
 				/>
+
+				{/* User permissions — visible to admins and localhost users only */}
+				{identity && (identity.role === "admin" || identity.isLocal) ? (
+					<UserPermissionsSection workspaceId={workspaceId} />
+				) : null}
 
 				<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>
 				<p

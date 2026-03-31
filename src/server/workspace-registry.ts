@@ -81,6 +81,7 @@ export interface WorkspaceRegistry {
 		requestedWorkspaceId: string | null,
 		options?: {
 			onRemovedWorkspace?: (workspace: RemovedWorkspaceNotice) => void;
+			noMutateActive?: boolean;
 		},
 	) => Promise<ResolvedWorkspaceStreamTarget>;
 	listManagedWorkspaces: () => Array<{
@@ -358,6 +359,10 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		requestedWorkspaceId: string | null,
 		options?: {
 			onRemovedWorkspace?: (workspace: RemovedWorkspaceNotice) => void;
+			// When true, the resolved workspace is NOT set as the global active workspace.
+			// Always true for WebSocket connections — each device's view is independent.
+			// The global active workspace should only change on explicit user actions.
+			noMutateActive?: boolean;
 		},
 	): Promise<ResolvedWorkspaceStreamTarget> => {
 		const allProjects = await listWorkspaceIndexEntries();
@@ -393,7 +398,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 			: null;
 
 		const activeWorkspaceMissing = !existingProjects.some((project) => project.workspaceId === activeWorkspaceId);
-		if (activeWorkspaceMissing) {
+		if (activeWorkspaceMissing && !options?.noMutateActive) {
 			if (existingProjects[0]) {
 				await setActiveWorkspace(existingProjects[0].workspaceId, existingProjects[0].repoPath);
 			} else {
@@ -404,11 +409,16 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		if (requestedWorkspaceId) {
 			const requestedWorkspace = existingProjects.find((project) => project.workspaceId === requestedWorkspaceId);
 			if (requestedWorkspace) {
-				if (
-					activeWorkspaceId !== requestedWorkspace.workspaceId ||
-					activeWorkspacePath !== requestedWorkspace.repoPath
-				) {
-					await setActiveWorkspace(requestedWorkspace.workspaceId, requestedWorkspace.repoPath);
+				// Only switch the global active workspace when NOT serving a WebSocket
+				// connection — each connected device manages its own active workspace
+				// independently and should not hijack the server's global state.
+				if (!options?.noMutateActive) {
+					if (
+						activeWorkspaceId !== requestedWorkspace.workspaceId ||
+						activeWorkspacePath !== requestedWorkspace.repoPath
+					) {
+						await setActiveWorkspace(requestedWorkspace.workspaceId, requestedWorkspace.repoPath);
+					}
 				}
 				return {
 					workspaceId: requestedWorkspace.workspaceId,

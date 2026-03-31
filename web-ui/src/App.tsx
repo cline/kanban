@@ -37,6 +37,7 @@ import { createIdleTaskSession } from "@/hooks/app-utils";
 import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallback";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
+import type { AuthIdentity } from "@/hooks/use-auth-gate";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
@@ -77,7 +78,7 @@ import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 
 // ── Auth loading screen ────────────────────────────────────────────────────
-export default function App(): ReactElement {
+export default function App({ identity = null }: { identity?: AuthIdentity | null }): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -1014,6 +1015,7 @@ export default function App(): ReactElement {
 				initialConfig={settingsRuntimeProjectConfig}
 				liveMcpAuthStatuses={latestMcpAuthStatuses}
 				initialSection={settingsInitialSection}
+				identity={identity}
 				onOpenChange={(nextOpen) => {
 					setIsSettingsOpen(nextOpen);
 					if (!nextOpen) {

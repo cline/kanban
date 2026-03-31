@@ -19,7 +19,7 @@ initializeSentry();
 // This prevents the flood of 401 errors when the app first loads on a
 // remote connection.
 function AuthGate(): ReactElement {
-	const { status: authStatus } = useAuthGate();
+	const { status: authStatus, identity } = useAuthGate();
 
 	if (authStatus === "loading") {
 		return (
@@ -33,7 +33,7 @@ function AuthGate(): ReactElement {
 		return <LoginPage onSuccess={() => window.location.reload()} />;
 	}
 
-	return <App />;
+	return <App identity={identity} />;
 }
 
 const root = document.getElementById("root");

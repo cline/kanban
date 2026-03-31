@@ -409,6 +409,11 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			const workspace: ResolvedWorkspaceStreamTarget = await deps.workspaceRegistry.resolveWorkspaceForStream(
 				requestedWorkspaceId,
 				{
+					// Each WebSocket connection is independent — do NOT mutate the global
+					// active workspace when a new device connects. Without this, device B
+					// connecting to workspace W2 would silently redirect device A's
+					// subsequent fallback resolution to W2, breaking device A's sync.
+					noMutateActive: true,
 					onRemovedWorkspace: ({ workspaceId, message }) => {
 						disposeWorkspace(workspaceId, {
 							disconnectClients: true,
