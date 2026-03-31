@@ -107,6 +107,8 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
+		parentTaskId?: unknown;
+		role?: unknown;
 	};
 	const prompt = typeof card.prompt === "string" ? card.prompt.trim() : "";
 	if (!prompt) {
@@ -131,6 +133,10 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef,
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
+		// Preserve teammate grouping metadata so spawned teammate cards remain nested
+		// under their parent task card in the board column view.
+		parentTaskId: typeof card.parentTaskId === "string" ? card.parentTaskId : undefined,
+		role: typeof card.role === "string" ? card.role : undefined,
 	};
 }
 
