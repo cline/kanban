@@ -135,10 +135,20 @@ export async function createPushNotificationService(options?: {
 		await Promise.allSettled(
 			subscriptions.map(async (subscription) => {
 				try {
-					await webPush.sendNotification(subscription, payloadString);
+					await webPush.sendNotification(subscription, payloadString, {
+						TTL: 60 * 60,
+						urgency: "high",
+					});
 				} catch (error) {
 					if (error instanceof webPush.WebPushError && (error.statusCode === 410 || error.statusCode === 404)) {
 						expiredEndpoints.push(subscription.endpoint);
+					} else if (error instanceof webPush.WebPushError) {
+						const endpointDomain = new URL(subscription.endpoint).hostname;
+						process.stderr.write(
+							`[push] Failed to deliver to ${endpointDomain}: ${error.statusCode} ${error.body}\n`,
+						);
+					} else {
+						process.stderr.write(`[push] Unexpected error sending notification: ${String(error)}\n`);
 					}
 				}
 			}),

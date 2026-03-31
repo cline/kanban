@@ -353,8 +353,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 							});
 						}
 					})
-					.catch(() => {
+					.catch((error: unknown) => {
 						// Fire-and-forget: do not let push failures affect task lifecycle.
+						process.stderr.write(`[push] Error during task review notification: ${String(error)}\n`);
 					});
 			}
 		}
