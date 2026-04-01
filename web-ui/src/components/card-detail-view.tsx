@@ -25,7 +25,7 @@ import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
-import { useUnmount, useWindowEvent } from "@/utils/react-use";
+import { useIsMobileViewport, useUnmount, useWindowEvent } from "@/utils/react-use";
 
 // We still poll the open detail diff because line content can change without changing
 // the overall file or line counts that drive the shared workspace metadata stream.
@@ -317,6 +317,7 @@ export function CardDetailView({
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
+	const isMobile = useIsMobileViewport();
 	const [agentPanelRatio, setAgentPanelRatio] = useState(loadAgentPanelRatio);
 	const [isResizing, setIsResizing] = useState(false);
 	const resizeDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
@@ -746,12 +747,14 @@ export function CardDetailView({
 												comments={diffComments}
 												onCommentsChange={setDiffComments}
 											/>
-											<FileTreePanel
-												workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-												selectedPath={selectedPath}
-												onSelectPath={setSelectedPath}
-												panelFlex={fileTreePanelFlex}
-											/>
+											{!isMobile ? (
+												<FileTreePanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectPath={setSelectedPath}
+													panelFlex={fileTreePanelFlex}
+												/>
+											) : null}
 										</>
 									)}
 								</div>

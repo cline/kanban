@@ -6,9 +6,12 @@ import {
 	useInterval as useReactUseInterval,
 	useLocalStorage as useReactUseLocalStorage,
 	useMeasure as useReactUseMeasure,
+	useMedia as useReactUseMedia,
 	useTitle as useReactUseTitle,
 	useUnmount as useReactUseUnmount,
 } from "react-use";
+
+import { MOBILE_BREAKPOINT_PX } from "@/utils/platform";
 
 type DomEventOptions = boolean | AddEventListenerOptions;
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
@@ -108,4 +111,8 @@ export function useMeasure<T extends Element = Element>() {
 
 export function useUnmount(fn: () => void): void {
 	useReactUseUnmount(fn);
+}
+
+export function useIsMobileViewport(): boolean {
+	return useReactUseMedia(`(max-width: ${MOBILE_BREAKPOINT_PX - 1}px)`, false);
 }

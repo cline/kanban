@@ -647,6 +647,107 @@ body.kb-dependency-link-mode {
 	opacity: 1;
 }
 
+/* -- Mobile diff viewer -- */
+
+.kb-mobile-file-nav-bar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 6px;
+	border-bottom: 1px solid var(--color-border);
+	background: var(--color-surface-1);
+}
+
+.kb-mobile-diff-scroll-container {
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-y;
+}
+
+.kb-mobile-file-drawer-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.kb-mobile-file-drawer {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	max-height: 60vh;
+	display: flex;
+	flex-direction: column;
+	background: var(--color-surface-1);
+	border-top-left-radius: var(--radius-xl);
+	border-top-right-radius: var(--radius-xl);
+	overflow: hidden;
+}
+
+.kb-mobile-file-drawer-list {
+	flex: 1 1 0;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior: contain;
+	padding: 4px 0;
+}
+
+.kb-mobile-file-drawer-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 10px 12px;
+	font-size: 13px;
+	color: var(--color-text-primary);
+	background: transparent;
+	border: none;
+	text-align: left;
+	cursor: pointer;
+}
+
+.kb-mobile-file-drawer-item:active {
+	background: var(--color-surface-3);
+}
+
+.kb-mobile-file-drawer-item-selected {
+	background: var(--color-accent);
+	color: #fff;
+}
+
+.kb-mobile-file-drawer-item-selected:active {
+	background: var(--color-accent-hover);
+}
+
+/* -- Mobile touch improvements -- */
+
+@media (max-width: 767px) {
+	.kb-diff-row {
+		gap: 4px;
+		padding: 2px 2px 2px 0;
+		font-size: 11px;
+	}
+
+	.kb-diff-line-number {
+		width: 1.5rem;
+	}
+
+	.kb-diff-entry {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.kb-diff-comments-footer {
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 6px 8px;
+	}
+
+	.kb-terminal-container {
+		touch-action: pan-y pinch-zoom;
+	}
+}
+
 /* -- Git history rows -- */
 
 .kb-git-ref-row {

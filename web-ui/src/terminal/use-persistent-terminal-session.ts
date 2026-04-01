@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { disposePersistentTerminal, ensurePersistentTerminal } from "@/terminal/persistent-terminal-manager";
 import { registerTerminalController } from "@/terminal/terminal-controller-registry";
+import { useTerminalPinchZoom } from "@/terminal/use-terminal-pinch-zoom";
+import { isTouchDevice } from "@/utils/platform";
 
 interface UsePersistentTerminalSessionInput {
 	taskId: string;
@@ -148,6 +150,16 @@ export function usePersistentTerminalSession({
 			waitForLikelyPrompt: async (timeoutMs) => await (terminalRef.current?.waitForLikelyPrompt(timeoutMs) ?? false),
 		});
 	}, [taskId]);
+
+	const handlePinchZoomFontSize = useCallback((fontSize: number) => {
+		terminalRef.current?.setFontSize(fontSize);
+	}, []);
+
+	useTerminalPinchZoom({
+		containerRef,
+		enabled: isTouchDevice && enabled,
+		onFontSizeChange: handlePinchZoomFontSize,
+	});
 
 	const stopTerminal = useCallback(async () => {
 		const terminal = terminalRef.current;

@@ -1,4 +1,14 @@
-import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, X } from "lucide-react";
+import {
+	ChevronDown,
+	ChevronLeft,
+	ChevronRight,
+	Command,
+	CornerDownLeft,
+	FileText,
+	List,
+	MessageSquare,
+	X,
+} from "lucide-react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -19,6 +29,7 @@ import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { buildFileTree } from "@/utils/file-tree";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 import { isMacPlatform } from "@/utils/platform";
+import { useIsMobileViewport } from "@/utils/react-use";
 
 interface FileDiffGroup {
 	path: string;
@@ -534,6 +545,110 @@ function SplitDiff({
 	);
 }
 
+function MobileFileDrawer({
+	groups,
+	selectedPath,
+	onSelectPath,
+	onClose,
+}: {
+	groups: FileDiffGroup[];
+	selectedPath: string | null;
+	onSelectPath: (path: string) => void;
+	onClose: () => void;
+}): React.ReactElement {
+	return (
+		<div className="kb-mobile-file-drawer-backdrop" onClick={onClose}>
+			<div className="kb-mobile-file-drawer" onClick={(event) => event.stopPropagation()}>
+				<div className="flex items-center justify-between border-b border-border px-3 py-2">
+					<span className="text-sm font-medium text-text-primary">Files</span>
+					<Button
+						variant="ghost"
+						size="sm"
+						icon={<X size={14} />}
+						onClick={onClose}
+						aria-label="Close file list"
+					/>
+				</div>
+				<div className="kb-mobile-file-drawer-list">
+					{groups.map((group) => {
+						const isSelected = group.path === selectedPath;
+						return (
+							<button
+								key={group.path}
+								type="button"
+								className={`kb-mobile-file-drawer-item ${isSelected ? "kb-mobile-file-drawer-item-selected" : ""}`}
+								onClick={() => {
+									onSelectPath(group.path);
+									onClose();
+								}}
+							>
+								<FileText size={14} className="shrink-0 text-text-tertiary" />
+								<span className="truncate" title={group.path}>
+									{group.path.split("/").pop() ?? group.path}
+								</span>
+								<span className="ml-auto shrink-0 font-mono text-[10px]" style={{ display: "flex", gap: 4 }}>
+									{group.added > 0 ? (
+										<span className={isSelected ? "text-white" : "text-status-green"}>+{group.added}</span>
+									) : null}
+									{group.removed > 0 ? (
+										<span className={isSelected ? "text-white" : "text-status-red"}>-{group.removed}</span>
+									) : null}
+								</span>
+							</button>
+						);
+					})}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function MobileFileNavBar({
+	groups,
+	currentIndex,
+	onNavigate,
+	onOpenDrawer,
+}: {
+	groups: FileDiffGroup[];
+	currentIndex: number;
+	onNavigate: (index: number) => void;
+	onOpenDrawer: () => void;
+}): React.ReactElement {
+	const current = groups[currentIndex];
+	const fileName = current ? (current.path.split("/").pop() ?? current.path) : "";
+	return (
+		<div className="kb-mobile-file-nav-bar">
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={<ChevronLeft size={14} />}
+				disabled={currentIndex <= 0}
+				onClick={() => onNavigate(currentIndex - 1)}
+				aria-label="Previous file"
+			/>
+			<button
+				type="button"
+				className="flex min-w-0 flex-1 items-center justify-center gap-1.5 text-xs text-text-primary"
+				onClick={onOpenDrawer}
+			>
+				<List size={14} className="shrink-0 text-text-secondary" />
+				<span className="truncate">{fileName}</span>
+				<span className="shrink-0 text-text-tertiary">
+					{currentIndex + 1}/{groups.length}
+				</span>
+			</button>
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={<ChevronRight size={14} />}
+				disabled={currentIndex >= groups.length - 1}
+				onClick={() => onNavigate(currentIndex + 1)}
+				aria-label="Next file"
+			/>
+		</div>
+	);
+}
+
 export function DiffViewerPanel({
 	workspaceFiles,
 	selectedPath,
@@ -553,6 +668,8 @@ export function DiffViewerPanel({
 	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
 	viewMode?: DiffViewMode;
 }): React.ReactElement {
+	const isMobile = useIsMobileViewport();
+	const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const sectionElementsRef = useRef<Record<string, HTMLElement | null>>({});
@@ -786,6 +903,30 @@ export function DiffViewerPanel({
 	const hasAnyComments = comments.size > 0;
 	const nonEmptyCount = nonEmptyComments.length;
 
+	// Mobile: file-at-a-time navigation
+	const mobileCurrentIndex = useMemo(() => {
+		if (!isMobile || groupedByPath.length === 0) {
+			return 0;
+		}
+		const index = groupedByPath.findIndex((group) => group.path === selectedPath);
+		return index >= 0 ? index : 0;
+	}, [groupedByPath, isMobile, selectedPath]);
+
+	const handleMobileNavigate = useCallback(
+		(index: number) => {
+			const group = groupedByPath[index];
+			if (group) {
+				onSelectedPathChange(group.path);
+			}
+		},
+		[groupedByPath, onSelectedPathChange],
+	);
+
+	const mobileCurrentGroup = isMobile ? (groupedByPath[mobileCurrentIndex] ?? null) : null;
+
+	// Force unified on mobile (split is unreadable on narrow screens)
+	const resolvedViewMode = isMobile ? "unified" : viewMode;
+
 	useHotkeys(
 		"meta+enter,ctrl+enter",
 		(event) => {
@@ -824,6 +965,162 @@ export function DiffViewerPanel({
 		[handleSendComments, nonEmptyCount, onSendToTerminal],
 	);
 
+	const renderDiffEntries = (group: FileDiffGroup): React.ReactElement => (
+		<div className="rounded-b-md border-x border-b border-border bg-surface-1" style={{ overflow: "hidden" }}>
+			{group.entries.map((entry) => (
+				<div key={entry.id} className="kb-diff-entry">
+					{entry.isBinary ? null : resolvedViewMode === "split" ? (
+						<SplitDiff
+							path={group.path}
+							oldText={entry.oldText}
+							newText={entry.newText}
+							comments={comments}
+							onAddComment={(lineNumber, lineText, variant) =>
+								handleAddComment(group.path, lineNumber, lineText, variant)
+							}
+							onUpdateComment={(lineNumber, variant, text) =>
+								handleUpdateComment(group.path, lineNumber, variant, text)
+							}
+							onDeleteComment={(lineNumber, variant) => handleDeleteComment(group.path, lineNumber, variant)}
+						/>
+					) : (
+						<UnifiedDiff
+							path={group.path}
+							oldText={entry.oldText}
+							newText={entry.newText}
+							comments={comments}
+							onAddComment={(lineNumber, lineText, variant) =>
+								handleAddComment(group.path, lineNumber, lineText, variant)
+							}
+							onUpdateComment={(lineNumber, variant, text) =>
+								handleUpdateComment(group.path, lineNumber, variant, text)
+							}
+							onDeleteComment={(lineNumber, variant) => handleDeleteComment(group.path, lineNumber, variant)}
+						/>
+					)}
+				</div>
+			))}
+		</div>
+	);
+
+	const renderCommentsFooter = (): React.ReactElement | null => {
+		if (!hasAnyComments || (!onAddToTerminal && !onSendToTerminal)) {
+			return null;
+		}
+		return (
+			<div className="kb-diff-comments-footer">
+				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+					<span className="kb-diff-comments-count text-text-secondary">
+						{nonEmptyCount} {nonEmptyCount === 1 ? "comment" : "comments"}
+					</span>
+					<Button variant="danger" size="sm" onClick={handleClearAllComments}>
+						Clear All
+					</Button>
+				</div>
+				<div style={{ display: "flex", gap: 4 }}>
+					{onAddToTerminal ? (
+						<Button variant="default" size="sm" disabled={nonEmptyCount === 0} onClick={handleAddComments}>
+							<span style={{ display: "inline-flex", alignItems: "center" }}>
+								<span>Add</span>
+								<span
+									style={{ display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 6 }}
+									aria-hidden
+								>
+									{isMacPlatform ? <Command size={12} /> : <span style={{ fontSize: 12 }}>Ctrl</span>}
+									<CornerDownLeft size={12} />
+								</span>
+							</span>
+						</Button>
+					) : null}
+					{onSendToTerminal ? (
+						<Button variant="primary" size="sm" disabled={nonEmptyCount === 0} onClick={handleSendComments}>
+							<span style={{ display: "inline-flex", alignItems: "center" }}>
+								<span>Send</span>
+								<span
+									style={{ display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 6 }}
+									aria-hidden
+								>
+									{isMacPlatform ? <Command size={12} /> : <span style={{ fontSize: 12 }}>Ctrl</span>}
+									<span style={{ fontSize: 12 }}>Shift</span>
+									<CornerDownLeft size={12} />
+								</span>
+							</span>
+						</Button>
+					) : null}
+				</div>
+			</div>
+		);
+	};
+
+	// ---- Mobile layout: file-at-a-time with drawer ----
+	if (isMobile) {
+		return (
+			<div
+				style={{
+					display: "flex",
+					flex: "1 1 0",
+					flexDirection: "column",
+					minWidth: 0,
+					minHeight: 0,
+					background: "var(--color-surface-0)",
+				}}
+			>
+				{groupedByPath.length === 0 ? (
+					<div className="kb-empty-state-center" style={{ flex: 1 }}>
+						<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
+							<FileText size={40} />
+						</div>
+					</div>
+				) : (
+					<>
+						<MobileFileNavBar
+							groups={groupedByPath}
+							currentIndex={mobileCurrentIndex}
+							onNavigate={handleMobileNavigate}
+							onOpenDrawer={() => setMobileDrawerOpen(true)}
+						/>
+						<div
+							className="kb-mobile-diff-scroll-container"
+							style={{
+								flex: "1 1 0",
+								minHeight: 0,
+								overflowY: "auto",
+								WebkitOverflowScrolling: "touch",
+								overscrollBehavior: "contain",
+								padding: "0 6px 6px",
+							}}
+						>
+							{mobileCurrentGroup ? (
+								<section style={{ marginTop: 6 }}>
+									<div className="flex items-center gap-2 rounded-t-md border border-border bg-surface-1 px-2 py-1.5 text-[11px] text-text-secondary">
+										<span className="truncate" title={mobileCurrentGroup.path}>
+											{mobileCurrentGroup.path}
+										</span>
+										<span className="ml-auto shrink-0">
+											<span className="text-status-green">+{mobileCurrentGroup.added}</span>{" "}
+											<span className="text-status-red">-{mobileCurrentGroup.removed}</span>
+										</span>
+									</div>
+									{renderDiffEntries(mobileCurrentGroup)}
+								</section>
+							) : null}
+						</div>
+						{renderCommentsFooter()}
+						{mobileDrawerOpen ? (
+							<MobileFileDrawer
+								groups={groupedByPath}
+								selectedPath={selectedPath}
+								onSelectPath={onSelectedPathChange}
+								onClose={() => setMobileDrawerOpen(false)}
+							/>
+						) : null}
+					</>
+				)}
+			</div>
+		);
+	}
+
+	// ---- Desktop layout: all files scrollable with sticky headers ----
 	return (
 		<div
 			style={{
@@ -914,117 +1211,12 @@ export function DiffViewerPanel({
 											) : null}
 										</span>
 									</button>
-									{isExpanded ? (
-										<div
-											className="rounded-b-md border-x border-b border-border bg-surface-1"
-											style={{ overflow: "hidden" }}
-										>
-											{group.entries.map((entry) => (
-												<div key={entry.id} className="kb-diff-entry">
-													{entry.isBinary ? null : viewMode === "split" ? (
-														<SplitDiff
-															path={group.path}
-															oldText={entry.oldText}
-															newText={entry.newText}
-															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
-															}
-															onUpdateComment={(lineNumber, variant, text) =>
-																handleUpdateComment(group.path, lineNumber, variant, text)
-															}
-															onDeleteComment={(lineNumber, variant) =>
-																handleDeleteComment(group.path, lineNumber, variant)
-															}
-														/>
-													) : (
-														<UnifiedDiff
-															path={group.path}
-															oldText={entry.oldText}
-															newText={entry.newText}
-															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
-															}
-															onUpdateComment={(lineNumber, variant, text) =>
-																handleUpdateComment(group.path, lineNumber, variant, text)
-															}
-															onDeleteComment={(lineNumber, variant) =>
-																handleDeleteComment(group.path, lineNumber, variant)
-															}
-														/>
-													)}
-												</div>
-											))}
-										</div>
-									) : null}
+									{isExpanded ? renderDiffEntries(group) : null}
 								</section>
 							);
 						})}
 					</div>
-					{hasAnyComments && (onAddToTerminal || onSendToTerminal) ? (
-						<div className="kb-diff-comments-footer">
-							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-								<span className="kb-diff-comments-count text-text-secondary">
-									{nonEmptyCount} {nonEmptyCount === 1 ? "comment" : "comments"}
-								</span>
-								<Button variant="danger" size="sm" onClick={handleClearAllComments}>
-									Clear All
-								</Button>
-							</div>
-							<div style={{ display: "flex", gap: 4 }}>
-								{onAddToTerminal ? (
-									<Button
-										variant="default"
-										size="sm"
-										disabled={nonEmptyCount === 0}
-										onClick={handleAddComments}
-									>
-										<span style={{ display: "inline-flex", alignItems: "center" }}>
-											<span>Add</span>
-											<span
-												style={{
-													display: "inline-flex",
-													alignItems: "center",
-													gap: 2,
-													marginLeft: 6,
-												}}
-												aria-hidden
-											>
-												{isMacPlatform ? <Command size={12} /> : <span style={{ fontSize: 12 }}>Ctrl</span>}
-												<CornerDownLeft size={12} />
-											</span>
-										</span>
-									</Button>
-								) : null}
-								{onSendToTerminal ? (
-									<Button
-										variant="primary"
-										size="sm"
-										disabled={nonEmptyCount === 0}
-										onClick={handleSendComments}
-									>
-										<span style={{ display: "inline-flex", alignItems: "center" }}>
-											<span>Send</span>
-											<span
-												style={{
-													display: "inline-flex",
-													alignItems: "center",
-													gap: 2,
-													marginLeft: 6,
-												}}
-												aria-hidden
-											>
-												{isMacPlatform ? <Command size={12} /> : <span style={{ fontSize: 12 }}>Ctrl</span>}
-												<span style={{ fontSize: 12 }}>Shift</span>
-												<CornerDownLeft size={12} />
-											</span>
-										</span>
-									</Button>
-								) : null}
-							</div>
-						</div>
-					) : null}
+					{renderCommentsFooter()}
 				</>
 			)}
 		</div>
