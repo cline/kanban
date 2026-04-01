@@ -18,7 +18,7 @@ import {
 	hasInterruptAcknowledgement,
 	hasLikelyShellPrompt,
 } from "@/terminal/terminal-prompt-heuristics";
-import { isMacPlatform } from "@/utils/platform";
+import { isMacPlatform, MOBILE_BREAKPOINT_PX } from "@/utils/platform";
 
 const SHIFT_ENTER_SEQUENCE = "\n";
 const RESIZE_DEBOUNCE_MS = 50;
@@ -176,11 +176,13 @@ class PersistentTerminal {
 		this.parkingRoot.appendChild(this.hostElement);
 		const initialGeometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
 
+		const isMobileViewport = window.innerWidth < MOBILE_BREAKPOINT_PX;
 		this.terminal = new Terminal({
 			...createKanbanTerminalOptions({
 				cursorColor: this.appearance.cursorColor,
 				isMacPlatform,
 				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
+				isMobileViewport,
 			}),
 			cols: initialGeometry.cols,
 			rows: initialGeometry.rows,
@@ -570,6 +572,13 @@ class PersistentTerminal {
 		this.visibleContainer = null;
 		clearTerminalGeometry(this.taskId);
 		this.parkingRoot.appendChild(this.hostElement);
+	}
+
+	setFontSize(size: number): void {
+		this.terminal.options.fontSize = size;
+		if (this.visibleContainer) {
+			this.requestResize();
+		}
 	}
 
 	focus(): void {
