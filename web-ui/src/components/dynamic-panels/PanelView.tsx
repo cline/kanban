@@ -1,13 +1,12 @@
 // ── Renders a PanelNode: tab bar + content area ──
 // Drop targets: tab bar (insertion indicator) + content area (5-zone split overlay).
 
-import { Plus } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { Tab } from "@/components/Tab";
 import { type DropZone, useDragContext } from "./DragContext";
 import { DropOverlay, hitTestDropZone } from "./DropOverlay";
 import { useLayoutContext } from "./LayoutContext";
-import { collectPanels, createTab } from "./layoutHelpers";
+import { collectPanels } from "./layoutHelpers";
 import type { PanelNode, TabData } from "./layoutTypes";
 import { TabContextMenu } from "./TabContextMenu";
 import { useKeyboardNavigation } from "./useKeyboardNavigation";
@@ -30,10 +29,6 @@ export function PanelView({ node, layoutRoot }: PanelViewProps) {
 	const [insertIndicatorX, setInsertIndicatorX] = useState<number | null>(null);
 
 	useKeyboardNavigation(node, dispatch, panelRef);
-
-	const handleAddTab = useCallback(() => {
-		dispatch({ type: "ADD_TAB", panelId: node.id, tab: createTab("Untitled") });
-	}, [dispatch, node.id]);
 
 	const handleTabContextMenu = useCallback((e: React.MouseEvent, tab: TabData) => {
 		e.preventDefault();
@@ -213,13 +208,13 @@ export function PanelView({ node, layoutRoot }: PanelViewProps) {
 			{/* Tab bar */}
 			<div
 				ref={tabBarRef}
-				className="relative flex items-center border-b border-border bg-surface-1 h-8.5 shrink-0 overflow-hidden"
+				className="relative flex items-stretch border-b border-border bg-surface-1 h-8 shrink-0 overflow-hidden"
 				onDragOver={onTabBarDragOver}
 				onDragLeave={onTabBarDragLeave}
 				onDrop={onTabBarDrop}
 			>
 				{/* Tabs */}
-				<div className="flex-1 flex items-center overflow-x-auto min-w-0" role="tablist">
+				<div className="flex-1 flex items-stretch overflow-x-auto min-w-0" role="tablist">
 					{node.tabs.map((tab) => (
 						<Tab
 							key={tab.id}
@@ -236,16 +231,6 @@ export function PanelView({ node, layoutRoot }: PanelViewProps) {
 						/>
 					))}
 				</div>
-
-				{/* Add tab */}
-				<button
-					type="button"
-					aria-label="Add tab"
-					className="flex items-center justify-center w-7 h-full text-text-tertiary hover:text-text-primary hover:bg-surface-3 transition-colors duration-75 shrink-0"
-					onClick={handleAddTab}
-				>
-					<Plus size={14} />
-				</button>
 
 				{/* Insertion indicator (vertical bar) */}
 				{showTabBarIndicator && (

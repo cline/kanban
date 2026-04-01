@@ -22,7 +22,6 @@ export function Tab({ tab, panelId, isActive, onActivate, onClose, onContextMenu
 		(e: React.DragEvent) => {
 			e.dataTransfer.effectAllowed = "move";
 			e.dataTransfer.setData("text/plain", tab.id);
-			// Slight delay so the browser captures the element before we update state
 			requestAnimationFrame(() => {
 				setDrag((d) => ({
 					...d,
@@ -38,7 +37,6 @@ export function Tab({ tab, panelId, isActive, onActivate, onClose, onContextMenu
 			payload: null,
 			dropTarget: null,
 			tabBarTarget: null,
-			edgeTarget: null,
 		}));
 	}, [setDrag]);
 
@@ -52,12 +50,9 @@ export function Tab({ tab, panelId, isActive, onActivate, onClose, onContextMenu
 			role="tab"
 			aria-selected={isActive}
 			className={cn(
-				"group flex items-center gap-1.5 px-3 h-8.5 text-xs cursor-grab",
-				"border-r border-border/60 select-none whitespace-nowrap",
-				"transition-colors duration-75",
-				isActive
-					? "bg-surface-2 text-text-primary"
-					: "bg-transparent text-text-secondary hover:bg-surface-1 hover:text-text-primary",
+				"group relative flex items-center gap-1.5 px-3 h-full text-xs cursor-grab",
+				"select-none whitespace-nowrap transition-colors duration-75",
+				isActive ? "text-text-primary font-medium" : "text-text-tertiary hover:text-text-secondary",
 				isDragging && "opacity-40",
 			)}
 			onClick={onActivate}

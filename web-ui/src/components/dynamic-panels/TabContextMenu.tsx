@@ -167,7 +167,7 @@ function MenuItem({ icon, label, onClick }: { icon?: React.ReactNode; label: str
 		<button
 			type="button"
 			className={cn(
-				"flex w-full items-center gap-2 px-3 py-1.5 text-left text-text-primary",
+				"flex w-full items-center gap-2 mx-1 px-2 py-1.5 text-left text-text-primary rounded-md",
 				"hover:bg-surface-3 transition-colors duration-75 cursor-pointer",
 			)}
 			onClick={onClick}

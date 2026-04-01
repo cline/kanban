@@ -75,8 +75,8 @@ export function ResizeHandle({ splitId, direction, index, sizes, containerRef }:
 			onPointerUp={onPointerUp}
 			className={cn(
 				"relative flex-shrink-0 z-10",
-				"bg-border transition-colors duration-100",
-				"hover:bg-accent active:bg-accent",
+				"bg-transparent transition-colors duration-100",
+				"hover:bg-accent/40 active:bg-accent/60",
 				direction === "horizontal" ? "cursor-col-resize" : "cursor-row-resize",
 			)}
 			style={direction === "horizontal" ? { width: HANDLE_SIZE } : { height: HANDLE_SIZE }}

@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, GitCompareArrows } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -150,26 +150,16 @@ function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactEl
 function DiffToolbar({
 	mode,
 	onModeChange,
-	isExpanded,
-	onToggleExpand,
+	isFileTreeVisible,
+	onToggleFileTree,
 }: {
 	mode: RuntimeWorkspaceChangesMode;
 	onModeChange: (mode: RuntimeWorkspaceChangesMode) => void;
-	isExpanded: boolean;
-	onToggleExpand: () => void;
+	isFileTreeVisible: boolean;
+	onToggleFileTree: () => void;
 }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
-			{isExpanded ? (
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={<X size={14} />}
-					onClick={onToggleExpand}
-					className="h-5"
-					aria-label="Collapse expanded diff view"
-				/>
-			) : null}
 			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
 				<Button
 					variant="ghost"
@@ -201,10 +191,10 @@ function DiffToolbar({
 			<Button
 				variant="ghost"
 				size="sm"
-				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-				onClick={onToggleExpand}
+				icon={isFileTreeVisible ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+				onClick={onToggleFileTree}
 				className="ml-auto h-5"
-				aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
+				aria-label={isFileTreeVisible ? "Hide file tree" : "Show file tree"}
 			/>
 		</div>
 	);
@@ -330,7 +320,7 @@ export function CardDetailView({
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
-	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
+	const [isFileTreeVisible, setIsFileTreeVisible] = useState(true);
 	const clineAgentChatPanelRef = useRef<ClineAgentChatPanelHandle | null>(null);
 
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
@@ -410,12 +400,8 @@ export function CardDetailView({
 				if (isTypingTarget(event.target)) {
 					return;
 				}
-				if (isDiffExpanded) {
-					event.preventDefault();
-					setIsDiffExpanded(false);
-				}
 			},
-			[gitHistoryPanel, isDiffExpanded, onCloseGitHistory],
+			[gitHistoryPanel, onCloseGitHistory],
 		),
 	);
 
@@ -446,18 +432,14 @@ export function CardDetailView({
 		setDiffMode("working_copy");
 	}, [selection.card.id]);
 
-	const handleToggleDiffExpand = useCallback(() => {
-		if (!isDiffExpanded && bottomTerminalOpen) {
-			onBottomTerminalClose();
-		}
-		setIsDiffExpanded((previous) => !previous);
-	}, [bottomTerminalOpen, isDiffExpanded, onBottomTerminalClose]);
+	const handleToggleFileTree = useCallback(() => {
+		setIsFileTreeVisible((prev) => !prev);
+	}, []);
 
 	const handleAddDiffComments = useCallback(
 		(formatted: string) => {
 			if (showClineAgentChatPanel) {
 				clineAgentChatPanelRef.current?.appendToDraft(formatted);
-				setIsDiffExpanded(false);
 				return;
 			}
 			onAddReviewComments?.(selection.card.id, formatted);
@@ -469,11 +451,9 @@ export function CardDetailView({
 		(formatted: string) => {
 			if (showClineAgentChatPanel) {
 				void clineAgentChatPanelRef.current?.sendText(formatted);
-				setIsDiffExpanded(false);
 				return;
 			}
 			onSendReviewComments?.(selection.card.id, formatted);
-			setIsDiffExpanded(false);
 		},
 		[onSendReviewComments, selection.card.id, showClineAgentChatPanel],
 	);
@@ -585,8 +565,8 @@ export function CardDetailView({
 								<DiffToolbar
 									mode={diffMode}
 									onModeChange={setDiffMode}
-									isExpanded={isDiffExpanded}
-									onToggleExpand={handleToggleDiffExpand}
+									isFileTreeVisible={isFileTreeVisible}
+									onToggleFileTree={handleToggleFileTree}
 								/>
 							) : null}
 							<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
@@ -600,7 +580,7 @@ export function CardDetailView({
 											workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
 											selectedPath={selectedPath}
 											onSelectedPathChange={setSelectedPath}
-											viewMode={isDiffExpanded ? "split" : "unified"}
+											viewMode="unified"
 											onAddToTerminal={
 												onAddReviewComments || showClineAgentChatPanel ? handleAddDiffComments : undefined
 											}
@@ -610,12 +590,14 @@ export function CardDetailView({
 											comments={diffComments}
 											onCommentsChange={setDiffComments}
 										/>
-										<FileTreePanel
-											workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-											selectedPath={selectedPath}
-											onSelectPath={setSelectedPath}
-											panelFlex={FILE_TREE_PANEL_FLEX}
-										/>
+										{isFileTreeVisible && (
+											<FileTreePanel
+												workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+												selectedPath={selectedPath}
+												onSelectPath={setSelectedPath}
+												panelFlex={FILE_TREE_PANEL_FLEX}
+											/>
+										)}
 									</>
 								)}
 							</div>
@@ -669,8 +651,8 @@ export function CardDetailView({
 			onSessionSummary,
 			isRuntimeAvailable,
 			diffMode,
-			isDiffExpanded,
-			handleToggleDiffExpand,
+			isFileTreeVisible,
+			handleToggleFileTree,
 			isWorkspaceChangesPending,
 			hasNoWorkspaceFileChanges,
 			emptyDiffTitle,
