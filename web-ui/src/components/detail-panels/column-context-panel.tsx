@@ -307,7 +307,8 @@ export function ColumnContextPanel({
 			style={{
 				display: "flex",
 				flexDirection: "column",
-				width: "20%",
+				width: "100%",
+				height: "100%",
 				minHeight: 0,
 				overflow: "hidden",
 				background: "var(--color-surface-0)",

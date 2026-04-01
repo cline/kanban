@@ -738,6 +738,10 @@ export default function App(): ReactElement {
 		return <KanbanAccessBlockedFallback />;
 	}
 
+	// if (1) {
+	// 	return <DynamicPanels />;
+	// }
+
 	return (
 		<div className="flex h-[100svh] min-w-0 overflow-hidden">
 			{!selectedCard ? (
