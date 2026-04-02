@@ -312,7 +312,6 @@ export function ColumnContextPanel({
 				minHeight: 0,
 				overflow: "hidden",
 				background: "var(--color-surface-0)",
-				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
 			<DragDropContext onBeforeCapture={handleBeforeCapture} onDragEnd={handleDragEnd}>

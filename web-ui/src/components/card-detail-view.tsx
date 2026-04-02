@@ -32,6 +32,8 @@ import { useWindowEvent } from "@/utils/react-use";
 
 const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
 const LAYOUT_STORAGE_KEY = "card-detail-dockview-layout";
+const FILE_TREE_VISIBLE_KEY = "card-detail-file-tree-visible";
+const LAYOUT_PERSIST_DEBOUNCE_MS = 500;
 
 // ── Helper ──
 
@@ -176,7 +178,7 @@ export function CardDetailView({
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 	const [isFileTreeVisible, setIsFileTreeVisible] = useState(() => {
 		try {
-			return localStorage.getItem("card-detail-file-tree-visible") !== "false";
+			return localStorage.getItem(FILE_TREE_VISIBLE_KEY) !== "false";
 		} catch {
 			return true;
 		}
@@ -293,7 +295,7 @@ export function CardDetailView({
 		setIsFileTreeVisible((prev) => {
 			const next = !prev;
 			try {
-				localStorage.setItem("card-detail-file-tree-visible", String(next));
+				localStorage.setItem(FILE_TREE_VISIBLE_KEY, String(next));
 			} catch {
 				// ignore
 			}
@@ -450,12 +452,12 @@ export function CardDetailView({
 		try {
 			const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
 			if (saved) {
-				const layout = JSON.parse(saved);
-				api.fromJSON(layout);
+				api.fromJSON(JSON.parse(saved));
 				return;
 			}
 		} catch {
-			// Corrupt data — fall through to default
+			// Corrupt or incompatible layout — clear and fall through to default
+			localStorage.removeItem(LAYOUT_STORAGE_KEY);
 		}
 
 		const totalWidth = api.width;
@@ -476,12 +478,16 @@ export function CardDetailView({
 		});
 	}, []);
 
+	const layoutPersistTimer = useRef<ReturnType<typeof setTimeout>>();
 	const handleLayoutChange = useCallback((api: import("dockview-react").DockviewApi) => {
-		try {
-			localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(api.toJSON()));
-		} catch {
-			// Storage full — silently ignore
-		}
+		clearTimeout(layoutPersistTimer.current);
+		layoutPersistTimer.current = setTimeout(() => {
+			try {
+				localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(api.toJSON()));
+			} catch {
+				// Storage full — silently ignore
+			}
+		}, LAYOUT_PERSIST_DEBOUNCE_MS);
 	}, []);
 
 	// ── Render ──

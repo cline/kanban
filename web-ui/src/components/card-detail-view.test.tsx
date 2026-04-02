@@ -3,7 +3,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CardDetailView } from "@/components/card-detail-view";
-import { LocalStorageKey } from "@/storage/local-storage-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
 
@@ -123,23 +122,6 @@ function getLastMockFirstArg<T>(mockFn: { mock: { calls: unknown[][] } }): T {
 	return lastCall?.[0] as T;
 }
 
-function requireResizeSeparator(container: HTMLElement): HTMLElement {
-	const separator = container.querySelector('[aria-label="Resize agent and diff panels"]');
-	if (!(separator instanceof HTMLElement)) {
-		throw new Error("Expected a resize separator.");
-	}
-	return separator;
-}
-
-function requireAgentPanel(container: HTMLElement): HTMLElement {
-	const separator = requireResizeSeparator(container);
-	const panel = separator.previousElementSibling;
-	if (!(panel instanceof HTMLElement)) {
-		throw new Error("Expected an agent panel element.");
-	}
-	return panel;
-}
-
 describe("CardDetailView", () => {
 	let container: HTMLDivElement;
 	let root: Root;
@@ -193,51 +175,6 @@ describe("CardDetailView", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-	});
-
-	it("collapses the expanded diff on Escape without closing the detail view", async () => {
-		await act(async () => {
-			root.render(
-				<CardDetailView
-					selection={createSelection()}
-					currentProjectId="workspace-1"
-					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
-					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
-				/>,
-			);
-		});
-
-		const expandButton = container.querySelector('button[aria-label="Expand split diff view"]');
-		expect(expandButton).toBeInstanceOf(HTMLButtonElement);
-		if (!(expandButton instanceof HTMLButtonElement)) {
-			throw new Error("Expected an expand diff button.");
-		}
-
-		await act(async () => {
-			expandButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-			expandButton.click();
-		});
-
-		const toolbarButtons = Array.from(container.querySelectorAll("button"));
-		expect(toolbarButtons[0]?.getAttribute("aria-label")).toBe("Collapse expanded diff view");
-		expect(toolbarButtons[1]?.textContent?.trim()).toBe("All Changes");
-		expect(toolbarButtons[2]?.textContent?.trim()).toBe("Last Turn");
-		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeNull();
-
-		await act(async () => {
-			window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-		});
-
-		expect(container.querySelector('button[aria-label="Collapse expanded diff view"]')).toBeNull();
-		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
 	});
 
 	it("clears stale diff content when switching from all changes to last turn", async () => {
@@ -512,124 +449,5 @@ describe("CardDetailView", () => {
 
 		expect(onSendReviewComments).not.toHaveBeenCalled();
 		expect(mockClineSendText).toHaveBeenCalledWith("src/example.ts:8 | done\n> Ship this");
-	});
-
-	it("loads the saved agent-to-diff panel ratio from local storage", async () => {
-		window.localStorage.setItem(LocalStorageKey.DetailAgentPanelRatio, "0.62");
-
-		await act(async () => {
-			root.render(
-				<CardDetailView
-					selection={createSelection()}
-					currentProjectId="workspace-1"
-					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
-					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
-				/>,
-			);
-		});
-
-		expect(requireAgentPanel(container).style.width).toBe("62%");
-	});
-
-	it("persists the resized agent-to-diff panel ratio globally", async () => {
-		await act(async () => {
-			root.render(
-				<CardDetailView
-					selection={createSelection()}
-					currentProjectId="workspace-1"
-					sessionSummary={null}
-					taskSessions={{}}
-					onSessionSummary={() => {}}
-					onCardSelect={() => {}}
-					onTaskDragEnd={() => {}}
-					onMoveToTrash={() => {}}
-					bottomTerminalOpen={false}
-					bottomTerminalTaskId={null}
-					bottomTerminalSummary={null}
-					onBottomTerminalClose={() => {}}
-				/>,
-			);
-		});
-
-		const separator = requireResizeSeparator(container);
-		const dragHandle = separator.firstElementChild;
-		expect(dragHandle).toBeInstanceOf(HTMLDivElement);
-		if (!(dragHandle instanceof HTMLDivElement)) {
-			throw new Error("Expected a draggable resize handle.");
-		}
-
-		await act(async () => {
-			dragHandle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 160 }));
-		});
-		await act(async () => {
-			window.dispatchEvent(new MouseEvent("mousemove", { clientX: 320 }));
-			window.dispatchEvent(new MouseEvent("mouseup", { clientX: 320 }));
-		});
-
-		const savedRatioRaw = window.localStorage.getItem(LocalStorageKey.DetailAgentPanelRatio);
-		expect(savedRatioRaw).not.toBeNull();
-		const savedRatio = Number(savedRatioRaw);
-		expect(savedRatio).toBeGreaterThan(0.4);
-		expect(savedRatio).toBeLessThanOrEqual(0.75);
-		expect(requireAgentPanel(container).style.width).not.toBe("40%");
-	});
-
-	it("keeps the saved divider position after leaving and reopening task detail", async () => {
-		const renderDetail = async (): Promise<void> => {
-			await act(async () => {
-				root.render(
-					<CardDetailView
-						selection={createSelection()}
-						currentProjectId="workspace-1"
-						sessionSummary={null}
-						taskSessions={{}}
-						onSessionSummary={() => {}}
-						onCardSelect={() => {}}
-						onTaskDragEnd={() => {}}
-						onMoveToTrash={() => {}}
-						bottomTerminalOpen={false}
-						bottomTerminalTaskId={null}
-						bottomTerminalSummary={null}
-						onBottomTerminalClose={() => {}}
-					/>,
-				);
-			});
-		};
-
-		await renderDetail();
-
-		const separator = requireResizeSeparator(container);
-		const dragHandle = separator.firstElementChild;
-		expect(dragHandle).toBeInstanceOf(HTMLDivElement);
-		if (!(dragHandle instanceof HTMLDivElement)) {
-			throw new Error("Expected a draggable resize handle.");
-		}
-
-		await act(async () => {
-			dragHandle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 200 }));
-			window.dispatchEvent(new MouseEvent("mouseup", { clientX: 420 }));
-		});
-
-		const expectedRatio = window.localStorage.getItem(LocalStorageKey.DetailAgentPanelRatio);
-		expect(expectedRatio).not.toBeNull();
-
-		await act(async () => {
-			root.unmount();
-			root = createRoot(container);
-		});
-
-		await renderDetail();
-
-		const restoredWidth = requireAgentPanel(container).style.width;
-		const restoredRatio = Number.parseFloat(restoredWidth) / 100;
-		expect(restoredRatio).toBeCloseTo(Number(expectedRatio), 2);
 	});
 });

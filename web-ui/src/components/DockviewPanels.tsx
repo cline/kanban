@@ -8,7 +8,8 @@ import {
 	themeDark,
 } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
-import { useCallback, useRef } from "react";
+import "@/components/dockview-overrides.css";
+import { useCallback } from "react";
 
 // ── Panel component registration ──
 
@@ -31,18 +32,13 @@ export interface DockviewPanelsProps {
 }
 
 export function DockviewPanels({ components, onReady, onLayoutChange, className }: DockviewPanelsProps) {
-	const apiRef = useRef<DockviewApi | null>(null);
-
 	const handleReady = useCallback(
 		(event: DockviewReadyEvent) => {
-			apiRef.current = event.api;
-
 			if (onLayoutChange) {
 				event.api.onDidLayoutChange(() => {
 					onLayoutChange(event.api);
 				});
 			}
-
 			onReady(event);
 		},
 		[onReady, onLayoutChange],
@@ -50,24 +46,6 @@ export function DockviewPanels({ components, onReady, onLayoutChange, className 
 
 	return (
 		<div className={className} style={{ height: "100%", width: "100%" }}>
-			<style>{`
-				/* Hide close button on tabs */
-				.dv-default-tab-action { display: none !important; }
-				/* Transparent tab backgrounds + padding */
-				.dv-tab { background-color: transparent !important; padding: 0 16px !important; }
-				/* Instant sash color on resize */
-				.dockview-theme-dark {
-					--dv-active-sash-color: rgba(0, 132, 255, 0.35) !important;
-					--dv-active-sash-transition-duration: 0s !important;
-					--dv-active-sash-transition-delay: 0s !important;
-				}
-				/* Ensure panel content fills available space */
-				.dv-content-container > div {
-					height: 100% !important;
-					display: flex !important;
-					flex-direction: column !important;
-				}
-			`}</style>
 			<DockviewReact components={components} onReady={handleReady} theme={themeDark} disableFloatingGroups />
 		</div>
 	);

@@ -1,3 +1,15 @@
+class MockResizeObserver {
+	disconnect(): void {}
+	observe(_target: Element): void {}
+	unobserve(_target: Element): void {}
+}
+
+Object.defineProperty(globalThis, "ResizeObserver", {
+	writable: true,
+	configurable: true,
+	value: MockResizeObserver,
+});
+
 class MockIntersectionObserver implements IntersectionObserver {
 	readonly root: Element | Document | null = null;
 	readonly rootMargin = "";

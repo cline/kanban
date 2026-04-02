@@ -11,7 +11,6 @@ import type { DiffLineComment } from "@/components/detail-panels/diff-viewer-pan
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import type {
-	RuntimeAgentId,
 	RuntimeConfigResponse,
 	RuntimeTaskSessionMode,
 	RuntimeTaskSessionSummary,

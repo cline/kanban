@@ -1,0 +1,24 @@
+/* Kanban-specific dockview overrides */
+
+/* Hide close button on tabs */
+.dv-default-tab-action { display: none !important; }
+
+/* Transparent tab backgrounds + padding */
+.dv-tab { background-color: transparent !important; padding: 0 16px !important; }
+
+/* Tab bar background */
+.dv-tabs-and-actions-container { background-color: var(--color-surface-1) !important; }
+
+/* Instant sash color on resize */
+.dockview-theme-dark {
+	--dv-active-sash-color: rgba(0, 132, 255, 0.35) !important;
+	--dv-active-sash-transition-duration: 0s !important;
+	--dv-active-sash-transition-delay: 0s !important;
+}
+
+/* Ensure panel content fills available space */
+.dv-content-container > div {
+	height: 100% !important;
+	display: flex !important;
+	flex-direction: column !important;
+}
