@@ -36,6 +36,9 @@ export const runtimeWorkspaceChangesResponseSchema = z.object({
 	repoRoot: z.string(),
 	generatedAt: z.number(),
 	files: z.array(runtimeWorkspaceFileChangeSchema),
+	totalFileCount: z.number().int().nonnegative().optional(),
+	truncated: z.boolean().optional(),
+	warning: z.string().nullable().optional(),
 });
 export type RuntimeWorkspaceChangesResponse = z.infer<typeof runtimeWorkspaceChangesResponseSchema>;
 

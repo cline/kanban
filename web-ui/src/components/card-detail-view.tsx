@@ -135,6 +135,28 @@ function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactEl
 	);
 }
 
+function WorkspaceChangesTruncatedPanel({
+	title,
+	description,
+}: {
+	title: string;
+	description: string;
+}): React.ReactElement {
+	return (
+		<div
+			style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}
+		>
+			<div className="kb-empty-state-center" style={{ flex: 1 }}>
+				<div className="flex flex-col items-center justify-center gap-3 px-8 py-12 text-center text-text-tertiary">
+					<GitCompareArrows size={40} />
+					<h3 className="font-semibold text-text-secondary">{title}</h3>
+					<p className="max-w-xl text-sm leading-6 text-text-tertiary m-0">{description}</p>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 function DiffToolbar({
 	mode,
 	onModeChange,
@@ -431,7 +453,15 @@ export function CardDetailView({
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;
 	const hasNoWorkspaceFileChanges =
 		isRuntimeAvailable && workspaceChanges !== null && runtimeFiles !== null && runtimeFiles.length === 0;
+	const isWorkspaceChangesTruncated = Boolean(workspaceChanges?.truncated);
 	const emptyDiffTitle = diffMode === "last_turn" ? "No changes since last turn" : "No working changes";
+	const truncatedDiffTitle =
+		diffMode === "last_turn" ? "Too many last-turn changes to render" : "Too many changes to render";
+	const truncatedDiffDescription =
+		workspaceChanges?.warning ??
+		(workspaceChanges?.totalFileCount && workspaceChanges.totalFileCount > 0
+			? `This workspace has ${workspaceChanges.totalFileCount} changed files, which is above the safe rendering limit.`
+			: "This workspace is above the safe rendering limit.");
 	const agentPanelPercent = `${(agentPanelRatio * 100).toFixed(1)}%`;
 	const diffPanelPercent = `${((1 - agentPanelRatio) * 100).toFixed(1)}%`;
 	const fileTreePanelFlex = `0 0 ${isDiffExpanded ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
@@ -724,6 +754,11 @@ export function CardDetailView({
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
 									{isWorkspaceChangesPending ? (
 										<WorkspaceChangesLoadingPanel panelFlex={fileTreePanelFlex} />
+									) : isWorkspaceChangesTruncated ? (
+										<WorkspaceChangesTruncatedPanel
+											title={truncatedDiffTitle}
+											description={truncatedDiffDescription}
+										/>
 									) : hasNoWorkspaceFileChanges ? (
 										<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
 									) : (
