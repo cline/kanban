@@ -129,7 +129,7 @@ describe("PtySession", () => {
 	it("launches bare executables directly on Windows when PATH resolves to .exe", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
-		process.env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+		process.env.PATHEXT = ".com;.exe;.bat;.cmd";
 		const windowsBinDir = mkdtempSync(join(tmpdir(), "kanban-win-path-"));
 		writeFileSync(join(windowsBinDir, "codex.exe"), "");
 		process.env.PATH = "";
@@ -144,7 +144,7 @@ describe("PtySession", () => {
 				cwd: "C:/repo",
 				env: {
 					PATH: windowsBinDir,
-					PATHEXT: ".COM;.EXE;.BAT;.CMD",
+					PATHEXT: ".com;.exe;.bat;.cmd",
 					ComSpec: "C:\\Windows\\System32\\cmd.exe",
 				},
 				cols: 120,

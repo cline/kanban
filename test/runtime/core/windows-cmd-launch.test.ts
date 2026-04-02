@@ -41,7 +41,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		expect(
 			shouldUseWindowsCmdLaunch("codex", "win32", {
 				PATH: tempDirectory,
-				PATHEXT: ".COM;.EXE;.BAT;.CMD",
+				PATHEXT: ".com;.exe;.bat;.cmd",
 				ComSpec: "C:\\Windows\\System32\\cmd.exe",
 			}),
 		).toBe(false);
@@ -55,7 +55,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		expect(
 			shouldUseWindowsCmdLaunch("codex", "win32", {
 				Path: tempDirectory,
-				Pathext: ".COM;.EXE;.BAT;.CMD",
+				Pathext: ".com;.exe;.bat;.cmd",
 				comspec: "C:\\Windows\\System32\\cmd.exe",
 			}),
 		).toBe(false);
@@ -70,7 +70,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 			shouldUseWindowsCmdLaunch("codex", "win32", {
 				PATH: undefined,
 				Path: tempDirectory,
-				PATHEXT: ".COM;.EXE;.BAT;.CMD",
+				PATHEXT: ".com;.exe;.bat;.cmd",
 				ComSpec: "C:\\Windows\\System32\\cmd.exe",
 			}),
 		).toBe(false);
@@ -84,7 +84,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		expect(
 			shouldUseWindowsCmdLaunch("codex", "win32", {
 				PATH: tempDirectory,
-				PATHEXT: ".COM;.EXE;.BAT;.CMD",
+				PATHEXT: ".com;.exe;.bat;.cmd",
 				ComSpec: "C:\\Windows\\System32\\cmd.exe",
 			}),
 		).toBe(true);
@@ -94,7 +94,7 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		expect(
 			shouldUseWindowsCmdLaunch("codex", "win32", {
 				PATH: "",
-				PATHEXT: ".COM;.EXE;.BAT;.CMD",
+				PATHEXT: ".com;.exe;.bat;.cmd",
 				ComSpec: "C:\\Windows\\System32\\cmd.exe",
 			}),
 		).toBe(true);
