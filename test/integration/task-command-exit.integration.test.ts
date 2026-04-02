@@ -717,6 +717,73 @@ describe("source task commands", () => {
 			expect(startedPayload.ok).toBe(false);
 			expect(startedPayload.error).toContain("task start requires the Kanban runtime");
 			expect(startedPayload.error).toContain("This can happen inside sandboxed Codex task sessions with network disabled.");
+
+			const runtimeEnv = createGitTestEnv({
+				HOME: homeDir,
+				USERPROFILE: homeDir,
+				KANBAN_RUNTIME_PORT: port,
+			});
+
+			const serverProcess = spawn(
+				process.execPath,
+				[
+					"--require",
+					resolveShutdownIpcHookPath(),
+					"--import",
+					resolveTsxLoaderImportSpecifier(),
+					resolve(process.cwd(), "src/cli.ts"),
+					"--no-open",
+				],
+				{
+					cwd: projectPath,
+					env: runtimeEnv,
+					stdio: ["ignore", "pipe", "pipe", "ipc"],
+				},
+			);
+
+			try {
+				await waitForServerStart(serverProcess);
+
+				const listedWithRuntime = await runCliCommandAndCollectOutput({
+					args: ["task", "list", "--project-path", projectPath],
+					cwd: projectPath,
+					env: runtimeEnv,
+				});
+				expect(
+					listedWithRuntime.didExit,
+					`runtime reconnected task list did not exit in time.\nstdout:\n${listedWithRuntime.stdout}\nstderr:\n${listedWithRuntime.stderr}`,
+				).toBe(true);
+				expect(listedWithRuntime.exitCode).toBe(0);
+				const listedWithRuntimePayload = parseCliJson<{
+					ok: boolean;
+					runtimeAvailable: boolean;
+					warnings: string[];
+					count: number;
+					tasks: Array<{ id: string; prompt: string }>;
+				}>(listedWithRuntime.stdout);
+				expect(listedWithRuntimePayload.ok).toBe(true);
+				expect(listedWithRuntimePayload.runtimeAvailable).toBe(true);
+				expect(listedWithRuntimePayload.warnings).toEqual([]);
+				expect(listedWithRuntimePayload.count).toBe(2);
+				expect(listedWithRuntimePayload.tasks.map((task) => task.id)).toEqual(
+					expect.arrayContaining([createdPrimaryPayload.task.id, createdLinkedPayload.task.id]),
+				);
+				expect(listedWithRuntimePayload.tasks).toEqual(
+					expect.arrayContaining([
+						expect.objectContaining({
+							id: createdPrimaryPayload.task.id,
+							prompt: "Updated fallback prompt",
+						}),
+					]),
+				);
+			} finally {
+				await requestGracefulShutdown(serverProcess);
+				const stopped = await waitForExit(serverProcess, 5_000);
+				if (!stopped) {
+					serverProcess.kill("SIGKILL");
+					await waitForExit(serverProcess, 5_000);
+				}
+			}
 		} finally {
 			cleanupProject();
 			cleanupHome();

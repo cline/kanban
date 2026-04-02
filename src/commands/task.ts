@@ -55,6 +55,24 @@ const LOCAL_RUNTIME_WARNING =
 	"Kanban runtime is unreachable from this session; command completed using local workspace state only.";
 
 /**
+ * Parses a process environment boolean flag using the same truthy/falsey conventions as CLI options.
+ */
+function parseEnvironmentBooleanFlag(value: string | undefined): boolean {
+	if (value === undefined) {
+		return false;
+	}
+	const normalized = value.trim().toLowerCase();
+	return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+/**
+ * Detects when the current Codex task session explicitly advertises that networking is sandbox-disabled.
+ */
+function isCodexSandboxNetworkDisabled(): boolean {
+	return parseEnvironmentBooleanFlag(process.env.CODEX_SANDBOX_NETWORK_DISABLED);
+}
+
+/**
  * Converts an unknown thrown value into a readable error message for CLI output.
  */
 function toErrorMessage(error: unknown): string {
@@ -233,8 +251,6 @@ function isRuntimeTransportError(error: unknown): boolean {
 		"connect econnrefused",
 		"socket hang up",
 		"other side closed",
-		"127.0.0.1",
-		"localhost",
 	].some((fragment) => haystack.includes(fragment));
 }
 
@@ -252,6 +268,14 @@ function buildRuntimeRequiredError(commandName: string): Error {
  * Attempts to register the workspace with the runtime, returning a local-only mode descriptor when transport is unavailable.
  */
 async function tryEnsureRuntimeWorkspace(workspaceRepoPath: string): Promise<TaskCommandRuntimeAccess> {
+	if (isCodexSandboxNetworkDisabled()) {
+		return {
+			runtimeAvailable: false,
+			runtimeClient: null,
+			warnings: [LOCAL_RUNTIME_WARNING],
+		};
+	}
+
 	try {
 		const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 		return {
@@ -278,7 +302,7 @@ async function loadTaskCommandWorkspaceState(
 	workspaceRepoPath: string,
 	runtimeClient: RuntimeClient | null,
 ): Promise<{ state: RuntimeWorkspaceStateResponse; runtimeAvailable: boolean; warnings: string[] }> {
-	if (!runtimeClient) {
+	if (!runtimeClient || isCodexSandboxNetworkDisabled()) {
 		return {
 			state: await loadWorkspaceState(workspaceRepoPath),
 			runtimeAvailable: false,
@@ -447,10 +471,8 @@ async function listTasks(input: { cwd: string; projectPath?: string; column?: Li
 	const workspace = await resolveRuntimeWorkspace(input.projectPath, input.cwd, {
 		autoCreateIfMissing: false,
 	});
-	const loadedState = await loadTaskCommandWorkspaceState(
-		workspace.repoPath,
-		createRuntimeTrpcClient(workspace.workspaceId),
-	);
+	const runtimeAccess = await tryEnsureRuntimeWorkspace(workspace.repoPath);
+	const loadedState = await loadTaskCommandWorkspaceState(workspace.repoPath, runtimeAccess.runtimeClient);
 	const state = loadedState.state;
 
 	const tasks = state.board.columns.flatMap((boardColumn) => {
