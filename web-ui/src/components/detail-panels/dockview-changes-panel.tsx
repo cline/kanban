@@ -1,9 +1,9 @@
 // ── Dockview panel: Changes (DiffToolbar + DiffViewer + FileTree) ──
 
-import { ChevronLeft, ChevronRight, GitCompareArrows } from "lucide-react";
-import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
+import { GitCompareArrows, PanelRight } from "lucide-react";
+import { DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import type { RuntimeWorkspaceChangesMode } from "@/runtime/types";
 import { useDetailPanelContext } from "./detail-panel-context";
 
@@ -85,43 +85,51 @@ function DiffToolbar({
 	onToggleFileTree: () => void;
 }): React.ReactElement {
 	return (
-		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
-			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={() => onModeChange("working_copy")}
-					className="h-5 rounded-sm text-xs"
-					style={
-						mode === "working_copy"
-							? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" }
-							: undefined
-					}
-				>
-					All Changes
-				</Button>
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={() => onModeChange("last_turn")}
-					className="h-5 rounded-sm text-xs"
-					style={
-						mode === "last_turn"
-							? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" }
-							: undefined
-					}
-				>
-					Last Turn
-				</Button>
+		<div
+			className="flex items-center px-2"
+			style={{
+				height: 38,
+				backgroundColor: "var(--color-surface-0)",
+				borderBottom: "1px solid color-mix(in srgb, var(--color-divider) 50%, transparent)",
+			}}
+		>
+			<div className="inline-flex items-center rounded-md bg-surface-2/50 p-0.5">
+				{(
+					[
+						{ key: "working_copy", label: "All Changes" },
+						{ key: "last_turn", label: "Last Turn" },
+					] as const
+				).map(({ key, label }) => (
+					<button
+						key={key}
+						type="button"
+						onClick={() => onModeChange(key)}
+						className={cn(
+							"rounded px-2.5 py-1 text-[11px] font-medium cursor-pointer select-none transition-colors",
+							mode === key
+								? "bg-surface-3 text-text-primary shadow-[0_1px_2px_rgba(0,0,0,0.15)]"
+								: "text-text-secondary hover:text-text-primary",
+						)}
+					>
+						{label}
+					</button>
+				))}
 			</div>
-			<Button
-				variant="ghost"
-				size="sm"
-				icon={isFileTreeVisible ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+
+			<button
+				type="button"
 				onClick={onToggleFileTree}
-				className="ml-auto h-5"
+				className={cn(
+					"ml-auto flex items-center justify-center rounded-md w-6 h-6 cursor-pointer transition-colors",
+					isFileTreeVisible
+						? "text-accent hover:bg-surface-3"
+						: "text-text-tertiary hover:text-text-secondary hover:bg-surface-3",
+				)}
 				aria-label={isFileTreeVisible ? "Hide file tree" : "Show file tree"}
-			/>
+				title={isFileTreeVisible ? "Hide file tree" : "Show file tree"}
+			>
+				<PanelRight size={14} />
+			</button>
 		</div>
 	);
 }

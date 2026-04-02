@@ -10,6 +10,7 @@ import {
 import "dockview-react/dist/styles/dockview.css";
 import "@/components/dockview-overrides.css";
 import { useCallback } from "react";
+import { cn } from "@/components/ui/cn";
 
 // ── Panel component registration ──
 
@@ -45,7 +46,7 @@ export function DockviewPanels({ components, onReady, onLayoutChange, className 
 	);
 
 	return (
-		<div className={className} style={{ height: "100%", width: "100%" }}>
+		<div className={cn("h-full w-full", className)}>
 			<DockviewReact components={components} onReady={handleReady} theme={themeDark} disableFloatingGroups />
 		</div>
 	);

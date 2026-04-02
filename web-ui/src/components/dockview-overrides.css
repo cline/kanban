@@ -3,8 +3,16 @@
 /* Hide close button on tabs */
 .dv-default-tab-action { display: none !important; }
 
-/* Transparent tab backgrounds + padding */
-.dv-tab { background-color: transparent !important; padding: 0 16px !important; }
+/* Transparent tab backgrounds + padding, no focus ring */
+.dv-tab {
+	background-color: transparent !important;
+	padding: 0 16px !important;
+	outline: none !important;
+	box-shadow: none !important;
+}
+
+/* Subtle separator between adjacent tabs */
+.dv-tab + .dv-tab { border-left: 1px solid var(--color-border) !important; }
 
 /* Tab bar background */
 .dv-tabs-and-actions-container { background-color: var(--color-surface-1) !important; }

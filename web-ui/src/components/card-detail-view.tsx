@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import type { DockviewReadyEvent, IDockviewPanelProps } from "dockview-react";
+import type { DockviewApi, DockviewReadyEvent, IDockviewPanelProps } from "dockview-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -479,7 +479,7 @@ export function CardDetailView({
 	}, []);
 
 	const layoutPersistTimer = useRef<ReturnType<typeof setTimeout>>();
-	const handleLayoutChange = useCallback((api: import("dockview-react").DockviewApi) => {
+	const handleLayoutChange = useCallback((api: DockviewApi) => {
 		clearTimeout(layoutPersistTimer.current);
 		layoutPersistTimer.current = setTimeout(() => {
 			try {
