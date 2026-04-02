@@ -186,4 +186,44 @@ describe("RuntimeSettingsDialog", () => {
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 		expect(callOrder).toEqual(["open", "close-dialog"]);
 	});
+
+	it("clears the deferred close timer on unmount", async () => {
+		const featurebaseFeedbackState: FeaturebaseFeedbackState = {
+			authState: "ready",
+			openFeedback: vi.fn(),
+		};
+		const onOpenChange = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open
+					workspaceId="workspace-1"
+					initialConfig={createRuntimeConfigResponse()}
+					featurebaseFeedbackState={featurebaseFeedbackState}
+					onOpenChange={onOpenChange}
+				/>,
+			);
+		});
+
+		const button = findButtonByText(document.body, "Share Feedback");
+		expect(button).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			button?.click();
+		});
+
+		expect(featurebaseFeedbackState.openFeedback).toHaveBeenCalledTimes(1);
+		expect(onOpenChange).not.toHaveBeenCalled();
+
+		act(() => {
+			root.unmount();
+		});
+
+		await act(async () => {
+			vi.runAllTimers();
+		});
+
+		expect(onOpenChange).not.toHaveBeenCalled();
+	});
 });
