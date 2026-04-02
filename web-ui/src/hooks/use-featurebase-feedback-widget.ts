@@ -24,6 +24,8 @@ export type FeaturebaseAuthState = "idle" | "loading" | "ready" | "error";
 export interface FeaturebaseFeedbackState {
 	/** Current pre-identify readiness. */
 	authState: FeaturebaseAuthState;
+	/** Opens the feedback widget once Featurebase is fully ready. */
+	openFeedback: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +49,18 @@ interface FeaturebaseWindow extends Window {
 }
 
 let featurebaseSdkLoadPromise: Promise<void> | null = null;
+
+function openFeaturebaseFeedbackWidget(win: Window): void {
+	win.postMessage(
+		{
+			target: "FeaturebaseWidget",
+			data: {
+				action: "openFeedbackWidget",
+			},
+		},
+		"*",
+	);
+}
 
 function ensureFeaturebaseCommand(win: FeaturebaseWindow): FeaturebaseCommand {
 	if (typeof win.Featurebase === "function") {
@@ -239,5 +253,12 @@ export function useFeaturebaseFeedbackWidget(input: {
 		};
 	}, [workspaceId, isAuthenticated, runPreIdentify]);
 
-	return { authState };
+	const openFeedback = useCallback(() => {
+		if (authState !== "ready") {
+			return;
+		}
+		openFeaturebaseFeedbackWidget(window);
+	}, [authState]);
+
+	return { authState, openFeedback };
 }

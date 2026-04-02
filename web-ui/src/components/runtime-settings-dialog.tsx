@@ -868,7 +868,9 @@ export function RuntimeSettingsDialog({
 								clineProviderSettings={clineProviderSettings}
 								featurebaseFeedbackState={featurebaseFeedbackState}
 								size="sm"
-								onClick={() => onOpenChange(false)}
+								onClick={() => {
+									window.setTimeout(() => onOpenChange(false), 0);
+								}}
 							/>
 						) : (
 							<>

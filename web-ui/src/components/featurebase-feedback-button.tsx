@@ -46,8 +46,13 @@ export function FeaturebaseFeedbackButton({
 		return null;
 	}
 
+	function handleClick(event: React.MouseEvent<HTMLButtonElement>): void {
+		featurebaseFeedbackState?.openFeedback();
+		onClick?.(event);
+	}
+
 	return (
-		<Button size={size} variant={variant} className={className} onClick={onClick} data-featurebase-feedback>
+		<Button size={size} variant={variant} className={className} onClick={handleClick} data-featurebase-feedback>
 			Share Feedback
 		</Button>
 	);
