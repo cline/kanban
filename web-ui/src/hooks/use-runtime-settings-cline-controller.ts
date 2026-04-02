@@ -9,6 +9,7 @@ import {
 	fetchClineProviderModels,
 	runClineProviderOauthLogin,
 	saveClineProviderSettings,
+	updateClineProvider,
 } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
@@ -68,6 +69,19 @@ export interface AddClineProviderInput {
 	capabilities?: RuntimeClineProviderCapability[];
 }
 
+export interface UpdateClineProviderInput {
+	providerId: string;
+	name?: string;
+	baseUrl?: string;
+	apiKey?: string | null;
+	headers?: Record<string, string> | null;
+	timeoutMs?: number | null;
+	models?: string[];
+	defaultModelId?: string | null;
+	modelsSourceUrl?: string | null;
+	capabilities?: RuntimeClineProviderCapability[];
+}
+
 export interface UseRuntimeSettingsClineControllerResult {
 	providerId: string;
 	setProviderId: Dispatch<SetStateAction<string>>;
@@ -115,6 +129,7 @@ export interface UseRuntimeSettingsClineControllerResult {
 	hasUnsavedChanges: boolean;
 	saveProviderSettings: (overrides?: SaveProviderSettingsOverrides) => Promise<SaveResult>;
 	addCustomProvider: (input: AddClineProviderInput) => Promise<SaveResult>;
+	updateCustomProvider: (input: UpdateClineProviderInput) => Promise<SaveResult>;
 	runOauthLogin: () => Promise<SaveResult>;
 }
 
@@ -597,6 +612,43 @@ export function useRuntimeSettingsClineController(
 		}
 	}, [managedOauthProvider, providerCatalog, providerId, workspaceId]);
 
+	const updateCustomProvider = useCallback(
+		async (input: UpdateClineProviderInput): Promise<SaveResult> => {
+			try {
+				const savedSettings = await updateClineProvider(workspaceId, input);
+				const nextProviderId = savedSettings.providerId ?? input.providerId.trim().toLowerCase();
+				setProviderId(nextProviderId);
+				setModelId(savedSettings.modelId ?? input.defaultModelId?.trim() ?? modelId);
+				setApiKey("");
+				setBaseUrl(savedSettings.baseUrl ?? input.baseUrl ?? baseUrl);
+				setReasoningEffort(savedSettings.reasoningEffort ?? "");
+				setProviderSettingsOverride(savedSettings);
+
+				setIsLoadingProviderCatalog(true);
+				try {
+					setProviderCatalog(await fetchClineProviderCatalog(workspaceId));
+				} finally {
+					setIsLoadingProviderCatalog(false);
+				}
+
+				setIsLoadingProviderModels(true);
+				try {
+					setProviderModels(await fetchClineProviderModels(workspaceId, nextProviderId));
+				} finally {
+					setIsLoadingProviderModels(false);
+				}
+
+				return { ok: true };
+			} catch (error) {
+				return {
+					ok: false,
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
+		},
+		[baseUrl, modelId, workspaceId],
+	);
+
 	return {
 		providerId,
 		setProviderId,
@@ -644,6 +696,7 @@ export function useRuntimeSettingsClineController(
 		hasUnsavedChanges,
 		saveProviderSettings: saveProviderSettingsDraft,
 		addCustomProvider,
+		updateCustomProvider,
 		runOauthLogin,
 	};
 }

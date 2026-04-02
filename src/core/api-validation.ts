@@ -7,6 +7,7 @@ import {
 	type RuntimeClineOauthLoginRequest,
 	type RuntimeClineProviderModelsRequest,
 	type RuntimeClineProviderSettingsSaveRequest,
+	type RuntimeClineUpdateProviderRequest,
 	type RuntimeCommandRunRequest,
 	type RuntimeConfigSaveRequest,
 	type RuntimeGitCheckoutRequest,
@@ -35,6 +36,7 @@ import {
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineProviderModelsRequestSchema,
 	runtimeClineProviderSettingsSaveRequestSchema,
+	runtimeClineUpdateProviderRequestSchema,
 	runtimeCommandRunRequestSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeGitCheckoutRequestSchema,
@@ -359,6 +361,39 @@ export function parseClineAddProviderRequest(value: unknown): RuntimeClineAddPro
 		defaultModelId: parsed.defaultModelId?.trim() || null,
 		modelsSourceUrl,
 		capabilities: parsed.capabilities ? [...new Set(parsed.capabilities)] : undefined,
+	};
+}
+
+export function parseClineUpdateProviderRequest(value: unknown): RuntimeClineUpdateProviderRequest {
+	const parsed = parseWithSchema(runtimeClineUpdateProviderRequestSchema, value);
+	const providerId = parsed.providerId.trim().toLowerCase().replace(/\s+/g, "-");
+	if (!providerId) {
+		throw new Error("Provider ID cannot be empty.");
+	}
+
+	const headers =
+		parsed.headers === undefined
+			? undefined
+			: parsed.headers === null
+				? null
+				: Object.fromEntries(
+						Object.entries(parsed.headers)
+							.map(([key, entry]) => [key.trim(), entry.trim()] as const)
+							.filter(([key]) => key.length > 0),
+					);
+	const models = parsed.models?.map((model) => model.trim()).filter((model) => model.length > 0);
+
+	return {
+		providerId,
+		...(parsed.name !== undefined ? { name: parsed.name.trim() } : {}),
+		...(parsed.baseUrl !== undefined ? { baseUrl: parsed.baseUrl.trim() } : {}),
+		...(parsed.apiKey !== undefined ? { apiKey: parsed.apiKey?.trim() || null } : {}),
+		...(headers !== undefined ? { headers } : {}),
+		...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
+		...(models !== undefined ? { models: [...new Set(models)] } : {}),
+		...(parsed.defaultModelId !== undefined ? { defaultModelId: parsed.defaultModelId?.trim() || null } : {}),
+		...(parsed.modelsSourceUrl !== undefined ? { modelsSourceUrl: parsed.modelsSourceUrl?.trim() || null } : {}),
+		...(parsed.capabilities ? { capabilities: [...new Set(parsed.capabilities)] } : {}),
 	};
 }
 

@@ -18,6 +18,7 @@ import type {
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
 	RuntimeClineReasoningEffort,
+	RuntimeClineUpdateProviderResponse,
 	RuntimeConfigResponse,
 	RuntimeDebugResetAllStateResponse,
 	RuntimeFeaturebaseTokenResponse,
@@ -90,6 +91,25 @@ export async function addClineProvider(
 ): Promise<RuntimeClineAddProviderResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.addClineProvider.mutate(input);
+}
+
+export async function updateClineProvider(
+	workspaceId: string | null,
+	input: {
+		providerId: string;
+		name?: string;
+		baseUrl?: string;
+		apiKey?: string | null;
+		headers?: Record<string, string> | null;
+		timeoutMs?: number | null;
+		models?: string[];
+		defaultModelId?: string | null;
+		modelsSourceUrl?: string | null;
+		capabilities?: RuntimeClineProviderCapability[];
+	},
+): Promise<RuntimeClineUpdateProviderResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.updateClineProvider.mutate(input);
 }
 
 export async function fetchClineProviderCatalog(

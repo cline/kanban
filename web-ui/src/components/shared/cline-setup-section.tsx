@@ -1,5 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { Check, ExternalLink, Plus, X } from "lucide-react";
+import { Check, ExternalLink, Pencil, Plus, X } from "lucide-react";
 import { type ReactElement, useMemo, useState } from "react";
 
 import {
@@ -7,9 +7,17 @@ import {
 	CLINE_REASONING_EFFORT_OPTIONS,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
-import { ClineAddProviderDialog } from "@/components/shared/cline-add-provider-dialog";
+import {
+	ClineAddProviderDialog,
+	type ClineProviderDialogInitialValues,
+	type ClineProviderDialogMode,
+} from "@/components/shared/cline-add-provider-dialog";
 import { Button } from "@/components/ui/button";
-import type { UseRuntimeSettingsClineControllerResult } from "@/hooks/use-runtime-settings-cline-controller";
+import type {
+	AddClineProviderInput,
+	UpdateClineProviderInput,
+	UseRuntimeSettingsClineControllerResult,
+} from "@/hooks/use-runtime-settings-cline-controller";
 import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type { RuntimeClineMcpServer, RuntimeClineReasoningEffort } from "@/runtime/types";
@@ -59,6 +67,7 @@ export function ClineSetupSection({
 }): ReactElement {
 	const mcpControlsDisabled = controlsDisabled || (mcpController?.isSavingMcpSettings ?? false);
 	const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
+	const [providerDialogMode, setProviderDialogMode] = useState<ClineProviderDialogMode>("add");
 
 	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
 		const items: SearchSelectOption[] = controller.providerCatalog.map((provider) => ({
@@ -99,6 +108,36 @@ export function ClineSetupSection({
 		(selectedProvider?.supportsBaseUrl ?? controller.baseUrl.trim().length > 0);
 	const isBedrockProvider = controller.normalizedProviderId === "bedrock";
 	const isVertexProvider = controller.normalizedProviderId === "vertex";
+	const selectedProviderOption = useMemo(
+		() => clineProviderOptions.find((option) => option.value === controller.providerId) ?? null,
+		[clineProviderOptions, controller.providerId],
+	);
+	const canEditSelectedProvider = controller.providerId.trim().length > 0 && !controller.isOauthProviderSelected;
+	const selectedProviderEditInitialValues = useMemo((): ClineProviderDialogInitialValues | null => {
+		if (!canEditSelectedProvider) {
+			return null;
+		}
+		const fallbackProviderId = controller.providerId.trim();
+		const fallbackProviderName = selectedProviderOption?.label.replace(/\s+\(custom\)$/i, "") || fallbackProviderId;
+		const modelIds = controller.providerModels.map((model) => model.id);
+		const normalizedModelIds =
+			modelIds.length > 0 ? modelIds : controller.modelId.trim().length > 0 ? [controller.modelId.trim()] : [];
+		return {
+			providerId: selectedProvider?.id ?? fallbackProviderId,
+			name: selectedProvider?.name ?? fallbackProviderName,
+			baseUrl: controller.baseUrl.trim() || selectedProvider?.baseUrl?.trim() || "",
+			models: normalizedModelIds,
+			defaultModelId: controller.modelId.trim() || selectedProvider?.defaultModelId?.trim() || "",
+		};
+	}, [
+		canEditSelectedProvider,
+		controller.baseUrl,
+		controller.modelId,
+		controller.providerId,
+		controller.providerModels,
+		selectedProvider,
+		selectedProviderOption,
+	]);
 
 	const handleAddMcpServer = () => {
 		if (!mcpController) {
@@ -187,44 +226,65 @@ export function ClineSetupSection({
 			<div className="mt-2">
 				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">API provider</p>
 				<div className="min-w-0 w-1/2 max-w-full">
-					<SearchSelectDropdown
-						options={clineProviderOptions}
-						selectedValue={controller.providerId}
-						onSelect={(value) => {
-							const normalizedProviderId = value.trim().toLowerCase();
-							if (normalizedProviderId === controller.normalizedProviderId) {
-								return;
-							}
-							controller.setProviderId(value);
-							const selectedProvider =
-								controller.providerCatalog.find(
-									(provider) => provider.id.trim().toLowerCase() === normalizedProviderId,
-								) ?? null;
-							const defaultModelId = selectedProvider?.defaultModelId?.trim() ?? "";
-							const defaultBaseUrl = selectedProvider?.baseUrl?.trim() ?? "";
-							controller.setModelId(defaultModelId);
-							controller.setBaseUrl(defaultBaseUrl);
-						}}
-						disabled={controlsDisabled || controller.isLoadingProviderCatalog}
-						fill
-						size="sm"
-						buttonText={
-							controller.isLoadingProviderCatalog
-								? "Loading providers..."
-								: clineProviderOptions.find((option) => option.value === controller.providerId)?.label
-						}
-						emptyText="Select provider"
-						noResultsText="No matching providers"
-						placeholder="Search providers..."
-						showSelectedIndicator
-						footerAction={{
-							label: "Add OpenAI-compatible provider",
-							onClick: () => {
-								onError?.(null);
-								setIsAddProviderDialogOpen(true);
-							},
-						}}
-					/>
+					<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+						<div className="min-w-0">
+							<SearchSelectDropdown
+								options={clineProviderOptions}
+								selectedValue={controller.providerId}
+								onSelect={(value) => {
+									const normalizedProviderId = value.trim().toLowerCase();
+									if (normalizedProviderId === controller.normalizedProviderId) {
+										return;
+									}
+									controller.setProviderId(value);
+									const selectedProvider =
+										controller.providerCatalog.find(
+											(provider) => provider.id.trim().toLowerCase() === normalizedProviderId,
+										) ?? null;
+									const defaultModelId = selectedProvider?.defaultModelId?.trim() ?? "";
+									const defaultBaseUrl = selectedProvider?.baseUrl?.trim() ?? "";
+									controller.setModelId(defaultModelId);
+									controller.setBaseUrl(defaultBaseUrl);
+								}}
+								disabled={controlsDisabled || controller.isLoadingProviderCatalog}
+								fill
+								size="sm"
+								buttonText={
+									controller.isLoadingProviderCatalog
+										? "Loading providers..."
+										: clineProviderOptions.find((option) => option.value === controller.providerId)?.label
+								}
+								emptyText="Select provider"
+								noResultsText="No matching providers"
+								placeholder="Search providers..."
+								showSelectedIndicator
+								footerAction={{
+									label: "+ New Provider",
+									onClick: () => {
+										onError?.(null);
+										setProviderDialogMode("add");
+										setIsAddProviderDialogOpen(true);
+									},
+								}}
+							/>
+						</div>
+						{canEditSelectedProvider && (
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={<Pencil size={14} />}
+								disabled={controlsDisabled}
+								className="shrink-0"
+								onClick={() => {
+									onError?.(null);
+									setProviderDialogMode("edit");
+									setIsAddProviderDialogOpen(true);
+								}}
+							>
+								Edit
+							</Button>
+						)}
+					</div>
 				</div>
 				{controller.isLoadingProviderCatalog ? (
 					<p className="text-text-secondary text-[12px] mt-1 mb-0">Fetching Cline providers...</p>
@@ -739,11 +799,19 @@ export function ClineSetupSection({
 				open={isAddProviderDialogOpen}
 				onOpenChange={setIsAddProviderDialogOpen}
 				existingProviderIds={controller.providerCatalog.map((provider) => provider.id)}
+				mode={providerDialogMode}
+				initialValues={providerDialogMode === "edit" ? selectedProviderEditInitialValues : null}
 				onSubmit={async (input) => {
 					onError?.(null);
-					const result = await controller.addCustomProvider(input);
+					const result =
+						providerDialogMode === "edit"
+							? await controller.updateCustomProvider(input as UpdateClineProviderInput)
+							: await controller.addCustomProvider(input as AddClineProviderInput);
 					if (!result.ok) {
-						onError?.(result.message ?? "Failed to add provider.");
+						onError?.(
+							result.message ??
+								(providerDialogMode === "edit" ? "Failed to update provider." : "Failed to add provider."),
+						);
 						return result;
 					}
 					onSaved?.();
