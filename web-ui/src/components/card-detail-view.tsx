@@ -1,17 +1,17 @@
 import type { DropResult } from "@hello-pangea/dnd";
 import type { DockviewReadyEvent, IDockviewPanelProps } from "dockview-react";
-import { ChevronLeft, ChevronRight, GitCompareArrows } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { DockviewPanels, type PanelComponentProps } from "@/components/DockviewPanels";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
-import { ClineAgentChatPanel, type ClineAgentChatPanelHandle } from "@/components/detail-panels/cline-agent-chat-panel";
-import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
-import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
-import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
+import type { ClineAgentChatPanelHandle } from "@/components/detail-panels/cline-agent-chat-panel";
+import { type DetailPanelContextValue, DetailPanelProvider } from "@/components/detail-panels/detail-panel-context";
+import type { DiffLineComment } from "@/components/detail-panels/diff-viewer-panel";
+import { DockviewAgentPanel } from "@/components/detail-panels/dockview-agent-panel";
+import { DockviewChangesPanel } from "@/components/detail-panels/dockview-changes-panel";
+import { DockviewTasksPanel } from "@/components/detail-panels/dockview-tasks-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
-import { Button } from "@/components/ui/button";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { isNativeClineAgentSelected } from "@/runtime/native-agent";
@@ -25,15 +25,15 @@ import type {
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
-import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+import type { BoardCard, CardSelection } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 
 // ── Constants ──
 
 const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
-const FILE_TREE_PANEL_FLEX = "0 0 33.3333%";
+const LAYOUT_STORAGE_KEY = "card-detail-dockview-layout";
 
-// ── Helper components ──
+// ── Helper ──
 
 function isTypingTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) {
@@ -46,122 +46,13 @@ function isEventInsideDialog(target: EventTarget | null): boolean {
 	return target instanceof Element && target.closest("[role='dialog']") !== null;
 }
 
-function WorkspaceChangesLoadingPanel(): React.ReactElement {
-	return (
-		<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
-			<div
-				style={{
-					display: "flex",
-					flex: "1 1 0",
-					flexDirection: "column",
-					borderRight: "1px solid var(--color-divider)",
-				}}
-			>
-				<div style={{ padding: "10px 10px 6px" }}>
-					<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-						<div className="kb-skeleton" style={{ height: 14, width: "62%", borderRadius: 3 }} />
-						<div className="kb-skeleton" style={{ height: 16, width: 42, borderRadius: 999 }} />
-					</div>
-					<div className="kb-skeleton" style={{ height: 13, width: "92%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "84%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "95%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "79%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "88%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "76%", borderRadius: 3 }} />
-				</div>
-				<div style={{ flex: "1 1 0" }} />
-			</div>
-			<div
-				style={{
-					display: "flex",
-					flex: FILE_TREE_PANEL_FLEX,
-					flexDirection: "column",
-					padding: "10px 8px",
-				}}
-			>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "61%", borderRadius: 3 }} />
-				</div>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "70%", borderRadius: 3 }} />
-				</div>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "53%", borderRadius: 3 }} />
-				</div>
-				<div style={{ flex: "1 1 0" }} />
-			</div>
-		</div>
-	);
-}
+// ── Dockview component map (stable — components read from context) ──
 
-function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactElement {
-	return (
-		<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}>
-			<div className="kb-empty-state-center" style={{ flex: 1 }}>
-				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
-					<GitCompareArrows size={40} />
-					<h3 className="font-semibold text-text-secondary">{title}</h3>
-				</div>
-			</div>
-		</div>
-	);
-}
-
-function DiffToolbar({
-	mode,
-	onModeChange,
-	isFileTreeVisible,
-	onToggleFileTree,
-}: {
-	mode: RuntimeWorkspaceChangesMode;
-	onModeChange: (mode: RuntimeWorkspaceChangesMode) => void;
-	isFileTreeVisible: boolean;
-	onToggleFileTree: () => void;
-}): React.ReactElement {
-	return (
-		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
-			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={() => onModeChange("working_copy")}
-					className="h-5 rounded-sm text-xs"
-					style={
-						mode === "working_copy"
-							? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" }
-							: undefined
-					}
-				>
-					All Changes
-				</Button>
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={() => onModeChange("last_turn")}
-					className="h-5 rounded-sm text-xs"
-					style={
-						mode === "last_turn"
-							? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" }
-							: undefined
-					}
-				>
-					Last Turn
-				</Button>
-			</div>
-			<Button
-				variant="ghost"
-				size="sm"
-				icon={isFileTreeVisible ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-				onClick={onToggleFileTree}
-				className="ml-auto h-5"
-				aria-label={isFileTreeVisible ? "Hide file tree" : "Show file tree"}
-			/>
-		</div>
-	);
-}
+const DOCKVIEW_COMPONENTS: Record<string, React.FC<IDockviewPanelProps<PanelComponentProps>>> = {
+	tasks: () => <DockviewTasksPanel />,
+	agent: () => <DockviewAgentPanel />,
+	changes: () => <DockviewChangesPanel />,
+};
 
 // ── Main component ──
 
@@ -283,7 +174,13 @@ export function CardDetailView({
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
-	const [isFileTreeVisible, setIsFileTreeVisible] = useState(true);
+	const [isFileTreeVisible, setIsFileTreeVisible] = useState(() => {
+		try {
+			return localStorage.getItem("card-detail-file-tree-visible") !== "false";
+		} catch {
+			return true;
+		}
+	});
 	const clineAgentChatPanelRef = useRef<ClineAgentChatPanelHandle | null>(null);
 
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
@@ -393,7 +290,15 @@ export function CardDetailView({
 	}, [selection.card.id]);
 
 	const handleToggleFileTree = useCallback(() => {
-		setIsFileTreeVisible((prev) => !prev);
+		setIsFileTreeVisible((prev) => {
+			const next = !prev;
+			try {
+				localStorage.setItem("card-detail-file-tree-visible", String(next));
+			} catch {
+				// ignore
+			}
+			return next;
+		});
 	}, []);
 
 	const handleAddDiffComments = useCallback(
@@ -418,32 +323,68 @@ export function CardDetailView({
 		[onSendReviewComments, selection.card.id, showClineAgentChatPanel],
 	);
 
-	// ── Dockview panel components ──
+	// ── Context value for dockview panel components ──
 
-	const TasksPanel = useCallback(
-		(_props: IDockviewPanelProps<PanelComponentProps>) => (
-			<ColumnContextPanel
-				selection={selection}
-				workspacePath={workspacePath}
-				onCardSelect={onCardSelect}
-				taskSessions={taskSessions}
-				onTaskDragEnd={onTaskDragEnd}
-				onCreateTask={onCreateTask}
-				onStartTask={onStartTask}
-				onStartAllTasks={onStartAllTasks}
-				onClearTrash={onClearTrash}
-				editingTaskId={editingTaskId}
-				inlineTaskEditor={inlineTaskEditor}
-				onEditTask={onEditTask}
-				onCommitTask={onCommitTask}
-				onOpenPrTask={onOpenPrTask}
-				onMoveToTrashTask={onMoveReviewCardToTrash}
-				onRestoreFromTrashTask={onRestoreTaskFromTrash}
-				commitTaskLoadingById={commitTaskLoadingById}
-				openPrTaskLoadingById={openPrTaskLoadingById}
-				moveToTrashLoadingById={moveToTrashLoadingById}
-			/>
-		),
+	const panelContext: DetailPanelContextValue = useMemo(
+		() => ({
+			selection,
+			workspacePath,
+			onCardSelect,
+			taskSessions,
+			onTaskDragEnd,
+			onCreateTask,
+			onStartTask,
+			onStartAllTasks,
+			onClearTrash,
+			editingTaskId,
+			inlineTaskEditor,
+			onEditTask,
+			onCommitTask,
+			onOpenPrTask,
+			onMoveReviewCardToTrash,
+			onRestoreTaskFromTrash,
+			commitTaskLoadingById,
+			openPrTaskLoadingById,
+			moveToTrashLoadingById,
+			showClineAgentChatPanel,
+			sessionSummary,
+			currentProjectId,
+			runtimeConfig,
+			onClineSettingsSaved,
+			onSendClineChatMessage,
+			onCancelClineChatTurn,
+			onLoadClineChatMessages,
+			streamedClineChatMessages,
+			latestClineChatMessage,
+			onAgentCommitTask,
+			onAgentOpenPrTask,
+			agentCommitTaskLoadingById,
+			agentOpenPrTaskLoadingById,
+			showMoveToTrashActions,
+			onMoveToTrash,
+			isMoveToTrashLoading,
+			onCancelAutomaticTaskAction,
+			isTaskTerminalEnabled,
+			onSessionSummary,
+			clineAgentChatPanelRef,
+			isRuntimeAvailable,
+			diffMode,
+			setDiffMode,
+			isFileTreeVisible,
+			handleToggleFileTree,
+			isWorkspaceChangesPending,
+			hasNoWorkspaceFileChanges,
+			emptyDiffTitle,
+			runtimeFiles,
+			selectedPath,
+			setSelectedPath,
+			onAddReviewComments,
+			handleAddDiffComments,
+			onSendReviewComments,
+			handleSendDiffComments,
+			diffComments,
+			setDiffComments,
+		}),
 		[
 			selection,
 			workspacePath,
@@ -464,83 +405,7 @@ export function CardDetailView({
 			commitTaskLoadingById,
 			openPrTaskLoadingById,
 			moveToTrashLoadingById,
-		],
-	);
-
-	const AgentPanel = useCallback(
-		(_props: IDockviewPanelProps<PanelComponentProps>) => {
-			if (showClineAgentChatPanel) {
-				return (
-					<ClineAgentChatPanel
-						ref={clineAgentChatPanelRef}
-						taskId={selection.card.id}
-						summary={sessionSummary}
-						taskColumnId={selection.column.id}
-						defaultMode={selection.card.startInPlanMode ? "plan" : "act"}
-						workspaceId={currentProjectId}
-						runtimeConfig={runtimeConfig}
-						onClineSettingsSaved={onClineSettingsSaved}
-						onSendMessage={onSendClineChatMessage}
-						onCancelTurn={onCancelClineChatTurn}
-						onLoadMessages={onLoadClineChatMessages}
-						incomingMessages={streamedClineChatMessages}
-						incomingMessage={latestClineChatMessage}
-						onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
-						onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
-						isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
-						isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
-						showMoveToTrash={showMoveToTrashActions}
-						onMoveToTrash={onMoveToTrash}
-						isMoveToTrashLoading={isMoveToTrashLoading}
-						onCancelAutomaticAction={
-							selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
-								? () => onCancelAutomaticTaskAction(selection.card.id)
-								: undefined
-						}
-						cancelAutomaticActionLabel={
-							selection.card.autoReviewEnabled === true
-								? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
-								: null
-						}
-					/>
-				);
-			}
-			return (
-				<AgentTerminalPanel
-					taskId={selection.card.id}
-					workspaceId={currentProjectId}
-					terminalEnabled={isTaskTerminalEnabled}
-					summary={sessionSummary}
-					onSummary={onSessionSummary}
-					onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
-					onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
-					isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
-					isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
-					showSessionToolbar={false}
-					autoFocus
-					showMoveToTrash={showMoveToTrashActions}
-					onMoveToTrash={onMoveToTrash}
-					isMoveToTrashLoading={isMoveToTrashLoading}
-					onCancelAutomaticAction={
-						selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
-							? () => onCancelAutomaticTaskAction(selection.card.id)
-							: undefined
-					}
-					cancelAutomaticActionLabel={
-						selection.card.autoReviewEnabled === true
-							? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
-							: null
-					}
-					panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-					terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-					showRightBorder={false}
-					taskColumnId={selection.column.id}
-				/>
-			);
-		},
-		[
 			showClineAgentChatPanel,
-			selection,
 			sessionSummary,
 			currentProjectId,
 			runtimeConfig,
@@ -560,55 +425,6 @@ export function CardDetailView({
 			onCancelAutomaticTaskAction,
 			isTaskTerminalEnabled,
 			onSessionSummary,
-		],
-	);
-
-	const ChangesPanel = useCallback(
-		(_props: IDockviewPanelProps<PanelComponentProps>) => (
-			<div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-				{isRuntimeAvailable ? (
-					<DiffToolbar
-						mode={diffMode}
-						onModeChange={setDiffMode}
-						isFileTreeVisible={isFileTreeVisible}
-						onToggleFileTree={handleToggleFileTree}
-					/>
-				) : null}
-				<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
-					{isWorkspaceChangesPending ? (
-						<WorkspaceChangesLoadingPanel />
-					) : hasNoWorkspaceFileChanges ? (
-						<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
-					) : (
-						<>
-							<DiffViewerPanel
-								workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-								selectedPath={selectedPath}
-								onSelectedPathChange={setSelectedPath}
-								viewMode="unified"
-								onAddToTerminal={
-									onAddReviewComments || showClineAgentChatPanel ? handleAddDiffComments : undefined
-								}
-								onSendToTerminal={
-									onSendReviewComments || showClineAgentChatPanel ? handleSendDiffComments : undefined
-								}
-								comments={diffComments}
-								onCommentsChange={setDiffComments}
-							/>
-							{isFileTreeVisible && (
-								<FileTreePanel
-									workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-									selectedPath={selectedPath}
-									onSelectPath={setSelectedPath}
-									panelFlex={FILE_TREE_PANEL_FLEX}
-								/>
-							)}
-						</>
-					)}
-				</div>
-			</div>
-		),
-		[
 			isRuntimeAvailable,
 			diffMode,
 			isFileTreeVisible,
@@ -619,7 +435,6 @@ export function CardDetailView({
 			runtimeFiles,
 			selectedPath,
 			onAddReviewComments,
-			showClineAgentChatPanel,
 			handleAddDiffComments,
 			onSendReviewComments,
 			handleSendDiffComments,
@@ -627,21 +442,11 @@ export function CardDetailView({
 		],
 	);
 
-	const components = useMemo(
-		() => ({
-			tasks: TasksPanel,
-			agent: AgentPanel,
-			changes: ChangesPanel,
-		}),
-		[TasksPanel, AgentPanel, ChangesPanel],
-	);
-
-	const LAYOUT_STORAGE_KEY = "card-detail-dockview-layout";
+	// ── Dockview callbacks ──
 
 	const handleDockviewReady = useCallback((event: DockviewReadyEvent) => {
 		const api = event.api;
 
-		// Try to restore persisted layout
 		try {
 			const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
 			if (saved) {
@@ -653,7 +458,6 @@ export function CardDetailView({
 			// Corrupt data — fall through to default
 		}
 
-		// Default layout: 20% / 40% / 40%
 		const totalWidth = api.width;
 		api.addPanel({ id: "tasks", component: "tasks", title: "Tasks", initialWidth: totalWidth * 0.2 });
 		api.addPanel({
@@ -683,67 +487,69 @@ export function CardDetailView({
 	// ── Render ──
 
 	return (
-		<div
-			style={{
-				display: "flex",
-				flexDirection: "column",
-				flex: "1 1 0",
-				minHeight: 0,
-				overflow: "hidden",
-				background: "var(--color-surface-0)",
-			}}
-		>
-			{gitHistoryPanel ? (
-				<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
-			) : (
-				<>
-					<DockviewPanels
-						components={components}
-						onReady={handleDockviewReady}
-						onLayoutChange={handleLayoutChange}
-						className="flex-1 min-h-0"
-					/>
-					{bottomTerminalOpen && bottomTerminalTaskId ? (
-						<ResizableBottomPane
-							minHeight={200}
-							initialHeight={bottomTerminalPaneHeight}
-							onHeightChange={onBottomTerminalPaneHeightChange}
-						>
-							<div
-								style={{
-									display: "flex",
-									flex: "1 1 0",
-									minWidth: 0,
-									paddingLeft: 12,
-									paddingRight: 12,
-								}}
+		<DetailPanelProvider value={panelContext}>
+			<div
+				style={{
+					display: "flex",
+					flexDirection: "column",
+					flex: "1 1 0",
+					minHeight: 0,
+					overflow: "hidden",
+					background: "var(--color-surface-0)",
+				}}
+			>
+				{gitHistoryPanel ? (
+					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
+				) : (
+					<>
+						<DockviewPanels
+							components={DOCKVIEW_COMPONENTS}
+							onReady={handleDockviewReady}
+							onLayoutChange={handleLayoutChange}
+							className="flex-1 min-h-0"
+						/>
+						{bottomTerminalOpen && bottomTerminalTaskId ? (
+							<ResizableBottomPane
+								minHeight={200}
+								initialHeight={bottomTerminalPaneHeight}
+								onHeightChange={onBottomTerminalPaneHeightChange}
 							>
-								<AgentTerminalPanel
-									key={`detail-shell-${bottomTerminalTaskId}`}
-									taskId={bottomTerminalTaskId}
-									workspaceId={currentProjectId}
-									summary={bottomTerminalSummary}
-									onSummary={onSessionSummary}
-									showSessionToolbar={false}
-									autoFocus
-									onClose={onBottomTerminalClose}
-									minimalHeaderTitle="Terminal"
-									minimalHeaderSubtitle={bottomTerminalSubtitle}
-									panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-									terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-									cursorColor={TERMINAL_THEME_COLORS.textPrimary}
-									showRightBorder={false}
-									onConnectionReady={onBottomTerminalConnectionReady}
-									agentCommand={bottomTerminalAgentCommand}
-									onSendAgentCommand={onBottomTerminalSendAgentCommand}
-									isExpanded={isBottomTerminalExpanded}
-									onToggleExpand={onBottomTerminalToggleExpand}
-								/>
-							</div>
-						</ResizableBottomPane>
-					) : null}
-				</>
-			)}
-		</div>
+								<div
+									style={{
+										display: "flex",
+										flex: "1 1 0",
+										minWidth: 0,
+										paddingLeft: 12,
+										paddingRight: 12,
+									}}
+								>
+									<AgentTerminalPanel
+										key={`detail-shell-${bottomTerminalTaskId}`}
+										taskId={bottomTerminalTaskId}
+										workspaceId={currentProjectId}
+										summary={bottomTerminalSummary}
+										onSummary={onSessionSummary}
+										showSessionToolbar={false}
+										autoFocus
+										onClose={onBottomTerminalClose}
+										minimalHeaderTitle="Terminal"
+										minimalHeaderSubtitle={bottomTerminalSubtitle}
+										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+										showRightBorder={false}
+										onConnectionReady={onBottomTerminalConnectionReady}
+										agentCommand={bottomTerminalAgentCommand}
+										onSendAgentCommand={onBottomTerminalSendAgentCommand}
+										isExpanded={isBottomTerminalExpanded}
+										onToggleExpand={onBottomTerminalToggleExpand}
+									/>
+								</div>
+							</ResizableBottomPane>
+						) : null}
+					</>
+				)}
+			</div>
+		</DetailPanelProvider>
 	);
 }

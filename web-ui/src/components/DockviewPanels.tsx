@@ -1,4 +1,4 @@
-// ── Dockview-powered panel layout with Kanban dark theme ──
+// ── Dockview-powered panel layout ──
 
 import {
 	type DockviewApi,
@@ -17,43 +17,6 @@ export interface PanelComponentProps {
 }
 
 type PanelComponents = Record<string, React.FC<IDockviewPanelProps<PanelComponentProps>>>;
-
-// ── Kanban theme: override dockview CSS variables to match our dark theme ──
-
-const KANBAN_THEME_OVERRIDES: React.CSSProperties = {
-	// Tab bar
-	"--dv-tabs-and-actions-container-background-color": "var(--color-surface-1)",
-	"--dv-tabs-and-actions-container-height": "32px",
-	"--dv-tabs-and-actions-container-font-size": "12px",
-	// Active group, visible tab (selected)
-	"--dv-activegroup-visiblepanel-tab-background-color": "var(--color-surface-1)",
-	"--dv-activegroup-visiblepanel-tab-color": "var(--color-text-primary)",
-	// Active group, hidden tabs (not selected)
-	"--dv-activegroup-hiddenpanel-tab-background-color": "var(--color-surface-1)",
-	"--dv-activegroup-hiddenpanel-tab-color": "var(--color-text-tertiary)",
-	// Inactive group tabs
-	"--dv-inactivegroup-visiblepanel-tab-background-color": "var(--color-surface-1)",
-	"--dv-inactivegroup-visiblepanel-tab-color": "var(--color-text-secondary)",
-	"--dv-inactivegroup-hiddenpanel-tab-background-color": "var(--color-surface-1)",
-	"--dv-inactivegroup-hiddenpanel-tab-color": "var(--color-text-tertiary)",
-	// Tab divider
-	"--dv-tab-divider-color": "transparent",
-	// Panel content background
-	"--dv-group-view-background-color": "var(--color-surface-0)",
-	// Separator / sash
-	"--dv-separator-border": "var(--color-border)",
-	"--dv-sash-color": "transparent",
-	"--dv-active-sash-color": "var(--color-accent)",
-	"--dv-active-sash-transition-duration": "0s",
-	"--dv-active-sash-transition-delay": "0s",
-	// Drag overlay
-	"--dv-drag-over-background-color": "rgba(0, 132, 255, 0.1)",
-	"--dv-drag-over-border-color": "var(--color-accent)",
-	// Scrollbar
-	"--dv-scrollbar-background-color": "var(--color-surface-4)",
-	// Icon hover
-	"--dv-icon-hover-background-color": "var(--color-surface-3)",
-} as React.CSSProperties;
 
 // ── Component ──
 
@@ -74,7 +37,6 @@ export function DockviewPanels({ components, onReady, onLayoutChange, className 
 		(event: DockviewReadyEvent) => {
 			apiRef.current = event.api;
 
-			// Forward layout changes for persistence
 			if (onLayoutChange) {
 				event.api.onDidLayoutChange(() => {
 					onLayoutChange(event.api);
@@ -87,13 +49,23 @@ export function DockviewPanels({ components, onReady, onLayoutChange, className 
 	);
 
 	return (
-		<div className={className} style={{ ...KANBAN_THEME_OVERRIDES, height: "100%", width: "100%" }}>
+		<div className={className} style={{ height: "100%", width: "100%" }}>
 			<style>{`
+				/* Hide close button on tabs */
 				.dv-default-tab-action { display: none !important; }
+				/* Transparent tab backgrounds + padding */
+				.dv-tab { background-color: transparent !important; padding: 0 16px !important; }
+				/* Instant sash color on resize */
 				.dockview-theme-dark {
 					--dv-active-sash-color: rgba(0, 132, 255, 0.35) !important;
 					--dv-active-sash-transition-duration: 0s !important;
 					--dv-active-sash-transition-delay: 0s !important;
+				}
+				/* Ensure panel content fills available space */
+				.dv-content-container > div {
+					height: 100% !important;
+					display: flex !important;
+					flex-direction: column !important;
 				}
 			`}</style>
 			<DockviewReact components={components} onReady={handleReady} theme={themeDark} disableFloatingGroups />
