@@ -2,7 +2,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { Command, Option } from "commander";
+import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
+import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerTaskCommand } from "./commands/task";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
@@ -24,7 +26,7 @@ import {
 } from "./core/runtime-endpoint";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
-import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node";
+import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import type { TerminalSessionManager } from "./terminal/session-manager";
 
 interface CliOptions {
@@ -56,6 +58,13 @@ interface RootCommandOptions {
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
 	skipShutdownCleanup?: boolean;
+}
+
+type ShutdownIndicatorResult = "done" | "interrupted" | "failed";
+
+interface ShutdownIndicator {
+	start: () => void;
+	stop: (result?: ShutdownIndicatorResult) => void;
 }
 
 /**
@@ -95,6 +104,48 @@ function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
 	}
 
 	return true;
+}
+
+function createShutdownIndicator(stream: NodeJS.WriteStream = process.stderr): ShutdownIndicator {
+	let spinner: Ora | null = null;
+	let running = false;
+
+	return {
+		start() {
+			if (running) {
+				return;
+			}
+			running = true;
+			if (!stream.isTTY) {
+				stream.write("Cleaning up...\n");
+				return;
+			}
+			spinner = ora({
+				text: "Cleaning up...",
+				stream,
+			}).start();
+		},
+		stop(result = "done") {
+			if (!running) {
+				return;
+			}
+			running = false;
+			if (spinner) {
+				if (result === "done") {
+					spinner.succeed("Cleaning up... done");
+				} else if (result === "failed") {
+					spinner.fail("Cleaning up... failed");
+				} else {
+					spinner.warn("Cleaning up... interrupted");
+				}
+				spinner = null;
+				return;
+			}
+
+			const suffix = result === "done" ? "done" : result === "interrupted" ? "interrupted" : "failed";
+			stream.write(`Cleanup ${suffix}.\n`);
+		},
+	};
 }
 
 async function isPortAvailable(port: number): Promise<boolean> {
@@ -456,6 +507,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	console.log("Press Ctrl+C to stop.");
 
 	let isShuttingDown = false;
+	const shutdownIndicator = createShutdownIndicator();
 	const shutdown = async () => {
 		if (isShuttingDown) {
 			return;
@@ -468,6 +520,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		await runtime.shutdown({
 			skipSessionCleanup: options.skipShutdownCleanup,
 		});
+		await disposeCliTelemetryService().catch(() => {});
 	};
 
 	installGracefulShutdownHandlers({
@@ -477,17 +530,27 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			process.exit(code);
 		},
 		onShutdown: async () => {
-			await shutdown();
+			shutdownIndicator.start();
+			try {
+				await shutdown();
+				shutdownIndicator.stop("done");
+			} catch (error) {
+				shutdownIndicator.stop("failed");
+				throw error;
+			}
 		},
 		onShutdownError: (error) => {
+			shutdownIndicator.stop("failed");
 			captureNodeException(error, { area: "shutdown" });
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(`Shutdown failed: ${message}`);
 		},
 		onTimeout: (delayMs) => {
+			shutdownIndicator.stop("interrupted");
 			console.error(`Forced exit after shutdown timeout (${delayMs}ms).`);
 		},
 		onSecondSignal: (signal) => {
+			shutdownIndicator.stop("interrupted");
 			console.error(`Forced exit on second signal: ${signal}`);
 		},
 		suppressImmediateDuplicateSignals: shouldSuppressImmediateDuplicateShutdownSignals(),
@@ -539,11 +602,15 @@ async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
 	const program = createProgram(argv);
 	await program.parseAsync(argv, { from: "user" });
+	if (!shouldAutoOpenBrowserTabForInvocation(argv)) {
+		await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
+		process.exit(process.exitCode ?? 0);
+	}
 }
 
 void run().catch(async (error) => {
 	captureNodeException(error, { area: "startup" });
-	await flushNodeTelemetry();
+	await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(`Failed to start Kanban: ${message}`);
 	process.exit(1);

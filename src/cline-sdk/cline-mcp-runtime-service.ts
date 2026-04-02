@@ -424,7 +424,6 @@ async function createOauthProviderContext(input: {
 
 class RuntimeMcpServerClient implements SdkMcpServerClient {
 	private client: Client | null = null;
-	private transport: SdkTransport | null = null;
 
 	constructor(
 		private readonly server: RuntimeClineMcpServer,
@@ -490,7 +489,6 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 			});
 
 			await client.connect(transport);
-			this.transport = transport;
 			this.client = client;
 		});
 	}
@@ -498,7 +496,6 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 	async disconnect(): Promise<void> {
 		const activeClient = this.client;
 		this.client = null;
-		this.transport = null;
 		if (!activeClient) {
 			return;
 		}

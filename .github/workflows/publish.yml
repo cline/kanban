@@ -85,6 +85,12 @@ jobs:
         env:
           POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
           POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+          OTEL_TELEMETRY_ENABLED: ${{ secrets.OTEL_TELEMETRY_ENABLED }}
+          OTEL_LOGS_EXPORTER: otlp
+          OTEL_METRICS_EXPORTER: otlp
+          OTEL_EXPORTER_OTLP_PROTOCOL: ${{ secrets.OTEL_EXPORTER_OTLP_PROTOCOL }}
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
 
       # npm publish re-triggers prepublishOnly as a lifecycle hook, which
       # rebuilds the web-ui from scratch. Without these env vars, the
@@ -126,3 +132,25 @@ jobs:
 
             ${{ steps.compare.outputs.link }}
           prerelease: ${{ contains(steps.resolve_tag.outputs.tag, '-') }}
+
+      - name: Post release to Slack
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_RELEASE_BOT_TOKEN }}
+          payload: |
+            channel: "C0APVKGGZFC"
+            text: "Kanban ${{ steps.resolve_tag.outputs.tag }}"
+            blocks:
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "*Kanban ${{ steps.resolve_tag.outputs.tag }}*"
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: ${{ toJSON(steps.changelog.outputs.body) }}
+              - type: "context"
+                elements:
+                  - type: "mrkdwn"
+                    text: "${{ steps.compare.outputs.link }}"

@@ -138,6 +138,7 @@ function OnboardingMedia({
 	alt: string;
 }): ReactElement {
 	const [assetMode, setAssetMode] = useState<"video" | "image" | "missing">("video");
+	const [isVideoLoading, setIsVideoLoading] = useState(true);
 	const videoPath = assetVideoUrl ?? (assetStemPath ? `${assetStemPath}.mp4` : null);
 	const imagePath = assetImageUrl ?? (assetStemPath ? `${assetStemPath}.gif` : null);
 	const mediaWidth = assetWidthPx;
@@ -179,6 +180,7 @@ function OnboardingMedia({
 
 	useEffect(() => {
 		setAssetMode("video");
+		setIsVideoLoading(true);
 	}, [imagePath, videoPath]);
 
 	if (assetMode === "missing") {
@@ -230,6 +232,7 @@ function OnboardingMedia({
 		return (
 			<div className="flex w-full justify-center">
 				<div className="relative w-full overflow-hidden rounded-md bg-surface-1" style={mediaContainerStyle}>
+					{isVideoLoading ? <div aria-hidden="true" className="kb-skeleton absolute inset-0" /> : null}
 					<video
 						src={videoPath}
 						autoPlay
@@ -239,8 +242,16 @@ function OnboardingMedia({
 						preload="auto"
 						width={mediaWidth}
 						height={mediaHeight}
-						onError={() => setAssetMode(imagePath ? "image" : "missing")}
-						className={cn("h-full w-full", objectFitClassName)}
+						onLoadedData={() => setIsVideoLoading(false)}
+						onError={() => {
+							setIsVideoLoading(false);
+							setAssetMode(imagePath ? "image" : "missing");
+						}}
+						className={cn(
+							"h-full w-full transition-opacity duration-200",
+							objectFitClassName,
+							isVideoLoading ? "opacity-0" : "opacity-100",
+						)}
 					/>
 				</div>
 			</div>

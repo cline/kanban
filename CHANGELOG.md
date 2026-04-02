@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.1.56]
+
+- Automatic context overflow recovery: when the conversation history exceeds the model's context window, Kanban now compacts old messages and retries instead of failing
+- Credit limit errors (insufficient balance / 402) are now surfaced immediately without unnecessary retries or confusing system messages
+- Added report issue and feature request links to the settings dialog
+- Added Cline icon to browser notifications
+- Updated Cline SDK from 0.0.22 to 0.0.23, which includes: LiteLLM private model support, provider-specific setting configs, loop detection as a built-in agent policy, provider ID normalization for model resolution, OAuth token refresh fix for spawned agents
+
+## [0.1.55]
+
+- Fixed non-ASCII file paths (e.g. Japanese, Chinese, Korean characters) rendering as garbled octal escape sequences in the diff view
+
+## [0.1.54]
+
+- Task agent chat panel resizing now persists when navigating between tasks
+
+## [0.1.53]
+
+- Added `/clear` slash command to reset the Cline agent chat session
+- Added hints for environment variables in Cline provider setup
+- Aligned Cline provider and model fallbacks with SDK defaults for more reliable configuration
+- Fixed Codex plan mode not working
+- Fixed slash command file watchers to reuse a single watcher per workspace instead of creating duplicates
+- Show loading skeleton in onboarding carousel while videos load
+- Added VS Code Insiders as a file open target
+
+## [0.1.52]
+
+- Added support for custom OpenAI-compatible providers, so you can connect any OpenAI-compatible API as a Cline model provider
+- Added PWA support -- the web UI can now be installed as a standalone desktop app from Chrome, with window controls overlay and an offline fallback page that auto-reconnects when the server comes back
+- Sticky file headers in the diff viewer now pin under the toolbar while scrolling through large diffs
+- Show a cleanup spinner during Ctrl+C shutdown instead of silently hanging
+- Fixed Codex status monitoring to reliably track the latest tool call
+- Fixed terminal color detection for TUI apps like Codex CLI that query both foreground and background colors at startup
+- Fixed activity preview text getting truncated in hooks
+- Fixed project column sizing not persisting across sessions
+- Fixed home sidebar session IDs not matching the current format
+
 ## [0.1.51]
 
 - Task terminals now support multiple simultaneous viewers, so opening the same task in several browser tabs no longer causes disconnections

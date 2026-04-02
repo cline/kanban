@@ -5,6 +5,7 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineAddProviderResponse,
 	RuntimeClineKanbanAccessResponse,
 	RuntimeClineMcpAuthStatusResponse,
 	RuntimeClineMcpOAuthResponse,
@@ -12,12 +13,14 @@ import type {
 	RuntimeClineMcpSettingsResponse,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineOauthProvider,
+	RuntimeClineProviderCapability,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
 	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
 	RuntimeDebugResetAllStateResponse,
+	RuntimeFeaturebaseTokenResponse,
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
 
@@ -56,6 +59,25 @@ export async function saveClineProviderSettings(
 	return await trpcClient.runtime.saveClineProviderSettings.mutate(input);
 }
 
+export async function addClineProvider(
+	workspaceId: string | null,
+	input: {
+		providerId: string;
+		name: string;
+		baseUrl: string;
+		apiKey?: string | null;
+		headers?: Record<string, string>;
+		timeoutMs?: number;
+		models: string[];
+		defaultModelId?: string | null;
+		modelsSourceUrl?: string | null;
+		capabilities?: RuntimeClineProviderCapability[];
+	},
+): Promise<RuntimeClineAddProviderResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.addClineProvider.mutate(input);
+}
+
 export async function fetchClineProviderCatalog(
 	workspaceId: string | null,
 ): Promise<RuntimeClineProviderCatalogItem[]> {
@@ -74,6 +96,11 @@ export async function fetchClineAccountProfile(
 export async function fetchClineKanbanAccess(workspaceId: string | null): Promise<RuntimeClineKanbanAccessResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.getClineKanbanAccess.query();
+}
+
+export async function fetchFeaturebaseToken(workspaceId: string | null): Promise<RuntimeFeaturebaseTokenResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.getFeaturebaseToken.query();
 }
 
 export async function fetchClineProviderModels(

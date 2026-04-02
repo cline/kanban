@@ -6,7 +6,13 @@ describe("open-targets", () => {
 		const windowsOptions = getOpenTargetOptions("windows");
 		expect(windowsOptions.some((option) => option.id === "iterm2")).toBe(false);
 		expect(windowsOptions.some((option) => option.id === "xcode")).toBe(false);
+		expect(windowsOptions.some((option) => option.id === "vscode-insiders")).toBe(true);
 		expect(windowsOptions.some((option) => option.id === "finder")).toBe(true);
+	});
+
+	it("places VS Code Insiders as second from bottom on macOS", () => {
+		const macOptions = getOpenTargetOptions("mac");
+		expect(macOptions.at(-2)?.id).toBe("vscode-insiders");
 	});
 
 	it("falls back to default option when selected target is unsupported on platform", () => {
@@ -22,9 +28,21 @@ describe("open-targets", () => {
 		expect(buildOpenCommand("finder", "/tmp/my repo", "linux")).toBe("xdg-open '/tmp/my repo'");
 	});
 
+	it("builds a macOS VS Code Insiders command", () => {
+		expect(buildOpenCommand("vscode-insiders", "/tmp/repo", "mac")).toBe(
+			"open -a 'Visual Studio Code - Insiders' '/tmp/repo'",
+		);
+	});
+
 	it("builds a windows file explorer command", () => {
 		expect(buildOpenCommand("finder", "C:\\Users\\dev\\my repo", "windows")).toBe(
 			'explorer "C:\\Users\\dev\\my repo"',
+		);
+	});
+
+	it("builds a windows VS Code Insiders command", () => {
+		expect(buildOpenCommand("vscode-insiders", "C:\\Users\\dev\\my repo", "windows")).toBe(
+			'code-insiders "C:\\Users\\dev\\my repo"',
 		);
 	});
 

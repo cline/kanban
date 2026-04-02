@@ -34,7 +34,8 @@ function normalizeProcessExitCode(code: unknown): number {
 
 export async function runGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<GitCommandResult> {
 	try {
-		const { stdout, stderr } = await execFileAsync("git", args, {
+		const fullArgs = ["-c", "core.quotepath=false", ...args];
+		const { stdout, stderr } = await execFileAsync("git", fullArgs, {
 			cwd,
 			encoding: "utf8",
 			maxBuffer: GIT_MAX_BUFFER_BYTES,

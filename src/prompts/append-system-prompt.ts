@@ -35,7 +35,7 @@ function resolveHomeAgentId(taskId: string): RuntimeAgentId | null {
 		return null;
 	}
 	const parts = taskId.split(":");
-	const maybeAgentId = parts.at(-2) ?? null;
+	const maybeAgentId = parts.at(-1) ?? null;
 	if (!maybeAgentId || !isRuntimeAgentId(maybeAgentId)) {
 		return null;
 	}
@@ -45,17 +45,17 @@ function resolveHomeAgentId(taskId: string): RuntimeAgentId | null {
 function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): string {
 	switch (agentId) {
 		case "cline":
-			return "- If Linear MCP is not available in the current agent (Cline), open MCP settings in the app, add server name `linear`, URL `https://mcp.linear.app/mcp`, transport `http`, then complete OAuth.";
+			return "- If Linear MCP is not available in the current agent (Cline), direct the user to open settings and go to the MCP section where they can add the Linear integration.";
 		case "claude":
-			return "- If Linear MCP is not available in the current agent (Claude Code), run: `claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp`";
+			return "- If Linear MCP is not available in the current agent (Claude Code), suggest running: `claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp`";
 		case "codex":
-			return "- If Linear MCP is not available in the current agent (OpenAI Codex), run: `codex mcp add linear --url https://mcp.linear.app/mcp`";
+			return "- If Linear MCP is not available in the current agent (OpenAI Codex), suggest running: `codex mcp add linear --url https://mcp.linear.app/mcp`";
 		case "gemini":
-			return "- If Linear MCP is not available in the current agent (Gemini CLI), run: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
+			return "- If Linear MCP is not available in the current agent (Gemini CLI), suggest running: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
 		case "opencode":
-			return "- If Linear MCP is not available in the current agent (OpenCode), run `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
+			return "- If Linear MCP is not available in the current agent (OpenCode), suggest running `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
 		case "droid":
-			return "- If Linear MCP is not available in the current agent (Droid), run: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
+			return "- If Linear MCP is not available in the current agent (Droid), suggest running: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
 		default:
 			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
 	}
@@ -133,7 +133,8 @@ If the user asks you to write code, fix a bug, implement a feature, refactor, or
 
 - If the user asks to add tasks to kb, ask kb, kanban, or says add tasks without other context, they likely want to add tasks in Kanban. This includes phrases like "create tasks", "make 3 tasks", "add a task", "break down into tasks", "split into tasks", "decompose into tasks", and "turn into tasks".
 - Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. If both linked tasks are in backlog, Kanban preserves the order you pass to the command: \`--task-id\` waits on \`--linked-task-id\`, and on the board the arrow points into \`--linked-task-id\`. Once only one linked task remains in backlog, Kanban reorients the saved dependency so the backlog task is the waiting dependent task and the other task is the prerequisite. The board arrow points into the prerequisite task so the user can see what must finish first. A link requires at least one backlog task, and when the linked review task is moved to trash, that backlog task becomes ready to start.
-- Tasks can also enable automatic review actions: auto-commit, auto-open-pr, or auto-move-to-trash once completed, sending the task to trash and kicking off any linked tasks.
+- How linking works: when a task in the review column is moved to trash, any linked backlog tasks automatically start. This is how you chain work so tasks kick off autonomously without manual intervention.
+- Tasks can also enable automatic review actions: auto-commit, auto-open-pr, or auto-move-to-trash once completed, sending the task to trash and kicking off any linked tasks. Combining auto-review with linking is how you can set up fully autonomous pipelines when the user wants it. For example, enabling auto-commit on each task in a chain: task A finishes, auto-commits and is trashed, task B auto-starts from backlog, auto-commits and is trashed, task C auto-starts, and so on.
 - If your current working directory is inside \`.cline/worktrees/\`, you are inside a Kanban task worktree. In that case, create or manage tasks against the main workspace path, not the task worktree path. Pass the main workspace with \`--project-path\`.
 - If a task command fails because the runtime is unavailable, tell the user to start Kanban in that workspace first with \`${kanbanCommand}\`, then retry the task command.
 
@@ -259,7 +260,7 @@ Notes:
 - If both linked tasks are in backlog, Kanban preserves the order you pass: \`--task-id\` waits on \`--linked-task-id\`.
 - On the board, the dependency arrow points into the task that must finish first.
 - Once only one linked task remains in backlog, Kanban reorients the saved dependency so the backlog task is the waiting dependent task and the other task is the prerequisite.
-- When the prerequisite task finishes review and is moved to trash, the waiting backlog task becomes ready to start.
+- When the prerequisite task finishes review and is moved to trash, the waiting backlog task auto-starts.
 
 ## task unlink
 

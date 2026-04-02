@@ -1,6 +1,6 @@
 {
   "name": "kanban",
-  "version": "0.1.51",
+  "version": "0.1.56",
   "description": "A kanban foundation for coding agents",
   "publishConfig": {
     "access": "public",
@@ -57,9 +57,9 @@
     "web:typecheck": "npm --prefix web-ui run typecheck",
     "web:test": "npm --prefix web-ui run test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "biome lint src test web-ui/src web-ui/tests vitest.config.ts web-ui/vite.config.ts web-ui/vitest.config.ts web-ui/playwright.config.ts",
-    "format": "biome check --write .",
-    "check": "biome check . && npm run typecheck && npm run test",
+    "lint": "npx @biomejs/biome lint src test web-ui/src web-ui/tests vitest.config.ts web-ui/vite.config.ts web-ui/vitest.config.ts web-ui/playwright.config.ts",
+    "format": "npx @biomejs/biome check --write .",
+    "check": "npx @biomejs/biome check . && npm run typecheck && npm run test",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepare": "husky",
@@ -79,10 +79,18 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
   },
+  "optionalDependencies": {
+    "@biomejs/cli-linux-x64": "2.3.5",
+    "@biomejs/cli-linux-arm64": "2.3.5",
+    "@biomejs/cli-linux-x64-musl": "2.3.5",
+    "@biomejs/cli-linux-arm64-musl": "2.3.5",
+    "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.9"
+  },
   "dependencies": {
-    "@clinebot/agents": "^0.0.22",
-    "@clinebot/core": "^0.0.22",
-    "@clinebot/llms": "^0.0.22",
+    "@clinebot/agents": "^0.0.24",
+    "@clinebot/core": "^0.0.24",
+    "@clinebot/llms": "^0.0.24",
+    "@clinebot/shared": "^0.0.24",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",
@@ -92,6 +100,7 @@
     "commander": "^14.0.3",
     "node-pty": "^1.2.0-beta.11",
     "open": "^11.0.0",
+    "ora": "^9.3.0",
     "proper-lockfile": "^4.1.2",
     "tree-kill": "^1.2.2",
     "ws": "^8.18.0",

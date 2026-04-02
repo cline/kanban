@@ -91,8 +91,8 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		expect(resolveHomeAgentAppendSystemPrompt("task-1")).toBeNull();
 	});
 
-	it("returns the appended prompt for home sidebar sessions", () => {
-		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:codex:abc123", {
+	it("returns the appended prompt for current home sidebar sessions", () => {
+		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:codex", {
 			currentVersion: "0.1.10",
 			cwd: "/Users/example/repo",
 			execPath: "/usr/local/bin/node",
@@ -105,5 +105,18 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		expect(prompt).toContain("Current home agent: `codex`");
 		expect(prompt).toContain("codex mcp add linear --url https://mcp.linear.app/mcp");
 		expect(prompt).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
+	});
+
+	it("returns active-agent guidance for droid home sidebar sessions", () => {
+		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:droid", {
+			currentVersion: "0.1.10",
+			cwd: "/Users/example/repo",
+			execPath: "/usr/local/bin/node",
+			execArgv: [],
+			argv: ["node", "/Users/example/repo/dist/cli.js"],
+			resolveRealPath: (path) => path,
+		});
+		expect(prompt).toContain("Current home agent: `droid`");
+		expect(prompt).toContain("droid mcp add linear https://mcp.linear.app/mcp --type http");
 	});
 });

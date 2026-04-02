@@ -189,6 +189,13 @@ function createEmptyGitDiscardErrorResponse(error: unknown): RuntimeGitDiscardRe
 	};
 }
 
+function isMissingTaskWorktreeError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	return error.message.startsWith("Task worktree not found for task ");
+}
+
 export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): RuntimeTrpcContext["workspaceApi"] {
 	return {
 		loadGitSummary: async (workspaceScope, input) => {
@@ -268,12 +275,20 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		loadChanges: async (workspaceScope, input) => {
 			const normalizedInput = normalizeRequiredTaskWorkspaceScopeInput(input);
-			const taskCwd = await resolveTaskCwd({
-				cwd: workspaceScope.workspacePath,
-				taskId: normalizedInput.taskId,
-				baseRef: normalizedInput.baseRef,
-				ensure: false,
-			});
+			let taskCwd: string;
+			try {
+				taskCwd = await resolveTaskCwd({
+					cwd: workspaceScope.workspacePath,
+					taskId: normalizedInput.taskId,
+					baseRef: normalizedInput.baseRef,
+					ensure: false,
+				});
+			} catch (error) {
+				if (!isMissingTaskWorktreeError(error)) {
+					throw error;
+				}
+				return await createEmptyWorkspaceChangesResponse(workspaceScope.workspacePath);
+			}
 			if (normalizedInput.mode === "last_turn") {
 				const terminalManager = await deps.ensureTerminalManagerForWorkspace(
 					workspaceScope.workspaceId,

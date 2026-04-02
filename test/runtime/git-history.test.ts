@@ -114,6 +114,34 @@ describe.sequential("git history runtime", () => {
 		}
 	});
 
+	it("returns correct UTF-8 paths for non-ASCII filenames", async () => {
+		const { path: repoPath, cleanup } = createTempDir("kanban-git-history-nonascii-");
+		try {
+			initRepository(repoPath);
+			const dirName = "提出書類";
+			const fileName = "設計書.md";
+			const relativePath = `${dirName}/${fileName}`;
+			mkdirSync(join(repoPath, dirName), { recursive: true });
+			writeFileSync(join(repoPath, dirName, fileName), "# 設計書\n", "utf8");
+			const commitHash = commitAll(repoPath, "add non-ASCII path");
+
+			const response = await getCommitDiff({
+				cwd: repoPath,
+				commitHash,
+			});
+
+			expect(response.ok).toBe(true);
+			expect(response.files).toHaveLength(1);
+			expect(response.files[0]).toMatchObject({
+				path: relativePath,
+				status: "added",
+			});
+			expect(response.files[0]?.patch).toContain(`+++ b/${relativePath}`);
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("reads ahead and behind counts from tracked branches", { timeout: 15_000 }, async () => {
 		const { path: sandboxRoot, cleanup } = createTempDir("kanban-git-history-refs-");
 		try {

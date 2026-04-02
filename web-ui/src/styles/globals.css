@@ -541,14 +541,15 @@ body.kb-dependency-link-mode {
 }
 
 .kb-diff-file-header {
+	position: sticky;
+	top: 0;
+	z-index: 10;
 	border-bottom: 1px solid var(--color-border);
 	font-size: 12px;
-	border-bottom-left-radius: 0;
-	border-bottom-right-radius: 0;
 }
 
 .kb-diff-file-header[aria-expanded="false"] {
-	border-bottom: none;
+	border-radius: var(--radius-md);
 }
 
 .kb-diff-inline-comment {
@@ -763,5 +764,30 @@ body.kb-dependency-link-mode {
 
 .kb-markdown > * + * {
 	margin-top: 0.5em;
+}
+
+/* -- PWA Window Controls Overlay --
+   When installed as a PWA with display_override: window-controls-overlay,
+   the title bar disappears and web content extends to the top of the window.
+   The traffic light buttons (macOS) are overlaid, so the navbar needs left
+   padding to avoid them, and drag regions so the window can be repositioned. */
+
+@media (display-mode: window-controls-overlay) {
+	.kb-top-bar {
+		padding-left: env(titlebar-area-x, 12px) !important;
+		-webkit-app-region: drag;
+		app-region: drag;
+	}
+
+	.kb-top-bar button,
+	.kb-top-bar a,
+	.kb-top-bar input,
+	.kb-top-bar select,
+	.kb-top-bar [role="button"],
+	.kb-top-bar [role="menu"],
+	.kb-top-bar [data-radix-collection-item] {
+		-webkit-app-region: no-drag;
+		app-region: no-drag;
+	}
 }
 

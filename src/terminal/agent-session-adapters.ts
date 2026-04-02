@@ -50,6 +50,7 @@ export interface PreparedAgentLaunch {
 	args: string[];
 	env: Record<string, string | undefined>;
 	cleanup?: () => Promise<void>;
+	deferredStartupInput?: string;
 	detectOutputTransition?: AgentOutputTransitionDetector;
 	shouldInspectOutputForTransition?: AgentOutputTransitionInspectionPredicate;
 }
@@ -608,6 +609,10 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 	};
 }
 
+function toBracketedPasteSubmission(command: string): string {
+	return `\u001b[200~${command}\u001b[201~\r`;
+}
+
 const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -741,6 +746,7 @@ const codexAdapter: AgentSessionAdapter = {
 		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
 		let binary = input.binary;
+		let deferredStartupInput: string | undefined;
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 
 		if (input.autonomousModeEnabled && !hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox")) {
@@ -772,9 +778,11 @@ const codexAdapter: AgentSessionAdapter = {
 		}
 
 		const trimmed = input.prompt.trim();
-		if (trimmed) {
-			const initialPrompt = input.startInPlanMode ? `/plan\n${trimmed}` : trimmed;
-			codexArgs.push(initialPrompt);
+		if (input.startInPlanMode) {
+			const planCommand = trimmed ? `/plan ${trimmed}` : "/plan";
+			deferredStartupInput = toBracketedPasteSubmission(planCommand);
+		} else if (trimmed) {
+			codexArgs.push(trimmed);
 		}
 
 		if (hooks) {
@@ -791,6 +799,7 @@ const codexAdapter: AgentSessionAdapter = {
 				binary,
 				args,
 				env,
+				deferredStartupInput,
 				detectOutputTransition: codexPromptDetector,
 				shouldInspectOutputForTransition: shouldInspectCodexOutputForTransition,
 			};
@@ -800,6 +809,7 @@ const codexAdapter: AgentSessionAdapter = {
 			binary,
 			args: codexArgs,
 			env,
+			deferredStartupInput,
 			detectOutputTransition: codexPromptDetector,
 			shouldInspectOutputForTransition: shouldInspectCodexOutputForTransition,
 		};
@@ -1239,6 +1249,16 @@ const droidAdapter: AgentSessionAdapter = {
 				args.push("--settings", settingsPath);
 			}
 		}
+
+		// TODO uncomment when Droid supports --append-system-prompt.
+		// const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		// if (
+		// 	appendedSystemPrompt &&
+		// 	!hasCliOption(args, "--append-system-prompt") &&
+		// 	!hasCliOption(args, "--system-prompt")
+		// ) {
+		// 	args.push("--append-system-prompt", appendedSystemPrompt);
+		// }
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
 		return {

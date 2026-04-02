@@ -2,31 +2,38 @@
 // The rest of Kanban should talk to the SDK through local service modules so
 // auth, catalog, and provider-settings behavior stay behind one boundary.
 
-import { type CreateMcpToolsOptions, createMcpTools, type Tool } from "@clinebot/agents";
 import {
+	addLocalProvider,
 	ClineAccountService,
 	type ClineAccountUser,
 	type ClineOrganization,
+	type CreateMcpToolsOptions,
+	createMcpTools,
 	DEFAULT_EXTERNAL_IDCS_CLIENT_ID,
 	DEFAULT_EXTERNAL_IDCS_SCOPES,
 	DEFAULT_EXTERNAL_IDCS_URL,
 	DEFAULT_INTERNAL_IDCS_CLIENT_ID,
 	DEFAULT_INTERNAL_IDCS_SCOPES,
 	DEFAULT_INTERNAL_IDCS_URL,
+	ensureCustomProvidersLoaded,
 	getValidClineCredentials,
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
 	InMemoryMcpManager,
+	LlmsModels,
+	LlmsProviders,
 	loginClineOAuth,
 	loginOcaOAuth,
 	loginOpenAICodex,
 	type OcaOAuthProviderOptions,
 	ProviderSettingsManager,
+	type Tool,
 } from "@clinebot/core/node";
-import { LlmsProviders, LlmsModels as llmsModels } from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
+export const SDK_DEFAULT_PROVIDER_ID = "cline";
+export const SDK_DEFAULT_MODEL_ID = LlmsModels.CLINE_DEFAULT_MODEL;
 
 export interface ManagedOauthCredentials {
 	access: string;
@@ -45,6 +52,8 @@ export interface SdkProviderCatalogItem {
 	id: string;
 	name: string;
 	defaultModelId?: string;
+	baseUrl?: string;
+	env?: string[];
 	capabilities?: string[];
 }
 
@@ -57,11 +66,25 @@ export interface SdkUserRemoteConfigResponse {
 export type SdkProviderModelRecord = Record<string, LlmsProviders.ModelInfo>;
 
 export type SdkProviderSettings = LlmsProviders.ProviderSettings;
+export type SdkCustomProviderCapability = "streaming" | "tools" | "reasoning" | "vision" | "prompt-cache";
 
 export interface SaveSdkProviderSettingsInput {
 	settings: SdkProviderSettings;
 	tokenSource?: "oauth" | "manual";
 	setLastUsed?: boolean;
+}
+
+export interface AddSdkCustomProviderInput {
+	providerId: string;
+	name: string;
+	baseUrl: string;
+	apiKey?: string | null;
+	headers?: Record<string, string>;
+	timeoutMs?: number;
+	models: string[];
+	defaultModelId?: string | null;
+	modelsSourceUrl?: string | null;
+	capabilities?: SdkCustomProviderCapability[];
 }
 
 export type SdkMcpTool = Tool;
@@ -208,11 +231,11 @@ export async function loginManagedOauthProvider(input: {
 }
 
 export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
-	return await llmsModels.getAllProviders();
+	return await LlmsModels.getAllProviders();
 }
 
 export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
-	return await llmsModels.getModelsForProvider(providerId);
+	return await LlmsModels.getModelsForProvider(providerId);
 }
 
 export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): boolean {
@@ -221,6 +244,21 @@ export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): bo
 
 const providerManager = new ProviderSettingsManager();
 
+export async function addSdkCustomProvider(input: AddSdkCustomProviderInput): Promise<void> {
+	await addLocalProvider(providerManager, {
+		providerId: input.providerId,
+		name: input.name,
+		baseUrl: input.baseUrl,
+		apiKey: input.apiKey ?? undefined,
+		headers: input.headers,
+		timeoutMs: input.timeoutMs,
+		models: input.models,
+		defaultModelId: input.defaultModelId ?? undefined,
+		modelsSourceUrl: input.modelsSourceUrl ?? undefined,
+		capabilities: input.capabilities,
+	});
+	await ensureCustomProvidersLoaded(providerManager);
+}
 export function getSdkProviderSettings(providerId: string): SdkProviderSettings | null {
 	return (providerManager.getProviderSettings(providerId) as SdkProviderSettings | undefined) ?? null;
 }
@@ -326,6 +364,18 @@ export async function fetchSdkOrgData(input: ApiRequestParams & { organizatinId:
 		getAuthToken: async () => input.accessToken,
 	});
 	return await accountService.fetchOrganization(input.organizatinId);
+}
+
+export async function fetchSdkFeaturebaseToken(input: ApiRequestParams): Promise<{ featurebaseJwt: string }> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	const response = await accountService.fetchFeaturebaseToken();
+	if (!response) {
+		throw new Error("Failed to fetch Featurebase token from SDK");
+	}
+	return { featurebaseJwt: response.featurebaseJwt };
 }
 
 export async function fetchSdkClineUserRemoteConfig(input: ApiRequestParams): Promise<SdkUserRemoteConfigResponse> {

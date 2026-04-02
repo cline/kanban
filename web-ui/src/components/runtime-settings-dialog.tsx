@@ -6,7 +6,7 @@ import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
-import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, X } from "lucide-react";
+import { Bug, Check, ChevronDown, Circle, CircleDot, ExternalLink, Lightbulb, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import {
@@ -72,7 +72,7 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 
 export type RuntimeSettingsSection = "shortcuts";
 
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex"];
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid"];
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -345,8 +345,10 @@ export function RuntimeSettingsDialog({
 				binary: agent.binary,
 				installed: agent.id === "cline" ? true : null,
 			}));
+		// FIXME: remove after adding droid support
+		const visibleAgents = agents.filter((agent) => agent.id !== "droid" || agent.installed === true);
 		const orderIndexByAgentId = new Map(SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));
-		const orderedAgents = [...agents].sort((left, right) => {
+		const orderedAgents = [...visibleAgents].sort((left, right) => {
 			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
 			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
 			return leftOrderIndex - rightOrderIndex;
@@ -837,6 +839,39 @@ export function RuntimeSettingsDialog({
 				{shortcuts.length === 0 ? (
 					<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
 				) : null}
+
+				<div className="mt-6 pt-4 border-t border-border">
+					<p className="text-text-secondary text-xs m-0">Cline Kanban v{__APP_VERSION__}</p>
+					<a
+						href="https://github.com/cline/kanban"
+						target="_blank"
+						rel="noreferrer"
+						className="text-accent text-xs hover:underline"
+					>
+						github.com/cline/kanban
+					</a>
+					<div className="flex items-center gap-2 mt-2">
+						<Button
+							size="sm"
+							icon={<Bug size={14} />}
+							onClick={() => window.open("https://github.com/cline/kanban/issues", "_blank")}
+						>
+							Report Issue
+						</Button>
+						<Button
+							size="sm"
+							icon={<Lightbulb size={14} />}
+							onClick={() =>
+								window.open(
+									"https://github.com/cline/kanban/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop",
+									"_blank",
+								)
+							}
+						>
+							Feature Request
+						</Button>
+					</div>
+				</div>
 
 				{saveError ? (
 					<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mt-3">

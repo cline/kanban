@@ -9,6 +9,7 @@ import type {
 import { createUniqueTaskId } from "./task-id";
 
 export interface RuntimeCreateTaskInput {
+	taskId?: string;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
@@ -272,8 +273,12 @@ export function addTaskToColumn(
 		throw new Error("Task baseRef is required.");
 	}
 	const existingIds = collectExistingTaskIds(board);
+	const explicitTaskId = input.taskId?.trim();
+	if (explicitTaskId && existingIds.has(explicitTaskId)) {
+		throw new Error(`Task "${explicitTaskId}" already exists.`);
+	}
 	const task: RuntimeBoardCard = {
-		id: createUniqueTaskId(existingIds, randomUuid),
+		id: explicitTaskId || createUniqueTaskId(existingIds, randomUuid),
 		prompt,
 		startInPlanMode: Boolean(input.startInPlanMode),
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
