@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-	AutoUpdatePackageManager,
 	compareVersions,
 	detectAutoUpdateInstallation,
 	resolveUpdateCommandForPlatform,
 	runAutoUpdateCheck,
+	runOnDemandUpdate,
 	runPendingAutoUpdateOnShutdown,
-} from "../../../src/update/auto-update";
+	UpdatePackageManager,
+} from "../../../src/update/update";
 
 function normalizePath(value: string): string {
 	return value.replaceAll("\\", "/");
@@ -61,7 +62,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/workspace/kanban",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.LOCAL);
+		expect(installation.packageManager).toBe(UpdatePackageManager.LOCAL);
 		expect(installation.updateCommand).toBeNull();
 		expect(installation.updateTiming).toBe("startup");
 	});
@@ -74,7 +75,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.NPX);
+		expect(installation.packageManager).toBe(UpdatePackageManager.NPX);
 		expect(installation.updateTiming).toBe("shutdown");
 		expect(installation.updateCommand?.command).toBe(process.execPath);
 		expect(installation.updateCommand?.args[0]).toBe("-e");
@@ -90,7 +91,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.NPX);
+		expect(installation.packageManager).toBe(UpdatePackageManager.NPX);
 		expect(installation.updateTiming).toBe("shutdown");
 		expect(installation.updateCommand?.command).toBe(process.execPath);
 		expect(installation.updateCommand?.args[0]).toBe("-e");
@@ -110,7 +111,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.PNPM);
+		expect(installation.packageManager).toBe(UpdatePackageManager.PNPM);
 		expect(installation.updateTiming).toBe("shutdown");
 		expect(installation.updateCommand?.command).toBe(process.execPath);
 		expect(installation.updateCommand?.args[0]).toBe("-e");
@@ -129,7 +130,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.BUN);
+		expect(installation.packageManager).toBe(UpdatePackageManager.BUN);
 		expect(installation.updateTiming).toBe("shutdown");
 		expect(installation.updateCommand?.command).toBe(process.execPath);
 		expect(installation.updateCommand?.args[0]).toBe("-e");
@@ -146,7 +147,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.YARN);
+		expect(installation.packageManager).toBe(UpdatePackageManager.YARN);
 		expect(installation.updateTiming).toBe("shutdown");
 		expect(installation.updateCommand?.command).toBe(process.execPath);
 		expect(installation.updateCommand?.args[0]).toBe("-e");
@@ -165,7 +166,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.LOCAL);
+		expect(installation.packageManager).toBe(UpdatePackageManager.LOCAL);
 		expect(installation.updateCommand).toBeNull();
 		expect(installation.updateTiming).toBe("startup");
 	});
@@ -178,7 +179,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.UNKNOWN);
+		expect(installation.packageManager).toBe(UpdatePackageManager.UNKNOWN);
 		expect(installation.updateCommand).toBeNull();
 		expect(installation.updateTiming).toBe("startup");
 	});
@@ -191,7 +192,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.UNKNOWN);
+		expect(installation.packageManager).toBe(UpdatePackageManager.UNKNOWN);
 		expect(installation.updateCommand).toBeNull();
 		expect(installation.updateTiming).toBe("startup");
 	});
@@ -204,7 +205,7 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.UNKNOWN);
+		expect(installation.packageManager).toBe(UpdatePackageManager.UNKNOWN);
 		expect(installation.updateCommand).toBeNull();
 		expect(installation.updateTiming).toBe("startup");
 	});
@@ -217,9 +218,104 @@ describe("detectAutoUpdateInstallation", () => {
 			cwd: "/Users/saoud/projects/work",
 		});
 
-		expect(installation.packageManager).toBe(AutoUpdatePackageManager.UNKNOWN);
+		expect(installation.packageManager).toBe(UpdatePackageManager.UNKNOWN);
 		expect(installation.updateCommand).toBeNull();
 		expect(installation.updateTiming).toBe("startup");
+	});
+});
+
+describe("runOnDemandUpdate", () => {
+	it("runs global install when a newer version is available", async () => {
+		const spawnedUpdates: Array<{ command: string; args: string[] }> = [];
+
+		const result = await runOnDemandUpdate({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
+			cwd: "/Users/saoud/projects/work",
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			runUpdateCommand: (command, args) => {
+				spawnedUpdates.push({ command, args });
+				return 0;
+			},
+		});
+
+		expect(result.status).toBe("updated");
+		expect(spawnedUpdates).toEqual([
+			{
+				command: "npm",
+				args: ["install", "-g", "kanban@latest"],
+			},
+		]);
+	});
+
+	it("returns already_up_to_date when current version matches latest", async () => {
+		let runUpdateCalled = false;
+
+		const result = await runOnDemandUpdate({
+			currentVersion: "1.1.0",
+			packageName: "kanban",
+			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
+			cwd: "/Users/saoud/projects/work",
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			runUpdateCommand: () => {
+				runUpdateCalled = true;
+				return 0;
+			},
+		});
+
+		expect(result.status).toBe("already_up_to_date");
+		expect(runUpdateCalled).toBe(false);
+	});
+
+	it("updates local workspace installs via npm fallback", async () => {
+		const spawnedUpdates: Array<{ command: string; args: string[] }> = [];
+
+		const result = await runOnDemandUpdate({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: ["node", "/workspace/kanban/dist/cli.js"],
+			cwd: "/workspace/kanban",
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			runUpdateCommand: (command, args) => {
+				spawnedUpdates.push({ command, args });
+				return 0;
+			},
+		});
+
+		expect(result.status).toBe("updated");
+		expect(result.packageManager).toBe(UpdatePackageManager.NPM);
+		expect(spawnedUpdates).toEqual([
+			{
+				command: "npm",
+				args: ["install", "-g", "kanban@latest"],
+			},
+		]);
+	});
+
+	it("refreshes transient npx cache when a newer version exists", async () => {
+		const spawnedUpdates: Array<{ command: string; args: string[] }> = [];
+
+		const result = await runOnDemandUpdate({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: ["node", "/Users/saoud/.npm/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js"],
+			cwd: "/Users/saoud/projects/work",
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			runUpdateCommand: (command, args) => {
+				spawnedUpdates.push({ command, args });
+				return 0;
+			},
+		});
+
+		expect(result.status).toBe("cache_refreshed");
+		expect(spawnedUpdates).toHaveLength(1);
+		expect(spawnedUpdates[0]?.command).toBe(process.execPath);
+		expect(spawnedUpdates[0]?.args[0]).toBe("-e");
 	});
 });
 

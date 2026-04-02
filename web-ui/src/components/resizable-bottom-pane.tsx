@@ -129,7 +129,7 @@ export function ResizableBottomPane({
 				minHeight,
 				minWidth: 0,
 				overflow: "visible",
-				borderTop: "1px solid var(--color-divider)",
+				borderTop: isDragging ? "1px solid var(--color-accent)" : "1px solid var(--color-divider)",
 				background: "var(--color-surface-1)",
 			}}
 		>

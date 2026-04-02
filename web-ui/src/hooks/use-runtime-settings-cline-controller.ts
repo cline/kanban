@@ -83,6 +83,7 @@ export interface UpdateClineProviderInput {
 }
 
 export interface UseRuntimeSettingsClineControllerResult {
+	currentProviderSettings: RuntimeClineProviderSettings;
 	providerId: string;
 	setProviderId: Dispatch<SetStateAction<string>>;
 	modelId: string;
@@ -232,6 +233,24 @@ export function useRuntimeSettingsClineController(
 	const oauthConfigured = effectiveProviderSettings?.oauthAccessTokenConfigured ?? false;
 	const oauthAccountId = effectiveProviderSettings?.oauthAccountId ?? "";
 	const oauthExpiresAt = effectiveProviderSettings?.oauthExpiresAt?.toString() ?? "";
+	const currentProviderSettings = useMemo<RuntimeClineProviderSettings>(() => {
+		const baseSettings = effectiveProviderSettings ?? getRuntimeClineProviderSettings(null);
+		const isSelectedManagedOauthProvider =
+			managedOauthProvider !== null && managedOauthProvider === baseSettings.oauthProvider;
+		return {
+			...baseSettings,
+			providerId: managedOauthProvider === null ? providerId.trim() || null : null,
+			modelId: modelId.trim() || null,
+			baseUrl: managedOauthProvider === null ? baseUrl.trim() || null : null,
+			reasoningEffort: reasoningEffort || null,
+			apiKeyConfigured: managedOauthProvider === null ? baseSettings.apiKeyConfigured : false,
+			oauthProvider: managedOauthProvider,
+			oauthAccessTokenConfigured: isSelectedManagedOauthProvider ? baseSettings.oauthAccessTokenConfigured : false,
+			oauthRefreshTokenConfigured: isSelectedManagedOauthProvider ? baseSettings.oauthRefreshTokenConfigured : false,
+			oauthAccountId: isSelectedManagedOauthProvider ? baseSettings.oauthAccountId : null,
+			oauthExpiresAt: isSelectedManagedOauthProvider ? baseSettings.oauthExpiresAt : null,
+		};
+	}, [baseUrl, effectiveProviderSettings, managedOauthProvider, modelId, providerId, reasoningEffort]);
 	const selectedModelSupportsReasoningEffort = useMemo(() => {
 		return providerModels.find((model) => model.id === modelId)?.supportsReasoningEffort ?? false;
 	}, [modelId, providerModels]);
@@ -650,6 +669,7 @@ export function useRuntimeSettingsClineController(
 	);
 
 	return {
+		currentProviderSettings,
 		providerId,
 		setProviderId,
 		modelId,

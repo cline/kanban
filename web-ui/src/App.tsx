@@ -762,9 +762,6 @@ export default function App(): ReactElement {
 					onAddProject={() => {
 						void handleAddProject();
 					}}
-					selectedAgentId={settingsRuntimeProjectConfig?.selectedAgentId ?? null}
-					clineProviderSettings={settingsRuntimeProjectConfig?.clineProviderSettings ?? null}
-					featurebaseFeedbackState={featurebaseFeedbackState}
 				/>
 			) : null}
 			<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -1016,6 +1013,7 @@ export default function App(): ReactElement {
 				workspaceId={settingsWorkspaceId}
 				initialConfig={settingsRuntimeProjectConfig}
 				liveMcpAuthStatuses={latestMcpAuthStatuses}
+				featurebaseFeedbackState={featurebaseFeedbackState}
 				initialSection={settingsInitialSection}
 				onOpenChange={(nextOpen) => {
 					setIsSettingsOpen(nextOpen);

@@ -438,33 +438,6 @@ export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Record
 	return items;
 }
 
-export function countAddedRemoved(
-	oldText: string | null | undefined,
-	newText: string,
-): { added: number; removed: number } {
-	let added = 0;
-	let removed = 0;
-	const changes = diffLines(oldText ?? "", newText, {
-		ignoreWhitespace: false,
-		stripTrailingCr: true,
-		ignoreNewlineAtEof: true,
-	});
-	for (const change of changes) {
-		if (!change) {
-			continue;
-		}
-		const lineCount = toLines(change.value).length;
-		if (change.added) {
-			added += lineCount;
-			continue;
-		}
-		if (change.removed) {
-			removed += lineCount;
-		}
-	}
-	return { added, removed };
-}
-
 export function truncatePathMiddle(path: string, maxLength = 64): string {
 	if (path.length <= maxLength) {
 		return path;

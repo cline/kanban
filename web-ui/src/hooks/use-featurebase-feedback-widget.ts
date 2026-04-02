@@ -7,6 +7,8 @@ import type { RuntimeClineProviderSettings } from "@/runtime/types";
 const FEATUREBASE_SDK_ID = "featurebase-sdk";
 const FEATUREBASE_SDK_SRC = "https://do.featurebase.app/js/sdk.js";
 const FEATUREBASE_ORGANIZATION = "cline";
+const FEATUREBASE_FEEDBACK_OVERLAY_SELECTOR = ".fb-feedback-widget-overlay";
+const FEATUREBASE_FEEDBACK_HIDDEN_CLASS = "fb-feedback-widget-overlay-hidden";
 
 /**
  * Bounded retry delays (ms) after the initial attempt.
@@ -24,6 +26,8 @@ export type FeaturebaseAuthState = "idle" | "loading" | "ready" | "error";
 export interface FeaturebaseFeedbackState {
 	/** Current pre-identify readiness. */
 	authState: FeaturebaseAuthState;
+	/** Increments whenever the SDK confirms that the feedback widget opened. */
+	widgetOpenCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +105,17 @@ function ensureFeaturebaseSdkLoaded(): Promise<void> {
 	return featurebaseSdkLoadPromise;
 }
 
+function closeFeaturebaseFeedbackWidget(win: Window): void {
+	// The SDK accepts same-window postMessage commands for the feedback widget.
+	win.postMessage(
+		{
+			target: "FeaturebaseWidget",
+			data: { action: "closeWidget" },
+		},
+		win.location.origin,
+	);
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -113,6 +128,7 @@ export function useFeaturebaseFeedbackWidget(input: {
 	const isAuthenticated = isClineOauthAuthenticated(clineProviderSettings);
 
 	const [authState, setAuthState] = useState<FeaturebaseAuthState>("idle");
+	const [widgetOpenCount, setWidgetOpenCount] = useState(0);
 
 	// Track the latest attempt so we can cancel stale ones.
 	const attemptRef = useRef(0);
@@ -138,17 +154,47 @@ export function useFeaturebaseFeedbackWidget(input: {
 					return;
 				}
 				const featurebase = ensureFeaturebaseCommand(win);
-				featurebase("initialize_feedback_widget", {
-					organization: FEATUREBASE_ORGANIZATION,
-					theme: "dark",
-					locale: "en",
-					metadata: { app: "kanban" },
-				});
+				featurebase(
+					"initialize_feedback_widget",
+					{
+						organization: FEATUREBASE_ORGANIZATION,
+						theme: "dark",
+						locale: "en",
+						metadata: { app: "kanban" },
+					},
+					(_error, callback) => {
+						if (cancelled || callback?.action !== "widgetOpened") {
+							return;
+						}
+						setWidgetOpenCount((current) => current + 1);
+					},
+				);
 			})
 			.catch(() => {});
 
 		return () => {
 			cancelled = true;
+		};
+	}, []);
+
+	useEffect(() => {
+		const handleDocumentClick = (event: MouseEvent) => {
+			const overlay = document.querySelector(FEATUREBASE_FEEDBACK_OVERLAY_SELECTOR);
+			if (!(overlay instanceof HTMLElement)) {
+				return;
+			}
+			if (overlay.classList.contains(FEATUREBASE_FEEDBACK_HIDDEN_CLASS)) {
+				return;
+			}
+			if (event.target !== overlay) {
+				return;
+			}
+			closeFeaturebaseFeedbackWidget(window);
+		};
+
+		document.addEventListener("click", handleDocumentClick, true);
+		return () => {
+			document.removeEventListener("click", handleDocumentClick, true);
 		};
 	}, []);
 
@@ -239,5 +285,5 @@ export function useFeaturebaseFeedbackWidget(input: {
 		};
 	}, [workspaceId, isAuthenticated, runPreIdentify]);
 
-	return { authState };
+	return { authState, widgetOpenCount };
 }

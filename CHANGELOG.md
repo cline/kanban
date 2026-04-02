@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.57]
+
+- Added `kanban --update` command so you can check for and install updates manually
+- Fixed Windows agents (like Codex) being incorrectly launched through cmd.exe when they're native executables
+- Reduced latency when switching between projects
+- Restored the feedback widget with proper JWT authentication
+- Fixed telemetry service configuration for Cline agents
+- Updated Cline SDK from 0.0.23 to 0.0.24, which includes reasoning details support and improved JSON Schema handling for tool definitions
+
 ## [0.1.56]
 
 - Automatic context overflow recovery: when the conversation history exceeds the model's context window, Kanban now compacts old messages and retries instead of failing

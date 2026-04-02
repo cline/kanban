@@ -123,6 +123,7 @@ describe("useFeaturebaseFeedbackWidget", () => {
 				metadata: { app: "kanban" },
 			}),
 		);
+		expect(typeof initCall?.[2]).toBe("function");
 	});
 
 	it("returns idle state when unauthenticated", async () => {
@@ -204,8 +205,82 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		});
 
 		expect(hookResult!.authState).toBe("ready");
+		expect(hookResult!.widgetOpenCount).toBe(0);
 		// Only one token fetch — no retries needed
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("increments widgetOpenCount when the SDK reports widgetOpened", async () => {
+		const { module } = await importFeaturebaseModule();
+		const featurebaseMock = vi.fn();
+		mockSdkLoad(featurebaseMock);
+
+		let hookResult: FeaturebaseFeedbackState | null = null;
+		function HookHarness(): null {
+			hookResult = module.useFeaturebaseFeedbackWidget({
+				workspaceId: null,
+				clineProviderSettings: defaultClineProviderSettings,
+			});
+			return null;
+		}
+
+		await act(async () => {
+			root.render(<HookHarness />);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		const initCall = featurebaseMock.mock.calls.find((call: unknown[]) => call[0] === "initialize_feedback_widget");
+		expect(initCall).toBeTruthy();
+
+		await act(async () => {
+			(initCall?.[2] as (error: unknown, callback?: { action?: string } | null) => void)?.(null, {
+				action: "widgetOpened",
+			});
+			await Promise.resolve();
+		});
+
+		expect(hookResult!.widgetOpenCount).toBe(1);
+	});
+
+	it("closes the feedback widget when the visible overlay backdrop is clicked", async () => {
+		const { module } = await importFeaturebaseModule();
+		const featurebaseMock = vi.fn();
+		mockSdkLoad(featurebaseMock);
+		const postMessageSpy = vi.spyOn(window, "postMessage");
+
+		function HookHarness(): null {
+			module.useFeaturebaseFeedbackWidget({
+				workspaceId: null,
+				clineProviderSettings: defaultClineProviderSettings,
+			});
+			return null;
+		}
+
+		await act(async () => {
+			root.render(<HookHarness />);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		const overlay = document.createElement("div");
+		overlay.className = "fb-feedback-widget-overlay";
+		document.body.appendChild(overlay);
+
+		await act(async () => {
+			overlay.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		expect(postMessageSpy).toHaveBeenCalledWith(
+			{
+				target: "FeaturebaseWidget",
+				data: { action: "closeWidget" },
+			},
+			window.location.origin,
+		);
+
+		overlay.remove();
 	});
 
 	it("transitions to error on token fetch failure then auto-retries", async () => {
