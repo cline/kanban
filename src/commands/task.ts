@@ -20,7 +20,7 @@ import {
 	updateTask,
 } from "../core/task-board-mutations";
 import { resolveProjectInputPath } from "../projects/project-path";
-import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state";
+import { loadWorkspaceContext, loadWorkspaceState, mutateWorkspaceState } from "../state/workspace-state";
 import type { RuntimeAppRouter } from "../trpc/app-router";
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review", "trash"] as const;
@@ -43,7 +43,20 @@ interface RuntimeWorkspaceMutationResult<T> {
 }
 
 type JsonRecord = Record<string, unknown>;
+type RuntimeClient = ReturnType<typeof createRuntimeTrpcClient>;
 
+interface TaskCommandRuntimeAccess {
+	runtimeAvailable: boolean;
+	runtimeClient: RuntimeClient | null;
+	warnings: string[];
+}
+
+const LOCAL_RUNTIME_WARNING =
+	"Kanban runtime is unreachable from this session; command completed using local workspace state only.";
+
+/**
+ * Converts an unknown thrown value into a readable error message for CLI output.
+ */
 function toErrorMessage(error: unknown): string {
 	if (error instanceof Error && error.message.trim().length > 0) {
 		return error.message;
@@ -51,10 +64,16 @@ function toErrorMessage(error: unknown): string {
 	return String(error);
 }
 
+/**
+ * Prints a JSON payload to stdout using stable pretty formatting for CLI consumers.
+ */
 function printJson(payload: unknown): void {
 	process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
+/**
+ * Parses the optional list-column flag into a strongly typed Kanban board column.
+ */
 function parseListColumn(value: string | undefined): ListTaskColumn | undefined {
 	if (value === undefined) {
 		return undefined;
@@ -65,6 +84,9 @@ function parseListColumn(value: string | undefined): ListTaskColumn | undefined 
 	throw new Error(`Invalid column "${value}". Expected one of: ${LIST_TASK_COLUMNS.join(", ")}.`);
 }
 
+/**
+ * Parses the optional auto-review mode flag into the supported runtime enum values.
+ */
 function parseAutoReviewMode(value: string | undefined): "commit" | "pr" | "move_to_trash" | undefined {
 	if (value === undefined) {
 		return undefined;
@@ -75,6 +97,9 @@ function parseAutoReviewMode(value: string | undefined): "commit" | "pr" | "move
 	throw new Error(`Invalid auto review mode "${value}". Expected: commit, pr, move_to_trash.`);
 }
 
+/**
+ * Resolves whether a task command is targeting a single task or a whole column.
+ */
 function resolveTaskCommandTarget(input: TaskCommandTarget, commandName: string): ResolvedTaskCommandTarget {
 	const taskId = input.taskId?.trim();
 	const column = input.column;
@@ -96,6 +121,9 @@ function resolveTaskCommandTarget(input: TaskCommandTarget, commandName: string)
 	throw new Error(`${commandName} requires either --task-id or --column.`);
 }
 
+/**
+ * Creates the workspace-scoped TRPC client used by task commands when the runtime is reachable.
+ */
 function createRuntimeTrpcClient(workspaceId: string | null) {
 	return createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
@@ -107,6 +135,9 @@ function createRuntimeTrpcClient(workspaceId: string | null) {
 	});
 }
 
+/**
+ * Resolves the local workspace context for a task command, optionally creating its local Kanban state.
+ */
 async function resolveRuntimeWorkspace(
 	projectPath: string | undefined,
 	cwd: string,
@@ -119,6 +150,9 @@ async function resolveRuntimeWorkspace(
 	});
 }
 
+/**
+ * Resolves the repository path that backs the current task command workspace.
+ */
 async function resolveWorkspaceRepoPath(
 	projectPath: string | undefined,
 	cwd: string,
@@ -128,6 +162,9 @@ async function resolveWorkspaceRepoPath(
 	return workspace.repoPath;
 }
 
+/**
+ * Ensures the current workspace is registered with the runtime so TRPC calls can be scoped correctly.
+ */
 async function ensureRuntimeWorkspace(workspaceRepoPath: string): Promise<string> {
 	const runtimeClient = createRuntimeTrpcClient(null);
 	const added = await runtimeClient.projects.add.mutate({
@@ -139,14 +176,139 @@ async function ensureRuntimeWorkspace(workspaceRepoPath: string): Promise<string
 	return added.project.id;
 }
 
+/**
+ * Best-effort notifies the runtime that persisted workspace state changed on disk.
+ */
 async function notifyRuntimeWorkspaceStateUpdated(
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
 ): Promise<void> {
 	await runtimeClient.workspace.notifyStateUpdated.mutate().catch(() => null);
 }
 
+/**
+ * Recursively collects nested error messages so transport classification can inspect wrapped failures.
+ */
+function collectErrorMessages(error: unknown): string[] {
+	const messages: string[] = [];
+	const visited = new Set<unknown>();
+
+	const visit = (value: unknown): void => {
+		if (value === null || value === undefined || visited.has(value)) {
+			return;
+		}
+		visited.add(value);
+		if (typeof value === "string") {
+			messages.push(value);
+			return;
+		}
+		if (value instanceof Error) {
+			messages.push(value.message);
+			visit((value as Error & { cause?: unknown }).cause);
+			return;
+		}
+		if (typeof value === "object") {
+			const record = value as Record<string, unknown>;
+			if (typeof record.message === "string") {
+				messages.push(record.message);
+			}
+			visit(record.cause);
+		}
+	};
+
+	visit(error);
+	return messages.map((message) => message.trim()).filter((message) => message.length > 0);
+}
+
+/**
+ * Detects transport-layer runtime failures so task commands can fall back to local board state when safe.
+ */
+function isRuntimeTransportError(error: unknown): boolean {
+	const haystack = collectErrorMessages(error).join("\n").toLowerCase();
+	return [
+		"fetch failed",
+		"failed to fetch",
+		"network disabled",
+		"operation not permitted",
+		"econnrefused",
+		"connect econnrefused",
+		"socket hang up",
+		"other side closed",
+		"127.0.0.1",
+		"localhost",
+	].some((fragment) => haystack.includes(fragment));
+}
+
+/**
+ * Builds the explicit runtime-unavailable error used for commands that cannot safely fall back to local state.
+ */
+function buildRuntimeRequiredError(commandName: string): Error {
+	return new Error(
+		`${commandName} requires the Kanban runtime, but it is unreachable from this session ` +
+			`(current runtime: ${getKanbanRuntimeOrigin()}). This can happen inside sandboxed Codex task sessions with network disabled.`,
+	);
+}
+
+/**
+ * Attempts to register the workspace with the runtime, returning a local-only mode descriptor when transport is unavailable.
+ */
+async function tryEnsureRuntimeWorkspace(workspaceRepoPath: string): Promise<TaskCommandRuntimeAccess> {
+	try {
+		const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
+		return {
+			runtimeAvailable: true,
+			runtimeClient: createRuntimeTrpcClient(workspaceId),
+			warnings: [],
+		};
+	} catch (error) {
+		if (!isRuntimeTransportError(error)) {
+			throw error;
+		}
+		return {
+			runtimeAvailable: false,
+			runtimeClient: null,
+			warnings: [LOCAL_RUNTIME_WARNING],
+		};
+	}
+}
+
+/**
+ * Loads the latest workspace state from the runtime when available, otherwise from the local persisted workspace files.
+ */
+async function loadTaskCommandWorkspaceState(
+	workspaceRepoPath: string,
+	runtimeClient: RuntimeClient | null,
+): Promise<{ state: RuntimeWorkspaceStateResponse; runtimeAvailable: boolean; warnings: string[] }> {
+	if (!runtimeClient) {
+		return {
+			state: await loadWorkspaceState(workspaceRepoPath),
+			runtimeAvailable: false,
+			warnings: [LOCAL_RUNTIME_WARNING],
+		};
+	}
+
+	try {
+		return {
+			state: await runtimeClient.workspace.getState.query(),
+			runtimeAvailable: true,
+			warnings: [],
+		};
+	} catch (error) {
+		if (!isRuntimeTransportError(error)) {
+			throw error;
+		}
+		return {
+			state: await loadWorkspaceState(workspaceRepoPath),
+			runtimeAvailable: false,
+			warnings: [LOCAL_RUNTIME_WARNING],
+		};
+	}
+}
+
+/**
+ * Persists workspace state mutations and only emits runtime change notifications when a live runtime is available.
+ */
 async function updateRuntimeWorkspaceState<T>(
-	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
+	runtimeClient: RuntimeClient | null,
 	workspaceRepoPath: string,
 	mutate: (state: RuntimeWorkspaceStateResponse) => RuntimeWorkspaceMutationResult<T>,
 ): Promise<T> {
@@ -158,17 +320,23 @@ async function updateRuntimeWorkspaceState<T>(
 		};
 	});
 
-	if (mutationResponse.saved) {
+	if (mutationResponse.saved && runtimeClient) {
 		await notifyRuntimeWorkspaceStateUpdated(runtimeClient);
 	}
 
 	return mutationResponse.value;
 }
 
+/**
+ * Resolves the base branch used for new tasks when the caller does not provide one explicitly.
+ */
 function resolveTaskBaseRef(state: RuntimeWorkspaceStateResponse): string {
 	return state.git.currentBranch ?? state.git.defaultBranch ?? state.git.branches[0] ?? "";
 }
 
+/**
+ * Finds a task and its containing column inside the current board state.
+ */
 function findTaskRecord(
 	state: RuntimeWorkspaceStateResponse,
 	taskId: string,
@@ -185,6 +353,9 @@ function findTaskRecord(
 	return null;
 }
 
+/**
+ * Formats a task record into the stable JSON payload returned by task CLI commands.
+ */
 function formatTaskRecord(
 	state: RuntimeWorkspaceStateResponse,
 	task: RuntimeBoardCard,
@@ -216,6 +387,9 @@ function formatTaskRecord(
 	};
 }
 
+/**
+ * Formats a dependency link into the JSON representation returned by task CLI commands.
+ */
 function formatDependencyRecord(
 	state: RuntimeWorkspaceStateResponse,
 	dependency: RuntimeBoardDependency,
@@ -230,6 +404,9 @@ function formatDependencyRecord(
 	};
 }
 
+/**
+ * Converts dependency creation failure codes into user-facing CLI error messages.
+ */
 function getLinkFailureMessage(reason: RuntimeAddTaskDependencyResult["reason"]): string {
 	if (reason === "same_task") {
 		return "A task cannot be linked to itself.";
@@ -246,6 +423,9 @@ function getLinkFailureMessage(reason: RuntimeAddTaskDependencyResult["reason"])
 	return "One or both tasks could not be found.";
 }
 
+/**
+ * Returns every task record currently present in the requested board column.
+ */
 function findTasksInColumn(
 	state: RuntimeWorkspaceStateResponse,
 	columnId: ListTaskColumn,
@@ -260,12 +440,18 @@ function findTasksInColumn(
 	}));
 }
 
+/**
+ * Lists tasks for a workspace, falling back to local persisted board state when runtime transport is unavailable.
+ */
 async function listTasks(input: { cwd: string; projectPath?: string; column?: ListTaskColumn }): Promise<JsonRecord> {
 	const workspace = await resolveRuntimeWorkspace(input.projectPath, input.cwd, {
 		autoCreateIfMissing: false,
 	});
-	const runtimeClient = createRuntimeTrpcClient(workspace.workspaceId);
-	const state = await runtimeClient.workspace.getState.query();
+	const loadedState = await loadTaskCommandWorkspaceState(
+		workspace.repoPath,
+		createRuntimeTrpcClient(workspace.workspaceId),
+	);
+	const state = loadedState.state;
 
 	const tasks = state.board.columns.flatMap((boardColumn) => {
 		if (!input.column && boardColumn.id === "trash") {
@@ -284,6 +470,8 @@ async function listTasks(input: { cwd: string; projectPath?: string; column?: Li
 		tasks,
 		dependencies: state.board.dependencies.map((dependency) => formatDependencyRecord(state, dependency)),
 		count: tasks.length,
+		runtimeAvailable: loadedState.runtimeAvailable,
+		warnings: loadedState.warnings,
 	};
 }
 
@@ -318,6 +506,9 @@ async function deleteTaskWorkspace(
 	}
 }
 
+/**
+ * Creates a new backlog task, using local-only workspace mutation when runtime transport is unavailable.
+ */
 async function createTask(input: {
 	cwd: string;
 	prompt: string;
@@ -328,9 +519,8 @@ async function createTask(input: {
 	autoReviewMode?: "commit" | "pr" | "move_to_trash";
 }): Promise<JsonRecord> {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
-	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
-	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const created = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (state) => {
+	const runtimeAccess = await tryEnsureRuntimeWorkspace(workspaceRepoPath);
+	const created = await updateRuntimeWorkspaceState(runtimeAccess.runtimeClient, workspaceRepoPath, (state) => {
 		const resolvedBaseRef = (input.baseRef ?? "").trim() || resolveTaskBaseRef(state);
 		if (!resolvedBaseRef) {
 			throw new Error("Could not determine task base branch for this workspace.");
@@ -365,9 +555,14 @@ async function createTask(input: {
 			autoReviewEnabled: created.autoReviewEnabled === true,
 			autoReviewMode: created.autoReviewMode ?? "commit",
 		},
+		runtimeAvailable: runtimeAccess.runtimeAvailable,
+		warnings: runtimeAccess.warnings,
 	};
 }
 
+/**
+ * Updates a task in place, falling back to local persisted workspace mutation when runtime transport is unavailable.
+ */
 async function updateTaskCommand(input: {
 	cwd: string;
 	taskId: string;
@@ -389,9 +584,8 @@ async function updateTaskCommand(input: {
 	}
 
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
-	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
-	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const updated = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
+	const runtimeAccess = await tryEnsureRuntimeWorkspace(workspaceRepoPath);
+	const updated = await updateRuntimeWorkspaceState(runtimeAccess.runtimeClient, workspaceRepoPath, (runtimeState) => {
 		const taskRecord = findTaskRecord(runtimeState, input.taskId);
 		if (!taskRecord) {
 			throw new Error(`Task "${input.taskId}" was not found in workspace ${workspaceRepoPath}.`);
@@ -423,9 +617,14 @@ async function updateTaskCommand(input: {
 		ok: true,
 		task: updated,
 		workspacePath: workspaceRepoPath,
+		runtimeAvailable: runtimeAccess.runtimeAvailable,
+		warnings: runtimeAccess.warnings,
 	};
 }
 
+/**
+ * Creates a dependency link between two tasks, falling back to local persisted workspace mutation when runtime transport is unavailable.
+ */
 async function linkTasks(input: {
 	cwd: string;
 	taskId: string;
@@ -433,9 +632,8 @@ async function linkTasks(input: {
 	projectPath?: string;
 }): Promise<JsonRecord> {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
-	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
-	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const dependency = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
+	const runtimeAccess = await tryEnsureRuntimeWorkspace(workspaceRepoPath);
+	const dependency = await updateRuntimeWorkspaceState(runtimeAccess.runtimeClient, workspaceRepoPath, (runtimeState) => {
 		const linked = addTaskDependency(runtimeState.board, input.taskId, input.linkedTaskId);
 		if (!linked.added || !linked.dependency) {
 			throw new Error(getLinkFailureMessage(linked.reason));
@@ -454,14 +652,18 @@ async function linkTasks(input: {
 		ok: true,
 		workspacePath: workspaceRepoPath,
 		dependency,
+		runtimeAvailable: runtimeAccess.runtimeAvailable,
+		warnings: runtimeAccess.warnings,
 	};
 }
 
+/**
+ * Removes a dependency link, falling back to local persisted workspace mutation when runtime transport is unavailable.
+ */
 async function unlinkTasks(input: { cwd: string; dependencyId: string; projectPath?: string }): Promise<JsonRecord> {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
-	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
-	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const removedDependency = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
+	const runtimeAccess = await tryEnsureRuntimeWorkspace(workspaceRepoPath);
+	const removedDependency = await updateRuntimeWorkspaceState(runtimeAccess.runtimeClient, workspaceRepoPath, (runtimeState) => {
 		const dependency =
 			runtimeState.board.dependencies.find((candidate) => candidate.id === input.dependencyId) ?? null;
 		if (!dependency) {
@@ -486,14 +688,31 @@ async function unlinkTasks(input: { cwd: string; dependencyId: string; projectPa
 		ok: true,
 		workspacePath: workspaceRepoPath,
 		removedDependency,
+		runtimeAvailable: runtimeAccess.runtimeAvailable,
+		warnings: runtimeAccess.warnings,
 	};
 }
 
+/**
+ * Starts a task session and intentionally fails with a clear error when the runtime is unreachable.
+ */
 async function startTask(input: { cwd: string; taskId: string; projectPath?: string }): Promise<JsonRecord> {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
-	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
-	const runtimeClient = createRuntimeTrpcClient(workspaceId);
-	const runtimeState = await runtimeClient.workspace.getState.query();
+	const runtimeAccess = await tryEnsureRuntimeWorkspace(workspaceRepoPath);
+	const runtimeClient = runtimeAccess.runtimeClient;
+	if (!runtimeClient) {
+		throw buildRuntimeRequiredError("task start");
+	}
+
+	let runtimeState: RuntimeWorkspaceStateResponse;
+	try {
+		runtimeState = await runtimeClient.workspace.getState.query();
+	} catch (error) {
+		if (isRuntimeTransportError(error)) {
+			throw buildRuntimeRequiredError("task start");
+		}
+		throw error;
+	}
 	const fromColumnId = getTaskColumnId(runtimeState.board, input.taskId);
 	if (!fromColumnId) {
 		throw new Error(`Task "${input.taskId}" was not found in workspace ${workspaceRepoPath}.`);
@@ -896,13 +1115,20 @@ function parseOptionalBooleanOption(value: unknown, flagName: string): boolean |
 	throw new Error(`Invalid boolean value for ${flagName}: "${value}". Use true or false.`);
 }
 
+/**
+ * Runs a task CLI handler and reports failures in a stable JSON envelope.
+ */
 async function runTaskCommand(handler: () => Promise<JsonRecord>): Promise<void> {
 	try {
 		printJson(await handler());
 	} catch (error) {
+		const errorMessage = toErrorMessage(error);
+		const renderedError = errorMessage.includes("requires the Kanban runtime")
+			? errorMessage
+			: `Task command failed at ${getKanbanRuntimeOrigin()}: ${errorMessage}`;
 		printJson({
 			ok: false,
-			error: `Task command failed at ${getKanbanRuntimeOrigin()}: ${toErrorMessage(error)}`,
+			error: renderedError,
 		});
 		process.exitCode = 1;
 	}
