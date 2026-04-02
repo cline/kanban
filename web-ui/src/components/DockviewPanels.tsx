@@ -1,5 +1,3 @@
-// ── Dockview-powered panel layout ──
-
 import {
 	type DockviewApi,
 	DockviewReact,
@@ -12,15 +10,11 @@ import "@/components/dockview-overrides.css";
 import { useCallback } from "react";
 import { cn } from "@/components/ui/cn";
 
-// ── Panel component registration ──
-
 export interface PanelComponentProps {
 	[key: string]: unknown;
 }
 
 type PanelComponents = Record<string, React.FC<IDockviewPanelProps<PanelComponentProps>>>;
-
-// ── Component ──
 
 export interface DockviewPanelsProps {
 	/** Map of component IDs to React components for panel content. */

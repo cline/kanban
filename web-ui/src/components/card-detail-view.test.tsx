@@ -40,8 +40,8 @@ vi.mock("@/components/detail-panels/cline-agent-chat-panel", () => ({
 	}),
 }));
 
-vi.mock("@/components/detail-panels/column-context-panel", () => ({
-	ColumnContextPanel: () => <div data-testid="column-context-panel" />,
+vi.mock("@/components/detail-panels/tasks-panel", () => ({
+	TasksPanel: () => <div data-testid="column-context-panel" />,
 }));
 
 vi.mock("@/components/detail-panels/diff-viewer-panel", () => ({

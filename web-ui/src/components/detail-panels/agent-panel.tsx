@@ -1,14 +1,12 @@
-// ── Dockview panel: Agent (ClineAgentChatPanel or AgentTerminalPanel) ──
-
 import { useMemo } from "react";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
-import { useDetailPanelContext } from "./detail-panel-context";
+import { useCardDetailContext } from "./card-detail-context";
 
 /** Props shared between ClineAgentChatPanel and AgentTerminalPanel. */
-function useSharedAgentProps(ctx: ReturnType<typeof useDetailPanelContext>) {
+function useSharedAgentProps(ctx: ReturnType<typeof useCardDetailContext>) {
 	const taskId = ctx.selection.card.id;
 	return useMemo(
 		() => ({
@@ -44,8 +42,8 @@ function useSharedAgentProps(ctx: ReturnType<typeof useDetailPanelContext>) {
 	);
 }
 
-export function DockviewAgentPanel() {
-	const ctx = useDetailPanelContext();
+export function AgentPanel() {
+	const ctx = useCardDetailContext();
 	const sharedProps = useSharedAgentProps(ctx);
 
 	if (ctx.showClineAgentChatPanel) {

@@ -1,7 +1,6 @@
-// ── Context for passing CardDetailView state to dockview panel components ──
-// Dockview mounts panel components once in portals. They won't re-render from
-// parent closure changes. This context bridges that gap — CardDetailView provides
-// the latest values, and panel components consume them via useDetailPanelContext().
+// Dockview renders panels in portals, so they don't re-render when
+// CardDetailView's state changes. This context bridges that gap —
+// without it, switching tasks wouldn't update the agent or diff panels.
 
 import type { DropResult } from "@hello-pangea/dnd";
 import type { MutableRefObject, ReactNode } from "react";
@@ -19,7 +18,7 @@ import type {
 } from "@/runtime/types";
 import type { BoardCard, CardSelection } from "@/types";
 
-export interface DetailPanelContextValue {
+export interface CardDetailContextValue {
 	// Selection & navigation
 	selection: CardSelection;
 	workspacePath?: string | null;
@@ -90,12 +89,12 @@ export interface DetailPanelContextValue {
 	setDiffComments: (comments: Map<string, DiffLineComment>) => void;
 }
 
-const DetailPanelContext = createContext<DetailPanelContextValue | null>(null);
+const CardDetailContext = createContext<CardDetailContextValue | null>(null);
 
-export const DetailPanelProvider = DetailPanelContext.Provider;
+export const CardDetailProvider = CardDetailContext.Provider;
 
-export function useDetailPanelContext(): DetailPanelContextValue {
-	const ctx = useContext(DetailPanelContext);
-	if (!ctx) throw new Error("useDetailPanelContext must be used within DetailPanelProvider");
+export function useCardDetailContext(): CardDetailContextValue {
+	const ctx = useContext(CardDetailContext);
+	if (!ctx) throw new Error("useCardDetailContext must be used within CardDetailProvider");
 	return ctx;
 }

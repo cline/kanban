@@ -4,13 +4,13 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { DockviewPanels, type PanelComponentProps } from "@/components/DockviewPanels";
+import { AgentPanel } from "@/components/detail-panels/agent-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
+import { type CardDetailContextValue, CardDetailProvider } from "@/components/detail-panels/card-detail-context";
+import { ChangesPanel } from "@/components/detail-panels/changes-panel";
 import type { ClineAgentChatPanelHandle } from "@/components/detail-panels/cline-agent-chat-panel";
-import { type DetailPanelContextValue, DetailPanelProvider } from "@/components/detail-panels/detail-panel-context";
 import type { DiffLineComment } from "@/components/detail-panels/diff-viewer-panel";
-import { DockviewAgentPanel } from "@/components/detail-panels/dockview-agent-panel";
-import { DockviewChangesPanel } from "@/components/detail-panels/dockview-changes-panel";
-import { DockviewTasksPanel } from "@/components/detail-panels/dockview-tasks-panel";
+import { TasksPanel } from "@/components/detail-panels/tasks-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
@@ -51,9 +51,9 @@ function isEventInsideDialog(target: EventTarget | null): boolean {
 // ── Dockview component map (stable — components read from context) ──
 
 const DOCKVIEW_COMPONENTS: Record<string, React.FC<IDockviewPanelProps<PanelComponentProps>>> = {
-	tasks: () => <DockviewTasksPanel />,
-	agent: () => <DockviewAgentPanel />,
-	changes: () => <DockviewChangesPanel />,
+	tasks: () => <TasksPanel />,
+	agent: () => <AgentPanel />,
+	changes: () => <ChangesPanel />,
 };
 
 // ── Main component ──
@@ -327,7 +327,7 @@ export function CardDetailView({
 
 	// ── Context value for dockview panel components ──
 
-	const panelContext: DetailPanelContextValue = useMemo(
+	const panelContext: CardDetailContextValue = useMemo(
 		() => ({
 			selection,
 			workspacePath,
@@ -493,7 +493,7 @@ export function CardDetailView({
 	// ── Render ──
 
 	return (
-		<DetailPanelProvider value={panelContext}>
+		<CardDetailProvider value={panelContext}>
 			<div
 				style={{
 					display: "flex",
@@ -556,6 +556,6 @@ export function CardDetailView({
 					</>
 				)}
 			</div>
-		</DetailPanelProvider>
+		</CardDetailProvider>
 	);
 }

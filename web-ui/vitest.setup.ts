@@ -9,6 +9,7 @@ Object.defineProperty(globalThis, "ResizeObserver", {
 	configurable: true,
 	value: MockResizeObserver,
 });
+
 // Node.js v22+ adds a built-in localStorage to globalThis that lacks
 // Web Storage API methods when --localstorage-file is not provided.
 // This conflicts with jsdom's proper implementation because vitest's
