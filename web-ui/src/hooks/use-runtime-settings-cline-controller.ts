@@ -39,6 +39,20 @@ interface SaveProviderSettingsOverrides {
 	apiKey?: string | null;
 	baseUrl?: string | null;
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
+	region?: string | null;
+	aws?: {
+		accessKey?: string | null;
+		secretKey?: string | null;
+		sessionToken?: string | null;
+		region?: string | null;
+		profile?: string | null;
+		authentication?: "iam" | "api-key" | "profile" | null;
+		endpoint?: string | null;
+	};
+	gcp?: {
+		projectId?: string | null;
+		region?: string | null;
+	};
 }
 
 export interface AddClineProviderInput {
@@ -63,8 +77,28 @@ export interface UseRuntimeSettingsClineControllerResult {
 	setApiKey: Dispatch<SetStateAction<string>>;
 	baseUrl: string;
 	setBaseUrl: Dispatch<SetStateAction<string>>;
+	region: string;
+	setRegion: Dispatch<SetStateAction<string>>;
 	reasoningEffort: RuntimeClineReasoningEffort | "";
 	setReasoningEffort: Dispatch<SetStateAction<RuntimeClineReasoningEffort | "">>;
+	awsAccessKey: string;
+	setAwsAccessKey: Dispatch<SetStateAction<string>>;
+	awsSecretKey: string;
+	setAwsSecretKey: Dispatch<SetStateAction<string>>;
+	awsSessionToken: string;
+	setAwsSessionToken: Dispatch<SetStateAction<string>>;
+	awsRegion: string;
+	setAwsRegion: Dispatch<SetStateAction<string>>;
+	awsProfile: string;
+	setAwsProfile: Dispatch<SetStateAction<string>>;
+	awsAuthentication: "" | "iam" | "api-key" | "profile";
+	setAwsAuthentication: Dispatch<SetStateAction<"" | "iam" | "api-key" | "profile">>;
+	awsEndpoint: string;
+	setAwsEndpoint: Dispatch<SetStateAction<string>>;
+	gcpProjectId: string;
+	setGcpProjectId: Dispatch<SetStateAction<string>>;
+	gcpRegion: string;
+	setGcpRegion: Dispatch<SetStateAction<string>>;
 	providerCatalog: RuntimeClineProviderCatalogItem[];
 	providerModels: RuntimeClineProviderModel[];
 	isLoadingProviderCatalog: boolean;
@@ -148,7 +182,17 @@ export function useRuntimeSettingsClineController(
 	const [modelId, setModelId] = useState("");
 	const [apiKey, setApiKey] = useState("");
 	const [baseUrl, setBaseUrl] = useState("");
+	const [region, setRegion] = useState("");
 	const [reasoningEffort, setReasoningEffort] = useState<RuntimeClineReasoningEffort | "">("");
+	const [awsAccessKey, setAwsAccessKey] = useState("");
+	const [awsSecretKey, setAwsSecretKey] = useState("");
+	const [awsSessionToken, setAwsSessionToken] = useState("");
+	const [awsRegion, setAwsRegion] = useState("");
+	const [awsProfile, setAwsProfile] = useState("");
+	const [awsAuthentication, setAwsAuthentication] = useState<"" | "iam" | "api-key" | "profile">("");
+	const [awsEndpoint, setAwsEndpoint] = useState("");
+	const [gcpProjectId, setGcpProjectId] = useState("");
+	const [gcpRegion, setGcpRegion] = useState("");
 	const [providerSettingsOverride, setProviderSettingsOverride] = useState<RuntimeClineProviderSettings | null>(null);
 	const [providerCatalog, setProviderCatalog] = useState<RuntimeClineProviderCatalogItem[]>([]);
 	const [providerModels, setProviderModels] = useState<RuntimeClineProviderModel[]>([]);
@@ -193,17 +237,39 @@ export function useRuntimeSettingsClineController(
 		if (reasoningEffort !== initialReasoningEffort) {
 			return true;
 		}
+		if (region.trim().length > 0) {
+			return true;
+		}
+		if (awsAccessKey.trim().length > 0 || awsSecretKey.trim().length > 0 || awsSessionToken.trim().length > 0) {
+			return true;
+		}
+		if (awsRegion.trim().length > 0 || awsProfile.trim().length > 0 || awsAuthentication.trim().length > 0) {
+			return true;
+		}
+		if (awsEndpoint.trim().length > 0 || gcpProjectId.trim().length > 0 || gcpRegion.trim().length > 0) {
+			return true;
+		}
 		return apiKey.trim().length > 0;
 	}, [
 		apiKey,
+		awsAccessKey,
+		awsAuthentication,
+		awsEndpoint,
+		awsProfile,
+		awsRegion,
+		awsSecretKey,
+		awsSessionToken,
 		baseUrl,
 		config,
+		gcpProjectId,
+		gcpRegion,
 		initialBaseUrl,
 		initialModelId,
 		initialProviderId,
 		initialReasoningEffort,
 		modelId,
 		providerId,
+		region,
 		reasoningEffort,
 	]);
 
@@ -216,7 +282,17 @@ export function useRuntimeSettingsClineController(
 		setModelId(configProviderSettings.modelId ?? "");
 		setApiKey("");
 		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, configProviderSettings.baseUrl));
+		setRegion("");
 		setReasoningEffort(configProviderSettings.reasoningEffort ?? "");
+		setAwsAccessKey("");
+		setAwsSecretKey("");
+		setAwsSessionToken("");
+		setAwsRegion("");
+		setAwsProfile("");
+		setAwsAuthentication("");
+		setAwsEndpoint("");
+		setGcpProjectId("");
+		setGcpRegion("");
 		setProviderSettingsOverride(null);
 	}, [
 		configProviderSettings.baseUrl,
@@ -369,6 +445,35 @@ export function useRuntimeSettingsClineController(
 						: apiKey.trim() || null;
 			const nextReasoningEffort =
 				overrides && "reasoningEffort" in overrides ? (overrides.reasoningEffort ?? null) : reasoningEffort || null;
+			const nextRegion =
+				overrides && "region" in overrides ? overrides.region?.trim() || null : region.trim() || null;
+			const normalizedProviderId = trimmedProviderId.toLowerCase();
+			const isBedrockProvider = normalizedProviderId === "bedrock";
+			const isVertexProvider = normalizedProviderId === "vertex";
+			const nextAws =
+				overrides && "aws" in overrides
+					? overrides.aws
+					: isBedrockProvider
+						? {
+								accessKey: awsAccessKey.trim() || null,
+								secretKey: awsSecretKey.trim() || null,
+								sessionToken: awsSessionToken.trim() || null,
+								region: awsRegion.trim() || null,
+								profile: awsProfile.trim() || null,
+								authentication: awsAuthentication || null,
+								endpoint: awsEndpoint.trim() || null,
+							}
+						: undefined;
+			const nextGcp =
+				overrides && "gcp" in overrides
+					? overrides.gcp
+					: isVertexProvider
+						? {
+								projectId: gcpProjectId.trim() || null,
+								region: gcpRegion.trim() || null,
+							}
+						: undefined;
+			const payloadRegion = isVertexProvider ? nextRegion : null;
 			try {
 				const savedSettings = await saveClineProviderSettings(workspaceId, {
 					providerId: trimmedProviderId,
@@ -376,6 +481,9 @@ export function useRuntimeSettingsClineController(
 					apiKey: trimmedApiKey,
 					baseUrl: trimmedBaseUrl,
 					reasoningEffort: nextReasoningEffort,
+					...(isVertexProvider ? { region: payloadRegion } : {}),
+					...(nextAws !== undefined ? { aws: nextAws } : {}),
+					...(nextGcp !== undefined ? { gcp: nextGcp } : {}),
 				});
 				setProviderId(savedSettings.providerId ?? savedSettings.oauthProvider ?? trimmedProviderId);
 				setModelId(savedSettings.modelId ?? "");
@@ -391,7 +499,26 @@ export function useRuntimeSettingsClineController(
 				};
 			}
 		},
-		[apiKey, baseUrl, hasUnsavedChanges, managedOauthProvider, modelId, providerId, reasoningEffort, workspaceId],
+		[
+			apiKey,
+			awsAccessKey,
+			awsAuthentication,
+			awsEndpoint,
+			awsProfile,
+			awsRegion,
+			awsSecretKey,
+			awsSessionToken,
+			baseUrl,
+			gcpProjectId,
+			gcpRegion,
+			hasUnsavedChanges,
+			managedOauthProvider,
+			modelId,
+			providerId,
+			region,
+			reasoningEffort,
+			workspaceId,
+		],
 	);
 
 	const addCustomProvider = useCallback(
@@ -479,8 +606,28 @@ export function useRuntimeSettingsClineController(
 		setApiKey,
 		baseUrl,
 		setBaseUrl,
+		region,
+		setRegion,
 		reasoningEffort,
 		setReasoningEffort,
+		awsAccessKey,
+		setAwsAccessKey,
+		awsSecretKey,
+		setAwsSecretKey,
+		awsSessionToken,
+		setAwsSessionToken,
+		awsRegion,
+		setAwsRegion,
+		awsProfile,
+		setAwsProfile,
+		awsAuthentication,
+		setAwsAuthentication,
+		awsEndpoint,
+		setAwsEndpoint,
+		gcpProjectId,
+		setGcpProjectId,
+		gcpRegion,
+		setGcpRegion,
 		providerCatalog,
 		providerModels,
 		isLoadingProviderCatalog,

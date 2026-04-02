@@ -368,9 +368,34 @@ export function parseClineProviderSettingsSaveRequest(value: unknown): RuntimeCl
 	if (!providerId) {
 		throw new Error("Provider ID cannot be empty.");
 	}
+
+	const aws =
+		parsed.aws === undefined
+			? undefined
+			: {
+					...(parsed.aws.accessKey !== undefined ? { accessKey: parsed.aws.accessKey?.trim() || null } : {}),
+					...(parsed.aws.secretKey !== undefined ? { secretKey: parsed.aws.secretKey?.trim() || null } : {}),
+					...(parsed.aws.sessionToken !== undefined
+						? { sessionToken: parsed.aws.sessionToken?.trim() || null }
+						: {}),
+					...(parsed.aws.region !== undefined ? { region: parsed.aws.region?.trim() || null } : {}),
+					...(parsed.aws.profile !== undefined ? { profile: parsed.aws.profile?.trim() || null } : {}),
+					...(parsed.aws.authentication !== undefined ? { authentication: parsed.aws.authentication } : {}),
+					...(parsed.aws.endpoint !== undefined ? { endpoint: parsed.aws.endpoint?.trim() || null } : {}),
+				};
+	const gcp =
+		parsed.gcp === undefined
+			? undefined
+			: {
+					...(parsed.gcp.projectId !== undefined ? { projectId: parsed.gcp.projectId?.trim() || null } : {}),
+					...(parsed.gcp.region !== undefined ? { region: parsed.gcp.region?.trim() || null } : {}),
+				};
 	return {
 		...parsed,
 		providerId,
+		...(parsed.region !== undefined ? { region: parsed.region?.trim() || null } : {}),
+		...(aws ? { aws } : {}),
+		...(gcp ? { gcp } : {}),
 	};
 }
 

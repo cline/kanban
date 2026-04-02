@@ -53,6 +53,20 @@ export async function saveClineProviderSettings(
 		apiKey?: string | null;
 		baseUrl?: string | null;
 		reasoningEffort?: RuntimeClineReasoningEffort | null;
+		region?: string | null;
+		aws?: {
+			accessKey?: string | null;
+			secretKey?: string | null;
+			sessionToken?: string | null;
+			region?: string | null;
+			profile?: string | null;
+			authentication?: "iam" | "api-key" | "profile" | null;
+			endpoint?: string | null;
+		};
+		gcp?: {
+			projectId?: string | null;
+			region?: string | null;
+		};
 	},
 ): Promise<RuntimeClineProviderSettings> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);

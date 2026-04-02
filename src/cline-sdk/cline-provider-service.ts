@@ -18,6 +18,7 @@ import type {
 import { openInBrowser } from "../server/browser";
 import {
 	addSdkCustomProvider,
+	deleteSdkCustomProvider,
 	fetchSdkClineAccountProfile,
 	fetchSdkClineUserRemoteConfig,
 	fetchSdkFeaturebaseToken,
@@ -36,6 +37,7 @@ import {
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
 	supportsSdkModelThinking,
+	updateSdkCustomProvider,
 } from "./sdk-provider-boundary";
 
 const WORKOS_TOKEN_PREFIX = "workos:";
@@ -68,6 +70,19 @@ export interface AddCustomClineProviderInput {
 	headers?: Record<string, string>;
 	timeoutMs?: number;
 	models: string[];
+	defaultModelId?: string | null;
+	modelsSourceUrl?: string | null;
+	capabilities?: SdkCustomProviderCapability[];
+}
+
+export interface UpdateCustomClineProviderInput {
+	providerId: string;
+	name?: string;
+	baseUrl?: string;
+	apiKey?: string | null;
+	headers?: Record<string, string> | null;
+	timeoutMs?: number | null;
+	models?: string[];
 	defaultModelId?: string | null;
 	modelsSourceUrl?: string | null;
 	capabilities?: SdkCustomProviderCapability[];
@@ -637,12 +652,66 @@ export function createClineProviderService() {
 			return toProviderSettingsSummary(getSdkProviderSettings(providerId));
 		},
 
+		async updateCustomProvider(input: UpdateCustomClineProviderInput): Promise<RuntimeClineProviderSettings> {
+			const providerId = input.providerId.trim().toLowerCase();
+			if (!providerId) {
+				throw new Error("Provider ID cannot be empty.");
+			}
+
+			await updateSdkCustomProvider({
+				providerId,
+				name: input.name,
+				baseUrl: input.baseUrl,
+				apiKey: input.apiKey ?? undefined,
+				headers: input.headers ?? undefined,
+				timeoutMs: input.timeoutMs ?? undefined,
+				models: input.models,
+				defaultModelId: input.defaultModelId ?? undefined,
+				modelsSourceUrl: input.modelsSourceUrl ?? undefined,
+				capabilities: input.capabilities,
+			});
+
+			const existingSettings = getSdkProviderSettings(providerId) ?? { provider: providerId };
+			const isLastUsed = getLastUsedSdkProviderSettings()?.provider?.trim().toLowerCase() === providerId;
+			saveSdkProviderSettings({
+				settings: existingSettings,
+				tokenSource: hasOauthAccessToken(existingSettings) ? "oauth" : "manual",
+				setLastUsed: isLastUsed,
+			});
+
+			return toProviderSettingsSummary(getSdkProviderSettings(providerId));
+		},
+
+		async deleteCustomProvider(input: { providerId: string }): Promise<RuntimeClineProviderSettings> {
+			const providerId = input.providerId.trim().toLowerCase();
+			if (!providerId) {
+				throw new Error("Provider ID cannot be empty.");
+			}
+
+			await deleteSdkCustomProvider(providerId);
+			return getProviderSettingsSummary();
+		},
+
 		saveProviderSettings(input: {
 			providerId: string;
 			modelId?: string | null;
 			apiKey?: string | null;
 			baseUrl?: string | null;
 			reasoningEffort?: RuntimeClineReasoningEffort | null;
+			region?: string | null;
+			aws?: {
+				accessKey?: string | null;
+				secretKey?: string | null;
+				sessionToken?: string | null;
+				region?: string | null;
+				profile?: string | null;
+				authentication?: "iam" | "api-key" | "profile" | null;
+				endpoint?: string | null;
+			};
+			gcp?: {
+				projectId?: string | null;
+				region?: string | null;
+			};
 		}): RuntimeClineProviderSettingsSaveResponse {
 			const providerId = input.providerId.trim().toLowerCase();
 			if (!providerId) {
@@ -699,6 +768,104 @@ export function createClineProviderService() {
 					delete nextSettings.reasoning;
 				} else {
 					nextSettings.reasoning = nextReasoning;
+				}
+			}
+
+			if (input.region !== undefined) {
+				const region = input.region?.trim() ?? "";
+				if (region) {
+					nextSettings.region = region;
+				} else {
+					delete nextSettings.region;
+				}
+			}
+
+			if (input.aws !== undefined) {
+				const nextAws = { ...(nextSettings.aws ?? {}) } as NonNullable<SdkProviderSettings["aws"]>;
+				if (input.aws.accessKey !== undefined) {
+					const accessKey = input.aws.accessKey?.trim() ?? "";
+					if (accessKey) nextAws.accessKey = accessKey;
+					else delete nextAws.accessKey;
+				}
+				if (input.aws.secretKey !== undefined) {
+					const secretKey = input.aws.secretKey?.trim() ?? "";
+					if (secretKey) nextAws.secretKey = secretKey;
+					else delete nextAws.secretKey;
+				}
+				if (input.aws.sessionToken !== undefined) {
+					const sessionToken = input.aws.sessionToken?.trim() ?? "";
+					if (sessionToken) nextAws.sessionToken = sessionToken;
+					else delete nextAws.sessionToken;
+				}
+				if (input.aws.region !== undefined) {
+					const awsRegion = input.aws.region?.trim() ?? "";
+					if (awsRegion) nextAws.region = awsRegion;
+					else delete nextAws.region;
+				}
+				if (input.aws.profile !== undefined) {
+					const profile = input.aws.profile?.trim() ?? "";
+					if (profile) nextAws.profile = profile;
+					else delete nextAws.profile;
+				}
+				if (input.aws.authentication !== undefined) {
+					const authentication = input.aws.authentication;
+					if (authentication) nextAws.authentication = authentication;
+					else delete nextAws.authentication;
+				}
+				if (input.aws.endpoint !== undefined) {
+					const endpoint = input.aws.endpoint?.trim() ?? "";
+					if (endpoint) nextAws.endpoint = endpoint;
+					else delete nextAws.endpoint;
+				}
+
+				if (
+					nextAws.accessKey === undefined &&
+					nextAws.secretKey === undefined &&
+					nextAws.sessionToken === undefined &&
+					nextAws.region === undefined &&
+					nextAws.profile === undefined &&
+					nextAws.authentication === undefined &&
+					nextAws.usePromptCache === undefined &&
+					nextAws.useCrossRegionInference === undefined &&
+					nextAws.useGlobalInference === undefined &&
+					nextAws.endpoint === undefined &&
+					nextAws.customModelBaseId === undefined
+				) {
+					delete nextSettings.aws;
+				} else {
+					nextSettings.aws = nextAws;
+				}
+			}
+
+			if (input.gcp !== undefined) {
+				const nextGcp = { ...(nextSettings.gcp ?? {}) } as NonNullable<SdkProviderSettings["gcp"]>;
+				if (input.gcp.projectId !== undefined) {
+					const projectId = input.gcp.projectId?.trim() ?? "";
+					if (projectId) nextGcp.projectId = projectId;
+					else delete nextGcp.projectId;
+				}
+				if (input.gcp.region !== undefined) {
+					const gcpRegion = input.gcp.region?.trim() ?? "";
+					if (gcpRegion) nextGcp.region = gcpRegion;
+					else delete nextGcp.region;
+				}
+				if (nextGcp.projectId === undefined && nextGcp.region === undefined) {
+					delete nextSettings.gcp;
+				} else {
+					nextSettings.gcp = nextGcp;
+				}
+			}
+
+			if (providerId === "vertex") {
+				const projectId = nextSettings.gcp?.projectId?.trim() ?? "";
+				if (!projectId) {
+					throw new Error("Vertex provider requires GCP Project ID.");
+				}
+				const modelId = nextSettings.model?.trim().toLowerCase() ?? "";
+				const isClaudeModel = modelId.includes("claude");
+				const resolvedRegion = nextSettings.gcp?.region?.trim() || nextSettings.region?.trim() || "";
+				if (isClaudeModel && !resolvedRegion) {
+					throw new Error("Vertex Claude models require GCP Region (or Region).");
 				}
 			}
 

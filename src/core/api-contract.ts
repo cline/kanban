@@ -631,6 +631,24 @@ export const runtimeClineProviderSettingsSaveRequestSchema = z.object({
 	apiKey: z.string().nullable().optional(),
 	baseUrl: z.string().nullable().optional(),
 	reasoningEffort: runtimeClineReasoningEffortSchema.nullable().optional(),
+	region: z.string().nullable().optional(),
+	aws: z
+		.object({
+			accessKey: z.string().nullable().optional(),
+			secretKey: z.string().nullable().optional(),
+			sessionToken: z.string().nullable().optional(),
+			region: z.string().nullable().optional(),
+			profile: z.string().nullable().optional(),
+			authentication: z.enum(["iam", "api-key", "profile"]).nullable().optional(),
+			endpoint: z.string().nullable().optional(),
+		})
+		.optional(),
+	gcp: z
+		.object({
+			projectId: z.string().nullable().optional(),
+			region: z.string().nullable().optional(),
+		})
+		.optional(),
 });
 export type RuntimeClineProviderSettingsSaveRequest = z.infer<typeof runtimeClineProviderSettingsSaveRequestSchema>;
 

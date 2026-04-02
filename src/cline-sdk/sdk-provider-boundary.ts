@@ -2,6 +2,10 @@
 // The rest of Kanban should talk to the SDK through local service modules so
 // auth, catalog, and provider-settings behavior stay behind one boundary.
 
+import { readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import * as ClineCore from "@clinebot/core/node";
+
 import {
 	addLocalProvider,
 	ClineAccountService,
@@ -86,6 +90,36 @@ export interface AddSdkCustomProviderInput {
 	modelsSourceUrl?: string | null;
 	capabilities?: SdkCustomProviderCapability[];
 }
+
+export interface UpdateSdkCustomProviderInput {
+	providerId: string;
+	name?: string;
+	baseUrl?: string;
+	apiKey?: string | null;
+	headers?: Record<string, string> | null;
+	timeoutMs?: number | null;
+	models?: string[];
+	defaultModelId?: string | null;
+	modelsSourceUrl?: string | null;
+	capabilities?: SdkCustomProviderCapability[];
+}
+
+type LocalModelsFile = {
+	version: 1;
+	providers: Record<
+		string,
+		{
+			provider: {
+				name: string;
+				baseUrl: string;
+				defaultModelId?: string;
+				capabilities?: SdkCustomProviderCapability[];
+				modelsSourceUrl?: string;
+			};
+			models: Record<string, { id: string; name: string }>;
+		}
+	>;
+};
 
 export type SdkMcpTool = Tool;
 
@@ -244,6 +278,27 @@ export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): bo
 
 const providerManager = new ProviderSettingsManager();
 
+function resolveModelsPath(): string {
+	return join(dirname(providerManager.getFilePath()), "models.json");
+}
+
+async function readModelsRegistry(): Promise<LocalModelsFile> {
+	try {
+		const raw = await readFile(resolveModelsPath(), "utf8");
+		const parsed = JSON.parse(raw) as Partial<LocalModelsFile>;
+		if (parsed.version === 1 && parsed.providers && typeof parsed.providers === "object") {
+			return { version: 1, providers: parsed.providers };
+		}
+	} catch {
+		// Fall through.
+	}
+	return { version: 1, providers: {} };
+}
+
+async function writeModelsRegistry(state: LocalModelsFile): Promise<void> {
+	await writeFile(resolveModelsPath(), `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
 export async function addSdkCustomProvider(input: AddSdkCustomProviderInput): Promise<void> {
 	await addLocalProvider(providerManager, {
 		providerId: input.providerId,
@@ -259,6 +314,135 @@ export async function addSdkCustomProvider(input: AddSdkCustomProviderInput): Pr
 	});
 	await ensureCustomProvidersLoaded(providerManager);
 }
+
+export async function updateSdkCustomProvider(input: UpdateSdkCustomProviderInput): Promise<void> {
+	const updateLocalProvider = (
+		ClineCore as {
+			updateLocalProvider?: (
+				manager: ProviderSettingsManager,
+				request: {
+					providerId: string;
+					name?: string;
+					baseUrl?: string;
+					apiKey?: string | null;
+					headers?: Record<string, string> | null;
+					timeoutMs?: number | null;
+					models?: string[];
+					defaultModelId?: string | null;
+					modelsSourceUrl?: string | null;
+					capabilities?: SdkCustomProviderCapability[];
+				},
+			) => Promise<unknown>;
+		}
+	).updateLocalProvider;
+	if (updateLocalProvider) {
+		await updateLocalProvider(providerManager, input);
+		return;
+	}
+
+	const providerId = input.providerId.trim().toLowerCase();
+	const state = await readModelsRegistry();
+	const existing = state.providers[providerId];
+	if (!existing) {
+		throw new Error(`provider "${providerId}" does not exist`);
+	}
+	const existingSettings = providerManager.getProviderSettings(providerId);
+	const existingTokenSource = providerManager.read().providers[providerId]?.tokenSource;
+	const wasLastUsed = providerManager.read().lastUsedProvider === providerId;
+
+	const models =
+		input.models?.map((model) => model.trim()).filter((model) => model.length > 0) ??
+		Object.keys(existing.models)
+			.map((model) => model.trim())
+			.filter((model) => model.length > 0);
+	if (models.length === 0) {
+		throw new Error("at least one model is required");
+	}
+
+	const nextName = input.name?.trim() || existing.provider.name;
+	const nextBaseUrl = input.baseUrl?.trim() || existing.provider.baseUrl;
+	const nextDefaultModelId =
+		(input.defaultModelId === undefined
+			? existing.provider.defaultModelId
+			: input.defaultModelId?.trim() || undefined) ?? models[0];
+	const nextModelsSourceUrl =
+		input.modelsSourceUrl === undefined
+			? existing.provider.modelsSourceUrl
+			: input.modelsSourceUrl?.trim() || undefined;
+
+	await deleteSdkCustomProvider(providerId);
+	await addSdkCustomProvider({
+		providerId,
+		name: nextName,
+		baseUrl: nextBaseUrl,
+		apiKey: input.apiKey === undefined ? (existingSettings?.apiKey ?? null) : input.apiKey,
+		headers:
+			input.headers === undefined
+				? ((existingSettings?.headers as Record<string, string> | undefined) ?? undefined)
+				: (input.headers ?? undefined),
+		timeoutMs:
+			input.timeoutMs === undefined
+				? typeof existingSettings?.timeout === "number"
+					? existingSettings.timeout
+					: undefined
+				: (input.timeoutMs ?? undefined),
+		models,
+		defaultModelId: nextDefaultModelId,
+		modelsSourceUrl: nextModelsSourceUrl,
+		capabilities: input.capabilities ?? existing.provider.capabilities,
+	});
+
+	if (existingSettings) {
+		providerManager.saveProviderSettings(
+			{
+				...existingSettings,
+				provider: providerId,
+				baseUrl: nextBaseUrl,
+				model: nextDefaultModelId,
+				...(input.apiKey !== undefined ? { apiKey: input.apiKey ?? undefined } : {}),
+				...(input.headers !== undefined ? { headers: input.headers ?? undefined } : {}),
+				...(input.timeoutMs !== undefined ? { timeout: input.timeoutMs ?? undefined } : {}),
+			},
+			{
+				setLastUsed: wasLastUsed,
+				tokenSource: existingTokenSource,
+			},
+		);
+	}
+}
+
+export async function deleteSdkCustomProvider(providerId: string): Promise<void> {
+	const deleteLocalProvider = (
+		ClineCore as {
+			deleteLocalProvider?: (manager: ProviderSettingsManager, request: { providerId: string }) => Promise<unknown>;
+		}
+	).deleteLocalProvider;
+	if (deleteLocalProvider) {
+		await deleteLocalProvider(providerManager, { providerId });
+		return;
+	}
+
+	const normalizedProviderId = providerId.trim().toLowerCase();
+	if (!normalizedProviderId) {
+		throw new Error("providerId is required");
+	}
+
+	const state = await readModelsRegistry();
+	if (!state.providers[normalizedProviderId]) {
+		throw new Error(`provider "${normalizedProviderId}" does not exist`);
+	}
+	delete state.providers[normalizedProviderId];
+	await writeModelsRegistry(state);
+	LlmsModels.unregisterProvider(normalizedProviderId);
+
+	const settingsState = providerManager.read();
+	delete settingsState.providers[normalizedProviderId];
+	if (settingsState.lastUsedProvider === normalizedProviderId) {
+		delete settingsState.lastUsedProvider;
+	}
+	providerManager.write(settingsState);
+}
+
 export function getSdkProviderSettings(providerId: string): SdkProviderSettings | null {
 	return (providerManager.getProviderSettings(providerId) as SdkProviderSettings | undefined) ?? null;
 }

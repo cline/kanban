@@ -97,6 +97,8 @@ export function ClineSetupSection({
 	const shouldShowBaseUrlField =
 		!controller.isOauthProviderSelected &&
 		(selectedProvider?.supportsBaseUrl ?? controller.baseUrl.trim().length > 0);
+	const isBedrockProvider = controller.normalizedProviderId === "bedrock";
+	const isVertexProvider = controller.normalizedProviderId === "vertex";
 
 	const handleAddMcpServer = () => {
 		if (!mcpController) {
@@ -260,6 +262,113 @@ export function ClineSetupSection({
 						</div>
 					) : null}
 				</div>
+				{isBedrockProvider ? (
+					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS region</p>
+							<input
+								value={controller.awsRegion}
+								onChange={(event) => controller.setAwsRegion(event.target.value)}
+								placeholder="us-east-1"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">Auth mode</p>
+							<select
+								value={controller.awsAuthentication}
+								onChange={(event) =>
+									controller.setAwsAuthentication(event.target.value as "" | "iam" | "api-key" | "profile")
+								}
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
+							>
+								<option value="">Auto</option>
+								<option value="iam">IAM</option>
+								<option value="api-key">Access keys</option>
+								<option value="profile">Profile</option>
+							</select>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS profile</p>
+							<input
+								value={controller.awsProfile}
+								onChange={(event) => controller.setAwsProfile(event.target.value)}
+								placeholder="default"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">Bedrock endpoint</p>
+							<input
+								value={controller.awsEndpoint}
+								onChange={(event) => controller.setAwsEndpoint(event.target.value)}
+								placeholder="https://bedrock-runtime.us-east-1.amazonaws.com"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS access key</p>
+							<input
+								type="password"
+								value={controller.awsAccessKey}
+								onChange={(event) => controller.setAwsAccessKey(event.target.value)}
+								placeholder="AKIA..."
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS secret key</p>
+							<input
+								type="password"
+								value={controller.awsSecretKey}
+								onChange={(event) => controller.setAwsSecretKey(event.target.value)}
+								placeholder="••••••••"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS session token</p>
+							<input
+								type="password"
+								value={controller.awsSessionToken}
+								onChange={(event) => controller.setAwsSessionToken(event.target.value)}
+								placeholder="Optional"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+					</div>
+				) : null}
+				{isVertexProvider ? (
+					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP project ID</p>
+							<input
+								value={controller.gcpProjectId}
+								onChange={(event) => controller.setGcpProjectId(event.target.value)}
+								placeholder="my-gcp-project"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP region</p>
+							<input
+								value={controller.gcpRegion}
+								onChange={(event) => controller.setGcpRegion(event.target.value)}
+								placeholder="us-central1"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+					</div>
+				) : null}
 				{controller.isOauthProviderSelected ? (
 					<>
 						<p className="text-text-secondary text-[12px] mt-1 mb-0">
