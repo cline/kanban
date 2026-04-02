@@ -12,7 +12,11 @@ import type {
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
-import { applyClineSessionEvent } from "./cline-event-adapter";
+import {
+	compactPersistedMessagesForContextOverflow,
+	isContextOverflowError,
+} from "./cline-context-overflow-compaction";
+import { applyClineSessionEvent, isClineInsufficientBalanceError } from "./cline-event-adapter";
 import {
 	type ClineMessageRepository,
 	createInMemoryClineMessageRepository,
@@ -138,6 +142,40 @@ function formatStartWarnings(warnings: readonly string[] | undefined): string | 
 	return `${normalized[0]} (+${normalized.length - 1} more MCP warning${normalized.length === 2 ? "" : "s"})`;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function extractAgentErrorMessageFromEvent(event: unknown): string | null {
+	const eventRecord = asRecord(event);
+	if (!eventRecord || eventRecord.type !== "agent_event") {
+		return null;
+	}
+	const payload = asRecord(eventRecord.payload);
+	const agentEvent = asRecord(payload?.event);
+	if (!agentEvent || agentEvent.type !== "error") {
+		return null;
+	}
+	if (typeof agentEvent.error === "string") {
+		const normalized = agentEvent.error.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	if (agentEvent.error instanceof Error) {
+		const normalized = agentEvent.error.message.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	const errorRecord = asRecord(agentEvent.error);
+	if (typeof errorRecord?.message === "string") {
+		const normalized = errorRecord.message.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	if (typeof agentEvent.message === "string") {
+		const normalized = agentEvent.message.trim();
+		return normalized.length > 0 ? normalized : null;
+	}
+	return null;
+}
+
 export class InMemoryClineTaskSessionService implements ClineTaskSessionService {
 	private readonly pendingTurnCancelTaskIds = new Set<string>();
 	private readonly sessionRuntime: ClineSessionRuntime;
@@ -176,20 +214,23 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		error: unknown,
 	): void {
 		const errorMessage = toErrorMessage(error);
-		const systemMessage = createMessage(
-			taskId,
-			"system",
-			`Cline SDK ${context} failed: ${errorMessage}. You can send another message to continue the conversation.`,
-		);
-		entry.messages.push(systemMessage);
-		this.emitMessage(taskId, systemMessage);
+		const isInsufficientBalanceError = isClineInsufficientBalanceError(errorMessage);
+		if (!isInsufficientBalanceError) {
+			const systemMessage = createMessage(
+				taskId,
+				"system",
+				`Cline SDK ${context} failed: ${errorMessage}. You can send another message to continue the conversation.`,
+			);
+			entry.messages.push(systemMessage);
+			this.emitMessage(taskId, systemMessage);
+		}
 		clearActiveTurnState(entry);
 		const errorSummary = updateSummary(entry, {
 			state: "awaiting_review",
 			reviewReason: "error",
 			lastOutputAt: now(),
 			lastHookAt: now(),
-			warningMessage: errorMessage,
+			warningMessage: isInsufficientBalanceError ? null : errorMessage,
 			latestHookActivity: {
 				activityText: `${context === "start" ? "Start" : "Send"} failed: ${errorMessage}`,
 				toolName: null,
@@ -232,6 +273,37 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			mode: input.mode,
 			images: input.images,
 			initialMessages: persistedSnapshot?.messages,
+		});
+		return {
+			result: restartedSession.result,
+			warnings: restartedSession.warnings,
+		};
+	}
+
+	private async retryAfterContextOverflow(input: {
+		taskId: string;
+		prompt: string;
+		mode: RuntimeTaskSessionMode;
+		images?: RuntimeTaskImage[];
+		error: unknown;
+	}): Promise<{ result: unknown; warnings?: string[] } | null> {
+		if (!isContextOverflowError(input.error)) {
+			return null;
+		}
+
+		const persistedSnapshot = await this.sessionRuntime.readPersistedTaskSession(input.taskId).catch(() => null);
+		const compactedMessages = compactPersistedMessagesForContextOverflow(persistedSnapshot?.messages ?? []);
+		if (!compactedMessages) {
+			return null;
+		}
+
+		await this.sessionRuntime.stopTaskSession(input.taskId).catch(() => null);
+		const restartedSession = await this.sessionRuntime.restartTaskSession({
+			taskId: input.taskId,
+			prompt: input.prompt,
+			mode: input.mode,
+			images: input.images,
+			initialMessages: compactedMessages,
 		});
 		return {
 			result: restartedSession.result,
@@ -497,13 +569,28 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			const assistantCountBeforeSend = entry.messages.filter((message) => message.role === "assistant").length;
 			void this.ensureRuntimeSetup(entry.summary.workspacePath ?? "")
 				.then(async (runtimeSetup) => {
-					return await this.dispatchResolvedTaskInput({
-						taskId,
-						prompt: runtimeSetup.resolvePrompt(normalized),
-						mode: effectiveMode,
-						images,
-						delivery: queueDelivery ? "queue" : undefined,
-					});
+					const resolvedPrompt = runtimeSetup.resolvePrompt(normalized);
+					try {
+						return await this.dispatchResolvedTaskInput({
+							taskId,
+							prompt: resolvedPrompt,
+							mode: effectiveMode,
+							images,
+							delivery: queueDelivery ? "queue" : undefined,
+						});
+					} catch (error) {
+						const recovered = await this.retryAfterContextOverflow({
+							taskId,
+							prompt: resolvedPrompt,
+							mode: effectiveMode,
+							images,
+							error,
+						});
+						if (recovered) {
+							return recovered;
+						}
+						throw error;
+					}
 				})
 				.then(({ result, warnings }) => {
 					const warningMessage = formatStartWarnings(warnings);
@@ -745,6 +832,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return lease.setup;
 	}
 
+	private shouldForceAbortFromTaskEvent(event: unknown): boolean {
+		return isClineInsufficientBalanceError(extractAgentErrorMessageFromEvent(event));
+	}
+
 	private handleTaskEvent(taskId: string, event: unknown): void {
 		const entry = this.messageRepository.getTaskEntry(taskId);
 		if (!entry) {
@@ -767,6 +858,9 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		});
 		if (this.shouldCaptureReviewCheckpoint(previousSummary, latestSummary)) {
 			this.captureReviewCheckpoint(taskId, latestSummary);
+		}
+		if (this.shouldForceAbortFromTaskEvent(event)) {
+			void this.sessionRuntime.abortTaskSession(taskId).catch(() => undefined);
 		}
 	}
 }

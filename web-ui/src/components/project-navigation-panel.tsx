@@ -17,7 +17,9 @@ import {
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
-import type { RuntimeProjectSummary } from "@/runtime/types";
+import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
+import { isClineOauthAuthenticated, isNativeClineAgentSelected } from "@/runtime/native-agent";
+import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
@@ -80,6 +82,9 @@ export function ProjectNavigationPanel({
 	onSelectProject,
 	onRemoveProject,
 	onAddProject,
+	selectedAgentId = null,
+	clineProviderSettings = null,
+	featurebaseFeedbackState,
 }: {
 	projects: RuntimeProjectSummary[];
 	isLoadingProjects?: boolean;
@@ -92,6 +97,9 @@ export function ProjectNavigationPanel({
 	onSelectProject: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onAddProject: () => void;
+	selectedAgentId?: RuntimeAgentId | null;
+	clineProviderSettings?: RuntimeClineProviderSettings | null;
+	featurebaseFeedbackState?: FeaturebaseFeedbackState;
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 
@@ -344,6 +352,11 @@ export function ProjectNavigationPanel({
 						) : null}
 					</div>
 					<ShortcutsCard />
+					<FeedbackCard
+						selectedAgentId={selectedAgentId}
+						clineProviderSettings={clineProviderSettings}
+						featurebaseFeedbackState={featurebaseFeedbackState}
+					/>
 				</>
 			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
@@ -485,6 +498,40 @@ function ShortcutsCard(): React.ReactElement {
 					</Collapsible.Trigger>
 				</Collapsible.Root>
 			</div>
+		</div>
+	);
+}
+
+export function FeedbackCard({
+	selectedAgentId,
+	clineProviderSettings,
+	featurebaseFeedbackState,
+}: {
+	selectedAgentId?: RuntimeAgentId | null;
+	clineProviderSettings?: RuntimeClineProviderSettings | null;
+	featurebaseFeedbackState?: FeaturebaseFeedbackState;
+}): React.ReactElement | null {
+	const isClineAgent = isNativeClineAgentSelected(selectedAgentId);
+	const isAuthenticated = isClineOauthAuthenticated(clineProviderSettings);
+	const isReady = (featurebaseFeedbackState?.authState ?? "idle") === "ready";
+
+	// Only show for authenticated Cline OAuth users when Featurebase is ready.
+	// Silent degradation: idle / loading / error all render nothing.
+	if (!isClineAgent || !isAuthenticated || !isReady) {
+		return null;
+	}
+
+	return (
+		<div style={{ padding: "0 12px 10px" }}>
+			<Button
+				fill
+				size="sm"
+				variant="ghost"
+				className="!border !border-border-bright bg-transparent text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+				data-featurebase-feedback
+			>
+				Share Feedback
+			</Button>
 		</div>
 	);
 }

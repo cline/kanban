@@ -42,6 +42,26 @@ export function isClineProviderAuthenticated(settings: RuntimeClineProviderSetti
 	return settings.apiKeyConfigured || settings.oauthAccessTokenConfigured;
 }
 
+/**
+ * Returns true only when the selected provider is the Cline managed OAuth
+ * provider **and** an access token is configured.  This is stricter than
+ * {@link isClineProviderAuthenticated} which accepts any configured provider
+ * (Claude API key, Codex, etc.).
+ *
+ * Use this for features that require a Cline-issued token (e.g. Featurebase
+ * JWT authentication).
+ */
+export function isClineOauthAuthenticated(settings: RuntimeClineProviderSettings | null | undefined): boolean {
+	if (!settings) {
+		return false;
+	}
+	return (
+		settings.oauthProvider === "cline" &&
+		settings.oauthAccessTokenConfigured === true &&
+		settings.oauthRefreshTokenConfigured === true
+	);
+}
+
 export function isTaskAgentSetupSatisfied(
 	config: Pick<RuntimeConfigResponse, "selectedAgentId" | "agents" | "clineProviderSettings"> | null | undefined,
 ): boolean | null {

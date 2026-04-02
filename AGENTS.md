@@ -27,12 +27,6 @@ Code quality
 - In `web-ui`, prefer `react-use` hooks (via `@/kanban/utils/react-use`) whenever possible
 - Before adding custom utility code, evaluate whether a well-maintained third-party package can reduce complexity and long-term maintenance cost.
 
-Comments
-- Every function you add or edit must have a JSDoc-style comment (`/** ... */`) above it explaining what it does at a high level. Write it for someone jumping into the project for the first time. In a large codebase, good comments are essential for understanding how a component fits into the system holistically.
-- Use `/** ... */` block comments, not `//` line-by-line comments, for function descriptions.
-- When a line of code does something non-obvious (workarounds, browser quirks, edge cases, lint suppression), add an inline comment explaining why.
-- If you encounter an existing uncommented function, class, or statement that is related to your current task and you traced through it or edited logic around it, proactively add a comment if it would help future sessions understand that code. Keep this scoped to code relevant to the task at hand.
-
 Architecture opinions
 - Avoid thin shell wrappers that only forward props or relocate JSX for a single call site.
 - Prefer extracting domain logic (state, effects, async orchestration) over presentation-only pass-through layers.

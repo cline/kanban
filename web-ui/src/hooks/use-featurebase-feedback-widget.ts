@@ -1,18 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchClineAccountProfile } from "@/runtime/runtime-config-query";
+import { isClineOauthAuthenticated } from "@/runtime/native-agent";
+import { fetchFeaturebaseToken } from "@/runtime/runtime-config-query";
 import type { RuntimeClineProviderSettings } from "@/runtime/types";
 
 const FEATUREBASE_SDK_ID = "featurebase-sdk";
 const FEATUREBASE_SDK_SRC = "https://do.featurebase.app/js/sdk.js";
 const FEATUREBASE_ORGANIZATION = "cline";
-const FEATUREBASE_OPEN_RETRY_DELAY_MS = 50;
-const FEATUREBASE_OPEN_WIDGET_MESSAGE = {
-	target: "FeaturebaseWidget",
-	data: {
-		action: "openFeedbackWidget",
-	},
-} as const;
+
+/**
+ * Bounded retry delays (ms) after the initial attempt.
+ * After these are exhausted the hook stays in "error".
+ */
+export const RETRY_DELAYS = [2_000, 5_000] as const;
+
+// ---------------------------------------------------------------------------
+// Featurebase auth readiness state machine
+// ---------------------------------------------------------------------------
+
+/** Tracks whether the Featurebase SDK has been successfully identified. */
+export type FeaturebaseAuthState = "idle" | "loading" | "ready" | "error";
+
+export interface FeaturebaseFeedbackState {
+	/** Current pre-identify readiness. */
+	authState: FeaturebaseAuthState;
+}
+
+// ---------------------------------------------------------------------------
+// Featurebase SDK internals
+// ---------------------------------------------------------------------------
 
 interface FeaturebaseCallbackPayload {
 	action?: string;
@@ -30,15 +46,7 @@ interface FeaturebaseWindow extends Window {
 	Featurebase?: FeaturebaseCommand;
 }
 
-interface ClineAccountProfile {
-	accountId: string | null;
-	email: string | null;
-	displayName: string | null;
-}
-
 let featurebaseSdkLoadPromise: Promise<void> | null = null;
-let isFeaturebaseFeedbackWidgetReady = false;
-let isFeaturebaseFeedbackWidgetOpenRequested = false;
 
 function ensureFeaturebaseCommand(win: FeaturebaseWindow): FeaturebaseCommand {
 	if (typeof win.Featurebase === "function") {
@@ -93,156 +101,143 @@ function ensureFeaturebaseSdkLoaded(): Promise<void> {
 	return featurebaseSdkLoadPromise;
 }
 
-function postOpenFeedbackWidgetMessage(): void {
-	window.postMessage(FEATUREBASE_OPEN_WIDGET_MESSAGE, "*");
-}
-
-function flushFeaturebaseFeedbackWidgetOpenRequest(): void {
-	if (!isFeaturebaseFeedbackWidgetOpenRequested || !isFeaturebaseFeedbackWidgetReady) {
-		return;
-	}
-	isFeaturebaseFeedbackWidgetOpenRequested = false;
-	postOpenFeedbackWidgetMessage();
-	window.setTimeout(() => {
-		postOpenFeedbackWidgetMessage();
-	}, FEATUREBASE_OPEN_RETRY_DELAY_MS);
-}
-
-export function openFeaturebaseFeedbackWidget(): void {
-	const win = window as FeaturebaseWindow;
-	ensureFeaturebaseCommand(win);
-	isFeaturebaseFeedbackWidgetOpenRequested = true;
-	void ensureFeaturebaseSdkLoaded()
-		.then(() => {
-			flushFeaturebaseFeedbackWidgetOpenRequest();
-		})
-		.catch(() => {
-			// Best effort only.
-		});
-}
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 
 export function useFeaturebaseFeedbackWidget(input: {
 	workspaceId: string | null;
 	clineProviderSettings: RuntimeClineProviderSettings | null;
-}): void {
+}): FeaturebaseFeedbackState {
 	const { workspaceId, clineProviderSettings } = input;
-	const [clineProfile, setClineProfile] = useState<ClineAccountProfile | null>(null);
-	const [isClineProfileResolved, setIsClineProfileResolved] = useState(false);
-	const lastInitializedSignatureRef = useRef<string | null>(null);
-	const isManagedClineOauth =
-		clineProviderSettings?.oauthProvider === "cline" && clineProviderSettings.oauthAccessTokenConfigured;
+	const isAuthenticated = isClineOauthAuthenticated(clineProviderSettings);
 
-	useEffect(() => {
-		if (!isManagedClineOauth) {
-			setClineProfile(null);
-			setIsClineProfileResolved(true);
-			return;
-		}
-		let cancelled = false;
-		setIsClineProfileResolved(false);
-		void fetchClineAccountProfile(workspaceId)
-			.then((response) => {
-				if (cancelled) {
-					return;
-				}
-				setClineProfile(response.profile ?? null);
-			})
-			.catch(() => {
-				if (!cancelled) {
-					setClineProfile(null);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setIsClineProfileResolved(true);
-				}
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [isManagedClineOauth, workspaceId]);
+	const [authState, setAuthState] = useState<FeaturebaseAuthState>("idle");
 
-	const clineAccountId = clineProfile?.accountId ?? clineProviderSettings?.oauthAccountId ?? null;
-	const metadata = useMemo(() => {
-		const nextMetadata: Record<string, string> = {
-			app: "kanban",
-		};
-		if (clineAccountId) {
-			nextMetadata.cline_account_id = clineAccountId;
-		}
-		if (clineProfile?.displayName) {
-			nextMetadata.cline_display_name = clineProfile.displayName;
-		}
-		if (clineProfile?.email) {
-			nextMetadata.cline_email = clineProfile.email;
-		}
-		return nextMetadata;
-	}, [clineAccountId, clineProfile?.displayName, clineProfile?.email]);
+	// Track the latest attempt so we can cancel stale ones.
+	const attemptRef = useRef(0);
+	// Track the pending retry timer so we can cancel it on cleanup.
+	const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const email = clineProfile?.email ?? undefined;
-	const displayName = clineProfile?.displayName ?? undefined;
-	const shouldIdentifyClineUser = isManagedClineOauth && Boolean(email || clineAccountId);
-	const signature = useMemo(
-		() =>
-			JSON.stringify({
-				email: email ?? null,
-				displayName: displayName ?? null,
-				shouldIdentifyClineUser,
-				metadata,
-			}),
-		[displayName, email, metadata, shouldIdentifyClineUser],
-	);
+	function clearRetryTimer() {
+		if (retryTimerRef.current !== null) {
+			clearTimeout(retryTimerRef.current);
+			retryTimerRef.current = null;
+		}
+	}
 
+	// Initialize the Featurebase feedback widget once on mount.
 	useEffect(() => {
 		const win = window as FeaturebaseWindow;
 		ensureFeaturebaseCommand(win);
 		let cancelled = false;
+
 		void ensureFeaturebaseSdkLoaded()
 			.then(() => {
-				if (cancelled || lastInitializedSignatureRef.current === signature) {
+				if (cancelled) {
 					return;
 				}
 				const featurebase = ensureFeaturebaseCommand(win);
-				lastInitializedSignatureRef.current = signature;
-				isFeaturebaseFeedbackWidgetReady = false;
-				if (shouldIdentifyClineUser) {
-					featurebase("identify", {
-						organization: FEATUREBASE_ORGANIZATION,
-						email,
-						name: displayName,
-						userId: clineAccountId ?? undefined,
-					});
-				}
-				featurebase(
-					"initialize_feedback_widget",
-					{
-						organization: FEATUREBASE_ORGANIZATION,
-						theme: "dark",
-						locale: "en",
-						email,
-						metadata,
-					},
-					(_error, callback) => {
-						if (callback?.action !== "widgetReady") {
-							return;
-						}
-						isFeaturebaseFeedbackWidgetReady = true;
-						flushFeaturebaseFeedbackWidgetOpenRequest();
-					},
-				);
+				featurebase("initialize_feedback_widget", {
+					organization: FEATUREBASE_ORGANIZATION,
+					theme: "dark",
+					locale: "en",
+					metadata: { app: "kanban" },
+				});
 			})
 			.catch(() => {});
+
 		return () => {
 			cancelled = true;
 		};
-	}, [
-		clineAccountId,
-		displayName,
-		email,
-		isClineProfileResolved,
-		isManagedClineOauth,
-		metadata,
-		shouldIdentifyClineUser,
-		signature,
-	]);
+	}, []);
+
+	// Core pre-identify routine with bounded automatic retries.
+	const runPreIdentify = useCallback(
+		(attempt: number, retryIndex: number) => {
+			if (!workspaceId || !isAuthenticated) {
+				return;
+			}
+
+			setAuthState("loading");
+			const win = window as FeaturebaseWindow;
+
+			const scheduleRetry = () => {
+				if (attemptRef.current !== attempt) {
+					return;
+				}
+				if (retryIndex < RETRY_DELAYS.length) {
+					const delay = RETRY_DELAYS[retryIndex];
+					retryTimerRef.current = setTimeout(() => {
+						if (attemptRef.current !== attempt) {
+							return;
+						}
+						runPreIdentify(attempt, retryIndex + 1);
+					}, delay);
+				}
+			};
+
+			void ensureFeaturebaseSdkLoaded()
+				.then(async () => {
+					if (attemptRef.current !== attempt) {
+						return;
+					}
+					const tokenResponse = await fetchFeaturebaseToken(workspaceId);
+					if (attemptRef.current !== attempt) {
+						return;
+					}
+					const featurebase = ensureFeaturebaseCommand(win);
+					featurebase(
+						"identify",
+						{
+							organization: FEATUREBASE_ORGANIZATION,
+							featurebaseJwt: tokenResponse.featurebaseJwt,
+						},
+						(error) => {
+							if (attemptRef.current !== attempt) {
+								return;
+							}
+							if (error) {
+								setAuthState("error");
+								scheduleRetry();
+								return;
+							}
+							clearRetryTimer();
+							setAuthState("ready");
+						},
+					);
+				})
+				.catch(() => {
+					if (attemptRef.current !== attempt) {
+						return;
+					}
+					setAuthState("error");
+					scheduleRetry();
+				});
+		},
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- retryTimerRef is a ref
+		[workspaceId, isAuthenticated],
+	);
+
+	// Pre-identify whenever auth state or workspace changes.
+	useEffect(() => {
+		clearRetryTimer();
+
+		if (!workspaceId || !isAuthenticated) {
+			// Reset to idle when the user signs out or workspace disappears.
+			setAuthState("idle");
+			return;
+		}
+
+		const attempt = ++attemptRef.current;
+		runPreIdentify(attempt, 0);
+
+		return () => {
+			// Cancel this attempt and any pending retries.
+			attemptRef.current++;
+			clearRetryTimer();
+		};
+	}, [workspaceId, isAuthenticated, runPreIdentify]);
+
+	return { authState };
 }

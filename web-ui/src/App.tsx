@@ -39,6 +39,7 @@ import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
+import { useFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import { useGitActions } from "@/hooks/use-git-actions";
 import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
 import { useKanbanAccessGate } from "@/hooks/use-kanban-access-gate";
@@ -140,6 +141,10 @@ export default function App(): ReactElement {
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
+	const featurebaseFeedbackState = useFeaturebaseFeedbackWidget({
+		workspaceId: settingsWorkspaceId,
+		clineProviderSettings: settingsRuntimeProjectConfig?.clineProviderSettings ?? null,
+	});
 	const {
 		isStartupOnboardingDialogOpen,
 		handleOpenStartupOnboardingDialog,
@@ -757,6 +762,9 @@ export default function App(): ReactElement {
 					onAddProject={() => {
 						void handleAddProject();
 					}}
+					selectedAgentId={settingsRuntimeProjectConfig?.selectedAgentId ?? null}
+					clineProviderSettings={settingsRuntimeProjectConfig?.clineProviderSettings ?? null}
+					featurebaseFeedbackState={featurebaseFeedbackState}
 				/>
 			) : null}
 			<div className="flex flex-col flex-1 min-w-0 overflow-hidden">

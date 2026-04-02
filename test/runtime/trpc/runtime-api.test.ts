@@ -43,6 +43,7 @@ const clineAccountMocks = vi.hoisted(() => ({
 	fetchMe: vi.fn(),
 	fetchRemoteConfig: vi.fn(),
 	fetchOrganization: vi.fn(),
+	fetchFeaturebaseToken: vi.fn(),
 	constructedOptions: [] as Array<{ apiBaseUrl: string; getAuthToken: () => Promise<string | undefined | null> }>,
 }));
 
@@ -81,6 +82,7 @@ vi.mock("@clinebot/core/node", () => ({
 		fetchMe = clineAccountMocks.fetchMe;
 		fetchRemoteConfig = clineAccountMocks.fetchRemoteConfig;
 		fetchOrganization = clineAccountMocks.fetchOrganization;
+		fetchFeaturebaseToken = clineAccountMocks.fetchFeaturebaseToken;
 	},
 	ProviderSettingsManager: class {
 		saveProviderSettings = oauthMocks.saveProviderSettings;
@@ -891,6 +893,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				apiKey: "workos:oauth-access",
 			}),
 		);
+		expect(clineAccountMocks.fetchMe).not.toHaveBeenCalled();
 		expect(oauthMocks.saveProviderSettings).toHaveBeenCalledWith(
 			expect.objectContaining({
 				provider: "cline",
@@ -2003,5 +2006,139 @@ describe("createRuntimeApi startTaskSession", () => {
 			}
 			rmSync(tempHome, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("createRuntimeApi getFeaturebaseToken", () => {
+	beforeEach(() => {
+		oauthMocks.getProviderSettings.mockReset();
+		oauthMocks.getLastUsedProviderSettings.mockReset();
+		oauthMocks.getValidClineCredentials.mockReset();
+		oauthMocks.saveProviderSettings.mockReset();
+		clineAccountMocks.fetchFeaturebaseToken.mockReset();
+		clineAccountMocks.constructedOptions.length = 0;
+	});
+
+	it("returns JWT from SDK method", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "workos:oauth-access",
+				refreshToken: "oauth-refresh",
+				accountId: "acct-1",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
+		clineAccountMocks.fetchFeaturebaseToken.mockResolvedValueOnce({
+			featurebaseJwt: "jwt-token-123",
+		});
+
+		const response = await api.getFeaturebaseToken({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(response).toEqual({ featurebaseJwt: "jwt-token-123" });
+	});
+
+	it("throws when no provider settings configured", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings(null);
+
+		await expect(
+			api.getFeaturebaseToken({
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			}),
+		).rejects.toThrow("Failed to fetch Featurebase token.");
+	});
+
+	it("throws when provider is not cline", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "oca",
+			auth: {
+				accessToken: "some-token",
+				refreshToken: "some-refresh",
+			},
+		});
+
+		await expect(
+			api.getFeaturebaseToken({
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			}),
+		).rejects.toThrow("Featurebase token requires a Cline provider.");
+	});
+
+	it("retries after OAuth refresh when first attempt fails", async () => {
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "workos:stale-access",
+				refreshToken: "oauth-refresh",
+				accountId: "acct-1",
+				expiresAt: 1_700_000_000_000,
+			},
+		});
+
+		// First attempt fails (e.g. expired token)
+		clineAccountMocks.fetchFeaturebaseToken.mockRejectedValueOnce(new Error("Unauthorized"));
+
+		// OAuth refresh returns fresh credentials
+		oauthMocks.getValidClineCredentials.mockResolvedValueOnce({
+			access: "fresh-access",
+			refresh: "fresh-refresh",
+			expires: 1_800_000_000_000,
+			accountId: "acct-1",
+		});
+
+		// Second attempt succeeds with refreshed token
+		clineAccountMocks.fetchFeaturebaseToken.mockResolvedValueOnce({
+			featurebaseJwt: "refreshed-jwt-456",
+		});
+
+		const response = await api.getFeaturebaseToken({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(response).toEqual({ featurebaseJwt: "refreshed-jwt-456" });
+		expect(clineAccountMocks.fetchFeaturebaseToken).toHaveBeenCalledTimes(2);
+		expect(oauthMocks.getValidClineCredentials).toHaveBeenCalledTimes(1);
 	});
 });

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.56]
+
+- Automatic context overflow recovery: when the conversation history exceeds the model's context window, Kanban now compacts old messages and retries instead of failing
+- Credit limit errors (insufficient balance / 402) are now surfaced immediately without unnecessary retries or confusing system messages
+- Added report issue and feature request links to the settings dialog
+- Added Cline icon to browser notifications
+- Updated Cline SDK from 0.0.22 to 0.0.23, which includes: LiteLLM private model support, provider-specific setting configs, loop detection as a built-in agent policy, provider ID normalization for model resolution, OAuth token refresh fix for spawned agents
+
 ## [0.1.55]
 
 - Fixed non-ASCII file paths (e.g. Japanese, Chinese, Korean characters) rendering as garbled octal escape sequences in the diff view

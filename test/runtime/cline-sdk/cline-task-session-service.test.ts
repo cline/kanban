@@ -1296,6 +1296,27 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("suppresses generic startup failure warnings for insufficient-balance errors", async () => {
+		const { service, runtime } = createTrackedService();
+		const insufficientBalanceError = new Error("402 Insufficient balance. Your Cline Credits balance is $0.00");
+		runtime.startTaskSessionMock.mockRejectedValueOnce(insufficientBalanceError);
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+
+		await vi.waitFor(() => {
+			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
+		});
+
+		expect(service.getSummary("task-1")?.warningMessage).toBeNull();
+		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK start failed"))).toBe(
+			false,
+		);
+	});
+
 	it("allows follow-up input after a startup error", async () => {
 		const { service, runtime } = createTrackedService();
 		runtime.startTaskSessionMock.mockRejectedValueOnce(new Error("Maximum consecutive mistakes reached."));
@@ -1318,6 +1339,101 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 		expect(runtime.sendTaskSessionInputMock).not.toHaveBeenCalled();
 		expect(service.listMessages("task-1").map((message) => message.content)).toContain("Try again");
+	});
+
+	it("compacts persisted history and retries send when context window is exceeded", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.sendTaskSessionInputMock.mockRejectedValueOnce(
+			new Error(
+				"Anthropic request was rejected (HTTP 400). Maximum prompt length exceeded: 1102640 tokens exceeds the 1000000 token limit.",
+			),
+		);
+		runtime.readPersistedTaskSessionMock.mockResolvedValue({
+			record: {
+				sessionId: "task-1-failed",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
+				status: "failed",
+				startedAt: "2026-03-17T10:00:00.000Z",
+				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
+				cwd: "/tmp/worktree",
+				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
+			},
+			messages: [
+				{ role: "user", content: "Initial prompt" },
+				{ role: "assistant", content: "Step 1 response" },
+				{ role: "user", content: "Step 2 request" },
+				{ role: "assistant", content: "Step 2 response" },
+				{ role: "assistant", content: "Tool output summary" },
+				{ role: "user", content: "Latest user request" },
+				{ role: "assistant", content: "Latest response" },
+			],
+		});
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		const nextSummary = await service.sendTaskSessionInput("task-1", "Try again");
+
+		expect(nextSummary?.state).toBe("running");
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(2);
+		});
+		expect(runtime.stopTaskSessionMock).toHaveBeenCalledWith("task-1");
+		expect(runtime.sendTaskSessionInputMock).toHaveBeenCalledTimes(1);
+		const restartCall = runtime.startTaskSessionMock.mock.calls[1]?.[0];
+		expect(restartCall?.prompt).toBe("resolved:Try again");
+		const compactedMessages = restartCall?.initialMessages;
+		expect(Array.isArray(compactedMessages)).toBe(true);
+		expect((compactedMessages ?? []).length).toBeLessThan(7);
+		expect(compactedMessages?.[0]?.role).toBe("user");
+		const compactedFirstContent =
+			typeof compactedMessages?.[0]?.content === "string"
+				? compactedMessages[0].content
+				: JSON.stringify(compactedMessages?.[0]?.content ?? "");
+		expect(compactedFirstContent).toContain("Previous conversation history was removed due to context window limits");
+		expect(compactedFirstContent).not.toContain("[[");
+		expect(compactedFirstContent).toContain("[Previous conversation history");
+		expect(compactedFirstContent).toContain("Initial prompt");
+		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK send failed"))).toBe(
+			false,
+		);
+	});
+
+	it("forces session abort on insufficient-balance errors to stop retry loops", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
+
+		runtime.emitAgentEvent(sessionId, {
+			type: "error",
+			error: new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
+			recoverable: true,
+			iteration: 1,
+		});
+
+		await vi.waitFor(() => {
+			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
+		});
+		expect(runtime.abortTaskSessionMock).toHaveBeenCalledWith("task-1");
+		expect(service.listMessages("task-1").some((message) => message.content.includes("Retrying:"))).toBe(false);
 	});
 
 	it("restarts the live session from persisted history after the SDK ends the task on send failure", async () => {

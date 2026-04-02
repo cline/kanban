@@ -2,9 +2,12 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
-import type { RuntimeProjectSummary } from "@/runtime/types";
+import { FeedbackCard, ProjectNavigationPanel } from "@/components/project-navigation-panel";
+import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
+import type { RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
+
+// ─── Shared fixtures ────────────────────────────────────────────────────────
 
 const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
 const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
@@ -24,6 +27,33 @@ const PROJECTS: RuntimeProjectSummary[] = [
 	},
 ];
 
+const defaultClineProviderSettings: RuntimeClineProviderSettings = {
+	providerId: null,
+	modelId: null,
+	baseUrl: null,
+	apiKeyConfigured: false,
+	oauthProvider: null,
+	oauthAccessTokenConfigured: false,
+	oauthRefreshTokenConfigured: false,
+	oauthAccountId: null,
+	oauthExpiresAt: null,
+};
+
+const authenticatedClineSettings: RuntimeClineProviderSettings = {
+	...defaultClineProviderSettings,
+	oauthProvider: "cline",
+	oauthAccessTokenConfigured: true,
+	oauthRefreshTokenConfigured: true,
+	oauthAccountId: "acc-1",
+};
+
+const tokensOnlySettings: RuntimeClineProviderSettings = {
+	...defaultClineProviderSettings,
+	oauthProvider: null,
+	oauthAccessTokenConfigured: true,
+	oauthRefreshTokenConfigured: true,
+};
+
 function getSidebar(container: HTMLElement): HTMLElement {
 	const sidebar = container.querySelector("aside");
 	if (!sidebar) {
@@ -39,6 +69,8 @@ function getResizeHandle(container: HTMLElement): HTMLElement {
 	}
 	return handle as HTMLElement;
 }
+
+// ─── ProjectNavigationPanel width persistence ────────────────────────────────
 
 describe("ProjectNavigationPanel width persistence", () => {
 	let container: HTMLDivElement;
@@ -147,5 +179,161 @@ describe("ProjectNavigationPanel width persistence", () => {
 		renderPanel();
 		const sidebar = getSidebar(container);
 		expect(sidebar.style.width).toBe(`${expectedResizedWidth}px`);
+	});
+});
+
+// ─── FeedbackCard ────────────────────────────────────────────────────────────
+
+describe("FeedbackCard", () => {
+	let container: HTMLDivElement;
+	let root: Root;
+
+	beforeEach(() => {
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+	});
+
+	afterEach(() => {
+		act(() => {
+			root.unmount();
+		});
+		container.remove();
+		delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+	});
+
+	function getFeedbackButton(): HTMLButtonElement | null {
+		const buttons = container.querySelectorAll("button");
+		for (const btn of buttons) {
+			if (btn.textContent?.includes("Share Feedback")) {
+				return btn;
+			}
+		}
+		return null;
+	}
+
+	it("renders nothing when selected agent is not Cline", () => {
+		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		act(() => {
+			root.render(
+				<FeedbackCard
+					selectedAgentId={"claude" as never}
+					clineProviderSettings={authenticatedClineSettings}
+					featurebaseFeedbackState={fbState}
+				/>,
+			);
+		});
+		expect(container.innerHTML).toBe("");
+	});
+
+	it("renders nothing when not authenticated", () => {
+		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		act(() => {
+			root.render(
+				<FeedbackCard
+					selectedAgentId={"cline"}
+					clineProviderSettings={defaultClineProviderSettings}
+					featurebaseFeedbackState={fbState}
+				/>,
+			);
+		});
+		expect(container.innerHTML).toBe("");
+	});
+
+	it("renders nothing when tokens present but oauthProvider is not cline", () => {
+		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		act(() => {
+			root.render(
+				<FeedbackCard
+					selectedAgentId={"cline"}
+					clineProviderSettings={tokensOnlySettings}
+					featurebaseFeedbackState={fbState}
+				/>,
+			);
+		});
+		expect(container.innerHTML).toBe("");
+	});
+
+	it("renders nothing when Featurebase is idle", () => {
+		const fbState: FeaturebaseFeedbackState = { authState: "idle" };
+		act(() => {
+			root.render(
+				<FeedbackCard
+					selectedAgentId={"cline"}
+					clineProviderSettings={authenticatedClineSettings}
+					featurebaseFeedbackState={fbState}
+				/>,
+			);
+		});
+		expect(container.innerHTML).toBe("");
+	});
+
+	it("renders nothing when Featurebase is loading", () => {
+		const fbState: FeaturebaseFeedbackState = { authState: "loading" };
+		act(() => {
+			root.render(
+				<FeedbackCard
+					selectedAgentId={"cline"}
+					clineProviderSettings={authenticatedClineSettings}
+					featurebaseFeedbackState={fbState}
+				/>,
+			);
+		});
+		expect(container.innerHTML).toBe("");
+	});
+
+	it("renders nothing when Featurebase has error", () => {
+		const fbState: FeaturebaseFeedbackState = { authState: "error" };
+		act(() => {
+			root.render(
+				<FeedbackCard
+					selectedAgentId={"cline"}
+					clineProviderSettings={authenticatedClineSettings}
+					featurebaseFeedbackState={fbState}
+				/>,
+			);
+		});
+		expect(container.innerHTML).toBe("");
+	});
+
+	it("renders enabled Share Feedback when fully authenticated and Featurebase is ready", () => {
+		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		act(() => {
+			root.render(
+				<FeedbackCard
+					selectedAgentId={"cline"}
+					clineProviderSettings={authenticatedClineSettings}
+					featurebaseFeedbackState={fbState}
+				/>,
+			);
+		});
+		const button = getFeedbackButton();
+		expect(button).toBeTruthy();
+		expect(button!.disabled).toBe(false);
+		expect(button!.textContent).toContain("Share Feedback");
+	});
+
+	it("renders data-featurebase-feedback attribute on the Share Feedback button (regression)", () => {
+		const fbState: FeaturebaseFeedbackState = { authState: "ready" };
+		act(() => {
+			root.render(
+				<FeedbackCard
+					selectedAgentId={"cline"}
+					clineProviderSettings={authenticatedClineSettings}
+					featurebaseFeedbackState={fbState}
+				/>,
+			);
+		});
+		const button = getFeedbackButton();
+		expect(button).toBeTruthy();
+		expect(button!.hasAttribute("data-featurebase-feedback")).toBe(true);
+	});
+
+	it("renders nothing when featurebaseFeedbackState is undefined", () => {
+		act(() => {
+			root.render(<FeedbackCard selectedAgentId={"cline"} clineProviderSettings={authenticatedClineSettings} />);
+		});
+		expect(container.innerHTML).toBe("");
 	});
 });

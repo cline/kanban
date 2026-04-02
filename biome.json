@@ -43,12 +43,7 @@
 			"plugins": ["grit/no-console.grit", "grit/no-process-exit.grit"]
 		},
 		{
-			"includes": [
-				"src/**/*.ts",
-				"src/**/*.tsx",
-				"!src/cline-sdk/sdk-provider-boundary.ts",
-				"!src/cline-sdk/sdk-runtime-boundary.ts"
-			],
+			"includes": ["src/**/*.ts", "src/**/*.tsx", "!src/cline-sdk/**/*.ts"],
 			"linter": {
 				"rules": {
 					"style": {
