@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
@@ -15,6 +16,7 @@ import {
 	getKanbanRuntimeHost,
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
+	getKanbanRuntimeTls,
 } from "../core/runtime-endpoint";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
@@ -229,7 +231,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		createContext: async ({ req }) => await createTrpcContext(req),
 	});
 
-	const server = createServer(async (req, res) => {
+	const tlsConfig = getKanbanRuntimeTls();
+	const requestHandler = async (req: IncomingMessage, res: import("node:http").ServerResponse) => {
 		try {
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
@@ -262,7 +265,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
 			res.end("Not Found");
 		}
-	});
+	};
+	const server = tlsConfig
+		? createHttpsServer({ key: tlsConfig.key, cert: tlsConfig.cert }, requestHandler)
+		: createServer(requestHandler);
 	server.on("upgrade", (request, socket, head) => {
 		let requestUrl: URL;
 		try {

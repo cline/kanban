@@ -7,7 +7,7 @@ import type {
 	RuntimeBoardDependency,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
+import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin, getRuntimeFetch } from "../core/runtime-endpoint";
 import {
 	addTaskDependency,
 	addTaskToColumn,
@@ -102,6 +102,10 @@ function createRuntimeTrpcClient(workspaceId: string | null) {
 			httpBatchLink({
 				url: buildKanbanRuntimeUrl("/api/trpc"),
 				headers: () => (workspaceId ? { "x-kanban-workspace-id": workspaceId } : {}),
+				fetch: async (url, options) => {
+					const runtimeFetch = await getRuntimeFetch();
+					return runtimeFetch(url, options);
+				},
 			}),
 		],
 	});
