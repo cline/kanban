@@ -3,7 +3,23 @@
 // This conflicts with jsdom's proper implementation because vitest's
 // populateGlobal() skips keys that already exist on globalThis.
 // Replace the broken stub with a spec-compliant in-memory Storage mock.
-if (typeof globalThis.localStorage === "undefined" || typeof globalThis.localStorage.clear !== "function") {
+const hasWorkingLocalStorage = (): boolean => {
+	try {
+		const storage = globalThis.localStorage as Partial<Storage> | undefined;
+		return Boolean(
+			storage &&
+				typeof storage.getItem === "function" &&
+				typeof storage.setItem === "function" &&
+				typeof storage.removeItem === "function" &&
+				typeof storage.clear === "function" &&
+				typeof storage.key === "function",
+		);
+	} catch {
+		return false;
+	}
+};
+
+if (!hasWorkingLocalStorage()) {
 	const store = new Map<string, string>();
 	const storage: Storage = {
 		getItem: (key: string) => store.get(key) ?? null,
