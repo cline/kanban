@@ -72,6 +72,7 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 	{ value: "commit", label: "Commit" },
 	{ value: "pr", label: "Make PR" },
 ];
+const FEATUREBASE_FEEDBACK_CLOSE_DELAY_MS = 150;
 
 export type RuntimeSettingsSection = "shortcuts";
 
@@ -314,6 +315,7 @@ export function RuntimeSettingsDialog({
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
+	const featurebaseCloseTimerRef = useRef<number | null>(null);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
 	const controlsDisabled = isLoading || isSaving || config === null;
@@ -506,7 +508,23 @@ export function RuntimeSettingsDialog({
 			window.clearTimeout(copiedVariableResetTimerRef.current);
 			copiedVariableResetTimerRef.current = null;
 		}
+		if (featurebaseCloseTimerRef.current !== null) {
+			window.clearTimeout(featurebaseCloseTimerRef.current);
+			featurebaseCloseTimerRef.current = null;
+		}
 	});
+
+	const handleFeaturebaseFeedbackClick = useCallback(() => {
+		if (featurebaseCloseTimerRef.current !== null) {
+			window.clearTimeout(featurebaseCloseTimerRef.current);
+		}
+		// Featurebase wires the feedback button through a document-level click handler.
+		// Keep the button mounted briefly so the SDK can observe the click before the dialog closes.
+		featurebaseCloseTimerRef.current = window.setTimeout(() => {
+			featurebaseCloseTimerRef.current = null;
+			onOpenChange(false);
+		}, FEATUREBASE_FEEDBACK_CLOSE_DELAY_MS);
+	}, [onOpenChange]);
 
 	const handleCopyVariableToken = (token: string) => {
 		void (async () => {
@@ -868,9 +886,7 @@ export function RuntimeSettingsDialog({
 								clineProviderSettings={clineProviderSettings}
 								featurebaseFeedbackState={featurebaseFeedbackState}
 								size="sm"
-								onClick={() => {
-									window.setTimeout(() => onOpenChange(false), 0);
-								}}
+								onClick={handleFeaturebaseFeedbackClick}
 							/>
 						) : (
 							<>

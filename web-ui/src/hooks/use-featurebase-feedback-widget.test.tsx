@@ -129,7 +129,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		const { module, fetchFeaturebaseTokenMock } = await importFeaturebaseModule();
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
-		const postMessageSpy = vi.spyOn(window, "postMessage");
 
 		let hookResult: FeaturebaseFeedbackState | null = null;
 		function HookHarness(): null {
@@ -147,10 +146,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		});
 
 		expect(hookResult!.authState).toBe("idle");
-		act(() => {
-			hookResult?.openFeedback();
-		});
-		expect(postMessageSpy).not.toHaveBeenCalled();
 		expect(fetchFeaturebaseTokenMock).not.toHaveBeenCalled();
 	});
 
@@ -183,7 +178,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		fetchFeaturebaseTokenMock.mockResolvedValue({ featurebaseJwt: "jwt-abc" });
 		const featurebaseMock = vi.fn();
 		mockSdkLoad(featurebaseMock);
-		const postMessageSpy = vi.spyOn(window, "postMessage");
 
 		let hookResult: FeaturebaseFeedbackState | null = null;
 		function HookHarness(): null {
@@ -210,18 +204,6 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		});
 
 		expect(hookResult!.authState).toBe("ready");
-		act(() => {
-			hookResult?.openFeedback();
-		});
-		expect(postMessageSpy).toHaveBeenCalledWith(
-			{
-				target: "FeaturebaseWidget",
-				data: {
-					action: "openFeedbackWidget",
-				},
-			},
-			"*",
-		);
 		// Only one token fetch — no retries needed
 		expect(fetchFeaturebaseTokenMock).toHaveBeenCalledTimes(1);
 	});

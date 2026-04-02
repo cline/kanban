@@ -47,7 +47,6 @@ export function FeaturebaseFeedbackButton({
 	}
 
 	function handleClick(event: React.MouseEvent<HTMLButtonElement>): void {
-		featurebaseFeedbackState?.openFeedback();
 		onClick?.(event);
 	}
 

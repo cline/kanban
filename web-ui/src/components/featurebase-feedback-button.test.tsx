@@ -35,15 +35,11 @@ const tokensOnlySettings: RuntimeClineProviderSettings = {
 
 function createFeaturebaseFeedbackState(authState: FeaturebaseFeedbackState["authState"]): {
 	state: FeaturebaseFeedbackState;
-	openFeedback: ReturnType<typeof vi.fn<() => void>>;
 } {
-	const openFeedback = vi.fn<() => void>();
 	return {
 		state: {
 			authState,
-			openFeedback,
 		},
-		openFeedback,
 	};
 }
 
@@ -193,8 +189,8 @@ describe("FeaturebaseFeedbackButton", () => {
 		expect(button?.hasAttribute("data-featurebase-feedback")).toBe(true);
 	});
 
-	it("forwards click events and opens feedback when visible", () => {
-		const { state: fbState, openFeedback } = createFeaturebaseFeedbackState("ready");
+	it("forwards click events when visible", () => {
+		const { state: fbState } = createFeaturebaseFeedbackState("ready");
 		const handleClick = vi.fn();
 		act(() => {
 			root.render(
@@ -212,40 +208,6 @@ describe("FeaturebaseFeedbackButton", () => {
 			button?.click();
 		});
 		expect(handleClick).toHaveBeenCalledTimes(1);
-		expect(openFeedback).toHaveBeenCalledTimes(1);
-	});
-
-	it("opens feedback before forwarding the click handler", () => {
-		const { state: fbState, openFeedback } = createFeaturebaseFeedbackState("ready");
-		const callOrder: string[] = [];
-		openFeedback.mockImplementation(() => {
-			callOrder.push("open");
-		});
-		const handleClick = vi.fn(() => {
-			callOrder.push("close");
-		});
-
-		act(() => {
-			root.render(
-				<FeaturebaseFeedbackButton
-					selectedAgentId={"cline"}
-					clineProviderSettings={authenticatedClineSettings}
-					featurebaseFeedbackState={fbState}
-					onClick={handleClick}
-				/>,
-			);
-		});
-
-		const button = getFeedbackButton();
-		expect(button).toBeTruthy();
-
-		act(() => {
-			button?.click();
-		});
-
-		expect(handleClick).toHaveBeenCalledTimes(1);
-		expect(openFeedback).toHaveBeenCalledTimes(1);
-		expect(callOrder).toEqual(["open", "close"]);
 	});
 
 	it("renders nothing when featurebaseFeedbackState is undefined", () => {
