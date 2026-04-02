@@ -51,6 +51,7 @@ interface FeaturebaseWindow extends Window {
 let featurebaseSdkLoadPromise: Promise<void> | null = null;
 
 function openFeaturebaseFeedbackWidget(win: Window): void {
+	// This targets the current window, not a cross-origin iframe, so "*" is intentional here.
 	win.postMessage(
 		{
 			target: "FeaturebaseWidget",

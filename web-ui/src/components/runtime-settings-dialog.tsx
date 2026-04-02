@@ -869,6 +869,7 @@ export function RuntimeSettingsDialog({
 								featurebaseFeedbackState={featurebaseFeedbackState}
 								size="sm"
 								onClick={() => {
+									// Defer dialog teardown until after the click handler dispatches the widget-open action.
 									window.setTimeout(() => onOpenChange(false), 0);
 								}}
 							/>
