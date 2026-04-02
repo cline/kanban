@@ -28,6 +28,7 @@ import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
 import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import type { TerminalSessionManager } from "./terminal/session-manager";
+import { runOnDemandUpdate } from "./update/update";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -58,6 +59,7 @@ interface RootCommandOptions {
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
 	open?: boolean;
 	skipShutdownCleanup?: boolean;
+	update?: boolean;
 }
 
 type ShutdownIndicatorResult = "done" | "interrupted" | "failed";
@@ -466,7 +468,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 
 	const [{ openInBrowser }, { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown }] = await Promise.all([
 		import("./server/browser.js"),
-		import("./update/auto-update.js"),
+		import("./update/update.js"),
 	]);
 
 	const selectedPort = await applyRuntimePortOption(options.port);
@@ -557,6 +559,19 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	});
 }
 
+async function runUpdateCommand(): Promise<void> {
+	const result = await runOnDemandUpdate({
+		currentVersion: KANBAN_VERSION,
+	});
+
+	if (result.status === "updated" || result.status === "already_up_to_date" || result.status === "cache_refreshed") {
+		console.log(result.message);
+		return;
+	}
+
+	throw new Error(result.message);
+}
+
 function createProgram(invocationArgs: string[]): Command {
 	const shouldAutoOpenBrowser = shouldAutoOpenBrowserTabForInvocation(invocationArgs);
 	const program = new Command();
@@ -568,6 +583,7 @@ function createProgram(invocationArgs: string[]): Command {
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
+		.option("--update", "Update Kanban to the latest published version and exit.")
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
 
@@ -583,7 +599,18 @@ function createProgram(invocationArgs: string[]): Command {
 			console.warn("Deprecated. Please uninstall Kanban MCP.");
 		});
 
+	program
+		.command("update")
+		.description("Update Kanban to the latest published version.")
+		.action(async () => {
+			await runUpdateCommand();
+		});
+
 	program.action(async (options: RootCommandOptions) => {
+		if (options.update === true) {
+			await runUpdateCommand();
+			return;
+		}
 		await runMainCommand(
 			{
 				host: options.host ?? null,

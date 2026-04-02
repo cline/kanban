@@ -366,6 +366,18 @@ export async function fetchSdkOrgData(input: ApiRequestParams & { organizatinId:
 	return await accountService.fetchOrganization(input.organizatinId);
 }
 
+export async function fetchSdkFeaturebaseToken(input: ApiRequestParams): Promise<{ featurebaseJwt: string }> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	const response = await accountService.fetchFeaturebaseToken();
+	if (!response) {
+		throw new Error("Failed to fetch Featurebase token from SDK");
+	}
+	return { featurebaseJwt: response.featurebaseJwt };
+}
+
 export async function fetchSdkClineUserRemoteConfig(input: ApiRequestParams): Promise<SdkUserRemoteConfigResponse> {
 	const accountServiceConstructor = ClineAccountService;
 	if (!accountServiceConstructor) {

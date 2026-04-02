@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 
-export enum AutoUpdatePackageManager {
+export enum UpdatePackageManager {
 	NPM = "npm",
 	PNPM = "pnpm",
 	YARN = "yarn",
@@ -12,15 +12,15 @@ export enum AutoUpdatePackageManager {
 	UNKNOWN = "unknown",
 }
 
-interface AutoUpdateInstallCommand {
+interface UpdateInstallCommand {
 	command: string;
 	args: string[];
 }
 
-interface AutoUpdateInstallationInfo {
-	packageManager: AutoUpdatePackageManager;
+interface UpdateInstallationInfo {
+	packageManager: UpdatePackageManager;
 	npmTag: string;
-	updateCommand: AutoUpdateInstallCommand | null;
+	updateCommand: UpdateInstallCommand | null;
 	updateTiming: "startup" | "shutdown";
 }
 
@@ -29,7 +29,7 @@ interface FetchLatestVersionInput {
 	npmTag: string;
 }
 
-export interface AutoUpdateStartupOptions {
+export interface UpdateStartupOptions {
 	currentVersion: string;
 	packageName?: string;
 	env?: NodeJS.ProcessEnv;
@@ -39,6 +39,26 @@ export interface AutoUpdateStartupOptions {
 	fetchLatestVersion?: (input: FetchLatestVersionInput) => Promise<string | null>;
 	spawnUpdate?: (command: string, args: string[]) => void;
 	scheduleShutdownUpdate?: (update: PendingShutdownAutoUpdate) => void;
+}
+
+export interface OnDemandUpdateOptions extends UpdateStartupOptions {
+	runUpdateCommand?: (command: string, args: string[]) => number;
+}
+
+export type OnDemandUpdateStatus =
+	| "updated"
+	| "already_up_to_date"
+	| "cache_refreshed"
+	| "unsupported_installation"
+	| "check_failed"
+	| "update_failed";
+
+export interface OnDemandUpdateResult {
+	status: OnDemandUpdateStatus;
+	currentVersion: string;
+	latestVersion: string | null;
+	packageManager: UpdatePackageManager;
+	message: string;
 }
 
 interface ParsedVersion {
@@ -113,7 +133,7 @@ function parseVersion(version: string): ParsedVersion {
 	};
 }
 
-function buildShutdownCacheRefreshCommand(cacheDirectory: string): AutoUpdateInstallCommand {
+function buildShutdownCacheRefreshCommand(cacheDirectory: string): UpdateInstallCommand {
 	return {
 		command: process.execPath,
 		args: ["-e", DELETE_DIRECTORY_AFTER_DELAY_SCRIPT, cacheDirectory],
@@ -221,7 +241,7 @@ function detectTransientAutoUpdateInstallation(options: {
 	currentVersion: string;
 	packageName: string;
 	entrypointPath: string;
-}): AutoUpdateInstallationInfo | null {
+}): UpdateInstallationInfo | null {
 	const npmTag = getNpmTag(options.currentVersion);
 	const normalizedPath = toPosixLowerPath(options.entrypointPath);
 
@@ -236,7 +256,7 @@ function detectTransientAutoUpdateInstallation(options: {
 	);
 	if (npxCacheDirectory) {
 		return {
-			packageManager: AutoUpdatePackageManager.NPX,
+			packageManager: UpdatePackageManager.NPX,
 			npmTag,
 			updateCommand: buildShutdownCacheRefreshCommand(npxCacheDirectory),
 			updateTiming: "shutdown",
@@ -246,7 +266,7 @@ function detectTransientAutoUpdateInstallation(options: {
 	const pnpmDlxCacheDirectory = extractDirectoryForSegmentSequence(options.entrypointPath, [["pnpm", "dlx"]], 2);
 	if (pnpmDlxCacheDirectory) {
 		return {
-			packageManager: AutoUpdatePackageManager.PNPM,
+			packageManager: UpdatePackageManager.PNPM,
 			npmTag,
 			updateCommand: buildShutdownCacheRefreshCommand(pnpmDlxCacheDirectory),
 			updateTiming: "shutdown",
@@ -256,7 +276,7 @@ function detectTransientAutoUpdateInstallation(options: {
 	const yarnDlxDirectory = extractDirectoryForSegmentPattern(options.entrypointPath, /^dlx-\d+$/u);
 	if (yarnDlxDirectory) {
 		return {
-			packageManager: AutoUpdatePackageManager.YARN,
+			packageManager: UpdatePackageManager.YARN,
 			npmTag,
 			updateCommand: buildShutdownCacheRefreshCommand(yarnDlxDirectory),
 			updateTiming: "shutdown",
@@ -266,7 +286,7 @@ function detectTransientAutoUpdateInstallation(options: {
 	const bunxDirectory = extractDirectoryForSegmentPattern(options.entrypointPath, /^bunx-/u);
 	if (bunxDirectory) {
 		return {
-			packageManager: AutoUpdatePackageManager.BUN,
+			packageManager: UpdatePackageManager.BUN,
 			npmTag,
 			updateCommand: buildShutdownCacheRefreshCommand(bunxDirectory),
 			updateTiming: "shutdown",
@@ -339,13 +359,13 @@ export function detectAutoUpdateInstallation(options: {
 	packageName: string;
 	entrypointPath: string;
 	cwd: string;
-}): AutoUpdateInstallationInfo {
+}): UpdateInstallationInfo {
 	const normalizedPath = toPosixLowerPath(options.entrypointPath);
 	const npmTag = getNpmTag(options.currentVersion);
 
 	if (isPathInside(options.entrypointPath, options.cwd)) {
 		return {
-			packageManager: AutoUpdatePackageManager.LOCAL,
+			packageManager: UpdatePackageManager.LOCAL,
 			npmTag,
 			updateCommand: null,
 			updateTiming: "startup",
@@ -363,7 +383,7 @@ export function detectAutoUpdateInstallation(options: {
 
 	if (looksLikeTransientCachePath(options.entrypointPath)) {
 		return {
-			packageManager: AutoUpdatePackageManager.UNKNOWN,
+			packageManager: UpdatePackageManager.UNKNOWN,
 			npmTag,
 			updateCommand: null,
 			updateTiming: "startup",
@@ -372,7 +392,7 @@ export function detectAutoUpdateInstallation(options: {
 
 	if (normalizedPath.includes("/.pnpm/global/") || normalizedPath.includes("/pnpm/global/")) {
 		return {
-			packageManager: AutoUpdatePackageManager.PNPM,
+			packageManager: UpdatePackageManager.PNPM,
 			npmTag,
 			updateCommand: {
 				command: "pnpm",
@@ -384,7 +404,7 @@ export function detectAutoUpdateInstallation(options: {
 
 	if (normalizedPath.includes("/.yarn/") || normalizedPath.includes("/yarn/global/")) {
 		return {
-			packageManager: AutoUpdatePackageManager.YARN,
+			packageManager: UpdatePackageManager.YARN,
 			npmTag,
 			updateCommand: {
 				command: "yarn",
@@ -396,7 +416,7 @@ export function detectAutoUpdateInstallation(options: {
 
 	if (normalizedPath.includes("/.bun/bin/")) {
 		return {
-			packageManager: AutoUpdatePackageManager.BUN,
+			packageManager: UpdatePackageManager.BUN,
 			npmTag,
 			updateCommand: {
 				command: "bun",
@@ -408,7 +428,7 @@ export function detectAutoUpdateInstallation(options: {
 
 	if (normalizedPath.includes(`/lib/node_modules/${options.packageName}/`)) {
 		return {
-			packageManager: AutoUpdatePackageManager.NPM,
+			packageManager: UpdatePackageManager.NPM,
 			npmTag,
 			updateCommand: {
 				command: "npm",
@@ -420,7 +440,7 @@ export function detectAutoUpdateInstallation(options: {
 
 	if (normalizedPath.includes(`/node_modules/${options.packageName}/`)) {
 		return {
-			packageManager: AutoUpdatePackageManager.NPM,
+			packageManager: UpdatePackageManager.NPM,
 			npmTag,
 			updateCommand: {
 				command: "npm",
@@ -431,7 +451,7 @@ export function detectAutoUpdateInstallation(options: {
 	}
 
 	return {
-		packageManager: AutoUpdatePackageManager.UNKNOWN,
+		packageManager: UpdatePackageManager.UNKNOWN,
 		npmTag,
 		updateCommand: null,
 		updateTiming: "startup",
@@ -484,6 +504,18 @@ function spawnDetachedUpdate(command: string, args: string[]): void {
 	child.unref();
 }
 
+function runUpdateCommandSync(command: string, args: string[]): number {
+	const result = spawnSync(resolveUpdateCommandForPlatform(command), args, {
+		env: process.env,
+		stdio: "inherit",
+		windowsHide: true,
+	});
+	if (typeof result.status === "number") {
+		return result.status;
+	}
+	return 1;
+}
+
 export function resolveUpdateCommandForPlatform(command: string, platform: NodeJS.Platform = process.platform): string {
 	if (platform !== "win32") {
 		return command;
@@ -518,7 +550,120 @@ export function runPendingAutoUpdateOnShutdown(options?: {
 	spawnUpdate(pendingUpdate.command, pendingUpdate.args);
 }
 
-export async function runAutoUpdateCheck(options: AutoUpdateStartupOptions): Promise<void> {
+export async function runOnDemandUpdate(options: OnDemandUpdateOptions): Promise<OnDemandUpdateResult> {
+	const entrypointArg = options.argv?.[1] ?? process.argv[1];
+	if (!entrypointArg) {
+		return {
+			status: "unsupported_installation",
+			currentVersion: options.currentVersion,
+			latestVersion: null,
+			packageManager: UpdatePackageManager.UNKNOWN,
+			message: "Could not resolve the Kanban entrypoint for this installation.",
+		};
+	}
+
+	const resolveRealPath = options.resolveRealPath ?? ((path: string) => realpathSync(path));
+	let entrypointPath: string;
+	try {
+		entrypointPath = resolveRealPath(entrypointArg);
+	} catch {
+		return {
+			status: "unsupported_installation",
+			currentVersion: options.currentVersion,
+			latestVersion: null,
+			packageManager: UpdatePackageManager.UNKNOWN,
+			message: "Could not resolve the Kanban entrypoint for this installation.",
+		};
+	}
+
+	const packageName = options.packageName ?? "kanban";
+	const installation = detectAutoUpdateInstallation({
+		currentVersion: options.currentVersion,
+		packageName,
+		entrypointPath,
+		cwd: options.cwd ?? process.cwd(),
+	});
+
+	const manualInstallation: UpdateInstallationInfo =
+		installation.updateCommand || installation.packageManager !== UpdatePackageManager.LOCAL
+			? installation
+			: {
+					packageManager: UpdatePackageManager.NPM,
+					npmTag: installation.npmTag,
+					updateTiming: "startup",
+					updateCommand: {
+						command: "npm",
+						args: ["install", "-g", `${packageName}@${installation.npmTag}`],
+					},
+				};
+
+	if (!manualInstallation.updateCommand) {
+		return {
+			status: "unsupported_installation",
+			currentVersion: options.currentVersion,
+			latestVersion: null,
+			packageManager: manualInstallation.packageManager,
+			message: "Could not determine an automatic update command for this Kanban installation.",
+		};
+	}
+
+	const fetchLatestVersion = options.fetchLatestVersion ?? fetchLatestVersionFromRegistry;
+	const latestVersion = await fetchLatestVersion({
+		packageName,
+		npmTag: manualInstallation.npmTag,
+	});
+	if (!latestVersion) {
+		return {
+			status: "check_failed",
+			currentVersion: options.currentVersion,
+			latestVersion: null,
+			packageManager: manualInstallation.packageManager,
+			message: "Could not check the latest Kanban version from npm.",
+		};
+	}
+
+	if (compareVersions(options.currentVersion, latestVersion) >= 0) {
+		return {
+			status: "already_up_to_date",
+			currentVersion: options.currentVersion,
+			latestVersion,
+			packageManager: installation.packageManager,
+			message: `Kanban is already up to date (${options.currentVersion}).`,
+		};
+	}
+
+	const runUpdateCommand = options.runUpdateCommand ?? runUpdateCommandSync;
+	const exitCode = runUpdateCommand(manualInstallation.updateCommand.command, manualInstallation.updateCommand.args);
+	if (exitCode !== 0) {
+		return {
+			status: "update_failed",
+			currentVersion: options.currentVersion,
+			latestVersion,
+			packageManager: manualInstallation.packageManager,
+			message: `Update command failed with exit code ${exitCode}.`,
+		};
+	}
+
+	if (manualInstallation.updateTiming === "shutdown") {
+		return {
+			status: "cache_refreshed",
+			currentVersion: options.currentVersion,
+			latestVersion,
+			packageManager: manualInstallation.packageManager,
+			message: `Cleared transient Kanban cache. Re-run your command to launch version ${latestVersion}.`,
+		};
+	}
+
+	return {
+		status: "updated",
+		currentVersion: options.currentVersion,
+		latestVersion,
+		packageManager: manualInstallation.packageManager,
+		message: `Updated Kanban from ${options.currentVersion} to ${latestVersion}.`,
+	};
+}
+
+export async function runAutoUpdateCheck(options: UpdateStartupOptions): Promise<void> {
 	const env = options.env ?? process.env;
 	if (isAutoUpdateDisabled(env)) {
 		return;
@@ -577,6 +722,6 @@ export async function runAutoUpdateCheck(options: AutoUpdateStartupOptions): Pro
 	}
 }
 
-export function autoUpdateOnStartup(options: AutoUpdateStartupOptions): void {
+export function autoUpdateOnStartup(options: UpdateStartupOptions): void {
 	void runAutoUpdateCheck(options);
 }

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ptyMocks = vi.hoisted(() => ({
@@ -13,6 +16,8 @@ import { PtySession } from "../../../src/terminal/pty-session";
 const originalPlatform = process.platform;
 const originalComSpec = process.env.ComSpec;
 const originalCOMSPEC = process.env.COMSPEC;
+const originalPath = process.env.PATH;
+const originalPathExt = process.env.PATHEXT;
 
 function setPlatform(value: NodeJS.Platform): void {
 	Object.defineProperty(process, "platform", {
@@ -63,6 +68,16 @@ describe("PtySession", () => {
 		} else {
 			process.env.COMSPEC = originalCOMSPEC;
 		}
+		if (originalPath === undefined) {
+			delete process.env.PATH;
+		} else {
+			process.env.PATH = originalPath;
+		}
+		if (originalPathExt === undefined) {
+			delete process.env.PATHEXT;
+		} else {
+			process.env.PATHEXT = originalPathExt;
+		}
 	});
 
 	afterEach(() => {
@@ -109,6 +124,39 @@ describe("PtySession", () => {
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toBe('/d /s /c "cline"');
+	});
+
+	it("launches bare executables directly on Windows when PATH resolves to .exe", () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATHEXT = ".com;.exe;.bat;.cmd";
+		const windowsBinDir = mkdtempSync(join(tmpdir(), "kanban-win-path-"));
+		writeFileSync(join(windowsBinDir, "codex.exe"), "");
+		process.env.PATH = "";
+
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		try {
+			PtySession.spawn({
+				binary: "codex",
+				args: ["--foo", "bar"],
+				cwd: "C:/repo",
+				env: {
+					PATH: windowsBinDir,
+					PATHEXT: ".com;.exe;.bat;.cmd",
+					ComSpec: "C:\\Windows\\System32\\cmd.exe",
+				},
+				cols: 120,
+				rows: 40,
+			});
+		} finally {
+			rmSync(windowsBinDir, { recursive: true, force: true });
+		}
+
+		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
+		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("codex");
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual(["--foo", "bar"]);
 	});
 
 	it("preserves full prompt text on Windows", () => {

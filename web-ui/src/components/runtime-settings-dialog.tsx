@@ -8,6 +8,7 @@ import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } fr
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { Bug, Check, ChevronDown, Circle, CircleDot, ExternalLink, Lightbulb, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { canShowFeaturebaseFeedbackButton, FeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import {
 	getRuntimeShortcutIconComponent,
@@ -20,8 +21,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
+import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
@@ -283,6 +286,7 @@ export function RuntimeSettingsDialog({
 	workspaceId,
 	initialConfig = null,
 	liveMcpAuthStatuses = null,
+	featurebaseFeedbackState,
 	onOpenChange,
 	onSaved,
 	initialSection,
@@ -291,11 +295,13 @@ export function RuntimeSettingsDialog({
 	workspaceId: string | null;
 	initialConfig?: RuntimeConfigResponse | null;
 	liveMcpAuthStatuses?: RuntimeClineMcpServerAuthStatus[] | null;
+	featurebaseFeedbackState?: FeaturebaseFeedbackState;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
+	const clineProviderSettings = getRuntimeClineProviderSettings(config);
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
@@ -327,6 +333,11 @@ export function RuntimeSettingsDialog({
 	const selectedPromptPlaceholder =
 		selectedPromptVariant === "commit" ? "Commit prompt template" : "PR prompt template";
 	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
+	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
+		selectedAgentId,
+		clineProviderSettings,
+		featurebaseFeedbackState,
+	});
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
 	}, []);
@@ -851,25 +862,37 @@ export function RuntimeSettingsDialog({
 						github.com/cline/kanban
 					</a>
 					<div className="flex items-center gap-2 mt-2">
-						<Button
-							size="sm"
-							icon={<Bug size={14} />}
-							onClick={() => window.open("https://github.com/cline/kanban/issues", "_blank")}
-						>
-							Report Issue
-						</Button>
-						<Button
-							size="sm"
-							icon={<Lightbulb size={14} />}
-							onClick={() =>
-								window.open(
-									"https://github.com/cline/kanban/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop",
-									"_blank",
-								)
-							}
-						>
-							Feature Request
-						</Button>
+						{shouldShowFeaturebaseFeedback ? (
+							<FeaturebaseFeedbackButton
+								selectedAgentId={selectedAgentId}
+								clineProviderSettings={clineProviderSettings}
+								featurebaseFeedbackState={featurebaseFeedbackState}
+								size="sm"
+								onClick={() => onOpenChange(false)}
+							/>
+						) : (
+							<>
+								<Button
+									size="sm"
+									icon={<Bug size={14} />}
+									onClick={() => window.open("https://github.com/cline/kanban/issues", "_blank")}
+								>
+									Report Issue
+								</Button>
+								<Button
+									size="sm"
+									icon={<Lightbulb size={14} />}
+									onClick={() =>
+										window.open(
+											"https://github.com/cline/kanban/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop",
+											"_blank",
+										)
+									}
+								>
+									Feature Request
+								</Button>
+							</>
+						)}
 					</div>
 				</div>
 
