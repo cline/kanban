@@ -39,6 +39,7 @@ function createFeaturebaseFeedbackState(authState: FeaturebaseFeedbackState["aut
 	return {
 		state: {
 			authState,
+			widgetOpenCount: 0,
 		},
 	};
 }

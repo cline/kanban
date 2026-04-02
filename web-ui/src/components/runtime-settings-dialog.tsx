@@ -28,6 +28,7 @@ import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
+	RuntimeClineProviderSettings,
 	RuntimeClineMcpServerAuthStatus,
 	RuntimeConfigResponse,
 	RuntimeProjectShortcut,
@@ -72,7 +73,6 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 	{ value: "commit", label: "Commit" },
 	{ value: "pr", label: "Make PR" },
 ];
-const FEATUREBASE_FEEDBACK_CLOSE_DELAY_MS = 150;
 
 export type RuntimeSettingsSection = "shortcuts";
 
@@ -302,7 +302,6 @@ export function RuntimeSettingsDialog({
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
-	const clineProviderSettings = getRuntimeClineProviderSettings(config);
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
@@ -315,7 +314,7 @@ export function RuntimeSettingsDialog({
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
-	const featurebaseCloseTimerRef = useRef<number | null>(null);
+	const pendingCloseAfterFeedbackOpenRef = useRef(false);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
 	const controlsDisabled = isLoading || isSaving || config === null;
@@ -335,11 +334,6 @@ export function RuntimeSettingsDialog({
 	const selectedPromptPlaceholder =
 		selectedPromptVariant === "commit" ? "Commit prompt template" : "PR prompt template";
 	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
-	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
-		selectedAgentId,
-		clineProviderSettings,
-		featurebaseFeedbackState,
-	});
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
 	}, []);
@@ -387,11 +381,19 @@ export function RuntimeSettingsDialog({
 		selectedAgentId,
 		config,
 	});
+	const liveClineProviderSettings = useMemo<RuntimeClineProviderSettings>(() => {
+		return selectedAgentId === "cline" ? clineSettings.currentProviderSettings : getRuntimeClineProviderSettings(config);
+	}, [clineSettings.currentProviderSettings, config, selectedAgentId]);
 	const clineMcpSettings = useRuntimeSettingsClineMcpController({
 		open,
 		workspaceId,
 		selectedAgentId,
 		liveAuthStatuses: liveMcpAuthStatuses,
+	});
+	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
+		selectedAgentId,
+		clineProviderSettings: liveClineProviderSettings,
+		featurebaseFeedbackState,
 	});
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
@@ -508,23 +510,27 @@ export function RuntimeSettingsDialog({
 			window.clearTimeout(copiedVariableResetTimerRef.current);
 			copiedVariableResetTimerRef.current = null;
 		}
-		if (featurebaseCloseTimerRef.current !== null) {
-			window.clearTimeout(featurebaseCloseTimerRef.current);
-			featurebaseCloseTimerRef.current = null;
-		}
+		pendingCloseAfterFeedbackOpenRef.current = false;
 	});
 
-	const handleFeaturebaseFeedbackClick = useCallback(() => {
-		if (featurebaseCloseTimerRef.current !== null) {
-			window.clearTimeout(featurebaseCloseTimerRef.current);
+	useEffect(() => {
+		if (!open) {
+			pendingCloseAfterFeedbackOpenRef.current = false;
+			return;
 		}
-		// Featurebase wires the feedback button through a document-level click handler.
-		// Keep the button mounted briefly so the SDK can observe the click before the dialog closes.
-		featurebaseCloseTimerRef.current = window.setTimeout(() => {
-			featurebaseCloseTimerRef.current = null;
-			onOpenChange(false);
-		}, FEATUREBASE_FEEDBACK_CLOSE_DELAY_MS);
-	}, [onOpenChange]);
+		if (!pendingCloseAfterFeedbackOpenRef.current) {
+			return;
+		}
+		if ((featurebaseFeedbackState?.widgetOpenCount ?? 0) === 0) {
+			return;
+		}
+		pendingCloseAfterFeedbackOpenRef.current = false;
+		onOpenChange(false);
+	}, [featurebaseFeedbackState?.widgetOpenCount, onOpenChange, open]);
+
+	const handleFeaturebaseFeedbackClick = useCallback(() => {
+		pendingCloseAfterFeedbackOpenRef.current = true;
+	}, []);
 
 	const handleCopyVariableToken = (token: string) => {
 		void (async () => {
@@ -883,7 +889,7 @@ export function RuntimeSettingsDialog({
 						{shouldShowFeaturebaseFeedback ? (
 							<FeaturebaseFeedbackButton
 								selectedAgentId={selectedAgentId}
-								clineProviderSettings={clineProviderSettings}
+								clineProviderSettings={liveClineProviderSettings}
 								featurebaseFeedbackState={featurebaseFeedbackState}
 								size="sm"
 								onClick={handleFeaturebaseFeedbackClick}
