@@ -314,7 +314,6 @@ export function RuntimeSettingsDialog({
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
-	const deferredCloseTimerRef = useRef<number | null>(null);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
 	const controlsDisabled = isLoading || isSaving || config === null;
@@ -507,10 +506,6 @@ export function RuntimeSettingsDialog({
 			window.clearTimeout(copiedVariableResetTimerRef.current);
 			copiedVariableResetTimerRef.current = null;
 		}
-		if (deferredCloseTimerRef.current !== null) {
-			window.clearTimeout(deferredCloseTimerRef.current);
-			deferredCloseTimerRef.current = null;
-		}
 	});
 
 	const handleCopyVariableToken = (token: string) => {
@@ -600,17 +595,6 @@ export function RuntimeSettingsDialog({
 			setNotificationPermission(nextPermission);
 		})();
 	};
-
-	const handleDeferredClose = useCallback(() => {
-		if (deferredCloseTimerRef.current !== null) {
-			window.clearTimeout(deferredCloseTimerRef.current);
-		}
-		// Defer dialog teardown until after the click handler dispatches the widget-open action.
-		deferredCloseTimerRef.current = window.setTimeout(() => {
-			deferredCloseTimerRef.current = null;
-			onOpenChange(false);
-		}, 0);
-	}, [onOpenChange]);
 
 	const handleOpenFilePath = useCallback(
 		(filePath: string) => {
@@ -884,7 +868,9 @@ export function RuntimeSettingsDialog({
 								clineProviderSettings={clineProviderSettings}
 								featurebaseFeedbackState={featurebaseFeedbackState}
 								size="sm"
-								onClick={handleDeferredClose}
+								onClick={() => {
+									window.setTimeout(() => onOpenChange(false), 0);
+								}}
 							/>
 						) : (
 							<>
