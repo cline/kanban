@@ -6,7 +6,6 @@ import {
 	buildDisplayItems,
 	buildHighlightedLineMap,
 	buildUnifiedDiffRows,
-	countAddedRemoved,
 	DiffRowText,
 	getHighlightedLineHtml,
 	resolvePrismGrammar,
@@ -568,6 +567,8 @@ export function DiffViewerPanel({
 			isBinary: isBinaryFilePath(file.path),
 			oldText: file.oldText,
 			newText: file.newText ?? "",
+			additions: file.additions,
+			deletions: file.deletions,
 			timestamp: 0,
 			toolTitle: `${file.status} (${file.additions}+/${file.deletions}-)`,
 		}));
@@ -596,9 +597,8 @@ export function DiffViewerPanel({
 				newText: entry.newText,
 			});
 			if (!entry.isBinary) {
-				const counts = countAddedRemoved(entry.oldText, entry.newText);
-				group.added += counts.added;
-				group.removed += counts.removed;
+				group.added += entry.additions;
+				group.removed += entry.deletions;
 			}
 		}
 		return Array.from(map.values()).sort((a, b) => {
