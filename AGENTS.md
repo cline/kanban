@@ -1,3 +1,9 @@
+## Fork Sync
+
+This repo is a fork of cline/kanban. Before planning or implementing any code changes, always read CONTRIBUTING.md first. It contains fork sync principles that must be followed to preserve our ability to merge from upstream. Violating these principles (e.g., renaming upstream symbols, modifying high-churn upstream files inline, changing internal IDs) creates merge conflicts on every upstream sync.
+
+---
+
 This file captures tribal knowledge-the nuanced, non-obvious patterns that make the difference between a quick fix and hours of debugging.
 When to add to this file:
 - User had to intervene, correct, or hand-hold

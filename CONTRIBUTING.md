@@ -1,4 +1,86 @@
-# Contributing to Kanban
+# Contributing to AgenticKanban (Fork)
+
+This is a fork of [cline/kanban](https://github.com/cline/kanban). We regularly sync with upstream to pull in bug fixes and new features. **All contributors must follow the fork sync principles below to preserve our ability to merge from upstream without painful conflicts.**
+
+## Fork Sync Principles
+
+### 1. Keep internal IDs unchanged; override display only
+
+Never rename upstream enum values, column IDs, or internal identifiers. If the display label needs to change, modify only the `title` string in `BOARD_COLUMNS` (or equivalent display-layer code), not the `id`.
+
+For example, the internal column ID `"trash"` must remain `"trash"` even though we display it as "Done." This keeps every upstream reference to `"trash"` conflict-free.
+
+### 2. Add new modules; minimize edits to upstream files
+
+These upstream files change frequently and are high-conflict zones:
+
+| File | Upstream churn |
+|------|---------------|
+| `src/core/api-contract.ts` | ~43 commits/month |
+| `src/commands/hooks.ts` | ~16 commits/month |
+| `src/prompts/append-system-prompt.ts` | ~14 commits/month |
+| `src/state/workspace-state.ts` | ~13 commits/month |
+
+**Rules for these files:**
+- Additions of 1-2 lines (e.g., adding a value to an enum) are acceptable
+- Multi-line modifications, refactors, or rearrangements are not — move that logic to a new file
+- Never delete or rename upstream code in these files
+
+Place new logic in dedicated directories (e.g., `src/qa/`, `src/validation/`) that upstream will never touch.
+
+### 3. Wrap, don't modify upstream functions
+
+If you need to change how an upstream function behaves, create a wrapper in a new file rather than editing the original:
+
+```typescript
+// src/qa/lifecycle.ts (our file — never conflicts)
+import { trashTaskAndGetReadyLinkedTaskIds } from "../core/task-board-mutations";
+
+export function completeTaskWithValidation(board, taskId, now) {
+  // our validation logic here
+  return trashTaskAndGetReadyLinkedTaskIds(board, taskId, now);
+}
+```
+
+Do not rename upstream functions, change their signatures, or alter their internal logic.
+
+### 4. Don't rename upstream symbols
+
+Renaming functions, types, variables, or file names that exist in upstream creates conflicts on every sync. If a name is misleading (e.g., `trashTask` for completed work), create an alias or wrapper — don't rename the original.
+
+### 5. Use our own config namespace
+
+Our configuration (validation commands, rubrics, holdout scenarios) lives in `.factory/` or a dedicated directory, not in upstream's config files (`runtime-config.ts`). This way upstream config shape changes never conflict with ours.
+
+### 6. Use hooks/events as integration seams
+
+The existing hook events (`to_review`, `to_in_progress`, `activity`) are the natural extension points. Our QA orchestration should subscribe to these from new modules rather than modifying `hooks.ts` inline. If new events are needed (e.g., `to_qa`), add them with minimal changes to the upstream file.
+
+### 7. Tag fork-specific changes in commits
+
+Commits that modify upstream files should use the `fork:` prefix so they are easy to identify during merge conflict resolution:
+
+```
+fork: add qa column to board column enum
+fork: add QA entry to BOARD_COLUMNS array
+```
+
+This makes it clear during `git merge upstream/main` which lines are ours and must be kept.
+
+### 8. Sync with upstream regularly
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+Merge (don't rebase) upstream into our main. Frequent small merges are far easier than infrequent large ones.
+
+---
+
+# Contributing to Kanban (Upstream)
+
+The following is the upstream contribution guide, preserved for reference.
 
 Thanks for your interest in contributing to Kanban! This project is in research preview, and we're focused on making the existing feature set rock-solid across platforms and agents before expanding scope. Community help is invaluable here.
 
