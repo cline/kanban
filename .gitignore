@@ -1,5 +1,6 @@
 node_modules
 dist
+*.tgz
 coverage
 .DS_Store
 test-results

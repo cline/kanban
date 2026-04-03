@@ -17,6 +17,14 @@ export interface RuntimeConfig {
 	port: number | "auto";
 	/** Ephemeral auth token the runtime should require on all API requests. */
 	authToken: string;
+	/**
+	 * Absolute path to the bundled Kanban CLI shim (e.g. `Resources/bin/kanban`).
+	 *
+	 * The runtime child sets `KANBAN_CLI_COMMAND` from this value so that the
+	 * home-agent system prompt references the bundled shim instead of relying
+	 * on a global install or inferring from `process.execPath`.
+	 */
+	kanbanCliCommand?: string;
 }
 
 // ---------------------------------------------------------------------------

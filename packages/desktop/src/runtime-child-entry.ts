@@ -42,6 +42,14 @@ process.on("message", async (raw: unknown) => {
 	switch (msg.type) {
 		case "start": {
 			try {
+				// Set KANBAN_CLI_COMMAND from the IPC config so that the
+				// home-agent system prompt uses the bundled shim path
+				// instead of inferring from process.execPath (which is the
+				// Electron helper binary — not a valid shell command).
+				if (msg.config.kanbanCliCommand) {
+					process.env.KANBAN_CLI_COMMAND = msg.config.kanbanCliCommand;
+				}
+
 				// Dynamic import so the module isn't loaded until the start
 				// message arrives — keeps the child process lean on startup.
 				const { startRuntime } = await import("kanban/runtime-start");

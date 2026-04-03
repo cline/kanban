@@ -93,7 +93,7 @@ export class PtySession {
 		const ptyOptions: pty.IPtyForkOptions = {
 			name: terminalName,
 			cwd,
-			env,
+			env: launchEnv,
 			cols,
 			rows,
 			encoding: null,

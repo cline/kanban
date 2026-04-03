@@ -60,14 +60,81 @@ const ALLOWED_ENV_KEYS: ReadonlySet<string> = new Set([
 	"XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
 ]);
 
+/** Prefixes that are always forwarded to the runtime child. */
+const ALLOWED_ENV_PREFIXES: readonly string[] = [
+	"KANBAN_",
+	"ANTHROPIC_",
+	"OPENAI_",
+	"OPENROUTER_",
+	"GOOGLE_",
+	"GEMINI_",
+	"AWS_",
+	"AZURE_",
+	"MISTRAL_",
+	"DEEPSEEK_",
+	"GROQ_",
+	"XAI_",
+	"FIREWORKS_",
+	"TOGETHER_",
+	"COHERE_",
+	"PERPLEXITY_",
+	"CEREBRAS_",
+	"OCA_",
+	"CLINE_",
+];
+
+/**
+ * Standard PATH directories to add when running as a macOS GUI app.
+ *
+ * macOS GUI apps inherit the system PATH from launchd, which typically only
+ * includes /usr/bin:/bin:/usr/sbin:/sbin. This misses Homebrew, nvm, and
+ * other user-installed tool directories. We append common locations so
+ * agent shell sessions can find binaries like `kanban`, `git`, `node`, etc.
+ */
+const EXTRA_PATH_DIRS: readonly string[] =
+	process.platform === "darwin"
+		? [
+				"/opt/homebrew/bin",
+				"/opt/homebrew/sbin",
+				"/usr/local/bin",
+				"/usr/local/sbin",
+			]
+		: process.platform === "linux"
+			? ["/usr/local/bin", "/snap/bin"]
+			: [];
+
 /** Build a filtered copy of `process.env` containing only allowed keys. */
 export function buildFilteredEnv(): NodeJS.ProcessEnv {
 	const filtered: NodeJS.ProcessEnv = {};
+
+	// Forward exact-match allowed keys.
 	for (const key of ALLOWED_ENV_KEYS) {
 		if (process.env[key] !== undefined) {
 			filtered[key] = process.env[key];
 		}
 	}
+
+	// Forward keys matching allowed prefixes (provider API keys, KANBAN_*, etc.).
+	for (const key of Object.keys(process.env)) {
+		if (filtered[key] !== undefined) continue;
+		for (const prefix of ALLOWED_ENV_PREFIXES) {
+			if (key.startsWith(prefix)) {
+				filtered[key] = process.env[key];
+				break;
+			}
+		}
+	}
+
+	// Enrich PATH with common directories that macOS GUI apps miss.
+	if (EXTRA_PATH_DIRS.length > 0) {
+		const currentPath = filtered.PATH ?? "";
+		const pathParts = new Set(currentPath.split(":").filter(Boolean));
+		for (const dir of EXTRA_PATH_DIRS) {
+			pathParts.add(dir);
+		}
+		filtered.PATH = [...pathParts].join(":");
+	}
+
 	return filtered;
 }
 

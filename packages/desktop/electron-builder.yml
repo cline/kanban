@@ -54,6 +54,14 @@ protocols:
 # also need to be unpacked for the same reason. tree-kill is unpacked so
 # that spawned helper processes can reliably kill grandchild process trees
 # on Windows (where native pid-tree walking is needed).
+# Bundle the CLI shim scripts in Resources/bin/ so the desktop app can
+# invoke the Kanban CLI without depending on a global npm install.
+extraResources:
+  - from: build/bin
+    to: bin
+    filter:
+      - "**/*"
+
 asar: true
 asarUnpack:
   - "package.json"
@@ -98,6 +106,8 @@ mac:
   # NSAppSleepDisabled prevents App Nap from throttling background runtime work.
   extendInfo:
     NSAppSleepDisabled: true
+    NSSupportsAutomaticTermination: false
+    NSSupportsSuddenTermination: false
 
 dmg:
   artifactName: "${productName}-${version}-${arch}.${ext}"

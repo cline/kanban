@@ -4,6 +4,7 @@ declare module "kanban/runtime-start" {
 		host?: string;
 		port?: number | "auto";
 		authToken?: string;
+		cwd?: string;
 		isLocal?: boolean;
 		openInBrowser?: boolean;
 		pickDirectory?: () => Promise<string | null>;

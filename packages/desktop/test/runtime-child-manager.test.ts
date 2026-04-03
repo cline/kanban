@@ -68,12 +68,32 @@ describe("buildFilteredEnv", () => {
 		try {
 			process.env.PATH = "/usr/bin";
 			process.env.HOME = "/home/user";
+			process.env.KANBAN_RUNTIME_PORT = "3484";
 			process.env.SECRET_KEY = "should-not-appear";
+			process.env.OCA_API_KEY = "oca-provider-key";
 			process.env.ELECTRON_RUN_AS_NODE = "1";
 
 			const env = buildFilteredEnv();
-			expect(env.PATH).toBe("/usr/bin");
+			const pathEntries = env.PATH?.split(":") ?? [];
+			expect(pathEntries).toContain("/usr/bin");
+			if (process.platform === "darwin") {
+				expect(pathEntries).toEqual(
+					expect.arrayContaining([
+						"/opt/homebrew/bin",
+						"/opt/homebrew/sbin",
+						"/usr/local/bin",
+						"/usr/local/sbin",
+					]),
+				);
+			}
+			if (process.platform === "linux") {
+				expect(pathEntries).toEqual(
+					expect.arrayContaining(["/usr/local/bin", "/snap/bin"]),
+				);
+			}
 			expect(env.HOME).toBe("/home/user");
+			expect(env.KANBAN_RUNTIME_PORT).toBe("3484");
+			expect(env.OCA_API_KEY).toBe("oca-provider-key");
 			expect(env.SECRET_KEY).toBeUndefined();
 			expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
 		} finally {

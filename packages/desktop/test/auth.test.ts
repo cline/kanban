@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
 	AUTH_HEADER_NAME,
-	buildOriginFilter,
+	extractRuntimeAuthority,
 	generateAuthToken,
 	installAuthHeaderInterceptor,
+	isRuntimeRequest,
 	type BeforeSendHeadersCallback,
 	type BeforeSendHeadersDetails,
 	type ElectronSessionLike,
@@ -30,15 +31,13 @@ function installAndGetListener(token: string, origin: string) {
 	const { session, onBeforeSendHeaders } = createMockSession();
 	installAuthHeaderInterceptor(session, token, origin);
 
-	// The listener is the second argument of the first call
-	const listener = onBeforeSendHeaders.mock.calls[0][1] as (
+	// The listener is the first argument of the first call (no filter overload)
+	const listener = onBeforeSendHeaders.mock.calls[0][0] as (
 		details: BeforeSendHeadersDetails,
 		callback: BeforeSendHeadersCallback,
 	) => void;
 
-	const filter = onBeforeSendHeaders.mock.calls[0][0] as { urls: string[] };
-
-	return { listener, filter, session, onBeforeSendHeaders };
+	return { listener, session, onBeforeSendHeaders };
 }
 
 // ---------------------------------------------------------------------------
@@ -59,20 +58,45 @@ describe("Auth Token Generation", () => {
 	});
 });
 
-describe("buildOriginFilter", () => {
-	it("appends /* to a plain origin", () => {
-		expect(buildOriginFilter("http://localhost:3484")).toBe(
-			"http://localhost:3484/*",
+describe("extractRuntimeAuthority", () => {
+	it("extracts host:port from a plain origin", () => {
+		expect(extractRuntimeAuthority("http://localhost:3484")).toBe(
+			"localhost:3484",
 		);
 	});
 
-	it("strips trailing slashes before appending /*", () => {
-		expect(buildOriginFilter("http://localhost:3484/")).toBe(
-			"http://localhost:3484/*",
+	it("extracts host:port from a URL with a path", () => {
+		expect(extractRuntimeAuthority("http://127.0.0.1:3485/kanban")).toBe(
+			"127.0.0.1:3485",
 		);
-		expect(buildOriginFilter("http://localhost:3484///")).toBe(
-			"http://localhost:3484/*",
+	});
+
+	it("extracts host:port from a URL with trailing slashes", () => {
+		expect(extractRuntimeAuthority("http://localhost:52341/")).toBe(
+			"localhost:52341",
 		);
+	});
+});
+
+describe("isRuntimeRequest", () => {
+	it("matches HTTP requests to the runtime authority", () => {
+		expect(isRuntimeRequest("http://127.0.0.1:3485/api/trpc/runtime.getInfo", "127.0.0.1:3485")).toBe(true);
+	});
+
+	it("matches WebSocket requests to the runtime authority", () => {
+		expect(isRuntimeRequest("ws://127.0.0.1:3485/api/runtime/ws", "127.0.0.1:3485")).toBe(true);
+	});
+
+	it("rejects requests to a different host", () => {
+		expect(isRuntimeRequest("http://example.com/api/foo", "127.0.0.1:3485")).toBe(false);
+	});
+
+	it("rejects requests to a different port", () => {
+		expect(isRuntimeRequest("http://127.0.0.1:9999/api/foo", "127.0.0.1:3485")).toBe(false);
+	});
+
+	it("returns false for malformed URLs", () => {
+		expect(isRuntimeRequest("not-a-url", "127.0.0.1:3485")).toBe(false);
 	});
 });
 
@@ -85,9 +109,10 @@ describe("installAuthHeaderInterceptor", () => {
 		expect(onBeforeSendHeaders).toHaveBeenCalledOnce();
 	});
 
-	it("passes the correct URL filter pattern", () => {
-		const { filter } = installAndGetListener(TOKEN, ORIGIN);
-		expect(filter).toEqual({ urls: ["http://localhost:52341/*"] });
+	it("uses the no-filter overload to catch both http and ws requests", () => {
+		const { onBeforeSendHeaders } = installAndGetListener(TOKEN, ORIGIN);
+		// Should be called with a single argument (the listener) — no filter object
+		expect(onBeforeSendHeaders.mock.calls[0]).toHaveLength(1);
 	});
 
 	it("injects the Authorization: Bearer header into matching requests", () => {
@@ -106,6 +131,41 @@ describe("installAuthHeaderInterceptor", () => {
 		expect(result).toBeDefined();
 		expect(result!.requestHeaders[AUTH_HEADER_NAME]).toBe(`Bearer ${TOKEN}`);
 		// Preserves existing headers
+		expect(result!.requestHeaders["Accept"]).toBe("application/json");
+	});
+
+	it("injects the header into WebSocket upgrade requests", () => {
+		const { listener } = installAndGetListener(TOKEN, ORIGIN);
+
+		const details: BeforeSendHeadersDetails = {
+			url: "ws://localhost:52341/api/runtime/ws",
+			requestHeaders: {},
+		};
+
+		let result: { requestHeaders: Record<string, string> } | undefined;
+		listener(details, (response) => {
+			result = response;
+		});
+
+		expect(result).toBeDefined();
+		expect(result!.requestHeaders[AUTH_HEADER_NAME]).toBe(`Bearer ${TOKEN}`);
+	});
+
+	it("does not inject the header into requests to other origins", () => {
+		const { listener } = installAndGetListener(TOKEN, ORIGIN);
+
+		const details: BeforeSendHeadersDetails = {
+			url: "https://example.com/api/data",
+			requestHeaders: { Accept: "application/json" },
+		};
+
+		let result: { requestHeaders: Record<string, string> } | undefined;
+		listener(details, (response) => {
+			result = response;
+		});
+
+		expect(result).toBeDefined();
+		expect(result!.requestHeaders).not.toHaveProperty(AUTH_HEADER_NAME);
 		expect(result!.requestHeaders["Accept"]).toBe("application/json");
 	});
 
@@ -143,15 +203,10 @@ describe("installAuthHeaderInterceptor", () => {
 	it("works with different token and origin values", () => {
 		const customToken = "b".repeat(64);
 		const customOrigin = "http://127.0.0.1:9999";
-		const { listener, filter } = installAndGetListener(
-			customToken,
-			customOrigin,
-		);
-
-		expect(filter).toEqual({ urls: ["http://127.0.0.1:9999/*"] });
+		const { listener } = installAndGetListener(customToken, customOrigin);
 
 		const details: BeforeSendHeadersDetails = {
-			url: "http://127.0.0.1:9999/ws",
+			url: "http://127.0.0.1:9999/api/data",
 			requestHeaders: {},
 		};
 
@@ -163,6 +218,23 @@ describe("installAuthHeaderInterceptor", () => {
 		expect(result!.requestHeaders[AUTH_HEADER_NAME]).toBe(
 			`Bearer ${customToken}`,
 		);
+	});
+
+	it("handles runtime origin with /kanban path prefix", () => {
+		const { listener } = installAndGetListener(TOKEN, "http://localhost:52341/kanban");
+
+		// API request at root — should still match by host:port
+		const details: BeforeSendHeadersDetails = {
+			url: "http://localhost:52341/api/trpc/runtime.getInfo",
+			requestHeaders: {},
+		};
+
+		let result: { requestHeaders: Record<string, string> } | undefined;
+		listener(details, (response) => {
+			result = response;
+		});
+
+		expect(result!.requestHeaders[AUTH_HEADER_NAME]).toBe(`Bearer ${TOKEN}`);
 	});
 
 	it("returns a dispose function that removes the interceptor", () => {

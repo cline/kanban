@@ -3,9 +3,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 const CSP_HEADER_VALUE = [
 	"default-src 'self'",
-	"script-src 'self'",
+	"script-src 'self' 'unsafe-inline'",
 	"style-src 'self' 'unsafe-inline'",
-	"connect-src 'self' ws: wss:",
+	"connect-src 'self' ws: wss: https://*.ingest.us.sentry.io",
 	"img-src 'self' data:",
 ].join("; ");
 

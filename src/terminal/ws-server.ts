@@ -25,6 +25,7 @@ export interface CreateTerminalWebSocketBridgeRequest {
 	resolveTerminalManager: (workspaceId: string) => TerminalSessionService | null;
 	isTerminalIoWebSocketPath: (pathname: string) => boolean;
 	isTerminalControlWebSocketPath: (pathname: string) => boolean;
+	shouldAcceptUpgrade?: (request: IncomingMessage) => boolean;
 }
 
 export interface TerminalWebSocketBridge {
@@ -121,6 +122,7 @@ export function createTerminalWebSocketBridge({
 	resolveTerminalManager,
 	isTerminalIoWebSocketPath,
 	isTerminalControlWebSocketPath,
+	shouldAcceptUpgrade,
 }: CreateTerminalWebSocketBridgeRequest): TerminalWebSocketBridge {
 	const activeSockets = new Set<Socket>();
 	const terminalStreamStates = new Map<string, TerminalStreamState>();
@@ -374,6 +376,11 @@ export function createTerminalWebSocketBridge({
 			const isIoRequest = isTerminalIoWebSocketPath(pathname);
 			const isControlRequest = isTerminalControlWebSocketPath(pathname);
 			if (!isIoRequest && !isControlRequest) {
+				return;
+			}
+			if (shouldAcceptUpgrade && !shouldAcceptUpgrade(request)) {
+				upgradeRequest.__kanbanUpgradeHandled = true;
+				socket.destroy();
 				return;
 			}
 			upgradeRequest.__kanbanUpgradeHandled = true;

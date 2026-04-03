@@ -7,7 +7,12 @@ import type {
 	RuntimeBoardDependency,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
+import {
+	buildKanbanRuntimeUrl,
+	getKanbanRuntimeOrigin,
+	type ResolvedRuntimeConnection,
+	resolveRuntimeConnection,
+} from "../core/runtime-endpoint";
 import {
 	addTaskDependency,
 	addTaskToColumn,
@@ -96,12 +101,29 @@ function resolveTaskCommandTarget(input: TaskCommandTarget, commandName: string)
 	throw new Error(`${commandName} requires either --task-id or --column.`);
 }
 
+// ---------------------------------------------------------------------------
+// Module-level resolved connection — set once per command invocation by
+// runTaskCommand() before calling any handler.  This keeps the rest of the
+// module unchanged while adding desktop descriptor fallback.
+// ---------------------------------------------------------------------------
+
+let _resolvedConnection: ResolvedRuntimeConnection | null = null;
+
 function createRuntimeTrpcClient(workspaceId: string | null) {
+	const conn = _resolvedConnection;
+	const baseUrl = conn ? `${conn.origin}/api/trpc` : buildKanbanRuntimeUrl("/api/trpc");
+	const authToken = conn?.authToken ?? null;
+
 	return createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
 			httpBatchLink({
-				url: buildKanbanRuntimeUrl("/api/trpc"),
-				headers: () => (workspaceId ? { "x-kanban-workspace-id": workspaceId } : {}),
+				url: baseUrl,
+				headers: () => {
+					const h: Record<string, string> = {};
+					if (workspaceId) h["x-kanban-workspace-id"] = workspaceId;
+					if (authToken) h.authorization = `Bearer ${authToken}`;
+					return h;
+				},
 			}),
 		],
 	});
@@ -898,11 +920,17 @@ function parseOptionalBooleanOption(value: unknown, flagName: string): boolean |
 
 async function runTaskCommand(handler: () => Promise<JsonRecord>): Promise<void> {
 	try {
-		printJson(await handler());
+		// Resolve the runtime connection once, before calling the handler.
+		// This populates _resolvedConnection so all createRuntimeTrpcClient()
+		// calls within the handler use the correct URL and auth token.
+		_resolvedConnection = await resolveRuntimeConnection();
+		const result = await handler();
+		printJson(result);
 	} catch (error) {
+		const origin = _resolvedConnection?.origin ?? getKanbanRuntimeOrigin();
 		printJson({
 			ok: false,
-			error: `Task command failed at ${getKanbanRuntimeOrigin()}: ${toErrorMessage(error)}`,
+			error: `Task command failed at ${origin}: ${toErrorMessage(error)}`,
 		});
 		process.exitCode = 1;
 	}

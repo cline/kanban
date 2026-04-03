@@ -33,6 +33,7 @@ describe("runtime-start types", () => {
 		expect(options.host).toBeUndefined();
 		expect(options.port).toBeUndefined();
 		expect(options.authToken).toBeUndefined();
+		expect(options.cwd).toBeUndefined();
 		expect(options.openInBrowser).toBeUndefined();
 		expect(options.pickDirectory).toBeUndefined();
 		expect(options.warn).toBeUndefined();
@@ -65,6 +66,11 @@ describe("runtime-start types", () => {
 		const pickDirectory: NonNullable<RuntimeOptions["pickDirectory"]> = async () => null;
 		const result = await pickDirectory();
 		expect(result).toBeNull();
+	});
+
+	it("RuntimeOptions.cwd accepts an explicit working directory", () => {
+		const options: RuntimeOptions = { cwd: "/tmp/kanban-workspace" };
+		expect(options.cwd).toBe("/tmp/kanban-workspace");
 	});
 
 	it("startRuntime is exported as a function", async () => {

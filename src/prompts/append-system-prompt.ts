@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 
 import packageJson from "../../package.json" with { type: "json" };
@@ -301,4 +302,19 @@ export function resolveHomeAgentAppendSystemPrompt(
 	return renderAppendSystemPrompt(resolveAppendSystemPromptCommandPrefix(options), {
 		agentId: resolveHomeAgentId(taskId),
 	});
+}
+
+/**
+ * Compute a short hash of the rendered home-agent system prompt for the
+ * given agent.  The web UI includes this in the session descriptor key so
+ * that stale sessions are automatically rotated when the prompt changes —
+ * for any reason (command prefix change, template edit, version bump, etc.).
+ *
+ * The hash covers the **full rendered prompt string**, nothing else.
+ * This keeps the versioning dead-simple and free of edge cases.
+ */
+export function computeHomeAgentPromptHash(agentId: RuntimeAgentId): string {
+	const commandPrefix = resolveAppendSystemPromptCommandPrefix();
+	const prompt = renderAppendSystemPrompt(commandPrefix, { agentId });
+	return createHash("sha256").update(prompt).digest("hex").slice(0, 16);
 }

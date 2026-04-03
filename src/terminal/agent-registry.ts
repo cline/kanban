@@ -6,6 +6,7 @@ import type {
 	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 } from "../core/api-contract";
+import { computeHomeAgentPromptHash } from "../prompts/append-system-prompt";
 import { isBinaryAvailableOnPath } from "./command-discovery";
 
 export interface ResolvedAgentCommand {
@@ -124,5 +125,6 @@ export function buildRuntimeConfigResponse(
 		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
 		commitPromptTemplateDefault: runtimeConfig.commitPromptTemplateDefault,
 		openPrPromptTemplateDefault: runtimeConfig.openPrPromptTemplateDefault,
+		homeAgentPromptHash: computeHomeAgentPromptHash(runtimeConfig.selectedAgentId),
 	};
 }

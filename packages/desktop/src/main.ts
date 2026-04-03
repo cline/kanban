@@ -23,7 +23,8 @@ import {
 	powerSaveBlocker,
 	shell,
 } from "electron";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import { generateAuthToken, installAuthHeaderInterceptor } from "./auth.js";
@@ -49,6 +50,41 @@ const DEFAULT_HEIGHT = 900;
 const MIN_WIDTH = 800;
 const MIN_HEIGHT = 600;
 const BACKGROUND_COLOR = "#1F2428";
+const RUNTIME_HEALTH_TIMEOUT_MS = 3_000;
+
+// ---------------------------------------------------------------------------
+// Runtime descriptor — published so CLI helper commands can discover the
+// desktop-managed runtime as a fallback when the default port is unreachable.
+// Path: ~/.cline/kanban/runtime.json
+// ---------------------------------------------------------------------------
+
+const DESCRIPTOR_DIR = path.join(homedir(), ".cline", "kanban");
+const DESCRIPTOR_PATH = path.join(DESCRIPTOR_DIR, "runtime.json");
+
+async function publishRuntimeDescriptor(url: string, token: string): Promise<void> {
+	try {
+		await mkdir(DESCRIPTOR_DIR, { recursive: true });
+		const descriptor = {
+			url,
+			authToken: token,
+			pid: process.pid,
+			updatedAt: new Date().toISOString(),
+			source: "desktop",
+		};
+		await writeFile(DESCRIPTOR_PATH, JSON.stringify(descriptor, null, "\t"), "utf-8");
+	} catch {
+		// Best effort — if we can't write the descriptor, CLI fallback won't work
+		// but the desktop app itself is unaffected.
+	}
+}
+
+async function clearRuntimeDescriptor(): Promise<void> {
+	try {
+		await rm(DESCRIPTOR_PATH, { force: true });
+	} catch {
+		// Best effort.
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Helper: capture BrowserWindow bounds for persistence
@@ -73,7 +109,7 @@ function captureWindowState(window: BrowserWindow): WindowState {
 
 /**
  * Scan the kanban workspace index for workspaces that have tasks in the
- * "work" column (i.e. tasks that were interrupted by a previous shutdown).
+ * "In Progress" column (i.e. tasks that were interrupted by a previous shutdown).
  *
  * This is a best-effort read — errors are silently ignored so the app
  * always starts even if workspace data is missing or corrupt.
@@ -112,7 +148,7 @@ async function detectInterruptedTasks(): Promise<{
 			try {
 				const state = await loadWorkspaceState(entry.repoPath);
 				const workColumn = state.board.columns.find(
-					(c) => c.id === "work",
+					(c) => c.id === "in_progress",
 				);
 				const workCards = workColumn?.cards ?? [];
 				if (workCards.length > 0) {
@@ -169,8 +205,12 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
 		label: "View",
 		submenu: [
 			{ role: "reload" },
-			{ role: "forceReload" },
-			{ role: "toggleDevTools" },
+			...(!app.isPackaged
+				? ([
+					{ role: "forceReload" },
+					{ role: "toggleDevTools" },
+				] as Electron.MenuItemConstructorOptions[])
+				: []),
 			{ type: "separator" },
 			{ role: "resetZoom" },
 			{ role: "zoomIn" },
@@ -240,11 +280,16 @@ let authToken: string | null = null;
 /** The runtime URL once the child process reports ready. */
 let runtimeUrl: string | null = null;
 
+/** In-flight runtime restart promise used to deduplicate resume-triggered restarts. */
+let runtimeRestartPromise: Promise<void> | null = null;
+
 /** Power save blocker ID to prevent macOS App Nap. -1 if not active. */
 let powerSaveBlockerId = -1;
 
 /** Whether `before-quit` has been signalled. */
 let isQuitting = false;
+
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
 
 // ---------------------------------------------------------------------------
 // kanban:// protocol registration
@@ -378,6 +423,8 @@ function createMainWindow(): BrowserWindow {
 			contextIsolation: true,
 			nodeIntegration: false,
 			sandbox: true,
+			webSecurity: true,
+			devTools: !app.isPackaged,
 		},
 	});
 
@@ -444,6 +491,8 @@ async function startRuntimeChild(): Promise<string> {
 	// and reload the window.
 	runtimeManager.on("ready", (url: string) => {
 		runtimeUrl = url;
+		// Publish descriptor so CLI helpers can discover this runtime.
+		publishRuntimeDescriptor(url, authToken!);
 		if (mainWindow && !mainWindow.isDestroyed()) {
 			installAuthHeaderInterceptor(
 				mainWindow.webContents.session,
@@ -473,13 +522,82 @@ async function startRuntimeChild(): Promise<string> {
 		},
 	);
 
+	// Compute the absolute path to the bundled CLI shim.
+	// Packaged:  <app>/Contents/Resources/bin/kanban (macOS)
+	//            <app>/resources/bin/kanban.cmd (Windows)
+	//            <app>/resources/bin/kanban (Linux)
+	// Dev mode:  <desktop-pkg>/build/bin/kanban (a dev shim)
+	let kanbanCliCommand: string;
+	if (app.isPackaged) {
+		const shimName = process.platform === "win32" ? "kanban.cmd" : "kanban";
+		kanbanCliCommand = path.join(process.resourcesPath, "bin", shimName);
+	} else {
+		kanbanCliCommand = path.join(import.meta.dirname, "..", "build", "bin", "kanban-dev");
+	}
+
 	const config: RuntimeConfig = {
 		host: "127.0.0.1",
 		port: "auto",
 		authToken,
+		kanbanCliCommand,
 	};
 
 	return runtimeManager.start(config);
+}
+
+async function isRuntimeHealthy(): Promise<boolean> {
+	if (!runtimeUrl) {
+		return false;
+	}
+
+	const healthUrl = new URL("/api/health", runtimeUrl);
+	const abortController = new AbortController();
+	const timeout = setTimeout(() => {
+		abortController.abort();
+	}, RUNTIME_HEALTH_TIMEOUT_MS);
+
+	try {
+		const response = await fetch(healthUrl, {
+			signal: abortController.signal,
+			headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+		});
+		return response.ok;
+	} catch {
+		return false;
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+async function restartRuntimeChild(): Promise<void> {
+	if (runtimeRestartPromise) {
+		await runtimeRestartPromise;
+		return;
+	}
+
+	runtimeRestartPromise = (async () => {
+		const currentRuntimeManager = runtimeManager;
+		if (currentRuntimeManager?.running) {
+			try {
+				await currentRuntimeManager.shutdown();
+			} catch (error) {
+				console.warn(
+					"[desktop] Runtime shutdown during restart failed:",
+					error instanceof Error ? error.message : error,
+				);
+			}
+		}
+		if (currentRuntimeManager) {
+			await currentRuntimeManager.dispose().catch(() => {});
+		}
+		runtimeManager = null;
+		runtimeUrl = null;
+		await startRuntimeChild();
+	})().finally(() => {
+		runtimeRestartPromise = null;
+	});
+
+	await runtimeRestartPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -507,11 +625,24 @@ function stopAppNapPrevention(): void {
 function setupPowerMonitorHealthCheck(): void {
 	powerMonitor.on("resume", () => {
 		// After waking from sleep, the runtime child may have stalled.
-		// Send a heartbeat-ack to reset the child's heartbeat timer.
-		// If the child is dead, the heartbeat timeout will eventually
-		// trigger the auto-restart logic.
+		// Send a heartbeat-ack immediately, then verify the HTTP server is
+		// still responsive. If health probing fails, restart the child.
 		if (runtimeManager?.running) {
 			runtimeManager.send({ type: "heartbeat-ack" });
+			void isRuntimeHealthy().then(async (healthy) => {
+				if (healthy) {
+					return;
+				}
+				console.warn("[desktop] Runtime health check failed after resume; restarting runtime.");
+				try {
+					await restartRuntimeChild();
+				} catch (error) {
+					console.error(
+						"[desktop] Failed to restart runtime after resume:",
+						error instanceof Error ? error.message : error,
+					);
+				}
+			});
 		}
 	});
 }
@@ -570,6 +701,9 @@ if (gotTheLock) {
 		try {
 			const url = await startRuntimeChild();
 			runtimeUrl = url;
+
+			// Publish descriptor so CLI helpers can discover this runtime.
+			await publishRuntimeDescriptor(url, authToken!);
 
 			// Install the auth header interceptor on the window's session.
 			installAuthHeaderInterceptor(
@@ -654,6 +788,10 @@ if (gotTheLock) {
 	});
 
 	app.on("will-quit", async () => {
+		// Clear the runtime descriptor so CLI helpers don't try to connect
+		// to a runtime that is shutting down.
+		await clearRuntimeDescriptor();
+
 		// Final cleanup — dispose the runtime manager to remove all listeners.
 		if (runtimeManager) {
 			await runtimeManager.dispose().catch(() => {});

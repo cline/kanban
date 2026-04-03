@@ -1,0 +1,21 @@
+#!/bin/bash
+# Kanban CLI shim — bundled with the desktop app.
+#
+# This script is the single source of truth for invoking the Kanban CLI
+# from within the desktop app's agent sessions.  It uses `node` from PATH
+# to run the CLI entry point bundled inside the app's resources.
+#
+# The desktop main process computes the absolute path to this shim and
+# passes it to the runtime child via IPC, which sets KANBAN_CLI_COMMAND
+# so the home-agent system prompt references this script.
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RESOURCES_DIR="$(dirname "$SCRIPT_DIR")"
+CLI_ENTRY="$RESOURCES_DIR/app.asar.unpacked/node_modules/kanban/dist/cli.js"
+
+if [ ! -f "$CLI_ENTRY" ]; then
+  echo "error: Kanban CLI not found at $CLI_ENTRY" >&2
+  exit 1
+fi
+
+exec node "$CLI_ENTRY" "$@"

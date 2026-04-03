@@ -2,12 +2,13 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
 import { createGitProcessEnv } from "./core/git-process-env";
 import {
 	DEFAULT_KANBAN_RUNTIME_HOST,
 	DEFAULT_KANBAN_RUNTIME_PORT,
+	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
 	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
@@ -18,7 +19,7 @@ import type { TerminalSessionManager } from "./terminal/session-manager";
 
 function readRuntimeVersion(): string {
 	try {
-		const packageJsonPath = join(__dirname, "..", "package.json");
+		const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url));
 		const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { version: string };
 		return packageJson.version;
 	} catch {
@@ -30,6 +31,7 @@ export interface RuntimeOptions {
 	host?: string;
 	port?: number | "auto";
 	authToken?: string;
+	cwd?: string;
 	isLocal?: boolean;
 	openInBrowser?: boolean;
 	pickDirectory?: () => Promise<string | null>;
@@ -110,6 +112,8 @@ async function bootServer(
 	directoryBrowseRoot: string | undefined,
 	isLocal: boolean,
 	runtimeVersion: string,
+	runtimeCwd: string,
+	authToken: string | undefined,
 ): Promise<{
 	url: string;
 	close: () => Promise<void>;
@@ -132,7 +136,7 @@ async function bootServer(
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
-		cwd: process.cwd(),
+		cwd: runtimeCwd,
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
 		hasGitRepository,
@@ -180,6 +184,9 @@ async function bootServer(
 		collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog: async () => await pickDirectory(),
 		directoryBrowseRoot,
+		authToken,
+		allowedOrigins: authToken ? [getKanbanRuntimeOrigin()] : undefined,
+		version: runtimeVersion,
 	});
 
 	const close = async () => {
@@ -208,6 +215,7 @@ export async function startRuntime(options?: RuntimeOptions): Promise<RuntimeHan
 	const host = options?.host ?? DEFAULT_KANBAN_RUNTIME_HOST;
 	const portOption = options?.port;
 	const warn = options?.warn ?? console.warn;
+	const runtimeCwd = options?.cwd ?? process.cwd();
 
 	const defaultPickDirectory = async (): Promise<string | null> => {
 		const { pickDirectoryPathFromSystemDialog } = await import("./server/directory-picker.js");
@@ -219,6 +227,15 @@ export async function startRuntime(options?: RuntimeOptions): Promise<RuntimeHan
 
 	setKanbanRuntimeHost(host);
 
+	// Publish the auth token to process.env so that PTY child processes
+	// (agents) inherit it automatically — same pattern as KANBAN_RUNTIME_HOST
+	// and KANBAN_RUNTIME_PORT.  This lets `kanban task create` invoked from
+	// within an agent PTY resolve the correct runtime connection without
+	// needing the filesystem descriptor fallback.
+	if (options?.authToken) {
+		process.env.KANBAN_AUTH_TOKEN = options.authToken;
+	}
+
 	if (portOption === "auto") {
 		const autoPort = await findAvailableRuntimePort(DEFAULT_KANBAN_RUNTIME_PORT, host);
 		setKanbanRuntimePort(autoPort);
@@ -229,7 +246,15 @@ export async function startRuntime(options?: RuntimeOptions): Promise<RuntimeHan
 	const isAutoPort = portOption === "auto";
 
 	const boot = async (): Promise<RuntimeHandle> => {
-		const server = await bootServer(warn, pickDirectory, options?.directoryBrowseRoot, isLocal, runtimeVersion);
+		const server = await bootServer(
+			warn,
+			pickDirectory,
+			options?.directoryBrowseRoot,
+			isLocal,
+			runtimeVersion,
+			runtimeCwd,
+			options?.authToken,
+		);
 		return {
 			url: server.url,
 			shutdown: async (shutdownOptions?: RuntimeShutdownOptions) => {

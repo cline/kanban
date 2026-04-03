@@ -87,6 +87,7 @@ const savedClineOauthConfig = {
 	openPrPromptTemplate: "",
 	commitPromptTemplateDefault: "",
 	openPrPromptTemplateDefault: "",
+	homeAgentPromptHash: "test-hash",
 	globalConfigPath: null,
 	projectConfigPath: null,
 	agents: [

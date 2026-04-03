@@ -13,6 +13,7 @@
  */
 
 import {
+	app,
 	Menu,
 	BrowserWindow,
 	dialog,
@@ -41,6 +42,13 @@ interface AddConnectionResult {
 	authToken: string;
 }
 
+type AddConnectionDialogAction =
+	| { kind: "cancel" }
+	| { kind: "invalid"; message: string }
+	| { kind: "submit"; result: AddConnectionResult };
+
+const ADD_CONNECTION_DIALOG_PROTOCOL = "kanban-connection:";
+
 function buildDialogHtml(): string {
 	return `<!DOCTYPE html>
 <html>
@@ -65,37 +73,76 @@ function buildDialogHtml(): string {
 </head>
 <body>
   <h2>Add Remote Connection</h2>
-  <label>Label<input id="label" placeholder="My Server" autofocus></label>
-  <label>Server URL<input id="url" placeholder="https://kanban.example.com"></label>
-  <label>Auth Token (optional)<input id="token" placeholder="Bearer token"></label>
-  <div class="buttons">
-    <button onclick="cancel()">Cancel</button>
-    <button class="primary" onclick="submit()">Connect</button>
-  </div>
-  <script>
-    const { ipcRenderer } = require('electron');
-    function cancel() { ipcRenderer.send('add-connection-result', null); }
-    function submit() {
-      const label = document.getElementById('label').value.trim();
-      const url = document.getElementById('url').value.trim();
-      const token = document.getElementById('token').value.trim();
-      if (!label || !url) { alert('Label and URL are required.'); return; }
-      ipcRenderer.send('add-connection-result', JSON.stringify({ label, serverUrl: url, authToken: token }));
-    }
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') cancel();
-      if (e.key === 'Enter') submit();
-    });
-  </script>
+  <form action="kanban-connection://submit" method="get">
+    <label>Label<input name="label" placeholder="My Server" autofocus required spellcheck="false"></label>
+    <label>Server URL<input name="serverUrl" type="url" placeholder="https://kanban.example.com" required spellcheck="false"></label>
+    <label>Auth Token (optional)<input name="authToken" placeholder="Bearer token" spellcheck="false"></label>
+    <div class="buttons">
+      <button type="submit" formaction="kanban-connection://cancel" formnovalidate>Cancel</button>
+      <button class="primary" type="submit">Connect</button>
+    </div>
+  </form>
 </body>
 </html>`;
+}
+
+function parseAddConnectionDialogAction(rawUrl: string): AddConnectionDialogAction | null {
+	let navigationUrl: URL;
+	try {
+		navigationUrl = new URL(rawUrl);
+	} catch {
+		return null;
+	}
+	if (navigationUrl.protocol !== ADD_CONNECTION_DIALOG_PROTOCOL) {
+		return null;
+	}
+	if (navigationUrl.hostname === "cancel") {
+		return { kind: "cancel" };
+	}
+	if (navigationUrl.hostname !== "submit") {
+		return { kind: "invalid", message: "Unsupported connection dialog action." };
+	}
+
+	const label = navigationUrl.searchParams.get("label")?.trim() ?? "";
+	const rawServerUrl = navigationUrl.searchParams.get("serverUrl")?.trim() ?? "";
+	const authToken = navigationUrl.searchParams.get("authToken")?.trim() ?? "";
+
+	if (!label || !rawServerUrl) {
+		return { kind: "invalid", message: "Label and server URL are required." };
+	}
+
+	let serverUrl: URL;
+	try {
+		serverUrl = new URL(rawServerUrl);
+	} catch {
+		return { kind: "invalid", message: "Enter a valid server URL." };
+	}
+	if (serverUrl.protocol !== "http:" && serverUrl.protocol !== "https:") {
+		return { kind: "invalid", message: "Server URL must use http or https." };
+	}
+
+	return {
+		kind: "submit",
+		result: {
+			label,
+			serverUrl: serverUrl.toString(),
+			authToken,
+		},
+	};
 }
 
 export function showAddConnectionDialog(
 	parent: BrowserWindow,
 ): Promise<AddConnectionResult | null> {
 	return new Promise((resolve) => {
-		const { ipcMain } = require("electron") as typeof import("electron");
+		let settled = false;
+		const finish = (result: AddConnectionResult | null) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			resolve(result);
+		};
 
 		const child = new BrowserWindow({
 			parent,
@@ -108,36 +155,44 @@ export function showAddConnectionDialog(
 			title: "Add Remote Connection",
 			backgroundColor: "#1F2428",
 			webPreferences: {
-				contextIsolation: false,
-				nodeIntegration: true,
-				sandbox: false,
+				contextIsolation: true,
+				nodeIntegration: false,
+				sandbox: true,
+				webSecurity: true,
+				devTools: !app.isPackaged,
 			},
 		});
 
 		child.setMenuBarVisibility(false);
-
-		const onResult = (_event: unknown, raw: string | null) => {
-			ipcMain.removeListener("add-connection-result", onResult);
-			child.close();
-			if (!raw) {
-				resolve(null);
+		child.webContents.on("will-navigate", (event, rawUrl) => {
+			const action = parseAddConnectionDialogAction(rawUrl);
+			if (!action) {
 				return;
 			}
-			try {
-				resolve(JSON.parse(raw) as AddConnectionResult);
-			} catch {
-				resolve(null);
+			event.preventDefault();
+			if (action.kind === "cancel") {
+				finish(null);
+				child.close();
+				return;
 			}
-		};
-
-		ipcMain.on("add-connection-result", onResult);
-
-		child.on("closed", () => {
-			ipcMain.removeListener("add-connection-result", onResult);
-			resolve(null);
+			if (action.kind === "invalid") {
+				void dialog.showMessageBox(child, {
+					type: "warning",
+					title: "Invalid Connection",
+					message: action.message,
+					buttons: ["OK"],
+				});
+				return;
+			}
+			finish(action.result);
+			child.close();
 		});
 
-		child.loadURL(
+		child.on("closed", () => {
+			finish(null);
+		});
+
+		void child.loadURL(
 			`data:text/html;charset=utf-8,${encodeURIComponent(buildDialogHtml())}`,
 		);
 	});

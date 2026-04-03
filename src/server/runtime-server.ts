@@ -26,6 +26,7 @@ import { createProjectsApi } from "../trpc/projects-api";
 import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import { createAuthMiddleware } from "./auth-middleware";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";
 
@@ -53,6 +54,9 @@ export interface CreateRuntimeServerDependencies {
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
 	pickDirectoryPathFromSystemDialog: () => Promise<string | null> | string | null;
 	directoryBrowseRoot?: string;
+	authToken?: string;
+	allowedOrigins?: string[];
+	version: string;
 }
 
 export interface RuntimeServer {
@@ -81,6 +85,11 @@ function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): 
 
 export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
 	const webUiDir = getWebUiDir();
+	const authMiddleware = createAuthMiddleware({
+		authToken: deps.authToken,
+		allowedOrigins: deps.allowedOrigins,
+		version: deps.version,
+	});
 
 	try {
 		await readFile(join(webUiDir, "index.html"));
@@ -236,6 +245,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	const server = createServer(async (req, res) => {
 		try {
+			if (!authMiddleware.handleHttpRequest(req, res)) {
+				return;
+			}
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
 			const oauthCallbackResponse = await handleClineMcpOauthCallback(requestUrl);
@@ -269,6 +281,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		}
 	});
 	server.on("upgrade", (request, socket, head) => {
+		const upgradeRequest = request as IncomingMessage & { __kanbanUpgradeHandled?: boolean };
 		let requestUrl: URL;
 		try {
 			requestUrl = new URL(request.url ?? "/", getKanbanRuntimeOrigin());
@@ -279,7 +292,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		if (normalizeRequestPath(requestUrl.pathname) !== "/api/runtime/ws") {
 			return;
 		}
-		(request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled = true;
+		if (!authMiddleware.handleWsUpgrade(request)) {
+			upgradeRequest.__kanbanUpgradeHandled = true;
+			socket.destroy();
+			return;
+		}
+		upgradeRequest.__kanbanUpgradeHandled = true;
 		const requestedWorkspaceId = requestUrl.searchParams.get("workspaceId")?.trim() || null;
 		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedWorkspaceId });
 	});
@@ -288,6 +306,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		resolveTerminalManager: (workspaceId) => deps.workspaceRegistry.getTerminalManagerForWorkspace(workspaceId),
 		isTerminalIoWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/io",
 		isTerminalControlWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/control",
+		shouldAcceptUpgrade: (request) => authMiddleware.handleWsUpgrade(request),
 	});
 	server.on("upgrade", (request, socket) => {
 		const handled = (request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled;
