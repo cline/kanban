@@ -3,12 +3,9 @@
  *
  * Runs in a sandboxed context with access to a limited set of Node APIs.
  * Uses contextBridge to safely expose IPC channels to the renderer.
- *
- * Currently minimal — will be extended if the renderer needs to communicate
- * with the main process (e.g. for connection switching, diagnostics).
  */
 
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
 /**
  * Desktop API exposed to the renderer via window.desktop.
@@ -18,6 +15,18 @@ import { contextBridge } from "electron";
 const desktopApi = {
 	/** Returns the platform the desktop app is running on. */
 	platform: process.platform,
+
+	/**
+	 * Register a callback for the "open-diagnostics" menu action.
+	 * Returns a dispose function to unregister the listener.
+	 */
+	onOpenDiagnostics(callback: () => void): () => void {
+		const handler = () => callback();
+		ipcRenderer.on("open-diagnostics", handler);
+		return () => {
+			ipcRenderer.removeListener("open-diagnostics", handler);
+		};
+	},
 } as const;
 
 contextBridge.exposeInMainWorld("desktop", desktopApi);

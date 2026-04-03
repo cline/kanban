@@ -10,6 +10,7 @@ import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
+import { DiagnosticsDialog } from "@/components/diagnostics-dialog";
 import { GitHistoryView } from "@/components/git-history-view";
 import { KanbanBoard } from "@/components/kanban-board";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
@@ -39,6 +40,7 @@ import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallba
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDebugTools } from "@/hooks/use-debug-tools";
+import { useDiagnostics } from "@/hooks/use-diagnostics";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import { useGitActions } from "@/hooks/use-git-actions";
@@ -107,6 +109,7 @@ export default function App(): ReactElement {
 		latestTaskReadyForReview,
 		latestMcpAuthStatuses,
 		clineSessionContextVersion,
+		runtimeVersion,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -189,6 +192,25 @@ export default function App(): ReactElement {
 		settingsRuntimeProjectConfig,
 		onOpenStartupOnboardingDialog: handleOpenStartupOnboardingDialog,
 	});
+	const { isDiagnosticsOpen, diagnostics, handleOpenDiagnostics, handleDiagnosticsOpenChange } = useDiagnostics({
+		open: false,
+		isLocal,
+		runtimeVersion,
+		isRuntimeDisconnected,
+		streamError,
+		hasReceivedSnapshot,
+		workspaceId: currentProjectId,
+	});
+
+	// Listen for the desktop menu "open-diagnostics" event.
+	useEffect(() => {
+		const desktopApi = (window as unknown as Record<string, unknown>).desktop as
+			| { onOpenDiagnostics?: (cb: () => void) => () => void }
+			| undefined;
+		if (!desktopApi?.onOpenDiagnostics) return;
+		return desktopApi.onOpenDiagnostics(handleOpenDiagnostics);
+	}, [handleOpenDiagnostics]);
+
 	const {
 		markConnectionReady: markTerminalConnectionReady,
 		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
@@ -1042,6 +1064,11 @@ export default function App(): ReactElement {
 				isResetAllStatePending={isResetAllStatePending}
 				onShowStartupOnboardingDialog={handleShowStartupOnboardingDialog}
 				onResetAllState={handleResetAllState}
+			/>
+			<DiagnosticsDialog
+				open={isDiagnosticsOpen}
+				onOpenChange={handleDiagnosticsOpenChange}
+				diagnostics={diagnostics}
 			/>
 			<TaskCreateDialog
 				open={isInlineTaskCreateOpen}

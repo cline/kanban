@@ -177,6 +177,15 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
 			{ role: "zoomOut" },
 			{ type: "separator" },
 			{ role: "togglefullscreen" },
+			{ type: "separator" },
+			{
+				label: "Diagnostics",
+				click: () => {
+					if (mainWindow && !mainWindow.isDestroyed()) {
+						mainWindow.webContents.send("open-diagnostics");
+					}
+				},
+			},
 		],
 	};
 
