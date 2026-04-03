@@ -819,7 +819,7 @@ body.kb-dependency-link-mode {
 		animation: kb-dialog-show-mobile 150ms ease;
 	}
 
-	.kb-dialog-content button {
+	.kb-dialog-content button:not([role='checkbox']):not([role='switch']) {
 		min-height: 44px;
 	}
 }
