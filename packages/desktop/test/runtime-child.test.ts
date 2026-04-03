@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RuntimeChildManager } from "../src/runtime-child.js";
 
-describe("RuntimeChildManager", () => {
+describe("RuntimeChildManager (basic)", () => {
 	it("can be constructed with required options", () => {
 		const manager = new RuntimeChildManager({
 			childScriptPath: "/path/to/runtime-child.js",
@@ -9,19 +9,18 @@ describe("RuntimeChildManager", () => {
 		expect(manager).toBeInstanceOf(RuntimeChildManager);
 	});
 
-	it("start() throws not-implemented error (stub)", async () => {
+	it("reports running=false before start", () => {
 		const manager = new RuntimeChildManager({
 			childScriptPath: "/path/to/runtime-child.js",
 		});
-		await expect(
-			manager.start({ host: "127.0.0.1", port: "auto", authToken: "token" }),
-		).rejects.toThrow("not yet implemented");
+		expect(manager.running).toBe(false);
 	});
 
-	it("shutdown() throws not-implemented error (stub)", async () => {
+	it("shutdown() is a no-op when no child is running", async () => {
 		const manager = new RuntimeChildManager({
 			childScriptPath: "/path/to/runtime-child.js",
 		});
-		await expect(manager.shutdown()).rejects.toThrow("not yet implemented");
+		// Should not throw — it's a no-op when nothing is running
+		await manager.shutdown();
 	});
 });
