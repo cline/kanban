@@ -666,17 +666,17 @@ export function CardDetailView({
 				style={{ minHeight: 0, overflow: "hidden", background: "var(--color-surface-0)" }}
 			>
 				<MobileDetailTabBar activeTab={mobileTab} onTabChange={setMobileTab} showTerminal={showBottomTerminal} />
-				<div className="flex flex-1" style={{ minHeight: 0, overflow: "hidden" }}>
+				<div className="flex min-w-0 flex-1" style={{ minHeight: 0, overflow: "hidden" }}>
 					{/* Chat panel */}
 					<div
-						className="flex-1 flex-col"
+						className="min-w-0 flex-1 flex-col"
 						style={{ display: mobileTab === "chat" ? "flex" : "none", minHeight: 0 }}
 					>
 						{agentChatPanel}
 					</div>
 					{/* Diff panel */}
 					<div
-						className="flex-1 flex-col"
+						className="min-w-0 flex-1 flex-col"
 						style={{ display: mobileTab === "diff" ? "flex" : "none", minHeight: 0 }}
 					>
 						{isRuntimeAvailable ? (
@@ -713,7 +713,7 @@ export function CardDetailView({
 					</div>
 					{/* Files panel */}
 					<div
-						className="flex-1 flex-col"
+						className="min-w-0 flex-1 flex-col"
 						style={{ display: mobileTab === "files" ? "flex" : "none", minHeight: 0 }}
 					>
 						<FileTreePanel
@@ -729,7 +729,7 @@ export function CardDetailView({
 					{/* Terminal panel */}
 					{showBottomTerminal ? (
 						<div
-							className="flex-1 flex-col"
+							className="min-w-0 flex-1 flex-col"
 							style={{ display: mobileTab === "terminal" ? "flex" : "none", minHeight: 0 }}
 						>
 							<AgentTerminalPanel
