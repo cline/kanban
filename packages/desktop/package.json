@@ -20,10 +20,13 @@
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"e2e": "playwright test --config playwright.config.ts",
+		"e2e:headed": "playwright test --config playwright.config.ts --headed",
 		"rebuild:pty": "electron-rebuild -f -w node-pty",
 		"postinstall": "electron-builder install-app-deps"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.55.1",
 		"@electron/notarize": "^3.0.0",
 		"@electron/rebuild": "^3.7.1",
 		"@types/node": "^22.10.5",
