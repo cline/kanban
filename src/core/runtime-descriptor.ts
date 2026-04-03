@@ -38,7 +38,7 @@ export interface RuntimeDescriptor {
 // Path
 // ---------------------------------------------------------------------------
 
-const DESCRIPTOR_DIR = join(homedir(), ".cline", "kanban");
+const DESCRIPTOR_DIR = process.env.KANBAN_DESKTOP_RUNTIME_DESCRIPTOR_DIR || join(homedir(), ".cline", "kanban");
 const DESCRIPTOR_FILENAME = "runtime.json";
 
 export function getRuntimeDescriptorPath(): string {

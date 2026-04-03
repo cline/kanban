@@ -661,6 +661,15 @@ function rebuildConnectionMenu(): void {
 
 if (gotTheLock) {
 	app.whenReady().then(async () => {
+		// ── E2E state isolation ───────────────────────────────────────────
+		// When KANBAN_DESKTOP_USER_DATA is set, override Electron's userData
+		// path so that E2E tests use an isolated directory for connections.json,
+		// window-state.json, etc. This MUST happen before any app.getPath('userData')
+		// call. No-op when the env var is absent.
+		if (process.env.KANBAN_DESKTOP_USER_DATA) {
+			app.setPath("userData", process.env.KANBAN_DESKTOP_USER_DATA);
+		}
+
 		// ── preflight ─────────────────────────────────────────────────────
 		advanceBootPhase("preflight");
 
