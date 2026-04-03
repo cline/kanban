@@ -432,6 +432,22 @@ export const runtimeProjectDirectoryPickerResponseSchema = z.object({
 });
 export type RuntimeProjectDirectoryPickerResponse = z.infer<typeof runtimeProjectDirectoryPickerResponseSchema>;
 
+export const runtimeListDirectoriesRequestSchema = z.object({
+	path: z.string(),
+});
+export type RuntimeListDirectoriesRequest = z.infer<typeof runtimeListDirectoriesRequestSchema>;
+
+export const runtimeListDirectoriesDirectoryEntrySchema = z.object({
+	name: z.string(),
+	path: z.string(),
+});
+export type RuntimeListDirectoriesDirectoryEntry = z.infer<typeof runtimeListDirectoriesDirectoryEntrySchema>;
+
+export const runtimeListDirectoriesResponseSchema = z.object({
+	directories: z.array(runtimeListDirectoriesDirectoryEntrySchema),
+});
+export type RuntimeListDirectoriesResponse = z.infer<typeof runtimeListDirectoriesResponseSchema>;
+
 export const runtimeProjectRemoveRequestSchema = z.object({
 	projectId: z.string(),
 });

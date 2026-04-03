@@ -21,6 +21,7 @@ export interface RuntimeOptions {
 	openInBrowser?: boolean;
 	pickDirectory?: () => Promise<string | null>;
 	warn?: (message: string) => void;
+	directoryBrowseRoot?: string;
 }
 
 export interface RuntimeShutdownOptions {
@@ -93,6 +94,7 @@ async function findAvailableRuntimePort(startPort: number, host: string): Promis
 async function bootServer(
 	warn: (message: string) => void,
 	pickDirectory: () => Promise<string | null>,
+	directoryBrowseRoot?: string,
 ): Promise<{
 	url: string;
 	close: () => Promise<void>;
@@ -160,6 +162,7 @@ async function bootServer(
 		disposeWorkspace: disposeTrackedWorkspace,
 		collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog: async () => await pickDirectory(),
+		directoryBrowseRoot,
 	});
 
 	const close = async () => {
@@ -207,7 +210,7 @@ export async function startRuntime(options?: RuntimeOptions): Promise<RuntimeHan
 	const isAutoPort = portOption === "auto";
 
 	const boot = async (): Promise<RuntimeHandle> => {
-		const server = await bootServer(warn, pickDirectory);
+		const server = await bootServer(warn, pickDirectory, options?.directoryBrowseRoot);
 		return {
 			url: server.url,
 			shutdown: async (shutdownOptions?: RuntimeShutdownOptions) => {

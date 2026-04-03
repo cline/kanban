@@ -20,6 +20,7 @@ import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { createTerminalWebSocketBridge } from "../terminal/ws-server";
 import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router";
+import { createDirectoryBrowseApi } from "../trpc/directory-browse-api";
 import { createHooksApi } from "../trpc/hooks-api";
 import { createProjectsApi } from "../trpc/projects-api";
 import { createRuntimeApi } from "../trpc/runtime-api";
@@ -51,6 +52,7 @@ export interface CreateRuntimeServerDependencies {
 	) => DisposeTrackedWorkspaceResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
 	pickDirectoryPathFromSystemDialog: () => Promise<string | null> | string | null;
+	directoryBrowseRoot?: string;
 }
 
 export interface RuntimeServer {
@@ -219,6 +221,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
 				broadcastTaskReadyForReview: deps.runtimeStateHub.broadcastTaskReadyForReview,
+			}),
+			directoryBrowseApi: createDirectoryBrowseApi({
+				directoryBrowseRoot: deps.directoryBrowseRoot,
 			}),
 		};
 	};
