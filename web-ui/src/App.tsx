@@ -15,6 +15,7 @@ import { KanbanBoard } from "@/components/kanban-board";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
+import { ServerDirectoryBrowser } from "@/components/server-directory-browser";
 import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
@@ -113,8 +114,10 @@ export default function App(): ReactElement {
 		removingProjectId,
 		hasNoProjects,
 		isProjectSwitching,
+		isLocal,
 		handleSelectProject,
 		handleAddProject,
+		handleAddProjectByPath,
 		handleConfirmInitializeGitProject,
 		handleCancelInitializeGitProject,
 		handleRemoveProject,
@@ -124,6 +127,20 @@ export default function App(): ReactElement {
 	} = useProjectNavigation({
 		onProjectSwitchStart: handleProjectSwitchStart,
 	});
+	const [isServerDirectoryBrowserOpen, setIsServerDirectoryBrowserOpen] = useState(false);
+	const gatedHandleAddProject = useCallback(() => {
+		if (isLocal) {
+			void handleAddProject();
+		} else {
+			setIsServerDirectoryBrowserOpen(true);
+		}
+	}, [handleAddProject, isLocal]);
+	const handleServerDirectorySelected = useCallback(
+		(path: string) => {
+			void handleAddProjectByPath(path);
+		},
+		[handleAddProjectByPath],
+	);
 	const activeNotificationWorkspaceId = navigationCurrentProjectId;
 	const isDocumentVisible = useDocumentVisibility();
 	const isInitialRuntimeLoad =
@@ -759,9 +776,7 @@ export default function App(): ReactElement {
 						void handleSelectProject(projectId);
 					}}
 					onRemoveProject={handleRemoveProject}
-					onAddProject={() => {
-						void handleAddProject();
-					}}
+					onAddProject={gatedHandleAddProject}
 				/>
 			) : null}
 			<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -838,12 +853,7 @@ export default function App(): ReactElement {
 									<p className="text-[13px] text-text-secondary">
 										Add a git repository to start using Kanban.
 									</p>
-									<Button
-										variant="primary"
-										onClick={() => {
-											void handleAddProject();
-										}}
-									>
+									<Button variant="primary" onClick={gatedHandleAddProject}>
 										Add Project
 									</Button>
 								</div>
@@ -1157,6 +1167,12 @@ export default function App(): ReactElement {
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialog>
+			<ServerDirectoryBrowser
+				open={isServerDirectoryBrowserOpen}
+				onOpenChange={setIsServerDirectoryBrowserOpen}
+				workspaceId={currentProjectId}
+				onSelect={handleServerDirectorySelected}
+			/>
 		</div>
 	);
 }

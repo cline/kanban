@@ -61,6 +61,7 @@ export interface UseRuntimeStateStreamResult {
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
+	isLocal: boolean;
 }
 
 interface RuntimeStateStreamStore {
@@ -78,6 +79,7 @@ interface RuntimeStateStreamStore {
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
+	isLocal: boolean;
 }
 
 type RuntimeStateStreamAction =
@@ -116,6 +118,7 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		streamError: null,
 		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
+		isLocal: true,
 	};
 }
 
@@ -187,6 +190,9 @@ function runtimeStateStreamReducer(
 					),
 				}
 			: null;
+		// isLocal may be provided by the server snapshot (Task 2.2); default to true when absent.
+		const snapshotIsLocal = (action.payload as Record<string, unknown>).isLocal;
+		const nextIsLocal = typeof snapshotIsLocal === "boolean" ? snapshotIsLocal : true;
 		return {
 			isLocal: action.payload.isLocal,
 			runtimeVersion: action.payload.runtimeVersion,
@@ -202,6 +208,7 @@ function runtimeStateStreamReducer(
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: true,
+			isLocal: nextIsLocal,
 		};
 	}
 	if (action.type === "projects_updated") {
@@ -522,5 +529,6 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,
+		isLocal: state.isLocal,
 	};
 }
