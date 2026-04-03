@@ -90,6 +90,16 @@ export function isKanbanRuntimeHttps(): boolean {
 	return runtimeHttps;
 }
 
+const LOCALHOST_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
+/**
+ * Returns true when Kanban is bound to a non-localhost host, meaning it is
+ * accessible to other machines on the network and passcode auth is required.
+ */
+export function isKanbanRemoteHost(): boolean {
+	return !LOCALHOST_HOSTS.has(runtimeHost);
+}
+
 export function getKanbanRuntimeOrigin(): string {
 	const scheme = isKanbanRuntimeHttps() ? "https" : "http";
 	return `${scheme}://${getKanbanRuntimeHost()}:${getKanbanRuntimePort()}`;

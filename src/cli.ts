@@ -24,11 +24,13 @@ import {
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
 	getRuntimeFetch,
+	isKanbanRemoteHost,
 	parseRuntimePort,
 	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
 	setKanbanRuntimeTls,
 } from "./core/runtime-endpoint";
+import { disablePasscode, generatePasscode } from "./security/passcode-manager";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
 import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
@@ -43,6 +45,7 @@ interface CliOptions {
 	https: boolean;
 	cert: string | null;
 	key: string | null;
+	noPasscode: boolean;
 }
 
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
@@ -71,6 +74,7 @@ interface RootCommandOptions {
 	https?: boolean;
 	cert?: string;
 	key?: string;
+	noPasscode?: boolean;
 }
 
 type ShutdownIndicatorResult = "done" | "interrupted" | "failed";
@@ -88,7 +92,7 @@ interface ShutdownIndicator {
  * unexpected argument is treated as a command-style invocation instead.
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
-	const launchFlags = new Set(["--open", "--no-open", "--skip-shutdown-cleanup", "--https"]);
+	const launchFlags = new Set(["--open", "--no-open", "--skip-shutdown-cleanup", "--https", "--no-passcode"]);
 	const launchOptionsWithValues = new Set(["--host", "--port", "--agent", "--cert", "--key"]);
 
 	for (let index = 0; index < argv.length; index += 1) {
@@ -497,6 +501,20 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		console.log(`Binding to host ${options.host}.`);
 	}
 
+	// Handle passcode generation for remote mode
+	if (isKanbanRemoteHost()) {
+		if (options.noPasscode) {
+			disablePasscode();
+			console.log("Passcode authentication disabled (--no-passcode). Ensure you have your own auth layer.");
+		} else {
+			const passcode = generatePasscode();
+			// NOTE: passcode is printed ONLY here and never stored in logs or env.
+			console.log(
+				`\n🔐 Remote access passcode: ${passcode}\n\nShare this with users who need access. It expires after 24h.\n`,
+			);
+		}
+	}
+
 	const [{ openInBrowser }, { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown }] = await Promise.all([
 		import("./server/browser.js"),
 		import("./update/update.js"),
@@ -623,6 +641,10 @@ function createProgram(invocationArgs: string[]): Command {
 		.option("--cert <path>", "Path to a TLS certificate PEM file (implies HTTPS).")
 		.option("--key <path>", "Path to a TLS private key PEM file (implies HTTPS).")
 		.option("--update", "Update Kanban to the latest published version and exit.")
+		.option(
+			"--no-passcode",
+			"Disable auto-generated passcode for remote access (for advanced users behind a reverse proxy).",
+		)
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
 
@@ -659,6 +681,7 @@ function createProgram(invocationArgs: string[]): Command {
 				https: options.https === true,
 				cert: options.cert ?? null,
 				key: options.key ?? null,
+				noPasscode: options.noPasscode === true,
 			},
 			shouldAutoOpenBrowser,
 		);
