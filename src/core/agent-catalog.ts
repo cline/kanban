@@ -58,6 +58,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		autonomousArgs: ["--yolo"],
 		installUrl: "https://github.com/google-gemini/gemini-cli",
 	},
+	{
+		id: "qwen",
+		label: "Qwen CLI",
+		binary: "qwen",
+		baseArgs: [],
+		autonomousArgs: ["--yolo"],
+		installUrl: "https://github.com/QwenLM/qwen-code",
+	},
 ];
 
 // Temporarily keep launch support scoped to the core agent set.
@@ -67,6 +75,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"claude",
 	"codex",
 	"droid",
+	// "qwen",
 	// "opencode",
 	// "gemini",
 ];

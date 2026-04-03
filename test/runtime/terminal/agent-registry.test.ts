@@ -47,7 +47,7 @@ describe("agent-registry", () => {
 		const detected = detectInstalledCommands();
 
 		expect(detected).toEqual(["claude"]);
-		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(7);
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(8);
 	});
 
 	it("treats shell-only agents as unavailable", () => {

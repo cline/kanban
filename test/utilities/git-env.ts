@@ -9,6 +9,8 @@ export function createGitTestEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.Proc
 	}
 	return {
 		...sanitized,
+		LC_ALL: "C",
+		LANG: "C",
 		GIT_AUTHOR_NAME: "Test",
 		GIT_AUTHOR_EMAIL: "test@test.com",
 		GIT_COMMITTER_NAME: "Test",

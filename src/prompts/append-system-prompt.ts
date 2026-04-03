@@ -24,7 +24,15 @@ export interface RenderAppendSystemPromptOptions {
 	agentId?: RuntimeAgentId | null;
 }
 
-const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "cline", "droid", "gemini", "opencode"];
+const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
+	"claude",
+	"codex",
+	"cline",
+	"droid",
+	"gemini",
+	"opencode",
+	"qwen",
+];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
 	return APPEND_PROMPT_AGENT_IDS.includes(value as RuntimeAgentId);

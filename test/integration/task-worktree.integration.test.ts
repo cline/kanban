@@ -61,30 +61,39 @@ async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 
 describe.sequential("task-worktree integration", () => {
 	it("returns a friendly error when the repository has no initial commit", async () => {
-		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-unborn-");
-			try {
-				const repoPath = join(sandboxRoot, "repo");
-				mkdirSync(repoPath, { recursive: true });
+		const previousLang = process.env.LANG;
+		const previousLcAll = process.env.LC_ALL;
+		process.env.LANG = "C";
+		process.env.LC_ALL = "C";
+		try {
+			await withTemporaryHome(async () => {
+				const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-unborn-");
+				try {
+					const repoPath = join(sandboxRoot, "repo");
+					mkdirSync(repoPath, { recursive: true });
 
-				runGit(repoPath, ["init"]);
-				runGit(repoPath, ["config", "user.name", "Kanban Test"]);
-				runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
+					runGit(repoPath, ["init"]);
+					runGit(repoPath, ["config", "user.name", "Kanban Test"]);
+					runGit(repoPath, ["config", "user.email", "kanban-test@example.com"]);
 
-				const currentBranch = runGit(repoPath, ["symbolic-ref", "--short", "HEAD"]);
-				const ensured = await ensureTaskWorktreeIfDoesntExist({
-					cwd: repoPath,
-					taskId: "task-no-initial-commit",
-					baseRef: currentBranch,
-				});
+					const currentBranch = runGit(repoPath, ["symbolic-ref", "--short", "HEAD"]);
+					const ensured = await ensureTaskWorktreeIfDoesntExist({
+						cwd: repoPath,
+						taskId: "task-no-initial-commit",
+						baseRef: currentBranch,
+					});
 
-				expect(ensured.ok).toBe(false);
-				expect(ensured.error).toContain("does not have an initial commit yet");
-				expect(ensured.error).toContain(`base ref "${currentBranch}"`);
-			} finally {
-				cleanup();
-			}
-		});
+					expect(ensured.ok).toBe(false);
+					expect(ensured.error).toContain("does not have an initial commit yet");
+					expect(ensured.error).toContain(`base ref "${currentBranch}"`);
+				} finally {
+					cleanup();
+				}
+			});
+		} finally {
+			process.env.LANG = previousLang;
+			process.env.LC_ALL = previousLcAll;
+		}
 	});
 
 	it("keeps symlinked ignored paths ignored in task worktrees", async () => {

@@ -1328,6 +1328,84 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+const qwenAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--yolo")) {
+			args.push("--yolo");
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume")) {
+			args.push("--resume");
+		}
+
+		if (input.startInPlanMode) {
+			args.push("--approval-mode");
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			const configPath = join(getHookAgentDirectory("qwen"), "settings.json");
+			const qwenHookCommand = buildHooksCommand(["qwen-hook"]);
+
+			const config = {
+				hooks: {
+					PreToolUse: [
+						{
+							hooks: [{ type: "command", command: qwenHookCommand }],
+						},
+					],
+					PostToolUse: [
+						{
+							hooks: [{ type: "command", command: qwenHookCommand }],
+						},
+					],
+					SubagentStop: [
+						{
+							hooks: [{ type: "command", command: qwenHookCommand }],
+						},
+					],
+					SubagentStart: [
+						{
+							hooks: [{ type: "command", command: qwenHookCommand }],
+						},
+					],
+					Notification: [
+						{
+							hooks: [{ type: "command", command: qwenHookCommand }],
+						},
+					],
+				},
+			};
+			await ensureTextFile(configPath, JSON.stringify(config, null, 2));
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+			env.QWEN_CLI_SETTINGS_PATH = configPath;
+		}
+
+		const trimmed = input.prompt.trim();
+		if (trimmed) {
+			args.push("-i", trimmed);
+			return {
+				args,
+				env,
+			};
+		}
+
+		return {
+			args,
+			env,
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1335,6 +1413,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
 	cline: clineAdapter,
+	qwen: qwenAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {

@@ -28,8 +28,8 @@ import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
-	RuntimeClineProviderSettings,
 	RuntimeClineMcpServerAuthStatus,
+	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
@@ -382,7 +382,9 @@ export function RuntimeSettingsDialog({
 		config,
 	});
 	const liveClineProviderSettings = useMemo<RuntimeClineProviderSettings>(() => {
-		return selectedAgentId === "cline" ? clineSettings.currentProviderSettings : getRuntimeClineProviderSettings(config);
+		return selectedAgentId === "cline"
+			? clineSettings.currentProviderSettings
+			: getRuntimeClineProviderSettings(config);
 	}, [clineSettings.currentProviderSettings, config, selectedAgentId]);
 	const clineMcpSettings = useRuntimeSettingsClineMcpController({
 		open,
