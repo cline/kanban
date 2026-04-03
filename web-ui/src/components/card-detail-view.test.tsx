@@ -22,6 +22,11 @@ const {
 	mockClineSendText: vi.fn(async () => {}),
 }));
 
+vi.mock("@/hooks/use-theme", () => ({
+	Theme: { Dark: "dark", Light: "light" },
+	useTheme: () => ({ theme: "dark", setTheme: () => {}, toggleTheme: () => {} }),
+}));
+
 vi.mock("react-hotkeys-hook", () => ({
 	useHotkeys: () => {},
 }));

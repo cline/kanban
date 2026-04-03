@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Theme } from "@/hooks/use-theme";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 
@@ -56,6 +57,7 @@ function HookHarness({
 		sessionStartedAt,
 		terminalBackgroundColor: "terminal-background",
 		cursorColor: "cursor-color",
+		theme: Theme.Dark,
 	});
 
 	return <div ref={containerRef} />;

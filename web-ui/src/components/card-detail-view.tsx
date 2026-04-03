@@ -11,6 +11,7 @@ import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { Button } from "@/components/ui/button";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
+import { useTheme } from "@/hooks/use-theme";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
@@ -25,7 +26,7 @@ import type {
 } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
-import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import { getTerminalThemeColors } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 
@@ -296,6 +297,9 @@ export function CardDetailView({
 	isDocumentVisible?: boolean;
 	onClineSettingsSaved?: () => void;
 }): React.ReactElement {
+	const { theme } = useTheme();
+	const terminalColors = getTerminalThemeColors(theme);
+
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
@@ -678,8 +682,8 @@ export function CardDetailView({
 												? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
 												: null
 										}
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										panelBackgroundColor={terminalColors.surfacePrimary}
+										terminalBackgroundColor={terminalColors.surfacePrimary}
 										taskColumnId={selection.column.id}
 									/>
 								)}
@@ -796,9 +800,9 @@ export function CardDetailView({
 										onClose={onBottomTerminalClose}
 										minimalHeaderTitle="Terminal"
 										minimalHeaderSubtitle={bottomTerminalSubtitle}
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+										panelBackgroundColor={terminalColors.surfaceRaised}
+										terminalBackgroundColor={terminalColors.surfaceRaised}
+										cursorColor={terminalColors.textPrimary}
 										onConnectionReady={onBottomTerminalConnectionReady}
 										agentCommand={bottomTerminalAgentCommand}
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}
