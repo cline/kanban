@@ -14,7 +14,8 @@ import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -34,6 +35,8 @@ export interface LaunchedDesktopApp {
 // ---------------------------------------------------------------------------
 
 /** Absolute path to the packages/desktop directory. */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const DESKTOP_PKG_DIR = resolve(__dirname, "..");
 
 /** Maximum time (ms) to wait for the runtime to become healthy. */
