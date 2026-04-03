@@ -6,6 +6,7 @@ import {
 	useInterval as useReactUseInterval,
 	useLocalStorage as useReactUseLocalStorage,
 	useMeasure as useReactUseMeasure,
+	useMedia as useReactUseMedia,
 	useTitle as useReactUseTitle,
 	useUnmount as useReactUseUnmount,
 } from "react-use";
@@ -109,3 +110,5 @@ export function useMeasure<T extends Element = Element>() {
 export function useUnmount(fn: () => void): void {
 	useReactUseUnmount(fn);
 }
+
+export { useReactUseMedia };

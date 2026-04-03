@@ -42,14 +42,18 @@ const SIDEBAR_COLLAPSED_PREFERENCE: ResizeBooleanPreference = {
 export function useProjectNavigationLayout(): {
 	isCollapsed: boolean;
 	setExpandedSidebarWidth: (width: number) => void;
-	setSidebarCollapsed: (collapsed: boolean) => void;
+	setSidebarCollapsed: (collapsed: boolean, persist?: boolean) => void;
 	sidebarWidth: number;
 } {
 	const [sidebarWidth, setSidebarWidthState] = useState(() => loadResizePreference(SIDEBAR_WIDTH_PREFERENCE));
 	const [isCollapsed, setIsCollapsedState] = useState(() => loadBooleanResizePreference(SIDEBAR_COLLAPSED_PREFERENCE));
 
-	const setSidebarCollapsed = useCallback((collapsed: boolean) => {
-		setIsCollapsedState(persistBooleanResizePreference(SIDEBAR_COLLAPSED_PREFERENCE, collapsed));
+	const setSidebarCollapsed = useCallback((collapsed: boolean, persist = true) => {
+		if (persist) {
+			setIsCollapsedState(persistBooleanResizePreference(SIDEBAR_COLLAPSED_PREFERENCE, collapsed));
+		} else {
+			setIsCollapsedState(collapsed);
+		}
 	}, []);
 
 	const setExpandedSidebarWidth = useCallback((width: number) => {
