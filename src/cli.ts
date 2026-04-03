@@ -12,9 +12,11 @@ import {
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./core/graceful-shutdown";
 import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin, parseRuntimePort } from "./core/runtime-endpoint";
-import type { RuntimeHandle } from "./runtime-start";
+import { type RuntimeHandle, startRuntime } from "./runtime-start.js";
+import { openInBrowser } from "./server/browser.js";
+import { loadWorkspaceContext } from "./state/workspace-state.js";
 import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
-import { runOnDemandUpdate } from "./update/update";
+import { autoUpdateOnStartup, runOnDemandUpdate, runPendingAutoUpdateOnShutdown } from "./update/update.js";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -182,7 +184,6 @@ async function canReachKanbanServer(workspaceId: string | null): Promise<boolean
 async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenBrowser: boolean }): Promise<boolean> {
 	let workspaceId: string | null = null;
 	if (hasGitRepository(process.cwd())) {
-		const { loadWorkspaceContext } = await import("./state/workspace-state.js");
 		const context = await loadWorkspaceContext(process.cwd());
 		workspaceId = context.workspaceId;
 	}
@@ -196,7 +197,6 @@ async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenB
 	console.log(`Kanban already running at ${getKanbanRuntimeOrigin()}`);
 	if (!options.noOpen && options.shouldAutoOpenBrowser) {
 		try {
-			const { openInBrowser } = await import("./server/browser.js");
 			openInBrowser(projectUrl, {
 				warn: (message) => {
 					console.warn(message);
@@ -215,9 +215,6 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	if (options.host) {
 		console.log(`Binding to host ${options.host}.`);
 	}
-
-	const [{ startRuntime }, { openInBrowser }, { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown }] =
-		await Promise.all([import("./runtime-start.js"), import("./server/browser.js"), import("./update/update.js")]);
 
 	const portOption = options.port;
 	if (portOption?.mode === "fixed") {
