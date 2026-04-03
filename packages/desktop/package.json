@@ -8,14 +8,18 @@
 	"scripts": {
 		"clean": "shx rm -rf dist out",
 		"build:ts": "tsc -p tsconfig.build.json",
-		"build:mac": "npm run build:ts && electron-builder --mac",
-		"build:win": "npm run build:ts && electron-builder --win",
-		"build": "npm run build:ts && electron-builder",
+		"build:mac": "npm run rebuild:pty && npm run build:ts && electron-builder --mac --config electron-builder.yml",
+		"build:mac:dmg": "npm run rebuild:pty && npm run build:ts && electron-builder --mac dmg --config electron-builder.yml",
+		"build:mac:arm64": "npm run rebuild:pty && npm run build:ts && electron-builder --mac dmg --arm64 --config electron-builder.yml",
+		"build:mac:x64": "npm run rebuild:pty && npm run build:ts && electron-builder --mac dmg --x64 --config electron-builder.yml",
+		"build:mac:universal": "npm run rebuild:pty && npm run build:ts && electron-builder --mac dmg --universal --config electron-builder.yml",
+		"build:win": "npm run build:ts && electron-builder --win --config electron-builder.yml",
+		"build": "npm run rebuild:pty && npm run build:ts && electron-builder --config electron-builder.yml",
 		"dev": "tsc -p tsconfig.build.json && electron dist/main.js",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"rebuild": "electron-rebuild -f -w node-pty",
+		"rebuild:pty": "electron-rebuild -f -w node-pty",
 		"postinstall": "electron-builder install-app-deps"
 	},
 	"devDependencies": {

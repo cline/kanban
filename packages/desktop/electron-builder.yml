@@ -23,9 +23,12 @@ asarUnpack:
   - "**/runtime-child.js"
   - "**/node_modules/node-pty/**"
 
+# ──────────────────────────────────────────
 # macOS configuration
+# ──────────────────────────────────────────
 mac:
   category: public.app-category.developer-tools
+  icon: build/icon.icns
   target:
     - target: dmg
       arch:
@@ -35,8 +38,13 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Merge extra keys into the generated Info.plist.
+  # NSAppSleepDisabled prevents App Nap from throttling background runtime work.
+  extendInfo:
+    NSAppSleepDisabled: true
 
 dmg:
+  artifactName: "${productName}-${version}-${arch}.${ext}"
   contents:
     - x: 130
       y: 220
@@ -45,7 +53,9 @@ dmg:
       type: link
       path: /Applications
 
-# Windows configuration
+# ──────────────────────────────────────────
+# Windows configuration (placeholder — Task 1.6)
+# ──────────────────────────────────────────
 win:
   target:
     - target: nsis
@@ -58,7 +68,9 @@ nsis:
   allowToChangeInstallationDirectory: true
   perMachine: false
 
+# ──────────────────────────────────────────
 # Linux configuration
+# ──────────────────────────────────────────
 linux:
   target:
     - target: AppImage
