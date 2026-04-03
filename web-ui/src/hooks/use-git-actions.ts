@@ -1,23 +1,18 @@
 import { useCallback, useMemo, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/git-history/use-git-history-data";
-import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import { isNativeClineAgentSelected } from "@/runtime/native-agent";
+import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeGitSyncAction } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import {
-	getTaskWorkspaceInfo,
-	getTaskWorkspaceSnapshot,
 	setHomeGitSummary,
-	setTaskWorkspaceInfo,
 	useHomeGitStateVersionValue,
 	useHomeGitSummaryValue,
 	useTaskWorkspaceSnapshotValue,
 	useTaskWorkspaceStateVersionValue,
 } from "@/stores/workspace-metadata-store";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
-import type { BoardCard, BoardData, CardSelection } from "@/types";
+import type { BoardData, CardSelection } from "@/types";
 
 type TaskGitActionSource = "card" | "agent";
 
@@ -30,18 +25,6 @@ interface UseGitActionsInput {
 	currentProjectId: string | null;
 	board: BoardData;
 	selectedCard: CardSelection | null;
-	runtimeProjectConfig: RuntimeConfigResponse | null;
-	sendTaskSessionInput: (
-		taskId: string,
-		text: string,
-		options?: SendTerminalInputOptions,
-	) => Promise<{ ok: boolean; message?: string }>;
-	sendTaskChatMessage: (
-		taskId: string,
-		text: string,
-		options?: { mode?: "plan" | "act" },
-	) => Promise<{ ok: boolean; message?: string }>;
-	fetchTaskWorkspaceInfo: (task: BoardCard) => Promise<RuntimeTaskWorkspaceInfoResponse | null>;
 	isGitHistoryOpen: boolean;
 	refreshWorkspaceState: () => Promise<void>;
 }
@@ -74,24 +57,13 @@ export interface UseGitActionsResult {
 	resetGitActionState: () => void;
 }
 
-function matchesWorkspaceInfoSelection(
-	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null,
-	card: BoardCard | null,
-): workspaceInfo is RuntimeTaskWorkspaceInfoResponse {
-	if (!workspaceInfo || !card) {
-		return false;
-	}
-	return workspaceInfo.taskId === card.id && workspaceInfo.baseRef === card.baseRef;
-}
-
+/**
+ * Coordinates git actions for the home workspace and review tasks while keeping loading state scoped to each UI surface.
+ */
 export function useGitActions({
 	currentProjectId,
 	board,
 	selectedCard,
-	runtimeProjectConfig,
-	sendTaskSessionInput,
-	sendTaskChatMessage,
-	fetchTaskWorkspaceInfo,
 	isGitHistoryOpen,
 	refreshWorkspaceState,
 }: UseGitActionsInput): UseGitActionsResult {
@@ -214,10 +186,6 @@ export function useGitActions({
 		return next;
 	}, [taskGitActionLoadingByTaskId]);
 
-	const shouldUseClineChatForTaskGitActions = isNativeClineAgentSelected(
-		runtimeProjectConfig?.selectedAgentId ?? null,
-	);
-
 	const runTaskGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {
 			const taskLoadingState = taskGitActionLoadingByTaskId[taskId];
@@ -246,78 +214,26 @@ export function useGitActions({
 					});
 					return false;
 				}
-
-				const snapshot = getTaskWorkspaceSnapshot(taskId);
-				const snapshotWorkspaceInfo = snapshot
-					? {
-							taskId,
-							path: snapshot.path,
-							exists: true,
-							baseRef: selection.card.baseRef,
-							branch: snapshot.branch,
-							isDetached: snapshot.isDetached,
-							headCommit: snapshot.headCommit,
-						}
-					: null;
-				const storedWorkspaceInfo = getTaskWorkspaceInfo(selection.card.id, selection.card.baseRef);
-				const workspaceInfo = matchesWorkspaceInfoSelection(storedWorkspaceInfo, selection.card)
-					? storedWorkspaceInfo
-					: (snapshotWorkspaceInfo ?? (await fetchTaskWorkspaceInfo(selection.card)));
-				if (!workspaceInfo) {
+				if (!currentProjectId) {
 					showAppToast({
 						intent: "danger",
 						icon: "warning-sign",
-						message: "Could not resolve task workspace details.",
-						timeout: 6000,
+						message: "No project selected.",
+						timeout: 5000,
 					});
 					return false;
 				}
-				setTaskWorkspaceInfo(workspaceInfo);
-
-				const prompt = buildTaskGitActionPrompt({
+				const payload = await getRuntimeTrpcClient(currentProjectId).runtime.runTaskGitAction.mutate({
+					taskId,
+					baseRef: selection.card.baseRef,
 					action,
-					workspaceInfo,
-					templates: runtimeProjectConfig
-						? {
-								commitPromptTemplate: runtimeProjectConfig.commitPromptTemplate,
-								openPrPromptTemplate: runtimeProjectConfig.openPrPromptTemplate,
-								commitPromptTemplateDefault: runtimeProjectConfig.commitPromptTemplateDefault,
-								openPrPromptTemplateDefault: runtimeProjectConfig.openPrPromptTemplateDefault,
-							}
-						: null,
+					source: "manual",
 				});
-				if (shouldUseClineChatForTaskGitActions) {
-					const sent = await sendTaskChatMessage(taskId, prompt, { mode: "act" });
-					if (!sent.ok) {
-						showAppToast({
-							intent: "danger",
-							icon: "warning-sign",
-							message: sent.message ?? "Could not send instructions to the task chat session.",
-							timeout: 7000,
-						});
-						return false;
-					}
-					return true;
-				}
-				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
-				if (!typed.ok) {
+				if (!payload.ok) {
 					showAppToast({
 						intent: "danger",
 						icon: "warning-sign",
-						message: typed.message ?? "Could not send instructions to the task session.",
-						timeout: 7000,
-					});
-					return false;
-				}
-				await new Promise<void>((resolve) => {
-					window.setTimeout(resolve, 200);
-				});
-				const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
-				if (!submitted.ok) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: submitted.message ?? "Could not submit instructions to the task session.",
+						message: payload.error ?? "Could not send instructions to the task session.",
 						timeout: 7000,
 					});
 					return false;
@@ -327,16 +243,7 @@ export function useGitActions({
 				setTaskGitActionLoading(taskId, action, null);
 			}
 		},
-		[
-			board,
-			fetchTaskWorkspaceInfo,
-			runtimeProjectConfig,
-			sendTaskChatMessage,
-			sendTaskSessionInput,
-			setTaskGitActionLoading,
-			shouldUseClineChatForTaskGitActions,
-			taskGitActionLoadingByTaskId,
-		],
+		[board, currentProjectId, setTaskGitActionLoading, taskGitActionLoadingByTaskId],
 	);
 
 	const handleCommitTask = useCallback(

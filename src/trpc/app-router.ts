@@ -65,6 +65,8 @@ import type {
 	RuntimeTaskChatReloadResponse,
 	RuntimeTaskChatSendRequest,
 	RuntimeTaskChatSendResponse,
+	RuntimeTaskGitActionRequest,
+	RuntimeTaskGitActionResponse,
 	RuntimeTaskSessionInputRequest,
 	RuntimeTaskSessionInputResponse,
 	RuntimeTaskSessionStartRequest,
@@ -145,6 +147,8 @@ import {
 	runtimeTaskChatReloadResponseSchema,
 	runtimeTaskChatSendRequestSchema,
 	runtimeTaskChatSendResponseSchema,
+	runtimeTaskGitActionRequestSchema,
+	runtimeTaskGitActionResponseSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionInputResponseSchema,
 	runtimeTaskSessionStartRequestSchema,
@@ -204,6 +208,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskSessionInputRequest,
 		) => Promise<RuntimeTaskSessionInputResponse>;
+		runTaskGitAction: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeTaskGitActionRequest,
+		) => Promise<RuntimeTaskGitActionResponse>;
 		getTaskChatMessages: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskChatMessagesRequest,
@@ -431,6 +439,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeTaskSessionInputResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.sendTaskSessionInput(ctx.workspaceScope, input);
+			}),
+		runTaskGitAction: workspaceProcedure
+			.input(runtimeTaskGitActionRequestSchema)
+			.output(runtimeTaskGitActionResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.runTaskGitAction(ctx.workspaceScope, input);
 			}),
 		getTaskChatMessages: workspaceProcedure
 			.input(runtimeTaskChatMessagesRequestSchema)

@@ -3,12 +3,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type UseGitActionsResult, useGitActions } from "@/hooks/use-git-actions";
-import type { RuntimeConfigResponse, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import { clearTaskWorkspaceInfo, clearTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 import type { BoardData } from "@/types";
 
 const showAppToastMock = vi.hoisted(() => vi.fn());
 const useGitHistoryDataMock = vi.hoisted(() => vi.fn());
+const runTaskGitActionMutateMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/app-toaster", () => ({
 	showAppToast: showAppToastMock,
@@ -16,6 +16,16 @@ vi.mock("@/components/app-toaster", () => ({
 
 vi.mock("@/components/git-history/use-git-history-data", () => ({
 	useGitHistoryData: useGitHistoryDataMock,
+}));
+
+vi.mock("@/runtime/trpc-client", () => ({
+	getRuntimeTrpcClient: () => ({
+		runtime: {
+			runTaskGitAction: {
+				mutate: runTaskGitActionMutateMock,
+			},
+		},
+	}),
 }));
 
 interface HookSnapshot {
@@ -75,75 +85,11 @@ function createBoard(): BoardData {
 	};
 }
 
-function createRuntimeConfig(selectedAgentId: RuntimeConfigResponse["selectedAgentId"]): RuntimeConfigResponse {
-	return {
-		selectedAgentId,
-		selectedShortcutLabel: null,
-		agentAutonomousModeEnabled: true,
-		effectiveCommand: null,
-		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project-config.json",
-		readyForReviewNotificationsEnabled: true,
-		detectedCommands: [],
-		agents: [
-			{
-				id: selectedAgentId,
-				label: selectedAgentId,
-				binary: selectedAgentId,
-				command: selectedAgentId,
-				defaultArgs: [],
-				installed: true,
-				configured: true,
-			},
-		],
-		shortcuts: [],
-		clineProviderSettings: {
-			providerId: "anthropic",
-			modelId: "claude-sonnet-4",
-			baseUrl: null,
-			apiKeyConfigured: true,
-			oauthProvider: null,
-			oauthAccessTokenConfigured: false,
-			oauthRefreshTokenConfigured: false,
-			oauthAccountId: null,
-			oauthExpiresAt: null,
-		},
-		commitPromptTemplate: "commit",
-		openPrPromptTemplate: "pr",
-		commitPromptTemplateDefault: "commit",
-		openPrPromptTemplateDefault: "pr",
-	};
-}
-
-function createWorkspaceInfo(): RuntimeTaskWorkspaceInfoResponse {
-	return {
-		taskId: "task-1",
-		path: "/tmp/task-1",
-		exists: true,
-		baseRef: "main",
-		branch: "task-1",
-		isDetached: false,
-		headCommit: "abc1234",
-	};
-}
-
-function HookHarness({
-	onSnapshot,
-	sendTaskSessionInput,
-	sendTaskChatMessage,
-}: {
-	onSnapshot: (snapshot: HookSnapshot) => void;
-	sendTaskSessionInput: Parameters<typeof useGitActions>[0]["sendTaskSessionInput"];
-	sendTaskChatMessage: Parameters<typeof useGitActions>[0]["sendTaskChatMessage"];
-}): null {
+function HookHarness({ onSnapshot }: { onSnapshot: (snapshot: HookSnapshot) => void }): null {
 	const gitActions = useGitActions({
 		currentProjectId: "project-1",
 		board: createBoard(),
 		selectedCard: null,
-		runtimeProjectConfig: createRuntimeConfig("cline"),
-		sendTaskSessionInput,
-		sendTaskChatMessage,
-		fetchTaskWorkspaceInfo: async () => createWorkspaceInfo(),
 		isGitHistoryOpen: false,
 		refreshWorkspaceState: async () => {},
 	});
@@ -166,6 +112,11 @@ describe("useGitActions", () => {
 		showAppToastMock.mockReset();
 		useGitHistoryDataMock.mockReset();
 		useGitHistoryDataMock.mockReturnValue(createGitHistoryResult());
+		runTaskGitActionMutateMock.mockReset();
+		runTaskGitActionMutateMock.mockResolvedValue({
+			ok: true,
+			summary: null,
+		});
 		clearTaskWorkspaceInfo("task-1");
 		clearTaskWorkspaceSnapshot("task-1");
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -191,16 +142,12 @@ describe("useGitActions", () => {
 		}
 	});
 
-	it("sends commit prompts through the native cline chat API", async () => {
-		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
-		const sendTaskChatMessage = vi.fn(async () => ({ ok: true }));
+	it("routes task commit actions through the runtime git-action endpoint", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
-					sendTaskSessionInput={sendTaskSessionInput}
-					sendTaskChatMessage={sendTaskChatMessage}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -220,8 +167,12 @@ describe("useGitActions", () => {
 			await Promise.resolve();
 		});
 
-		expect(sendTaskChatMessage).toHaveBeenCalledWith("task-1", expect.any(String), { mode: "act" });
-		expect(sendTaskSessionInput).not.toHaveBeenCalled();
+		expect(runTaskGitActionMutateMock).toHaveBeenCalledWith({
+			taskId: "task-1",
+			baseRef: "main",
+			action: "commit",
+			source: "manual",
+		});
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 });

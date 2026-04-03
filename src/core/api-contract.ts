@@ -847,6 +847,27 @@ export const runtimeTaskSessionInputResponseSchema = z.object({
 });
 export type RuntimeTaskSessionInputResponse = z.infer<typeof runtimeTaskSessionInputResponseSchema>;
 
+export const runtimeTaskGitActionSchema = z.enum(["commit", "pr"]);
+export type RuntimeTaskGitAction = z.infer<typeof runtimeTaskGitActionSchema>;
+
+export const runtimeTaskGitActionSourceSchema = z.enum(["manual", "auto"]);
+export type RuntimeTaskGitActionSource = z.infer<typeof runtimeTaskGitActionSourceSchema>;
+
+export const runtimeTaskGitActionRequestSchema = z.object({
+	taskId: z.string(),
+	baseRef: z.string(),
+	action: runtimeTaskGitActionSchema,
+	source: runtimeTaskGitActionSourceSchema,
+});
+export type RuntimeTaskGitActionRequest = z.infer<typeof runtimeTaskGitActionRequestSchema>;
+
+export const runtimeTaskGitActionResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeTaskSessionSummarySchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeTaskGitActionResponse = z.infer<typeof runtimeTaskGitActionResponseSchema>;
+
 export const runtimeTaskChatMessageSchema = z.object({
 	id: z.string(),
 	role: z.enum(["user", "assistant", "system", "tool", "reasoning", "status"]),

@@ -336,6 +336,9 @@ async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCo
 	});
 }
 
+/**
+ * Boots the local Kanban runtime server and returns lifecycle helpers for shutdown flows.
+ */
 async function startServer(): Promise<{
 	url: string;
 	close: () => Promise<void>;
@@ -354,30 +357,42 @@ async function startServer(): Promise<{
 	*/
 	const [
 		{ resolveProjectInputPath },
+		{ createRuntimeTaskAutomation },
+		{ createRuntimeTaskGitActionCoordinator },
 		{ pickDirectoryPathFromSystemDialog },
 		{ createRuntimeServer },
 		{ createRuntimeStateHub },
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+		{ listWorkspaceIndexEntries },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
+		import("./server/runtime-task-automation.js"),
+		import("./server/runtime-task-git-actions.js"),
 		import("./server/directory-picker.js"),
 		import("./server/runtime-server.js"),
 		import("./server/runtime-state-hub.js"),
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
 		import("./server/workspace-registry.js"),
+		import("./state/workspace-state.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
+	let runtimeTaskAutomation: ReturnType<typeof createRuntimeTaskAutomation> | undefined;
+	const taskGitActionCoordinator = createRuntimeTaskGitActionCoordinator();
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
 		hasGitRepository,
 		pathIsDirectory,
+		onWorkspaceRemembered: (workspaceId) => {
+			runtimeTaskAutomation?.trackWorkspace(workspaceId);
+		},
 		onTerminalManagerReady: (workspaceId, manager) => {
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
+			runtimeTaskAutomation?.trackTerminalManager(workspaceId, manager);
 		},
 	});
 	runtimeStateHub = createRuntimeStateHub({
@@ -398,12 +413,17 @@ async function startServer(): Promise<{
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
 		runtimeHub.disposeWorkspace(workspaceId);
+		runtimeTaskAutomation?.disposeWorkspace(workspaceId);
 		return disposed;
 	};
 
 	const runtimeServer = await createRuntimeServer({
 		workspaceRegistry,
 		runtimeStateHub: runtimeHub,
+		taskGitActionCoordinator,
+		onClineTaskSessionServiceReady: (workspaceId, service) => {
+			runtimeTaskAutomation?.trackClineTaskSessionService(workspaceId, service);
+		},
 		warn: (message) => {
 			console.warn(`[kanban] ${message}`);
 		},
@@ -417,8 +437,26 @@ async function startServer(): Promise<{
 		collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog,
 	});
+	runtimeTaskAutomation = createRuntimeTaskAutomation({
+		getWorkspacePathById: workspaceRegistry.getWorkspacePathById,
+		taskGitActionCoordinator,
+	});
+	const rememberedWorkspaces = await listWorkspaceIndexEntries();
+	for (const { workspaceId, repoPath } of rememberedWorkspaces) {
+		workspaceRegistry.rememberWorkspace(workspaceId, repoPath);
+	}
+	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
+		runtimeTaskAutomation.trackTerminalManager(workspaceId, terminalManager);
+	}
+	await Promise.all(
+		rememberedWorkspaces.map(async ({ workspaceId, repoPath }) => {
+			await runtimeServer.ensureClineTaskSessionService(workspaceId, repoPath);
+		}),
+	);
 
 	const close = async () => {
+		runtimeTaskAutomation?.close();
+		taskGitActionCoordinator.close();
 		await runtimeServer.close();
 	};
 

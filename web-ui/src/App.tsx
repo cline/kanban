@@ -348,7 +348,6 @@ export default function App(): ReactElement {
 
 	const {
 		runningGitAction,
-		taskGitActionLoadingByTaskId,
 		commitTaskLoadingById,
 		openPrTaskLoadingById,
 		agentCommitTaskLoadingById,
@@ -365,16 +364,11 @@ export default function App(): ReactElement {
 		handleOpenPrTask,
 		handleAgentCommitTask,
 		handleAgentOpenPrTask,
-		runAutoReviewGitAction,
 		resetGitActionState,
 	} = useGitActions({
 		currentProjectId,
 		board,
 		selectedCard,
-		runtimeProjectConfig,
-		sendTaskSessionInput,
-		sendTaskChatMessage,
-		fetchTaskWorkspaceInfo,
 		isGitHistoryOpen,
 		refreshWorkspaceState,
 	});
@@ -592,8 +586,6 @@ export default function App(): ReactElement {
 		fetchTaskWorkspaceInfo,
 		sendTaskSessionInput,
 		readyForReviewNotificationsEnabled,
-		taskGitActionLoadingByTaskId,
-		runAutoReviewGitAction,
 	});
 
 	const {

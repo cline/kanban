@@ -31,15 +31,17 @@ import {
 	parseTaskChatMessagesRequest,
 	parseTaskChatReloadRequest,
 	parseTaskChatSendRequest,
+	parseTaskGitActionRequest,
 	parseTaskSessionInputRequest,
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { openInBrowser } from "../server/browser";
+import { buildTaskGitActionPrompt, type RuntimeTaskGitActionCoordinator } from "../server/runtime-task-git-actions";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
-import { resolveTaskCwd } from "../workspace/task-worktree";
+import { getTaskWorkspaceInfo, resolveTaskCwd } from "../workspace/task-worktree";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
 
@@ -58,6 +60,14 @@ export interface CreateRuntimeApiDependencies {
 	broadcastTaskChatCleared?: (workspaceId: string, taskId: string) => void;
 	bumpClineSessionContextVersion?: () => void;
 	prepareForStateReset?: () => Promise<void>;
+	taskGitActionCoordinator?: RuntimeTaskGitActionCoordinator;
+}
+
+/**
+ * Wraps terminal input in xterm's bracketed-paste control sequences so multiline prompts stay intact.
+ */
+function encodeTerminalPasteInput(text: string): Buffer {
+	return Buffer.from(`\u001b[200~${text}\u001b[201~`, "utf8");
 }
 
 async function resolveExistingTaskCwdOrEnsure(options: {
@@ -82,6 +92,32 @@ async function resolveExistingTaskCwdOrEnsure(options: {
 	}
 }
 
+/**
+ * Chooses whether a task git action should be delivered through the native Cline chat path.
+ * Live terminal sessions always win over stale persisted Cline history.
+ */
+function shouldUseClineChatForTaskGitAction(input: {
+	hasActiveTerminalSession: boolean;
+	terminalSummaryAgentId: string | null;
+	clineSummaryAgentId: string | null;
+}): boolean {
+	if (input.hasActiveTerminalSession) {
+		return input.terminalSummaryAgentId === "cline";
+	}
+	if (input.clineSummaryAgentId === "cline") {
+		return true;
+	}
+	if (input.terminalSummaryAgentId === "cline") {
+		// Persisted Cline tasks can still be rebound from SDK artifacts even when the
+		// in-memory Cline service has not loaded a summary yet.
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Creates the runtime-side TRPC handlers that back task sessions, git actions, and configuration flows.
+ */
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
 	const clineProviderService = createClineProviderService();
 	const clineMcpSettingsService = createClineMcpSettingsService();
@@ -328,6 +364,150 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					summary,
 				};
 			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					summary: null,
+					error: message,
+				};
+			}
+		},
+		runTaskGitAction: async (workspaceScope, input) => {
+			const body = parseTaskGitActionRequest(input);
+			const started = deps.taskGitActionCoordinator
+				? deps.taskGitActionCoordinator.beginTaskGitAction(workspaceScope.workspaceId, body.taskId, body.action)
+				: true;
+			if (!started) {
+				return {
+					ok: false,
+					summary: null,
+					error: "A commit or pull request action is already pending for this task.",
+				};
+			}
+
+			try {
+				const [runtimeConfig, workspaceInfo, terminalManager, clineTaskSessionService] = await Promise.all([
+					deps.loadScopedRuntimeConfig(workspaceScope),
+					getTaskWorkspaceInfo({
+						cwd: workspaceScope.workspacePath,
+						taskId: body.taskId,
+						baseRef: body.baseRef,
+					}),
+					deps.getScopedTerminalManager(workspaceScope),
+					deps.getScopedClineTaskSessionService(workspaceScope),
+				]);
+				const prompt = buildTaskGitActionPrompt({
+					action: body.action,
+					workspaceInfo,
+					templates: {
+						commitPromptTemplate: runtimeConfig.commitPromptTemplate,
+						openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
+						commitPromptTemplateDefault: runtimeConfig.commitPromptTemplateDefault,
+						openPrPromptTemplateDefault: runtimeConfig.openPrPromptTemplateDefault,
+					},
+				});
+				const terminalSummary = terminalManager.getSummary(body.taskId);
+				const clineSummary = clineTaskSessionService.getSummary(body.taskId);
+				const hasActiveTerminalSession = terminalManager.hasActiveTaskSession(body.taskId);
+
+				if (
+					shouldUseClineChatForTaskGitAction({
+						hasActiveTerminalSession,
+						terminalSummaryAgentId: terminalSummary?.agentId ?? null,
+						clineSummaryAgentId: clineSummary?.agentId ?? null,
+					})
+				) {
+					let summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, prompt, "act");
+					if (!summary && !isHomeAgentSessionId(body.taskId)) {
+						const reboundSummary = await clineTaskSessionService.rebindPersistedTaskSession(body.taskId);
+						if (reboundSummary) {
+							summary = await clineTaskSessionService.sendTaskSessionInput(body.taskId, prompt, "act");
+						}
+					}
+					if (!summary) {
+						deps.taskGitActionCoordinator?.completeTaskGitAction(
+							workspaceScope.workspaceId,
+							body.taskId,
+							body.action,
+							{
+								dispatched: false,
+								armAutoCleanup: false,
+							},
+						);
+						return {
+							ok: false,
+							summary: null,
+							error: "Task chat session is not running.",
+						};
+					}
+					deps.taskGitActionCoordinator?.completeTaskGitAction(
+						workspaceScope.workspaceId,
+						body.taskId,
+						body.action,
+						{
+							dispatched: true,
+							armAutoCleanup: body.source === "auto",
+						},
+					);
+					return {
+						ok: true,
+						summary,
+					};
+				}
+
+				const typedSummary = terminalManager.writeInput(body.taskId, encodeTerminalPasteInput(prompt));
+				if (!typedSummary) {
+					deps.taskGitActionCoordinator?.completeTaskGitAction(
+						workspaceScope.workspaceId,
+						body.taskId,
+						body.action,
+						{
+							dispatched: false,
+							armAutoCleanup: false,
+						},
+					);
+					return {
+						ok: false,
+						summary: null,
+						error: "Task session is not running.",
+					};
+				}
+
+				await new Promise<void>((resolve) => {
+					setTimeout(resolve, 200);
+				});
+
+				const submittedSummary = terminalManager.writeInput(body.taskId, Buffer.from("\r", "utf8"));
+				if (!submittedSummary) {
+					deps.taskGitActionCoordinator?.completeTaskGitAction(
+						workspaceScope.workspaceId,
+						body.taskId,
+						body.action,
+						{
+							dispatched: false,
+							armAutoCleanup: false,
+						},
+					);
+					return {
+						ok: false,
+						summary: null,
+						error: "Task session is not running.",
+					};
+				}
+
+				deps.taskGitActionCoordinator?.completeTaskGitAction(workspaceScope.workspaceId, body.taskId, body.action, {
+					dispatched: true,
+					armAutoCleanup: body.source === "auto",
+				});
+				return {
+					ok: true,
+					summary: submittedSummary,
+				};
+			} catch (error) {
+				deps.taskGitActionCoordinator?.completeTaskGitAction(workspaceScope.workspaceId, body.taskId, body.action, {
+					dispatched: false,
+					armAutoCleanup: false,
+				});
 				const message = error instanceof Error ? error.message : String(error);
 				return {
 					ok: false,

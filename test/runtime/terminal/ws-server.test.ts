@@ -68,6 +68,10 @@ class FakeTerminalManager implements TerminalSessionService {
 		}),
 	);
 	recoverStaleSession = vi.fn(() => createSummary());
+	/**
+	 * Mirrors the runtime terminal service contract for tests that only need a live session.
+	 */
+	hasActiveTaskSession = vi.fn(() => true);
 	writeInput = vi.fn(() => createSummary());
 	resize = vi.fn(() => true);
 	pauseOutput = vi.fn(() => true);

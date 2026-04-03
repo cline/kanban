@@ -26,6 +26,7 @@ import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
 import type { RuntimeStateHub } from "./runtime-state-hub";
+import type { RuntimeTaskGitActionCoordinator } from "./runtime-task-git-actions";
 import type { WorkspaceRegistry } from "./workspace-registry";
 
 interface DisposeTrackedWorkspaceResult {
@@ -36,6 +37,8 @@ interface DisposeTrackedWorkspaceResult {
 export interface CreateRuntimeServerDependencies {
 	workspaceRegistry: WorkspaceRegistry;
 	runtimeStateHub: RuntimeStateHub;
+	taskGitActionCoordinator: RuntimeTaskGitActionCoordinator;
+	onClineTaskSessionServiceReady?: (workspaceId: string, service: ClineTaskSessionService) => void;
 	warn: (message: string) => void;
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
@@ -55,6 +58,7 @@ export interface CreateRuntimeServerDependencies {
 
 export interface RuntimeServer {
 	url: string;
+	ensureClineTaskSessionService: (workspaceId: string, workspacePath: string) => Promise<void>;
 	close: () => Promise<void>;
 }
 
@@ -77,6 +81,9 @@ function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): 
 	return null;
 }
 
+/**
+ * Creates the local Kanban runtime server and wires its TRPC, websocket, and workspace-scoped services together.
+ */
 export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
 	const webUiDir = getWebUiDir();
 
@@ -130,6 +137,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			});
 			clineTaskSessionServiceByWorkspaceId.set(scope.workspaceId, service);
 			deps.runtimeStateHub.trackClineTaskSessionService(scope.workspaceId, scope.workspacePath, service);
+			deps.onClineTaskSessionServiceReady?.(scope.workspaceId, service);
 		}
 		return service;
 	};
@@ -165,6 +173,16 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		deps.workspaceRegistry.clearActiveWorkspace();
 	};
 
+	/**
+	 * Ensures a workspace-scoped native Cline service exists so automation can rebind persisted sessions after restart.
+	 */
+	const ensureClineTaskSessionService = async (workspaceId: string, workspacePath: string): Promise<void> => {
+		await getScopedClineTaskSessionService({
+			workspaceId,
+			workspacePath,
+		});
+	};
+
 	const createTrpcContext = async (req: IncomingMessage): Promise<RuntimeTrpcContext> => {
 		const requestUrl = new URL(req.url ?? "/", "http://localhost");
 		const scope = await resolveWorkspaceScopeFromRequest(req, requestUrl);
@@ -184,6 +202,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcastTaskChatCleared: deps.runtimeStateHub.broadcastTaskChatCleared,
 				bumpClineSessionContextVersion: deps.runtimeStateHub.bumpClineSessionContextVersion,
 				prepareForStateReset,
+				taskGitActionCoordinator: deps.taskGitActionCoordinator,
 			}),
 			workspaceApi: createWorkspaceApi({
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
@@ -311,6 +330,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 	return {
 		url,
+		ensureClineTaskSessionService,
 		close: async () => {
 			await Promise.all(
 				Array.from(clineTaskSessionServiceByWorkspaceId.values()).map(async (service) => {
