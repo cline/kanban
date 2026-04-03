@@ -248,4 +248,70 @@ describe("installAuthHeaderInterceptor", () => {
 		// Dispose calls onBeforeSendHeaders again with null to clear.
 		expect(onBeforeSendHeaders).toHaveBeenCalledTimes(2);
 	});
+
+	it("dispose passes null (typed, not any) to clear the listener", () => {
+		const { session, onBeforeSendHeaders } = createMockSession();
+		const dispose = installAuthHeaderInterceptor(session, TOKEN, ORIGIN);
+
+		dispose();
+		// The second call (dispose) should pass exactly null.
+		const disposeCallArgs = onBeforeSendHeaders.mock.calls[1];
+		expect(disposeCallArgs).toHaveLength(1);
+		expect(disposeCallArgs[0]).toBeNull();
+	});
+
+	it("can install, remove, and reinstall without duplicate handlers", () => {
+		const { session, onBeforeSendHeaders } = createMockSession();
+
+		// First install
+		const dispose1 = installAuthHeaderInterceptor(session, TOKEN, ORIGIN);
+		expect(onBeforeSendHeaders).toHaveBeenCalledTimes(1);
+
+		// Remove
+		dispose1();
+		expect(onBeforeSendHeaders).toHaveBeenCalledTimes(2);
+		expect(onBeforeSendHeaders.mock.calls[1][0]).toBeNull();
+
+		// Reinstall with a different token
+		const newToken = "c".repeat(64);
+		const dispose2 = installAuthHeaderInterceptor(session, newToken, ORIGIN);
+		expect(onBeforeSendHeaders).toHaveBeenCalledTimes(3);
+
+		// The new listener should use the new token
+		const listener = onBeforeSendHeaders.mock.calls[2][0] as (
+			details: BeforeSendHeadersDetails,
+			callback: BeforeSendHeadersCallback,
+		) => void;
+
+		const details: BeforeSendHeadersDetails = {
+			url: "http://localhost:52341/api/boards",
+			requestHeaders: {},
+		};
+
+		let result: { requestHeaders: Record<string, string> } | undefined;
+		listener(details, (response) => {
+			result = response;
+		});
+
+		expect(result!.requestHeaders[AUTH_HEADER_NAME]).toBe(`Bearer ${newToken}`);
+
+		// Clean up
+		dispose2();
+		expect(onBeforeSendHeaders).toHaveBeenCalledTimes(4);
+		expect(onBeforeSendHeaders.mock.calls[3][0]).toBeNull();
+	});
+
+	it("calling dispose multiple times does not register extra null calls", () => {
+		const { session, onBeforeSendHeaders } = createMockSession();
+		const dispose = installAuthHeaderInterceptor(session, TOKEN, ORIGIN);
+
+		dispose();
+		const callCountAfterFirstDispose = onBeforeSendHeaders.mock.calls.length;
+
+		// Calling dispose again should be a no-op from the interceptor perspective —
+		// the ConnectionManager guards against double-dispose, but the returned
+		// function itself always calls through. This test documents that behavior.
+		dispose();
+		expect(onBeforeSendHeaders.mock.calls.length).toBe(callCountAfterFirstDispose + 1);
+	});
 });

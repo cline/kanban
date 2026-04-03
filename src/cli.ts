@@ -1,3 +1,7 @@
+// CLI startup uses top-level imports per AGENTS.md. If startup optimization is
+// needed in the future, prefer entrypoint/module-boundary refactors over
+// dynamic imports.
+
 import { spawnSync } from "node:child_process";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";

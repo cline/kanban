@@ -234,7 +234,7 @@ export class ConnectionManager {
 		);
 
 		this.disposeAuthInterceptor = () => {
-			session.webRequest.onBeforeSendHeaders(null as any);
+			session.webRequest.onBeforeSendHeaders(null);
 		};
 	}
 
