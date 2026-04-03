@@ -16,6 +16,7 @@ import type { RuntimeChildManager } from "./runtime-child.js";
 import type { ConnectionStore, SavedConnection } from "./connection-store.js";
 import { generateAuthToken } from "./auth.js";
 import { isInsecureRemoteUrl } from "./connection-utils.js";
+import type { WslLauncher } from "./wsl-launch.js";
 
 // Re-export for convenience.
 export { isInsecureRemoteUrl } from "./connection-utils.js";
@@ -29,6 +30,11 @@ export interface ConnectionManagerOptions {
 	childManager: RuntimeChildManager;
 	store: ConnectionStore;
 	onConnectionChanged?: () => void;
+	/**
+	 * Factory that creates a `WslLauncher` on demand (with the given auth token).
+	 * Only set when WSL is available on this machine.
+	 */
+	createWslLauncher?: (authToken: string) => WslLauncher;
 }
 
 // ---------------------------------------------------------------------------
@@ -46,11 +52,17 @@ export class ConnectionManager {
 	private childRunning = false;
 	private disposeAuthInterceptor: (() => void) | null = null;
 
+	private readonly createWslLauncher?: (authToken: string) => WslLauncher;
+	private wslLauncher: WslLauncher | null = null;
+	private wslUrl = "";
+	private wslAuthToken = "";
+
 	constructor(options: ConnectionManagerOptions) {
 		this.window = options.window;
 		this.childManager = options.childManager;
 		this.store = options.store;
 		this.onConnectionChanged = options.onConnectionChanged;
+		this.createWslLauncher = options.createWslLauncher;
 	}
 
 	/** Switch to the given connection ID. */
@@ -60,8 +72,15 @@ export class ConnectionManager {
 			.find((c) => c.id === connectionId);
 		if (!connection) return;
 
+		// Stop any running WSL launcher when switching away.
+		if (connection.id !== "wsl") {
+			this.stopWsl();
+		}
+
 		if (connection.id === "local") {
 			await this.switchToLocal();
+		} else if (connection.id === "wsl") {
+			await this.switchToWsl();
 		} else {
 			await this.switchToRemote(connection);
 		}
@@ -80,7 +99,7 @@ export class ConnectionManager {
 		}
 	}
 
-	/** Graceful shutdown — stop child if running. */
+	/** Graceful shutdown — stop child and/or WSL if running. */
 	async shutdown(): Promise<void> {
 		if (this.childRunning) {
 			try {
@@ -90,6 +109,7 @@ export class ConnectionManager {
 			}
 			this.childRunning = false;
 		}
+		this.stopWsl();
 		this.removeAuthInterceptor();
 	}
 
@@ -149,6 +169,40 @@ export class ConnectionManager {
 		const token = connection.authToken ?? "";
 		this.installAuthInterceptor(connection.serverUrl, token);
 		await this.window.loadURL(connection.serverUrl);
+	}
+
+	private async switchToWsl(): Promise<void> {
+		if (!this.createWslLauncher) {
+			console.error("[ConnectionManager] WSL launcher factory not available.");
+			return;
+		}
+		// Stop local child if running.
+		if (this.childRunning) {
+			try { await this.childManager.shutdown(); } catch { /* best-effort */ }
+			this.childRunning = false;
+		}
+		// Stop existing WSL if running.
+		this.stopWsl();
+
+		this.wslAuthToken = generateAuthToken();
+		this.wslLauncher = this.createWslLauncher(this.wslAuthToken);
+
+		try {
+			const result = await this.wslLauncher.start();
+			this.wslUrl = result.url;
+		} catch (err) {
+			console.error("[ConnectionManager] Failed to start WSL runtime:", err);
+			this.wslUrl = "about:blank";
+		}
+		this.installAuthInterceptor(this.wslUrl, this.wslAuthToken);
+		await this.window.loadURL(this.wslUrl);
+	}
+
+	private stopWsl(): void {
+		if (this.wslLauncher) {
+			this.wslLauncher.stop();
+			this.wslLauncher = null;
+		}
 	}
 
 	// -- Private auth ---------------------------------------------------------

@@ -185,7 +185,7 @@ export function buildConnectionMenuTemplate(
 
 	const removeItems: MenuItemConstructorOptions[] = [];
 	const active = store.getActiveConnection();
-	if (active.id !== "local") {
+	if (active.id !== "local" && active.id !== "wsl") {
 		removeItems.push({
 			label: `Remove "${active.label}"`,
 			click: async () => {

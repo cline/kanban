@@ -168,6 +168,40 @@ describe("buildConnectionMenuTemplate", () => {
 		expect(removeItems).toHaveLength(0);
 	});
 
+	it("does not include 'Remove' when WSL is active", () => {
+		const store = new ConnectionStore(tmpDir);
+		store.enableWslConnection();
+		store.setActiveConnection("wsl");
+
+		const menu = buildConnectionMenuTemplate({
+			store,
+			manager: mockManager(),
+			window: mockWindow(),
+		});
+
+		const submenu = menu.submenu as any[];
+		const removeItems = submenu.filter(
+			(item: any) => item.label && item.label.startsWith("Remove"),
+		);
+		expect(removeItems).toHaveLength(0);
+	});
+
+	it("includes WSL connection as a radio item when enabled", () => {
+		const store = new ConnectionStore(tmpDir);
+		store.enableWslConnection();
+
+		const menu = buildConnectionMenuTemplate({
+			store,
+			manager: mockManager(),
+			window: mockWindow(),
+		});
+
+		const submenu = menu.submenu as any[];
+		const wslItem = submenu.find((item: any) => item.label === "WSL");
+		expect(wslItem).toBeDefined();
+		expect(wslItem!.type).toBe("radio");
+	});
+
 	it("has a separator between connections and action items", () => {
 		const store = new ConnectionStore(tmpDir);
 		const menu = buildConnectionMenuTemplate({

@@ -136,4 +136,59 @@ describe("ConnectionStore", () => {
 		expect(store.getConnections()).toHaveLength(1);
 		expect(store.getConnections()[0]!.id).toBe("local");
 	});
+
+	// -- WSL connection --------------------------------------------------
+
+	it("enableWslConnection inserts WSL after local", () => {
+		const store = new ConnectionStore(tmpDir);
+		store.enableWslConnection();
+		const conns = store.getConnections();
+		expect(conns).toHaveLength(2);
+		expect(conns[0]!.id).toBe("local");
+		expect(conns[1]!.id).toBe("wsl");
+		expect(conns[1]!.label).toBe("WSL");
+	});
+
+	it("enableWslConnection is idempotent", () => {
+		const store = new ConnectionStore(tmpDir);
+		store.enableWslConnection();
+		store.enableWslConnection();
+		expect(store.getConnections()).toHaveLength(2);
+	});
+
+	it("hasWslConnection returns false when not enabled", () => {
+		const store = new ConnectionStore(tmpDir);
+		expect(store.hasWslConnection()).toBe(false);
+	});
+
+	it("hasWslConnection returns true after enabling", () => {
+		const store = new ConnectionStore(tmpDir);
+		store.enableWslConnection();
+		expect(store.hasWslConnection()).toBe(true);
+	});
+
+	it("WSL connection persists across reloads", () => {
+		const store1 = new ConnectionStore(tmpDir);
+		store1.enableWslConnection();
+		const store2 = new ConnectionStore(tmpDir);
+		expect(store2.hasWslConnection()).toBe(true);
+		expect(store2.getConnections()[1]!.id).toBe("wsl");
+	});
+
+	it("cannot update the WSL connection", () => {
+		const store = new ConnectionStore(tmpDir);
+		store.enableWslConnection();
+		store.updateConnection("wsl", { label: "Hacked" });
+		expect(store.getConnections().find((c) => c.id === "wsl")!.label).toBe("WSL");
+	});
+
+	it("WSL connection appears before remote connections", () => {
+		const store = new ConnectionStore(tmpDir);
+		store.addConnection({ label: "Remote", serverUrl: "https://r.com" });
+		store.enableWslConnection();
+		const conns = store.getConnections();
+		expect(conns[0]!.id).toBe("local");
+		expect(conns[1]!.id).toBe("wsl");
+		expect(conns[2]!.label).toBe("Remote");
+	});
 });
