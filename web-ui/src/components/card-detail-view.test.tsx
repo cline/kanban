@@ -26,6 +26,10 @@ vi.mock("react-hotkeys-hook", () => ({
 	useHotkeys: () => {},
 }));
 
+vi.mock("@/hooks/use-is-mobile", () => ({
+	useIsMobile: () => false,
+}));
+
 vi.mock("@/components/detail-panels/agent-terminal-panel", () => ({
 	AgentTerminalPanel: mockAgentTerminalPanel,
 }));

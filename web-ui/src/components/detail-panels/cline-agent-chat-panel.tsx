@@ -424,7 +424,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 				<div
 					ref={scrollContainerRef}
-					className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3"
+					className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto px-2 py-3"
 					onScroll={handleMessageListScroll}
 				>
 					{messages.map((message) => (
