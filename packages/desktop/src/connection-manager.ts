@@ -25,6 +25,8 @@ import type { ConnectionStore, SavedConnection } from "./connection-store.js";
 import { generateAuthToken } from "./auth.js";
 import { isInsecureRemoteUrl } from "./connection-utils.js";
 import type { WslLauncher } from "./wsl-launch.js";
+import { recordBootFailure } from "./desktop-boot-state.js";
+import { showDesktopFailureDialog, type DesktopFailureState } from "./desktop-failure.js";
 
 // Re-export for convenience.
 export { isInsecureRemoteUrl } from "./connection-utils.js";
@@ -210,7 +212,7 @@ export class ConnectionManager {
 				this.onLocalRuntimeReady?.(this.localUrl, this.localAuthToken);
 			} catch (err) {
 				console.error("[ConnectionManager] Failed to start local runtime:", err);
-				this.localUrl = "about:blank";
+				throw err;
 			}
 		}
 		await this.installAuthInterceptor(this.localUrl, this.localAuthToken);
@@ -268,8 +270,28 @@ export class ConnectionManager {
 			const result = await this.wslLauncher.start();
 			this.wslUrl = result.url;
 		} catch (err) {
-			console.error("[ConnectionManager] Failed to start WSL runtime:", err);
-			this.wslUrl = "about:blank";
+			const message =
+				err instanceof Error ? err.message : String(err);
+			console.error("[ConnectionManager] Failed to start WSL runtime:", message);
+			recordBootFailure("WSL_RUNTIME_START_FAILED", message);
+
+			const failure: DesktopFailureState = {
+				code: "WSL_RUNTIME_START_FAILED",
+				title: "WSL Runtime Failed",
+				message: `Failed to start the Kanban runtime in WSL:\n\n${message}`,
+				canRetry: true,
+				canFallbackToLocal: true,
+			};
+
+			const action = await showDesktopFailureDialog(this.window, failure);
+			if (action === "retry") {
+				return this.switchToWsl();
+			}
+			if (action === "fallback-local") {
+				return this.switchToLocal();
+			}
+			// 'dismiss' — leave window in its current state, do not load about:blank.
+			return;
 		}
 		await this.installAuthInterceptor(this.wslUrl, this.wslAuthToken);
 		await this.window.loadURL(this.wslUrl);
@@ -286,7 +308,7 @@ export class ConnectionManager {
 
 	private async installAuthInterceptor(serverUrl: string, token: string): Promise<void> {
 		this.removeAuthInterceptor();
-		if (!token || !serverUrl || serverUrl === "about:blank") return;
+		if (!token || !serverUrl) return;
 
 		let origin: string;
 		try {

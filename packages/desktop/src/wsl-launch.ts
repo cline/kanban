@@ -121,15 +121,21 @@ export class WslLauncher extends EventEmitter {
 			});
 			this.child = child;
 			let settled = false;
-			const settle = (fn: typeof resolve | typeof reject, v: any) => {
+			const settleResolve = (v: WslLaunchResult) => {
 				if (settled) return;
 				settled = true;
 				clearTimeout(timer);
-				fn(v);
+				resolve(v);
+			};
+			const settleReject = (v: Error) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				reject(v);
 			};
 
 			const timer = setTimeout(() => {
-				settle(reject, new Error(
+				settleReject(new Error(
 					`WSL runtime did not become ready within ${this.opts.readyTimeoutMs}ms.`,
 				));
 				this.stop();
@@ -144,7 +150,7 @@ export class WslLauncher extends EventEmitter {
 					const url = parseReadyLine(line);
 					if (url) {
 						const hostUrl = rewriteUrlForHost(url);
-						settle(resolve, { url: hostUrl });
+						settleResolve({ url: hostUrl });
 						this.emit("ready", hostUrl);
 						return;
 					}
@@ -158,7 +164,7 @@ export class WslLauncher extends EventEmitter {
 
 			child.on("error", (err) => {
 				this.child = null;
-				settle(reject, err);
+				settleReject(err);
 				this.emit("spawn-error", err.message);
 			});
 
@@ -166,7 +172,7 @@ export class WslLauncher extends EventEmitter {
 				this.child = null;
 				const msg = `WSL child exited (code=${code}, signal=${signal})` +
 					(stderrBuf ? `\n${stderrBuf.slice(0, 1000)}` : "");
-				settle(reject, new Error(msg));
+				settleReject(new Error(msg));
 				this.emit("exited", code, signal);
 			});
 		});
