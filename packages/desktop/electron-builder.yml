@@ -1,0 +1,67 @@
+appId: com.cline.kanban
+productName: Kanban
+copyright: Copyright © 2025 Cline
+
+# Directories
+directories:
+  output: out
+  buildResources: build
+
+# Files to include in the app bundle
+files:
+  - dist/**/*
+  - package.json
+
+# node-pty is a native addon that must be rebuilt for Electron's Node version.
+# @electron/rebuild handles this via the postinstall hook (electron-builder install-app-deps).
+
+# The child process entry point must be outside the asar archive so that
+# child_process.fork() can access it directly. node-pty native bindings
+# also need to be unpacked for the same reason.
+asar: true
+asarUnpack:
+  - "**/runtime-child.js"
+  - "**/node_modules/node-pty/**"
+
+# macOS configuration
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Windows configuration
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+
+# Linux configuration
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Development
