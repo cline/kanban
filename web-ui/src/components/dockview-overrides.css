@@ -29,6 +29,19 @@
 	--dv-active-sash-transition-delay: 0s !important;
 }
 
+/* Light theme: sash color, tab text colors, separator borders */
+:root[data-theme="light"] .dockview-theme-dark {
+	--dv-sash-color: transparent !important;
+	--dv-active-sash-color: rgba(0, 132, 255, 0.35) !important;
+	--dv-active-sash-transition-duration: 0s !important;
+	--dv-active-sash-transition-delay: 0s !important;
+	--dv-activegroup-visiblepanel-tab-color: var(--color-text-primary) !important;
+	--dv-activegroup-hiddenpanel-tab-color: var(--color-text-secondary) !important;
+	--dv-inactivegroup-visiblepanel-tab-color: var(--color-text-secondary) !important;
+	--dv-inactivegroup-hiddenpanel-tab-color: var(--color-text-tertiary) !important;
+	--dv-separator-border: var(--color-border) !important;
+}
+
 /* Ensure panel content fills available space */
 .dv-content-container > div {
 	height: 100% !important;

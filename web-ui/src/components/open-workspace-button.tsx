@@ -5,9 +5,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
+import { Theme, useTheme } from "@/hooks/use-theme";
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 
 function OpenTargetIcon({ option }: { option: OpenTargetOption }): React.ReactElement {
+	const { theme } = useTheme();
+	const isLight = theme === Theme.Light;
+
 	return (
 		<img
 			src={option.iconSrc}
@@ -18,7 +22,7 @@ function OpenTargetIcon({ option }: { option: OpenTargetOption }): React.ReactEl
 				height: 14,
 				display: "block",
 				objectFit: "contain",
-				filter: "brightness(0) invert(1)",
+				filter: isLight ? "brightness(0) invert(0.3)" : "brightness(0) invert(1)",
 				opacity: 0.9,
 			}}
 		/>

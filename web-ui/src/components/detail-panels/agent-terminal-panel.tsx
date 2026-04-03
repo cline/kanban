@@ -3,10 +3,10 @@ import "@xterm/xterm/css/xterm.css";
 import { Command, Maximize2, MessageSquare, Minimize2, X } from "lucide-react";
 import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
-
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { Theme } from "@/hooks/use-theme";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
@@ -35,6 +35,7 @@ export interface AgentTerminalPanelProps {
 	isMoveToTrashLoading?: boolean;
 	onCancelAutomaticAction?: () => void;
 	cancelAutomaticActionLabel?: string | null;
+	theme?: Theme;
 	showMoveToTrash?: boolean;
 	showSessionToolbar?: boolean;
 	onClose?: () => void;
@@ -355,6 +356,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		sessionStartedAt: props.summary?.startedAt ?? null,
 		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
+		theme: props.theme ?? Theme.Dark,
 	});
 
 	return <AgentTerminalPanelLayout {...props} sessionControls={sessionControls} />;

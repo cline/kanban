@@ -63,6 +63,11 @@ vi.mock("@/runtime/use-runtime-workspace-changes", () => ({
 	useRuntimeWorkspaceChanges: (...args: unknown[]) => mockUseRuntimeWorkspaceChanges(...args),
 }));
 
+vi.mock("@/hooks/use-theme", () => ({
+	Theme: { Dark: "dark", Light: "light" },
+	useTheme: () => ({ theme: "dark", setTheme: () => {}, toggleTheme: () => {} }),
+}));
+
 vi.mock("@/stores/workspace-metadata-store", () => ({
 	useTaskWorkspaceStateVersionValue: () => 0,
 }));

@@ -11,6 +11,7 @@ import { createIdleTaskSession } from "@/hooks/app-utils";
 import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
+import { useTheme } from "@/hooks/use-theme";
 import { selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -20,7 +21,7 @@ import type {
 	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
-import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import { getTerminalThemeColors } from "@/terminal/theme-colors";
 
 interface UseHomeSidebarAgentPanelInput {
 	currentProjectId: string | null;
@@ -53,6 +54,8 @@ export function useHomeSidebarAgentPanel({
 	latestTaskChatMessage,
 	taskChatMessagesByTaskId,
 }: UseHomeSidebarAgentPanelInput): ReactElement | null {
+	const { theme } = useTheme();
+	const terminalColors = getTerminalThemeColors(theme);
 	const [sessionSummaries, setSessionSummaries] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const upsertSessionSummary = useCallback((summary: RuntimeTaskSessionSummary) => {
 		setSessionSummaries((currentSessions) => {
@@ -173,15 +176,16 @@ export function useHomeSidebarAgentPanel({
 		return (
 			<AgentTerminalPanel
 				key={taskId}
+				theme={theme}
 				taskId={taskId}
 				workspaceId={currentProjectId}
 				summary={homeAgentPanelSummary}
 				onSummary={upsertSessionSummary}
 				showSessionToolbar={false}
 				autoFocus
-				panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-				terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-				cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+				panelBackgroundColor={terminalColors.surfaceRaised}
+				terminalBackgroundColor={terminalColors.surfaceRaised}
+				cursorColor={terminalColors.textPrimary}
 				showRightBorder={false}
 			/>
 		);

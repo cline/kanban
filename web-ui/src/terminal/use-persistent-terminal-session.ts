@@ -1,6 +1,7 @@
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { Theme } from "@/hooks/use-theme";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { disposePersistentTerminal, ensurePersistentTerminal } from "@/terminal/persistent-terminal-manager";
 import { registerTerminalController } from "@/terminal/terminal-controller-registry";
@@ -16,6 +17,7 @@ interface UsePersistentTerminalSessionInput {
 	sessionStartedAt?: number | null;
 	terminalBackgroundColor: string;
 	cursorColor: string;
+	theme: Theme;
 }
 
 export interface UsePersistentTerminalSessionResult {
@@ -37,6 +39,7 @@ export function usePersistentTerminalSession({
 	sessionStartedAt = null,
 	terminalBackgroundColor,
 	cursorColor,
+	theme,
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<ReturnType<typeof ensurePersistentTerminal> | null>(null);
@@ -100,6 +103,7 @@ export function usePersistentTerminalSession({
 			workspaceId,
 			cursorColor,
 			terminalBackgroundColor,
+			theme,
 		});
 		if (didSessionRestart) {
 			terminal.reset();
@@ -124,6 +128,7 @@ export function usePersistentTerminalSession({
 			{
 				cursorColor,
 				terminalBackgroundColor,
+				theme,
 			},
 			{
 				autoFocus,

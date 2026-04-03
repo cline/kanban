@@ -54,6 +54,7 @@ import { useTaskEditor } from "@/hooks/use-task-editor";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
+import { useTheme } from "@/hooks/use-theme";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import {
 	getTaskAgentNavbarHint,
@@ -73,7 +74,7 @@ import {
 	replaceWorkspaceMetadata,
 	resetWorkspaceMetadataStore,
 } from "@/stores/workspace-metadata-store";
-import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import { getTerminalThemeColors } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 
 export default function App(): ReactElement {
@@ -159,6 +160,8 @@ export default function App(): ReactElement {
 		refreshRuntimeProjectConfig,
 		refreshSettingsRuntimeProjectConfig,
 	});
+	const { theme, toggleTheme } = useTheme();
+	const terminalColors = getTerminalThemeColors(theme);
 	const {
 		debugModeEnabled,
 		isDebugDialogOpen,
@@ -819,6 +822,8 @@ export default function App(): ReactElement {
 					onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
 					isGitHistoryOpen={isGitHistoryOpen}
 					hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
+					onToggleTheme={toggleTheme}
+					theme={theme}
 				/>
 				<div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
 					<div
@@ -910,6 +915,7 @@ export default function App(): ReactElement {
 											}}
 										>
 											<AgentTerminalPanel
+												theme={theme}
 												key={`home-shell-${homeTerminalTaskId}`}
 												taskId={homeTerminalTaskId}
 												workspaceId={currentProjectId}
@@ -920,9 +926,9 @@ export default function App(): ReactElement {
 												onClose={closeHomeTerminal}
 												minimalHeaderTitle="Terminal"
 												minimalHeaderSubtitle={homeTerminalSubtitle}
-												panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-												terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-												cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+												panelBackgroundColor={terminalColors.surfaceRaised}
+												terminalBackgroundColor={terminalColors.surfaceRaised}
+												cursorColor={terminalColors.textPrimary}
 												showRightBorder={false}
 												onConnectionReady={markTerminalConnectionReady}
 												agentCommand={agentCommand}

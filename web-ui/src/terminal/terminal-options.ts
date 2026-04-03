@@ -1,11 +1,13 @@
 import type { ITerminalOptions } from "@xterm/xterm";
 
-import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import type { Theme } from "@/hooks/use-theme";
+import { getTerminalThemeColors } from "@/terminal/theme-colors";
 
 interface CreateKanbanTerminalOptionsInput {
 	cursorColor: string;
 	isMacPlatform: boolean;
 	terminalBackgroundColor: string;
+	theme: Theme;
 }
 
 const TERMINAL_WORD_SEPARATOR = " ()[]{}',\"`";
@@ -16,7 +18,10 @@ export function createKanbanTerminalOptions({
 	cursorColor,
 	isMacPlatform,
 	terminalBackgroundColor,
+	theme,
 }: CreateKanbanTerminalOptionsInput): ITerminalOptions {
+	const colors = getTerminalThemeColors(theme);
+
 	return {
 		allowProposedApi: true,
 		allowTransparency: false,
@@ -41,10 +46,10 @@ export function createKanbanTerminalOptions({
 			background: terminalBackgroundColor,
 			cursor: cursorColor,
 			cursorAccent: terminalBackgroundColor,
-			foreground: TERMINAL_THEME_COLORS.textPrimary,
-			selectionBackground: TERMINAL_THEME_COLORS.selectionBackground,
-			selectionForeground: TERMINAL_THEME_COLORS.selectionForeground,
-			selectionInactiveBackground: TERMINAL_THEME_COLORS.selectionInactiveBackground,
+			foreground: colors.textPrimary,
+			selectionBackground: colors.selectionBackground,
+			selectionForeground: colors.selectionForeground,
+			selectionInactiveBackground: colors.selectionInactiveBackground,
 		},
 		windowOptions: {
 			getCellSizePixels: true,

@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { ClineAgentChatPanel } from "@/components/detail-panels/cline-agent-chat-panel";
-import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import { useTheme } from "@/hooks/use-theme";
+import { getTerminalThemeColors } from "@/terminal/theme-colors";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { useCardDetailContext } from "./card-detail-context";
 
@@ -45,6 +46,8 @@ function useSharedAgentProps(ctx: ReturnType<typeof useCardDetailContext>) {
 export function AgentPanel() {
 	const ctx = useCardDetailContext();
 	const sharedProps = useSharedAgentProps(ctx);
+	const { theme } = useTheme();
+	const terminalColors = getTerminalThemeColors(theme);
 
 	if (ctx.showClineAgentChatPanel) {
 		return (
@@ -69,6 +72,7 @@ export function AgentPanel() {
 
 	return (
 		<AgentTerminalPanel
+			theme={theme}
 			taskId={ctx.selection.card.id}
 			workspaceId={ctx.currentProjectId}
 			terminalEnabled={ctx.isTaskTerminalEnabled}
@@ -76,8 +80,8 @@ export function AgentPanel() {
 			onSummary={ctx.onSessionSummary}
 			showSessionToolbar={false}
 			autoFocus
-			panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-			terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+			panelBackgroundColor={terminalColors.surfacePrimary}
+			terminalBackgroundColor={terminalColors.surfacePrimary}
 			showRightBorder={false}
 			taskColumnId={ctx.selection.column.id}
 			{...sharedProps}

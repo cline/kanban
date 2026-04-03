@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { Theme } from "@/hooks/use-theme";
 import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
 
 describe("createKanbanTerminalOptions", () => {
@@ -8,6 +9,7 @@ describe("createKanbanTerminalOptions", () => {
 			cursorColor: "#abcdef",
 			isMacPlatform: true,
 			terminalBackgroundColor: "#101112",
+			theme: Theme.Dark,
 		});
 
 		expect(options.allowProposedApi).toBe(true);

@@ -9,9 +9,11 @@ import {
 	CircleArrowDown,
 	Command,
 	GitBranch,
+	Moon,
 	Play,
 	Plus,
 	Settings,
+	Sun,
 	Terminal,
 } from "lucide-react";
 import { useState } from "react";
@@ -27,6 +29,7 @@ import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { Theme } from "@/hooks/use-theme";
 import type { RuntimeGitSyncAction, RuntimeProjectShortcut } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
@@ -308,6 +311,8 @@ export function TopBar({
 	canOpenWorkspace,
 	isOpeningWorkspace,
 	hideProjectDependentActions = false,
+	onToggleTheme,
+	theme = Theme.Dark,
 }: {
 	onBack?: () => void;
 	workspacePath?: string;
@@ -342,6 +347,8 @@ export function TopBar({
 	canOpenWorkspace: boolean;
 	isOpeningWorkspace: boolean;
 	hideProjectDependentActions?: boolean;
+	onToggleTheme?: () => void;
+	theme?: Theme;
 }): React.ReactElement {
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
@@ -586,6 +593,20 @@ export function TopBar({
 								disabled={Boolean(isTerminalLoading)}
 								aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
 								className="ml-2"
+							/>
+						</Tooltip>
+					) : null}
+					{onToggleTheme ? (
+						<Tooltip
+							side="bottom"
+							content={theme === Theme.Dark ? "Switch to light theme" : "Switch to dark theme"}
+						>
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={theme === Theme.Dark ? <Sun size={16} /> : <Moon size={16} />}
+								onClick={onToggleTheme}
+								aria-label={theme === Theme.Dark ? "Switch to light theme" : "Switch to dark theme"}
 							/>
 						</Tooltip>
 					) : null}
