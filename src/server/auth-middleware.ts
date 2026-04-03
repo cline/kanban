@@ -11,6 +11,7 @@ const CSP_HEADER_VALUE = [
 
 export interface AuthMiddlewareDependencies {
 	authToken?: string;
+	allowedOrigins?: string[];
 	version: string;
 }
 
@@ -86,6 +87,23 @@ function resolveHeadersFromArgs(args: unknown[]): Record<string, string | string
 	return undefined;
 }
 
+/**
+ * Validate the Origin header against the allowed origins list.
+ * Returns true if the request should proceed, false if it should be rejected.
+ *
+ * - Origin absent → allow (non-browser clients like curl, CLI tools)
+ * - Origin present + matches an allowed origin → allow
+ * - Origin present + mismatched → reject
+ */
+function isOriginAllowed(req: IncomingMessage, allowedOrigins: string[]): boolean {
+	const origin = req.headers.origin;
+	if (typeof origin !== "string" || origin === "") {
+		// No Origin header — non-browser client, allow through
+		return true;
+	}
+	return allowedOrigins.some((allowed) => origin === allowed);
+}
+
 function patchWriteHeadForCsp(res: ServerResponse): void {
 	const originalWriteHead = res.writeHead;
 	function patchedWriteHead(statusCode: number, ...rest: unknown[]): ServerResponse {
@@ -107,7 +125,8 @@ function patchWriteHeadForCsp(res: ServerResponse): void {
 }
 
 export function createAuthMiddleware(deps: AuthMiddlewareDependencies): AuthMiddleware {
-	const { authToken, version } = deps;
+	const { authToken, allowedOrigins, version } = deps;
+	const hasOriginValidation = Array.isArray(allowedOrigins) && allowedOrigins.length > 0;
 
 	const handleHttpRequest = (req: IncomingMessage, res: ServerResponse): boolean => {
 		const pathname = getPathname(req);
@@ -129,6 +148,13 @@ export function createAuthMiddleware(deps: AuthMiddlewareDependencies): AuthMidd
 			return true;
 		}
 
+		// CSRF defense-in-depth: validate Origin header on API paths
+		if (hasOriginValidation && !isOriginAllowed(req, allowedOrigins)) {
+			res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+			res.end('{"error":"Forbidden"}');
+			return false;
+		}
+
 		// When no authToken is configured (local CLI mode), skip validation
 		if (!authToken) {
 			return true;
@@ -145,6 +171,11 @@ export function createAuthMiddleware(deps: AuthMiddlewareDependencies): AuthMidd
 	};
 
 	const handleWsUpgrade = (req: IncomingMessage): boolean => {
+		// CSRF defense-in-depth: validate Origin header on WS upgrade paths
+		if (hasOriginValidation && !isOriginAllowed(req, allowedOrigins)) {
+			return false;
+		}
+
 		// When no authToken is configured (local CLI mode), skip validation
 		if (!authToken) {
 			return true;
