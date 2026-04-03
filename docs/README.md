@@ -12,6 +12,7 @@ If you are new to the codebase, read these in order:
 
 1. [`../README.md`](../README.md) for the product overview and local setup.
 2. [`architecture.md`](./architecture.md) for the system map, runtime model, and key file guide.
+3. [`remote-setup.md`](./remote-setup.md) for running Kanban on a remote server and connecting from the desktop app.
 
 This `docs/` folder should stand on its own for normal onboarding. Active plans and handoffs may still exist in `.plan/docs`, but a new engineer should not need those to understand the current architecture.
 

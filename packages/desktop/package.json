@@ -13,7 +13,8 @@
 		"build:mac:arm64": "npm run rebuild:pty && npm run build:ts && electron-builder --mac dmg --arm64 --config electron-builder.yml",
 		"build:mac:x64": "npm run rebuild:pty && npm run build:ts && electron-builder --mac dmg --x64 --config electron-builder.yml",
 		"build:mac:universal": "npm run rebuild:pty && npm run build:ts && electron-builder --mac dmg --universal --config electron-builder.yml",
-		"build:win": "npm run build:ts && electron-builder --win --config electron-builder.yml",
+		"build:win": "npm run build:ts && electron-builder --win --x64 --config electron-builder.yml",
+		"build:linux": "npm run build:ts && electron-builder --linux --config electron-builder.yml",
 		"build": "npm run rebuild:pty && npm run build:ts && electron-builder --config electron-builder.yml",
 		"dev": "tsc -p tsconfig.build.json && electron dist/main.js",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
@@ -34,6 +35,8 @@
 	},
 	"dependencies": {
 		"electron-updater": "^6.3.9",
-		"kanban": "file:../../"
+		"kanban": "file:../../",
+		"node-pty": "^1.2.0-beta.11",
+		"tree-kill": "^1.2.2"
 	}
 }
