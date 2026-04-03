@@ -25,6 +25,14 @@ export interface CreateTerminalWebSocketBridgeRequest {
 	resolveTerminalManager: (workspaceId: string) => TerminalSessionService | null;
 	isTerminalIoWebSocketPath: (pathname: string) => boolean;
 	isTerminalControlWebSocketPath: (pathname: string) => boolean;
+	/**
+	 * Optional session validator for remote-mode passcode enforcement.
+	 * When provided, WebSocket upgrade requests that fail validation are
+	 * rejected with HTTP 401 before the connection is established.
+	 * @param cookieHeader - The value of the Cookie request header (may be undefined).
+	 * @returns true if the request is authenticated, false otherwise.
+	 */
+	validateUpgradeSession?: (cookieHeader: string | undefined) => boolean;
 }
 
 export interface TerminalWebSocketBridge {
@@ -121,6 +129,7 @@ export function createTerminalWebSocketBridge({
 	resolveTerminalManager,
 	isTerminalIoWebSocketPath,
 	isTerminalControlWebSocketPath,
+	validateUpgradeSession,
 }: CreateTerminalWebSocketBridgeRequest): TerminalWebSocketBridge {
 	const activeSockets = new Set<Socket>();
 	const terminalStreamStates = new Map<string, TerminalStreamState>();
@@ -376,6 +385,13 @@ export function createTerminalWebSocketBridge({
 			if (!isIoRequest && !isControlRequest) {
 				return;
 			}
+			// ── Passcode gate for terminal WebSocket upgrades ─────────────────
+			if (validateUpgradeSession !== undefined && !validateUpgradeSession(request.headers.cookie)) {
+				(socket as Socket).write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+				(socket as Socket).destroy();
+				return;
+			}
+			// ── End passcode gate ─────────────────────────────────────────────
 			upgradeRequest.__kanbanUpgradeHandled = true;
 
 			const taskId = url.searchParams.get("taskId")?.trim();

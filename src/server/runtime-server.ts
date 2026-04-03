@@ -412,6 +412,18 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		if (normalizeRequestPath(requestUrl.pathname) !== "/api/runtime/ws") {
 			return;
 		}
+		// ── Passcode gate for WebSocket upgrades (remote mode only) ──────────
+		const passcodeActive = isRemoteMode && isPasscodeEnabled();
+		if (passcodeActive) {
+			const token = extractSessionTokenFromCookie(request.headers.cookie);
+			const authenticated = token !== null && validateSession(token);
+			if (!authenticated) {
+				socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+				socket.destroy();
+				return;
+			}
+		}
+		// ── End passcode gate ─────────────────────────────────────────────────
 		(request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled = true;
 		const requestedWorkspaceId = requestUrl.searchParams.get("workspaceId")?.trim() || null;
 		deps.runtimeStateHub.handleUpgrade(request, socket, head, { requestedWorkspaceId });
@@ -421,6 +433,13 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		resolveTerminalManager: (workspaceId) => deps.workspaceRegistry.getTerminalManagerForWorkspace(workspaceId),
 		isTerminalIoWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/io",
 		isTerminalControlWebSocketPath: (pathname) => normalizeRequestPath(pathname) === "/api/terminal/control",
+		validateUpgradeSession:
+			isRemoteMode && isPasscodeEnabled()
+				? (cookieHeader) => {
+						const token = extractSessionTokenFromCookie(cookieHeader);
+						return token !== null && validateSession(token);
+					}
+				: undefined,
 	});
 	server.on("upgrade", (request, socket) => {
 		const handled = (request as IncomingMessage & { __kanbanUpgradeHandled?: boolean }).__kanbanUpgradeHandled;
