@@ -1,7 +1,7 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Plus } from "lucide-react";
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { canShowFeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
@@ -23,12 +23,13 @@ import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layo
 import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
-import { useUnmount, useWindowEvent } from "@/utils/react-use";
+import { useReactUseMedia, useUnmount, useWindowEvent } from "@/utils/react-use";
 
 const COLLAPSED_WIDTH = 48;
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
 const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
 const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
+const MOBILE_BREAKPOINT = 768;
 const GITHUB_ISSUES_URL = "https://github.com/cline/kanban/issues";
 
 interface TaskCountBadge {
@@ -87,6 +88,23 @@ export function ProjectNavigationPanel({
 		: 0;
 
 	const { sidebarWidth, setExpandedSidebarWidth, isCollapsed, setSidebarCollapsed } = useProjectNavigationLayout();
+	const isMobile = useReactUseMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`, false);
+
+	useEffect(() => {
+		if (isMobile) {
+			setSidebarCollapsed(true, false);
+		}
+		// Only auto-collapse when crossing the mobile breakpoint, not on every isCollapsed change.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isMobile]);
+
+	const setCollapsed = useCallback(
+		(collapsed: boolean) => {
+			setSidebarCollapsed(collapsed, !isMobile);
+		},
+		[isMobile, setSidebarCollapsed],
+	);
+
 	const [isDragging, setIsDragging] = useState(false);
 	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
@@ -117,16 +135,16 @@ export function ProjectNavigationPanel({
 			const newWidth = dragState.startWidth + delta;
 			if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
 				if (!isCollapsed) {
-					setSidebarCollapsed(true);
+					setCollapsed(true);
 				}
 				return;
 			}
 			if (isCollapsed) {
-				setSidebarCollapsed(false);
+				setCollapsed(false);
 			}
 			setExpandedSidebarWidth(newWidth);
 		},
-		[isCollapsed, isDragging, setExpandedSidebarWidth, setSidebarCollapsed],
+		[isCollapsed, isDragging, setExpandedSidebarWidth, setCollapsed],
 	);
 
 	const handleMouseUp = useCallback(() => {
@@ -157,23 +175,27 @@ export function ProjectNavigationPanel({
 		[isCollapsed, isDragging, sidebarWidth, stopDrag],
 	);
 
+	const collapsedWidth = isMobile ? 56 : COLLAPSED_WIDTH;
+
 	if (isCollapsed) {
 		return (
 			<aside
 				className="flex flex-col items-center min-h-0 overflow-hidden bg-surface-1 relative shrink-0 py-2 gap-1.5"
 				style={{
-					width: COLLAPSED_WIDTH,
-					minWidth: COLLAPSED_WIDTH,
+					width: collapsedWidth,
+					minWidth: collapsedWidth,
 					borderRight: "1px solid var(--color-divider)",
 				}}
 			>
-				<div
-					role="separator"
-					aria-orientation="vertical"
-					aria-label="Resize sidebar"
-					onMouseDown={startDrag}
-					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
-				/>
+				{!isMobile && (
+					<div
+						role="separator"
+						aria-orientation="vertical"
+						aria-label="Resize sidebar"
+						onMouseDown={startDrag}
+						className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
+					/>
+				)}
 				{sortedProjects.map((project) => {
 					const isCurrent = currentProjectId === project.id;
 					const letter = project.name.charAt(0).toUpperCase();
@@ -182,9 +204,15 @@ export function ProjectNavigationPanel({
 							key={project.id}
 							type="button"
 							title={project.name}
-							onClick={() => onSelectProject(project.id)}
+							onClick={() => {
+								if (isMobile) {
+									setCollapsed(false);
+								}
+								onSelectProject(project.id);
+							}}
 							className={cn(
-								"w-8 h-8 rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
+								"rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
+								isMobile ? "w-11 h-11" : "w-8 h-8",
 								isCurrent
 									? "bg-accent text-white"
 									: "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
@@ -199,7 +227,10 @@ export function ProjectNavigationPanel({
 					title="Add project"
 					onClick={onAddProject}
 					disabled={removingProjectId !== null}
-					className="w-8 h-8 rounded-md text-xs shrink-0 border-0 cursor-pointer flex items-center justify-center bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 mt-auto"
+					className={cn(
+						"rounded-md text-xs shrink-0 border-0 cursor-pointer flex items-center justify-center bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 mt-auto",
+						isMobile ? "w-11 h-11" : "w-8 h-8",
+					)}
 				>
 					<Plus size={16} />
 				</button>
@@ -207,23 +238,37 @@ export function ProjectNavigationPanel({
 		);
 	}
 
-	return (
+	const mobileMaxWidth = typeof window !== "undefined" ? window.innerWidth - 48 : 320;
+
+	const expandedSidebar = (
 		<aside
-			className="flex flex-col min-h-0 overflow-hidden bg-surface-1 relative shrink-0"
-			style={{
-				width: sidebarWidth,
-				minWidth: SIDEBAR_MIN_EXPANDED_WIDTH,
-				maxWidth: SIDEBAR_MAX_EXPANDED_WIDTH,
-				borderRight: "1px solid var(--color-divider)",
-			}}
+			className={cn(
+				"flex flex-col min-h-0 overflow-hidden bg-surface-1 relative shrink-0",
+				isMobile && "fixed inset-y-0 left-0 z-50 shadow-2xl",
+			)}
+			style={
+				isMobile
+					? {
+							width: Math.min(sidebarWidth, mobileMaxWidth),
+							borderRight: "1px solid var(--color-divider)",
+						}
+					: {
+							width: sidebarWidth,
+							minWidth: SIDEBAR_MIN_EXPANDED_WIDTH,
+							maxWidth: SIDEBAR_MAX_EXPANDED_WIDTH,
+							borderRight: "1px solid var(--color-divider)",
+						}
+			}
 		>
-			<div
-				role="separator"
-				aria-orientation="vertical"
-				aria-label="Resize sidebar"
-				onMouseDown={startDrag}
-				className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
-			/>
+			{!isMobile && (
+				<div
+					role="separator"
+					aria-orientation="vertical"
+					aria-label="Resize sidebar"
+					onMouseDown={startDrag}
+					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
+				/>
+			)}
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
@@ -395,6 +440,29 @@ export function ProjectNavigationPanel({
 			</AlertDialog>
 		</aside>
 	);
+
+	if (isMobile) {
+		return (
+			<>
+				{expandedSidebar}
+				{/* Backdrop scrim */}
+				<div
+					role="button"
+					tabIndex={-1}
+					aria-label="Close sidebar"
+					onClick={() => setCollapsed(true)}
+					onKeyDown={(e) => {
+						if (e.key === "Escape") {
+							setCollapsed(true);
+						}
+					}}
+					className="fixed inset-0 z-40 bg-black/50"
+				/>
+			</>
+		);
+	}
+
+	return expandedSidebar;
 }
 
 function ProjectSupportFooter({
