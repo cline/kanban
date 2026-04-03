@@ -38,15 +38,25 @@ export interface BeforeSendHeadersDetails {
 /** Minimal subset of Electron's `Session` that we actually need. */
 export interface ElectronSessionLike {
 	webRequest: {
-		onBeforeSendHeaders: (
-			filter: { urls: string[] } | null,
-			listener:
-				| ((
-						details: BeforeSendHeadersDetails,
-						callback: BeforeSendHeadersCallback,
-				  ) => void)
-				| null,
-		) => void;
+		onBeforeSendHeaders: {
+			(
+				filter: { urls: string[] },
+				listener:
+					| ((
+							details: BeforeSendHeadersDetails,
+							callback: BeforeSendHeadersCallback,
+					  ) => void)
+					| null,
+			): void;
+			(
+				listener:
+					| ((
+							details: BeforeSendHeadersDetails,
+							callback: BeforeSendHeadersCallback,
+					  ) => void)
+					| null,
+			): void;
+		};
 	};
 }
 
@@ -93,7 +103,7 @@ export function installAuthHeaderInterceptor(
 	});
 
 	return () => {
-		// Remove the handler by passing null.
-		session.webRequest.onBeforeSendHeaders(null, null);
+		// Remove the handler by passing null (no-filter overload).
+		session.webRequest.onBeforeSendHeaders(null);
 	};
 }

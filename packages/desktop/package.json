@@ -35,7 +35,7 @@
 	},
 	"dependencies": {
 		"electron-updater": "^6.3.9",
-		"kanban": "file:../../",
+		"kanban": "file:kanban-0.1.57.tgz",
 		"node-pty": "^1.2.0-beta.11",
 		"tree-kill": "^1.2.2"
 	}

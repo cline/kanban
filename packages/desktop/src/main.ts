@@ -430,7 +430,7 @@ function createMainWindow(): BrowserWindow {
 async function startRuntimeChild(): Promise<string> {
 	authToken = generateAuthToken();
 
-	const childScriptPath = path.join(import.meta.dirname, "runtime-child.js");
+	const childScriptPath = path.join(import.meta.dirname, "runtime-child-entry.js");
 
 	runtimeManager = new RuntimeChildManager({
 		childScriptPath,

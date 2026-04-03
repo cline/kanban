@@ -16,6 +16,26 @@ afterSign: ./scripts/notarize.cjs
 files:
   - dist/**/*
   - package.json
+  # Exclude non-essential files from the kanban file:../../ dependency
+  - "!**/.*"
+  - "!**/.*/**"
+  - "!**/test/**"
+  - "!**/tests/**"
+  - "!**/web-ui/src/**"
+  - "!**/web-ui/tests/**"
+  - "!**/web-ui/node_modules/**"
+  - "!**/web-ui/*.config.*"
+  - "!**/web-ui/*.setup.*"
+  - "!**/docs/**"
+  - "!**/man/**"
+  - "!**/grit/**"
+  - "!**/scripts/**"
+  - "!**/*.md"
+  - "!**/*.test.ts"
+  - "!**/*.test.js"
+  - "!**/vitest.config.*"
+  - "!**/biome.json"
+  - "!**/tsconfig*.json"
 
 # Custom protocol — registers kanban:// deep-links for OAuth callbacks.
 # On macOS this ends up in the Info.plist CFBundleURLTypes; on Windows it
@@ -36,9 +56,9 @@ protocols:
 # on Windows (where native pid-tree walking is needed).
 asar: true
 asarUnpack:
-  - "**/runtime-child.js"
-  - "**/node_modules/node-pty/**"
-  - "**/node_modules/tree-kill/**"
+  - "package.json"
+  - "**/runtime-child-entry.js"
+  - "**/node_modules/**"
 
 # ──────────────────────────────────────────
 # Auto-update: publish to GitHub Releases
