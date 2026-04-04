@@ -35,6 +35,8 @@ interface CreateTaskOptions {
 
 export interface UseTaskEditorResult {
 	isInlineTaskCreateOpen: boolean;
+	newTaskTitle: string;
+	setNewTaskTitle: Dispatch<SetStateAction<string>>;
 	newTaskPrompt: string;
 	setNewTaskPrompt: Dispatch<SetStateAction<string>>;
 	newTaskImages: TaskImage[];
@@ -84,6 +86,7 @@ export function useTaskEditor({
 	queueTaskStartAfterEdit,
 }: UseTaskEditorInput): UseTaskEditorResult {
 	const [isInlineTaskCreateOpen, setIsInlineTaskCreateOpen] = useState(false);
+	const [newTaskTitle, setNewTaskTitle] = useState("");
 	const [newTaskPrompt, setNewTaskPrompt] = useState("");
 	const [newTaskImages, setNewTaskImages] = useState<TaskImage[]>([]);
 	const [newTaskStartInPlanMode, setNewTaskStartInPlanMode] = useBooleanLocalStorageValue(
@@ -206,6 +209,7 @@ export function useTaskEditor({
 				setSelectedTaskId(null);
 			}
 			setIsInlineTaskCreateOpen(false);
+			setNewTaskTitle("");
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
 			const taskPrompt = task.prompt.trim();
@@ -293,7 +297,9 @@ export function useTaskEditor({
 				return null;
 			}
 			const baseRef = newTaskBranchRef || resolvedDefaultTaskBranchRef;
+			const title = newTaskTitle.trim();
 			const created = addTaskToColumnWithResult(board, "backlog", {
+				title,
 				prompt,
 				startInPlanMode: newTaskStartInPlanMode,
 				autoReviewEnabled: newTaskAutoReviewEnabled,
@@ -330,6 +336,7 @@ export function useTaskEditor({
 			newTaskBranchRef,
 			newTaskImages,
 			newTaskPrompt,
+			newTaskTitle,
 			newTaskStartInPlanMode,
 			resolvedDefaultTaskBranchRef,
 			selectedAgentId,
@@ -401,6 +408,8 @@ export function useTaskEditor({
 	const resetTaskEditorState = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
 		setEditingTaskId(null);
+		setNewTaskTitle("");
+		setNewTaskPrompt("");
 		setEditTaskPrompt("");
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
@@ -412,6 +421,8 @@ export function useTaskEditor({
 
 	return {
 		isInlineTaskCreateOpen,
+		newTaskTitle,
+		setNewTaskTitle,
 		newTaskPrompt,
 		setNewTaskPrompt,
 		newTaskImages,
