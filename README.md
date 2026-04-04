@@ -70,6 +70,9 @@ When the work looks good, hit **Commit** or **Open PR**. Kanban sends a dynamic 
 ### 7. Keep track with git interface
 Click the branch name in the navbar to open a full git interface to browse commit history, switch branches, fetch, pull, push, and visualize your git all without leaving Kanban. Keep track of everything your agents are doing across branches as work is completed.
 
+### Remote access
+Kanban can also run on a remote server. Start with `--host 0.0.0.0`, generate an auth token with `kanban token generate`, add the connection in the desktop app, and put a reverse proxy (nginx/Caddy) in front for TLS. See [docs/remote-setup.md](./docs/remote-setup.md) for the full guide.
+
 ---
 
 [Apache 2.0 © 2026 Cline Bot Inc.](./LICENSE)
