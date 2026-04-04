@@ -1,34 +1,26 @@
-import { spawn, spawnSync } from "node:child_process";
-import { stat } from "node:fs/promises";
-import { createServer as createNetServer } from "node:net";
+// CLI startup uses top-level imports per AGENTS.md. If startup optimization is
+// needed in the future, prefer entrypoint/module-boundary refactors over
+// dynamic imports.
+
+import { spawnSync } from "node:child_process";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
 import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerTaskCommand } from "./commands/task";
-import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
-import type { RuntimeCommandRunResponse } from "./core/api-contract";
+import { registerTokenCommand } from "./commands/token";
 import { createGitProcessEnv } from "./core/git-process-env";
 import {
 	installGracefulShutdownHandlers,
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./core/graceful-shutdown";
-import {
-	buildKanbanRuntimeUrl,
-	DEFAULT_KANBAN_RUNTIME_PORT,
-	getKanbanRuntimeHost,
-	getKanbanRuntimeOrigin,
-	getKanbanRuntimePort,
-	parseRuntimePort,
-	setKanbanRuntimeHost,
-	setKanbanRuntimePort,
-} from "./core/runtime-endpoint";
-import { terminateProcessForTimeout } from "./server/process-termination";
-import type { RuntimeStateHub } from "./server/runtime-state-hub";
+import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin, parseRuntimePort } from "./core/runtime-endpoint";
+import { type RuntimeHandle, startRuntime } from "./runtime-start.js";
+import { openInBrowser } from "./server/browser.js";
+import { loadWorkspaceContext } from "./state/workspace-state.js";
 import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
-import type { TerminalSessionManager } from "./terminal/session-manager";
-import { runOnDemandUpdate } from "./update/update";
+import { autoUpdateOnStartup, runOnDemandUpdate, runPendingAutoUpdateOnShutdown } from "./update/update.js";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -150,58 +142,6 @@ function createShutdownIndicator(stream: NodeJS.WriteStream = process.stderr): S
 	};
 }
 
-async function isPortAvailable(port: number): Promise<boolean> {
-	return await new Promise<boolean>((resolve) => {
-		const probe = createNetServer();
-		probe.once("error", () => {
-			resolve(false);
-		});
-		probe.listen(port, getKanbanRuntimeHost(), () => {
-			probe.close(() => {
-				resolve(true);
-			});
-		});
-	});
-}
-
-async function findAvailableRuntimePort(startPort: number): Promise<number> {
-	for (let candidate = startPort; candidate <= 65535; candidate += 1) {
-		if (await isPortAvailable(candidate)) {
-			return candidate;
-		}
-	}
-	throw new Error("No available runtime port found.");
-}
-
-async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<number | null> {
-	if (!portOption) {
-		return null;
-	}
-	if (portOption.mode === "fixed") {
-		setKanbanRuntimePort(portOption.value);
-		return portOption.value;
-	}
-	const autoPort = await findAvailableRuntimePort(DEFAULT_KANBAN_RUNTIME_PORT);
-	setKanbanRuntimePort(autoPort);
-	return autoPort;
-}
-
-async function assertPathIsDirectory(path: string): Promise<void> {
-	const info = await stat(path);
-	if (!info.isDirectory()) {
-		throw new Error(`Project path is not a directory: ${path}`);
-	}
-}
-
-async function pathIsDirectory(path: string): Promise<boolean> {
-	try {
-		const info = await stat(path);
-		return info.isDirectory();
-	} catch {
-		return false;
-	}
-}
-
 function hasGitRepository(path: string): boolean {
 	const result = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
 		cwd: path,
@@ -248,7 +188,6 @@ async function canReachKanbanServer(workspaceId: string | null): Promise<boolean
 async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenBrowser: boolean }): Promise<boolean> {
 	let workspaceId: string | null = null;
 	if (hasGitRepository(process.cwd())) {
-		const { loadWorkspaceContext } = await import("./state/workspace-state.js");
 		const context = await loadWorkspaceContext(process.cwd());
 		workspaceId = context.workspaceId;
 	}
@@ -262,7 +201,6 @@ async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenB
 	console.log(`Kanban already running at ${getKanbanRuntimeOrigin()}`);
 	if (!options.noOpen && options.shouldAutoOpenBrowser) {
 		try {
-			const { openInBrowser } = await import("./server/browser.js");
 			openInBrowser(projectUrl, {
 				warn: (message) => {
 					console.warn(message);
@@ -277,212 +215,27 @@ async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenB
 	return true;
 }
 
-async function runScopedCommand(command: string, cwd: string): Promise<RuntimeCommandRunResponse> {
-	const startedAt = Date.now();
-	const outputLimitBytes = 64 * 1024;
-
-	return await new Promise<RuntimeCommandRunResponse>((resolve, reject) => {
-		const child = spawn(command, {
-			cwd,
-			shell: true,
-			env: process.env,
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-
-		if (!child.stdout || !child.stderr) {
-			reject(new Error("Shortcut process did not expose stdout/stderr."));
-			return;
-		}
-
-		let stdout = "";
-		let stderr = "";
-
-		const appendOutput = (current: string, chunk: string): string => {
-			const next = current + chunk;
-			if (next.length <= outputLimitBytes) {
-				return next;
-			}
-			return next.slice(0, outputLimitBytes);
-		};
-
-		child.stdout.on("data", (chunk: Buffer | string) => {
-			stdout = appendOutput(stdout, String(chunk));
-		});
-
-		child.stderr.on("data", (chunk: Buffer | string) => {
-			stderr = appendOutput(stderr, String(chunk));
-		});
-
-		child.on("error", (error) => {
-			reject(error);
-		});
-
-		const timeout = setTimeout(() => {
-			terminateProcessForTimeout(child);
-		}, 60_000);
-
-		child.on("close", (code) => {
-			clearTimeout(timeout);
-			const exitCode = typeof code === "number" ? code : 1;
-			const combinedOutput = [stdout.trim(), stderr.trim()].filter(Boolean).join("\n");
-			resolve({
-				exitCode,
-				stdout: stdout.trim(),
-				stderr: stderr.trim(),
-				combinedOutput,
-				durationMs: Date.now() - startedAt,
-			});
-		});
-	});
-}
-
-async function startServer(): Promise<{
-	url: string;
-	close: () => Promise<void>;
-	shutdown: (options?: { skipSessionCleanup?: boolean }) => Promise<void>;
-}> {
-	/*
-		Server-only modules are loaded lazily because task-oriented subcommands like
-		`kanban task create` and `kanban hooks ingest` do not need the runtime server.
-
-		A regression in 25ba59f showed that eagerly importing the runtime stack here
-		could leave the source CLI process alive after the command had already printed
-		its JSON result. The issue first appeared after the native Cline SDK runtime
-		was added to the server import graph. We have not yet isolated the deepest
-		handle creator inside that graph, so we keep command-style subcommands on the
-		lightweight path and only load the server stack when we actually start Kanban.
-	*/
-	const [
-		{ resolveProjectInputPath },
-		{ pickDirectoryPathFromSystemDialog },
-		{ createRuntimeServer },
-		{ createRuntimeStateHub },
-		{ resolveInteractiveShellCommand },
-		{ shutdownRuntimeServer },
-		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
-	] = await Promise.all([
-		import("./projects/project-path.js"),
-		import("./server/directory-picker.js"),
-		import("./server/runtime-server.js"),
-		import("./server/runtime-state-hub.js"),
-		import("./server/shell.js"),
-		import("./server/shutdown-coordinator.js"),
-		import("./server/workspace-registry.js"),
-	]);
-	let runtimeStateHub: RuntimeStateHub | undefined;
-	const workspaceRegistry = await createWorkspaceRegistry({
-		cwd: process.cwd(),
-		loadGlobalRuntimeConfig,
-		loadRuntimeConfig,
-		hasGitRepository,
-		pathIsDirectory,
-		onTerminalManagerReady: (workspaceId, manager) => {
-			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
-		},
-	});
-	runtimeStateHub = createRuntimeStateHub({
-		workspaceRegistry,
-	});
-	const runtimeHub = runtimeStateHub;
-	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
-		runtimeHub.trackTerminalManager(workspaceId, terminalManager);
-	}
-
-	const disposeTrackedWorkspace = (
-		workspaceId: string,
-		options?: {
-			stopTerminalSessions?: boolean;
-		},
-	): { terminalManager: TerminalSessionManager | null; workspacePath: string | null } => {
-		const disposed = workspaceRegistry.disposeWorkspace(workspaceId, {
-			stopTerminalSessions: options?.stopTerminalSessions,
-		});
-		runtimeHub.disposeWorkspace(workspaceId);
-		return disposed;
-	};
-
-	const runtimeServer = await createRuntimeServer({
-		workspaceRegistry,
-		runtimeStateHub: runtimeHub,
-		warn: (message) => {
-			console.warn(`[kanban] ${message}`);
-		},
-		ensureTerminalManagerForWorkspace: workspaceRegistry.ensureTerminalManagerForWorkspace,
-		resolveInteractiveShellCommand,
-		runCommand: runScopedCommand,
-		resolveProjectInputPath,
-		assertPathIsDirectory,
-		hasGitRepository,
-		disposeWorkspace: disposeTrackedWorkspace,
-		collectProjectWorktreeTaskIdsForRemoval,
-		pickDirectoryPathFromSystemDialog,
-	});
-
-	const close = async () => {
-		await runtimeServer.close();
-	};
-
-	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
-		await shutdownRuntimeServer({
-			workspaceRegistry,
-			warn: (message) => {
-				console.warn(`[kanban] ${message}`);
-			},
-			closeRuntimeServer: close,
-			skipSessionCleanup: options?.skipSessionCleanup ?? false,
-		});
-	};
-
-	return {
-		url: runtimeServer.url,
-		close,
-		shutdown,
-	};
-}
-
-async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaited<ReturnType<typeof startServer>>> {
-	if (options.port?.mode !== "auto") {
-		return await startServer();
-	}
-
-	while (true) {
-		try {
-			return await startServer();
-		} catch (error) {
-			if (!isAddressInUseError(error)) {
-				throw error;
-			}
-			const currentPort = getKanbanRuntimePort();
-			const retryPort = await findAvailableRuntimePort(currentPort + 1);
-			setKanbanRuntimePort(retryPort);
-			console.warn(`Runtime port ${currentPort} became busy during startup, retrying on ${retryPort}.`);
-		}
-	}
-}
-
 async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
 	if (options.host) {
-		setKanbanRuntimeHost(options.host);
 		console.log(`Binding to host ${options.host}.`);
 	}
 
-	const [{ openInBrowser }, { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown }] = await Promise.all([
-		import("./server/browser.js"),
-		import("./update/update.js"),
-	]);
-
-	const selectedPort = await applyRuntimePortOption(options.port);
-	if (selectedPort !== null) {
-		console.log(`Using runtime port ${selectedPort}.`);
+	const portOption = options.port;
+	if (portOption?.mode === "fixed") {
+		console.log(`Using runtime port ${portOption.value}.`);
 	}
 
 	autoUpdateOnStartup({
 		currentVersion: KANBAN_VERSION,
 	});
 
-	let runtime: Awaited<ReturnType<typeof startServer>>;
+	let runtime: RuntimeHandle;
 	try {
-		runtime = await startServerWithAutoPortRetry(options);
+		runtime = await startRuntime({
+			host: options.host ?? undefined,
+			port: portOption?.mode === "auto" ? "auto" : portOption?.mode === "fixed" ? portOption.value : undefined,
+			callbacks: { warn: console.warn },
+		});
 	} catch (error) {
 		if (
 			options.port?.mode !== "auto" &&
@@ -591,6 +344,7 @@ function createProgram(invocationArgs: string[]): Command {
 
 	registerTaskCommand(program);
 	registerHooksCommand(program);
+	registerTokenCommand(program);
 
 	program
 		.command("mcp")

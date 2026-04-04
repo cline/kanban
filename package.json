@@ -33,6 +33,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./runtime-start": {
+      "types": "./dist/runtime-start.d.ts",
+      "import": "./dist/runtime-start.js"
+    },
+    "./server/directory-picker": {
+      "types": "./dist/server/directory-picker.d.ts",
+      "import": "./dist/server/directory-picker.js"
+    },
+    "./core/runtime-descriptor": {
+      "types": "./dist/core/runtime-descriptor.d.ts",
+      "import": "./dist/core/runtime-descriptor.js"
     }
   },
   "files": [
