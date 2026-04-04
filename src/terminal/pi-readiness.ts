@@ -141,12 +141,12 @@ function resolveProbeOutcome(promptErrors: string[], promptSucceeded: boolean, s
 	if (promptErrors.length > 0) {
 		return createProbeResult("not_ready", promptErrors[0] ?? null);
 	}
+	if (promptSucceeded) {
+		return createProbeResult("ready", null);
+	}
 	const sanitizedStderr = sanitizePiReadinessMessage(stderr);
 	if (sanitizedStderr) {
 		return createProbeResult("not_ready", sanitizedStderr);
-	}
-	if (promptSucceeded) {
-		return createProbeResult("ready", null);
 	}
 	return createProbeResult("unknown", timedOut ? "Timed out while probing Pi readiness." : null);
 }
