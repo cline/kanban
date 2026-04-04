@@ -1388,6 +1388,49 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(modelsResponse.models.some((model) => model.id === "claude-sonnet-4-6")).toBe(true);
 	});
 
+	it("overrides the wandb provider display name in the provider catalog", async () => {
+		const terminalManager = {
+			writeInput: vi.fn(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		llmsModelMocks.getAllProviders.mockResolvedValue([
+			{
+				id: "cline",
+				name: "Cline",
+				defaultModelId: "claude-sonnet-4-6",
+				capabilities: ["oauth"],
+			},
+			{
+				id: "wandb",
+				name: "Wandb",
+				defaultModelId: "gpt-4o",
+				capabilities: ["tools"],
+			},
+		]);
+		setSelectedProviderSettings({
+			provider: "cline",
+			model: "claude-sonnet-4-6",
+		});
+
+		const catalogResponse = await api.getClineProviderCatalog({
+			workspaceId: "workspace-1",
+			workspacePath: "/tmp/repo",
+		});
+
+		expect(catalogResponse.providers.find((provider) => provider.id === "wandb")?.name).toBe("W&B by CoreWeave");
+	});
+
 	it("adds a custom OpenAI-compatible provider through the SDK-backed flow", async () => {
 		const api = createRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),

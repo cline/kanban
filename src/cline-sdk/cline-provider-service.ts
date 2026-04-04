@@ -47,6 +47,9 @@ const MANAGED_PROVIDER_ENV_KEYS: Record<ManagedClineOauthProviderId, readonly st
 	oca: ["OCA_API_KEY"],
 	"openai-codex": [],
 };
+const PROVIDER_DISPLAY_NAME_OVERRIDES: Readonly<Record<string, string>> = {
+	wandb: "W&B by CoreWeave",
+};
 const CLINE_REMOTE_CONFIG_SCHEMA = z.object({
 	kanbanEnabled: z.boolean().optional(),
 });
@@ -112,6 +115,14 @@ function formatManagedProviderDisplayName(providerId: ManagedClineOauthProviderI
 		return "Oracle Code Assist";
 	}
 	return "OpenAI Codex";
+}
+
+function formatProviderDisplayName(providerId: string, providerName: string): string {
+	const overrideDisplayName = PROVIDER_DISPLAY_NAME_OVERRIDES[providerId.trim().toLowerCase()];
+	if (overrideDisplayName) {
+		return overrideDisplayName;
+	}
+	return providerName;
 }
 
 function stripWorkosPrefix(accessToken: string): string {
@@ -549,7 +560,7 @@ export function createClineProviderService() {
 					sdkProviders
 						.map((provider) => ({
 							id: provider.id,
-							name: provider.name,
+							name: formatProviderDisplayName(provider.id, provider.name),
 							oauthSupported: (provider.capabilities ?? []).includes("oauth"),
 							enabled:
 								selectedProviderId.length > 0 ? selectedProviderId === provider.id : provider.id === "cline",
@@ -573,7 +584,7 @@ export function createClineProviderService() {
 			if (selectedProviderId.length > 0 && !providers.some((provider) => provider.id === selectedProviderId)) {
 				providers.unshift({
 					id: selectedProviderId,
-					name: selectedProviderId,
+					name: formatProviderDisplayName(selectedProviderId, selectedProviderId),
 					oauthSupported: false,
 					enabled: true,
 					defaultModelId: getProviderSettingsSummary().modelId,
