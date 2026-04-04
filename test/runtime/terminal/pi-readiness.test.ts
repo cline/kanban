@@ -63,6 +63,38 @@ describe("probePiReadiness", () => {
 		);
 	});
 
+	it("treats a successful prompt response as ready even when Pi writes benign stderr output", async () => {
+		const child = new FakeChildProcess();
+		const spawnMock = vi.fn(() => child as never);
+
+		const probePromise = probePiReadiness(
+			{
+				binary: "pi",
+				args: [],
+				cwd: "/tmp/worktree",
+			},
+			{ spawn: spawnMock },
+		);
+
+		child.stderr.write("Loading provider metadata...\n");
+		child.stdout.write(
+			`${JSON.stringify({
+				id: "kanban-pi-readiness",
+				type: "response",
+				command: "prompt",
+				success: true,
+			})}\n`,
+		);
+		child.emit("exit", 0, null);
+
+		await expect(probePromise).resolves.toEqual({
+			status: "ready",
+			reason: null,
+			message: null,
+			rawMessage: null,
+		});
+	});
+
 	it("maps stderr startup failures to not ready when Pi exits before a prompt response", async () => {
 		const child = new FakeChildProcess();
 		const spawnMock = vi.fn(() => child as never);

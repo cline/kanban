@@ -678,7 +678,6 @@ export default function App(): ReactElement {
 				const submitted = await sendTaskSessionInput(taskId, "\r", {
 					appendNewline: false,
 					preferTerminal: false,
-					clearNeedsManualPromptResend: true,
 				});
 				if (!submitted.ok) {
 					notifyError(submitted.message ?? "Could not submit the original task prompt.");

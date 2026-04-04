@@ -368,13 +368,6 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						summary = terminalManager.applyNeedsManualPromptResend(body.taskId, false) ?? summary;
 					}
 				}
-				if (!summary) {
-					return {
-						ok: false,
-						summary: null,
-						error: "Task session is not running.",
-					};
-				}
 				return {
 					ok: true,
 					summary,

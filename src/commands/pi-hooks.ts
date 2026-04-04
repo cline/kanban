@@ -33,6 +33,11 @@ export function buildPiWrapperChildArgs(agentArgs: string[], sessionDir: string)
 	const hasSessionDir = childArgs.some((arg) => {
 		return arg === "--session-dir" || arg.startsWith("--session-dir=");
 	});
+	if (!hasSessionDir) {
+		childArgs.unshift(sessionDir);
+		childArgs.unshift("--session-dir");
+	}
+	return childArgs;
 }
 
 export async function startPiSessionWatcher(
