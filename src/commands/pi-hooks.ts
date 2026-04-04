@@ -30,20 +30,9 @@ export type PiSessionEventNotify = (
 
 export function buildPiWrapperChildArgs(agentArgs: string[], sessionDir: string): string[] {
 	const childArgs = [...agentArgs];
-	const hasSessionDir = childArgs.some((arg, index) => {
-		if (arg === "--session-dir") {
-			return true;
-		}
-		if (arg.startsWith("--session-dir=")) {
-			return true;
-		}
-		return childArgs[index - 1] === "--session-dir";
+	const hasSessionDir = childArgs.some((arg) => {
+		return arg === "--session-dir" || arg.startsWith("--session-dir=");
 	});
-	if (!hasSessionDir) {
-		childArgs.unshift(sessionDir);
-		childArgs.unshift("--session-dir");
-	}
-	return childArgs;
 }
 
 export async function startPiSessionWatcher(
