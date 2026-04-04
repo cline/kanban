@@ -35,6 +35,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://github.com/cline/cline",
 	},
 	{
+		id: "pi",
+		label: "Pi",
+		binary: "pi",
+		baseArgs: [],
+		autonomousArgs: [],
+		installUrl: "https://pi.dev/",
+	},
+	{
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
@@ -66,6 +74,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"cline",
 	"claude",
 	"codex",
+	"pi",
 	"droid",
 	// "opencode",
 	// "gemini",

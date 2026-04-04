@@ -15,6 +15,7 @@ import {
 	startCodexSessionWatcher,
 } from "./codex-hook-events";
 import { enrichDroidReviewMetadata } from "./droid-hook-events";
+import { runPiWrapperSubcommand } from "./pi-hooks";
 
 export {
 	createCodexWatcherState,
@@ -22,6 +23,7 @@ export {
 	resolveCodexRolloutFinalMessageForCwd,
 	startCodexSessionWatcher,
 } from "./codex-hook-events";
+export { buildPiWrapperChildArgs, startPiSessionWatcher } from "./pi-hooks";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
 
@@ -461,6 +463,31 @@ function notifyCodexSessionWatcherEvent(mapped: CodexMappedHookEvent): void {
 	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
 }
 
+async function notifyPiEventDirect(
+	event: RuntimeHookEvent,
+	metadata: Partial<RuntimeTaskHookActivity> | undefined,
+	env: NodeJS.ProcessEnv,
+): Promise<void> {
+	const context = parseHookRuntimeContextFromEnv(env);
+	const args: HooksIngestArgs = {
+		taskId: context.taskId,
+		workspaceId: context.workspaceId,
+		event,
+		metadata,
+	};
+	for (let attempt = 0; attempt < 6; attempt += 1) {
+		try {
+			await ingestHookEvent(args);
+			return;
+		} catch (error) {
+			if (!isRetryableHookNotifyError(error) || attempt === 5) {
+				return;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 150));
+		}
+	}
+}
+
 async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Promise<HooksIngestArgs> {
 	if (args.event !== "to_review") {
 		return args;
@@ -505,6 +532,11 @@ async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Pr
 	};
 }
 
+function isRetryableHookNotifyError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /Task\s+".+"\s+not found/u.test(message) || /Workspace\s+".+"\s+not found/u.test(message);
+}
+
 async function runHooksNotify(
 	event: RuntimeHookEvent,
 	options: HookCommandMetadataOptionValues,
@@ -515,7 +547,17 @@ async function runHooksNotify(
 		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
 		const codexEnrichedArgs = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
 		const args = await enrichDroidReviewMetadata(codexEnrichedArgs);
-		await ingestHookEvent(args);
+		for (let attempt = 0; attempt < 6; attempt += 1) {
+			try {
+				await ingestHookEvent(args);
+				return;
+			} catch (error) {
+				if (!isRetryableHookNotifyError(error) || attempt === 5) {
+					break;
+				}
+				await new Promise((resolve) => setTimeout(resolve, 150));
+			}
+		}
 	} catch {
 		// Best effort only.
 	}
@@ -812,5 +854,22 @@ export function registerHooksCommand(program: Command): void {
 				realBinary: options.realBinary,
 				agentArgs: agentArgs ?? [],
 			});
+		});
+
+	hooks
+		.command("pi-wrapper [agentArgs...]")
+		.description("Pi wrapper that preserves the real Pi TUI and watches its session file for Kanban events.")
+		.requiredOption("--real-binary <path>", "Path to the actual pi binary.")
+		.requiredOption("--session-dir <path>", "Pi session directory to watch.")
+		.allowUnknownOption(true)
+		.action(async (agentArgs: string[] | undefined, options: { realBinary: string; sessionDir: string }) => {
+			await runPiWrapperSubcommand(
+				{
+					realBinary: options.realBinary,
+					sessionDir: options.sessionDir,
+					agentArgs: agentArgs ?? [],
+				},
+				notifyPiEventDirect,
+			);
 		});
 }

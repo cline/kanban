@@ -16,6 +16,7 @@ vi.mock("@runtime-agent-catalog", () => ({
 	getRuntimeLaunchSupportedAgentCatalog: vi.fn(() => [
 		{ id: "cline", label: "Cline", binary: "cline" },
 		{ id: "claude", label: "Claude Code", binary: "claude" },
+		{ id: "pi", label: "Pi", binary: "pi" },
 	]),
 }));
 
@@ -113,6 +114,13 @@ const savedClineOauthConfig = {
 			command: "claude",
 			installed: true,
 		},
+		{
+			id: "pi",
+			label: "Pi",
+			binary: "pi",
+			command: "pi",
+			installed: true,
+		},
 	],
 	clineProviderSettings: {
 		providerId: null,
@@ -171,6 +179,29 @@ describe("RuntimeSettingsDialog", () => {
 
 		expect(findButtonByText(document.body, "Send feedback")).toBeNull();
 		expect(findButtonByText(document.body, "Report issue")).toBeNull();
+	});
+
+	it("disables bypass permissions when Pi is selected", async () => {
+		const piConfig = {
+			...savedClineOauthConfig,
+			selectedAgentId: "pi",
+		} as RuntimeConfigResponse;
+
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={piConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const checkbox = document.querySelector('[aria-label="Enable bypass permissions flag"]') as HTMLElement | null;
+		expect(checkbox).toBeTruthy();
+		expect(checkbox?.getAttribute("data-disabled")).toBe("");
+		expect(document.body.textContent).toContain("Pi does not use a separate bypass-permissions mode");
 	});
 
 	it("calls the layout reset callback when reset layout is clicked", async () => {

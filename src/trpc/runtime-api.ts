@@ -38,6 +38,7 @@ import {
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
+import { probePiReadiness } from "../terminal/pi-readiness";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { resolveTaskCwd } from "../workspace/task-worktree";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
@@ -233,6 +234,14 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
 					};
 				}
+				const piReadiness =
+					resolved.agentId === "pi"
+						? await probePiReadiness({
+								binary: resolved.binary,
+								args: resolved.args,
+								cwd: taskCwd,
+							})
+						: null;
 				const summary = await terminalManager.startTaskSession({
 					taskId: body.taskId,
 					agentId: resolved.agentId,
@@ -250,15 +259,21 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				});
 
 				let nextSummary = summary;
+				if (piReadiness?.status === "not_ready") {
+					nextSummary = terminalManager.applyWarningMessage(body.taskId, piReadiness.message) ?? nextSummary;
+					if (body.prompt.trim().length > 0) {
+						nextSummary = terminalManager.applyNeedsManualPromptResend(body.taskId, true) ?? nextSummary;
+					}
+				}
 				if (shouldCaptureTurnCheckpoint) {
 					try {
-						const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
+						const nextTurn = (nextSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
 						const checkpoint = await captureTaskTurnCheckpoint({
 							cwd: taskCwd,
 							taskId: body.taskId,
 							turn: nextTurn,
 						});
-						nextSummary = terminalManager.applyTurnCheckpoint(body.taskId, checkpoint) ?? summary;
+						nextSummary = terminalManager.applyTurnCheckpoint(body.taskId, checkpoint) ?? nextSummary;
 					} catch {
 						// Best effort checkpointing only.
 					}
@@ -315,13 +330,43 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					};
 				}
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
-				const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
+				let summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
 				if (!summary) {
 					return {
 						ok: false,
 						summary: null,
 						error: "Task session is not running.",
 					};
+				}
+				if (body.clearNeedsManualPromptResend) {
+					const currentSummary = terminalManager.getSummary(body.taskId);
+					if (currentSummary?.agentId === "pi") {
+						const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+						const resolvedPiCommand = resolveAgentCommand({
+							...scopedRuntimeConfig,
+							selectedAgentId: "pi",
+						});
+						if (resolvedPiCommand && currentSummary.workspacePath) {
+							const readiness = await probePiReadiness({
+								binary: resolvedPiCommand.binary,
+								args: resolvedPiCommand.args,
+								cwd: currentSummary.workspacePath,
+							});
+							if (readiness.status === "ready") {
+								summary = terminalManager.applyNeedsManualPromptResend(body.taskId, false) ?? summary;
+								summary = terminalManager.applyWarningMessage(body.taskId, null) ?? summary;
+							} else {
+								summary = terminalManager.applyNeedsManualPromptResend(body.taskId, true) ?? summary;
+								if (readiness.status === "not_ready") {
+									summary = terminalManager.applyWarningMessage(body.taskId, readiness.message) ?? summary;
+								}
+							}
+						} else {
+							summary = terminalManager.applyNeedsManualPromptResend(body.taskId, true) ?? summary;
+						}
+					} else {
+						summary = terminalManager.applyNeedsManualPromptResend(body.taskId, false) ?? summary;
+					}
 				}
 				return {
 					ok: true,

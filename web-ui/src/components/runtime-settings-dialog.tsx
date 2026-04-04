@@ -73,7 +73,7 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 
 export type RuntimeSettingsSection = "shortcuts";
 
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid"];
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "pi", "droid"];
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -329,6 +329,7 @@ export function RuntimeSettingsDialog({
 	const selectedPromptPlaceholder =
 		selectedPromptVariant === "commit" ? "Commit prompt template" : "PR prompt template";
 	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
+	const bypassPermissionsUnsupportedForPi = selectedAgentId === "pi";
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
 	}, []);
@@ -631,15 +632,22 @@ export function RuntimeSettingsDialog({
 				) : null}
 				<label
 					htmlFor={bypassPermissionsCheckboxId}
-					className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
+					className={cn(
+						"flex items-center gap-2 text-[13px] text-text-primary mt-2",
+						bypassPermissionsUnsupportedForPi ? "cursor-not-allowed" : "cursor-pointer",
+					)}
 				>
 					<RadixCheckbox.Root
 						id={bypassPermissionsCheckboxId}
 						aria-label="Enable bypass permissions flag"
-						checked={agentAutonomousModeEnabled}
-						disabled={controlsDisabled}
+						checked={bypassPermissionsUnsupportedForPi ? false : agentAutonomousModeEnabled}
+						disabled={controlsDisabled || bypassPermissionsUnsupportedForPi}
 						onCheckedChange={(checked) => setAgentAutonomousModeEnabled(checked === true)}
-						className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+						className={cn(
+							"flex h-4 w-4 items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent",
+							bypassPermissionsUnsupportedForPi ? "cursor-not-allowed" : "cursor-pointer",
+							!bypassPermissionsUnsupportedForPi && "disabled:cursor-default disabled:opacity-40",
+						)}
 					>
 						<RadixCheckbox.Indicator>
 							<Check size={12} className="text-white" />
@@ -648,7 +656,9 @@ export function RuntimeSettingsDialog({
 					<span>Enable bypass permissions flag</span>
 				</label>
 				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-					Allows agents to use tools without stopping for permission. Use at your own risk.
+					{bypassPermissionsUnsupportedForPi
+						? "Pi does not use a separate bypass-permissions mode; its core runtime already has no built-in permission popups."
+						: "Allows agents to use tools without stopping for permission. Use at your own risk."}
 				</p>
 
 				{selectedAgentId === "cline" ? (

@@ -231,6 +231,8 @@ export function CardDetailView({
 	onBottomTerminalConnectionReady,
 	bottomTerminalAgentCommand,
 	onBottomTerminalSendAgentCommand,
+	onSendOriginalTaskPrompt,
+	sendOriginalPromptLoadingByTaskId,
 	isBottomTerminalExpanded,
 	onBottomTerminalToggleExpand,
 	isDocumentVisible = true,
@@ -291,6 +293,8 @@ export function CardDetailView({
 	onBottomTerminalConnectionReady?: (taskId: string) => void;
 	bottomTerminalAgentCommand?: string | null;
 	onBottomTerminalSendAgentCommand?: () => void;
+	onSendOriginalTaskPrompt?: (taskId: string) => Promise<void>;
+	sendOriginalPromptLoadingByTaskId?: Record<string, boolean>;
 	isBottomTerminalExpanded?: boolean;
 	onBottomTerminalToggleExpand?: () => void;
 	isDocumentVisible?: boolean;
@@ -681,6 +685,12 @@ export function CardDetailView({
 										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
 										taskColumnId={selection.column.id}
+										onSendOriginalPrompt={
+											onSendOriginalTaskPrompt
+												? async () => await onSendOriginalTaskPrompt(selection.card.id)
+												: undefined
+										}
+										isSendingOriginalPrompt={sendOriginalPromptLoadingByTaskId?.[selection.card.id] ?? false}
 									/>
 								)}
 							</div>
@@ -802,6 +812,14 @@ export function CardDetailView({
 										onConnectionReady={onBottomTerminalConnectionReady}
 										agentCommand={bottomTerminalAgentCommand}
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}
+										onSendOriginalPrompt={
+											onSendOriginalTaskPrompt && bottomTerminalTaskId
+												? async () => await onSendOriginalTaskPrompt(bottomTerminalTaskId)
+												: undefined
+										}
+										isSendingOriginalPrompt={
+											sendOriginalPromptLoadingByTaskId?.[bottomTerminalTaskId] ?? false
+										}
 										isExpanded={isBottomTerminalExpanded}
 										onToggleExpand={onBottomTerminalToggleExpand}
 									/>
