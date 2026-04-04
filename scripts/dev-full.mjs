@@ -10,13 +10,16 @@ import open from "open";
 
 const isWindows = process.platform === "win32";
 
-function findPort(start) {
+function findPort(start, reserved = new Set()) {
+	if (reserved.has(start)) {
+		return findPort(start + 1, reserved);
+	}
 	return new Promise((resolve) => {
 		const srv = createServer();
 		srv.listen(start, "127.0.0.1", () => {
 			srv.close(() => resolve(start));
 		});
-		srv.on("error", () => resolve(findPort(start + 1)));
+		srv.on("error", () => resolve(findPort(start + 1, reserved)));
 	});
 }
 
@@ -41,14 +44,20 @@ function waitForPort(port, timeout = 15000) {
 	});
 }
 
-const port = await findPort(3484);
-console.log(`\n  Runtime port: ${port}`);
-console.log(`  Web UI:       http://127.0.0.1:4173\n`);
+const runtimePort = await findPort(3484);
+const webUiPort = await findPort(4173, new Set([runtimePort]));
 
-const env = { ...process.env, KANBAN_RUNTIME_PORT: String(port) };
+console.log(`\n  Runtime port: ${runtimePort}`);
+console.log(`  Web UI:       http://127.0.0.1:${webUiPort}\n`);
+
+const env = {
+	...process.env,
+	KANBAN_RUNTIME_PORT: String(runtimePort),
+	KANBAN_WEB_UI_PORT: String(webUiPort),
+};
 
 const tsxBin = isWindows ? "node_modules/.bin/tsx.cmd" : "node_modules/.bin/tsx";
-const runtime = spawn(tsxBin, ["watch", "src/cli.ts", "--port", String(port), "--no-open"], {
+const runtime = spawn(tsxBin, ["watch", "src/cli.ts", "--port", String(runtimePort), "--no-open"], {
 	env,
 	stdio: "inherit",
 });
@@ -70,7 +79,7 @@ runtime.on("exit", () => cleanup(1));
 
 // Wait for runtime to accept connections before starting Vite
 try {
-	await waitForPort(port);
+	await waitForPort(runtimePort);
 } catch (error) {
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(`Failed to start runtime: ${message}`);
@@ -87,5 +96,5 @@ vite.on("exit", () => cleanup(1));
 
 // Auto-open browser after a short delay for Vite to start
 setTimeout(() => {
-	open("http://127.0.0.1:4173");
+	open(`http://127.0.0.1:${webUiPort}`);
 }, 2000);
