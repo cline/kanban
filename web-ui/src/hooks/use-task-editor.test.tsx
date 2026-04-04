@@ -65,10 +65,12 @@ function HookHarness({
 	initialBoard,
 	onSnapshot,
 	queueTaskStartAfterEdit,
+	selectedAgentId = null,
 }: {
 	initialBoard: BoardData;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	queueTaskStartAfterEdit?: (taskId: string) => void;
+	selectedAgentId?: "pi" | null;
 }): null {
 	const [board, setBoard] = useState<BoardData>(initialBoard);
 	const [, setSelectedTaskId] = useState<string | null>(null);
@@ -78,7 +80,7 @@ function HookHarness({
 		currentProjectId: "project-1",
 		createTaskBranchOptions: [{ value: "main", label: "main" }],
 		defaultTaskBranchRef: "main",
-		selectedAgentId: null,
+		selectedAgentId,
 		setSelectedTaskId,
 		queueTaskStartAfterEdit,
 	});
@@ -128,6 +130,7 @@ function HookHarness({
 		editor.setNewTaskImages,
 		editor.setNewTaskPrompt,
 		onSnapshot,
+		selectedAgentId,
 	]);
 
 	return null;
@@ -201,6 +204,24 @@ describe("useTaskEditor", () => {
 		expect(savedTaskId).toBe("task-1");
 		expect(requireSnapshot(latestSnapshot).editingTaskId).toBeNull();
 		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.prompt).toBe("Updated prompt");
+	});
+
+	it("disables start in plan mode when Pi is the selected agent", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					selectedAgentId="pi"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		expect(requireSnapshot(latestSnapshot).isEditTaskStartInPlanModeDisabled).toBe(true);
 	});
 
 	it("disables start in plan mode when move to trash auto review is selected while editing", async () => {

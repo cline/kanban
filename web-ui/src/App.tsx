@@ -88,6 +88,9 @@ export default function App(): ReactElement {
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
+	const [sendOriginalPromptLoadingByTaskId, setSendOriginalPromptLoadingByTaskId] = useState<Record<string, boolean>>(
+		{},
+	);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const handleProjectSwitchStart = useCallback(() => {
@@ -95,6 +98,7 @@ export default function App(): ReactElement {
 		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
 		setPendingTaskStartAfterEditId(null);
+		setSendOriginalPromptLoadingByTaskId({});
 		taskEditorResetRef.current();
 	}, []);
 	const {
@@ -502,6 +506,7 @@ export default function App(): ReactElement {
 		setSelectedTaskId(null);
 		resetTaskEditorState();
 		setIsClearTrashDialogOpen(false);
+		setSendOriginalPromptLoadingByTaskId({});
 		resetGitActionState();
 		resetProjectNavigationState();
 		resetTerminalPanelsState();
@@ -640,6 +645,58 @@ export default function App(): ReactElement {
 		setPendingTaskStartAfterEditId(null);
 	}, [board, handleStartTaskFromBoard, pendingTaskStartAfterEditId]);
 
+	const handleSendOriginalTaskPrompt = useCallback(
+		async (taskId: string): Promise<void> => {
+			const task = findCardSelection(board, taskId)?.card;
+			if (!task) {
+				notifyError("Could not find the task to resend its original prompt.");
+				return;
+			}
+			const prompt = task.prompt.trim();
+			if (!prompt) {
+				notifyError("This task does not have an original prompt to send.");
+				return;
+			}
+			setSendOriginalPromptLoadingByTaskId((current) => ({
+				...current,
+				[taskId]: true,
+			}));
+			try {
+				const pasted = await sendTaskSessionInput(taskId, prompt, {
+					appendNewline: false,
+					preferTerminal: false,
+					mode: "paste",
+					clearNeedsManualPromptResend: true,
+				});
+				if (!pasted.ok) {
+					notifyError(pasted.message ?? "Could not send the original task prompt.");
+					return;
+				}
+				await new Promise<void>((resolve) => {
+					setTimeout(resolve, 200);
+				});
+				const submitted = await sendTaskSessionInput(taskId, "\r", {
+					appendNewline: false,
+					preferTerminal: false,
+					clearNeedsManualPromptResend: true,
+				});
+				if (!submitted.ok) {
+					notifyError(submitted.message ?? "Could not submit the original task prompt.");
+				}
+			} finally {
+				setSendOriginalPromptLoadingByTaskId((current) => {
+					if (!current[taskId]) {
+						return current;
+					}
+					const next = { ...current };
+					delete next[taskId];
+					return next;
+				});
+			}
+		},
+		[board, sendTaskSessionInput],
+	);
+
 	const detailSession = selectedCard
 		? (sessions[selectedCard.card.id] ?? createIdleTaskSession(selectedCard.card.id))
 		: null;
@@ -706,6 +763,8 @@ export default function App(): ReactElement {
 		selectedCard?.card.id,
 		latestTaskChatMessage,
 	);
+	const piPlanModeDisabledReason =
+		runtimeProjectConfig?.selectedAgentId === "pi" ? "Pi does not support plan mode out of the box." : null;
 	const handleCreateDialogOpenChange = useCallback(
 		(open: boolean) => {
 			if (!open) {
@@ -727,6 +786,7 @@ export default function App(): ReactElement {
 			startInPlanMode={editTaskStartInPlanMode}
 			onStartInPlanModeChange={setEditTaskStartInPlanMode}
 			startInPlanModeDisabled={isEditTaskStartInPlanModeDisabled}
+			startInPlanModeDisabledReason={piPlanModeDisabledReason}
 			autoReviewEnabled={editTaskAutoReviewEnabled}
 			onAutoReviewEnabledChange={setEditTaskAutoReviewEnabled}
 			autoReviewMode={editTaskAutoReviewMode}
@@ -988,6 +1048,8 @@ export default function App(): ReactElement {
 									streamedClineChatMessages={selectedTaskChatMessages}
 									onMoveToTrash={handleMoveToTrash}
 									isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}
+									onSendOriginalTaskPrompt={handleSendOriginalTaskPrompt}
+									sendOriginalPromptLoadingByTaskId={sendOriginalPromptLoadingByTaskId}
 									gitHistoryPanel={
 										isGitHistoryOpen ? (
 											<GitHistoryView workspaceId={currentProjectId} gitHistory={gitHistory} />
@@ -1054,6 +1116,7 @@ export default function App(): ReactElement {
 					startInPlanMode={newTaskStartInPlanMode}
 					onStartInPlanModeChange={setNewTaskStartInPlanMode}
 					startInPlanModeDisabled={isNewTaskStartInPlanModeDisabled}
+					startInPlanModeDisabledReason={piPlanModeDisabledReason}
 					autoReviewEnabled={newTaskAutoReviewEnabled}
 					onAutoReviewEnabledChange={setNewTaskAutoReviewEnabled}
 					autoReviewMode={newTaskAutoReviewMode}

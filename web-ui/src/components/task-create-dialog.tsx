@@ -22,6 +22,7 @@ import type { BranchSelectOption } from "@/components/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/branch-select-dropdown";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
@@ -111,6 +112,7 @@ export function TaskCreateDialog({
 	autoReviewMode,
 	onAutoReviewModeChange,
 	startInPlanModeDisabled = false,
+	startInPlanModeDisabledReason = null,
 	workspaceId,
 	branchRef,
 	branchOptions,
@@ -134,6 +136,7 @@ export function TaskCreateDialog({
 	autoReviewMode: TaskAutoReviewMode;
 	onAutoReviewModeChange: (value: TaskAutoReviewMode) => void;
 	startInPlanModeDisabled?: boolean;
+	startInPlanModeDisabledReason?: string | null;
 	workspaceId: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
@@ -473,23 +476,37 @@ export function TaskCreateDialog({
 				)}
 
 				<div className="flex flex-col gap-2.5 mt-4 pt-4 border-t border-border">
-					<label
-						htmlFor={startInPlanModeId}
-						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
-					>
+					<div className="grid grid-cols-[0.875rem_1fr] items-start gap-x-2 gap-y-0">
 						<RadixCheckbox.Root
 							id={startInPlanModeId}
 							checked={startInPlanMode}
 							onCheckedChange={(checked) => onStartInPlanModeChange(checked === true)}
 							disabled={startInPlanModeDisabled}
-							className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+							className={cn(
+								"mt-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:opacity-40",
+								startInPlanModeDisabled ? "cursor-not-allowed" : "cursor-pointer",
+								!startInPlanModeDisabled && "disabled:cursor-default",
+							)}
 						>
 							<RadixCheckbox.Indicator>
 								<Check size={10} className="text-white" />
 							</RadixCheckbox.Indicator>
 						</RadixCheckbox.Root>
-						Start in plan mode
-					</label>
+						<label
+							htmlFor={startInPlanModeId}
+							className={cn(
+								"text-[12px] leading-4 text-text-primary select-none",
+								startInPlanModeDisabled ? "cursor-not-allowed" : "cursor-pointer",
+							)}
+						>
+							Start in plan mode
+						</label>
+						{startInPlanModeDisabledReason ? (
+							<p className="col-start-2 mt-1 mb-0 text-[11px] leading-snug text-text-tertiary">
+								{startInPlanModeDisabledReason}
+							</p>
+						) : null}
+					</div>
 
 					<div>
 						<span className="text-[11px] text-text-secondary block mb-1">Worktree base ref</span>
