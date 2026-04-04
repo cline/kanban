@@ -125,6 +125,26 @@ describe("prepareAgentLaunch hook strategies", () => {
 		);
 	});
 
+	it("appends Kanban sidebar instructions for home Pi sessions", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const appendPromptIndex = launch.args.indexOf("--append-system-prompt");
+		expect(appendPromptIndex).toBeGreaterThanOrEqual(0);
+		expect(launch.args[appendPromptIndex + 1]).toContain("Kanban sidebar agent");
+		expect(launch.args[appendPromptIndex + 1]).toContain(
+			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
+		);
+	});
+
 	it("writes Claude settings with explicit permission hook", async () => {
 		setupTempHome();
 		await prepareAgentLaunch({
@@ -145,6 +165,51 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.PreToolUse).toBeDefined();
 		expect(settings.hooks?.PostToolUse).toBeDefined();
 		expect(settings.hooks?.PostToolUseFailure).toBeDefined();
+	});
+
+	it("routes Pi through hooks pi-wrapper with a dedicated session dir and real TUI args", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "hi",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-pi");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.autoRestartOnExit).toBe(false);
+
+		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
+		expect(launchCommand).toContain("hooks");
+		expect(launchCommand).toContain("pi-wrapper");
+		expect(launchCommand).toContain("--real-binary");
+		expect(launchCommand).toContain("pi");
+		expect(launchCommand).toContain("--session-dir");
+		expect(launchCommand).toContain(join(homedir(), ".cline", "kanban", "sessions", "pi", "task-pi"));
+		expect(launch.args.at(-1)).toBe("hi");
+		expect(launchCommand).not.toContain("--mode json");
+	});
+
+	it("preserves explicit Pi session dir without overriding it", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-explicit-session",
+			agentId: "pi",
+			binary: "pi",
+			args: ["--session-dir", "/tmp/custom-pi-session"],
+			cwd: "/tmp",
+			prompt: "hi",
+			workspaceId: "workspace-1",
+		});
+
+		expect([launch.binary ?? "", ...launch.args].join(" ")).toContain("/tmp/custom-pi-session");
+		expect([launch.binary ?? "", ...launch.args].join(" ")).not.toContain(
+			join(homedir(), ".cline", "kanban", "sessions", "pi", "task-pi-explicit-session"),
+		);
 	});
 
 	it("writes Gemini settings with AfterTool mapped to to_in_progress", async () => {
@@ -449,6 +514,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeFromTrash: true,
 		});
 		expect(claudeLaunch.args).toContain("--continue");
+
+		const piLaunch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(piLaunch.args).toContain("--continue");
 
 		const geminiLaunch = await prepareAgentLaunch({
 			taskId: "task-gemini",

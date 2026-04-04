@@ -51,6 +51,10 @@ const browserMocks = vi.hoisted(() => ({
 	openInBrowser: vi.fn(),
 }));
 
+const piReadinessMocks = vi.hoisted(() => ({
+	probePiReadiness: vi.fn(),
+}));
+
 vi.mock("../../../src/terminal/agent-registry.js", () => ({
 	resolveAgentCommand: agentRegistryMocks.resolveAgentCommand,
 	buildRuntimeConfigResponse: agentRegistryMocks.buildRuntimeConfigResponse,
@@ -98,6 +102,10 @@ vi.mock("@clinebot/core/node", () => ({
 
 vi.mock("../../../src/server/browser.js", () => ({
 	openInBrowser: browserMocks.openInBrowser,
+}));
+
+vi.mock("../../../src/terminal/pi-readiness.js", () => ({
+	probePiReadiness: piReadinessMocks.probePiReadiness,
 }));
 
 import { createRuntimeApi } from "../../../src/trpc/runtime-api";
@@ -226,6 +234,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		llmsModelMocks.getAllProviders.mockReset();
 		llmsModelMocks.getModelsForProvider.mockReset();
 		browserMocks.openInBrowser.mockReset();
+		piReadinessMocks.probePiReadiness.mockReset();
 
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
 			agentId: "claude",
@@ -251,6 +260,12 @@ describe("createRuntimeApi startTaskSession", () => {
 			refresh: "oca-refresh",
 			expires: 1_700_000_000_000,
 			accountId: "oca-acct",
+		});
+		piReadinessMocks.probePiReadiness.mockResolvedValue({
+			status: "ready",
+			reason: null,
+			message: null,
+			rawMessage: null,
 		});
 		oauthMocks.loginOpenAICodex.mockResolvedValue({
 			access: "codex-access",
@@ -833,6 +848,149 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(clineTaskSessionService.startTaskSession).not.toHaveBeenCalled();
 	});
 
+	it("starts Pi and applies a warning when readiness probe reports a startup error", async () => {
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "pi",
+			label: "Pi",
+			command: "pi",
+			binary: "pi",
+			args: [],
+		});
+		piReadinessMocks.probePiReadiness.mockResolvedValue({
+			status: "not_ready",
+			reason: "missing_api_key",
+			message:
+				"Pi is not ready: No API key found for openai-codex. Use /login or set an API key environment variable.",
+			rawMessage: "No API key found for openai-codex. Use /login or set an API key environment variable.",
+		});
+
+		const warnedSummary = createSummary({
+			agentId: "pi",
+			warningMessage:
+				"Pi is not ready: No API key found for openai-codex. Use /login or set an API key environment variable.",
+		});
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary({ agentId: "pi" })),
+			applyWarningMessage: vi.fn(() => warnedSummary),
+			applyNeedsManualPromptResend: vi.fn(() => ({ ...warnedSummary, needsManualPromptResend: true })),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => {
+				const runtimeConfigState = createRuntimeConfigState();
+				runtimeConfigState.selectedAgentId = "pi";
+				return runtimeConfigState;
+			}),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.startTaskSession(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "Continue task",
+			},
+		);
+
+		expect(response).toEqual({
+			ok: true,
+			summary: { ...warnedSummary, needsManualPromptResend: true },
+		});
+		expect(piReadinessMocks.probePiReadiness).toHaveBeenCalledWith({
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/existing-worktree",
+		});
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agentId: "pi",
+				binary: "pi",
+				args: [],
+				cwd: "/tmp/existing-worktree",
+			}),
+		);
+		expect(terminalManager.applyWarningMessage).toHaveBeenCalledWith(
+			"task-1",
+			"Pi is not ready: No API key found for openai-codex. Use /login or set an API key environment variable.",
+		);
+		expect(terminalManager.applyNeedsManualPromptResend).toHaveBeenCalledWith("task-1", true);
+		expect(clineTaskSessionService.startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("allows Pi task starts to proceed when readiness is unknown", async () => {
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "pi",
+			label: "Pi",
+			command: "pi",
+			binary: "pi",
+			args: ["--model", "gpt-5.4"],
+		});
+		piReadinessMocks.probePiReadiness.mockResolvedValue({
+			status: "unknown",
+			reason: null,
+			message: null,
+			rawMessage: null,
+		});
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary({ agentId: "pi" })),
+			applyTurnCheckpoint: vi.fn(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => {
+				const runtimeConfigState = createRuntimeConfigState();
+				runtimeConfigState.selectedAgentId = "pi";
+				return runtimeConfigState;
+			}),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.startTaskSession(
+			{
+				workspaceId: "workspace-1",
+				workspacePath: "/tmp/repo",
+			},
+			{
+				taskId: "task-1",
+				baseRef: "main",
+				prompt: "Continue task",
+			},
+		);
+
+		expect(response.ok).toBe(true);
+		expect(piReadinessMocks.probePiReadiness).toHaveBeenCalledWith({
+			binary: "pi",
+			args: ["--model", "gpt-5.4"],
+			cwd: "/tmp/existing-worktree",
+		});
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agentId: "pi",
+				binary: "pi",
+				args: ["--model", "gpt-5.4"],
+				cwd: "/tmp/existing-worktree",
+			}),
+		);
+	});
+
 	it("prefers OAuth api key when cline OAuth credentials are configured", async () => {
 		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
@@ -965,6 +1123,74 @@ describe("createRuntimeApi startTaskSession", () => {
 			}),
 		);
 		expect(oauthMocks.saveProviderSettings).not.toHaveBeenCalled();
+	});
+
+	it("keeps Pi manual prompt resend state when resend is attempted before Pi is ready", async () => {
+		const summary = createSummary({
+			agentId: "pi",
+			workspacePath: "/tmp/worktree",
+			warningMessage: null,
+			needsManualPromptResend: true,
+		});
+		const warnedSummary = {
+			...summary,
+			warningMessage:
+				"Pi is not ready: No API key found for openai-codex. Use /login or set an API key environment variable.",
+			needsManualPromptResend: true,
+		};
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "pi",
+			label: "Pi",
+			command: "pi",
+			binary: "pi",
+			args: [],
+		});
+		piReadinessMocks.probePiReadiness.mockResolvedValue({
+			status: "not_ready",
+			reason: "missing_api_key",
+			message:
+				"Pi is not ready: No API key found for openai-codex. Use /login or set an API key environment variable.",
+			rawMessage: "No API key found for openai-codex. Use /login or set an API key environment variable.",
+		});
+		const terminalManager = {
+			getSummary: vi.fn(() => summary),
+			writeInput: vi.fn(() => summary),
+			applyNeedsManualPromptResend: vi.fn(() => warnedSummary),
+			applyWarningMessage: vi.fn(() => warnedSummary),
+			stopTaskSession: vi.fn(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(null);
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => {
+				const runtimeConfigState = createRuntimeConfigState();
+				runtimeConfigState.selectedAgentId = "pi";
+				return runtimeConfigState;
+			}),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const sendResponse = await api.sendTaskSessionInput(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-1", text: "Original task prompt", clearNeedsManualPromptResend: true },
+		);
+
+		expect(sendResponse).toEqual({
+			ok: true,
+			summary: warnedSummary,
+		});
+		expect(terminalManager.writeInput).toHaveBeenCalledWith("task-1", Buffer.from("Original task prompt", "utf8"));
+		expect(terminalManager.applyNeedsManualPromptResend).toHaveBeenCalledWith("task-1", true);
+		expect(terminalManager.applyWarningMessage).toHaveBeenCalledWith(
+			"task-1",
+			"Pi is not ready: No API key found for openai-codex. Use /login or set an API key environment variable.",
+		);
 	});
 
 	it("routes cline task input and stop to cline task session service", async () => {
