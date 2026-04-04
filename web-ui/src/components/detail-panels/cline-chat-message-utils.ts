@@ -1,4 +1,4 @@
-import { getClineToolCallDisplay } from "@runtime-cline-tool-call-display";
+import { type ClineToolCallDisplay, getClineToolCallDisplay } from "@runtime-cline-tool-call-display";
 import { stripAnsi } from "@/utils/strip-ansi";
 
 export interface ParsedToolMessageContent {
@@ -15,6 +15,14 @@ export interface ParsedToolMessageContent {
  */
 export function getToolSummary(toolName: string, input: string | null): string | null {
 	return getClineToolCallDisplay(toolName, input).inputSummary;
+}
+
+/**
+ * Returns the full display object for a tool call, including a display-friendly
+ * tool name (e.g. "Creating task" for kanban commands) and input summary.
+ */
+export function getToolDisplay(toolName: string, input: string | null): ClineToolCallDisplay {
+	return getClineToolCallDisplay(toolName, input);
 }
 
 /**
