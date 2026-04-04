@@ -3,6 +3,7 @@ import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import { AlertCircle, AlertTriangle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
@@ -212,6 +213,7 @@ export function BoardCard({
 	onStart,
 	onMoveToTrash,
 	onRestoreFromTrash,
+	onSaveTitle,
 	onCommit,
 	onOpenPr,
 	onCancelAutomaticAction,
@@ -234,6 +236,7 @@ export function BoardCard({
 	onStart?: (taskId: string) => void;
 	onMoveToTrash?: (taskId: string) => void;
 	onRestoreFromTrash?: (taskId: string) => void;
+	onSaveTitle?: (taskId: string, title: string) => void;
 	onCommit?: (taskId: string) => void;
 	onOpenPr?: (taskId: string) => void;
 	onCancelAutomaticAction?: (taskId: string) => void;
@@ -248,6 +251,9 @@ export function BoardCard({
 	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
+	const [isEditingTitle, setIsEditingTitle] = useState(false);
+	const [draftTitle, setDraftTitle] = useState(card.title);
+	const titleInputRef = useRef<HTMLInputElement | null>(null);
 	const [descriptionContainerRef, descriptionRect] = useMeasure<HTMLDivElement>();
 	const [sessionPreviewContainerRef, sessionPreviewRect] = useMeasure<HTMLDivElement>();
 	const descriptionRef = useRef<HTMLParagraphElement | null>(null);
@@ -319,9 +325,50 @@ export function BoardCard({
 		setIsSessionPreviewExpanded(false);
 	}, [card.id, sessionActivity?.text]);
 
+	useEffect(() => {
+		setDraftTitle(card.title);
+		setIsEditingTitle(false);
+	}, [card.id, card.title]);
+
+	useEffect(() => {
+		if (!isEditingTitle) {
+			return;
+		}
+		window.requestAnimationFrame(() => {
+			titleInputRef.current?.focus();
+			titleInputRef.current?.select();
+		});
+	}, [isEditingTitle]);
+
 	const stopEvent = (event: MouseEvent<HTMLElement>) => {
 		event.preventDefault();
 		event.stopPropagation();
+	};
+
+	const submitTitle = () => {
+		setIsEditingTitle(false);
+		if (!onSaveTitle) {
+			return;
+		}
+		if (draftTitle === card.title) {
+			return;
+		}
+		onSaveTitle(card.id, draftTitle);
+	};
+
+	const handleTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+		if (event.key === "Enter") {
+			event.preventDefault();
+			event.stopPropagation();
+			titleInputRef.current?.blur();
+			return;
+		}
+		if (event.key === "Escape") {
+			event.preventDefault();
+			event.stopPropagation();
+			setDraftTitle(card.title);
+			setIsEditingTitle(false);
+		}
 	};
 
 	const isDescriptionMeasured = descriptionRect.width > 0;
@@ -483,14 +530,45 @@ export function BoardCard({
 							<div className="flex items-center gap-2" style={{ minHeight: 24 }}>
 								{statusMarker ? <div className="inline-flex items-center">{statusMarker}</div> : null}
 								<div className="flex-1 min-w-0">
-									<p
-										className={cn(
-											"kb-line-clamp-1 m-0 font-medium text-sm",
-											isTrashCard && "line-through text-text-tertiary",
-										)}
-									>
-										{displayTitle}
-									</p>
+									{isEditingTitle ? (
+										<input
+											ref={titleInputRef}
+											value={draftTitle}
+											onChange={(event) => setDraftTitle(event.currentTarget.value)}
+											onBlur={submitTitle}
+											onKeyDown={handleTitleKeyDown}
+											onMouseDown={(event) => {
+												event.stopPropagation();
+											}}
+											className="h-7 w-full rounded-md border border-border-focus bg-surface-2 px-2 text-sm font-medium text-text-primary focus:outline-none"
+										/>
+									) : onSaveTitle ? (
+										<button
+											type="button"
+											aria-label="Edit task title"
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												setDraftTitle(card.title);
+												setIsEditingTitle(true);
+											}}
+											className={cn(
+												"kb-line-clamp-1 m-0 w-full cursor-text rounded-sm text-left font-medium text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+												isTrashCard && "line-through text-text-tertiary",
+											)}
+										>
+											{displayTitle}
+										</button>
+									) : (
+										<p
+											className={cn(
+												"kb-line-clamp-1 m-0 font-medium text-sm",
+												isTrashCard && "line-through text-text-tertiary",
+											)}
+										>
+											{displayTitle}
+										</p>
+									)}
 								</div>
 								{columnId === "backlog" ? (
 									<Button
