@@ -51,6 +51,8 @@ export interface UseTaskEditorResult {
 	newTaskBranchRef: string;
 	setNewTaskBranchRef: Dispatch<SetStateAction<string>>;
 	editingTaskId: string | null;
+	editTaskTitle: string;
+	setEditTaskTitle: Dispatch<SetStateAction<string>>;
 	editTaskPrompt: string;
 	setEditTaskPrompt: Dispatch<SetStateAction<string>>;
 	editTaskImages: TaskImage[];
@@ -106,6 +108,7 @@ export function useTaskEditor({
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+	const [editTaskTitle, setEditTaskTitle] = useState("");
 	const [editTaskPrompt, setEditTaskPrompt] = useState("");
 	const [editTaskImages, setEditTaskImages] = useState<TaskImage[]>([]);
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
@@ -214,6 +217,7 @@ export function useTaskEditor({
 			setNewTaskImages([]);
 			const taskPrompt = task.prompt.trim();
 			setEditingTaskId(task.id);
+			setEditTaskTitle(task.title);
 			setEditTaskPrompt(taskPrompt);
 			setEditTaskImages(task.images ? task.images.map((image) => ({ ...image })) : []);
 			setEditTaskStartInPlanMode(task.startInPlanMode);
@@ -227,6 +231,8 @@ export function useTaskEditor({
 
 	const handleCancelEditTask = useCallback(() => {
 		setEditingTaskId(null);
+		setEditTaskTitle("");
+		setEditTaskTitle("");
 		setEditTaskPrompt("");
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
@@ -251,7 +257,9 @@ export function useTaskEditor({
 		const savedTaskId = editingTaskId;
 
 		setBoard((currentBoard) => {
+			const title = editTaskTitle.trim();
 			const updated = updateTask(currentBoard, savedTaskId, {
+				title,
 				prompt,
 				startInPlanMode: editTaskStartInPlanMode,
 				autoReviewEnabled: editTaskAutoReviewEnabled,
@@ -262,6 +270,7 @@ export function useTaskEditor({
 			return updated.updated ? updated.board : currentBoard;
 		});
 		setEditingTaskId(null);
+		setEditTaskTitle("");
 		setEditTaskPrompt("");
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
@@ -437,6 +446,8 @@ export function useTaskEditor({
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
+		editTaskTitle,
+		setEditTaskTitle,
 		editTaskPrompt,
 		setEditTaskPrompt,
 		editTaskImages,

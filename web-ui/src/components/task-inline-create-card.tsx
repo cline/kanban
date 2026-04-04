@@ -1,4 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import { deriveTaskTitleFromPrompt } from "@runtime-task-title";
 import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
 import { type Dispatch, type ReactElement, type SetStateAction, useCallback, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -41,6 +42,8 @@ function ButtonShortcut({ includeShift = false }: { includeShift?: boolean }): R
 }
 
 export function TaskInlineCreateCard({
+	title,
+	onTitleChange,
 	prompt,
 	onPromptChange,
 	images,
@@ -63,6 +66,8 @@ export function TaskInlineCreateCard({
 	mode = "create",
 	idPrefix = "inline-task",
 }: {
+	title?: string;
+	onTitleChange?: (value: string) => void;
 	prompt: string;
 	onPromptChange: (value: string) => void;
 	images?: TaskImage[];
@@ -155,6 +160,20 @@ export function TaskInlineCreateCard({
 			style={{ flexShrink: 0, marginBottom: cardMarginBottom, fontSize: 12 }}
 		>
 			<div>
+				{onTitleChange ? (
+					<div className="mb-2">
+						<label htmlFor={`${idPrefix}-title-input`} className="mb-1 block text-[11px] text-text-secondary">
+							Title
+						</label>
+						<input
+							id={`${idPrefix}-title-input`}
+							value={title ?? ""}
+							onChange={(event) => onTitleChange(event.currentTarget.value)}
+							placeholder={deriveTaskTitleFromPrompt(prompt) || "Auto-generated from prompt"}
+							className="h-8 w-full rounded-md border border-border-bright bg-surface-2 px-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+						/>
+					</div>
+				) : null}
 				<TaskPromptComposer
 					id={promptId}
 					value={prompt}

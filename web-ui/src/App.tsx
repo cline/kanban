@@ -297,6 +297,8 @@ export default function App(): ReactElement {
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
+		editTaskTitle,
+		setEditTaskTitle,
 		editTaskPrompt,
 		setEditTaskPrompt,
 		editTaskImages,
@@ -719,6 +721,8 @@ export default function App(): ReactElement {
 
 	const inlineTaskEditor = editingTaskId ? (
 		<TaskInlineCreateCard
+			title={editTaskTitle}
+			onTitleChange={setEditTaskTitle}
 			prompt={editTaskPrompt}
 			onPromptChange={setEditTaskPrompt}
 			images={editTaskImages}

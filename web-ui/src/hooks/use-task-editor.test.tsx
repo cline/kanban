@@ -8,6 +8,7 @@ import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/type
 function createTask(taskId: string, prompt: string, createdAt: number, overrides: Partial<BoardCard> = {}): BoardCard {
 	return {
 		id: taskId,
+		title: prompt,
 		prompt,
 		startInPlanMode: false,
 		autoReviewEnabled: false,
