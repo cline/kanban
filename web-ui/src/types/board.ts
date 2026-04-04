@@ -38,6 +38,7 @@ export function getTaskAutoReviewCancelButtonLabel(mode: TaskAutoReviewMode | nu
 
 export interface BoardCard {
 	id: string;
+	title: string;
 	prompt: string;
 	startInPlanMode: boolean;
 	autoReviewEnabled?: boolean;

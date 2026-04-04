@@ -26,6 +26,34 @@ function normalizePromptForDisplay(prompt: string): string {
 	return prompt.replaceAll(/\s+/g, " ").trim();
 }
 
+export function normalizeTaskTextForDisplay(value: string): string {
+	return normalizePromptForDisplay(value);
+}
+
+export function getTaskPromptDescription(prompt: string, title: string): string {
+	const normalizedPrompt = normalizePromptForDisplay(prompt);
+	const normalizedTitle = normalizePromptForDisplay(title);
+	if (!normalizedPrompt) {
+		return "";
+	}
+	if (!normalizedTitle) {
+		return normalizedPrompt;
+	}
+	if (normalizedPrompt === normalizedTitle) {
+		return "";
+	}
+	if (normalizedPrompt.startsWith(normalizedTitle)) {
+		const remainder = normalizedPrompt
+			.slice(normalizedTitle.length)
+			.replace(/^[\s:;,.!?-]+/u, "")
+			.trim();
+		if (remainder.length > 0) {
+			return remainder;
+		}
+	}
+	return normalizedPrompt;
+}
+
 function wrapTextByWidth(
 	text: string,
 	options: Pick<InlineSuffixClampOptions, "maxWidthPx" | "measureText">,

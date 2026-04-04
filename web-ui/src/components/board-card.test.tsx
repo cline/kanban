@@ -66,12 +66,13 @@ vi.mock("@/utils/task-prompt", async () => {
 	return {
 		...actual,
 		truncateTaskPromptLabel: (prompt: string) => prompt.split("||")[0]?.trim() ?? "",
-		splitPromptToTitleDescriptionByWidth: (prompt: string) => {
-			const [title, ...descriptionParts] = prompt.split("||");
-			return {
-				title: title?.trim() ?? "",
-				description: descriptionParts.join("||").trim(),
-			};
+		normalizeTaskTextForDisplay: (value: string) => value.split("||")[0]?.trim() ?? value.trim(),
+		getTaskPromptDescription: (prompt: string, title: string) => {
+			const normalized = prompt.trim();
+			if (!normalized.startsWith(title)) {
+				return normalized;
+			}
+			return normalized.slice(title.length).replace(/^\|\|/, "").trim();
 		},
 	};
 });
@@ -79,6 +80,7 @@ vi.mock("@/utils/task-prompt", async () => {
 function createCard(overrides?: Partial<Parameters<typeof BoardCard>[0]["card"]>) {
 	return {
 		id: "task-1",
+		title: "Review API changes",
 		prompt: "Review API changes",
 		startInPlanMode: false,
 		autoReviewEnabled: false,
@@ -412,7 +414,7 @@ describe("BoardCard", () => {
 	});
 
 	it("shows see more for trash card previews without using card click to expand", async () => {
-		mockMeasureWidths = [240, 240, 96];
+		mockMeasureWidths = [240, 96];
 		const preview =
 			"Reviewing the archived implementation details and collecting the final notes for the handoff before cleanup hidden tail";
 		const onCardClick = vi.fn();
@@ -469,7 +471,7 @@ describe("BoardCard", () => {
 	});
 
 	it("shows see more for active task previews without using card click to expand", async () => {
-		mockMeasureWidths = [240, 240, 96];
+		mockMeasureWidths = [240, 96];
 		const preview =
 			"Reviewing the archived implementation details and collecting the final notes for the handoff before cleanup hidden tail";
 		const onCardClick = vi.fn();
