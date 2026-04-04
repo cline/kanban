@@ -85,17 +85,18 @@ export default defineConfig({
 			"@runtime-home-agent-session": resolve(__dirname, "../src/core/home-agent-session.ts"),
 			"@runtime-shortcuts": resolve(__dirname, "../src/config/shortcut-utils.ts"),
 			"@runtime-task-id": resolve(__dirname, "../src/core/task-id.ts"),
+			"@runtime-task-title": resolve(__dirname, "../src/core/task-title.ts"),
 			"@runtime-task-worktree-path": resolve(__dirname, "../src/workspace/task-worktree-path.ts"),
 			"@runtime-task-state": resolve(__dirname, "../src/core/task-board-mutations.ts"),
 		},
 	},
 	server: {
 		host: "127.0.0.1",
-		port: 4173,
+		port: Number(process.env.KANBAN_WEB_UI_PORT || "4173"),
 		strictPort: true,
 		proxy: {
 			"/api": {
-				target: "http://127.0.0.1:3484",
+				target: `http://127.0.0.1:${process.env.KANBAN_RUNTIME_PORT || "3484"}`,
 				changeOrigin: true,
 				ws: true,
 			},

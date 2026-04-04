@@ -67,7 +67,7 @@ import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
 import { saveWorkspaceState } from "@/runtime/workspace-state-query";
-import { findCardSelection } from "@/state/board-state";
+import { findCardSelection, updateTask } from "@/state/board-state";
 import {
 	getTaskWorkspaceInfo,
 	getTaskWorkspaceSnapshot,
@@ -281,6 +281,8 @@ export default function App(): ReactElement {
 
 	const {
 		isInlineTaskCreateOpen,
+		newTaskTitle,
+		setNewTaskTitle,
 		newTaskPrompt,
 		setNewTaskPrompt,
 		newTaskImages,
@@ -295,6 +297,8 @@ export default function App(): ReactElement {
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
+		editTaskTitle,
+		setEditTaskTitle,
 		editTaskPrompt,
 		setEditTaskPrompt,
 		editTaskImages,
@@ -327,6 +331,24 @@ export default function App(): ReactElement {
 		setSelectedTaskId,
 		queueTaskStartAfterEdit,
 	});
+
+	const handleSaveTaskTitle = useCallback((taskId: string, title: string) => {
+		setBoard((currentBoard) => {
+			const selection = findCardSelection(currentBoard, taskId);
+			if (!selection) {
+				return currentBoard;
+			}
+			const updated = updateTask(currentBoard, taskId, {
+				title,
+				prompt: selection.card.prompt,
+				startInPlanMode: selection.card.startInPlanMode,
+				autoReviewEnabled: selection.card.autoReviewEnabled === true,
+				autoReviewMode: selection.card.autoReviewMode,
+				baseRef: selection.card.baseRef,
+			});
+			return updated.updated ? updated.board : currentBoard;
+		});
+	}, []);
 
 	useEffect(() => {
 		taskEditorResetRef.current = resetTaskEditorState;
@@ -717,6 +739,8 @@ export default function App(): ReactElement {
 
 	const inlineTaskEditor = editingTaskId ? (
 		<TaskInlineCreateCard
+			title={editTaskTitle}
+			onTitleChange={setEditTaskTitle}
 			prompt={editTaskPrompt}
 			onPromptChange={setEditTaskPrompt}
 			images={editTaskImages}
@@ -884,6 +908,7 @@ export default function App(): ReactElement {
 												editingTaskId={editingTaskId}
 												inlineTaskEditor={inlineTaskEditor}
 												onEditTask={handleOpenEditTask}
+												onSaveTaskTitle={handleSaveTaskTitle}
 												onCommitTask={handleCommitTask}
 												onOpenPrTask={handleOpenPrTask}
 												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
@@ -1044,6 +1069,8 @@ export default function App(): ReactElement {
 				<TaskCreateDialog
 					open={isInlineTaskCreateOpen}
 					onOpenChange={handleCreateDialogOpenChange}
+					title={newTaskTitle}
+					onTitleChange={setNewTaskTitle}
 					prompt={newTaskPrompt}
 					onPromptChange={setNewTaskPrompt}
 					images={newTaskImages}
