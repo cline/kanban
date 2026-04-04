@@ -63,6 +63,12 @@ await Promise.all([
 		entryPoints: ["src/index.ts"],
 		outfile: "dist/index.js",
 	}),
+	// Runtime start — standalone entry for Electron desktop embedding
+	esbuild.build({
+		...shared,
+		entryPoints: ["src/runtime-start.ts"],
+		outfile: "dist/runtime-start.js",
+	}),
 ]);
 
-console.log("esbuild: bundled dist/cli.js and dist/index.js");
+console.log("esbuild: bundled dist/cli.js, dist/index.js, and dist/runtime-start.js");

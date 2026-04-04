@@ -49,7 +49,7 @@ export interface CreateProjectsApiDependencies {
 		currentProjectId: string | null;
 		projects: RuntimeProjectSummary[];
 	}>;
-	pickDirectoryPathFromSystemDialog: () => string | null;
+	pickDirectoryPathFromSystemDialog: () => Promise<string | null> | string | null;
 }
 
 export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeTrpcContext["projectsApi"] {
@@ -206,7 +206,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 		},
 		pickProjectDirectory: async () => {
 			try {
-				const selectedPath = deps.pickDirectoryPathFromSystemDialog();
+				const selectedPath = await deps.pickDirectoryPathFromSystemDialog();
 				if (!selectedPath) {
 					return {
 						ok: false,

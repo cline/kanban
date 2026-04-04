@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+
 import * as pty from "node-pty";
 
 import {
@@ -87,13 +90,23 @@ export class PtySession {
 		const normalizedArgs = typeof args === "string" ? [args] : args;
 		const terminalName = env?.TERM?.trim() || process.env.TERM?.trim() || "xterm-256color";
 		const launchEnv: NodeJS.ProcessEnv = env ? { ...process.env, ...env } : process.env;
+
+		// Validate cwd exists — posix_spawn returns ENOENT when the working
+		// directory is missing, which produces a confusing "binary not found"
+		// error even though the shell binary is fine.
+		let safeCwd = cwd;
+		if (!existsSync(safeCwd)) {
+			const home = launchEnv.HOME ?? homedir();
+			safeCwd = existsSync(home) ? home : "/";
+		}
+
 		const useWindowsShellLaunch = shouldUseWindowsCmdLaunch(binary, process.platform, launchEnv);
 		const spawnBinary = useWindowsShellLaunch ? resolveWindowsComSpec(launchEnv) : binary;
 		const spawnArgs = useWindowsShellLaunch ? buildWindowsCmdArgsCommandLine(binary, normalizedArgs) : normalizedArgs;
 		const ptyOptions: pty.IPtyForkOptions = {
 			name: terminalName,
-			cwd,
-			env,
+			cwd: safeCwd,
+			env: launchEnv,
 			cols,
 			rows,
 			encoding: null,

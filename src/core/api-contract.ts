@@ -307,6 +307,8 @@ export type RuntimeClineMcpServerAuthStatus = z.infer<typeof runtimeClineMcpServ
 
 export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	type: z.literal("snapshot"),
+	isLocal: z.boolean(),
+	runtimeVersion: z.string(),
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
 	workspaceState: runtimeWorkspaceStateResponseSchema.nullable(),
@@ -431,6 +433,22 @@ export const runtimeProjectDirectoryPickerResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeProjectDirectoryPickerResponse = z.infer<typeof runtimeProjectDirectoryPickerResponseSchema>;
+
+export const runtimeListDirectoriesRequestSchema = z.object({
+	path: z.string(),
+});
+export type RuntimeListDirectoriesRequest = z.infer<typeof runtimeListDirectoriesRequestSchema>;
+
+export const runtimeListDirectoriesDirectoryEntrySchema = z.object({
+	name: z.string(),
+	path: z.string(),
+});
+export type RuntimeListDirectoriesDirectoryEntry = z.infer<typeof runtimeListDirectoriesDirectoryEntrySchema>;
+
+export const runtimeListDirectoriesResponseSchema = z.object({
+	directories: z.array(runtimeListDirectoriesDirectoryEntrySchema),
+});
+export type RuntimeListDirectoriesResponse = z.infer<typeof runtimeListDirectoriesResponseSchema>;
 
 export const runtimeProjectRemoveRequestSchema = z.object({
 	projectId: z.string(),
@@ -787,6 +805,7 @@ export const runtimeConfigResponseSchema = z.object({
 	openPrPromptTemplate: z.string(),
 	commitPromptTemplateDefault: z.string(),
 	openPrPromptTemplateDefault: z.string(),
+	homeAgentPromptHash: z.string(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 

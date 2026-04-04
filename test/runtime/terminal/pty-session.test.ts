@@ -321,4 +321,45 @@ describe("PtySession", () => {
 
 		expect(() => session.write("hello")).toThrow("permission denied");
 	});
+
+	it("falls back to HOME when cwd does not exist", () => {
+		setPlatform("darwin");
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		PtySession.spawn({
+			binary: "/bin/zsh",
+			args: ["-i"],
+			cwd: "/nonexistent/deleted-worktree-path",
+			env: { HOME: "/tmp" },
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
+		const ptyOptions = ptyMocks.spawn.mock.calls[0]?.[2];
+		// The cwd should NOT be the nonexistent path
+		expect(ptyOptions?.cwd).not.toBe("/nonexistent/deleted-worktree-path");
+		// It should fall back to a directory that exists
+		expect(typeof ptyOptions?.cwd).toBe("string");
+		expect(ptyOptions?.cwd.length).toBeGreaterThan(0);
+	});
+
+	it("uses original cwd when it exists", () => {
+		setPlatform("darwin");
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		PtySession.spawn({
+			binary: "/bin/zsh",
+			args: ["-i"],
+			cwd: "/tmp",
+			cols: 120,
+			rows: 40,
+		});
+
+		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
+		const ptyOptions = ptyMocks.spawn.mock.calls[0]?.[2];
+		expect(ptyOptions?.cwd).toBe("/tmp");
+	});
 });

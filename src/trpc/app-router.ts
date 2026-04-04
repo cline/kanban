@@ -44,6 +44,8 @@ import type {
 	RuntimeGitSyncResponse,
 	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
+	RuntimeListDirectoriesRequest,
+	RuntimeListDirectoriesResponse,
 	RuntimeOpenFileRequest,
 	RuntimeOpenFileResponse,
 	RuntimeProjectAddRequest,
@@ -124,6 +126,8 @@ import {
 	runtimeGitSyncResponseSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeHookIngestResponseSchema,
+	runtimeListDirectoriesRequestSchema,
+	runtimeListDirectoriesResponseSchema,
 	runtimeOpenFileRequestSchema,
 	runtimeOpenFileResponseSchema,
 	runtimeProjectAddRequestSchema,
@@ -329,6 +333,9 @@ export interface RuntimeTrpcContext {
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
 	};
+	directoryBrowseApi: {
+		listDirectories: (input: RuntimeListDirectoriesRequest) => Promise<RuntimeListDirectoriesResponse>;
+	};
 }
 
 interface RuntimeTrpcContextWithWorkspaceScope extends RuntimeTrpcContext {
@@ -527,6 +534,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeOpenFileResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.openFile(input);
+			}),
+		listDirectories: t.procedure
+			.input(runtimeListDirectoriesRequestSchema)
+			.output(runtimeListDirectoriesResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.directoryBrowseApi.listDirectories(input);
 			}),
 	}),
 	workspace: t.router({
