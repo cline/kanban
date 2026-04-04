@@ -23,11 +23,11 @@ export interface InlineSuffixClampResult {
 export const DEFAULT_TASK_PROMPT_LABEL_MAX_CHARS = 100;
 
 function normalizePromptForDisplay(prompt: string): string {
-	return prompt.replaceAll(/\s+/g, " ").trim();
+	return (prompt ?? "").replaceAll(/\s+/g, " ").trim();
 }
 
 export function normalizeTaskTextForDisplay(value: string): string {
-	return normalizePromptForDisplay(value);
+	return normalizePromptForDisplay(value ?? "");
 }
 
 export function getTaskPromptDescription(prompt: string, title: string): string {
