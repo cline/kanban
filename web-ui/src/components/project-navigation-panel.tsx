@@ -39,10 +39,19 @@ interface TaskCountBadge {
 	count: number;
 }
 
+interface ProjectTaskCounts {
+	backlog: number;
+	in_progress: number;
+	review: number;
+	trash: number;
+}
+
 export function ProjectNavigationPanel({
 	projects,
 	isLoadingProjects = false,
 	currentProjectId,
+	isAllProjectsSelected = false,
+	allProjectsTaskCounts,
 	removingProjectId,
 	activeSection,
 	onActiveSectionChange,
@@ -52,6 +61,7 @@ export function ProjectNavigationPanel({
 	clineProviderSettings,
 	featurebaseFeedbackState,
 	onSelectProject,
+	onSelectAllProjects,
 	onRemoveProject,
 	onAddProject,
 }: {
@@ -66,7 +76,10 @@ export function ProjectNavigationPanel({
 	selectedAgentId?: RuntimeAgentId | null;
 	clineProviderSettings?: RuntimeClineProviderSettings | null;
 	featurebaseFeedbackState?: FeaturebaseFeedbackState;
+	isAllProjectsSelected?: boolean;
+	allProjectsTaskCounts?: ProjectTaskCounts;
 	onSelectProject: (projectId: string) => void;
+	onSelectAllProjects: () => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onAddProject: () => void;
 }): React.ReactElement {
@@ -194,6 +207,21 @@ export function ProjectNavigationPanel({
 						</button>
 					);
 				})}
+				{sortedProjects.length > 0 ? (
+					<button
+						type="button"
+						title="All projects"
+						onClick={onSelectAllProjects}
+						className={cn(
+							"w-8 h-8 rounded-md text-[11px] font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
+							isAllProjectsSelected
+								? "bg-accent text-white"
+								: "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
+						)}
+					>
+						All
+					</button>
+				) : null}
 				<button
 					type="button"
 					title="Add project"
@@ -281,6 +309,14 @@ export function ProjectNavigationPanel({
 									<ProjectRowSkeleton key={`project-skeleton-${index}`} />
 								))}
 							</div>
+						) : null}
+
+						{sortedProjects.length > 0 && allProjectsTaskCounts ? (
+							<AllProjectsRow
+								taskCounts={allProjectsTaskCounts}
+								isCurrent={isAllProjectsSelected}
+								onSelect={onSelectAllProjects}
+							/>
 						) : null}
 
 						{sortedProjects.map((project) => (
@@ -560,36 +596,7 @@ function ProjectRow({
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
-	const taskCountBadges: TaskCountBadge[] = [
-		{
-			id: "backlog",
-			title: "Backlog",
-			shortLabel: "B",
-			toneClassName: "bg-text-primary/15 text-text-primary",
-			count: project.taskCounts.backlog,
-		},
-		{
-			id: "in_progress",
-			title: "In Progress",
-			shortLabel: "IP",
-			toneClassName: "bg-accent/20 text-accent",
-			count: project.taskCounts.in_progress,
-		},
-		{
-			id: "review",
-			title: "Review",
-			shortLabel: "R",
-			toneClassName: "bg-status-green/20 text-status-green",
-			count: project.taskCounts.review,
-		},
-		{
-			id: "trash",
-			title: "Trash",
-			shortLabel: "T",
-			toneClassName: "bg-status-red/20 text-status-red",
-			count: project.taskCounts.trash,
-		},
-	].filter((item) => item.count > 0);
+	const taskCountBadges = buildTaskCountBadges(project.taskCounts);
 
 	return (
 		<div
@@ -683,4 +690,103 @@ function ProjectRow({
 			</div>
 		</div>
 	);
+}
+
+function AllProjectsRow({
+	taskCounts,
+	isCurrent,
+	onSelect,
+}: {
+	taskCounts: ProjectTaskCounts;
+	isCurrent: boolean;
+	onSelect: () => void;
+}): React.ReactElement {
+	return (
+		<div
+			role="button"
+			tabIndex={0}
+			onClick={onSelect}
+			onKeyDown={(event) => {
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					onSelect();
+				}
+			}}
+			className={cn("kb-project-row cursor-pointer rounded-md", isCurrent && "kb-project-row-selected")}
+			style={{
+				display: "flex",
+				alignItems: "center",
+				gap: 6,
+				padding: "6px 8px",
+			}}
+		>
+			<div className="flex-1 min-w-0">
+				<div
+					className={cn(
+						"font-medium whitespace-nowrap overflow-hidden text-ellipsis text-sm",
+						isCurrent ? "text-white" : "text-text-primary",
+					)}
+				>
+					All Projects
+				</div>
+				<div
+					className={cn(
+						"font-mono text-[10px] whitespace-nowrap overflow-hidden text-ellipsis",
+						isCurrent ? "text-white/60" : "text-text-secondary",
+					)}
+				>
+					View backlog, in progress, review, and trash across every project.
+				</div>
+				<div className="flex gap-1 mt-1">
+					{buildTaskCountBadges(taskCounts).map((badge) => (
+						<span
+							key={badge.id}
+							className={cn(
+								"inline-flex items-center gap-1 rounded-full text-[10px] px-1.5 py-px font-medium",
+								isCurrent ? "bg-white/20 text-white" : badge.toneClassName,
+							)}
+							title={badge.title}
+						>
+							<span>{badge.shortLabel}</span>
+							<span style={{ opacity: 0.4 }}>|</span>
+							<span>{badge.count}</span>
+						</span>
+					))}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function buildTaskCountBadges(taskCounts: ProjectTaskCounts): TaskCountBadge[] {
+	return [
+		{
+			id: "backlog",
+			title: "Backlog",
+			shortLabel: "B",
+			toneClassName: "bg-text-primary/15 text-text-primary",
+			count: taskCounts.backlog,
+		},
+		{
+			id: "in_progress",
+			title: "In Progress",
+			shortLabel: "IP",
+			toneClassName: "bg-accent/20 text-accent",
+			count: taskCounts.in_progress,
+		},
+		{
+			id: "review",
+			title: "Review",
+			shortLabel: "R",
+			toneClassName: "bg-status-green/20 text-status-green",
+			count: taskCounts.review,
+		},
+		{
+			id: "trash",
+			title: "Trash",
+			shortLabel: "T",
+			toneClassName: "bg-status-red/20 text-status-red",
+			count: taskCounts.trash,
+		},
+	].filter((item) => item.count > 0);
 }

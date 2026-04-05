@@ -36,6 +36,7 @@ import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallback";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
+import { useAllProjectsBoard } from "@/hooks/use-all-projects-board";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDebugTools } from "@/hooks/use-debug-tools";
@@ -79,10 +80,17 @@ import {
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 
+const ALL_PROJECTS_VIEW_ID = "__all_projects__";
+
 export default function App(): ReactElement {
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+	const [homeProjectViewId, setHomeProjectViewId] = useState<string | typeof ALL_PROJECTS_VIEW_ID | null>(null);
+	const [pendingCrossProjectTaskSelection, setPendingCrossProjectTaskSelection] = useState<{
+		projectId: string;
+		taskId: string;
+	} | null>(null);
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
@@ -273,6 +281,49 @@ export default function App(): ReactElement {
 		isWorkspaceMetadataPending,
 		hasReceivedSnapshot,
 	});
+	const isAllProjectsView = homeProjectViewId === ALL_PROJECTS_VIEW_ID;
+	const isAllProjectsHomeView = isAllProjectsView && selectedTaskId === null;
+	const allProjectsTaskCounts = useMemo(
+		() =>
+			displayedProjects.reduce(
+				(counts, project) => ({
+					backlog: counts.backlog + project.taskCounts.backlog,
+					in_progress: counts.in_progress + project.taskCounts.in_progress,
+					review: counts.review + project.taskCounts.review,
+					trash: counts.trash + project.taskCounts.trash,
+				}),
+				{
+					backlog: 0,
+					in_progress: 0,
+					review: 0,
+					trash: 0,
+				},
+			),
+		[displayedProjects],
+	);
+	const {
+		board: allProjectsBoard,
+		taskSessions: allProjectsTaskSessions,
+		isLoading: isAllProjectsBoardLoading,
+		error: allProjectsBoardError,
+	} = useAllProjectsBoard(displayedProjects, isAllProjectsHomeView);
+
+	useEffect(() => {
+		if (hasNoProjects) {
+			setHomeProjectViewId(null);
+			return;
+		}
+		if (homeProjectViewId === null) {
+			setHomeProjectViewId(currentProjectId ?? displayedProjects[0]?.id ?? null);
+			return;
+		}
+		if (homeProjectViewId === ALL_PROJECTS_VIEW_ID) {
+			return;
+		}
+		if (!displayedProjects.some((project) => project.id === homeProjectViewId)) {
+			setHomeProjectViewId(currentProjectId ?? displayedProjects[0]?.id ?? null);
+		}
+	}, [currentProjectId, displayedProjects, hasNoProjects, homeProjectViewId]);
 
 	useReviewReadyNotifications({
 		activeWorkspaceId: activeNotificationWorkspaceId,
@@ -533,20 +584,34 @@ export default function App(): ReactElement {
 	}, [selectedTaskId, selectedCard]);
 
 	useEffect(() => {
+		if (!pendingCrossProjectTaskSelection) {
+			return;
+		}
+		if (currentProjectId !== pendingCrossProjectTaskSelection.projectId) {
+			return;
+		}
+		if (!findCardSelection(board, pendingCrossProjectTaskSelection.taskId)) {
+			return;
+		}
+		setSelectedTaskId(pendingCrossProjectTaskSelection.taskId);
+		setPendingCrossProjectTaskSelection(null);
+	}, [board, currentProjectId, pendingCrossProjectTaskSelection]);
+
+	useEffect(() => {
 		if (selectedCard) {
 			return;
 		}
-		if (hasNoProjects || !currentProjectId) {
+		if (hasNoProjects || !currentProjectId || isAllProjectsHomeView) {
 			if (isHomeTerminalOpen) {
 				closeHomeTerminal();
 			}
 			return;
 		}
-	}, [closeHomeTerminal, currentProjectId, hasNoProjects, isHomeTerminalOpen, selectedCard]);
-	const showHomeBottomTerminal = !selectedCard && !hasNoProjects && isHomeTerminalOpen;
+	}, [closeHomeTerminal, currentProjectId, hasNoProjects, isAllProjectsHomeView, isHomeTerminalOpen, selectedCard]);
+	const showHomeBottomTerminal = !selectedCard && !hasNoProjects && !isAllProjectsHomeView && isHomeTerminalOpen;
 	const homeTerminalSubtitle = useMemo(
-		() => workspacePath ?? navigationProjectPath ?? null,
-		[navigationProjectPath, workspacePath],
+		() => (isAllProjectsHomeView ? null : (workspacePath ?? navigationProjectPath ?? null)),
+		[isAllProjectsHomeView, navigationProjectPath, workspacePath],
 	);
 
 	const handleBack = useCallback(() => {
@@ -555,13 +620,21 @@ export default function App(): ReactElement {
 		setIsCodeBrowserOpen(false);
 		setIsGlobalFileSearchOpen(false);
 	}, []);
+	const handleSelectAllProjects = useCallback(() => {
+		setHomeProjectViewId(ALL_PROJECTS_VIEW_ID);
+		setSelectedTaskId(null);
+		setIsGitHistoryOpen(false);
+		setIsCodeBrowserOpen(false);
+		setIsGlobalFileSearchOpen(false);
+		setCodeBrowserOpenFileRequest(null);
+	}, []);
 
 	const handleOpenSettings = useCallback((section?: RuntimeSettingsSection) => {
 		setSettingsInitialSection(section ?? null);
 		setIsSettingsOpen(true);
 	}, []);
 	const handleToggleGitHistory = useCallback(() => {
-		if (hasNoProjects) {
+		if (hasNoProjects || isAllProjectsHomeView) {
 			return;
 		}
 		setIsGitHistoryOpen((current) => {
@@ -570,7 +643,7 @@ export default function App(): ReactElement {
 			}
 			return !current;
 		});
-	}, [hasNoProjects]);
+	}, [hasNoProjects, isAllProjectsHomeView]);
 	const handleCloseGitHistory = useCallback(() => {
 		setIsGitHistoryOpen(false);
 	}, []);
@@ -652,12 +725,33 @@ export default function App(): ReactElement {
 		setSelectedTaskId,
 	});
 
+	const handleAllProjectsCardSelect = useCallback(
+		(aggregatedTaskId: string) => {
+			const selection = findCardSelection(allProjectsBoard, aggregatedTaskId);
+			const card = selection?.card;
+			if (!card?.projectId) {
+				return;
+			}
+			const taskId = card.projectTaskId ?? card.id;
+			if (card.projectId !== currentProjectId) {
+				setPendingCrossProjectTaskSelection({
+					projectId: card.projectId,
+					taskId,
+				});
+				handleSelectProject(card.projectId);
+				return;
+			}
+			setSelectedTaskId(taskId);
+		},
+		[allProjectsBoard, currentProjectId, handleSelectProject],
+	);
+
 	useAppHotkeys({
 		selectedCard,
 		isDetailTerminalOpen,
 		isHomeTerminalOpen: showHomeBottomTerminal,
 		isHomeGitHistoryOpen: !selectedCard && isGitHistoryOpen,
-		canUseCreateTaskShortcut: !hasNoProjects && currentProjectId !== null,
+		canUseCreateTaskShortcut: !hasNoProjects && currentProjectId !== null && !isAllProjectsHomeView,
 		handleToggleDetailTerminal,
 		handleToggleHomeTerminal,
 		handleToggleExpandDetailTerminal,
@@ -666,9 +760,13 @@ export default function App(): ReactElement {
 		handleOpenSettings,
 		handleToggleGitHistory,
 		handleCloseGitHistory,
-		onStartAllTasks: handleStartAllBacklogTasksFromBoard,
-		handleOpenFileSearch: hasNoProjects ? undefined : handleOpenFileSearch,
-		handleToggleCodeBrowser: hasNoProjects ? undefined : handleToggleCodeBrowser,
+		onStartAllTasks: () => {
+			if (!isAllProjectsHomeView) {
+				handleStartAllBacklogTasksFromBoard();
+			}
+		},
+		handleOpenFileSearch: hasNoProjects || isAllProjectsHomeView ? undefined : handleOpenFileSearch,
+		handleToggleCodeBrowser: hasNoProjects || isAllProjectsHomeView ? undefined : handleToggleCodeBrowser,
 	});
 
 	const handleGlobalFileSelect = useCallback((path: string) => {
@@ -719,9 +817,11 @@ export default function App(): ReactElement {
 			getTaskWorkspaceSnapshot(selectedCard.card.id)?.path ??
 			workspacePath ??
 			undefined)
-		: shouldUseNavigationPath
-			? (navigationProjectPath ?? undefined)
-			: (workspacePath ?? undefined);
+		: isAllProjectsHomeView
+			? undefined
+			: shouldUseNavigationPath
+				? (navigationProjectPath ?? undefined)
+				: (workspacePath ?? undefined);
 
 	const activeWorkspaceHint = useMemo(() => {
 		if (!selectedCard) {
@@ -738,10 +838,15 @@ export default function App(): ReactElement {
 	}, [selectedCard]);
 
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
-	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
-	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
+	const navbarWorkspaceHint = hasNoProjects
+		? undefined
+		: isAllProjectsHomeView
+			? "Viewing all projects"
+			: activeWorkspaceHint;
+	const navbarRuntimeHint = hasNoProjects || isAllProjectsHomeView ? undefined : runtimeHint;
 	const shouldHideProjectDependentTopBarActions =
-		!selectedCard && (isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
+		!selectedCard &&
+		(isAllProjectsHomeView || isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending);
 
 	const {
 		openTargetOptions,
@@ -807,7 +912,9 @@ export default function App(): ReactElement {
 					<ProjectNavigationPanel
 						projects={displayedProjects}
 						isLoadingProjects={isProjectListLoading}
-						currentProjectId={navigationCurrentProjectId}
+						currentProjectId={isAllProjectsHomeView ? null : navigationCurrentProjectId}
+						isAllProjectsSelected={isAllProjectsHomeView}
+						allProjectsTaskCounts={allProjectsTaskCounts}
 						removingProjectId={removingProjectId}
 						activeSection={homeSidebarSection}
 						onActiveSectionChange={setHomeSidebarSection}
@@ -817,8 +924,10 @@ export default function App(): ReactElement {
 						clineProviderSettings={settingsRuntimeProjectConfig?.clineProviderSettings ?? null}
 						featurebaseFeedbackState={featurebaseFeedbackState}
 						onSelectProject={(projectId) => {
+							setHomeProjectViewId(projectId);
 							void handleSelectProject(projectId);
 						}}
+						onSelectAllProjects={handleSelectAllProjects}
 						onRemoveProject={handleRemoveProject}
 						onAddProject={() => {
 							void handleAddProject();
@@ -834,8 +943,8 @@ export default function App(): ReactElement {
 						runtimeHint={navbarRuntimeHint}
 						selectedTaskId={selectedCard?.card.id ?? null}
 						selectedTaskBaseRef={selectedCard?.card.baseRef ?? null}
-						showHomeGitSummary={!hasNoProjects && !selectedCard}
-						runningGitAction={selectedCard || hasNoProjects ? null : runningGitAction}
+						showHomeGitSummary={!hasNoProjects && !selectedCard && !isAllProjectsHomeView}
+						runningGitAction={selectedCard || hasNoProjects || isAllProjectsHomeView ? null : runningGitAction}
 						onGitFetch={
 							selectedCard
 								? undefined
@@ -858,13 +967,21 @@ export default function App(): ReactElement {
 									}
 						}
 						onToggleTerminal={
-							hasNoProjects ? undefined : selectedCard ? handleToggleDetailTerminal : handleToggleHomeTerminal
+							hasNoProjects || isAllProjectsHomeView
+								? undefined
+								: selectedCard
+									? handleToggleDetailTerminal
+									: handleToggleHomeTerminal
 						}
 						isTerminalOpen={selectedCard ? isDetailTerminalOpen : showHomeBottomTerminal}
 						isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
-						onToggleCodeBrowser={!selectedCard && !hasNoProjects ? handleToggleCodeBrowser : undefined}
+						onToggleCodeBrowser={
+							!selectedCard && !hasNoProjects && !isAllProjectsHomeView ? handleToggleCodeBrowser : undefined
+						}
 						isCodeBrowserOpen={isCodeBrowserOpen}
-						onOpenFileSearch={!selectedCard && !hasNoProjects ? handleOpenFileSearch : undefined}
+						onOpenFileSearch={
+							!selectedCard && !hasNoProjects && !isAllProjectsHomeView ? handleOpenFileSearch : undefined
+						}
 						onOpenSettings={handleOpenSettings}
 						showDebugButton={debugModeEnabled}
 						onOpenDebugDialog={debugModeEnabled ? handleOpenDebugDialog : undefined}
@@ -873,14 +990,14 @@ export default function App(): ReactElement {
 						onSelectShortcutLabel={handleSelectShortcutLabel}
 						runningShortcutLabel={runningShortcutLabel}
 						onRunShortcut={handleRunShortcut}
-						onCreateFirstShortcut={currentProjectId ? handleCreateShortcut : undefined}
+						onCreateFirstShortcut={currentProjectId && !isAllProjectsHomeView ? handleCreateShortcut : undefined}
 						openTargetOptions={openTargetOptions}
 						selectedOpenTargetId={selectedOpenTargetId}
 						onSelectOpenTarget={onSelectOpenTarget}
 						onOpenWorkspace={onOpenWorkspace}
-						canOpenWorkspace={canOpenWorkspace}
+						canOpenWorkspace={!isAllProjectsHomeView && canOpenWorkspace}
 						isOpeningWorkspace={isOpeningWorkspace}
-						onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
+						onToggleGitHistory={hasNoProjects || isAllProjectsHomeView ? undefined : handleToggleGitHistory}
 						isGitHistoryOpen={isGitHistoryOpen}
 						hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 					/>
@@ -915,7 +1032,30 @@ export default function App(): ReactElement {
 							) : (
 								<div className="flex flex-1 flex-col min-h-0 min-w-0">
 									<div className="flex flex-1 min-h-0 min-w-0">
-										{isGitHistoryOpen ? (
+										{isAllProjectsHomeView ? (
+											isAllProjectsBoardLoading ? (
+												<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
+													<Spinner size={30} />
+												</div>
+											) : (
+												<div className="flex flex-1 flex-col min-h-0 min-w-0 bg-surface-0">
+													{allProjectsBoardError ? (
+														<div className="px-4 py-3 text-xs text-status-orange">
+															{allProjectsBoardError}
+														</div>
+													) : null}
+													<KanbanBoard
+														data={allProjectsBoard}
+														taskSessions={allProjectsTaskSessions}
+														onCardSelect={handleAllProjectsCardSelect}
+														onCreateTask={handleOpenCreateTask}
+														dependencies={[]}
+														onDragEnd={handleDragEnd}
+														isReadOnly
+													/>
+												</div>
+											)
+										) : isGitHistoryOpen ? (
 											<GitHistoryView
 												workspaceId={currentProjectId}
 												gitHistory={gitHistory}

@@ -575,4 +575,25 @@ describe("BoardCard", () => {
 		expect(container.textContent).toContain("checking the next file");
 		expect(container.textContent).not.toContain("Agent:");
 	});
+
+	it("shows the project name badge and hides task actions in read-only mode", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard({
+						id: "project-a:task-1",
+						projectName: "Alpha",
+						projectId: "project-a",
+						projectTaskId: "task-1",
+					})}
+					index={0}
+					columnId="backlog"
+					isReadOnly
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Alpha");
+		expect(container.querySelector('button[aria-label="Start task"]')).toBeNull();
+	});
 });

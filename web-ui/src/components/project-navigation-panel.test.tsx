@@ -112,6 +112,12 @@ describe("ProjectNavigationPanel width persistence", () => {
 				<ProjectNavigationPanel
 					projects={PROJECTS}
 					currentProjectId="project-1"
+					allProjectsTaskCounts={{
+						backlog: 0,
+						in_progress: 0,
+						review: 0,
+						trash: 0,
+					}}
 					removingProjectId={null}
 					activeSection="projects"
 					onActiveSectionChange={() => {}}
@@ -120,6 +126,7 @@ describe("ProjectNavigationPanel width persistence", () => {
 					clineProviderSettings={null}
 					featurebaseFeedbackState={undefined}
 					onSelectProject={() => {}}
+					onSelectAllProjects={() => {}}
 					onRemoveProject={async () => true}
 					onAddProject={() => {}}
 					{...overrides}
@@ -189,5 +196,18 @@ describe("ProjectNavigationPanel width persistence", () => {
 		expect(container.textContent).toContain("Kanban is in beta. Help us improve by sharing your experience.");
 		expect(container.textContent).toContain("Send feedback");
 		expect(container.textContent).not.toContain("Report issue");
+	});
+
+	it("renders an all-projects row in the projects view", () => {
+		renderPanel({
+			allProjectsTaskCounts: {
+				backlog: 3,
+				in_progress: 2,
+				review: 1,
+				trash: 0,
+			},
+		});
+		expect(container.textContent).toContain("All Projects");
+		expect(container.textContent).toContain("View backlog, in progress, review, and trash across every project.");
 	});
 });

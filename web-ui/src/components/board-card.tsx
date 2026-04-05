@@ -208,6 +208,7 @@ export function BoardCard({
 	isDependencySource = false,
 	isDependencyTarget = false,
 	isDependencyLinking = false,
+	isReadOnly = false,
 	workspacePath,
 }: {
 	card: BoardCardModel;
@@ -230,6 +231,7 @@ export function BoardCard({
 	isDependencySource?: boolean;
 	isDependencyTarget?: boolean;
 	isDependencyLinking?: boolean;
+	isReadOnly?: boolean;
 	workspacePath?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
@@ -247,9 +249,10 @@ export function BoardCard({
 	const [sessionPreviewFont, setSessionPreviewFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 	const [isSessionPreviewExpanded, setIsSessionPreviewExpanded] = useState(false);
-	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
+	const cardTaskId = card.projectTaskId ?? card.id;
+	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(cardTaskId);
 	const isTrashCard = columnId === "trash";
-	const isCardInteractive = !isTrashCard;
+	const isCardInteractive = !isTrashCard && !isReadOnly;
 	const titleWidth = titleRect.width > 0 ? titleRect.width : titleWidthFallback;
 	const descriptionWidth = descriptionRect.width > 0 ? descriptionRect.width : descriptionWidthFallback;
 	const sessionPreviewWidth = sessionPreviewRect.width > 0 ? sessionPreviewRect.width : sessionPreviewWidthFallback;
@@ -417,13 +420,16 @@ export function BoardCard({
 					deletions: reviewWorkspaceSnapshot.deletions ?? 0,
 				}
 		: null;
-	const showReviewGitActions = columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
+	const showReviewGitActions =
+		!isReadOnly && columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const cancelAutomaticActionLabel =
-		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
+		!isTrashCard && !isReadOnly && card.autoReviewEnabled
+			? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode)
+			: null;
 
 	return (
-		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
+		<Draggable draggableId={card.id} index={index} isDragDisabled={isReadOnly}>
 			{(provided, snapshot) => {
 				const isDragging = snapshot.isDragging;
 				const draggableContent = (
@@ -453,7 +459,7 @@ export function BoardCard({
 							}
 							event.preventDefault();
 							event.stopPropagation();
-							onDependencyPointerDown?.(card.id, event);
+							onDependencyPointerDown?.(cardTaskId, event);
 						}}
 						onClick={(event) => {
 							if (!isCardInteractive) {
@@ -474,17 +480,17 @@ export function BoardCard({
 						style={{
 							...provided.draggableProps.style,
 							marginBottom: 6,
-							cursor: "grab",
+							cursor: isReadOnly ? "default" : "grab",
 						}}
 						onMouseEnter={() => {
 							setIsHovered(true);
-							onDependencyPointerEnter?.(card.id);
+							onDependencyPointerEnter?.(cardTaskId);
 						}}
 						onMouseMove={() => {
 							if (!isDependencyLinking) {
 								return;
 							}
-							onDependencyPointerEnter?.(card.id);
+							onDependencyPointerEnter?.(cardTaskId);
 						}}
 						onMouseLeave={() => setIsHovered(false)}
 					>
@@ -511,7 +517,7 @@ export function BoardCard({
 										{displayPromptSplit.title}
 									</p>
 								</div>
-								{columnId === "backlog" ? (
+								{columnId === "backlog" && !isReadOnly ? (
 									<Button
 										icon={<Play size={14} />}
 										variant="ghost"
@@ -520,10 +526,10 @@ export function BoardCard({
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
-											onStart?.(card.id);
+											onStart?.(cardTaskId);
 										}}
 									/>
-								) : columnId === "review" ? (
+								) : columnId === "review" && !isReadOnly ? (
 									<Button
 										icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
 										variant="ghost"
@@ -533,10 +539,10 @@ export function BoardCard({
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
-											onMoveToTrash?.(card.id);
+											onMoveToTrash?.(cardTaskId);
 										}}
 									/>
-								) : columnId === "trash" ? (
+								) : columnId === "trash" && !isReadOnly ? (
 									<Tooltip
 										side="bottom"
 										content={
@@ -555,12 +561,19 @@ export function BoardCard({
 											onMouseDown={stopEvent}
 											onClick={(event) => {
 												stopEvent(event);
-												onRestoreFromTrash?.(card.id);
+												onRestoreFromTrash?.(cardTaskId);
 											}}
 										/>
 									</Tooltip>
 								) : null}
 							</div>
+							{card.projectName ? (
+								<div className="mt-1">
+									<span className="inline-flex rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
+										{card.projectName}
+									</span>
+								</div>
+							) : null}
 							{displayPromptSplit.description ? (
 								<div ref={descriptionContainerRef}>
 									<p
@@ -750,7 +763,7 @@ export function BoardCard({
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
-											onCommit?.(card.id);
+											onCommit?.(cardTaskId);
 										}}
 									>
 										Commit
@@ -764,7 +777,7 @@ export function BoardCard({
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
-											onOpenPr?.(card.id);
+											onOpenPr?.(cardTaskId);
 										}}
 									>
 										Open PR
@@ -779,7 +792,7 @@ export function BoardCard({
 									onMouseDown={stopEvent}
 									onClick={(event) => {
 										stopEvent(event);
-										onCancelAutomaticAction(card.id);
+										onCancelAutomaticAction(cardTaskId);
 									}}
 								>
 									{cancelAutomaticActionLabel}

@@ -51,6 +51,7 @@ export function KanbanBoard({
 	onDeleteDependency,
 	onDragEnd,
 	onRequestProgrammaticCardMoveReady,
+	isReadOnly = false,
 	workspacePath,
 }: {
 	data: BoardData;
@@ -76,6 +77,7 @@ export function KanbanBoard({
 	onDeleteDependency?: (dependencyId: string) => void;
 	onDragEnd: (result: DropResult) => void;
 	onRequestProgrammaticCardMoveReady?: (requestMove: RequestProgrammaticCardMove | null) => void;
+	isReadOnly?: boolean;
 	workspacePath?: string | null;
 }): React.ReactElement {
 	const dragOccurredRef = useRef(false);
@@ -89,7 +91,7 @@ export function KanbanBoard({
 		useState<ProgrammaticCardMoveInFlight | null>(null);
 	const dependencyLinking = useDependencyLinking({
 		canLinkTasks: (fromTaskId, toTaskId) => canCreateTaskDependency(data, fromTaskId, toTaskId),
-		onCreateDependency,
+		onCreateDependency: isReadOnly ? undefined : onCreateDependency,
 	});
 
 	useEffect(() => {
@@ -398,11 +400,12 @@ export function KanbanBoard({
 						activeDragTaskId={activeDragTaskId}
 						activeDragSourceColumnId={activeDragSourceColumnId}
 						programmaticCardMoveInFlight={programmaticCardMoveInFlight}
-						onDependencyPointerDown={dependencyLinking.onDependencyPointerDown}
-						onDependencyPointerEnter={dependencyLinking.onDependencyPointerEnter}
+						onDependencyPointerDown={isReadOnly ? undefined : dependencyLinking.onDependencyPointerDown}
+						onDependencyPointerEnter={isReadOnly ? undefined : dependencyLinking.onDependencyPointerEnter}
 						dependencySourceTaskId={dependencyLinking.draft?.sourceTaskId ?? null}
 						dependencyTargetTaskId={dependencyLinking.draft?.targetTaskId ?? null}
-						isDependencyLinking={dependencyLinking.draft !== null}
+						isDependencyLinking={!isReadOnly && dependencyLinking.draft !== null}
+						isReadOnly={isReadOnly}
 						workspacePath={workspacePath}
 						onCardClick={(card) => {
 							if (!dragOccurredRef.current) {
@@ -411,15 +414,17 @@ export function KanbanBoard({
 						}}
 					/>
 				))}
-				<DependencyOverlay
-					containerRef={boardRef}
-					dependencies={dependencies}
-					draft={dependencyLinking.draft}
-					activeTaskId={activeDragTaskId ?? programmaticCardMoveInFlight?.taskId ?? null}
-					activeTaskEffectiveColumnId={activeTaskEffectiveColumnId}
-					isMotionActive={activeDragTaskId !== null || programmaticCardMoveInFlight !== null}
-					onDeleteDependency={onDeleteDependency}
-				/>
+				{!isReadOnly ? (
+					<DependencyOverlay
+						containerRef={boardRef}
+						dependencies={dependencies}
+						draft={dependencyLinking.draft}
+						activeTaskId={activeDragTaskId ?? programmaticCardMoveInFlight?.taskId ?? null}
+						activeTaskEffectiveColumnId={activeTaskEffectiveColumnId}
+						isMotionActive={activeDragTaskId !== null || programmaticCardMoveInFlight !== null}
+						onDeleteDependency={onDeleteDependency}
+					/>
+				) : null}
 			</section>
 		</DragDropContext>
 	);
