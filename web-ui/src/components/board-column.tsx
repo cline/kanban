@@ -36,6 +36,7 @@ export function BoardColumn({
 	dependencySourceTaskId,
 	dependencyTargetTaskId,
 	isDependencyLinking,
+	isReadOnly = false,
 	workspacePath,
 }: {
 	column: BoardColumnModel;
@@ -64,16 +65,19 @@ export function BoardColumn({
 	dependencySourceTaskId?: string | null;
 	dependencyTargetTaskId?: string | null;
 	isDependencyLinking?: boolean;
+	isReadOnly?: boolean;
 	workspacePath?: string | null;
 }): React.ReactElement {
-	const canCreate = column.id === "backlog" && onCreateTask;
-	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
-	const canClearTrash = column.id === "trash" && onClearTrash;
+	const canCreate = !isReadOnly && column.id === "backlog" && onCreateTask;
+	const canStartAllTasks = !isReadOnly && column.id === "backlog" && onStartAllTasks;
+	const canClearTrash = !isReadOnly && column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
-	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
-		activeDragTaskId,
-		programmaticCardMoveInFlight,
-	});
+	const isDropDisabled =
+		isReadOnly ||
+		isCardDropDisabled(column.id, activeDragSourceColumnId ?? null, {
+			activeDragTaskId,
+			programmaticCardMoveInFlight,
+		});
 	const createTaskButtonText = (
 		<span className="inline-flex items-center gap-1.5">
 			<span>Create task</span>
@@ -182,9 +186,10 @@ export function BoardColumn({
 											isDependencySource={dependencySourceTaskId === card.id}
 											isDependencyTarget={dependencyTargetTaskId === card.id}
 											isDependencyLinking={isDependencyLinking}
+											isReadOnly={isReadOnly}
 											workspacePath={workspacePath}
 											onClick={() => {
-												if (column.id === "backlog") {
+												if (column.id === "backlog" && !isReadOnly) {
 													onEditTask?.(card);
 													return;
 												}
