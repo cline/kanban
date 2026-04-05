@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.59]
+
+- Added a beta hint card to the project sidebar with quick access to send feedback or report issues
+- Added "Read the docs" button in the settings dialog linking to documentation
+- Adjusted prompting for the commit button to better handle stale git lock files and multiple stashes at once
+
 ## [0.1.58]
 
 - More panels are now resizable (agent chat, git history, and more) and your layout preferences persist across sessions

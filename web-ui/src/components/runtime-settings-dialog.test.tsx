@@ -157,26 +157,20 @@ describe("RuntimeSettingsDialog", () => {
 		}
 	});
 
-	it("shows GitHub fallback actions when the draft provider switches away from managed Cline OAuth", async () => {
+	it("does not render support actions inside settings", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
 					workspaceId={"workspace-1"}
 					initialConfig={savedClineOauthConfig}
-					featurebaseFeedbackState={{
-						authState: "ready",
-						widgetOpenCount: 0,
-						openFeedbackWidget: vi.fn(async () => {}),
-					}}
 					onOpenChange={() => {}}
 				/>,
 			);
 		});
 
-		expect(findButtonByText(document.body, "Share Feedback")).toBeNull();
-		expect(findButtonByText(document.body, "Report Issue")).toBeInstanceOf(HTMLButtonElement);
-		expect(findButtonByText(document.body, "Feature Request")).toBeInstanceOf(HTMLButtonElement);
+		expect(findButtonByText(document.body, "Send feedback")).toBeNull();
+		expect(findButtonByText(document.body, "Report issue")).toBeNull();
 	});
 
 	it("calls the layout reset callback when reset layout is clicked", async () => {

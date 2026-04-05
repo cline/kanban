@@ -6,9 +6,8 @@ import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
-import { Bug, Check, ChevronDown, Circle, CircleDot, ExternalLink, Lightbulb, Plus, Settings, X } from "lucide-react";
+import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { canShowFeaturebaseFeedbackButton, FeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import {
 	getRuntimeShortcutIconComponent,
@@ -21,16 +20,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
-import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
-import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
 	RuntimeClineMcpServerAuthStatus,
-	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 	RuntimeProjectShortcut,
 } from "@/runtime/types";
@@ -288,7 +284,6 @@ export function RuntimeSettingsDialog({
 	workspaceId,
 	initialConfig = null,
 	liveMcpAuthStatuses = null,
-	featurebaseFeedbackState,
 	onOpenChange,
 	onSaved,
 	initialSection,
@@ -297,7 +292,6 @@ export function RuntimeSettingsDialog({
 	workspaceId: string | null;
 	initialConfig?: RuntimeConfigResponse | null;
 	liveMcpAuthStatuses?: RuntimeClineMcpServerAuthStatus[] | null;
-	featurebaseFeedbackState?: FeaturebaseFeedbackState;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
@@ -316,7 +310,6 @@ export function RuntimeSettingsDialog({
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
-	const pendingCloseAfterFeedbackOpenRef = useRef(false);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
 	const controlsDisabled = isLoading || isSaving || config === null;
@@ -381,21 +374,11 @@ export function RuntimeSettingsDialog({
 		selectedAgentId,
 		config,
 	});
-	const liveClineProviderSettings = useMemo<RuntimeClineProviderSettings>(() => {
-		return selectedAgentId === "cline"
-			? clineSettings.currentProviderSettings
-			: getRuntimeClineProviderSettings(config);
-	}, [clineSettings.currentProviderSettings, config, selectedAgentId]);
 	const clineMcpSettings = useRuntimeSettingsClineMcpController({
 		open,
 		workspaceId,
 		selectedAgentId,
 		liveAuthStatuses: liveMcpAuthStatuses,
-	});
-	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
-		selectedAgentId,
-		clineProviderSettings: liveClineProviderSettings,
-		featurebaseFeedbackState,
 	});
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
@@ -512,35 +495,7 @@ export function RuntimeSettingsDialog({
 			window.clearTimeout(copiedVariableResetTimerRef.current);
 			copiedVariableResetTimerRef.current = null;
 		}
-		pendingCloseAfterFeedbackOpenRef.current = false;
 	});
-
-	useEffect(() => {
-		if (!open) {
-			pendingCloseAfterFeedbackOpenRef.current = false;
-			return;
-		}
-		if (!pendingCloseAfterFeedbackOpenRef.current) {
-			return;
-		}
-		if ((featurebaseFeedbackState?.widgetOpenCount ?? 0) === 0) {
-			return;
-		}
-		pendingCloseAfterFeedbackOpenRef.current = false;
-		onOpenChange(false);
-	}, [featurebaseFeedbackState?.widgetOpenCount, onOpenChange, open]);
-
-	const handleFeaturebaseFeedbackClick = useCallback(() => {
-		pendingCloseAfterFeedbackOpenRef.current = true;
-		const openPromise = featurebaseFeedbackState?.openFeedbackWidget();
-		if (!openPromise) {
-			pendingCloseAfterFeedbackOpenRef.current = false;
-			return;
-		}
-		void openPromise.catch(() => {
-			pendingCloseAfterFeedbackOpenRef.current = false;
-		});
-	}, [featurebaseFeedbackState]);
 
 	const handleCopyVariableToken = (token: string) => {
 		void (async () => {
@@ -893,51 +848,6 @@ export function RuntimeSettingsDialog({
 					<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
 				) : null}
 
-				<div className="mt-6 pt-4 border-t border-border">
-					<p className="text-text-secondary text-xs m-0">Cline Kanban v{__APP_VERSION__}</p>
-					<a
-						href="https://github.com/cline/kanban"
-						target="_blank"
-						rel="noreferrer"
-						className="text-accent text-xs hover:underline"
-					>
-						github.com/cline/kanban
-					</a>
-					<div className="flex items-center gap-2 mt-2">
-						{shouldShowFeaturebaseFeedback ? (
-							<FeaturebaseFeedbackButton
-								selectedAgentId={selectedAgentId}
-								clineProviderSettings={liveClineProviderSettings}
-								featurebaseFeedbackState={featurebaseFeedbackState}
-								size="sm"
-								onClick={handleFeaturebaseFeedbackClick}
-							/>
-						) : (
-							<>
-								<Button
-									size="sm"
-									icon={<Bug size={14} />}
-									onClick={() => window.open("https://github.com/cline/kanban/issues", "_blank")}
-								>
-									Report Issue
-								</Button>
-								<Button
-									size="sm"
-									icon={<Lightbulb size={14} />}
-									onClick={() =>
-										window.open(
-											"https://github.com/cline/kanban/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop",
-											"_blank",
-										)
-									}
-								>
-									Feature Request
-								</Button>
-							</>
-						)}
-					</div>
-				</div>
-
 				{saveError ? (
 					<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px] mt-3">
 						<span className="text-text-primary">{saveError}</span>
@@ -945,6 +855,15 @@ export function RuntimeSettingsDialog({
 				) : null}
 			</DialogBody>
 			<DialogFooter>
+				<Button
+					size="sm"
+					variant="ghost"
+					className="mr-auto mt-[3px]"
+					icon={<ExternalLink size={14} />}
+					onClick={() => window.open("https://docs.cline.bot/kanban/overview", "_blank")}
+				>
+					Read the docs
+				</Button>
 				<Button onClick={() => onOpenChange(false)} disabled={controlsDisabled}>
 					Cancel
 				</Button>

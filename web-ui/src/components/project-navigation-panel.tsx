@@ -1,7 +1,8 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronUp, Ellipsis, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Plus } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useRef, useState } from "react";
+import { canShowFeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
@@ -17,8 +18,9 @@ import {
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
+import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
 import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
-import type { RuntimeProjectSummary } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
@@ -27,6 +29,7 @@ const COLLAPSED_WIDTH = 48;
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
 const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
 const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
+const GITHUB_ISSUES_URL = "https://github.com/cline/kanban/issues";
 
 interface TaskCountBadge {
 	id: string;
@@ -45,6 +48,9 @@ export function ProjectNavigationPanel({
 	onActiveSectionChange,
 	canShowAgentSection,
 	agentSectionContent,
+	selectedAgentId,
+	clineProviderSettings,
+	featurebaseFeedbackState,
 	onSelectProject,
 	onRemoveProject,
 	onAddProject,
@@ -57,11 +63,19 @@ export function ProjectNavigationPanel({
 	onActiveSectionChange: (section: "projects" | "agent") => void;
 	canShowAgentSection: boolean;
 	agentSectionContent?: ReactNode;
+	selectedAgentId?: RuntimeAgentId | null;
+	clineProviderSettings?: RuntimeClineProviderSettings | null;
+	featurebaseFeedbackState?: FeaturebaseFeedbackState;
 	onSelectProject: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onAddProject: () => void;
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
+	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
+		selectedAgentId,
+		clineProviderSettings,
+		featurebaseFeedbackState,
+	});
 
 	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
 	const isProjectRemovalPending = pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
@@ -300,6 +314,10 @@ export function ProjectNavigationPanel({
 						) : null}
 					</div>
 					<ShortcutsCard />
+					<ProjectSupportFooter
+						shouldShowFeaturebaseFeedback={shouldShowFeaturebaseFeedback}
+						featurebaseFeedbackState={featurebaseFeedbackState}
+					/>
 				</>
 			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
@@ -376,6 +394,47 @@ export function ProjectNavigationPanel({
 				</AlertDialogFooter>
 			</AlertDialog>
 		</aside>
+	);
+}
+
+function ProjectSupportFooter({
+	shouldShowFeaturebaseFeedback,
+	featurebaseFeedbackState,
+}: {
+	shouldShowFeaturebaseFeedback: boolean;
+	featurebaseFeedbackState?: FeaturebaseFeedbackState;
+}): React.ReactElement {
+	const isOpening = featurebaseFeedbackState?.authState === "loading";
+
+	const handleAction = () => {
+		if (shouldShowFeaturebaseFeedback) {
+			void featurebaseFeedbackState?.openFeedbackWidget();
+		} else {
+			window.open(GITHUB_ISSUES_URL, "_blank");
+		}
+	};
+
+	const actionLabel = shouldShowFeaturebaseFeedback ? (isOpening ? "Opening..." : "Send feedback") : "Report issue";
+
+	return (
+		<div style={{ padding: "4px 12px 12px" }}>
+			<div className="flex items-start gap-2 rounded-md border border-status-orange/25 bg-status-orange/5 px-3 py-2.5">
+				<Info size={14} className="mt-px shrink-0 text-status-orange" />
+				<div className="flex flex-col gap-1.5">
+					<p className="m-0 text-xs text-status-orange/80">
+						Kanban is in beta. Help us improve by sharing your experience.
+					</p>
+					<button
+						type="button"
+						className="m-0 flex cursor-pointer items-center gap-1 self-start border-none bg-transparent p-0 text-xs font-semibold text-status-orange hover:text-status-orange/80 active:text-status-orange/60 disabled:cursor-default disabled:opacity-50"
+						disabled={shouldShowFeaturebaseFeedback && isOpening}
+						onClick={handleAction}
+					>
+						{actionLabel} {!isOpening && <ExternalLink size={11} />}
+					</button>
+				</div>
+			</div>
+		</div>
 	);
 }
 

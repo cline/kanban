@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Feature Requests
+    url: https://github.com/cline/kanban/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop
+    about: Request and vote on new features.
   - name: Community Discord
     url: https://discord.gg/cline
     about: Ask questions and chat with the community.
