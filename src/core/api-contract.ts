@@ -58,6 +58,70 @@ export const runtimeWorkspaceFileSearchResponseSchema = z.object({
 });
 export type RuntimeWorkspaceFileSearchResponse = z.infer<typeof runtimeWorkspaceFileSearchResponseSchema>;
 
+export const runtimeWorkspaceDirectoryEntrySchema = z.object({
+	name: z.string(),
+	path: z.string(),
+	type: z.enum(["file", "directory"]),
+});
+export type RuntimeWorkspaceDirectoryEntry = z.infer<typeof runtimeWorkspaceDirectoryEntrySchema>;
+
+export const runtimeWorkspaceDirectoryListRequestSchema = z.object({
+	path: z.string(),
+});
+export type RuntimeWorkspaceDirectoryListRequest = z.infer<typeof runtimeWorkspaceDirectoryListRequestSchema>;
+
+export const runtimeWorkspaceDirectoryListResponseSchema = z.object({
+	entries: z.array(runtimeWorkspaceDirectoryEntrySchema),
+});
+export type RuntimeWorkspaceDirectoryListResponse = z.infer<typeof runtimeWorkspaceDirectoryListResponseSchema>;
+
+export const runtimeWorkspaceFileReadRequestSchema = z.object({
+	path: z.string(),
+});
+export type RuntimeWorkspaceFileReadRequest = z.infer<typeof runtimeWorkspaceFileReadRequestSchema>;
+
+export const runtimeWorkspaceFileReadResponseSchema = z.object({
+	path: z.string(),
+	content: z.string().nullable(),
+	size: z.number().int().nonnegative(),
+	isBinary: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeWorkspaceFileReadResponse = z.infer<typeof runtimeWorkspaceFileReadResponseSchema>;
+
+export const runtimeWorkspaceFileWriteRequestSchema = z.object({
+	path: z.string(),
+	content: z.string(),
+});
+export type RuntimeWorkspaceFileWriteRequest = z.infer<typeof runtimeWorkspaceFileWriteRequestSchema>;
+
+export const runtimeWorkspaceFileWriteResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeWorkspaceFileWriteResponse = z.infer<typeof runtimeWorkspaceFileWriteResponseSchema>;
+
+export const runtimeWorkspaceGitLineChangeTypeSchema = z.enum(["added", "modified", "deleted"]);
+export type RuntimeWorkspaceGitLineChangeType = z.infer<typeof runtimeWorkspaceGitLineChangeTypeSchema>;
+
+export const runtimeWorkspaceGitLineChangeSchema = z.object({
+	type: runtimeWorkspaceGitLineChangeTypeSchema,
+	startLine: z.number().int().positive(),
+	lineCount: z.number().int().nonnegative(),
+});
+export type RuntimeWorkspaceGitLineChange = z.infer<typeof runtimeWorkspaceGitLineChangeSchema>;
+
+export const runtimeWorkspaceFileGitLineStatusRequestSchema = z.object({
+	path: z.string(),
+});
+export type RuntimeWorkspaceFileGitLineStatusRequest = z.infer<typeof runtimeWorkspaceFileGitLineStatusRequestSchema>;
+
+export const runtimeWorkspaceFileGitLineStatusResponseSchema = z.object({
+	path: z.string(),
+	changes: z.array(runtimeWorkspaceGitLineChangeSchema),
+});
+export type RuntimeWorkspaceFileGitLineStatusResponse = z.infer<typeof runtimeWorkspaceFileGitLineStatusResponseSchema>;
+
 export const runtimeSlashCommandSchema = z.object({
 	name: z.string(),
 	instructions: z.string(),

@@ -75,8 +75,16 @@ import type {
 	RuntimeTaskWorkspaceInfoResponse,
 	RuntimeWorkspaceChangesRequest,
 	RuntimeWorkspaceChangesResponse,
+	RuntimeWorkspaceDirectoryListRequest,
+	RuntimeWorkspaceDirectoryListResponse,
+	RuntimeWorkspaceFileGitLineStatusRequest,
+	RuntimeWorkspaceFileGitLineStatusResponse,
+	RuntimeWorkspaceFileReadRequest,
+	RuntimeWorkspaceFileReadResponse,
 	RuntimeWorkspaceFileSearchRequest,
 	RuntimeWorkspaceFileSearchResponse,
+	RuntimeWorkspaceFileWriteRequest,
+	RuntimeWorkspaceFileWriteResponse,
 	RuntimeWorkspaceStateNotifyResponse,
 	RuntimeWorkspaceStateResponse,
 	RuntimeWorkspaceStateSaveRequest,
@@ -155,8 +163,16 @@ import {
 	runtimeTaskWorkspaceInfoResponseSchema,
 	runtimeWorkspaceChangesRequestSchema,
 	runtimeWorkspaceChangesResponseSchema,
+	runtimeWorkspaceDirectoryListRequestSchema,
+	runtimeWorkspaceDirectoryListResponseSchema,
+	runtimeWorkspaceFileGitLineStatusRequestSchema,
+	runtimeWorkspaceFileGitLineStatusResponseSchema,
+	runtimeWorkspaceFileReadRequestSchema,
+	runtimeWorkspaceFileReadResponseSchema,
 	runtimeWorkspaceFileSearchRequestSchema,
 	runtimeWorkspaceFileSearchResponseSchema,
+	runtimeWorkspaceFileWriteRequestSchema,
+	runtimeWorkspaceFileWriteResponseSchema,
 	runtimeWorkspaceStateNotifyResponseSchema,
 	runtimeWorkspaceStateResponseSchema,
 	runtimeWorkspaceStateSaveRequestSchema,
@@ -297,6 +313,22 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeWorkspaceFileSearchRequest,
 		) => Promise<RuntimeWorkspaceFileSearchResponse>;
+		listDirectory: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeWorkspaceDirectoryListRequest,
+		) => Promise<RuntimeWorkspaceDirectoryListResponse>;
+		readFile: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeWorkspaceFileReadRequest,
+		) => Promise<RuntimeWorkspaceFileReadResponse>;
+		writeFile: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeWorkspaceFileWriteRequest,
+		) => Promise<RuntimeWorkspaceFileWriteResponse>;
+		getFileGitLineStatus: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeWorkspaceFileGitLineStatusRequest,
+		) => Promise<RuntimeWorkspaceFileGitLineStatusResponse>;
 		loadState: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateResponse>;
 		notifyStateUpdated: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateNotifyResponse>;
 		saveState: (
@@ -583,6 +615,30 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeWorkspaceFileSearchResponseSchema)
 			.query(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.searchFiles(ctx.workspaceScope, input);
+			}),
+		listDirectory: workspaceProcedure
+			.input(runtimeWorkspaceDirectoryListRequestSchema)
+			.output(runtimeWorkspaceDirectoryListResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.listDirectory(ctx.workspaceScope, input);
+			}),
+		readFile: workspaceProcedure
+			.input(runtimeWorkspaceFileReadRequestSchema)
+			.output(runtimeWorkspaceFileReadResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.readFile(ctx.workspaceScope, input);
+			}),
+		writeFile: workspaceProcedure
+			.input(runtimeWorkspaceFileWriteRequestSchema)
+			.output(runtimeWorkspaceFileWriteResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.writeFile(ctx.workspaceScope, input);
+			}),
+		getFileGitLineStatus: workspaceProcedure
+			.input(runtimeWorkspaceFileGitLineStatusRequestSchema)
+			.output(runtimeWorkspaceFileGitLineStatusResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.getFileGitLineStatus(ctx.workspaceScope, input);
 			}),
 		getState: workspaceProcedure.output(runtimeWorkspaceStateResponseSchema).query(async ({ ctx }) => {
 			return await ctx.workspaceApi.loadState(ctx.workspaceScope);

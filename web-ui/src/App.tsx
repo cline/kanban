@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
+import { type CodeBrowserOpenFileRequest, CodeBrowserPanel } from "@/components/code-browser/code-browser-panel";
+import { FileSearchDialog } from "@/components/code-browser/file-search-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
@@ -87,6 +89,11 @@ export default function App(): ReactElement {
 	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [isCodeBrowserOpen, setIsCodeBrowserOpen] = useState(false);
+	const [isGlobalFileSearchOpen, setIsGlobalFileSearchOpen] = useState(false);
+	const [codeBrowserOpenFileRequest, setCodeBrowserOpenFileRequest] = useState<CodeBrowserOpenFileRequest | null>(
+		null,
+	);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
@@ -94,6 +101,9 @@ export default function App(): ReactElement {
 		setCanPersistWorkspaceState(false);
 		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
+		setIsCodeBrowserOpen(false);
+		setIsGlobalFileSearchOpen(false);
+		setCodeBrowserOpenFileRequest(null);
 		setPendingTaskStartAfterEditId(null);
 		taskEditorResetRef.current();
 	}, []);
@@ -502,6 +512,9 @@ export default function App(): ReactElement {
 		setSelectedTaskId(null);
 		resetTaskEditorState();
 		setIsClearTrashDialogOpen(false);
+		setIsCodeBrowserOpen(false);
+		setIsGlobalFileSearchOpen(false);
+		setCodeBrowserOpenFileRequest(null);
 		resetGitActionState();
 		resetProjectNavigationState();
 		resetTerminalPanelsState();
@@ -539,6 +552,8 @@ export default function App(): ReactElement {
 	const handleBack = useCallback(() => {
 		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
+		setIsCodeBrowserOpen(false);
+		setIsGlobalFileSearchOpen(false);
 	}, []);
 
 	const handleOpenSettings = useCallback((section?: RuntimeSettingsSection) => {
@@ -549,11 +564,37 @@ export default function App(): ReactElement {
 		if (hasNoProjects) {
 			return;
 		}
-		setIsGitHistoryOpen((current) => !current);
+		setIsGitHistoryOpen((current) => {
+			if (!current) {
+				setIsCodeBrowserOpen(false);
+			}
+			return !current;
+		});
 	}, [hasNoProjects]);
 	const handleCloseGitHistory = useCallback(() => {
 		setIsGitHistoryOpen(false);
 	}, []);
+	const handleToggleCodeBrowser = useCallback(() => {
+		if (hasNoProjects || selectedCard) {
+			return;
+		}
+		setIsCodeBrowserOpen((current) => {
+			if (!current) {
+				setIsGitHistoryOpen(false);
+			} else {
+				setIsGlobalFileSearchOpen(false);
+			}
+			return !current;
+		});
+	}, [hasNoProjects, selectedCard]);
+	const handleOpenFileSearch = useCallback(() => {
+		if (hasNoProjects || selectedCard) {
+			return;
+		}
+		setIsCodeBrowserOpen(true);
+		setIsGitHistoryOpen(false);
+		setIsGlobalFileSearchOpen(true);
+	}, [hasNoProjects, selectedCard]);
 
 	const {
 		handleProgrammaticCardMoveReady,
@@ -626,7 +667,19 @@ export default function App(): ReactElement {
 		handleToggleGitHistory,
 		handleCloseGitHistory,
 		onStartAllTasks: handleStartAllBacklogTasksFromBoard,
+		handleOpenFileSearch: hasNoProjects ? undefined : handleOpenFileSearch,
+		handleToggleCodeBrowser: hasNoProjects ? undefined : handleToggleCodeBrowser,
 	});
+
+	const handleGlobalFileSelect = useCallback((path: string) => {
+		setIsGlobalFileSearchOpen(false);
+		setIsCodeBrowserOpen(true);
+		setIsGitHistoryOpen(false);
+		setCodeBrowserOpenFileRequest({
+			path,
+			nonce: Date.now(),
+		});
+	}, []);
 
 	useEffect(() => {
 		if (!pendingTaskStartAfterEditId) {
@@ -809,6 +862,9 @@ export default function App(): ReactElement {
 						}
 						isTerminalOpen={selectedCard ? isDetailTerminalOpen : showHomeBottomTerminal}
 						isTerminalLoading={selectedCard ? isDetailTerminalStarting : isHomeTerminalStarting}
+						onToggleCodeBrowser={!selectedCard && !hasNoProjects ? handleToggleCodeBrowser : undefined}
+						isCodeBrowserOpen={isCodeBrowserOpen}
+						onOpenFileSearch={!selectedCard && !hasNoProjects ? handleOpenFileSearch : undefined}
 						onOpenSettings={handleOpenSettings}
 						showDebugButton={debugModeEnabled}
 						onOpenDebugDialog={debugModeEnabled ? handleOpenDebugDialog : undefined}
@@ -870,6 +926,11 @@ export default function App(): ReactElement {
 													void discardHomeWorkingChanges();
 												}}
 												isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
+											/>
+										) : isCodeBrowserOpen ? (
+											<CodeBrowserPanel
+												workspaceId={currentProjectId}
+												externalOpenFileRequest={codeBrowserOpenFileRequest}
 											/>
 										) : (
 											<KanbanBoard
@@ -1070,6 +1131,12 @@ export default function App(): ReactElement {
 					taskCount={trashTaskCount}
 					onCancel={() => setIsClearTrashDialogOpen(false)}
 					onConfirm={handleConfirmClearTrash}
+				/>
+				<FileSearchDialog
+					isOpen={isGlobalFileSearchOpen}
+					onClose={() => setIsGlobalFileSearchOpen(false)}
+					workspaceId={currentProjectId}
+					onSelectFile={handleGlobalFileSelect}
 				/>
 				<StartupOnboardingDialog
 					open={isStartupOnboardingDialogOpen}
