@@ -247,6 +247,13 @@ async function runCliCommandAndCollectOutput(options: {
 	};
 }
 
+/**
+ * Parses the JSON payload emitted by the Kanban CLI so tests can assert on structured output.
+ */
+function parseCliJson<T>(stdout: string): T {
+	return JSON.parse(stdout) as T;
+}
+
 describe("source task commands", () => {
 	it("exits after creating a task when the runtime server is already running", { timeout: 60_000 }, async () => {
 		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-task-exit-");
@@ -514,6 +521,261 @@ describe("source task commands", () => {
 				).toBe(true);
 				expect(listedTrash.exitCode).toBe(0);
 				expect(listedTrash.stdout).toContain('"count": 0');
+			} finally {
+				await requestGracefulShutdown(serverProcess);
+				const stopped = await waitForExit(serverProcess, 5_000);
+				if (!stopped) {
+					serverProcess.kill("SIGKILL");
+					await waitForExit(serverProcess, 5_000);
+				}
+			}
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("falls back to local workspace state when the runtime is unreachable", { timeout: 60_000 }, async () => {
+		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-task-runtime-fallback-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-task-runtime-fallback-");
+
+		try {
+			initGitRepository(projectPath);
+			writeFileSync(join(projectPath, "README.md"), "# Task Runtime Fallback Test\n", "utf8");
+			commitAll(projectPath, "init");
+
+			const port = String(await getAvailablePort());
+			const env = createGitTestEnv({
+				HOME: homeDir,
+				USERPROFILE: homeDir,
+				KANBAN_RUNTIME_PORT: port,
+				CODEX_SANDBOX_NETWORK_DISABLED: "1",
+			});
+
+			const createdPrimary = await runCliCommandAndCollectOutput({
+				args: ["task", "create", "--prompt", "Create a fallback-safe backlog task", "--project-path", projectPath],
+				cwd: projectPath,
+				env,
+			});
+			expect(
+				createdPrimary.didExit,
+				`fallback task create did not exit in time.\nstdout:\n${createdPrimary.stdout}\nstderr:\n${createdPrimary.stderr}`,
+			).toBe(true);
+			expect(createdPrimary.exitCode).toBe(0);
+			const createdPrimaryPayload = parseCliJson<{
+				ok: boolean;
+				runtimeAvailable: boolean;
+				warnings: string[];
+				task: { id: string; prompt: string; column: string };
+			}>(createdPrimary.stdout);
+			expect(createdPrimaryPayload.ok).toBe(true);
+			expect(createdPrimaryPayload.runtimeAvailable).toBe(false);
+			expect(createdPrimaryPayload.warnings).toContain(
+				"Kanban runtime is unreachable from this session; command completed using local workspace state only.",
+			);
+			expect(createdPrimaryPayload.task.column).toBe("backlog");
+
+			const createdLinked = await runCliCommandAndCollectOutput({
+				args: ["task", "create", "--prompt", "Create another fallback-safe backlog task", "--project-path", projectPath],
+				cwd: projectPath,
+				env,
+			});
+			expect(
+				createdLinked.didExit,
+				`second fallback task create did not exit in time.\nstdout:\n${createdLinked.stdout}\nstderr:\n${createdLinked.stderr}`,
+			).toBe(true);
+			expect(createdLinked.exitCode).toBe(0);
+			const createdLinkedPayload = parseCliJson<{
+				ok: boolean;
+				runtimeAvailable: boolean;
+				warnings: string[];
+				task: { id: string };
+			}>(createdLinked.stdout);
+			expect(createdLinkedPayload.ok).toBe(true);
+			expect(createdLinkedPayload.runtimeAvailable).toBe(false);
+
+			const listed = await runCliCommandAndCollectOutput({
+				args: ["task", "list", "--project-path", projectPath],
+				cwd: projectPath,
+				env,
+			});
+			expect(
+				listed.didExit,
+				`fallback task list did not exit in time.\nstdout:\n${listed.stdout}\nstderr:\n${listed.stderr}`,
+			).toBe(true);
+			expect(listed.exitCode).toBe(0);
+			const listedPayload = parseCliJson<{
+				ok: boolean;
+				runtimeAvailable: boolean;
+				warnings: string[];
+				count: number;
+				tasks: Array<{ id: string; prompt: string }>;
+			}>(listed.stdout);
+			expect(listedPayload.ok).toBe(true);
+			expect(listedPayload.runtimeAvailable).toBe(false);
+			expect(listedPayload.count).toBe(2);
+			expect(listedPayload.tasks.map((task) => task.id)).toContain(createdPrimaryPayload.task.id);
+
+			const updated = await runCliCommandAndCollectOutput({
+				args: [
+					"task",
+					"update",
+					"--task-id",
+					createdPrimaryPayload.task.id,
+					"--prompt",
+					"Updated fallback prompt",
+					"--project-path",
+					projectPath,
+				],
+				cwd: projectPath,
+				env,
+			});
+			expect(
+				updated.didExit,
+				`fallback task update did not exit in time.\nstdout:\n${updated.stdout}\nstderr:\n${updated.stderr}`,
+			).toBe(true);
+			expect(updated.exitCode).toBe(0);
+			const updatedPayload = parseCliJson<{
+				ok: boolean;
+				runtimeAvailable: boolean;
+				warnings: string[];
+				task: { id: string; prompt: string };
+			}>(updated.stdout);
+			expect(updatedPayload.ok).toBe(true);
+			expect(updatedPayload.runtimeAvailable).toBe(false);
+			expect(updatedPayload.task.id).toBe(createdPrimaryPayload.task.id);
+			expect(updatedPayload.task.prompt).toBe("Updated fallback prompt");
+
+			const linked = await runCliCommandAndCollectOutput({
+				args: [
+					"task",
+					"link",
+					"--task-id",
+					createdPrimaryPayload.task.id,
+					"--linked-task-id",
+					createdLinkedPayload.task.id,
+					"--project-path",
+					projectPath,
+				],
+				cwd: projectPath,
+				env,
+			});
+			expect(
+				linked.didExit,
+				`fallback task link did not exit in time.\nstdout:\n${linked.stdout}\nstderr:\n${linked.stderr}`,
+			).toBe(true);
+			expect(linked.exitCode).toBe(0);
+			const linkedPayload = parseCliJson<{
+				ok: boolean;
+				runtimeAvailable: boolean;
+				warnings: string[];
+				dependency: { id: string; backlogTaskId: string; linkedTaskId: string };
+			}>(linked.stdout);
+			expect(linkedPayload.ok).toBe(true);
+			expect(linkedPayload.runtimeAvailable).toBe(false);
+			expect(linkedPayload.dependency.backlogTaskId).toBe(createdPrimaryPayload.task.id);
+			expect(linkedPayload.dependency.linkedTaskId).toBe(createdLinkedPayload.task.id);
+
+			const unlinked = await runCliCommandAndCollectOutput({
+				args: [
+					"task",
+					"unlink",
+					"--dependency-id",
+					linkedPayload.dependency.id,
+					"--project-path",
+					projectPath,
+				],
+				cwd: projectPath,
+				env,
+			});
+			expect(
+				unlinked.didExit,
+				`fallback task unlink did not exit in time.\nstdout:\n${unlinked.stdout}\nstderr:\n${unlinked.stderr}`,
+			).toBe(true);
+			expect(unlinked.exitCode).toBe(0);
+			const unlinkedPayload = parseCliJson<{
+				ok: boolean;
+				runtimeAvailable: boolean;
+				warnings: string[];
+				removedDependency: { id: string };
+			}>(unlinked.stdout);
+			expect(unlinkedPayload.ok).toBe(true);
+			expect(unlinkedPayload.runtimeAvailable).toBe(false);
+			expect(unlinkedPayload.removedDependency.id).toBe(linkedPayload.dependency.id);
+
+			const started = await runCliCommandAndCollectOutput({
+				args: ["task", "start", "--task-id", createdPrimaryPayload.task.id, "--project-path", projectPath],
+				cwd: projectPath,
+				env,
+			});
+			expect(
+				started.didExit,
+				`fallback task start did not exit in time.\nstdout:\n${started.stdout}\nstderr:\n${started.stderr}`,
+			).toBe(true);
+			expect(started.exitCode).toBe(1);
+			const startedPayload = parseCliJson<{ ok: boolean; error: string }>(started.stdout);
+			expect(startedPayload.ok).toBe(false);
+			expect(startedPayload.error).toContain("task start requires the Kanban runtime");
+			expect(startedPayload.error).toContain("This can happen inside sandboxed Codex task sessions with network disabled.");
+
+			const runtimeEnv = createGitTestEnv({
+				HOME: homeDir,
+				USERPROFILE: homeDir,
+				KANBAN_RUNTIME_PORT: port,
+			});
+
+			const serverProcess = spawn(
+				process.execPath,
+				[
+					"--require",
+					resolveShutdownIpcHookPath(),
+					"--import",
+					resolveTsxLoaderImportSpecifier(),
+					resolve(process.cwd(), "src/cli.ts"),
+					"--no-open",
+				],
+				{
+					cwd: projectPath,
+					env: runtimeEnv,
+					stdio: ["ignore", "pipe", "pipe", "ipc"],
+				},
+			);
+
+			try {
+				await waitForServerStart(serverProcess);
+
+				const listedWithRuntime = await runCliCommandAndCollectOutput({
+					args: ["task", "list", "--project-path", projectPath],
+					cwd: projectPath,
+					env: runtimeEnv,
+				});
+				expect(
+					listedWithRuntime.didExit,
+					`runtime reconnected task list did not exit in time.\nstdout:\n${listedWithRuntime.stdout}\nstderr:\n${listedWithRuntime.stderr}`,
+				).toBe(true);
+				expect(listedWithRuntime.exitCode).toBe(0);
+				const listedWithRuntimePayload = parseCliJson<{
+					ok: boolean;
+					runtimeAvailable: boolean;
+					warnings: string[];
+					count: number;
+					tasks: Array<{ id: string; prompt: string }>;
+				}>(listedWithRuntime.stdout);
+				expect(listedWithRuntimePayload.ok).toBe(true);
+				expect(listedWithRuntimePayload.runtimeAvailable).toBe(true);
+				expect(listedWithRuntimePayload.warnings).toEqual([]);
+				expect(listedWithRuntimePayload.count).toBe(2);
+				expect(listedWithRuntimePayload.tasks.map((task) => task.id)).toEqual(
+					expect.arrayContaining([createdPrimaryPayload.task.id, createdLinkedPayload.task.id]),
+				);
+				expect(listedWithRuntimePayload.tasks).toEqual(
+					expect.arrayContaining([
+						expect.objectContaining({
+							id: createdPrimaryPayload.task.id,
+							prompt: "Updated fallback prompt",
+						}),
+					]),
+				);
 			} finally {
 				await requestGracefulShutdown(serverProcess);
 				const stopped = await waitForExit(serverProcess, 5_000);
