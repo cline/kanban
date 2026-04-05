@@ -8,7 +8,11 @@ import type {
 	RuntimeGitSyncResponse,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceChangesMode,
+	RuntimeWorkspaceDirectoryListResponse,
+	RuntimeWorkspaceFileGitLineStatusResponse,
+	RuntimeWorkspaceFileReadResponse,
 	RuntimeWorkspaceFileSearchResponse,
+	RuntimeWorkspaceFileWriteResponse,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
 import {
@@ -18,6 +22,12 @@ import {
 } from "../core/api-validation";
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import {
+	getFileGitLineStatus,
+	listDirectoryEntries,
+	readWorkspaceFile,
+	writeWorkspaceFile,
+} from "../workspace/browse-workspace-files";
 import {
 	createEmptyWorkspaceChangesResponse,
 	getWorkspaceChanges,
@@ -349,6 +359,31 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				query,
 				files,
 			} satisfies RuntimeWorkspaceFileSearchResponse;
+		},
+		listDirectory: async (workspaceScope, input) => {
+			return (await listDirectoryEntries(
+				workspaceScope.workspacePath,
+				input.path,
+			)) satisfies RuntimeWorkspaceDirectoryListResponse;
+		},
+		readFile: async (workspaceScope, input) => {
+			return (await readWorkspaceFile(
+				workspaceScope.workspacePath,
+				input.path,
+			)) satisfies RuntimeWorkspaceFileReadResponse;
+		},
+		writeFile: async (workspaceScope, input) => {
+			const response = await writeWorkspaceFile(workspaceScope.workspacePath, input.path, input.content);
+			if (response.ok) {
+				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+			}
+			return response satisfies RuntimeWorkspaceFileWriteResponse;
+		},
+		getFileGitLineStatus: async (workspaceScope, input) => {
+			return (await getFileGitLineStatus(
+				workspaceScope.workspacePath,
+				input.path,
+			)) satisfies RuntimeWorkspaceFileGitLineStatusResponse;
 		},
 		loadState: async (workspaceScope) => {
 			return await deps.buildWorkspaceStateSnapshot(workspaceScope.workspaceId, workspaceScope.workspacePath);

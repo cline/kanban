@@ -8,9 +8,11 @@ import {
 	ChevronDown,
 	CircleArrowDown,
 	Command,
+	Files,
 	GitBranch,
 	Play,
 	Plus,
+	Search,
 	Settings,
 	Terminal,
 } from "lucide-react";
@@ -290,8 +292,11 @@ export function TopBar({
 	onToggleTerminal,
 	isTerminalOpen,
 	isTerminalLoading,
+	onToggleCodeBrowser,
+	isCodeBrowserOpen,
 	onToggleGitHistory,
 	isGitHistoryOpen,
+	onOpenFileSearch,
 	onOpenSettings,
 	showDebugButton,
 	onOpenDebugDialog,
@@ -324,8 +329,11 @@ export function TopBar({
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
+	onToggleCodeBrowser?: () => void;
+	isCodeBrowserOpen?: boolean;
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
+	onOpenFileSearch?: () => void;
 	onOpenSettings?: (section?: SettingsSection) => void;
 	showDebugButton?: boolean;
 	onOpenDebugDialog?: () => void;
@@ -586,6 +594,30 @@ export function TopBar({
 								disabled={Boolean(isTerminalLoading)}
 								aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
 								className="ml-2"
+							/>
+						</Tooltip>
+					) : null}
+					{onToggleCodeBrowser ? (
+						<Tooltip side="bottom" content="Toggle code browser (Cmd/Ctrl+Shift+E)">
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={<Files size={16} />}
+								onClick={onToggleCodeBrowser}
+								aria-label={isCodeBrowserOpen ? "Close code browser" : "Open code browser"}
+								className={cn("ml-0.5", isCodeBrowserOpen ? "text-text-primary bg-surface-3" : "")}
+							/>
+						</Tooltip>
+					) : null}
+					{onOpenFileSearch ? (
+						<Tooltip side="bottom" content="Search files (Cmd/Ctrl+Shift+P)">
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={<Search size={16} />}
+								onClick={onOpenFileSearch}
+								aria-label="Search files"
+								className="ml-0.5"
 							/>
 						</Tooltip>
 					) : null}

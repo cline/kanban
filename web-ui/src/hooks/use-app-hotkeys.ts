@@ -21,6 +21,8 @@ interface UseAppHotkeysInput {
 	handleToggleGitHistory: () => void;
 	handleCloseGitHistory: () => void;
 	onStartAllTasks: () => void;
+	handleOpenFileSearch?: () => void;
+	handleToggleCodeBrowser?: () => void;
 }
 
 export function useAppHotkeys({
@@ -38,6 +40,8 @@ export function useAppHotkeys({
 	handleToggleGitHistory,
 	handleCloseGitHistory,
 	onStartAllTasks,
+	handleOpenFileSearch,
+	handleToggleCodeBrowser,
 }: UseAppHotkeysInput): void {
 	useHotkeys(
 		"mod+j",
@@ -147,5 +151,31 @@ export function useAppHotkeys({
 			preventDefault: true,
 		},
 		[handleCloseGitHistory, isHomeGitHistoryOpen, selectedCard],
+	);
+
+	useHotkeys(
+		"mod+shift+p",
+		() => {
+			handleOpenFileSearch?.();
+		},
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[handleOpenFileSearch],
+	);
+
+	useHotkeys(
+		"mod+shift+e",
+		() => {
+			handleToggleCodeBrowser?.();
+		},
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[handleToggleCodeBrowser],
 	);
 }

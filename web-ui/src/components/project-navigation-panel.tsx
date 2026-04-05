@@ -447,11 +447,13 @@ const ESSENTIAL_SHORTCUTS = [
 	{ keys: [MOD, "Shift", "S"], label: "Settings" },
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "G"], label: "Toggle git view" },
+	{ keys: [MOD, "Shift", "E"], label: "Toggle code editor" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
 ];
 
 const MORE_SHORTCUTS = [
 	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
+	{ keys: [MOD, "Shift", "P"], label: "Search files" },
 	{ keys: [ALT, "Shift", "Enter"], label: "Start and open task" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
 	{ keys: ["Esc"], label: "Close / back" },
