@@ -20,7 +20,6 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
 import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
@@ -55,6 +54,10 @@ export function ProjectNavigationPanel({
 	onSelectProject,
 	onRemoveProject,
 	onAddProject,
+	sidebarWidth,
+	setExpandedSidebarWidth,
+	isCollapsed,
+	setSidebarCollapsed,
 }: {
 	projects: RuntimeProjectSummary[];
 	isLoadingProjects?: boolean;
@@ -70,6 +73,10 @@ export function ProjectNavigationPanel({
 	onSelectProject: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onAddProject: () => void;
+	sidebarWidth: number;
+	setExpandedSidebarWidth: (width: number) => void;
+	isCollapsed: boolean;
+	setSidebarCollapsed: (collapsed: boolean, persist?: boolean) => void;
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
@@ -87,8 +94,8 @@ export function ProjectNavigationPanel({
 			pendingProjectRemoval.taskCounts.trash
 		: 0;
 
-	const { sidebarWidth, setExpandedSidebarWidth, isCollapsed, setSidebarCollapsed } = useProjectNavigationLayout();
 	const isMobile = useIsMobile();
+	const [isMobileClosing, setIsMobileClosing] = useState(false);
 
 	useEffect(() => {
 		if (isMobile) {
@@ -100,10 +107,19 @@ export function ProjectNavigationPanel({
 
 	const setCollapsed = useCallback(
 		(collapsed: boolean) => {
+			if (isMobile && collapsed) {
+				setIsMobileClosing(true);
+				return;
+			}
 			setSidebarCollapsed(collapsed, !isMobile);
 		},
 		[isMobile, setSidebarCollapsed],
 	);
+
+	const handleMobileCloseAnimationEnd = useCallback(() => {
+		setIsMobileClosing(false);
+		setSidebarCollapsed(true, false);
+	}, [setSidebarCollapsed]);
 
 	const [isDragging, setIsDragging] = useState(false);
 	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -175,7 +191,11 @@ export function ProjectNavigationPanel({
 		[isCollapsed, isDragging, sidebarWidth, stopDrag],
 	);
 
-	const collapsedWidth = isMobile ? 56 : COLLAPSED_WIDTH;
+	if (isMobile && isCollapsed && !isMobileClosing) {
+		return <></>;
+	}
+
+	const collapsedWidth = COLLAPSED_WIDTH;
 
 	if (isCollapsed) {
 		return (
@@ -238,19 +258,20 @@ export function ProjectNavigationPanel({
 		);
 	}
 
-	const mobileMaxWidth = typeof window !== "undefined" ? window.innerWidth - 48 : 320;
-
 	const expandedSidebar = (
 		<aside
 			className={cn(
-				"flex flex-col min-h-0 overflow-hidden bg-surface-1 relative shrink-0",
-				isMobile && "fixed inset-y-0 left-0 z-50 shadow-2xl",
+				"flex flex-col min-h-0 overflow-hidden bg-surface-1 shrink-0",
+				isMobile ? "fixed inset-y-0 left-0 z-50 shadow-2xl" : "relative",
 			)}
+			onAnimationEnd={isMobileClosing ? handleMobileCloseAnimationEnd : undefined}
 			style={
 				isMobile
 					? {
-							width: Math.min(sidebarWidth, mobileMaxWidth),
-							borderRight: "1px solid var(--color-divider)",
+							width: "100vw",
+							animation: isMobileClosing
+								? "kb-sidebar-slide-out 200ms ease forwards"
+								: "kb-sidebar-slide-in 200ms ease",
 						}
 					: {
 							width: sidebarWidth,
@@ -270,11 +291,21 @@ export function ProjectNavigationPanel({
 				/>
 			)}
 			<div style={{ padding: "12px 12px 8px" }}>
-				<div>
+				<div className="flex items-center justify-between">
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
 						<ClineIcon size={18} className="text-text-primary shrink-0 self-center" />
 						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
+					{isMobile ? (
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Plus size={16} className="rotate-45" />}
+							onClick={() => setCollapsed(true)}
+							aria-label="Close sidebar"
+							className="min-w-[44px] min-h-[44px] -mr-2"
+						/>
+					) : null}
 				</div>
 				<div className="mt-2 rounded-md bg-surface-2 p-1">
 					<div className="grid grid-cols-2 gap-1">
@@ -442,24 +473,7 @@ export function ProjectNavigationPanel({
 	);
 
 	if (isMobile) {
-		return (
-			<>
-				{expandedSidebar}
-				{/* Backdrop scrim */}
-				<div
-					role="button"
-					tabIndex={-1}
-					aria-label="Close sidebar"
-					onClick={() => setCollapsed(true)}
-					onKeyDown={(e) => {
-						if (e.key === "Escape") {
-							setCollapsed(true);
-						}
-					}}
-					className="fixed inset-0 z-40 bg-black/50"
-				/>
-			</>
-		);
+		return expandedSidebar;
 	}
 
 	return expandedSidebar;

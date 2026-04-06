@@ -390,6 +390,7 @@ function TopBarMobileOverflowMenu({
 }
 
 export function TopBar({
+	onToggleSidebar,
 	onBack,
 	workspacePath,
 	isWorkspacePathLoading = false,
@@ -424,6 +425,7 @@ export function TopBar({
 	isOpeningWorkspace,
 	hideProjectDependentActions = false,
 }: {
+	onToggleSidebar?: () => void;
 	onBack?: () => void;
 	workspacePath?: string;
 	isWorkspacePathLoading?: boolean;
@@ -521,8 +523,18 @@ export function TopBar({
 					borderBottom: "1px solid var(--color-divider)",
 				}}
 			>
-				{/* ---- Left side: back, path, hints, git ---- */}
+				{/* ---- Left side: hamburger/back, path, hints, git ---- */}
 				<div className="flex flex-nowrap items-center h-10 flex-1 min-w-0 overflow-hidden gap-1.5">
+					{isMobile && onToggleSidebar ? (
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Menu size={16} />}
+							onClick={onToggleSidebar}
+							aria-label="Toggle sidebar"
+							className={cn("shrink-0", MOBILE_TOUCH_TARGET)}
+						/>
+					) : null}
 					{onBack ? (
 						<div className="flex items-center shrink-0 overflow-visible">
 							<Button
@@ -750,24 +762,32 @@ export function TopBar({
 						</>
 					) : null}
 
-					{/* Mobile: hamburger overflow menu */}
-					{isMobile && hasOverflowItems ? (
-						<TopBarMobileOverflowMenu
-							selectedShortcut={selectedShortcut}
-							SelectedShortcutIcon={SelectedShortcutIcon}
-							runningShortcutLabel={runningShortcutLabel}
-							onRunShortcut={onRunShortcut}
-							onCreateFirstShortcut={onCreateFirstShortcut}
-							onOpenCreateShortcutDialog={handleOpenCreateShortcutDialog}
-							onToggleTerminal={onToggleTerminal}
-							isTerminalOpen={isTerminalOpen}
-							isTerminalLoading={isTerminalLoading}
-							showDebugButton={showDebugButton}
-							onOpenDebugDialog={onOpenDebugDialog}
-							workspaceHint={workspaceHint}
-							runtimeHint={runtimeHint}
-							onOpenSettings={onOpenSettings}
-						/>
+					{/* Mobile: inline run + terminal buttons (icon-only) */}
+					{isMobile ? (
+						<>
+							{!hideProjectDependentActions && onRunShortcut && selectedShortcut ? (
+								<Button
+									variant="ghost"
+									size="sm"
+									icon={runningShortcutLabel ? <Spinner size={14} /> : <SelectedShortcutIcon size={14} />}
+									disabled={Boolean(runningShortcutLabel)}
+									onClick={() => onRunShortcut(selectedShortcut.label)}
+									aria-label={selectedShortcut.label}
+									className={MOBILE_TOUCH_TARGET}
+								/>
+							) : null}
+							{onToggleTerminal ? (
+								<Button
+									variant="ghost"
+									size="sm"
+									icon={<Terminal size={16} />}
+									onClick={onToggleTerminal}
+									disabled={Boolean(isTerminalLoading)}
+									aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
+									className={MOBILE_TOUCH_TARGET}
+								/>
+							) : null}
+						</>
 					) : null}
 
 					{/* Settings: always visible */}

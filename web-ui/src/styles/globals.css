@@ -56,6 +56,7 @@ body,
 	color: var(--color-text-primary);
 }
 
+
 /* -- Shared layout -- */
 
 .kb-board {
@@ -87,6 +88,8 @@ body,
 	overscroll-behavior: contain;
 	padding: 6px;
 }
+
+
 
 .kb-board[data-programmatic-card-move="true"] [data-rfd-draggable-context-id],
 .kb-board[data-programmatic-card-move="true"] [data-rfd-placeholder-context-id] {
@@ -741,6 +744,33 @@ body.kb-dependency-link-mode {
 	}
 }
 
+@keyframes kb-sidebar-slide-in {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(0);
+	}
+}
+
+@keyframes kb-sidebar-slide-out {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(-100%);
+	}
+}
+
+@keyframes kb-overlay-hide {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
 @keyframes kb-tooltip-show {
 	from {
 		opacity: 0;
@@ -777,6 +807,16 @@ body.kb-dependency-link-mode {
 	margin-top: 0.5em;
 }
 
+/* -- Mobile: prevent Safari auto-zoom on input focus -- */
+
+@media (max-width: 768px) {
+	input,
+	textarea,
+	select {
+		font-size: 16px !important;
+	}
+}
+
 /* -- Mobile board -- */
 
 @media (max-width: 768px) {
@@ -785,14 +825,15 @@ body.kb-dependency-link-mode {
 		overflow-y: hidden;
 		scroll-snap-type: x mandatory;
 		-webkit-overflow-scrolling: touch;
+		padding-left: 4vw;
+		padding-right: 4vw;
 	}
 
 	.kb-board > section {
-		flex: 0 0 auto;
+		flex: 0 0 auto !important;
 		min-width: 280px;
-		width: 85vw;
-		max-width: 360px;
-		scroll-snap-align: start;
+		width: 92vw;
+		scroll-snap-align: center;
 	}
 
 	.kb-board > [role="separator"] {

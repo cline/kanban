@@ -56,6 +56,7 @@ import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
+import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
 import {
 	getTaskAgentNavbarHint,
 	isTaskAgentSetupSatisfied,
@@ -684,6 +685,11 @@ export default function App(): ReactElement {
 		return undefined;
 	}, [selectedCard]);
 
+	const sidebarLayout = useProjectNavigationLayout();
+	const handleToggleSidebar = useCallback(() => {
+		sidebarLayout.setSidebarCollapsed(!sidebarLayout.isCollapsed);
+	}, [sidebarLayout]);
+
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
 	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
 	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
@@ -770,10 +776,15 @@ export default function App(): ReactElement {
 						onAddProject={() => {
 							void handleAddProject();
 						}}
+						sidebarWidth={sidebarLayout.sidebarWidth}
+						setExpandedSidebarWidth={sidebarLayout.setExpandedSidebarWidth}
+						isCollapsed={sidebarLayout.isCollapsed}
+						setSidebarCollapsed={sidebarLayout.setSidebarCollapsed}
 					/>
 				) : null}
 				<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 					<TopBar
+						onToggleSidebar={!selectedCard ? handleToggleSidebar : undefined}
 						onBack={selectedCard ? handleBack : undefined}
 						workspacePath={navbarWorkspacePath}
 						isWorkspacePathLoading={shouldShowProjectLoadingState}
