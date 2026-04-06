@@ -501,21 +501,6 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		console.log(`Binding to host ${options.host}.`);
 	}
 
-	// Handle passcode generation for remote mode
-	if (isKanbanRemoteHost()) {
-		if (options.noPasscode) {
-			disablePasscode();
-			console.log("Passcode authentication disabled (--no-passcode). Ensure you have your own auth layer.");
-		} else {
-			const passcode = generatePasscode();
-			generateInternalToken();
-			// NOTE: passcode is printed ONLY here and never stored in logs or env.
-			console.log(
-				`\n🔐 Remote access passcode: ${passcode}\n\nShare this with users who need access. It expires after 24h.\n`,
-			);
-		}
-	}
-
 	const [{ openInBrowser }, { autoUpdateOnStartup, runPendingAutoUpdateOnShutdown }] = await Promise.all([
 		import("./server/browser.js"),
 		import("./update/update.js"),
@@ -529,6 +514,23 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	const tlsResult = await resolveRuntimeTls(options);
 	if (tlsResult.enabled) {
 		console.log(`HTTPS enabled on ${getKanbanRuntimeOrigin()}`);
+	}
+
+	// Handle passcode generation for remote mode — deferred until after TLS
+	// validation so that an invalid --cert/--key fails before a passcode is
+	// printed (a passcode for a server that never starts is confusing).
+	if (isKanbanRemoteHost()) {
+		if (options.noPasscode) {
+			disablePasscode();
+			console.log("Passcode authentication disabled (--no-passcode). Ensure you have your own auth layer.");
+		} else {
+			const passcode = generatePasscode();
+			generateInternalToken();
+			// NOTE: passcode is printed ONLY here and never stored in logs or env.
+			console.log(
+				`\n🔐 Remote access passcode: ${passcode}\n\nShare this with users who need access. It expires after 24h.\n`,
+			);
+		}
 	}
 
 	autoUpdateOnStartup({
