@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createInitialBoardData } from "@/data/board-data";
 import type { RuntimeProjectSummary, RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "@/runtime/types";
 import { fetchWorkspaceState } from "@/runtime/workspace-state-query";
@@ -86,8 +86,15 @@ export function useAllProjectsBoard(projects: RuntimeProjectSummary[], enabled: 
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	// Stabilize the dependency: only re-fetch when the set of project IDs changes,
+	// not when taskCounts or other mutable fields on the same projects change.
+	const projectIdsKey = projects.map((p) => p.id).join(",");
+	const projectsRef = useRef(projects);
+	projectsRef.current = projects;
+
 	useEffect(() => {
-		if (!enabled || projects.length === 0) {
+		const currentProjects = projectsRef.current;
+		if (!enabled || currentProjects.length === 0) {
 			setSnapshot(EMPTY_SNAPSHOT);
 			setIsLoading(false);
 			setError(null);
@@ -99,7 +106,7 @@ export function useAllProjectsBoard(projects: RuntimeProjectSummary[], enabled: 
 		setError(null);
 
 		void Promise.allSettled(
-			projects.map(async (project) => ({
+			currentProjects.map(async (project) => ({
 				project,
 				workspaceState: await fetchWorkspaceState(project.id),
 			})),
@@ -119,7 +126,7 @@ export function useAllProjectsBoard(projects: RuntimeProjectSummary[], enabled: 
 				failedProjects.push(message);
 			}
 
-			setSnapshot(buildAllProjectsBoardSnapshot(projects, nextWorkspaceStates));
+			setSnapshot(buildAllProjectsBoardSnapshot(currentProjects, nextWorkspaceStates));
 			setError(
 				failedProjects.length > 0
 					? `Could not load ${failedProjects.length} project${failedProjects.length === 1 ? "" : "s"} for the all-projects view.`
@@ -131,7 +138,8 @@ export function useAllProjectsBoard(projects: RuntimeProjectSummary[], enabled: 
 		return () => {
 			cancelled = true;
 		};
-	}, [enabled, projects]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- projectIdsKey stabilizes the dependency
+	}, [enabled, projectIdsKey]);
 
 	return {
 		board: snapshot.board,

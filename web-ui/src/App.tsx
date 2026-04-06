@@ -37,6 +37,7 @@ import { createIdleTaskSession } from "@/hooks/app-utils";
 import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallback";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
 import { useAllProjectsBoard } from "@/hooks/use-all-projects-board";
+import { useAllProjectsDrag } from "@/hooks/use-all-projects-drag";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDebugTools } from "@/hooks/use-debug-tools";
@@ -302,11 +303,13 @@ export default function App(): ReactElement {
 		[displayedProjects],
 	);
 	const {
-		board: allProjectsBoard,
+		board: allProjectsBoardSource,
 		taskSessions: allProjectsTaskSessions,
 		isLoading: isAllProjectsBoardLoading,
 		error: allProjectsBoardError,
 	} = useAllProjectsBoard(displayedProjects, isAllProjectsHomeView);
+	const { board: allProjectsBoard, handleDragEnd: handleAllProjectsDragEnd } =
+		useAllProjectsDrag(allProjectsBoardSource);
 
 	useEffect(() => {
 		if (hasNoProjects) {
@@ -1050,8 +1053,7 @@ export default function App(): ReactElement {
 														onCardSelect={handleAllProjectsCardSelect}
 														onCreateTask={handleOpenCreateTask}
 														dependencies={[]}
-														onDragEnd={handleDragEnd}
-														isReadOnly
+														onDragEnd={handleAllProjectsDragEnd}
 													/>
 												</div>
 											)
