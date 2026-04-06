@@ -173,7 +173,12 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					: null;
 				const effectiveAgentId = previousTerminalAgentId ?? scopedRuntimeConfig.selectedAgentId;
 				let useClinePath = effectiveAgentId === "cline";
-				if (body.resumeFromTrash && !useClinePath) {
+				const shouldProbePersistedClineSession =
+					body.resumeFromTrash && !useClinePath && previousTerminalAgentId === null;
+				if (shouldProbePersistedClineSession) {
+					// If the terminal summary already has a concrete non-Cline agentId,
+					// skip Cline persisted-session probing. That probe can cold-start the
+					// Cline session host and adds multi-second latency to Codex restores.
 					const clineSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const persistedSession = await clineSessionService
 						.rebindPersistedTaskSession(body.taskId)
