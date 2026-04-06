@@ -19,17 +19,17 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
 import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
-import { useReactUseMedia, useUnmount, useWindowEvent } from "@/utils/react-use";
+import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 const COLLAPSED_WIDTH = 48;
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
 const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
 const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
-const MOBILE_BREAKPOINT = 768;
 const GITHUB_ISSUES_URL = "https://github.com/cline/kanban/issues";
 
 interface TaskCountBadge {
@@ -88,7 +88,7 @@ export function ProjectNavigationPanel({
 		: 0;
 
 	const { sidebarWidth, setExpandedSidebarWidth, isCollapsed, setSidebarCollapsed } = useProjectNavigationLayout();
-	const isMobile = useReactUseMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`, false);
+	const isMobile = useIsMobile();
 
 	useEffect(() => {
 		if (isMobile) {

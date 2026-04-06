@@ -111,4 +111,6 @@ export function useUnmount(fn: () => void): void {
 	useReactUseUnmount(fn);
 }
 
-export { useReactUseMedia };
+export function useMedia(query: string, defaultState?: boolean): boolean {
+	return useReactUseMedia(query, defaultState);
+}
