@@ -32,8 +32,11 @@ interface RateLimitEntry {
 	lockedUntil: number | null;
 }
 
+const INTERNAL_TOKEN_ENV = "KANBAN_INTERNAL_AUTH_TOKEN";
+
 let passcodeState: PasscodeState | null = null;
 let passcodeEnabled = true;
+let internalAuthToken: string | null = null;
 
 const sessions = new Map<string, SessionEntry>();
 const rateLimitByIp = new Map<string, RateLimitEntry>();
@@ -63,6 +66,7 @@ function generateRandomPasscode(): string {
 export function generatePasscode(): string {
 	const value = generateRandomPasscode();
 	passcodeState = { value, issuedAt: Date.now() };
+	passcodeEnabled = true;
 	return value;
 }
 
@@ -182,3 +186,63 @@ export function recordFailedAttempt(ip: string): void {
 export function clearRateLimit(ip: string): void {
 	rateLimitByIp.delete(ip);
 }
+
+// ── Internal CLI auth token ──────────────────────────────────────────────
+// A separate bearer token used by CLI sub-processes (hooks ingest, task
+// commands) to authenticate against the runtime server without the
+// browser-facing passcode flow.  The token is:
+//   • Generated once alongside the passcode (or when explicitly requested).
+//   • Stored in-memory AND propagated via the KANBAN_INTERNAL_AUTH_TOKEN env
+//     var so that child processes (spawned terminals, detached hook commands)
+//     inherit it automatically.
+//   • Never exposed to browser clients.
+
+/**
+ * Generate (or regenerate) the internal CLI auth token.
+ * Called by the server at startup when remote-mode passcode is active.
+ * The token is stored in-memory and written to `process.env` so that
+ * child processes inherit it.
+ */
+export function generateInternalToken(): string {
+	const token = randomBytes(32).toString("hex");
+	internalAuthToken = token;
+	process.env[INTERNAL_TOKEN_ENV] = token;
+	return token;
+}
+
+/**
+ * Return the current internal token, reading from the env var if needed
+ * (this covers CLI sub-processes that were spawned by the server).
+ */
+export function getInternalToken(): string | null {
+	return internalAuthToken ?? process.env[INTERNAL_TOKEN_ENV]?.trim() ?? null;
+}
+
+/**
+ * Validate an internal bearer token.  Uses timing-safe comparison.
+ * Returns `true` if the submitted token matches the active internal token.
+ */
+export function validateInternalToken(submitted: string): boolean {
+	const expected = internalAuthToken;
+	if (!expected) return false;
+	if (typeof submitted !== "string" || submitted.length === 0) return false;
+
+	const expectedBuf = Buffer.from(expected, "utf8");
+	const submittedBuf = Buffer.from(submitted, "utf8");
+	if (expectedBuf.length !== submittedBuf.length) return false;
+
+	return timingSafeEqual(submittedBuf, expectedBuf);
+}
+
+/**
+ * Extract a bearer token from an Authorization header value.
+ * Returns the raw token string or `null` if the header is absent / malformed.
+ */
+export function extractBearerToken(authorizationHeader: string | undefined): string | null {
+	if (!authorizationHeader) return null;
+	const match = /^Bearer\s+(\S+)$/i.exec(authorizationHeader);
+	return match?.[1] ?? null;
+}
+
+/** Name of the env var used to propagate the internal token to child processes. */
+export { INTERNAL_TOKEN_ENV };

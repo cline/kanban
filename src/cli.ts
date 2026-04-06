@@ -30,7 +30,7 @@ import {
 	setKanbanRuntimePort,
 	setKanbanRuntimeTls,
 } from "./core/runtime-endpoint";
-import { disablePasscode, generatePasscode } from "./security/passcode-manager";
+import { disablePasscode, generateInternalToken, generatePasscode } from "./security/passcode-manager";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
 import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
@@ -508,6 +508,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			console.log("Passcode authentication disabled (--no-passcode). Ensure you have your own auth layer.");
 		} else {
 			const passcode = generatePasscode();
+			generateInternalToken();
 			// NOTE: passcode is printed ONLY here and never stored in logs or env.
 			console.log(
 				`\n🔐 Remote access passcode: ${passcode}\n\nShare this with users who need access. It expires after 24h.\n`,

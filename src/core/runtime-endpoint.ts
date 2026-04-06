@@ -1,5 +1,6 @@
 import { rootCertificates } from "node:tls";
 import { Agent } from "undici";
+import { getInternalToken } from "../security/passcode-manager";
 
 export const DEFAULT_KANBAN_RUNTIME_HOST = "127.0.0.1";
 export const DEFAULT_KANBAN_RUNTIME_PORT = 3484;
@@ -122,27 +123,45 @@ export function buildKanbanRuntimeWsUrl(pathname: string): string {
 
 /**
  * A fetch function that trusts the configured Kanban runtime certificate
- * bundle when connecting to the runtime over HTTPS.
+ * bundle when connecting to the runtime over HTTPS, and automatically
+ * attaches the internal CLI auth token (when present) so that CLI
+ * sub-processes can authenticate against the runtime server without the
+ * browser passcode flow.
  *
- * When HTTPS is not enabled this simply returns the global fetch.
+ * When HTTPS is not enabled and no internal token exists, this simply
+ * returns the global fetch.
  */
 let _runtimeFetchPromise: Promise<typeof globalThis.fetch> | undefined;
 
 export function getRuntimeFetch(): Promise<typeof globalThis.fetch> {
 	_runtimeFetchPromise ??= (async () => {
-		if (!isKanbanRuntimeHttps()) {
-			return globalThis.fetch;
+		let baseFetch: typeof globalThis.fetch = globalThis.fetch;
+
+		if (isKanbanRuntimeHttps() && runtimeTlsCa) {
+			const dispatcher = new Agent({
+				connect: {
+					ca: [...rootCertificates, runtimeTlsCa].join("\n"),
+				},
+			});
+			baseFetch = ((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+				globalThis.fetch(url, { ...init, dispatcher } as RequestInit)) as typeof globalThis.fetch;
 		}
-		if (!runtimeTlsCa) {
-			return globalThis.fetch;
+
+		// Wrap the base fetch to inject the internal CLI auth bearer token
+		// when one is available (propagated via env var from the server process).
+		const internalToken = getInternalToken();
+		if (!internalToken) {
+			return baseFetch;
 		}
-		const dispatcher = new Agent({
-			connect: {
-				ca: [...rootCertificates, runtimeTlsCa].join("\n"),
-			},
-		});
-		return ((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
-			globalThis.fetch(url, { ...init, dispatcher } as RequestInit)) as typeof globalThis.fetch;
+
+		const wrappedFetch = baseFetch;
+		return ((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+			const headers = new Headers(init?.headers);
+			if (!headers.has("Authorization")) {
+				headers.set("Authorization", `Bearer ${internalToken}`);
+			}
+			return wrappedFetch(url, { ...init, headers });
+		}) as typeof globalThis.fetch;
 	})();
 	return _runtimeFetchPromise;
 }

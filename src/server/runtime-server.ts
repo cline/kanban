@@ -22,10 +22,12 @@ import {
 import {
 	checkRateLimit,
 	clearRateLimit,
+	extractBearerToken,
 	extractSessionTokenFromCookie,
 	isPasscodeEnabled,
 	issueSession,
 	recordFailedAttempt,
+	validateInternalToken,
 	validatePasscode,
 	validateSession,
 } from "../security/passcode-manager";
@@ -345,8 +347,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				return;
 			}
 			if (passcodeActive) {
-				const token = extractSessionTokenFromCookie(req.headers.cookie);
-				const authenticated = token !== null && validateSession(token);
+				// Check session cookie (browser flow) first, then internal bearer token (CLI flow).
+				const sessionToken = extractSessionTokenFromCookie(req.headers.cookie);
+				const sessionAuth = sessionToken !== null && validateSession(sessionToken);
+				const bearerToken = extractBearerToken(req.headers.authorization);
+				const internalAuth = bearerToken !== null && validateInternalToken(bearerToken);
+				const authenticated = sessionAuth || internalAuth;
 				if (!authenticated) {
 					// Static assets (JS, CSS, images, fonts, icons, manifest) are served
 					// freely even when unauthenticated. They contain no user data and are
@@ -415,9 +421,11 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		// ── Passcode gate for WebSocket upgrades (remote mode only) ──────────
 		const passcodeActive = isRemoteMode && isPasscodeEnabled();
 		if (passcodeActive) {
-			const token = extractSessionTokenFromCookie(request.headers.cookie);
-			const authenticated = token !== null && validateSession(token);
-			if (!authenticated) {
+			const sessionToken = extractSessionTokenFromCookie(request.headers.cookie);
+			const sessionAuth = sessionToken !== null && validateSession(sessionToken);
+			const bearerToken = extractBearerToken(request.headers.authorization);
+			const internalAuth = bearerToken !== null && validateInternalToken(bearerToken);
+			if (!sessionAuth && !internalAuth) {
 				socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
 				socket.destroy();
 				return;
