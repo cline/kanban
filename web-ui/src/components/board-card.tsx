@@ -2,13 +2,14 @@ import { Draggable } from "@hello-pangea/dnd";
 import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
-import type { MouseEvent } from "react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent, TouchEvent as ReactTouchEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
@@ -346,6 +347,41 @@ export function BoardCard({
 		event.stopPropagation();
 	};
 
+	// Mobile: track touch to distinguish taps from swipes, and prevent board
+	// scroll while touching a card so it doesn't slide away under the finger.
+	const isMobile = useIsMobile();
+	const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+	const TOUCH_TAP_THRESHOLD = 10;
+
+	const handleTouchStart = useCallback(
+		(event: ReactTouchEvent<HTMLElement>) => {
+			if (!isMobile || !isCardInteractive) return;
+			const touch = event.touches[0];
+			if (!touch) return;
+			touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+		},
+		[isMobile, isCardInteractive],
+	);
+
+	const handleTouchEnd = useCallback(
+		(event: ReactTouchEvent<HTMLElement>) => {
+			if (!isMobile || !isCardInteractive || !touchStartRef.current) return;
+			const touch = event.changedTouches[0];
+			if (!touch) return;
+			const dx = Math.abs(touch.clientX - touchStartRef.current.x);
+			const dy = Math.abs(touch.clientY - touchStartRef.current.y);
+			touchStartRef.current = null;
+			if (dx > TOUCH_TAP_THRESHOLD || dy > TOUCH_TAP_THRESHOLD) return;
+			// Treat as a tap — fire the click handler and prevent the delayed
+			// mouse-event sequence that causes the "multiple taps" feel.
+			const target = event.target as HTMLElement | null;
+			if (target?.closest("button, a, input, textarea, [contenteditable='true']")) return;
+			event.preventDefault();
+			onClick?.();
+		},
+		[isMobile, isCardInteractive, onClick],
+	);
+
 	const isDescriptionMeasured = descriptionRect.width > 0;
 	const isSessionPreviewMeasured = sessionPreviewRect.width > 0;
 
@@ -435,6 +471,8 @@ export function BoardCard({
 						data-task-id={card.id}
 						data-column-id={columnId}
 						data-selected={selected}
+						onTouchStart={handleTouchStart}
+						onTouchEnd={handleTouchEnd}
 						onMouseDownCapture={(event) => {
 							if (!isCardInteractive) {
 								return;

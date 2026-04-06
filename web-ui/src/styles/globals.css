@@ -838,6 +838,16 @@ body.kb-dependency-link-mode {
 	.kb-board > [role="separator"] {
 		display: none;
 	}
+
+	.kb-board-card-shell {
+		touch-action: manipulation;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.kb-board-card-shell:active > div {
+		background-color: var(--color-surface-3);
+		border-color: var(--color-border-bright);
+	}
 }
 
 /* -- Dialog (desktop + mobile) -- */
