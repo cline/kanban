@@ -96,7 +96,6 @@ export function revokeAndRegeneratePasscode(): string {
  */
 export function validatePasscode(submitted: string): boolean {
 	if (!passcodeEnabled || !passcodeState) return false;
-	if (Date.now() - passcodeState.issuedAt > SESSION_TTL_MS) return false;
 	if (typeof submitted !== "string" || submitted.length === 0) return false;
 
 	const expectedBuf = Buffer.from(passcodeState.value, "utf8");

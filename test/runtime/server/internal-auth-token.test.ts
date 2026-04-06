@@ -2,7 +2,7 @@
  * Unit tests for the internal CLI auth token mechanism in passcode-manager.ts.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	disablePasscode,
 	extractBearerToken,
@@ -14,6 +14,7 @@ import {
 	isPasscodeEnabled,
 	issueSession,
 	validateInternalToken,
+	validatePasscode,
 	validateSession,
 } from "../../../src/security/passcode-manager";
 
@@ -53,6 +54,7 @@ function runWsUpgradeGate(input: {
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	generatePasscode();
 	delete process.env[INTERNAL_TOKEN_ENV];
 });
@@ -134,6 +136,16 @@ describe("extractBearerToken", () => {
 	it("returns null when token part is missing", () => {
 		expect(extractBearerToken("Bearer ")).toBeNull();
 		expect(extractBearerToken("Bearer")).toBeNull();
+	});
+});
+
+describe("Passcode lifetime", () => {
+	it("keeps passcodes valid beyond the old 24h window", () => {
+		const nowSpy = vi.spyOn(Date, "now");
+		nowSpy.mockReturnValue(1_000_000);
+		const passcode = generatePasscode();
+		nowSpy.mockReturnValue(1_000_000 + 25 * 60 * 60 * 1000);
+		expect(validatePasscode(passcode)).toBe(true);
 	});
 });
 

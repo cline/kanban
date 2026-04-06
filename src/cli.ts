@@ -527,9 +527,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			const passcode = generatePasscode();
 			generateInternalToken();
 			// NOTE: passcode is printed ONLY here and never stored in logs or env.
-			console.log(
-				`\n🔐 Remote access passcode: ${passcode}\n\nShare this with users who need access. It expires after 24h.\n`,
-			);
+			console.log(`\n🔐 Remote access passcode: ${passcode}\n\nShare this with users who need access.\n`);
 		}
 	}
 
