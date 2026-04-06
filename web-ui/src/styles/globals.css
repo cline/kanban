@@ -85,7 +85,6 @@ body,
 	flex-direction: column;
 	min-height: 0;
 	overflow-y: auto;
-	overscroll-behavior: contain;
 	padding: 6px;
 }
 
