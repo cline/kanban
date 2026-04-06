@@ -30,6 +30,8 @@ import {
 	loginOpenAICodex,
 	type OcaOAuthProviderOptions,
 	ProviderSettingsManager,
+	completeClineDeviceAuth as sdkCompleteClineDeviceAuth,
+	startClineDeviceAuth as sdkStartClineDeviceAuth,
 	type Tool,
 } from "@clinebot/core/node";
 import type * as Llms from "@clinebot/llms";
@@ -262,6 +264,37 @@ export async function loginManagedOauthProvider(input: {
 		...input.callbacks,
 		originator: "kanban-runtime",
 	});
+}
+
+export async function startClineDeviceAuth(): Promise<{
+	deviceCode: string;
+	userCode: string;
+	verificationUri: string;
+	verificationUriComplete?: string;
+	expiresInSeconds: number;
+	pollIntervalSeconds: number;
+}> {
+	return await sdkStartClineDeviceAuth();
+}
+
+export async function completeClineDeviceAuth(input: {
+	deviceCode: string;
+	expiresInSeconds: number;
+	pollIntervalSeconds: number;
+	apiBaseUrl: string;
+}): Promise<ManagedOauthCredentials> {
+	const credentials = await sdkCompleteClineDeviceAuth({
+		deviceCode: input.deviceCode,
+		expiresInSeconds: input.expiresInSeconds,
+		pollIntervalSeconds: input.pollIntervalSeconds,
+		apiBaseUrl: input.apiBaseUrl,
+	});
+	return {
+		access: credentials.access,
+		refresh: credentials.refresh,
+		expires: credentials.expires,
+		accountId: credentials.accountId,
+	};
 }
 
 export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {

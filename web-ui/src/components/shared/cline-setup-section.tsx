@@ -447,6 +447,25 @@ export function ClineSetupSection({
 								Expiry: <span className="text-text-primary">{formatExpiry(controller.oauthExpiresAt)}</span>
 							</p>
 						) : null}
+						{controller.isRunningOauthLogin && controller.deviceAuthInfo ? (
+							<div className="mt-2 p-3 bg-surface-secondary rounded-md">
+								<p className="text-text-primary text-[13px] font-medium mb-1">
+									Enter this code in your browser:
+								</p>
+								<p className="text-text-primary text-[18px] font-mono font-bold tracking-wider mb-2">
+									{controller.deviceAuthInfo.userCode}
+								</p>
+								<a
+									href={controller.deviceAuthInfo.verificationUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-accent text-[12px] underline"
+								>
+									{controller.deviceAuthInfo.verificationUrl}
+								</a>
+								<p className="text-text-secondary text-[11px] mt-1">Waiting for browser confirmation...</p>
+							</div>
+						) : null}
 						<div className="mt-2">
 							<Button
 								variant="default"
@@ -455,7 +474,9 @@ export function ClineSetupSection({
 								onClick={handleOauthLogin}
 							>
 								{controller.isRunningOauthLogin
-									? "Signing in..."
+									? controller.deviceAuthInfo
+										? "Waiting for confirmation..."
+										: "Signing in..."
 									: controller.oauthConfigured
 										? `Sign in again with ${controller.managedOauthProvider ?? "OAuth"}`
 										: `Sign in with ${controller.managedOauthProvider ?? "OAuth"}`}

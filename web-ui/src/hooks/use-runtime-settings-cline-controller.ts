@@ -5,14 +5,17 @@ import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, us
 import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import {
 	addClineProvider,
+	completeClineDeviceAuth,
 	fetchClineProviderCatalog,
 	fetchClineProviderModels,
 	runClineProviderOauthLogin,
 	saveClineProviderSettings,
+	startClineDeviceAuth,
 	updateClineProvider,
 } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
+	RuntimeClineOauthLoginResponse,
 	RuntimeClineOauthProvider,
 	RuntimeClineProviderCapability,
 	RuntimeClineProviderCatalogItem,
@@ -121,6 +124,7 @@ export interface UseRuntimeSettingsClineControllerResult {
 	isLoadingProviderCatalog: boolean;
 	isLoadingProviderModels: boolean;
 	isRunningOauthLogin: boolean;
+	deviceAuthInfo: { userCode: string; verificationUrl: string } | null;
 	normalizedProviderId: string;
 	managedOauthProvider: RuntimeClineOauthProvider | null;
 	isOauthProviderSelected: boolean;
@@ -217,6 +221,10 @@ export function useRuntimeSettingsClineController(
 	const [isLoadingProviderCatalog, setIsLoadingProviderCatalog] = useState(false);
 	const [isLoadingProviderModels, setIsLoadingProviderModels] = useState(false);
 	const [isRunningOauthLogin, setIsRunningOauthLogin] = useState(false);
+	const [deviceAuthInfo, setDeviceAuthInfo] = useState<{
+		userCode: string;
+		verificationUrl: string;
+	} | null>(null);
 
 	const effectiveProviderSettings = getEffectiveProviderSettings(config, providerSettingsOverride);
 	const configProviderSettings = getRuntimeClineProviderSettings(config);
@@ -611,21 +619,33 @@ export function useRuntimeSettingsClineController(
 
 	const runOauthLogin = useCallback(async (): Promise<SaveResult> => {
 		if (!managedOauthProvider) {
-			return {
-				ok: false,
-				message: "Choose an OAuth provider from the Provider field first.",
-			};
+			return { ok: false, message: "Choose an OAuth provider from the Provider field first." };
 		}
 		setIsRunningOauthLogin(true);
+		setDeviceAuthInfo(null);
 		try {
-			const response = await runClineProviderOauthLogin(workspaceId, {
-				provider: managedOauthProvider,
-			});
+			let response: RuntimeClineOauthLoginResponse;
+			if (managedOauthProvider === "cline") {
+				// Two-phase device auth
+				const startResult = await startClineDeviceAuth(workspaceId);
+				setDeviceAuthInfo({
+					userCode: startResult.userCode,
+					verificationUrl: startResult.verificationUrl,
+				});
+				response = await completeClineDeviceAuth(workspaceId, {
+					deviceCode: startResult.deviceCode,
+					expiresInSeconds: startResult.expiresInSeconds,
+					pollIntervalSeconds: startResult.pollIntervalSeconds,
+				});
+			} else {
+				// Legacy flow for oca / openai-codex
+				response = await runClineProviderOauthLogin(workspaceId, {
+					provider: managedOauthProvider,
+				});
+			}
+			setDeviceAuthInfo(null);
 			if (!response.ok) {
-				return {
-					ok: false,
-					message: response.error ?? "OAuth login failed.",
-				};
+				return { ok: false, message: response.error ?? "OAuth login failed." };
 			}
 			const nextSettings = response.settings ?? null;
 			if (nextSettings) {
@@ -639,12 +659,10 @@ export function useRuntimeSettingsClineController(
 			setProviderSettingsOverride(nextSettings);
 			return { ok: true };
 		} catch (error) {
-			return {
-				ok: false,
-				message: error instanceof Error ? error.message : String(error),
-			};
+			return { ok: false, message: error instanceof Error ? error.message : String(error) };
 		} finally {
 			setIsRunningOauthLogin(false);
+			setDeviceAuthInfo(null);
 		}
 	}, [managedOauthProvider, providerCatalog, providerId, workspaceId]);
 
@@ -722,6 +740,7 @@ export function useRuntimeSettingsClineController(
 		isLoadingProviderCatalog,
 		isLoadingProviderModels,
 		isRunningOauthLogin,
+		deviceAuthInfo,
 		normalizedProviderId,
 		managedOauthProvider,
 		isOauthProviderSelected,

@@ -8,6 +8,8 @@ import type {
 	RuntimeClineAccountOrganizationsResponse,
 	RuntimeClineAccountProfileResponse,
 	RuntimeClineAccountSwitchResponse,
+	RuntimeClineDeviceAuthCompleteResponse,
+	RuntimeClineDeviceAuthStartResponse,
 	RuntimeClineKanbanAccessResponse,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineProviderCatalogItem,
@@ -21,6 +23,7 @@ import type {
 import { openInBrowser } from "../server/browser";
 import {
 	addSdkCustomProvider,
+	completeClineDeviceAuth as completeSdkDeviceAuth,
 	deleteSdkCustomProvider,
 	fetchSdkClineAccountBalance,
 	fetchSdkClineAccountProfile,
@@ -41,6 +44,7 @@ import {
 	type SdkProviderModelRecord,
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
+	startClineDeviceAuth as startSdkDeviceAuth,
 	supportsSdkModelThinking,
 	switchSdkClineAccount,
 	updateSdkCustomProvider,
@@ -1129,6 +1133,74 @@ export function createClineProviderService() {
 				return {
 					ok: false,
 					provider: input.providerId,
+					error: toErrorMessage(error),
+				};
+			}
+		},
+
+		async startDeviceAuth(): Promise<RuntimeClineDeviceAuthStartResponse> {
+			const result = await startSdkDeviceAuth();
+			return {
+				deviceCode: result.deviceCode,
+				userCode: result.userCode,
+				verificationUrl: result.verificationUri,
+				expiresInSeconds: result.expiresInSeconds,
+				pollIntervalSeconds: result.pollIntervalSeconds,
+			};
+		},
+
+		async completeDeviceAuth(input: {
+			deviceCode: string;
+			expiresInSeconds: number;
+			pollIntervalSeconds: number;
+			baseUrl?: string | null;
+		}): Promise<RuntimeClineDeviceAuthCompleteResponse> {
+			const providerId: ManagedClineOauthProviderId = "cline";
+			try {
+				const existingSettings = getSdkProviderSettings(providerId) ?? {
+					provider: providerId,
+				};
+				const apiBaseUrl = input.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL;
+				const credentials = await completeSdkDeviceAuth({
+					deviceCode: input.deviceCode,
+					expiresInSeconds: input.expiresInSeconds,
+					pollIntervalSeconds: input.pollIntervalSeconds,
+					apiBaseUrl,
+				});
+
+				const nextSettings: SdkProviderSettings = {
+					...existingSettings,
+					provider: providerId,
+					auth: {
+						...(existingSettings.auth ?? {}),
+						accessToken: toProviderApiKey(providerId, credentials.access),
+						refreshToken: credentials.refresh,
+						accountId: credentials.accountId ?? undefined,
+						expiresAt: normalizeEpochMs(credentials.expires),
+					},
+				};
+
+				if (apiBaseUrl !== DEFAULT_CLINE_API_BASE_URL) {
+					nextSettings.baseUrl = apiBaseUrl;
+				} else {
+					delete nextSettings.baseUrl;
+				}
+
+				saveSdkProviderSettings({
+					settings: nextSettings,
+					tokenSource: "oauth",
+					setLastUsed: true,
+				});
+
+				return {
+					ok: true,
+					provider: providerId,
+					settings: toProviderSettingsSummary(nextSettings),
+				};
+			} catch (error) {
+				return {
+					ok: false,
+					provider: providerId,
 					error: toErrorMessage(error),
 				};
 			}
