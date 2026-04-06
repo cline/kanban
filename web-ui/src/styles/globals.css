@@ -251,18 +251,20 @@ body.kb-dependency-link-mode {
 	opacity: 0;
 }
 
-.kb-project-row:hover {
-	background: var(--color-surface-2);
+@media (hover: hover) {
+	.kb-project-row:hover {
+		background: var(--color-surface-2);
+	}
+
+	.kb-project-row:hover .kb-project-row-actions {
+		opacity: 1;
+	}
 }
 
 .kb-project-row-selected,
 .kb-project-row-selected:hover {
 	background: #0084FF;
 	color: #fff;
-}
-
-.kb-project-row:hover .kb-project-row-actions {
-	opacity: 1;
 }
 
 .kb-project-count-tag {
@@ -847,6 +849,15 @@ body.kb-dependency-link-mode {
 	.kb-board-card-shell:active > div {
 		background-color: var(--color-surface-3);
 		border-color: var(--color-border-bright);
+	}
+
+	.kb-project-row {
+		touch-action: manipulation;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.kb-project-row:active {
+		background: var(--color-surface-3);
 	}
 }
 

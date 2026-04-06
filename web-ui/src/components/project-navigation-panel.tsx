@@ -365,7 +365,12 @@ export function ProjectNavigationPanel({
 								project={project}
 								isCurrent={currentProjectId === project.id}
 								removingProjectId={removingProjectId}
-								onSelect={onSelectProject}
+								onSelect={(projectId) => {
+									onSelectProject(projectId);
+									if (isMobile) {
+										setCollapsed(true);
+									}
+								}}
 								onRemove={(projectId) => {
 									const found = sortedProjects.find((item) => item.id === projectId);
 									if (!found) {
