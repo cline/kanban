@@ -3,7 +3,7 @@ import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { type ReactElement, useMemo, useState } from "react";
 import {
 	formatToolInputForDisplay,
-	getToolSummary,
+	getToolDisplay,
 	parseToolMessageContent,
 	parseToolOutput,
 } from "@/components/detail-panels/cline-chat-message-utils";
@@ -19,7 +19,7 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 	const hasError = Boolean(parsed.error);
 	const [expanded, setExpanded] = useState(false);
 
-	const summary = useMemo(() => getToolSummary(parsed.toolName, parsed.input), [parsed.toolName, parsed.input]);
+	const toolDisplay = useMemo(() => getToolDisplay(parsed.toolName, parsed.input), [parsed.toolName, parsed.input]);
 	const toolOutput = useMemo(() => (parsed.output ? parseToolOutput(parsed.output) : null), [parsed.output]);
 	const fullInput = useMemo(
 		() => formatToolInputForDisplay(parsed.toolName, parsed.input),
@@ -48,16 +48,16 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 						expanded ? "text-[#C9D1D9]" : "text-text-secondary",
 					)}
 				>
-					{parsed.toolName}
+					{toolDisplay.toolName}
 				</span>
-				{summary ? (
+				{toolDisplay.inputSummary ? (
 					<span
 						className={cn(
 							"min-w-0 truncate group-hover:text-text-secondary",
 							expanded ? "text-text-secondary" : "text-text-tertiary",
 						)}
 					>
-						{summary}
+						{toolDisplay.inputSummary}
 					</span>
 				) : null}
 				{hasExpandableContent ? (

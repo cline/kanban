@@ -418,15 +418,15 @@ function ProjectSupportFooter({
 
 	return (
 		<div style={{ padding: "4px 12px 12px" }}>
-			<div className="flex items-start gap-2 rounded-md border border-status-orange/25 bg-status-orange/5 px-3 py-2.5">
-				<Info size={14} className="mt-px shrink-0 text-status-orange" />
+			<div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
+				<Info size={14} className="mt-px shrink-0 text-text-tertiary" />
 				<div className="flex flex-col gap-1.5">
-					<p className="m-0 text-xs text-status-orange/80">
+					<p className="m-0 text-xs text-text-secondary">
 						Kanban is in beta. Help us improve by sharing your experience.
 					</p>
 					<button
 						type="button"
-						className="m-0 flex cursor-pointer items-center gap-1 self-start border-none bg-transparent p-0 text-xs font-semibold text-status-orange hover:text-status-orange/80 active:text-status-orange/60 disabled:cursor-default disabled:opacity-50"
+						className="m-0 flex cursor-pointer items-center gap-1 self-start border-none bg-transparent p-0 text-xs font-semibold text-text-secondary hover:text-text-primary active:text-text-tertiary disabled:cursor-default disabled:opacity-50"
 						disabled={shouldShowFeaturebaseFeedback && isOpening}
 						onClick={handleAction}
 					>

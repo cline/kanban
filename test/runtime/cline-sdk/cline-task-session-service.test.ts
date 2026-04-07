@@ -586,6 +586,71 @@ describe("InMemoryClineTaskSessionService", () => {
 		});
 	});
 
+	it("reinitializes chat history from persisted data when resuming a trashed task", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Original prompt",
+		});
+		const firstSessionId = await waitForTaskSessionId(runtime, "task-1");
+		runtime.emitAgentEvent(firstSessionId, {
+			type: "done",
+			reason: "completed",
+			text: "Original answer",
+		});
+
+		await vi.waitFor(() => {
+			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
+		});
+		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
+			"Original prompt",
+			"Original answer",
+		]);
+
+		runtime.readPersistedTaskSessionMock.mockResolvedValue({
+			record: {
+				sessionId: "task-1-persisted",
+				source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
+				status: "completed",
+				startedAt: "2026-03-17T10:00:00.000Z",
+				updatedAt: "2026-03-17T10:05:00.000Z",
+				interactive: true,
+				provider: "anthropic",
+				model: "claude-sonnet-4-6",
+				cwd: "/tmp/worktree",
+				workspaceRoot: "/tmp/workspace-root",
+				enableTools: true,
+				enableSpawn: false,
+				enableTeams: false,
+				isSubagent: false,
+			},
+			messages: [
+				{
+					role: "user",
+					content: "Recovered prompt",
+				},
+				{
+					role: "assistant",
+					content: "Recovered answer",
+				},
+			],
+		});
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+
+		expect(service.listMessages("task-1").map((message) => message.content)).toEqual([
+			"Recovered prompt",
+			"Recovered answer",
+		]);
+	});
+
 	it("defaults to the SDK cline provider when provider is not explicitly configured", async () => {
 		const { service, runtime } = createTrackedService();
 

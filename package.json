@@ -52,6 +52,7 @@
     "link": "npm run build && npm link",
     "unlink": "npm unlink -g kanban",
     "dev": "tsx watch src/cli.ts",
+    "dev:full": "node scripts/dev-full.mjs",
     "web:dev": "npm --prefix web-ui run dev",
     "web:build": "npm --prefix web-ui run build",
     "web:typecheck": "npm --prefix web-ui run typecheck",

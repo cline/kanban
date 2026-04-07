@@ -13,7 +13,17 @@ npm run install:all
 
 ## Hot reload workflow
 
-Run two terminals:
+Fast path:
+
+```bash
+npm run dev:full
+```
+
+- Starts the runtime in watch mode and the Vite web UI dev server together
+- Auto-picks free runtime and web UI ports so multiple checkouts can run side by side
+- Best for day-to-day source development, especially web UI work and runtime changes that benefit from fast iteration
+
+Manual equivalent in two terminals:
 
 1. Runtime server (API + PTY agent runtime):
 
@@ -34,12 +44,18 @@ npm run web:dev
 
 Use `http://127.0.0.1:4173` while developing UI so changes hot reload.
 
+## Choose the right workflow
+
+Use `npm run dev:full` when you are actively developing Kanban and want fast iteration. It runs the source checkout with `tsx watch` plus the Vite web UI dev server, so runtime changes reload and web UI changes get HMR.
+
+Use `npm run dogfood` when you want to validate the latest built CLI behavior more realistically. It builds the current checkout and launches `dist/cli.js`, which is better for checking packaged behavior, startup and shutdown flows, multi-instance dogfooding, and launch behavior against a target project.
+
 ## VS Code F5 debugging
 
 The repo includes `.vscode/launch.json` with two configurations:
 
-- **Dev Server**: Launches the runtime server with `tsx watch` (same as `npm run dev`) with the debugger attached. Run `npm run web:dev` in a separate terminal for the web UI.
-- **Run Tests**: Runs `vitest run` with the debugger so you can set breakpoints in tests.
+- `Dev (Full Stack)`: Launches the same workflow as `npm run dev:full`, starting both the runtime and Vite in one terminal.
+- `Run Tests`: Runs `vitest run` with the debugger so you can set breakpoints in tests.
 
 ## Build and run packaged CLI
 
@@ -92,6 +108,7 @@ Dogfood launcher behavior:
 - supports `--port <number|auto>`
 - supports `--no-open`
 - supports `--skip-build` when you already built and want faster restarts
+- is the right choice when you want to test the latest built CLI rather than the source-mode dev server
 
 ## Run `kanban` from any directory
 
@@ -130,6 +147,7 @@ npm run unlink
 - `npm run build`: build runtime and bundled web UI into `dist`
 - `npm run dogfood -- [--project <path>] [--port <number|auto>] [--no-open] [--skip-build]`: build and launch this checkout, optionally targeting a specific project path
 - `npm run dev`: run CLI in watch mode
+- `npm run dev:full`: run the runtime watch server and Vite web UI dev server together
 - `npm run web:dev`: run web UI dev server
 - `npm run web:build`: build web UI
 - `npm run typecheck`: typecheck runtime

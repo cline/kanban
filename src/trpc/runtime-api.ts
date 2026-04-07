@@ -153,6 +153,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		startTaskSession: async (workspaceScope, input) => {
 			try {
 				const body = parseTaskSessionStartRequest(input);
+				if (body.resumeFromTrash) {
+					deps.broadcastTaskChatCleared?.(workspaceScope.workspaceId, body.taskId);
+				}
 				const requestedTaskMode = body.mode ?? (body.startInPlanMode ? "plan" : "act");
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
 				const taskCwd = isHomeAgentSessionId(body.taskId)
