@@ -313,7 +313,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 	async startTaskSession(request: StartClineTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const existing = this.messageRepository.getTaskEntry(request.taskId);
-		if (existing && (existing.summary.state === "running" || existing.summary.state === "awaiting_review")) {
+		if (
+			!request.resumeFromTrash &&
+			existing &&
+			(existing.summary.state === "running" || existing.summary.state === "awaiting_review")
+		) {
 			return cloneSummary(existing.summary);
 		}
 

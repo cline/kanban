@@ -193,6 +193,154 @@ async function waitForAssertion(assertion: () => void, timeoutMs = 250): Promise
 	assertion();
 }
 
+// ---------------------------------------------------------------------------
+// Helper: attempt a raw WebSocket upgrade and capture the response status line
+// ---------------------------------------------------------------------------
+async function attemptUpgradeAndReadResponse(
+	url: string,
+	cookieHeader?: string,
+	timeoutMs = 2_000,
+): Promise<{ statusLine: string }> {
+	return await new Promise((resolve, reject) => {
+		const timeoutId = setTimeout(() => {
+			reject(new Error(`Timed out waiting for upgrade response: ${url}`));
+		}, timeoutMs);
+
+		const ws = new WebSocket(url, {
+			headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+		});
+
+		let statusLine = "";
+
+		ws.on("unexpected-response", (_req, res) => {
+			clearTimeout(timeoutId);
+			statusLine = `HTTP/${res.httpVersion} ${res.statusCode} ${res.statusMessage}`;
+			res.resume();
+			resolve({ statusLine });
+		});
+
+		ws.on("open", () => {
+			clearTimeout(timeoutId);
+			ws.close();
+			resolve({ statusLine: "HTTP/1.1 101 Switching Protocols" });
+		});
+
+		ws.on("error", (err) => {
+			clearTimeout(timeoutId);
+			// Node's ws library translates the 401 "connection: close" into an
+			// error event rather than "unexpected-response" in some versions;
+			// treat any error as a rejected upgrade.
+			if (!statusLine) {
+				statusLine = err.message;
+			}
+			resolve({ statusLine });
+		});
+	});
+}
+
+describe("createTerminalWebSocketBridge – passcode gate", () => {
+	let server: Server;
+	let bridge: TerminalWebSocketBridge;
+	let terminalManager: FakeTerminalManager;
+	let runtimeUrl: string;
+
+	beforeEach(async () => {
+		terminalManager = new FakeTerminalManager();
+		server = createServer((_request, response) => {
+			response.writeHead(404);
+			response.end();
+		});
+		bridge = createTerminalWebSocketBridge({
+			server,
+			resolveTerminalManager: (workspaceId) => (workspaceId === WORKSPACE_ID ? terminalManager : null),
+			isTerminalIoWebSocketPath: (pathname) => pathname === "/api/terminal/io",
+			isTerminalControlWebSocketPath: (pathname) => pathname === "/api/terminal/control",
+			// Validator: only the token "valid-token" is accepted.
+			validateUpgradeSession: (cookieHeader) => cookieHeader?.includes("kanban_session=valid-token") === true,
+		});
+		server.listen(0, "127.0.0.1");
+		await once(server, "listening");
+		const address = server.address() as AddressInfo | null;
+		if (!address) {
+			throw new Error("Expected websocket server address.");
+		}
+		runtimeUrl = `ws://127.0.0.1:${address.port}`;
+	});
+
+	afterEach(async () => {
+		await bridge.close();
+		await new Promise<void>((resolve, reject) => {
+			server.close((error) => {
+				if (error) {
+					reject(error);
+					return;
+				}
+				resolve();
+			});
+		});
+	});
+
+	it("rejects /api/terminal/io upgrade with 401 when no session cookie is present", async () => {
+		const url = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}`;
+		const { statusLine } = await attemptUpgradeAndReadResponse(url);
+		expect(statusLine).toContain("401");
+	});
+
+	it("rejects /api/terminal/control upgrade with 401 when session token is invalid", async () => {
+		const url = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}`;
+		const { statusLine } = await attemptUpgradeAndReadResponse(url, "kanban_session=wrong-token");
+		expect(statusLine).toContain("401");
+	});
+
+	it("allows /api/terminal/io upgrade when a valid session cookie is present", async () => {
+		const url = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}`;
+		const { statusLine } = await attemptUpgradeAndReadResponse(url, "kanban_session=valid-token");
+		expect(statusLine).toContain("101");
+	});
+
+	it("allows /api/terminal/control upgrade when a valid session cookie is present", async () => {
+		const url = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}`;
+		const { statusLine } = await attemptUpgradeAndReadResponse(url, "kanban_session=valid-token");
+		expect(statusLine).toContain("101");
+	});
+
+	it("allows upgrades when validateUpgradeSession is not set (local mode)", async () => {
+		// We need a completely independent HTTP server + bridge for this test.
+		// Node's EventEmitter stacks upgrade listeners, so reusing the same server
+		// would leave the passcode-enforcing listener in place alongside the new
+		// no-validator bridge, causing the 401 path to still fire first.
+		const freshServer = createServer((_request, response) => {
+			response.writeHead(404);
+			response.end();
+		});
+		const freshManager = new FakeTerminalManager();
+		const freshBridge = createTerminalWebSocketBridge({
+			server: freshServer,
+			resolveTerminalManager: (workspaceId) => (workspaceId === WORKSPACE_ID ? freshManager : null),
+			isTerminalIoWebSocketPath: (pathname) => pathname === "/api/terminal/io",
+			isTerminalControlWebSocketPath: (pathname) => pathname === "/api/terminal/control",
+			// No validateUpgradeSession: local mode, no gate.
+		});
+		freshServer.listen(0, "127.0.0.1");
+		await once(freshServer, "listening");
+		const freshAddress = freshServer.address() as AddressInfo | null;
+		if (!freshAddress) {
+			throw new Error("Expected fresh server address.");
+		}
+		const freshUrl = `ws://127.0.0.1:${freshAddress.port}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}`;
+
+		try {
+			const { statusLine } = await attemptUpgradeAndReadResponse(freshUrl);
+			expect(statusLine).toContain("101");
+		} finally {
+			await freshBridge.close();
+			await new Promise<void>((resolve, reject) => {
+				freshServer.close((error) => (error ? reject(error) : resolve()));
+			});
+		}
+	});
+});
+
 describe("createTerminalWebSocketBridge", () => {
 	let server: Server;
 	let bridge: TerminalWebSocketBridge;

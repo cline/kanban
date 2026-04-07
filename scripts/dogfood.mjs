@@ -157,6 +157,13 @@ function parseArgs(argv) {
 	let port = "auto";
 	let noOpen = false;
 	let skipBuild = false;
+	/** @type {string | null} */
+	let host = null;
+	let https = false;
+	/** @type {string | null} */
+	let cert = null;
+	/** @type {string | null} */
+	let key = null;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -198,6 +205,49 @@ function parseArgs(argv) {
 			skipBuild = true;
 			continue;
 		}
+		if (arg === "--host") {
+			const value = argv[index + 1];
+			if (!value) {
+				throw new Error("Missing value for --host.");
+			}
+			host = value;
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--host=")) {
+			host = arg.slice("--host=".length);
+			continue;
+		}
+		if (arg === "--https") {
+			https = true;
+			continue;
+		}
+		if (arg === "--cert") {
+			const value = argv[index + 1];
+			if (!value) {
+				throw new Error("Missing value for --cert.");
+			}
+			cert = resolve(value);
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--cert=")) {
+			cert = resolve(arg.slice("--cert=".length));
+			continue;
+		}
+		if (arg === "--key") {
+			const value = argv[index + 1];
+			if (!value) {
+				throw new Error("Missing value for --key.");
+			}
+			key = resolve(value);
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--key=")) {
+			key = resolve(arg.slice("--key=".length));
+			continue;
+		}
 		throw new Error(`Unknown option: ${arg}`);
 	}
 
@@ -206,6 +256,10 @@ function parseArgs(argv) {
 		port: port.trim() || "auto",
 		noOpen,
 		skipBuild,
+		host,
+		https,
+		cert,
+		key,
 	};
 }
 
@@ -367,11 +421,23 @@ async function main() {
 
 		const cliEntrypoint = resolve(repoRoot, "dist/cli.js");
 		const launchArgs = ["--port", args.port];
+		if (args.host) {
+			launchArgs.push("--host", args.host);
+		}
 		if (skipShutdownCleanup) {
 			launchArgs.push("--skip-shutdown-cleanup");
 		}
 		if (args.noOpen) {
 			launchArgs.push("--no-open");
+		}
+		if (args.https) {
+			launchArgs.push("--https");
+		}
+		if (args.cert) {
+			launchArgs.push("--cert", args.cert);
+		}
+		if (args.key) {
+			launchArgs.push("--key", args.key);
 		}
 		const launchCwd = args.project ?? tmpdir();
 

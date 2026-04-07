@@ -1,5 +1,5 @@
 import { diffLines, diffWordsWithSpace } from "diff";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-c";
@@ -28,8 +28,10 @@ import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
-const CONTEXT_RADIUS = 3;
-const MIN_COLLAPSE_LINES = 8;
+export const CONTEXT_RADIUS = 3;
+export const MIN_COLLAPSE_LINES = 8;
+export const INCREMENTAL_EXPAND_STEP = 20;
+export const INCREMENTAL_EXPAND_THRESHOLD = 40;
 
 export interface InlineDiffSegment {
 	key: string;
@@ -51,6 +53,8 @@ export interface CollapsedContextBlock {
 	rows: UnifiedDiffRow[];
 	expanded: boolean;
 }
+
+export type ExpandedBlockState = Record<string, boolean | { top: number; bottom: number }>;
 
 export type DiffDisplayItem =
 	| { type: "row"; row: UnifiedDiffRow }
@@ -377,7 +381,7 @@ function enrichRowsWithInlineSegments(rows: UnifiedDiffRow[]): UnifiedDiffRow[] 
 	return result;
 }
 
-export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Record<string, boolean>): DiffDisplayItem[] {
+export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: ExpandedBlockState): DiffDisplayItem[] {
 	const changedIndices: number[] = [];
 	for (let index = 0; index < rows.length; index += 1) {
 		if (rows[index]?.variant !== "context") {
@@ -430,9 +434,54 @@ export function buildDisplayItems(rows: UnifiedDiffRow[], expandedBlocks: Record
 		}
 
 		const blockId = `ctx-${start}-${index - 1}`;
+		const blockState = expandedBlocks[blockId];
+
+		if (blockState === true) {
+			// Fully expanded (legacy boolean toggle)
+			items.push({
+				type: "collapsed",
+				block: { id: blockId, count: blockRows.length, rows: blockRows, expanded: true },
+			});
+			continue;
+		}
+
+		if (typeof blockState === "object" && blockState !== null) {
+			const topReveal = Math.min(blockState.top, blockRows.length);
+			const bottomReveal = Math.min(blockState.bottom, blockRows.length - topReveal);
+
+			// Rows revealed from the top
+			for (let ri = 0; ri < topReveal; ri += 1) {
+				const row = blockRows[ri];
+				if (row) {
+					items.push({ type: "row", row });
+				}
+			}
+
+			// Remaining collapsed middle
+			const remainingStart = topReveal;
+			const remainingEnd = blockRows.length - bottomReveal;
+			if (remainingEnd > remainingStart) {
+				const remainingRows = blockRows.slice(remainingStart, remainingEnd);
+				items.push({
+					type: "collapsed",
+					block: { id: blockId, count: remainingRows.length, rows: remainingRows, expanded: false },
+				});
+			}
+
+			// Rows revealed from the bottom
+			for (let ri = blockRows.length - bottomReveal; ri < blockRows.length; ri += 1) {
+				const row = blockRows[ri];
+				if (row) {
+					items.push({ type: "row", row });
+				}
+			}
+			continue;
+		}
+
+		// Not expanded at all
 		items.push({
 			type: "collapsed",
-			block: { id: blockId, count: blockRows.length, rows: blockRows, expanded: expandedBlocks[blockId] === true },
+			block: { id: blockId, count: blockRows.length, rows: blockRows, expanded: false },
 		});
 	}
 	return items;
@@ -496,15 +545,133 @@ export function DiffRowText({
 	);
 }
 
+export function CollapsedBlockControls({
+	block,
+	onExpandTop,
+	onExpandBottom,
+	onExpandAll,
+}: {
+	block: CollapsedContextBlock;
+	onExpandTop: (id: string, count: number) => void;
+	onExpandBottom: (id: string, count: number) => void;
+	onExpandAll: (id: string) => void;
+}): React.ReactElement {
+	const count = block.count;
+
+	if (block.expanded) {
+		return (
+			<Button
+				variant="ghost"
+				size="sm"
+				fill
+				icon={<ChevronDown size={12} />}
+				className="justify-start text-xs rounded-none my-0.5 !bg-surface-0"
+				onClick={() => onExpandAll(block.id)}
+			>
+				{`Hide ${count} unmodified lines`}
+			</Button>
+		);
+	}
+
+	if (count < INCREMENTAL_EXPAND_THRESHOLD) {
+		return (
+			<Button
+				variant="ghost"
+				size="sm"
+				fill
+				icon={<ChevronsUpDown size={12} />}
+				className="justify-start text-xs rounded-none my-0.5 !bg-surface-0"
+				onClick={() => onExpandAll(block.id)}
+			>
+				{`Show ${count} unmodified lines`}
+			</Button>
+		);
+	}
+
+	const step = INCREMENTAL_EXPAND_STEP;
+
+	return (
+		<div className="flex items-center gap-0.5 my-0.5">
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={<ChevronDown size={12} />}
+				className="justify-start text-xs rounded-none !bg-surface-0"
+				onClick={() => onExpandTop(block.id, step)}
+			>
+				{`↓ ${step} lines`}
+			</Button>
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={<ChevronsUpDown size={12} />}
+				className="justify-start text-xs rounded-none !bg-surface-0 flex-1"
+				onClick={() => onExpandAll(block.id)}
+			>
+				{`Show all ${count} lines`}
+			</Button>
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={<ChevronUp size={12} />}
+				className="justify-start text-xs rounded-none !bg-surface-0"
+				onClick={() => onExpandBottom(block.id, step)}
+			>
+				{`↑ ${step} lines`}
+			</Button>
+		</div>
+	);
+}
+
+export function useIncrementalExpand(): {
+	expandedBlocks: ExpandedBlockState;
+	expandTop: (id: string, count: number) => void;
+	expandBottom: (id: string, count: number) => void;
+	expandAll: (id: string) => void;
+} {
+	const [expandedBlocks, setExpandedBlocks] = useState<ExpandedBlockState>({});
+
+	const expandTop = useCallback((id: string, count: number) => {
+		setExpandedBlocks((prev) => {
+			const current = prev[id];
+			if (typeof current === "object" && current !== null) {
+				return { ...prev, [id]: { top: current.top + count, bottom: current.bottom } };
+			}
+			return { ...prev, [id]: { top: count, bottom: 0 } };
+		});
+	}, []);
+
+	const expandBottom = useCallback((id: string, count: number) => {
+		setExpandedBlocks((prev) => {
+			const current = prev[id];
+			if (typeof current === "object" && current !== null) {
+				return { ...prev, [id]: { top: current.top, bottom: current.bottom + count } };
+			}
+			return { ...prev, [id]: { top: 0, bottom: count } };
+		});
+	}, []);
+
+	const expandAll = useCallback((id: string) => {
+		setExpandedBlocks((prev) => {
+			const current = prev[id];
+			// If it's already fully expanded (true), toggle it off
+			if (current === true) {
+				const next = { ...prev };
+				delete next[id];
+				return next;
+			}
+			return { ...prev, [id]: true };
+		});
+	}, []);
+
+	return { expandedBlocks, expandTop, expandBottom, expandAll };
+}
+
 export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; path: string }): React.ReactElement {
-	const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
+	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
 	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
-
-	const toggleBlock = useCallback((id: string) => {
-		setExpandedBlocks((prev) => ({ ...prev, [id]: !prev[id] }));
-	}, []);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
 		const baseClass =
@@ -538,16 +705,12 @@ export function ReadOnlyUnifiedDiff({ rows, path }: { rows: UnifiedDiffRow[]; pa
 				}
 				return (
 					<div key={item.block.id}>
-						<Button
-							variant="ghost"
-							size="sm"
-							fill
-							icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-							className="justify-start text-xs rounded-none mt-0.5 mb-0.5 !bg-surface-0"
-							onClick={() => toggleBlock(item.block.id)}
-						>
-							{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
-						</Button>
+						<CollapsedBlockControls
+							block={item.block}
+							onExpandTop={expandTop}
+							onExpandBottom={expandBottom}
+							onExpandAll={expandAll}
+						/>
 						{item.block.expanded ? item.block.rows.map((row) => renderRow(row)) : null}
 					</div>
 				);
