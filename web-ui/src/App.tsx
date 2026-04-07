@@ -5,6 +5,7 @@ import { FolderOpen } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AddProjectDialog } from "@/components/add-project-dialog";
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { CardDetailView } from "@/components/card-detail-view";
 import { ClearTrashDialog } from "@/components/clear-trash-dialog";
@@ -23,8 +24,6 @@ import {
 	AlertDialog,
 	AlertDialogAction,
 	AlertDialogBody,
-	AlertDialogCancel,
-	AlertDialogDescription,
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
@@ -117,11 +116,10 @@ export default function App(): ReactElement {
 		isProjectSwitching,
 		handleSelectProject,
 		handleAddProject,
-		handleConfirmInitializeGitProject,
-		handleCancelInitializeGitProject,
+		handleAddProjectSuccess,
 		handleRemoveProject,
-		pendingGitInitializationPath,
-		isInitializingGitProject,
+		isAddProjectDialogOpen,
+		setIsAddProjectDialogOpen,
 		resetProjectNavigationState,
 	} = useProjectNavigation({
 		onProjectSwitchStart: handleProjectSwitchStart,
@@ -1087,62 +1085,12 @@ export default function App(): ReactElement {
 					onClineSetupSaved={handleOnboardingClineSetupSaved}
 				/>
 
-				<AlertDialog
-					open={pendingGitInitializationPath !== null}
-					onOpenChange={(open) => {
-						if (!open) {
-							handleCancelInitializeGitProject();
-						}
-					}}
-				>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Initialize git repository?</AlertDialogTitle>
-					</AlertDialogHeader>
-					<AlertDialogBody>
-						<AlertDialogDescription asChild>
-							<div className="flex flex-col gap-3">
-								<p>
-									Cline requires git to manage worktrees for tasks. This folder is not a git repository yet.
-								</p>
-								{pendingGitInitializationPath ? (
-									<p className="font-mono text-xs text-text-secondary break-all">
-										{pendingGitInitializationPath}
-									</p>
-								) : null}
-								<p>If you cancel, the project will not be added.</p>
-							</div>
-						</AlertDialogDescription>
-					</AlertDialogBody>
-					<AlertDialogFooter>
-						<AlertDialogCancel asChild>
-							<Button
-								variant="default"
-								disabled={isInitializingGitProject}
-								onClick={handleCancelInitializeGitProject}
-							>
-								Cancel
-							</Button>
-						</AlertDialogCancel>
-						<AlertDialogAction asChild>
-							<Button
-								variant="primary"
-								disabled={isInitializingGitProject}
-								onClick={() => {
-									void handleConfirmInitializeGitProject();
-								}}
-							>
-								{isInitializingGitProject ? (
-									<>
-										<Spinner size={14} />
-										Initializing...
-									</>
-								) : (
-									"Initialize git"
-								)}
-							</Button>
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialog>
+				<AddProjectDialog
+					open={isAddProjectDialogOpen}
+					onOpenChange={setIsAddProjectDialogOpen}
+					onProjectAdded={handleAddProjectSuccess}
+					currentProjectId={currentProjectId}
+				/>
 
 				<AlertDialog
 					open={gitActionError !== null}
