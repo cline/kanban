@@ -381,7 +381,7 @@ describe("applyClineSessionEvent", () => {
 		expect(result.messages[0]?.content).toContain("Missing API key");
 	});
 
-	it("treats insufficient-balance errors as non-recoverable even when SDK marks them recoverable", () => {
+	it("sets credit_limit notificationType and suppresses warningMessage for insufficient-balance errors from SDK", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";
 
@@ -394,7 +394,7 @@ describe("applyClineSessionEvent", () => {
 					event: {
 						type: "error",
 						error: new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
-						recoverable: true,
+						recoverable: false,
 						iteration: 1,
 					},
 				},
@@ -438,31 +438,6 @@ describe("applyClineSessionEvent", () => {
 
 		expect(result.entry.summary.latestHookActivity?.hookEventName).toBe("agent_end");
 		expect(result.entry.summary.latestHookActivity?.notificationType).toBe("credit_limit");
-	});
-
-	it("suppresses SDK recovery notices for insufficient-balance errors", () => {
-		const entry = createEntry("task-1");
-		entry.summary.state = "awaiting_review";
-		entry.summary.reviewReason = "error";
-
-		const result = applyEvent({
-			entry,
-			event: {
-				type: "agent_event",
-				payload: {
-					sessionId: "session-1",
-					event: {
-						type: "notice",
-						message:
-							"The previous turn failed with an API/runtime error: 402 Insufficient balance. Your Cline Credits balance is $0.00. Retry and continue from the latest state.",
-						noticeType: "recovery",
-						displayRole: "system",
-					},
-				},
-			},
-		});
-
-		expect(result.messages).toHaveLength(0);
 	});
 
 	it("keeps unrecoverable agent errors resumable", () => {

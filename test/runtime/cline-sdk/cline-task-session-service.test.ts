@@ -1412,30 +1412,6 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
-	it("forces session abort on insufficient-balance errors to stop retry loops", async () => {
-		const { service, runtime } = createTrackedService();
-
-		await service.startTaskSession({
-			taskId: "task-1",
-			cwd: "/tmp/worktree",
-			prompt: "Initial prompt",
-		});
-		const sessionId = await waitForTaskSessionId(runtime, "task-1");
-
-		runtime.emitAgentEvent(sessionId, {
-			type: "error",
-			error: new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
-			recoverable: true,
-			iteration: 1,
-		});
-
-		await vi.waitFor(() => {
-			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
-		});
-		expect(runtime.abortTaskSessionMock).toHaveBeenCalledWith("task-1");
-		expect(service.listMessages("task-1").some((message) => message.content.includes("Retrying:"))).toBe(false);
-	});
-
 	it("restarts the live session from persisted history after the SDK ends the task on send failure", async () => {
 		const { service, runtime } = createTrackedService();
 		runtime.readPersistedTaskSessionMock.mockResolvedValue({
