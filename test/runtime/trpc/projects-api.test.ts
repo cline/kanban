@@ -101,12 +101,12 @@ describe("listDirectoryContents", () => {
 		expect(result.entries.map((e) => e.name)).toEqual(["child-a", "child-b"]);
 	});
 
-	it("returns subdirectory contents for a valid absolute path", async () => {
+	it("returns subdirectory contents for a valid relative path", async () => {
 		const subdir = join(testCwd, "abs-sub");
 		mkdirSync(subdir);
 		mkdirSync(join(subdir, "inside"));
 		const api = createProjectsApi(createDefaultDeps(testCwd));
-		const result = await api.listDirectoryContents(null, { path: subdir });
+		const result = await api.listDirectoryContents(null, { path: "abs-sub" });
 		expect(result.ok).toBe(true);
 		expect(result.currentPath).toBe(subdir);
 		expect(result.entries).toHaveLength(1);
@@ -163,11 +163,11 @@ describe("listDirectoryContents", () => {
 		expect(result.entries).toEqual([]);
 	});
 
-	it("rejects absolute paths outside the CWD", async () => {
+	it("rejects absolute paths from the client", async () => {
 		const api = createProjectsApi(createDefaultDeps(testCwd));
 		const result = await api.listDirectoryContents(null, { path: "/tmp" });
 		expect(result.ok).toBe(false);
-		expect(result.error).toContain("outside the server root directory");
+		expect(result.error).toContain("absolute paths are not accepted");
 	});
 
 	it("rejects deeply nested .. traversal that escapes CWD", async () => {

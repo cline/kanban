@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 import type {
 	RuntimeBoardData,
@@ -254,8 +254,19 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 		listDirectoryContents: async (_preferredWorkspaceId, input) => {
 			const body = parseDirectoryListRequest(input);
 			const rootPath = deps.serverCwd;
-			const requestedPath = body.path?.trim() || rootPath;
-			const resolvedPath = resolve(rootPath, requestedPath);
+			const requestedPath = body.path?.trim() || "";
+			// Reject absolute paths from the client
+			if (requestedPath && isAbsolute(requestedPath)) {
+				return {
+					ok: false,
+					currentPath: rootPath,
+					parentPath: null,
+					rootPath,
+					entries: [],
+					error: "Access denied: absolute paths are not accepted.",
+				} satisfies RuntimeDirectoryListResponse;
+			}
+			const resolvedPath = resolve(rootPath, requestedPath) || rootPath;
 
 			const normalizedRoot = rootPath.endsWith("/") ? rootPath : `${rootPath}/`;
 			if (resolvedPath !== rootPath && !resolvedPath.startsWith(normalizedRoot)) {
