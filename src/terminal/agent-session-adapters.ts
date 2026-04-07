@@ -738,10 +738,12 @@ const cursorAdapter: AgentSessionAdapter = {
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 
 		if (
-			input.autonomousModeEnabled &&
-			!input.startInPlanMode &&
-			!hasCliOption(args, "--force") &&
-			!hasCliOption(args, "--yolo") &&
+			if (
+				input.autonomousModeEnabled &&
+				!input.startInPlanMode &&
+				!hasCliOption(args, "--force") &&
+				!args.includes("-f")
+			) {
 			!args.includes("-f")
 		) {
 			args.push("--force");
