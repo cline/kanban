@@ -1,0 +1,271 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { RuntimeProjectTaskCounts } from "../../../src/core/api-contract";
+import type { TerminalSessionManager } from "../../../src/terminal/session-manager";
+import { type CreateProjectsApiDependencies, createProjectsApi } from "../../../src/trpc/projects-api";
+
+function createTestCwd(): string {
+	const base = join(tmpdir(), `kanban-test-dir-list-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
+function createDefaultDeps(serverCwd: string): CreateProjectsApiDependencies {
+	return {
+		getActiveWorkspacePath: vi.fn(() => null),
+		getActiveWorkspaceId: vi.fn(() => null),
+		rememberWorkspace: vi.fn(),
+		setActiveWorkspace: vi.fn(async () => {}),
+		clearActiveWorkspace: vi.fn(),
+		resolveProjectInputPath: vi.fn((inputPath: string, cwd: string) => resolve(cwd, inputPath)),
+		assertPathIsDirectory: vi.fn(async () => {}),
+		hasGitRepository: vi.fn(() => false),
+		summarizeProjectTaskCounts: vi.fn(
+			async (): Promise<RuntimeProjectTaskCounts> => ({
+				backlog: 0,
+				in_progress: 0,
+				review: 0,
+				trash: 0,
+			}),
+		),
+		createProjectSummary: vi.fn(() => ({
+			id: "test",
+			path: "/test",
+			name: "test",
+			taskCounts: { backlog: 0, in_progress: 0, review: 0, trash: 0 },
+		})),
+		broadcastRuntimeProjectsUpdated: vi.fn(),
+		getTerminalManagerForWorkspace: vi.fn(() => null),
+		disposeWorkspace: vi.fn(() => ({
+			terminalManager: null as TerminalSessionManager | null,
+			workspacePath: null as string | null,
+		})),
+		collectProjectWorktreeTaskIdsForRemoval: vi.fn(() => new Set<string>()),
+		warn: vi.fn(),
+		buildProjectsPayload: vi.fn(async () => ({ currentProjectId: null, projects: [] })),
+		pickDirectoryPathFromSystemDialog: vi.fn(() => null),
+		serverCwd,
+	};
+}
+
+describe("listDirectoryContents", () => {
+	let testCwd: string;
+
+	beforeEach(() => {
+		testCwd = createTestCwd();
+	});
+
+	afterEach(() => {
+		rmSync(testCwd, { recursive: true, force: true });
+	});
+
+	it("returns CWD contents when path is empty/undefined", async () => {
+		mkdirSync(join(testCwd, "project-a"));
+		mkdirSync(join(testCwd, "project-b"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {});
+		expect(result.ok).toBe(true);
+		expect(result.currentPath).toBe(testCwd);
+		expect(result.parentPath).toBeNull();
+		expect(result.rootPath).toBe(testCwd);
+		expect(result.entries).toHaveLength(2);
+		expect(result.entries[0]?.name).toBe("project-a");
+		expect(result.entries[1]?.name).toBe("project-b");
+	});
+
+	it("returns CWD contents when path is undefined (no path key)", async () => {
+		mkdirSync(join(testCwd, "dir1"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: undefined });
+		expect(result.ok).toBe(true);
+		expect(result.currentPath).toBe(testCwd);
+		expect(result.entries).toHaveLength(1);
+		expect(result.entries[0]?.name).toBe("dir1");
+	});
+
+	it("returns subdirectory contents for a valid relative path", async () => {
+		const subdir = join(testCwd, "sub");
+		mkdirSync(subdir);
+		mkdirSync(join(subdir, "child-a"));
+		mkdirSync(join(subdir, "child-b"));
+		writeFileSync(join(subdir, "file.txt"), "content");
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: "sub" });
+		expect(result.ok).toBe(true);
+		expect(result.currentPath).toBe(subdir);
+		expect(result.parentPath).toBe(testCwd);
+		expect(result.entries).toHaveLength(2);
+		expect(result.entries.map((e) => e.name)).toEqual(["child-a", "child-b"]);
+	});
+
+	it("returns subdirectory contents for a valid absolute path", async () => {
+		const subdir = join(testCwd, "abs-sub");
+		mkdirSync(subdir);
+		mkdirSync(join(subdir, "inside"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: subdir });
+		expect(result.ok).toBe(true);
+		expect(result.currentPath).toBe(subdir);
+		expect(result.entries).toHaveLength(1);
+		expect(result.entries[0]?.name).toBe("inside");
+	});
+
+	it("detects git repositories via .git directory", async () => {
+		mkdirSync(join(testCwd, "my-repo", ".git"), { recursive: true });
+		mkdirSync(join(testCwd, "not-a-repo"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {});
+		expect(result.ok).toBe(true);
+		const repoEntry = result.entries.find((e) => e.name === "my-repo");
+		const nonRepoEntry = result.entries.find((e) => e.name === "not-a-repo");
+		expect(repoEntry?.isGitRepository).toBe(true);
+		expect(nonRepoEntry?.isGitRepository).toBe(false);
+	});
+
+	it("excludes hidden directories (starting with .)", async () => {
+		mkdirSync(join(testCwd, ".hidden"));
+		mkdirSync(join(testCwd, "visible"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {});
+		expect(result.ok).toBe(true);
+		expect(result.entries).toHaveLength(1);
+		expect(result.entries[0]?.name).toBe("visible");
+	});
+
+	it("sorts entries alphabetically", async () => {
+		mkdirSync(join(testCwd, "zebra"));
+		mkdirSync(join(testCwd, "apple"));
+		mkdirSync(join(testCwd, "mango"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {});
+		expect(result.ok).toBe(true);
+		expect(result.entries.map((e) => e.name)).toEqual(["apple", "mango", "zebra"]);
+	});
+
+	it("returns empty entries for a directory with no subdirectories", async () => {
+		writeFileSync(join(testCwd, "file1.txt"), "data");
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {});
+		expect(result.ok).toBe(true);
+		expect(result.entries).toEqual([]);
+	});
+
+	// ── CWD sandboxing ──────────────────────────────────────
+
+	it("rejects paths outside the CWD (.. traversal)", async () => {
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: ".." });
+		expect(result.ok).toBe(false);
+		expect(result.error).toContain("outside the server root directory");
+		expect(result.entries).toEqual([]);
+	});
+
+	it("rejects absolute paths outside the CWD", async () => {
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: "/tmp" });
+		expect(result.ok).toBe(false);
+		expect(result.error).toContain("outside the server root directory");
+	});
+
+	it("rejects deeply nested .. traversal that escapes CWD", async () => {
+		mkdirSync(join(testCwd, "a", "b", "c"), { recursive: true });
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {
+			path: "a/b/c/../../../../..",
+		});
+		expect(result.ok).toBe(false);
+		expect(result.error).toContain("outside the server root directory");
+	});
+
+	it("allows .. traversal that stays within CWD", async () => {
+		mkdirSync(join(testCwd, "a", "b"), { recursive: true });
+		mkdirSync(join(testCwd, "a", "sibling"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: "a/b/.." });
+		expect(result.ok).toBe(true);
+		expect(result.currentPath).toBe(join(testCwd, "a"));
+		expect(result.entries.map((e) => e.name)).toContain("b");
+		expect(result.entries.map((e) => e.name)).toContain("sibling");
+	});
+
+	// ── Parent path boundary ────────────────────────────────
+
+	it("parentPath is null when at CWD root", async () => {
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {});
+		expect(result.ok).toBe(true);
+		expect(result.parentPath).toBeNull();
+	});
+
+	it("parentPath points to CWD root when one level deep", async () => {
+		mkdirSync(join(testCwd, "level1"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: "level1" });
+		expect(result.ok).toBe(true);
+		expect(result.parentPath).toBe(testCwd);
+	});
+
+	it("parentPath correctly chains when deeply nested", async () => {
+		mkdirSync(join(testCwd, "a", "b", "c"), { recursive: true });
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: "a/b/c" });
+		expect(result.ok).toBe(true);
+		expect(result.parentPath).toBe(join(testCwd, "a", "b"));
+	});
+
+	// ── Error handling ──────────────────────────────────────
+
+	it("returns error for non-existent directory", async () => {
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: "does-not-exist" });
+		expect(result.ok).toBe(false);
+		expect(result.error).toBe("Directory not found.");
+		expect(result.entries).toEqual([]);
+	});
+
+	it("returns error when path points to a file", async () => {
+		writeFileSync(join(testCwd, "a-file.txt"), "hello");
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: "a-file.txt" });
+		expect(result.ok).toBe(false);
+		expect(result.error).toBe("The specified path is not a directory.");
+	});
+
+	// ── Schema validation ───────────────────────────────────
+
+	it("success response validates against the schema", async () => {
+		const { runtimeDirectoryListResponseSchema } = await import("../../../src/core/api-contract");
+		mkdirSync(join(testCwd, "valid-dir"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {});
+		expect(runtimeDirectoryListResponseSchema.safeParse(result).success).toBe(true);
+	});
+
+	it("error response validates against the schema", async () => {
+		const { runtimeDirectoryListResponseSchema } = await import("../../../src/core/api-contract");
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: ".." });
+		expect(runtimeDirectoryListResponseSchema.safeParse(result).success).toBe(true);
+	});
+
+	// ── Misc ────────────────────────────────────────────────
+
+	it("includes rootPath in every response", async () => {
+		mkdirSync(join(testCwd, "sub"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		expect((await api.listDirectoryContents(null, {})).rootPath).toBe(testCwd);
+		expect((await api.listDirectoryContents(null, { path: "sub" })).rootPath).toBe(testCwd);
+		expect((await api.listDirectoryContents(null, { path: ".." })).rootPath).toBe(testCwd);
+	});
+
+	it("entry paths are absolute", async () => {
+		mkdirSync(join(testCwd, "my-project"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, {});
+		expect(result.ok).toBe(true);
+		expect(result.entries[0]?.path).toBe(join(testCwd, "my-project"));
+	});
+});

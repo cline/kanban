@@ -10,6 +10,7 @@ import {
 	type RuntimeClineUpdateProviderRequest,
 	type RuntimeCommandRunRequest,
 	type RuntimeConfigSaveRequest,
+	type RuntimeDirectoryListRequest,
 	type RuntimeGitCheckoutRequest,
 	type RuntimeHookIngestRequest,
 	type RuntimeProjectAddRequest,
@@ -39,6 +40,7 @@ import {
 	runtimeClineUpdateProviderRequestSchema,
 	runtimeCommandRunRequestSchema,
 	runtimeConfigSaveRequestSchema,
+	runtimeDirectoryListRequestSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeProjectAddRequestSchema,
@@ -578,4 +580,8 @@ export function parseTerminalWsClientMessage(value: unknown): RuntimeTerminalWsC
 		return null;
 	}
 	return parsed.data;
+}
+
+export function parseDirectoryListRequest(value: unknown): RuntimeDirectoryListRequest {
+	return parseWithSchema(runtimeDirectoryListRequestSchema, value);
 }

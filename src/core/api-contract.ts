@@ -432,6 +432,28 @@ export const runtimeProjectDirectoryPickerResponseSchema = z.object({
 });
 export type RuntimeProjectDirectoryPickerResponse = z.infer<typeof runtimeProjectDirectoryPickerResponseSchema>;
 
+export const runtimeDirectoryListEntrySchema = z.object({
+	name: z.string(),
+	path: z.string(),
+	isGitRepository: z.boolean(),
+});
+export type RuntimeDirectoryListEntry = z.infer<typeof runtimeDirectoryListEntrySchema>;
+
+export const runtimeDirectoryListRequestSchema = z.object({
+	path: z.string().optional(),
+});
+export type RuntimeDirectoryListRequest = z.infer<typeof runtimeDirectoryListRequestSchema>;
+
+export const runtimeDirectoryListResponseSchema = z.object({
+	ok: z.boolean(),
+	currentPath: z.string(),
+	parentPath: z.string().nullable(),
+	rootPath: z.string(),
+	entries: z.array(runtimeDirectoryListEntrySchema),
+	error: z.string().optional(),
+});
+export type RuntimeDirectoryListResponse = z.infer<typeof runtimeDirectoryListResponseSchema>;
+
 export const runtimeProjectRemoveRequestSchema = z.object({
 	projectId: z.string(),
 });

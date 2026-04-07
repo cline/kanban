@@ -30,6 +30,8 @@ import type {
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
 	RuntimeDebugResetAllStateResponse,
+	RuntimeDirectoryListRequest,
+	RuntimeDirectoryListResponse,
 	RuntimeFeaturebaseTokenResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
@@ -110,6 +112,8 @@ import {
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeDebugResetAllStateResponseSchema,
+	runtimeDirectoryListRequestSchema,
+	runtimeDirectoryListResponseSchema,
 	runtimeFeaturebaseTokenResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
@@ -325,6 +329,10 @@ export interface RuntimeTrpcContext {
 			input: RuntimeProjectRemoveRequest,
 		) => Promise<RuntimeProjectRemoveResponse>;
 		pickProjectDirectory: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectDirectoryPickerResponse>;
+		listDirectoryContents: (
+			preferredWorkspaceId: string | null,
+			input: RuntimeDirectoryListRequest,
+		) => Promise<RuntimeDirectoryListResponse>;
 	};
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
@@ -639,6 +647,12 @@ export const runtimeAppRouter = t.router({
 		pickDirectory: t.procedure.output(runtimeProjectDirectoryPickerResponseSchema).mutation(async ({ ctx }) => {
 			return await ctx.projectsApi.pickProjectDirectory(ctx.requestedWorkspaceId);
 		}),
+		listDirectoryContents: t.procedure
+			.input(runtimeDirectoryListRequestSchema)
+			.output(runtimeDirectoryListResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.projectsApi.listDirectoryContents(ctx.requestedWorkspaceId, input);
+			}),
 	}),
 	hooks: t.router({
 		ingest: t.procedure
