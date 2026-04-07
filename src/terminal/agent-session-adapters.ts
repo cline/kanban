@@ -609,6 +609,14 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 	};
 }
 
+function mergeCursorPromptWithHomeSystemPrompt(prompt: string, appendedSystemPrompt: string | null): string {
+	const trimmedPrompt = prompt.trim();
+	if (!appendedSystemPrompt || !trimmedPrompt) {
+		return prompt;
+	}
+	return `${appendedSystemPrompt}\n\n# User request\n${trimmedPrompt}`;
+}
+
 function toBracketedPasteSubmission(command: string): string {
 	return `\u001b[200~${command}\u001b[201~\r`;
 }
@@ -710,6 +718,69 @@ const claudeAdapter: AgentSessionAdapter = {
 		}
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+		};
+	},
+};
+
+const cursorAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+
+		if (
+			input.autonomousModeEnabled &&
+			!input.startInPlanMode &&
+			!hasCliOption(args, "--force") &&
+			!hasCliOption(args, "--yolo") &&
+			!args.includes("-f")
+		) {
+			args.push("--force");
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume") && !hasCliOption(args, "--continue")) {
+			args.push("--continue");
+		}
+
+		if (input.startInPlanMode) {
+			const withoutModeOrForceArgs: string[] = [];
+			for (let i = 0; i < args.length; i += 1) {
+				const arg = args[i];
+				if (arg === "--force" || arg === "--yolo" || arg === "-f" || arg === "--plan") {
+					continue;
+				}
+				if (arg === "--mode") {
+					i += 1;
+					continue;
+				}
+				if (arg.startsWith("--mode=")) {
+					continue;
+				}
+				withoutModeOrForceArgs.push(arg);
+			}
+			args.length = 0;
+			args.push(...withoutModeOrForceArgs, "--plan");
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		const mergedPrompt = mergeCursorPromptWithHomeSystemPrompt(input.prompt, appendedSystemPrompt);
+		const withPromptLaunch = withPrompt(args, mergedPrompt, "append");
 		return {
 			...withPromptLaunch,
 			env: {
@@ -1330,6 +1401,7 @@ const clineAdapter: AgentSessionAdapter = {
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
+	cursor: cursorAdapter,
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
 	droid: droidAdapter,

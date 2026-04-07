@@ -27,6 +27,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://github.com/openai/codex",
 	},
 	{
+		id: "cursor",
+		label: "Cursor Agent",
+		binary: "agent",
+		baseArgs: [],
+		autonomousArgs: ["--force"],
+		installUrl: "https://cursor.com/docs/cli/overview",
+	},
+	{
 		id: "cline",
 		label: "Cline",
 		binary: "cline",
@@ -66,6 +74,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"cline",
 	"claude",
 	"codex",
+	"cursor",
 	"droid",
 	// "opencode",
 	// "gemini",
