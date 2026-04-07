@@ -610,9 +610,12 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 }
 
 function mergeCursorPromptWithHomeSystemPrompt(prompt: string, appendedSystemPrompt: string | null): string {
-	const trimmedPrompt = prompt.trim();
-	if (!appendedSystemPrompt || !trimmedPrompt) {
+	if (!appendedSystemPrompt) {
 		return prompt;
+	}
+	const trimmedPrompt = prompt.trim();
+	if (!trimmedPrompt) {
+		return `${appendedSystemPrompt}\n\n# User request\nNo user request yet. Wait for the next user message before taking action.`;
 	}
 	return `${appendedSystemPrompt}\n\n# User request\n${trimmedPrompt}`;
 }

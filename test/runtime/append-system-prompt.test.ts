@@ -69,6 +69,7 @@ describe("renderAppendSystemPrompt", () => {
 		expect(rendered).toContain("If the user asks for GitHub work");
 		expect(rendered).toContain("gh issue view");
 		expect(rendered).toContain("If the user references Linear");
+		expect(rendered).toContain("run Kanban `task` commands first");
 		expect(rendered).toContain("Current home agent: `unknown`");
 		expect(rendered).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
 		expect(rendered).not.toContain("codex mcp add linear --url https://mcp.linear.app/mcp");

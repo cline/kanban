@@ -161,6 +161,24 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(mergedPrompt).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
 	});
 
+	it("injects Kanban sidebar bootstrap guidance for empty home Cursor prompts", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:cursor",
+			agentId: "cursor",
+			binary: "agent",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const mergedPrompt = launch.args.at(-1) ?? "";
+		expect(mergedPrompt).toContain("Kanban sidebar agent");
+		expect(mergedPrompt).toContain("No user request yet.");
+		expect(mergedPrompt).toContain("Wait for the next user message before taking action.");
+	});
+
 	it("writes Claude settings with explicit permission hook", async () => {
 		setupTempHome();
 		await prepareAgentLaunch({

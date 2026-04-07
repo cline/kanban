@@ -160,6 +160,7 @@ Use this prefix for every Kanban command in this session:
 
 # GitHub and Linear Guidance
 
+- If the user asks to create, update, link, start, trash, delete, or list Kanban tasks (or otherwise manage the board), run Kanban \`task\` commands first, even when the request includes GitHub URLs or issue references. Use \`gh\` only for supporting context.
 - If the user asks for GitHub work (issues, PRs, repos, comments, labels, milestones) or includes a \`github.com\` URL, prefer the \`gh\` CLI first.
 - Prefer native GitHub commands over manual browser walkthroughs when possible, for example: \`gh issue view\`, \`gh pr view\`, \`gh repo view\`, \`gh pr checks\`, \`gh pr diff\`.
 - If \`gh\` is missing, guide installation based on platform:
