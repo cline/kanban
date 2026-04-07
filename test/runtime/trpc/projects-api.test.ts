@@ -319,4 +319,19 @@ describe("addProject", () => {
 		const api = createProjectsApi(deps);
 		await expect(api.addProject(null, {})).rejects.toThrow();
 	});
+
+	it("resolves clone destination relative to serverCwd, not the active project", async () => {
+		const activeProjectPath = join(testCwd, "active-project");
+		mkdirSync(activeProjectPath);
+		const deps = createDefaultDeps(testCwd);
+		(deps.getActiveWorkspacePath as ReturnType<typeof vi.fn>).mockReturnValue(activeProjectPath);
+		const api = createProjectsApi(deps);
+		// The clone itself will fail (no real git server), but we can verify
+		// that resolveProjectInputPath was called with serverCwd as the base.
+		await api.addProject(null, { gitUrl: "https://example.com/repo.git", path: "my-new-proj" });
+		const resolveSpy = deps.resolveProjectInputPath as ReturnType<typeof vi.fn>;
+		expect(resolveSpy).toHaveBeenCalledWith("my-new-proj", testCwd);
+		// Crucially, it must NOT have been called with the active project path:
+		expect(resolveSpy).not.toHaveBeenCalledWith("my-new-proj", activeProjectPath);
+	});
 });

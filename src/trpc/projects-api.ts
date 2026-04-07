@@ -79,7 +79,10 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					// Clone from Git URL. If a custom path is provided alongside
 					// gitUrl, use it as the clone destination (still validated
 					// within CWD). Otherwise derive a destination from the URL.
-					const customDest = body.path ? deps.resolveProjectInputPath(body.path, resolveBasePath) : undefined;
+					// Resolve relative to serverCwd (the sandbox root), not the
+					// active project — the clone target belongs under the kanban
+					// working directory, not inside another project.
+					const customDest = body.path ? deps.resolveProjectInputPath(body.path, deps.serverCwd) : undefined;
 					const cloneResult = await cloneGitRepository(body.gitUrl, deps.serverCwd, customDest);
 					if (!cloneResult.ok) {
 						return {
