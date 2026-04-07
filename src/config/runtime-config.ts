@@ -4,7 +4,7 @@
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
+import { getRuntimeLaunchSupportedAgentCatalog, isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
 import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { detectInstalledCommands } from "../terminal/agent-registry";
@@ -101,9 +101,25 @@ Steps:
    - Any follow-up needed`;
 
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
-	const detected = new Set(detectedCommands);
+	const detectedAgentIds = new Set<RuntimeAgentId>();
+	const binaryToAgentId = new Map(
+		getRuntimeLaunchSupportedAgentCatalog().map((entry) => [entry.binary, entry.id] as const),
+	);
+
+	for (const detectedCommand of detectedCommands) {
+		const detectedAgentId = binaryToAgentId.get(detectedCommand);
+		if (detectedAgentId) {
+			detectedAgentIds.add(detectedAgentId);
+			continue;
+		}
+		// Backward compatibility for tests/callers that already pass agent IDs.
+		if (isRuntimeAgentLaunchSupported(detectedCommand as RuntimeAgentId)) {
+			detectedAgentIds.add(detectedCommand as RuntimeAgentId);
+		}
+	}
+
 	for (const agentId of AUTO_SELECT_AGENT_PRIORITY) {
-		if (detected.has(agentId)) {
+		if (detectedAgentIds.has(agentId)) {
 			return agentId;
 		}
 	}
