@@ -84,6 +84,12 @@ function findButtonByText(container: ParentNode, text: string): HTMLButtonElemen
 		null) as HTMLButtonElement | null;
 }
 
+function findButtonByAriaLabel(container: ParentNode, ariaLabel: string): HTMLButtonElement | null {
+	return (Array.from(container.querySelectorAll("button")).find(
+		(button) => button.getAttribute("aria-label") === ariaLabel,
+	) ?? null) as HTMLButtonElement | null;
+}
+
 const savedClineOauthConfig = {
 	selectedAgentId: "cline",
 	selectedShortcutLabel: null,
@@ -135,6 +141,8 @@ describe("RuntimeSettingsDialog", () => {
 
 	beforeEach(() => {
 		resetLayoutCustomizationsMock.mockReset();
+		window.localStorage.clear();
+		document.documentElement.removeAttribute("data-theme");
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -149,6 +157,8 @@ describe("RuntimeSettingsDialog", () => {
 		});
 		container.remove();
 		document.body.innerHTML = "";
+		window.localStorage.clear();
+		document.documentElement.removeAttribute("data-theme");
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 		} else {
@@ -157,26 +167,20 @@ describe("RuntimeSettingsDialog", () => {
 		}
 	});
 
-	it("shows GitHub fallback actions when the draft provider switches away from managed Cline OAuth", async () => {
+	it("does not render support actions inside settings", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
 					workspaceId={"workspace-1"}
 					initialConfig={savedClineOauthConfig}
-					featurebaseFeedbackState={{
-						authState: "ready",
-						widgetOpenCount: 0,
-						openFeedbackWidget: vi.fn(async () => {}),
-					}}
 					onOpenChange={() => {}}
 				/>,
 			);
 		});
 
-		expect(findButtonByText(document.body, "Share Feedback")).toBeNull();
-		expect(findButtonByText(document.body, "Report Issue")).toBeInstanceOf(HTMLButtonElement);
-		expect(findButtonByText(document.body, "Feature Request")).toBeInstanceOf(HTMLButtonElement);
+		expect(findButtonByText(document.body, "Send feedback")).toBeNull();
+		expect(findButtonByText(document.body, "Report issue")).toBeNull();
 	});
 
 	it("calls the layout reset callback when reset layout is clicked", async () => {
@@ -199,5 +203,78 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(resetLayoutCustomizationsMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("enables save on theme change and reverts preview on cancel", async () => {
+		const handleOpenChange = vi.fn();
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={handleOpenChange}
+				/>,
+			);
+		});
+
+		const saveButton = findButtonByText(document.body, "Save");
+		const cancelButton = findButtonByText(document.body, "Cancel");
+		const sunsetThemeButton = findButtonByAriaLabel(document.body, "Sunset");
+
+		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
+		expect(cancelButton).toBeInstanceOf(HTMLButtonElement);
+		expect(sunsetThemeButton).toBeInstanceOf(HTMLButtonElement);
+		expect(saveButton?.disabled).toBe(true);
+
+		await act(async () => {
+			sunsetThemeButton?.click();
+		});
+
+		expect(document.documentElement.getAttribute("data-theme")).toBe("sunset");
+		expect(saveButton?.disabled).toBe(false);
+		expect(window.localStorage.getItem("kanban.theme")).toBeNull();
+
+		await act(async () => {
+			cancelButton?.click();
+		});
+
+		expect(handleOpenChange).toHaveBeenCalledWith(false);
+		expect(window.localStorage.getItem("kanban.theme")).toBeNull();
+		expect(document.documentElement.getAttribute("data-theme")).toBeNull();
+	});
+
+	it("persists theme selection only after clicking save", async () => {
+		const handleOpenChange = vi.fn();
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={handleOpenChange}
+				/>,
+			);
+		});
+
+		const saveButton = findButtonByText(document.body, "Save");
+		const sunsetThemeButton = findButtonByAriaLabel(document.body, "Sunset");
+
+		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
+		expect(sunsetThemeButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			sunsetThemeButton?.click();
+		});
+
+		expect(window.localStorage.getItem("kanban.theme")).toBeNull();
+
+		await act(async () => {
+			saveButton?.click();
+		});
+
+		expect(handleOpenChange).toHaveBeenCalledWith(false);
+		expect(window.localStorage.getItem("kanban.theme")).toBe("sunset");
+		expect(document.documentElement.getAttribute("data-theme")).toBe("sunset");
 	});
 });

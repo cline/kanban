@@ -20,7 +20,7 @@ import type {
 	RuntimeTaskChatMessage,
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
-import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import { useTerminalThemeColors } from "@/terminal/theme-colors";
 
 interface UseHomeSidebarAgentPanelInput {
 	currentProjectId: string | null;
@@ -53,6 +53,7 @@ export function useHomeSidebarAgentPanel({
 	latestTaskChatMessage,
 	taskChatMessagesByTaskId,
 }: UseHomeSidebarAgentPanelInput): ReactElement | null {
+	const terminalThemeColors = useTerminalThemeColors();
 	const [sessionSummaries, setSessionSummaries] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const upsertSessionSummary = useCallback((summary: RuntimeTaskSessionSummary) => {
 		setSessionSummaries((currentSessions) => {
@@ -178,9 +179,9 @@ export function useHomeSidebarAgentPanel({
 				onSummary={upsertSessionSummary}
 				showSessionToolbar={false}
 				autoFocus
-				panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-				terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-				cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+				panelBackgroundColor={terminalThemeColors.surfaceRaised}
+				terminalBackgroundColor={terminalThemeColors.surfaceRaised}
+				cursorColor={terminalThemeColors.textPrimary}
 			/>
 		);
 	}

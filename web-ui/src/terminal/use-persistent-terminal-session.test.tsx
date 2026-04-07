@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getTerminalThemeColors, saveThemeId } from "@/hooks/use-theme";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { usePersistentTerminalSession } from "@/terminal/use-persistent-terminal-session";
 
@@ -72,6 +73,9 @@ describe("usePersistentTerminalSession", () => {
 		registerTerminalControllerMock.mockReset();
 		registerTerminalControllerMock.mockReturnValue(() => {});
 		ensurePersistentTerminalMock.mockImplementation(() => createPersistentTerminalMock());
+		window.localStorage.clear();
+		saveThemeId("default");
+		document.documentElement.removeAttribute("data-theme");
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -85,6 +89,9 @@ describe("usePersistentTerminalSession", () => {
 			root.unmount();
 		});
 		container.remove();
+		window.localStorage.clear();
+		saveThemeId("default");
+		document.documentElement.removeAttribute("data-theme");
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 		} else {
@@ -175,5 +182,30 @@ describe("usePersistentTerminalSession", () => {
 
 		expect(terminal.mount).toHaveBeenCalledTimes(1);
 		expect(terminal.unmount).not.toHaveBeenCalled();
+	});
+
+	it("updates terminal appearance when the active theme changes", async () => {
+		const terminal = createPersistentTerminalMock();
+		ensurePersistentTerminalMock.mockReturnValue(terminal);
+
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" workspaceId="project-1" sessionStartedAt={100} />);
+		});
+
+		expect(ensurePersistentTerminalMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				themeColors: getTerminalThemeColors("default"),
+			}),
+		);
+
+		await act(async () => {
+			saveThemeId("sunset");
+		});
+
+		expect(ensurePersistentTerminalMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				themeColors: getTerminalThemeColors("sunset"),
+			}),
+		);
 	});
 });

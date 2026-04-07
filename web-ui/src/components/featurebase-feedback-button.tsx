@@ -49,7 +49,7 @@ export function FeaturebaseFeedbackButton({
 
 	return (
 		<Button size={size} variant={variant} className={className} onClick={onClick} disabled={isOpening}>
-			{isOpening ? "Opening..." : "Share Feedback"}
+			{isOpening ? "Opening..." : "Send feedback"}
 		</Button>
 	);
 }

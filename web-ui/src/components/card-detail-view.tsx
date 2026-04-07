@@ -25,7 +25,7 @@ import type {
 } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
-import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import { useTerminalThemeColors } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 
@@ -296,6 +296,7 @@ export function CardDetailView({
 	isDocumentVisible?: boolean;
 	onClineSettingsSaved?: () => void;
 }): React.ReactElement {
+	const terminalThemeColors = useTerminalThemeColors();
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
@@ -678,8 +679,8 @@ export function CardDetailView({
 												? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
 												: null
 										}
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
+										panelBackgroundColor={terminalThemeColors.surfacePrimary}
+										terminalBackgroundColor={terminalThemeColors.surfacePrimary}
 										taskColumnId={selection.column.id}
 									/>
 								)}
@@ -796,9 +797,9 @@ export function CardDetailView({
 										onClose={onBottomTerminalClose}
 										minimalHeaderTitle="Terminal"
 										minimalHeaderSubtitle={bottomTerminalSubtitle}
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+										panelBackgroundColor={terminalThemeColors.surfaceRaised}
+										terminalBackgroundColor={terminalThemeColors.surfaceRaised}
+										cursorColor={terminalThemeColors.textPrimary}
 										onConnectionReady={onBottomTerminalConnectionReady}
 										agentCommand={bottomTerminalAgentCommand}
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}
