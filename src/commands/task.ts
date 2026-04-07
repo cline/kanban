@@ -536,6 +536,7 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 		const started = await runtimeClient.runtime.startTaskSession.mutate({
 			taskId: task.id,
 			prompt: task.prompt,
+			taskTitle: task.title,
 			startInPlanMode: task.startInPlanMode,
 			baseRef: task.baseRef,
 		});

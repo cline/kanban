@@ -56,6 +56,8 @@ export interface StartClineSessionRuntimeRequest {
 	taskId: string;
 	cwd: string;
 	prompt: string;
+	/** Normalized Kanban task title; persisted to SDK session metadata when supported. */
+	taskTitle?: string;
 	initialMessages?: ClineSdkPersistedMessage[];
 	images?: RuntimeTaskImage[];
 	providerId: string;
@@ -112,6 +114,29 @@ export interface CreateInMemoryClineSessionRuntimeOptions {
 	createMcpRuntimeService?: () => ClineMcpRuntimeService;
 }
 
+// Best-effort: write the Kanban task title to the SDK session metadata so external session
+// lists (e.g. the Cline extension) show a human-readable name. Kanban never reads this back.
+async function persistKanbanTitleToClineSessionMetadata(
+	sessionHost: ClineSessionHostBoundary,
+	sessionId: string,
+	taskTitle: string | undefined,
+): Promise<void> {
+	const title = taskTitle?.trim();
+	if (!title) return;
+	const persistence = sessionHost as unknown as {
+		sessionService?: {
+			updateSession?: (input: { sessionId: string; title?: string | null }) => Promise<{ updated: boolean }>;
+		};
+	};
+	const updateSession = persistence.sessionService?.updateSession;
+	if (typeof updateSession !== "function") return;
+	try {
+		await updateSession.call(persistence.sessionService, { sessionId, title });
+	} catch {
+		// Best-effort only — Kanban board title remains canonical regardless.
+	}
+}
+
 // Own the SDK session host plus the taskId <-> sessionId bindings so higher layers can stay task-oriented.
 export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 	private readonly onTaskEvent: ((taskId: string, event: unknown) => void) | null;
@@ -146,6 +171,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			baseUrl: request.baseUrl,
 			reasoningEffort: request.reasoningEffort,
 			systemPrompt: request.systemPrompt,
+			taskTitle: request.taskTitle,
 			userInstructionWatcher: request.userInstructionWatcher,
 			requestToolApproval: request.requestToolApproval,
 		});
@@ -211,6 +237,8 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		if (startResult.sessionId !== requestedSessionId) {
 			this.taskIdBySessionId.delete(requestedSessionId);
 		}
+
+		await persistKanbanTitleToClineSessionMetadata(sessionHost, startResult.sessionId, request.taskTitle);
 
 		return {
 			sessionId: startResult.sessionId,
