@@ -400,6 +400,7 @@ function CloneTabContent({
 				<input
 					ref={gitUrlInputRef}
 					type="text"
+					id="add-project-git-url-input"
 					value={gitUrlInput}
 					onChange={(e) => setGitUrlInput(e.target.value)}
 					placeholder="e.g. https://github.com/user/repo.git"
