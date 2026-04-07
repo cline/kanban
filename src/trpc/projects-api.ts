@@ -301,7 +301,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 						let isGitRepository = false;
 						try {
 							const gitDirStat = await stat(resolve(entryPath, ".git"));
-							isGitRepository = gitDirStat.isDirectory();
+							isGitRepository = gitDirStat.isDirectory() || gitDirStat.isFile();
 						} catch {
 							// .git does not exist or is not accessible
 						}
