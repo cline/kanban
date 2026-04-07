@@ -797,7 +797,7 @@ export function CardDetailView({
 							editingTaskId={editingTaskId}
 							inlineTaskEditor={inlineTaskEditor}
 							onEditTask={onEditTask}
-							tttttttonSaveTaskTitle={onSaveTaskTitle}
+							onSaveTaskTitle={onSaveTaskTitle}
 							onCommitTask={onCommitTask}
 							onOpenPrTask={onOpenPrTask}
 							onMoveToTrashTask={onMoveReviewCardToTrash}

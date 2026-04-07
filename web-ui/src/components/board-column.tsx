@@ -185,6 +185,7 @@ export function BoardColumn({
 											isDependencyTarget={dependencyTargetTaskId === card.id}
 											isDependencyLinking={isDependencyLinking}
 											workspacePath={workspacePath}
+											onSaveTitle={onSaveTitle}
 											onClick={() => {
 												if (column.id === "backlog") {
 													onEditTask?.(card);

@@ -19,7 +19,7 @@ import { useMeasure } from "@/utils/react-use";
 import {
 	clampTextWithInlineSuffix,
 	getTaskPromptDescription,
-	normalizeTaskTextForDisplay,
+	normalizePromptForDisplay,
 	truncateTaskPromptLabel,
 } from "@/utils/task-prompt";
 import { DEFAULT_TEXT_MEASURE_FONT, measureTextWidth, readElementFontShorthand } from "@/utils/text-measure";
@@ -281,7 +281,7 @@ export function BoardCard({
 	}
 	const sessionActivity = rawSessionActivity ?? lastSessionActivityRef.current;
 	const displayTitle = useMemo(
-		() => normalizeTaskTextForDisplay(card.title) || truncateTaskPromptLabel(card.prompt),
+		() => normalizePromptForDisplay(card.title) || truncateTaskPromptLabel(card.prompt),
 		[card.prompt, card.title],
 	);
 	const displayDescription = useMemo(
@@ -350,10 +350,11 @@ export function BoardCard({
 		if (!onSaveTitle) {
 			return;
 		}
-		if (draftTitle === card.title) {
+		const trimmed = draftTitle.trim();
+		if (trimmed === card.title) {
 			return;
 		}
-		onSaveTitle(card.id, draftTitle);
+		onSaveTitle(card.id, trimmed);
 	};
 
 	const handleTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {

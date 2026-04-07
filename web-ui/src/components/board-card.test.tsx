@@ -66,7 +66,7 @@ vi.mock("@/utils/task-prompt", async () => {
 	return {
 		...actual,
 		truncateTaskPromptLabel: (prompt: string) => prompt.split("||")[0]?.trim() ?? "",
-		normalizeTaskTextForDisplay: (value: string) => value.split("||")[0]?.trim() ?? value.trim(),
+		normalizePromptForDisplay: (value: string) => value.split("||")[0]?.trim() ?? value.trim(),
 		getTaskPromptDescription: (prompt: string, title: string) => {
 			const normalized = prompt.trim();
 			if (!normalized.startsWith(title)) {

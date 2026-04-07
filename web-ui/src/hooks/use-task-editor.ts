@@ -8,7 +8,7 @@ import {
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 } from "@/hooks/app-utils";
 import type { RuntimeAgentId } from "@/runtime/types";
-import { addTaskToColumnWithResult, findCardSelection, updateTask } from "@/state/board-state";
+import { addTaskToColumnWithResult, findCardSelection, updateTask, updateTaskTitle } from "@/state/board-state";
 import { toTelemetrySelectedAgentId, trackTaskCreated } from "@/telemetry/events";
 import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
@@ -72,6 +72,7 @@ export interface UseTaskEditorResult {
 	handleCancelEditTask: () => void;
 	handleSaveEditedTask: () => string | null;
 	handleSaveAndStartEditedTask: () => void;
+	handleSaveTaskTitle: (taskId: string, title: string) => void;
 	handleCreateTask: (options?: CreateTaskOptions) => string | null;
 	handleCreateTasks: (prompts: string[], options?: CreateTaskOptions) => string[];
 	resetTaskEditorState: () => void;
@@ -183,6 +184,7 @@ export function useTaskEditor({
 		const selection = findCardSelection(board, editingTaskId);
 		if (!selection || selection.column.id !== "backlog") {
 			setEditingTaskId(null);
+			setEditTaskTitle("");
 			setEditTaskPrompt("");
 			setEditTaskStartInPlanMode(false);
 			setEditTaskAutoReviewEnabled(false);
@@ -196,11 +198,13 @@ export function useTaskEditor({
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskImages([]);
+		setNewTaskTitle("");
 		setIsInlineTaskCreateOpen(true);
 	}, []);
 
 	const handleCancelCreateTask = useCallback(() => {
 		setIsInlineTaskCreateOpen(false);
+		setNewTaskTitle("");
 		setNewTaskPrompt("");
 		setNewTaskImages([]);
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
@@ -231,7 +235,6 @@ export function useTaskEditor({
 
 	const handleCancelEditTask = useCallback(() => {
 		setEditingTaskId(null);
-		setEditTaskTitle("");
 		setEditTaskTitle("");
 		setEditTaskPrompt("");
 		setEditTaskStartInPlanMode(false);
@@ -272,9 +275,11 @@ export function useTaskEditor({
 		setEditingTaskId(null);
 		setEditTaskTitle("");
 		setEditTaskPrompt("");
+		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
 		setEditTaskAutoReviewMode("commit");
 		setEditTaskImages([]);
+		setEditTaskBranchRef("");
 		return savedTaskId;
 	}, [
 		editTaskAutoReviewEnabled,
@@ -283,6 +288,7 @@ export function useTaskEditor({
 		editTaskPrompt,
 		editTaskImages,
 		editTaskStartInPlanMode,
+		editTaskTitle,
 		editingTaskId,
 		resolvedDefaultTaskBranchRef,
 		setBoard,
@@ -295,6 +301,16 @@ export function useTaskEditor({
 		}
 		queueTaskStartAfterEdit?.(taskId);
 	}, [handleSaveEditedTask, queueTaskStartAfterEdit]);
+
+	const handleSaveTaskTitle = useCallback(
+		(taskId: string, title: string) => {
+			setBoard((currentBoard) => {
+				const updated = updateTaskTitle(currentBoard, taskId, title);
+				return updated.updated ? updated.board : currentBoard;
+			});
+		},
+		[setBoard],
+	);
 
 	const handleCreateTask = useCallback(
 		(options?: CreateTaskOptions): string | null => {
@@ -329,6 +345,7 @@ export function useTaskEditor({
 					[currentProjectId]: baseRef,
 				}));
 			}
+			setNewTaskTitle("");
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
 			setNewTaskBranchRef(baseRef);
@@ -392,6 +409,7 @@ export function useTaskEditor({
 					[currentProjectId]: baseRef,
 				}));
 			}
+			setNewTaskTitle("");
 			setNewTaskPrompt("");
 			setNewTaskImages([]);
 			setNewTaskBranchRef(baseRef);
@@ -419,6 +437,7 @@ export function useTaskEditor({
 		setEditingTaskId(null);
 		setNewTaskTitle("");
 		setNewTaskPrompt("");
+		setEditTaskTitle("");
 		setEditTaskPrompt("");
 		setEditTaskStartInPlanMode(false);
 		setEditTaskAutoReviewEnabled(false);
@@ -467,6 +486,7 @@ export function useTaskEditor({
 		handleCancelEditTask,
 		handleSaveEditedTask,
 		handleSaveAndStartEditedTask,
+		handleSaveTaskTitle,
 		handleCreateTask,
 		handleCreateTasks,
 		resetTaskEditorState,
