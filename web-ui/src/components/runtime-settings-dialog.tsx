@@ -8,6 +8,7 @@ import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } fr
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AccountOrganizationSection } from "@/components/shared/account-organization-section";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import {
 	getRuntimeShortcutIconComponent,
@@ -696,6 +697,8 @@ export function RuntimeSettingsDialog({
 						onError={setSaveError}
 					/>
 				) : null}
+
+				{selectedAgentId === "cline" ? <AccountOrganizationSection workspaceId={workspaceId} open={open} /> : null}
 
 				<div className="flex items-center justify-between mt-4 mb-1">
 					<h6 className="font-semibold text-text-primary m-0">Git button prompts</h6>

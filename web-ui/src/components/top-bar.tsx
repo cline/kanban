@@ -7,6 +7,7 @@ import {
 	Check,
 	ChevronDown,
 	CircleArrowDown,
+	Coins,
 	Command,
 	GitBranch,
 	Play,
@@ -308,6 +309,8 @@ export function TopBar({
 	canOpenWorkspace,
 	isOpeningWorkspace,
 	hideProjectDependentActions = false,
+	activeAccountLabel,
+	activeAccountBalance,
 }: {
 	onBack?: () => void;
 	workspacePath?: string;
@@ -342,6 +345,8 @@ export function TopBar({
 	canOpenWorkspace: boolean;
 	isOpeningWorkspace: boolean;
 	hideProjectDependentActions?: boolean;
+	activeAccountLabel?: string | null;
+	activeAccountBalance?: number | null;
 }): React.ReactElement {
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
@@ -599,6 +604,25 @@ export function TopBar({
 							data-testid="open-debug-dialog-button"
 							className="ml-0.5 mr-0.5"
 						/>
+					) : null}
+					{activeAccountLabel ? (
+						<Tooltip
+							side="bottom"
+							content={`Active: ${activeAccountLabel}${activeAccountBalance !== null && activeAccountBalance !== undefined ? ` · ${activeAccountBalance.toFixed(2)}` : ""}`}
+						>
+							<button
+								type="button"
+								onClick={() => onOpenSettings?.()}
+								className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-text-secondary hover:text-text-primary rounded-md hover:bg-surface-3 transition-colors"
+							>
+								<Coins size={12} />
+								<span>
+									{activeAccountBalance !== null && activeAccountBalance !== undefined
+										? `${activeAccountBalance.toFixed(2)}`
+										: activeAccountLabel}
+								</span>
+							</button>
+						</Tooltip>
 					) : null}
 					<Button
 						variant="ghost"

@@ -8,6 +8,9 @@ import * as ClineCore from "@clinebot/core/node";
 
 import {
 	addLocalProvider,
+	type ClineAccountBalance,
+	type ClineAccountOrganization,
+	type ClineAccountOrganizationBalance,
 	ClineAccountService,
 	type ClineAccountUser,
 	type ClineOrganization,
@@ -33,6 +36,8 @@ import {
 	ProviderSettingsManager,
 	type Tool,
 } from "@clinebot/core/node";
+
+export type { ClineAccountBalance, ClineAccountOrganization, ClineAccountOrganizationBalance };
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
@@ -572,4 +577,40 @@ export async function fetchSdkClineUserRemoteConfig(input: ApiRequestParams): Pr
 		getAuthToken: async () => input.accessToken,
 	});
 	return await accountService.fetchRemoteConfig();
+}
+
+export async function fetchSdkClineAccountBalance(input: ApiRequestParams): Promise<ClineAccountBalance> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	return await accountService.fetchBalance();
+}
+
+export async function fetchSdkOrganizationBalance(
+	input: ApiRequestParams & { organizationId: string },
+): Promise<ClineAccountOrganizationBalance> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	return await accountService.fetchOrganizationBalance(input.organizationId);
+}
+
+export async function switchSdkClineAccount(
+	input: ApiRequestParams & { organizationId?: string | null },
+): Promise<void> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	await accountService.switchAccount(input.organizationId ?? undefined);
+}
+
+export async function fetchSdkUserOrganizations(input: ApiRequestParams): Promise<ClineAccountOrganization[]> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	return await accountService.fetchUserOrganizations();
 }

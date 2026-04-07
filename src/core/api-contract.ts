@@ -543,6 +543,39 @@ export const runtimeClineKanbanAccessResponseSchema = z.object({
 });
 export type RuntimeClineKanbanAccessResponse = z.infer<typeof runtimeClineKanbanAccessResponseSchema>;
 
+export const runtimeClineAccountOrganizationSchema = z.object({
+	organizationId: z.string(),
+	name: z.string(),
+	active: z.boolean(),
+	roles: z.array(z.string()),
+});
+export type RuntimeClineAccountOrganization = z.infer<typeof runtimeClineAccountOrganizationSchema>;
+
+export const runtimeClineAccountOrganizationsResponseSchema = z.object({
+	organizations: z.array(runtimeClineAccountOrganizationSchema),
+	error: z.string().optional(),
+});
+export type RuntimeClineAccountOrganizationsResponse = z.infer<typeof runtimeClineAccountOrganizationsResponseSchema>;
+
+export const runtimeClineAccountBalanceResponseSchema = z.object({
+	balance: z.number().nullable(),
+	activeAccountLabel: z.string().nullable(),
+	activeOrganizationId: z.string().nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeClineAccountBalanceResponse = z.infer<typeof runtimeClineAccountBalanceResponseSchema>;
+
+export const runtimeClineAccountSwitchRequestSchema = z.object({
+	organizationId: z.string().nullable(),
+});
+export type RuntimeClineAccountSwitchRequest = z.infer<typeof runtimeClineAccountSwitchRequestSchema>;
+
+export const runtimeClineAccountSwitchResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeClineAccountSwitchResponse = z.infer<typeof runtimeClineAccountSwitchResponseSchema>;
+
 export const runtimeFeaturebaseTokenResponseSchema = z.object({
 	featurebaseJwt: z.string(),
 });

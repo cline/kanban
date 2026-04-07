@@ -4,7 +4,10 @@
 
 import { z } from "zod";
 import type {
+	RuntimeClineAccountBalanceResponse,
+	RuntimeClineAccountOrganizationsResponse,
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineAccountSwitchResponse,
 	RuntimeClineKanbanAccessResponse,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineProviderCatalogItem,
@@ -19,9 +22,11 @@ import { openInBrowser } from "../server/browser";
 import {
 	addSdkCustomProvider,
 	deleteSdkCustomProvider,
+	fetchSdkClineAccountBalance,
 	fetchSdkClineAccountProfile,
 	fetchSdkClineUserRemoteConfig,
 	fetchSdkFeaturebaseToken,
+	fetchSdkOrganizationBalance,
 	fetchSdkOrgData,
 	getLastUsedSdkProviderSettings,
 	getSdkProviderSettings,
@@ -37,6 +42,7 @@ import {
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
 	supportsSdkModelThinking,
+	switchSdkClineAccount,
 	updateSdkCustomProvider,
 } from "./sdk-provider-boundary";
 
@@ -508,6 +514,159 @@ export function createClineProviderService() {
 				return await tryFetchToken(oauthResolution.settings);
 			}
 			throw new Error("Failed to fetch Featurebase token.");
+		},
+
+		async getClineAccountBalance(): Promise<RuntimeClineAccountBalanceResponse> {
+			try {
+				const selectedSettings = getSelectedProviderSettings();
+				if (!selectedSettings) {
+					return { balance: null, activeAccountLabel: null, activeOrganizationId: null };
+				}
+				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
+				if (normalizedProviderId !== "cline") {
+					return { balance: null, activeAccountLabel: null, activeOrganizationId: null };
+				}
+
+				const resolveWithSettings = async (
+					settings: SdkProviderSettings,
+				): Promise<RuntimeClineAccountBalanceResponse> => {
+					const rawAccessToken = settings.auth?.accessToken?.trim() ?? "";
+					if (!rawAccessToken) {
+						return { balance: null, activeAccountLabel: null, activeOrganizationId: null };
+					}
+					const apiParams = {
+						apiBaseUrl: settings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
+						accessToken: ensureWorkosPrefix(rawAccessToken),
+					};
+					const me = await fetchSdkClineAccountProfile(apiParams);
+					const activeOrg = me.organizations?.find((org) => org.active) ?? null;
+					if (activeOrg) {
+						const orgBalance = await fetchSdkOrganizationBalance({
+							...apiParams,
+							organizationId: activeOrg.organizationId,
+						});
+						return {
+							balance: orgBalance.balance,
+							activeAccountLabel: activeOrg.name,
+							activeOrganizationId: activeOrg.organizationId,
+						};
+					}
+					const personalBalance = await fetchSdkClineAccountBalance(apiParams);
+					return {
+						balance: personalBalance.balance,
+						activeAccountLabel: "Personal",
+						activeOrganizationId: null,
+					};
+				};
+
+				try {
+					return await resolveWithSettings(selectedSettings);
+				} catch {
+					// Retry once after OAuth refresh.
+				}
+				const oauthResolution = await refreshManagedOauthSettings(selectedSettings);
+				if (oauthResolution?.settings) {
+					return await resolveWithSettings(oauthResolution.settings);
+				}
+				return { balance: null, activeAccountLabel: null, activeOrganizationId: null };
+			} catch (error) {
+				return {
+					balance: null,
+					activeAccountLabel: null,
+					activeOrganizationId: null,
+					error: toErrorMessage(error),
+				};
+			}
+		},
+
+		async getClineAccountOrganizations(): Promise<RuntimeClineAccountOrganizationsResponse> {
+			try {
+				const selectedSettings = getSelectedProviderSettings();
+				if (!selectedSettings) {
+					return { organizations: [] };
+				}
+				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
+				if (normalizedProviderId !== "cline") {
+					return { organizations: [] };
+				}
+
+				const resolveWithSettings = async (
+					settings: SdkProviderSettings,
+				): Promise<RuntimeClineAccountOrganizationsResponse> => {
+					const rawAccessToken = settings.auth?.accessToken?.trim() ?? "";
+					if (!rawAccessToken) {
+						return { organizations: [] };
+					}
+					const apiParams = {
+						apiBaseUrl: settings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
+						accessToken: ensureWorkosPrefix(rawAccessToken),
+					};
+					const me = await fetchSdkClineAccountProfile(apiParams);
+					return {
+						organizations: (me.organizations ?? []).map((org) => ({
+							organizationId: org.organizationId,
+							name: org.name,
+							active: org.active,
+							roles: org.roles ?? [],
+						})),
+					};
+				};
+
+				try {
+					return await resolveWithSettings(selectedSettings);
+				} catch {
+					// Retry once after OAuth refresh.
+				}
+				const oauthResolution = await refreshManagedOauthSettings(selectedSettings);
+				if (oauthResolution?.settings) {
+					return await resolveWithSettings(oauthResolution.settings);
+				}
+				return { organizations: [] };
+			} catch (error) {
+				return {
+					organizations: [],
+					error: toErrorMessage(error),
+				};
+			}
+		},
+
+		async switchClineAccount(organizationId: string | null): Promise<RuntimeClineAccountSwitchResponse> {
+			try {
+				const selectedSettings = getSelectedProviderSettings();
+				if (!selectedSettings) {
+					return { ok: false, error: "No provider settings configured." };
+				}
+				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
+				if (normalizedProviderId !== "cline") {
+					return { ok: false, error: "Account switching requires a Cline provider." };
+				}
+
+				const doSwitch = async (settings: SdkProviderSettings): Promise<RuntimeClineAccountSwitchResponse> => {
+					const rawAccessToken = settings.auth?.accessToken?.trim() ?? "";
+					if (!rawAccessToken) {
+						return { ok: false, error: "No access token configured." };
+					}
+					await switchSdkClineAccount({
+						apiBaseUrl: settings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
+						accessToken: ensureWorkosPrefix(rawAccessToken),
+						organizationId,
+					});
+					return { ok: true };
+				};
+
+				try {
+					return await doSwitch(selectedSettings);
+				} catch {
+					// Retry once after OAuth refresh.
+				}
+				const oauthResolution = await refreshManagedOauthSettings(selectedSettings);
+				if (oauthResolution?.settings) {
+					return await doSwitch(oauthResolution.settings);
+				}
+				return { ok: false, error: "Failed to switch account." };
+			} catch (error) {
+				return { ok: false, error: toErrorMessage(error) };
+			}
 		},
 
 		async resolveLaunchConfig(): Promise<ResolvedClineLaunchConfig> {
