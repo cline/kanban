@@ -52,7 +52,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	},
 	{
 		id: "kiro",
-		label: "Kiro CLI",
+		label: "Kiro",
 		binary: "kiro-cli",
 		baseArgs: ["chat"],
 		autonomousArgs: ["--trust-all-tools"],
