@@ -255,16 +255,20 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			const body = parseDirectoryListRequest(input);
 			const rootPath = deps.serverCwd;
 			const requestedPath = body.path?.trim() || "";
-			// Reject absolute paths from the client
+			// Reject absolute paths that fall outside the sandbox
 			if (requestedPath && isAbsolute(requestedPath)) {
-				return {
-					ok: false,
-					currentPath: rootPath,
-					parentPath: null,
-					rootPath,
-					entries: [],
-					error: "Access denied: absolute paths are not accepted.",
-				} satisfies RuntimeDirectoryListResponse;
+				const normalizedRoot = rootPath.endsWith("/") ? rootPath : `${rootPath}/`;
+				if (requestedPath !== rootPath && !requestedPath.startsWith(normalizedRoot)) {
+					return {
+						ok: false,
+						currentPath: rootPath,
+						parentPath: null,
+						rootPath,
+						entries: [],
+						error: "Access denied: absolute path is outside the server root directory.",
+					} satisfies RuntimeDirectoryListResponse;
+				}
+				// Absolute path is within sandbox — fall through to existing stat/readdir logic
 			}
 			const resolvedPath = resolve(rootPath, requestedPath) || rootPath;
 

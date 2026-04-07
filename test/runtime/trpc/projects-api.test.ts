@@ -163,11 +163,33 @@ describe("listDirectoryContents", () => {
 		expect(result.entries).toEqual([]);
 	});
 
-	it("rejects absolute paths from the client", async () => {
+	it("rejects absolute paths outside the sandbox", async () => {
 		const api = createProjectsApi(createDefaultDeps(testCwd));
 		const result = await api.listDirectoryContents(null, { path: "/tmp" });
 		expect(result.ok).toBe(false);
-		expect(result.error).toContain("absolute paths are not accepted");
+		expect(result.error).toContain("absolute path is outside the server root directory");
+	});
+
+	it("allows absolute paths within the sandbox", async () => {
+		const subdir = join(testCwd, "abs-allowed");
+		mkdirSync(subdir);
+		mkdirSync(join(subdir, "nested"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: subdir });
+		expect(result.ok).toBe(true);
+		expect(result.currentPath).toBe(subdir);
+		expect(result.entries).toHaveLength(1);
+		expect(result.entries[0]?.name).toBe("nested");
+	});
+
+	it("allows absolute path equal to rootPath", async () => {
+		mkdirSync(join(testCwd, "root-dir"));
+		const api = createProjectsApi(createDefaultDeps(testCwd));
+		const result = await api.listDirectoryContents(null, { path: testCwd });
+		expect(result.ok).toBe(true);
+		expect(result.currentPath).toBe(testCwd);
+		expect(result.entries).toHaveLength(1);
+		expect(result.entries[0]?.name).toBe("root-dir");
 	});
 
 	it("rejects deeply nested .. traversal that escapes CWD", async () => {
