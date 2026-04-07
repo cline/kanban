@@ -684,6 +684,7 @@ export function CardDetailView({
 										}
 										panelBackgroundColor={terminalColors.surfacePrimary}
 										terminalBackgroundColor={terminalColors.surfacePrimary}
+										theme={theme}
 										taskColumnId={selection.column.id}
 									/>
 								)}
@@ -803,6 +804,7 @@ export function CardDetailView({
 										panelBackgroundColor={terminalColors.surfaceRaised}
 										terminalBackgroundColor={terminalColors.surfaceRaised}
 										cursorColor={terminalColors.textPrimary}
+										theme={theme}
 										onConnectionReady={onBottomTerminalConnectionReady}
 										agentCommand={bottomTerminalAgentCommand}
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}

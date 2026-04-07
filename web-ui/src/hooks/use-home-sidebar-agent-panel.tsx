@@ -184,6 +184,7 @@ export function useHomeSidebarAgentPanel({
 				panelBackgroundColor={terminalColors.surfaceRaised}
 				terminalBackgroundColor={terminalColors.surfaceRaised}
 				cursorColor={terminalColors.textPrimary}
+				theme={theme}
 			/>
 		);
 	}
