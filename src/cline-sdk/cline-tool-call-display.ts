@@ -160,6 +160,9 @@ const KANBAN_SUBCOMMAND_LABELS: Record<string, string> = {
  * or a simple `kanban task create ...`.
  */
 function resolveKanbanCommandDisplay(command: string): ClineToolCallDisplay | null {
+	if (!/kanban/i.test(command)) {
+		return null;
+	}
 	const taskSubcommandMatch = command.match(/\btask\s+(create|link|unlink|trash|delete|start|update|list)\b/);
 	if (!taskSubcommandMatch?.[1]) {
 		return null;
@@ -174,8 +177,8 @@ function resolveKanbanCommandDisplay(command: string): ClineToolCallDisplay | nu
 	let inputSummary: string | null = null;
 
 	if (subcommand === "create") {
-		const promptMatch = command.match(/--prompt\s+(?:"([^"]*)"|'([^']*)'|"""([\s\S]*?)"""|(\S+))/);
-		const prompt = promptMatch?.[1] ?? promptMatch?.[2] ?? promptMatch?.[3] ?? promptMatch?.[4] ?? null;
+		const promptMatch = command.match(/--prompt\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+		const prompt = promptMatch?.[1] ?? promptMatch?.[2] ?? promptMatch?.[3] ?? null;
 		if (prompt) {
 			inputSummary = prompt.length > 80 ? `${prompt.slice(0, 80)}…` : prompt;
 		}
