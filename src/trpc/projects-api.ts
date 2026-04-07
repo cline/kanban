@@ -18,6 +18,7 @@ import {
 	removeWorkspaceStateFiles,
 } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import { cloneGitRepository } from "../workspace/git-clone";
 import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo";
 import { deleteTaskWorktree } from "../workspace/task-worktree";
 import type { RuntimeTrpcContext } from "./app-router";
@@ -73,7 +74,25 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				: null;
 			const resolveBasePath = preferredWorkspaceContext?.repoPath ?? deps.getActiveWorkspacePath() ?? process.cwd();
 			try {
-				const projectPath = deps.resolveProjectInputPath(body.path, resolveBasePath);
+				let projectPath: string;
+				if (body.gitUrl) {
+					// Clone from Git URL. If a custom path is provided alongside
+					// gitUrl, use it as the clone destination (still validated
+					// within CWD). Otherwise derive a destination from the URL.
+					const customDest = body.path ? deps.resolveProjectInputPath(body.path, resolveBasePath) : undefined;
+					const cloneResult = await cloneGitRepository(body.gitUrl, deps.serverCwd, customDest);
+					if (!cloneResult.ok) {
+						return {
+							ok: false,
+							project: null,
+							error: cloneResult.error ?? "Git clone failed.",
+						} satisfies RuntimeProjectAddResponse;
+					}
+					projectPath = cloneResult.clonedPath;
+				} else {
+					// path is guaranteed to exist here by the schema refine and the gitUrl branch above.
+					projectPath = deps.resolveProjectInputPath(body.path as string, resolveBasePath);
+				}
 				await deps.assertPathIsDirectory(projectPath);
 				if (!deps.hasGitRepository(projectPath)) {
 					if (!body.initializeGit) {

@@ -176,12 +176,14 @@ export function parseWorkspaceStateSaveRequest(value: unknown): RuntimeWorkspace
 
 export function parseProjectAddRequest(value: unknown): RuntimeProjectAddRequest {
 	const parsed = parseWithSchema(runtimeProjectAddRequestSchema, value);
-	const path = parsed.path.trim();
-	if (!path) {
-		throw new Error("Project path cannot be empty.");
+	const path = parsed.path?.trim() || undefined;
+	const gitUrl = parsed.gitUrl?.trim() || undefined;
+	if (!path && !gitUrl) {
+		throw new Error("Either path or gitUrl is required.");
 	}
 	return {
 		path,
+		gitUrl,
 		initializeGit: parsed.initializeGit,
 	};
 }

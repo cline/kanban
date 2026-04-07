@@ -411,10 +411,13 @@ export const runtimeProjectsResponseSchema = z.object({
 });
 export type RuntimeProjectsResponse = z.infer<typeof runtimeProjectsResponseSchema>;
 
-export const runtimeProjectAddRequestSchema = z.object({
-	path: z.string(),
-	initializeGit: z.boolean().optional(),
-});
+export const runtimeProjectAddRequestSchema = z
+	.object({
+		path: z.string().optional(),
+		gitUrl: z.string().optional(),
+		initializeGit: z.boolean().optional(),
+	})
+	.refine((data) => data.path || data.gitUrl, { message: "Either path or gitUrl is required" });
 export type RuntimeProjectAddRequest = z.infer<typeof runtimeProjectAddRequestSchema>;
 
 export const runtimeProjectAddResponseSchema = z.object({

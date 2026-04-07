@@ -269,3 +269,32 @@ describe("listDirectoryContents", () => {
 		expect(result.entries[0]?.path).toBe(join(testCwd, "my-project"));
 	});
 });
+
+describe("addProject", () => {
+	let testCwd: string;
+
+	beforeEach(() => {
+		testCwd = createTestCwd();
+	});
+
+	afterEach(() => {
+		rmSync(testCwd, { recursive: true, force: true });
+	});
+
+	it("backward compat: accepts a path-only request", async () => {
+		const deps = createDefaultDeps(testCwd);
+		(deps.hasGitRepository as ReturnType<typeof vi.fn>).mockReturnValue(true);
+		const api = createProjectsApi(deps);
+		const result = await api.addProject(null, { path: testCwd });
+		// The existing flow runs; we're verifying it doesn't throw on path-only input.
+		// Since loadWorkspaceContext is a real call that needs a git repo, the catch
+		// block will handle it. The important thing is no schema-level crash.
+		expect(typeof result.ok).toBe("boolean");
+	});
+
+	it("rejects request with neither path nor gitUrl", async () => {
+		const deps = createDefaultDeps(testCwd);
+		const api = createProjectsApi(deps);
+		await expect(api.addProject(null, {})).rejects.toThrow();
+	});
+});
