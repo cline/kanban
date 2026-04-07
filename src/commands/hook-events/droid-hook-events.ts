@@ -1,6 +1,6 @@
 import { open, stat } from "node:fs/promises";
 
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
+import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../../core/api-contract";
 
 const DROID_TRANSCRIPT_TAIL_SCAN_BYTES = 2 * 1024 * 1024;
 

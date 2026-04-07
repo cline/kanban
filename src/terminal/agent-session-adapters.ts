@@ -1,4 +1,5 @@
 import { access, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -582,6 +583,12 @@ function buildOpenCodePluginContent(
 
 function getHookAgentDirectory(agentId: RuntimeAgentId): string {
 	return join(getRuntimeHomePath(), "hooks", agentId);
+}
+
+const KIRO_KANBAN_AGENT_NAME = "kanban";
+
+function getKiroAgentConfigPath(): string {
+	return join(homedir(), ".kiro", "agents", `${KIRO_KANBAN_AGENT_NAME}.json`);
 }
 
 async function ensureTextFile(filePath: string, content: string, executable = false): Promise<void> {
@@ -1270,6 +1277,114 @@ const droidAdapter: AgentSessionAdapter = {
 	},
 };
 
+const kiroAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled && !input.startInPlanMode && !hasCliOption(args, "--trust-all-tools")) {
+			args.push("--trust-all-tools");
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume") && !hasCliOption(args, "-r")) {
+			args.push("--resume");
+		}
+
+		const hooks = resolveHookContext(input);
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		if (hooks || appendedSystemPrompt) {
+			const configPath = getKiroAgentConfigPath();
+			const config: Record<string, unknown> = {
+				name: KIRO_KANBAN_AGENT_NAME,
+				description: "Kanban-managed Kiro agent with hook forwarding.",
+				tools: ["*"],
+			};
+
+			if (hooks) {
+				config.hooks = {
+					agentSpawn: [
+						{
+							command: buildHookCommand("to_in_progress", {
+								source: "kiro",
+								hookEventName: "agentSpawn",
+							}),
+						},
+					],
+					userPromptSubmit: [
+						{
+							command: buildHookCommand("to_in_progress", {
+								source: "kiro",
+								hookEventName: "userPromptSubmit",
+							}),
+						},
+					],
+					preToolUse: [
+						{
+							command: buildHookCommand("activity", {
+								source: "kiro",
+								hookEventName: "preToolUse",
+							}),
+						},
+						{
+							command: buildHookCommand("to_in_progress", {
+								source: "kiro",
+								hookEventName: "preToolUse",
+							}),
+						},
+					],
+					postToolUse: [
+						{
+							command: buildHookCommand("activity", {
+								source: "kiro",
+								hookEventName: "postToolUse",
+							}),
+						},
+					],
+					stop: [
+						{
+							command: buildHookCommand("to_review", {
+								source: "kiro",
+								hookEventName: "stop",
+								activityText: "Waiting for review",
+							}),
+						},
+					],
+				};
+				Object.assign(
+					env,
+					createHookRuntimeEnv({
+						taskId: hooks.taskId,
+						workspaceId: hooks.workspaceId,
+					}),
+				);
+			}
+
+			if (appendedSystemPrompt) {
+				config.prompt = appendedSystemPrompt;
+			}
+
+			await ensureTextFile(configPath, JSON.stringify(config, null, 2));
+			if (!hasCliOption(args, "--agent")) {
+				args.push("--agent", KIRO_KANBAN_AGENT_NAME);
+			}
+		}
+
+		const planPrompt = input.startInPlanMode
+			? input.prompt.trim()
+				? `/plan ${input.prompt.trim()}`
+				: "/plan"
+			: input.prompt;
+		const withPromptLaunch = withPrompt(args, planPrompt, "append");
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+		};
+	},
+};
+
 const clineAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -1333,6 +1448,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
+	kiro: kiroAdapter,
 	cline: clineAdapter,
 };
 

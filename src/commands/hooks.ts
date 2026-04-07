@@ -13,15 +13,16 @@ import {
 	type CodexMappedHookEvent,
 	resolveCodexRolloutFinalMessageForCwd,
 	startCodexSessionWatcher,
-} from "./codex-hook-events";
-import { enrichDroidReviewMetadata } from "./droid-hook-events";
+} from "./hook-events/codex-hook-events";
+import { enrichDroidReviewMetadata } from "./hook-events/droid-hook-events";
+import { normalizeKiroHookMetadata } from "./hook-events/kiro-hook-events";
 
 export {
 	createCodexWatcherState,
 	parseCodexEventLine,
 	resolveCodexRolloutFinalMessageForCwd,
 	startCodexSessionWatcher,
-} from "./codex-hook-events";
+} from "./hook-events/codex-hook-events";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
 
@@ -309,6 +310,9 @@ export function inferHookSourceFromPayload(payload: Record<string, unknown> | nu
 	if (normalizedTranscriptPath?.includes("/.claude/")) {
 		return "claude";
 	}
+	if (normalizedTranscriptPath?.includes("/.kiro/")) {
+		return "kiro";
+	}
 	if (normalizedTranscriptPath?.includes("/.factory/")) {
 		return "droid";
 	}
@@ -323,6 +327,20 @@ function normalizeHookMetadata(
 	payload: Record<string, unknown> | null,
 	flagMetadata: Partial<RuntimeTaskHookActivity>,
 ): Partial<RuntimeTaskHookActivity> | undefined {
+	const inferredSource = inferHookSourceFromPayload(payload);
+	const sourceHint = flagMetadata.source ?? inferredSource;
+	if (sourceHint?.toLowerCase() === "kiro") {
+		const kiroMetadata = normalizeKiroHookMetadata({
+			event,
+			payload,
+			flagMetadata,
+			sourceHint,
+		});
+		if (kiroMetadata) {
+			return kiroMetadata;
+		}
+	}
+
 	const hookEventName = payload
 		? (readStringField(payload, "hook_event_name") ??
 			readStringField(payload, "hookEventName") ??
@@ -351,8 +369,6 @@ function normalizeHookMetadata(
 			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
 			readNestedString(payload, ["taskComplete", "result"]))
 		: null;
-
-	const inferredSource = inferHookSourceFromPayload(payload);
 
 	const activityText = inferActivityText(event, payload, toolName, finalMessage, notificationType);
 	const merged: Partial<RuntimeTaskHookActivity> = {
