@@ -6,21 +6,7 @@ import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-
-interface DirectoryEntry {
-	name: string;
-	path: string;
-	isGitRepository: boolean;
-}
-
-interface DirectoryListResponse {
-	ok: boolean;
-	currentPath: string;
-	parentPath: string | null;
-	rootPath: string;
-	entries: DirectoryEntry[];
-	error?: string;
-}
+import type { RuntimeDirectoryListEntry, RuntimeDirectoryListResponse } from "@/runtime/types";
 
 export interface RemoteFileBrowserDialogProps {
 	open: boolean;
@@ -40,7 +26,7 @@ export function RemoteFileBrowserDialog({
 	const [currentPath, setCurrentPath] = useState<string>("");
 	const [rootPath, setRootPath] = useState<string>("");
 	const [parentPath, setParentPath] = useState<string | null>(null);
-	const [entries, setEntries] = useState<DirectoryEntry[]>([]);
+	const [entries, setEntries] = useState<RuntimeDirectoryListEntry[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [pathInput, setPathInput] = useState("");
@@ -53,7 +39,7 @@ export function RemoteFileBrowserDialog({
 			setError(null);
 			try {
 				const trpcClient = getRuntimeTrpcClient(workspaceId);
-				const response: DirectoryListResponse = await trpcClient.projects.listDirectoryContents.query(
+				const response: RuntimeDirectoryListResponse = await trpcClient.projects.listDirectoryContents.query(
 					path !== undefined ? { path } : {},
 				);
 				if (fetchId !== fetchIdRef.current) {
@@ -188,7 +174,7 @@ function RemoteFileBrowserContent({
 	onNavigate: (path: string) => void;
 	isLoading: boolean;
 	error: string | null;
-	entries: DirectoryEntry[];
+	entries: RuntimeDirectoryListEntry[];
 }): ReactElement {
 	return (
 		<>
@@ -263,7 +249,7 @@ function DirectoryEntryList({
 }: {
 	isLoading: boolean;
 	error: string | null;
-	entries: DirectoryEntry[];
+	entries: RuntimeDirectoryListEntry[];
 	onNavigate: (path: string) => void;
 }): ReactElement {
 	return (
