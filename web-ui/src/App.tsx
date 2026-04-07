@@ -919,6 +919,7 @@ export default function App(): ReactElement {
 											initialHeight={homeTerminalPaneHeight}
 											onHeightChange={setHomeTerminalPaneHeight}
 											onCollapse={collapseHomeTerminal}
+											isExpanded={isHomeTerminalExpanded}
 										>
 											<div
 												style={{

@@ -745,6 +745,15 @@ body.kb-dependency-link-mode {
 	}
 }
 
+@keyframes kb-sidebar-slide-up {
+	from {
+		transform: translateY(100%);
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+
 @keyframes kb-sidebar-slide-in {
 	from {
 		transform: translateX(-100%);

@@ -665,93 +665,110 @@ export function CardDetailView({
 				className="flex flex-1 flex-col"
 				style={{ minHeight: 0, overflow: "hidden", background: "var(--color-surface-0)" }}
 			>
-				<MobileDetailTabBar activeTab={mobileTab} onTabChange={setMobileTab} showTerminal={showBottomTerminal} />
-				<div className="flex min-w-0 flex-1" style={{ minHeight: 0, overflow: "hidden" }}>
-					{/* Chat panel */}
-					<div
-						className="min-w-0 flex-1 flex-col"
-						style={{ display: mobileTab === "chat" ? "flex" : "none", minHeight: 0 }}
-					>
-						{agentChatPanel}
-					</div>
-					{/* Diff panel */}
-					<div
-						className="min-w-0 flex-1 flex-col"
-						style={{ display: mobileTab === "diff" ? "flex" : "none", minHeight: 0 }}
-					>
-						{isRuntimeAvailable ? (
-							<DiffToolbar
-								mode={diffMode}
-								onModeChange={setDiffMode}
-								isExpanded={false}
-								onToggleExpand={handleToggleDiffExpand}
-								hideExpand
-							/>
-						) : null}
-						<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
-							{isWorkspaceChangesPending ? (
-								<WorkspaceChangesLoadingPanel panelFlex="1 1 0" />
-							) : hasNoWorkspaceFileChanges ? (
-								<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
-							) : (
-								<DiffViewerPanel
-									workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-									selectedPath={selectedPath}
-									onSelectedPathChange={setSelectedPath}
-									viewMode="unified"
-									onAddToTerminal={
-										onAddReviewComments || showClineAgentChatPanel ? handleAddDiffComments : undefined
-									}
-									onSendToTerminal={
-										onSendReviewComments || showClineAgentChatPanel ? handleSendDiffComments : undefined
-									}
-									comments={diffComments}
-									onCommentsChange={setDiffComments}
-								/>
-							)}
-						</div>
-					</div>
-					{/* Files panel */}
-					<div
-						className="min-w-0 flex-1 flex-col"
-						style={{ display: mobileTab === "files" ? "flex" : "none", minHeight: 0 }}
-					>
-						<FileTreePanel
-							workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-							selectedPath={selectedPath}
-							onSelectPath={(path: string) => {
-								setSelectedPath(path);
-								setMobileTab("diff");
-							}}
-							panelFlex="1 1 0"
-						/>
-					</div>
-					{/* Terminal panel */}
-					{showBottomTerminal ? (
+				<MobileDetailTabBar activeTab={mobileTab} onTabChange={setMobileTab} showTerminal={false} />
+				<div className="relative flex min-w-0 flex-1 flex-col" style={{ minHeight: 0, overflow: "hidden" }}>
+					<div className="flex min-w-0 flex-1" style={{ minHeight: 0, overflow: "hidden" }}>
+						{/* Chat panel */}
 						<div
 							className="min-w-0 flex-1 flex-col"
-							style={{ display: mobileTab === "terminal" ? "flex" : "none", minHeight: 0 }}
+							style={{ display: mobileTab === "chat" ? "flex" : "none", minHeight: 0 }}
 						>
-							<AgentTerminalPanel
-								key={`mobile-shell-${bottomTerminalTaskId}`}
-								taskId={bottomTerminalTaskId}
-								workspaceId={currentProjectId}
-								summary={bottomTerminalSummary}
-								onSummary={onSessionSummary}
-								showSessionToolbar={false}
-								autoFocus={mobileTab === "terminal"}
-								onClose={onBottomTerminalClose}
-								minimalHeaderTitle="Terminal"
-								minimalHeaderSubtitle={bottomTerminalSubtitle}
-								panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-								terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-								cursorColor={TERMINAL_THEME_COLORS.textPrimary}
-								onConnectionReady={onBottomTerminalConnectionReady}
-								agentCommand={bottomTerminalAgentCommand}
-								onSendAgentCommand={onBottomTerminalSendAgentCommand}
-								isExpanded={isBottomTerminalExpanded}
-								onToggleExpand={onBottomTerminalToggleExpand}
+							{agentChatPanel}
+						</div>
+						{/* Diff panel */}
+						<div
+							className="min-w-0 flex-1 flex-col"
+							style={{ display: mobileTab === "diff" ? "flex" : "none", minHeight: 0 }}
+						>
+							{isRuntimeAvailable ? (
+								<DiffToolbar
+									mode={diffMode}
+									onModeChange={setDiffMode}
+									isExpanded={false}
+									onToggleExpand={handleToggleDiffExpand}
+									hideExpand
+								/>
+							) : null}
+							<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+								{isWorkspaceChangesPending ? (
+									<WorkspaceChangesLoadingPanel panelFlex="1 1 0" />
+								) : hasNoWorkspaceFileChanges ? (
+									<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
+								) : (
+									<DiffViewerPanel
+										workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+										selectedPath={selectedPath}
+										onSelectedPathChange={setSelectedPath}
+										viewMode="unified"
+										onAddToTerminal={
+											onAddReviewComments || showClineAgentChatPanel ? handleAddDiffComments : undefined
+										}
+										onSendToTerminal={
+											onSendReviewComments || showClineAgentChatPanel ? handleSendDiffComments : undefined
+										}
+										comments={diffComments}
+										onCommentsChange={setDiffComments}
+									/>
+								)}
+							</div>
+						</div>
+						{/* Files panel */}
+						<div
+							className="min-w-0 flex-1 flex-col"
+							style={{ display: mobileTab === "files" ? "flex" : "none", minHeight: 0 }}
+						>
+							<FileTreePanel
+								workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+								selectedPath={selectedPath}
+								onSelectPath={(path: string) => {
+									setSelectedPath(path);
+									setMobileTab("diff");
+								}}
+								panelFlex="1 1 0"
 							/>
+						</div>
+					</div>
+					{/* Terminal panel — bottom overlay */}
+					{showBottomTerminal ? (
+						<div className="absolute bottom-0 left-0 right-0 z-20">
+							<ResizableBottomPane
+								minHeight={200}
+								initialHeight={bottomTerminalPaneHeight}
+								onHeightChange={onBottomTerminalPaneHeightChange}
+								onCollapse={onBottomTerminalCollapse}
+								isExpanded={isBottomTerminalExpanded}
+							>
+								<div
+									style={{
+										display: "flex",
+										flex: "1 1 0",
+										minWidth: 0,
+										paddingLeft: 12,
+										paddingRight: 12,
+									}}
+								>
+									<AgentTerminalPanel
+										key={`mobile-shell-${bottomTerminalTaskId}`}
+										taskId={bottomTerminalTaskId}
+										workspaceId={currentProjectId}
+										summary={bottomTerminalSummary}
+										onSummary={onSessionSummary}
+										showSessionToolbar={false}
+										autoFocus
+										onClose={onBottomTerminalClose}
+										minimalHeaderTitle="Terminal"
+										minimalHeaderSubtitle={bottomTerminalSubtitle}
+										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+										onConnectionReady={onBottomTerminalConnectionReady}
+										agentCommand={bottomTerminalAgentCommand}
+										onSendAgentCommand={onBottomTerminalSendAgentCommand}
+										isExpanded={isBottomTerminalExpanded}
+										onToggleExpand={onBottomTerminalToggleExpand}
+									/>
+								</div>
+							</ResizableBottomPane>
 						</div>
 					) : null}
 				</div>
@@ -927,6 +944,7 @@ export function CardDetailView({
 								initialHeight={bottomTerminalPaneHeight}
 								onHeightChange={onBottomTerminalPaneHeightChange}
 								onCollapse={onBottomTerminalCollapse}
+								isExpanded={isBottomTerminalExpanded}
 							>
 								<div
 									style={{
