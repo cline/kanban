@@ -267,6 +267,17 @@ describe("kanban command display", () => {
 		expect(display.inputSummary).toBe("git status");
 	});
 
+	it("detects kanban command when it is not the first in a multi-command array", () => {
+		const display = getToolDisplay(
+			"run_commands",
+			JSON.stringify({
+				commands: ["git status", "kanban task create --prompt \"Fix the bug\""],
+			}),
+		);
+		expect(display.toolName).toBe("Creating task");
+		expect(display.inputSummary).toBe("Fix the bug");
+	});
+
 	it("does not match non-kanban tools that use task subcommands", () => {
 		// A tool named 'grunt' or 'task' itself should not trigger kanban labels
 		const display = getToolDisplay(

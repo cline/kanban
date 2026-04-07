@@ -315,8 +315,13 @@ function resolveKanbanRunCommandDisplay(input: unknown): ClineToolCallDisplay | 
 	if (!Array.isArray(commands) || commands.length === 0) {
 		return null;
 	}
-	const firstCommand = String(commands[0]);
-	return resolveKanbanCommandDisplay(firstCommand);
+	for (const cmd of commands) {
+		const display = resolveKanbanCommandDisplay(String(cmd));
+		if (display) {
+			return display;
+		}
+	}
+	return null;
 }
 
 export function getClineToolCallDisplay(toolName: string | null | undefined, input: unknown): ClineToolCallDisplay {
