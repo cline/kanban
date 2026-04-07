@@ -290,7 +290,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
 	});
 
-	it("writes Kiro agent hooks and enables plan mode prompts", async () => {
+	it("writes Kiro agent hooks and uses a Kanban-managed soft planning prompt", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-kiro-1",
@@ -308,8 +308,10 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
 		expect(launch.args).toContain("--agent");
 		expect(launch.args[launch.args.indexOf("--agent") + 1]).toBe("kanban");
-		expect(launch.args).not.toContain("--trust-all-tools");
-		expect(launch.args).toContain("/plan Investigate deployment drift");
+		expect(launch.args).toContain("--trust-all-tools");
+		const initialPrompt = launch.args.at(-1) ?? "";
+		expect(initialPrompt).toContain("Do not modify files");
+		expect(initialPrompt).toContain("Task:\nInvestigate deployment drift");
 
 		const configPath = join(homedir(), ".kiro", "agents", "kanban.json");
 		const config = JSON.parse(readFileSync(configPath, "utf8")) as {

@@ -1282,7 +1282,7 @@ const kiroAdapter: AgentSessionAdapter = {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
 
-		if (input.autonomousModeEnabled && !input.startInPlanMode && !hasCliOption(args, "--trust-all-tools")) {
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--trust-all-tools")) {
 			args.push("--trust-all-tools");
 		}
 
@@ -1369,10 +1369,16 @@ const kiroAdapter: AgentSessionAdapter = {
 			}
 		}
 
+		const trimmedPrompt = input.prompt.trim();
 		const planPrompt = input.startInPlanMode
-			? input.prompt.trim()
-				? `/plan ${input.prompt.trim()}`
-				: "/plan"
+			? [
+					"First, inspect the codebase and produce a clear implementation plan only.",
+					"Do not modify files, do not use write tools, and do not implement anything yet.",
+					"After you present the plan, ask for approval before making changes.",
+					trimmedPrompt
+						? `\n\nTask:\n${trimmedPrompt}`
+						: " Ask the user what they want planned if the task is unclear.",
+				].join(" ")
 			: input.prompt;
 		const withPromptLaunch = withPrompt(args, planPrompt, "append");
 		return {
