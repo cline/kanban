@@ -6,12 +6,14 @@ import {
 	buildDisplayItems,
 	buildHighlightedLineMap,
 	buildUnifiedDiffRows,
+	CollapsedBlockControls,
 	DiffRowText,
 	getHighlightedLineHtml,
 	resolvePrismGrammar,
 	resolvePrismLanguage,
 	truncatePathMiddle,
 	type UnifiedDiffRow,
+	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
@@ -135,7 +137,7 @@ function UnifiedDiff({
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
 }): React.ReactElement {
-	const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
+	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
 	const highlightedOldByLine = useMemo(
@@ -148,13 +150,6 @@ function UnifiedDiff({
 	);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
 	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
-
-	const toggleBlock = useCallback((id: string) => {
-		setExpandedBlocks((prev) => ({
-			...prev,
-			[id]: !prev[id],
-		}));
-	}, []);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
 		const rowKey = row.lineNumber != null ? commentKey(path, row.lineNumber, row.variant) : null;
@@ -236,23 +231,12 @@ function UnifiedDiff({
 
 				return (
 					<div key={item.block.id}>
-						<Button
-							variant="ghost"
-							size="sm"
-							fill
-							icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-							onClick={() => toggleBlock(item.block.id)}
-							className="!bg-surface-0"
-							style={{
-								fontSize: 12,
-								marginTop: 2,
-								marginBottom: 2,
-								borderRadius: 0,
-								justifyContent: "flex-start",
-							}}
-						>
-							{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
-						</Button>
+						<CollapsedBlockControls
+							block={item.block}
+							onExpandTop={expandTop}
+							onExpandBottom={expandBottom}
+							onExpandAll={expandAll}
+						/>
 						{item.block.expanded ? item.block.rows.map((row) => renderRow(row)) : null}
 					</div>
 				);
@@ -356,18 +340,11 @@ function SplitDiff({
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
 }): React.ReactElement {
-	const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
+	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
 	const prismGrammar = useMemo(() => resolvePrismGrammar(prismLanguage), [prismLanguage]);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
 	const displayItems = useMemo(() => buildDisplayItems(rows, expandedBlocks), [expandedBlocks, rows]);
-
-	const toggleBlock = useCallback((id: string) => {
-		setExpandedBlocks((prev) => ({
-			...prev,
-			[id]: !prev[id],
-		}));
-	}, []);
 
 	const renderSide = (row: UnifiedDiffRow, side: "left" | "right"): React.ReactElement => {
 		const rowLineNumber = row.lineNumber;
@@ -489,28 +466,20 @@ function SplitDiff({
 				<div key={item.block.id}>
 					<div className="kb-diff-split-grid-row">
 						<div className="kb-diff-split-cell kb-diff-split-cell-filled">
-							<Button
-								variant="ghost"
-								size="sm"
-								fill
-								className="justify-start text-xs rounded-none my-0.5 !bg-surface-0"
-								icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-								onClick={() => toggleBlock(item.block.id)}
-							>
-								{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
-							</Button>
+							<CollapsedBlockControls
+								block={item.block}
+								onExpandTop={expandTop}
+								onExpandBottom={expandBottom}
+								onExpandAll={expandAll}
+							/>
 						</div>
 						<div className="kb-diff-split-cell kb-diff-split-cell-filled kb-diff-split-cell-right">
-							<Button
-								variant="ghost"
-								size="sm"
-								fill
-								className="justify-start text-xs rounded-none my-0.5 !bg-surface-0"
-								icon={item.block.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-								onClick={() => toggleBlock(item.block.id)}
-							>
-								{`${item.block.expanded ? "Hide" : "Show"} ${item.block.count} unmodified lines`}
-							</Button>
+							<CollapsedBlockControls
+								block={item.block}
+								onExpandTop={expandTop}
+								onExpandBottom={expandBottom}
+								onExpandAll={expandAll}
+							/>
 						</div>
 					</div>
 					{item.block.expanded ? renderPairs(item.block.rows) : null}
