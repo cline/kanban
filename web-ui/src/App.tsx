@@ -995,6 +995,7 @@ export default function App(): ReactElement {
 									onEditTask={(task) => {
 										handleOpenEditTask(task, { preserveDetailSelection: true });
 									}}
+									tttttttttonSaveTaskTitle={handleSaveTaskTitle}
 									onCommitTask={handleCommitTask}
 									onOpenPrTask={handleOpenPrTask}
 									onAgentCommitTask={handleAgentCommitTask}
