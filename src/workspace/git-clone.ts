@@ -114,7 +114,7 @@ export async function cloneGitRepository(
 
 	// Run `git clone <url> <destination>`.
 	// The cwd for the git process should be the parent directory of the destination.
-	const result = await runGit(parentDir, ["clone", gitUrl, clonePath]);
+	const result = await runGit(parentDir, ["clone", "--", gitUrl, clonePath]);
 	if (!result.ok) {
 		return {
 			ok: false,

@@ -218,4 +218,41 @@ describe("cloneGitRepository", () => {
 		expect(result.ok).toBe(false);
 		expect(result.error).toContain("Failed to create parent directory");
 	});
+
+	it("passes '--' separator before the URL to prevent flag injection", async () => {
+		const maliciousUrl = "--upload-pack=/usr/bin/malicious";
+		const dest = join(testCwd, "repo");
+		fsMocks.access.mockRejectedValueOnce(new Error("ENOENT"));
+		fsMocks.mkdir.mockResolvedValueOnce(undefined);
+		childProcessMocks.execFilePromise.mockResolvedValueOnce({ stdout: "", stderr: "" });
+
+		await cloneGitRepository(maliciousUrl, testCwd, dest);
+
+		expect(childProcessMocks.execFilePromise).toHaveBeenCalledOnce();
+		const callArgs = childProcessMocks.execFilePromise.mock.calls[0];
+		const gitArgs: string[] = callArgs[1];
+		const cloneIdx = gitArgs.indexOf("clone");
+		const separatorIdx = gitArgs.indexOf("--");
+		const urlIdx = gitArgs.indexOf(maliciousUrl);
+
+		// The '--' separator must appear between 'clone' and the URL.
+		expect(separatorIdx).toBeGreaterThan(cloneIdx);
+		expect(urlIdx).toBeGreaterThan(separatorIdx);
+	});
+
+	it("always includes '--' separator even for normal URLs", async () => {
+		fsMocks.access.mockRejectedValueOnce(new Error("ENOENT"));
+		fsMocks.mkdir.mockResolvedValueOnce(undefined);
+		childProcessMocks.execFilePromise.mockResolvedValueOnce({ stdout: "", stderr: "" });
+
+		await cloneGitRepository("https://github.com/user/my-repo.git", testCwd);
+
+		const callArgs = childProcessMocks.execFilePromise.mock.calls[0];
+		const gitArgs: string[] = callArgs[1];
+		const separatorIdx = gitArgs.indexOf("--");
+		const urlIdx = gitArgs.indexOf("https://github.com/user/my-repo.git");
+
+		expect(separatorIdx).not.toBe(-1);
+		expect(urlIdx).toBeGreaterThan(separatorIdx);
+	});
 });
