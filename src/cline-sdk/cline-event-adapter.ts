@@ -14,6 +14,7 @@ import {
 	createReasoningMessage,
 	finishToolCallMessage,
 	isClineUserAttentionTool,
+	isCreditLimitError,
 	latestAssistantMessageMatches,
 	now,
 	setOrCreateAssistantMessage,
@@ -180,11 +181,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 	if (agentEvent?.type === "error") {
 		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
 		const recoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
-		const isCreditLimitError = errorMessage
-			? errorMessage.toLowerCase().includes("insufficient balance") ||
-				errorMessage.toLowerCase().includes("insufficient_credits") ||
-				(errorMessage.toLowerCase().includes("402") && errorMessage.toLowerCase().includes("balance"))
-			: false;
+		const creditLimitError = isCreditLimitError(errorMessage);
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		if (!recoverable) {
 			clearActiveTurnState(entry);
@@ -200,7 +197,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				: {
 						state: "awaiting_review",
 						reviewReason: "error",
-						warningMessage: isCreditLimitError ? null : (errorMessage ?? "Unknown agent error"),
+						warningMessage: creditLimitError ? null : (errorMessage ?? "Unknown agent error"),
 					}),
 			lastOutputAt: now(),
 			lastHookAt: now(),
@@ -212,7 +209,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				toolInputSummary: retainedToolActivity.toolInputSummary,
 				finalMessage: recoverable ? null : (errorMessage ?? "Unknown agent error"),
 				hookEventName: "agent_error",
-				notificationType: isCreditLimitError ? "credit_limit" : null,
+				notificationType: creditLimitError ? "credit_limit" : null,
 				source: "cline-sdk",
 			},
 		});

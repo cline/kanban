@@ -36,6 +36,7 @@ import {
 	createAssistantMessage,
 	createDefaultSummary,
 	createMessage,
+	isCreditLimitError,
 	now,
 	setOrCreateAssistantMessage,
 	updateSummary,
@@ -180,12 +181,8 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		error: unknown,
 	): void {
 		const errorMessage = toErrorMessage(error);
-		const normalizedErrorMessage = errorMessage.toLowerCase();
-		const isCreditLimitError =
-			normalizedErrorMessage.includes("insufficient balance") ||
-			normalizedErrorMessage.includes("insufficient_credits") ||
-			(normalizedErrorMessage.includes("402") && normalizedErrorMessage.includes("balance"));
-		if (!isCreditLimitError) {
+		const creditLimitError = isCreditLimitError(errorMessage);
+		if (!creditLimitError) {
 			const systemMessage = createMessage(
 				taskId,
 				"system",
@@ -200,7 +197,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			reviewReason: "error",
 			lastOutputAt: now(),
 			lastHookAt: now(),
-			warningMessage: isCreditLimitError ? null : errorMessage,
+			warningMessage: creditLimitError ? null : errorMessage,
 			latestHookActivity: {
 				activityText: `${context === "start" ? "Start" : "Send"} failed: ${errorMessage}`,
 				toolName: null,

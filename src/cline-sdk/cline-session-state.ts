@@ -4,6 +4,23 @@
 import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
 
 const CLINE_USER_ATTENTION_TOOL_NAMES = new Set(["ask_followup_question", "plan_mode_respond"]);
+
+/**
+ * Detect credit-limit / insufficient-balance errors from an error message string.
+ * Shared by the event adapter (for SDK agent events) and the session service (for
+ * start/send failures) so the detection logic stays in one place.
+ */
+export function isCreditLimitError(errorMessage: string | null): boolean {
+	if (!errorMessage) {
+		return false;
+	}
+	const normalized = errorMessage.toLowerCase();
+	return (
+		normalized.includes("insufficient balance") ||
+		normalized.includes("insufficient_credits") ||
+		(normalized.includes("402") && normalized.includes("balance"))
+	);
+}
 const WINDOWS_INVALID_SESSION_ID_CHARS = /[<>:"/\\|?*]/g;
 
 export interface ClineTaskSessionEntry {
