@@ -562,7 +562,9 @@ export async function fetchSdkFeaturebaseToken(input: ApiRequestParams): Promise
 	return { featurebaseJwt: response.featurebaseJwt };
 }
 
-export async function fetchSdkClineUserRemoteConfig(input: ApiRequestParams): Promise<SdkUserRemoteConfigResponse> {
+export async function fetchSdkClineUserRemoteConfig(
+	input: ApiRequestParams,
+): Promise<SdkUserRemoteConfigResponse | null> {
 	const accountServiceConstructor = ClineAccountService;
 	if (!accountServiceConstructor) {
 		throw new Error("ClineAccountService is not available from @clinebot/core/node.");
