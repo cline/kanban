@@ -12,6 +12,7 @@ import type {
 	RuntimeStateStreamMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
+	RuntimeStateStreamTaskChatClearedMessage,
 	RuntimeStateStreamTaskChatMessage,
 	RuntimeStateStreamTaskReadyForReviewMessage,
 	RuntimeStateStreamTaskSessionsMessage,
@@ -43,6 +44,7 @@ export interface RuntimeStateHub {
 	trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => void;
 	broadcastTaskChatMessage: (workspaceId: string, taskId: string, message: ClineTaskMessage) => void;
 	setTaskReadyHandler: (handler: ((input: { workspaceId: string; taskId: string }) => void) | null) => void;
+	broadcastTaskChatCleared: (workspaceId: string, taskId: string) => void;
 	handleUpgrade: (
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
@@ -194,6 +196,21 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			workspaceId,
 			taskId,
 			message,
+		};
+		for (const client of runtimeClients) {
+			sendRuntimeStateMessage(client, payload);
+		}
+	};
+
+	const broadcastTaskChatCleared = (workspaceId: string, taskId: string) => {
+		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+		if (!runtimeClients || runtimeClients.size === 0) {
+			return;
+		}
+		const payload: RuntimeStateStreamTaskChatClearedMessage = {
+			type: "task_chat_cleared",
+			workspaceId,
+			taskId,
 		};
 		for (const client of runtimeClients) {
 			sendRuntimeStateMessage(client, payload);
@@ -549,6 +566,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		setTaskReadyHandler: (handler) => {
 			taskReadyHandler = handler;
 		},
+		broadcastTaskChatCleared,
 		handleUpgrade: (request, socket, head, context) => {
 			runtimeStateWebSocketServer.handleUpgrade(request, socket, head, (ws) => {
 				runtimeStateWebSocketServer.emit("connection", ws, context);

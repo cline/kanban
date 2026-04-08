@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { notifyError } from "@/components/app-toaster";
+import {
+	clampAtLeast,
+	readOptionalPersistedResizeNumber,
+	writePersistedResizeNumber,
+} from "@/resize/resize-persistence";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
-import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
+import { LocalStorageKey, removeLocalStorageItem } from "@/storage/local-storage-store";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, CardSelection } from "@/types";
@@ -24,15 +29,10 @@ function estimateShellTerminalCols(): number {
 }
 
 function loadBottomTerminalPaneHeight(): number | undefined {
-	const storedValue = readLocalStorageItem(LocalStorageKey.BottomTerminalPaneHeight);
-	if (!storedValue) {
-		return undefined;
-	}
-	const parsedHeight = Number(storedValue);
-	if (!Number.isFinite(parsedHeight)) {
-		return undefined;
-	}
-	return Math.max(MIN_BOTTOM_TERMINAL_PANE_HEIGHT, parsedHeight);
+	return readOptionalPersistedResizeNumber({
+		key: LocalStorageKey.BottomTerminalPaneHeight,
+		normalize: (value) => clampAtLeast(value, MIN_BOTTOM_TERMINAL_PANE_HEIGHT),
+	});
 }
 
 export function getDetailTerminalTaskId(taskId: string): string {
@@ -112,6 +112,9 @@ export interface UseTerminalPanelsResult {
 	handleSendAgentCommandToHomeTerminal: () => void;
 	handleSendAgentCommandToDetailTerminal: () => void;
 	prepareTerminalForShortcut: (input: PrepareTerminalForShortcutInput) => Promise<PrepareTerminalForShortcutResult>;
+	resetBottomTerminalLayoutCustomizations: () => void;
+	collapseHomeTerminal: () => void;
+	collapseDetailTerminal: () => void;
 	closeHomeTerminal: () => void;
 	closeDetailTerminal: () => void;
 	resetTerminalPanelsState: () => void;
@@ -163,10 +166,34 @@ export function useTerminalPanels({
 		if (typeof height !== "number" || !Number.isFinite(height)) {
 			return;
 		}
-		const normalizedHeight = Math.max(MIN_BOTTOM_TERMINAL_PANE_HEIGHT, height);
+		const normalizedHeight = writePersistedResizeNumber({
+			key: LocalStorageKey.BottomTerminalPaneHeight,
+			value: height,
+			normalize: (value) => clampAtLeast(value, MIN_BOTTOM_TERMINAL_PANE_HEIGHT),
+		});
 		setLastBottomTerminalPaneHeight(normalizedHeight);
-		writeLocalStorageItem(LocalStorageKey.BottomTerminalPaneHeight, String(normalizedHeight));
 	}, []);
+
+	const resetBottomTerminalPaneHeight = useCallback(() => {
+		setLastBottomTerminalPaneHeight(undefined);
+		removeLocalStorageItem(LocalStorageKey.BottomTerminalPaneHeight);
+	}, []);
+
+	const resetBottomTerminalLayoutCustomizations = useCallback(() => {
+		resetBottomTerminalPaneHeight();
+		setIsHomeTerminalExpanded(false);
+		setDetailTerminalPanelStateByTaskId((previous) =>
+			Object.fromEntries(
+				Object.entries(previous).map(([taskId, panelState]) => [
+					taskId,
+					{
+						...panelState,
+						isExpanded: false,
+					},
+				]),
+			),
+		);
+	}, [resetBottomTerminalPaneHeight]);
 
 	const closeHomeTerminal = useCallback(() => {
 		setIsHomeTerminalOpen(false);
@@ -180,6 +207,16 @@ export function useTerminalPanels({
 		}
 		detailTerminalSelectionKeyRef.current = null;
 	}, [detailTerminalTaskId, updateDetailTerminalPanelState]);
+
+	const collapseHomeTerminal = useCallback(() => {
+		resetBottomTerminalPaneHeight();
+		closeHomeTerminal();
+	}, [closeHomeTerminal, resetBottomTerminalPaneHeight]);
+
+	const collapseDetailTerminal = useCallback(() => {
+		resetBottomTerminalPaneHeight();
+		closeDetailTerminal();
+	}, [closeDetailTerminal, resetBottomTerminalPaneHeight]);
 
 	const setHomeTerminalPaneHeight = useCallback(
 		(height: number | undefined) => {
@@ -475,6 +512,9 @@ export function useTerminalPanels({
 		handleSendAgentCommandToHomeTerminal,
 		handleSendAgentCommandToDetailTerminal,
 		prepareTerminalForShortcut,
+		resetBottomTerminalLayoutCustomizations,
+		collapseHomeTerminal,
+		collapseDetailTerminal,
 		closeHomeTerminal,
 		closeDetailTerminal,
 		resetTerminalPanelsState,

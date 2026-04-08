@@ -1,7 +1,7 @@
 ## npx kanban (Research Preview)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/83de5f2f-1d97-4380-949b-516e2afa782e" width="100%" />
+  <img src="https://github.com/user-attachments/assets/2aa3dcc7-94e3-4076-bcfe-6d0272007cfe" width="100%" />
 </p>
 
 A replacement for your IDE better suited for running many agents in parallel and reviewing diffs. Each task card gets its own terminal and worktree, all handled for you automatically. Enable auto-commit and link cards together to create dependency chains that complete large amounts of work autonomously.

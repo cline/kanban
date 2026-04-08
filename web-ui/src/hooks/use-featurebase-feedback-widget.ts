@@ -1,18 +1,40 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { fetchClineAccountProfile } from "@/runtime/runtime-config-query";
+import { isClineOauthAuthenticated } from "@/runtime/native-agent";
+import { fetchFeaturebaseToken } from "@/runtime/runtime-config-query";
 import type { RuntimeClineProviderSettings } from "@/runtime/types";
 
 const FEATUREBASE_SDK_ID = "featurebase-sdk";
 const FEATUREBASE_SDK_SRC = "https://do.featurebase.app/js/sdk.js";
 const FEATUREBASE_ORGANIZATION = "cline";
-const FEATUREBASE_OPEN_RETRY_DELAY_MS = 50;
-const FEATUREBASE_OPEN_WIDGET_MESSAGE = {
-	target: "FeaturebaseWidget",
-	data: {
-		action: "openFeedbackWidget",
-	},
-} as const;
+const FEATUREBASE_FEEDBACK_OVERLAY_SELECTOR = ".fb-feedback-widget-overlay";
+const FEATUREBASE_FEEDBACK_HIDDEN_CLASS = "fb-feedback-widget-overlay-hidden";
+
+/**
+ * Bounded retry delays (ms) after the initial attempt.
+ * After these are exhausted the hook stays in "error".
+ */
+export const RETRY_DELAYS = [2_000, 5_000] as const;
+
+// ---------------------------------------------------------------------------
+// Featurebase auth readiness state machine
+// ---------------------------------------------------------------------------
+
+/** Tracks whether the Featurebase SDK has been successfully identified. */
+export type FeaturebaseAuthState = "idle" | "loading" | "ready" | "error";
+
+export interface FeaturebaseFeedbackState {
+	/** Current identify readiness. */
+	authState: FeaturebaseAuthState;
+	/** Increments whenever the SDK confirms that the feedback widget opened. */
+	widgetOpenCount: number;
+	/** Authenticates the current user, then opens the feedback widget. */
+	openFeedbackWidget: () => Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Featurebase SDK internals
+// ---------------------------------------------------------------------------
 
 interface FeaturebaseCallbackPayload {
 	action?: string;
@@ -30,15 +52,7 @@ interface FeaturebaseWindow extends Window {
 	Featurebase?: FeaturebaseCommand;
 }
 
-interface ClineAccountProfile {
-	accountId: string | null;
-	email: string | null;
-	displayName: string | null;
-}
-
 let featurebaseSdkLoadPromise: Promise<void> | null = null;
-let isFeaturebaseFeedbackWidgetReady = false;
-let isFeaturebaseFeedbackWidgetOpenRequested = false;
 
 function ensureFeaturebaseCommand(win: FeaturebaseWindow): FeaturebaseCommand {
 	if (typeof win.Featurebase === "function") {
@@ -93,156 +107,200 @@ function ensureFeaturebaseSdkLoaded(): Promise<void> {
 	return featurebaseSdkLoadPromise;
 }
 
-function postOpenFeedbackWidgetMessage(): void {
-	window.postMessage(FEATUREBASE_OPEN_WIDGET_MESSAGE, "*");
+function closeFeaturebaseFeedbackWidget(win: Window): void {
+	postFeaturebaseWidgetAction(win, "closeWidget");
 }
 
-function flushFeaturebaseFeedbackWidgetOpenRequest(): void {
-	if (!isFeaturebaseFeedbackWidgetOpenRequested || !isFeaturebaseFeedbackWidgetReady) {
-		return;
-	}
-	isFeaturebaseFeedbackWidgetOpenRequested = false;
-	postOpenFeedbackWidgetMessage();
-	window.setTimeout(() => {
-		postOpenFeedbackWidgetMessage();
-	}, FEATUREBASE_OPEN_RETRY_DELAY_MS);
+function openFeaturebaseFeedbackWidget(win: Window): void {
+	postFeaturebaseWidgetAction(win, "openFeedbackWidget");
 }
 
-export function openFeaturebaseFeedbackWidget(): void {
-	const win = window as FeaturebaseWindow;
-	ensureFeaturebaseCommand(win);
-	isFeaturebaseFeedbackWidgetOpenRequested = true;
-	void ensureFeaturebaseSdkLoaded()
-		.then(() => {
-			flushFeaturebaseFeedbackWidgetOpenRequest();
-		})
-		.catch(() => {
-			// Best effort only.
-		});
+function postFeaturebaseWidgetAction(win: Window, action: string): void {
+	// The SDK accepts same-window postMessage commands for the feedback widget.
+	win.postMessage(
+		{
+			target: "FeaturebaseWidget",
+			data: { action },
+		},
+		win.location.origin,
+	);
 }
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 
 export function useFeaturebaseFeedbackWidget(input: {
 	workspaceId: string | null;
 	clineProviderSettings: RuntimeClineProviderSettings | null;
-}): void {
+}): FeaturebaseFeedbackState {
 	const { workspaceId, clineProviderSettings } = input;
-	const [clineProfile, setClineProfile] = useState<ClineAccountProfile | null>(null);
-	const [isClineProfileResolved, setIsClineProfileResolved] = useState(false);
-	const lastInitializedSignatureRef = useRef<string | null>(null);
-	const isManagedClineOauth =
-		clineProviderSettings?.oauthProvider === "cline" && clineProviderSettings.oauthAccessTokenConfigured;
+	const isAuthenticated = isClineOauthAuthenticated(clineProviderSettings);
 
-	useEffect(() => {
-		if (!isManagedClineOauth) {
-			setClineProfile(null);
-			setIsClineProfileResolved(true);
+	const [authState, setAuthState] = useState<FeaturebaseAuthState>("idle");
+	const [widgetOpenCount, setWidgetOpenCount] = useState(0);
+
+	const widgetInitializedRef = useRef(false);
+	const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const openAttemptRef = useRef(0);
+	const mountedRef = useRef(true);
+
+	function clearRetryTimer() {
+		if (retryTimerRef.current !== null) {
+			clearTimeout(retryTimerRef.current);
+			retryTimerRef.current = null;
+		}
+	}
+
+	const ensureFeedbackWidgetInitialized = useCallback(async (): Promise<void> => {
+		if (widgetInitializedRef.current) {
 			return;
 		}
-		let cancelled = false;
-		setIsClineProfileResolved(false);
-		void fetchClineAccountProfile(workspaceId)
-			.then((response) => {
-				if (cancelled) {
-					return;
-				}
-				setClineProfile(response.profile ?? null);
-			})
-			.catch(() => {
-				if (!cancelled) {
-					setClineProfile(null);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setIsClineProfileResolved(true);
-				}
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [isManagedClineOauth, workspaceId]);
 
-	const clineAccountId = clineProfile?.accountId ?? clineProviderSettings?.oauthAccountId ?? null;
-	const metadata = useMemo(() => {
-		const nextMetadata: Record<string, string> = {
-			app: "kanban",
-		};
-		if (clineAccountId) {
-			nextMetadata.cline_account_id = clineAccountId;
-		}
-		if (clineProfile?.displayName) {
-			nextMetadata.cline_display_name = clineProfile.displayName;
-		}
-		if (clineProfile?.email) {
-			nextMetadata.cline_email = clineProfile.email;
-		}
-		return nextMetadata;
-	}, [clineAccountId, clineProfile?.displayName, clineProfile?.email]);
-
-	const email = clineProfile?.email ?? undefined;
-	const displayName = clineProfile?.displayName ?? undefined;
-	const shouldIdentifyClineUser = isManagedClineOauth && Boolean(email || clineAccountId);
-	const signature = useMemo(
-		() =>
-			JSON.stringify({
-				email: email ?? null,
-				displayName: displayName ?? null,
-				shouldIdentifyClineUser,
-				metadata,
-			}),
-		[displayName, email, metadata, shouldIdentifyClineUser],
-	);
-
-	useEffect(() => {
 		const win = window as FeaturebaseWindow;
 		ensureFeaturebaseCommand(win);
-		let cancelled = false;
-		void ensureFeaturebaseSdkLoaded()
-			.then(() => {
-				if (cancelled || lastInitializedSignatureRef.current === signature) {
+		await ensureFeaturebaseSdkLoaded();
+
+		await new Promise<void>((resolve) => {
+			const featurebase = ensureFeaturebaseCommand(win);
+			featurebase(
+				"initialize_feedback_widget",
+				{
+					organization: FEATUREBASE_ORGANIZATION,
+					theme: "dark",
+					locale: "en",
+					metadata: { app: "kanban" },
+				},
+				(_error, callback) => {
+					if (callback?.action === "widgetOpened" && mountedRef.current) {
+						setWidgetOpenCount((current) => current + 1);
+					}
+				},
+			);
+			widgetInitializedRef.current = true;
+			resolve();
+		});
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			mountedRef.current = false;
+			clearRetryTimer();
+		};
+	}, []);
+
+	useEffect(() => {
+		const handleDocumentClick = (event: MouseEvent) => {
+			const overlay = document.querySelector(FEATUREBASE_FEEDBACK_OVERLAY_SELECTOR);
+			if (!(overlay instanceof HTMLElement)) {
+				return;
+			}
+			if (overlay.classList.contains(FEATUREBASE_FEEDBACK_HIDDEN_CLASS)) {
+				return;
+			}
+			if (event.target !== overlay) {
+				return;
+			}
+			closeFeaturebaseFeedbackWidget(window);
+		};
+
+		document.addEventListener("click", handleDocumentClick, true);
+		return () => {
+			document.removeEventListener("click", handleDocumentClick, true);
+		};
+	}, []);
+
+	useEffect(() => {
+		clearRetryTimer();
+		openAttemptRef.current += 1;
+		setAuthState("idle");
+	}, [workspaceId, isAuthenticated]);
+
+	const identifyWithRetries = useCallback(
+		async (attempt: number, retryIndex: number): Promise<void> => {
+			if (!workspaceId || !isAuthenticated) {
+				return;
+			}
+
+			try {
+				await ensureFeedbackWidgetInitialized();
+				if (openAttemptRef.current !== attempt) {
 					return;
 				}
-				const featurebase = ensureFeaturebaseCommand(win);
-				lastInitializedSignatureRef.current = signature;
-				isFeaturebaseFeedbackWidgetReady = false;
-				if (shouldIdentifyClineUser) {
-					featurebase("identify", {
-						organization: FEATUREBASE_ORGANIZATION,
-						email,
-						name: displayName,
-						userId: clineAccountId ?? undefined,
-					});
+
+				const tokenResponse = await fetchFeaturebaseToken(workspaceId);
+				if (openAttemptRef.current !== attempt) {
+					return;
 				}
-				featurebase(
-					"initialize_feedback_widget",
-					{
-						organization: FEATUREBASE_ORGANIZATION,
-						theme: "dark",
-						locale: "en",
-						email,
-						metadata,
-					},
-					(_error, callback) => {
-						if (callback?.action !== "widgetReady") {
-							return;
-						}
-						isFeaturebaseFeedbackWidgetReady = true;
-						flushFeaturebaseFeedbackWidgetOpenRequest();
-					},
-				);
-			})
-			.catch(() => {});
-		return () => {
-			cancelled = true;
-		};
-	}, [
-		clineAccountId,
-		displayName,
-		email,
-		isClineProfileResolved,
-		isManagedClineOauth,
-		metadata,
-		shouldIdentifyClineUser,
-		signature,
-	]);
+
+				const win = window as FeaturebaseWindow;
+				const featurebase = ensureFeaturebaseCommand(win);
+				await new Promise<void>((resolve, reject) => {
+					featurebase(
+						"identify",
+						{
+							organization: FEATUREBASE_ORGANIZATION,
+							featurebaseJwt: tokenResponse.featurebaseJwt,
+						},
+						(error) => {
+							if (openAttemptRef.current !== attempt) {
+								resolve();
+								return;
+							}
+							if (error) {
+								reject(error);
+								return;
+							}
+							resolve();
+						},
+					);
+				});
+
+				if (openAttemptRef.current !== attempt || !mountedRef.current) {
+					return;
+				}
+				clearRetryTimer();
+				setAuthState("ready");
+			} catch (error) {
+				if (openAttemptRef.current !== attempt || !mountedRef.current) {
+					return;
+				}
+
+				if (retryIndex >= RETRY_DELAYS.length) {
+					setAuthState("error");
+					throw error;
+				}
+
+				setAuthState("error");
+				const delay = RETRY_DELAYS[retryIndex];
+				await new Promise<void>((resolve) => {
+					retryTimerRef.current = setTimeout(resolve, delay);
+				});
+				if (openAttemptRef.current !== attempt || !mountedRef.current) {
+					return;
+				}
+				await identifyWithRetries(attempt, retryIndex + 1);
+			}
+		},
+		[ensureFeedbackWidgetInitialized, isAuthenticated, workspaceId],
+	);
+
+	const openFeedbackWidget = useCallback(async (): Promise<void> => {
+		if (!workspaceId || !isAuthenticated) {
+			return;
+		}
+
+		const attempt = ++openAttemptRef.current;
+		clearRetryTimer();
+		setAuthState("loading");
+
+		await identifyWithRetries(attempt, 0);
+		if (openAttemptRef.current !== attempt || !mountedRef.current) {
+			return;
+		}
+
+		openFeaturebaseFeedbackWidget(window);
+	}, [identifyWithRetries, isAuthenticated, workspaceId]);
+
+	return { authState, widgetOpenCount, openFeedbackWidget };
 }

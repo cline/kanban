@@ -8,11 +8,13 @@ import type { RuntimeClineReasoningEffort, RuntimeConfigResponse } from "@/runti
 const fetchClineProviderCatalogMock = vi.hoisted(() => vi.fn());
 const fetchClineProviderModelsMock = vi.hoisted(() => vi.fn());
 const addClineProviderMock = vi.hoisted(() => vi.fn());
+const updateClineProviderMock = vi.hoisted(() => vi.fn());
 const saveClineProviderSettingsMock = vi.hoisted(() => vi.fn());
 const runClineProviderOauthLoginMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/runtime-config-query", () => ({
 	addClineProvider: addClineProviderMock,
+	updateClineProvider: updateClineProviderMock,
 	fetchClineProviderCatalog: fetchClineProviderCatalogMock,
 	fetchClineProviderModels: fetchClineProviderModelsMock,
 	saveClineProviderSettings: saveClineProviderSettingsMock,
@@ -175,6 +177,7 @@ describe("useRuntimeSettingsClineController", () => {
 		fetchClineProviderCatalogMock.mockReset();
 		fetchClineProviderModelsMock.mockReset();
 		addClineProviderMock.mockReset();
+		updateClineProviderMock.mockReset();
 		saveClineProviderSettingsMock.mockReset();
 		runClineProviderOauthLoginMock.mockReset();
 		fetchClineProviderCatalogMock.mockResolvedValue([]);

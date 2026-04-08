@@ -1,5 +1,5 @@
 import { AlertCircle, ChevronDown, ChevronRight, GitCommit, GitCompare } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import {
 	buildUnifiedDiffRows,
@@ -8,6 +8,9 @@ import {
 	truncatePathMiddle,
 	type UnifiedDiffRow,
 } from "@/components/shared/diff-renderer";
+import { ResizeHandle } from "@/resize/resize-handle";
+import { useGitCommitDiffLayout } from "@/resize/use-git-commit-diff-layout";
+import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeGitCommitDiffFile, RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 
@@ -86,11 +89,14 @@ export function GitCommitDiffPanel({
 	headerContent?: React.ReactNode;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
+	const { fileTreePanelRatio, setFileTreePanelRatio } = useGitCommitDiffLayout();
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const sectionElementsRef = useRef<Record<string, HTMLElement | null>>({});
+	const diffLayoutRef = useRef<HTMLDivElement | null>(null);
 	const programmaticScrollUntilRef = useRef(0);
 	const suppressScrollSyncUntilRef = useRef(0);
 	const scrollSyncSelectionRef = useRef<{ path: string; at: number } | null>(null);
+	const { startDrag: startDiffSplitResize } = useResizeDrag();
 
 	const files = diffSource?.files ?? [];
 	const filePaths = useMemo(() => {
@@ -106,6 +112,31 @@ export function GitCommitDiffPanel({
 		}
 		return toWorkspaceFileChangeFormat(diffSource);
 	}, [diffSource]);
+
+	const handleDiffSplitSeparatorMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			const container = diffLayoutRef.current;
+			if (!container) {
+				return;
+			}
+			const containerWidth = Math.max(container.offsetWidth, 1);
+			const startX = event.clientX;
+			const startRatio = fileTreePanelRatio;
+			startDiffSplitResize(event, {
+				axis: "x",
+				cursor: "ew-resize",
+				onMove: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setFileTreePanelRatio(startRatio - deltaRatio);
+				},
+				onEnd: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setFileTreePanelRatio(startRatio - deltaRatio);
+				},
+			});
+		},
+		[fileTreePanelRatio, setFileTreePanelRatio, startDiffSplitResize],
+	);
 
 	useEffect(() => {
 		setExpandedPaths({});
@@ -280,18 +311,21 @@ export function GitCommitDiffPanel({
 		);
 	}
 
+	const fileTreePanelPercent = `${(fileTreePanelRatio * 100).toFixed(1)}%`;
+	const diffContentPanelPercent = `${((1 - fileTreePanelRatio) * 100).toFixed(1)}%`;
+
 	return (
 		<div
+			ref={diffLayoutRef}
 			style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}
 		>
 			<div
 				style={{
 					display: "flex",
-					flex: "1 1 0",
-					flexDirection: "column",
+					flex: `0 0 ${diffContentPanelPercent}`,
 					minWidth: 0,
 					minHeight: 0,
-					borderRight: "1px solid var(--color-divider)",
+					flexDirection: "column",
 				}}
 			>
 				{headerContent ? headerContent : null}
@@ -399,11 +433,27 @@ export function GitCommitDiffPanel({
 					})}
 				</div>
 			</div>
-			<FileTreePanel
-				workspaceFiles={workspaceFilesForTree}
-				selectedPath={selectedPath}
-				onSelectPath={onSelectPath}
+			<ResizeHandle
+				orientation="vertical"
+				ariaLabel="Resize git diff panels"
+				onMouseDown={handleDiffSplitSeparatorMouseDown}
+				className="z-10"
 			/>
+			<div
+				style={{
+					display: "flex",
+					flex: `0 0 ${fileTreePanelPercent}`,
+					minWidth: 0,
+					minHeight: 0,
+				}}
+			>
+				<FileTreePanel
+					workspaceFiles={workspaceFilesForTree}
+					selectedPath={selectedPath}
+					onSelectPath={onSelectPath}
+					panelFlex="1 1 0"
+				/>
+			</div>
 		</div>
 	);
 }

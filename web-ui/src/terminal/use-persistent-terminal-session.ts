@@ -1,6 +1,7 @@
 import type { MutableRefObject } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { getTerminalThemeColors, useTheme } from "@/hooks/use-theme";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { disposePersistentTerminal, ensurePersistentTerminal } from "@/terminal/persistent-terminal-manager";
 import { registerTerminalController } from "@/terminal/terminal-controller-registry";
@@ -38,6 +39,8 @@ export function usePersistentTerminalSession({
 	terminalBackgroundColor,
 	cursorColor,
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
+	const { themeId } = useTheme();
+	const themeColors = useMemo(() => getTerminalThemeColors(themeId), [themeId]);
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<ReturnType<typeof ensurePersistentTerminal> | null>(null);
 	const callbackRef = useRef<{
@@ -100,6 +103,7 @@ export function usePersistentTerminalSession({
 			workspaceId,
 			cursorColor,
 			terminalBackgroundColor,
+			themeColors,
 		});
 		if (didSessionRestart) {
 			terminal.reset();
@@ -124,6 +128,7 @@ export function usePersistentTerminalSession({
 			{
 				cursorColor,
 				terminalBackgroundColor,
+				themeColors,
 			},
 			{
 				autoFocus,
@@ -139,7 +144,17 @@ export function usePersistentTerminalSession({
 				terminalRef.current = null;
 			}
 		};
-	}, [autoFocus, cursorColor, enabled, isVisible, sessionStartedAt, taskId, terminalBackgroundColor, workspaceId]);
+	}, [
+		autoFocus,
+		cursorColor,
+		enabled,
+		isVisible,
+		sessionStartedAt,
+		taskId,
+		terminalBackgroundColor,
+		themeColors,
+		workspaceId,
+	]);
 
 	useEffect(() => {
 		return registerTerminalController(taskId, {

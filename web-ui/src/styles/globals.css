@@ -47,6 +47,163 @@
 
 }
 
+/* -- Theme overrides -------------------------------------------------- */
+/* Each [data-theme] block overrides only the structural palette;
+   status colors, typography, and border-radius stay constant. */
+
+[data-theme="midnight"] {
+	--color-surface-0: #181B2E;
+	--color-surface-1: #1E2140;
+	--color-surface-2: #272B4A;
+	--color-surface-3: #303555;
+	--color-surface-4: #3A4060;
+	--color-border: #2A2F52;
+	--color-border-bright: #3E4470;
+	--color-border-focus: #7C8AFF;
+	--color-divider: #12142A;
+	--color-text-primary: #E0E4F0;
+	--color-text-secondary: #8B90B0;
+	--color-text-tertiary: #686E92;
+	--color-accent: #7C8AFF;
+	--color-accent-hover: #9BA6FF;
+}
+
+[data-theme="forest"] {
+	--color-surface-0: #1A2418;
+	--color-surface-1: #1F2E1C;
+	--color-surface-2: #263823;
+	--color-surface-3: #2E422B;
+	--color-surface-4: #374C34;
+	--color-border: #2A3C26;
+	--color-border-bright: #3E5638;
+	--color-border-focus: #5DB85D;
+	--color-divider: #141E12;
+	--color-text-primary: #DCE8D8;
+	--color-text-secondary: #8FA88A;
+	--color-text-tertiary: #6E8468;
+	--color-accent: #5DB85D;
+	--color-accent-hover: #7CCC7C;
+}
+
+[data-theme="sunset"] {
+	--color-surface-0: #261E18;
+	--color-surface-1: #30251C;
+	--color-surface-2: #3A2E22;
+	--color-surface-3: #453829;
+	--color-surface-4: #504231;
+	--color-border: #3D3225;
+	--color-border-bright: #564838;
+	--color-border-focus: #E8943A;
+	--color-divider: #1E1610;
+	--color-text-primary: #F0E4D8;
+	--color-text-secondary: #B09880;
+	--color-text-tertiary: #8A7460;
+	--color-accent: #E8943A;
+	--color-accent-hover: #F0AC5C;
+}
+
+[data-theme="ocean"] {
+	--color-surface-0: #162028;
+	--color-surface-1: #1B2830;
+	--color-surface-2: #22323A;
+	--color-surface-3: #2A3C45;
+	--color-surface-4: #334650;
+	--color-border: #253640;
+	--color-border-bright: #384E5A;
+	--color-border-focus: #34B5C8;
+	--color-divider: #101820;
+	--color-text-primary: #D8ECF0;
+	--color-text-secondary: #80A8B0;
+	--color-text-tertiary: #608890;
+	--color-accent: #34B5C8;
+	--color-accent-hover: #56CCD8;
+}
+
+[data-theme="rose"] {
+	--color-surface-0: #261A22;
+	--color-surface-1: #30202A;
+	--color-surface-2: #3A2834;
+	--color-surface-3: #45323E;
+	--color-surface-4: #503C48;
+	--color-border: #3D2A36;
+	--color-border-bright: #5A3E50;
+	--color-border-focus: #E05A8A;
+	--color-divider: #1E1218;
+	--color-text-primary: #F0DCE6;
+	--color-text-secondary: #B08898;
+	--color-text-tertiary: #8A6878;
+	--color-accent: #E05A8A;
+	--color-accent-hover: #F07CA4;
+}
+
+[data-theme="lavender"] {
+	--color-surface-0: #201C28;
+	--color-surface-1: #282330;
+	--color-surface-2: #312C3A;
+	--color-surface-3: #3B3645;
+	--color-surface-4: #454050;
+	--color-border: #332E42;
+	--color-border-bright: #4A4460;
+	--color-border-focus: #A07CDB;
+	--color-divider: #181420;
+	--color-text-primary: #E6E0F0;
+	--color-text-secondary: #9890B0;
+	--color-text-tertiary: #787092;
+	--color-accent: #A07CDB;
+	--color-accent-hover: #B898F0;
+}
+
+[data-theme="slate"] {
+	--color-surface-0: #1C2028;
+	--color-surface-1: #222830;
+	--color-surface-2: #2A313A;
+	--color-surface-3: #333B45;
+	--color-surface-4: #3C4550;
+	--color-border: #2C3540;
+	--color-border-bright: #404C5A;
+	--color-border-focus: #6094C0;
+	--color-divider: #141820;
+	--color-text-primary: #E0E6F0;
+	--color-text-secondary: #8898A8;
+	--color-text-tertiary: #687888;
+	--color-accent: #6094C0;
+	--color-accent-hover: #80B0D8;
+}
+
+[data-theme="ember"] {
+	--color-surface-0: #261C1A;
+	--color-surface-1: #302220;
+	--color-surface-2: #3A2A28;
+	--color-surface-3: #453432;
+	--color-surface-4: #503E3C;
+	--color-border: #3D2C2A;
+	--color-border-bright: #56403C;
+	--color-border-focus: #D05A4A;
+	--color-divider: #1E1412;
+	--color-text-primary: #F0DCD8;
+	--color-text-secondary: #B09088;
+	--color-text-tertiary: #8A6E68;
+	--color-accent: #D05A4A;
+	--color-accent-hover: #E07868;
+}
+
+[data-theme="nord"] {
+	--color-surface-0: #2E3440;
+	--color-surface-1: #3B4252;
+	--color-surface-2: #434C5E;
+	--color-surface-3: #4C566A;
+	--color-surface-4: #5A657A;
+	--color-border: #566176;
+	--color-border-bright: #606E82;
+	--color-border-focus: #88C0D0;
+	--color-divider: #242832;
+	--color-text-primary: #ECEFF4;
+	--color-text-secondary: #A0AAB8;
+	--color-text-tertiary: #7B8594;
+	--color-accent: #88C0D0;
+	--color-accent-hover: #A0D0E0;
+}
+
 html,
 body,
 #root {
@@ -790,4 +947,3 @@ body.kb-dependency-link-mode {
 		app-region: no-drag;
 	}
 }
-

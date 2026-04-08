@@ -392,6 +392,22 @@ export function useGitHistoryData({
 	});
 
 	useEffect(() => {
+		if (enabled) {
+			return;
+		}
+		abortInFlightLogRequest();
+		setCommits([]);
+		setTotalCommitCount(0);
+		setIsLogLoading(false);
+		setIsLoadingMoreCommits(false);
+		setLogErrorMessage(null);
+		setResolvedLogKey(null);
+		refsQuery.setData(null);
+		diffQuery.setData(null);
+		workingCopyQuery.setData(null);
+	}, [abortInFlightLogRequest, diffQuery.setData, enabled, refsQuery.setData, workingCopyQuery.setData]);
+
+	useEffect(() => {
 		if (!isScopeTransitioning) {
 			return;
 		}

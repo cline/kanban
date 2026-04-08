@@ -146,16 +146,18 @@ async function flushPromises(): Promise<void> {
 
 function HookHarness({
 	taskScope,
+	enabled = true,
 	onRender,
 }: {
 	taskScope: { taskId: string; baseRef: string } | null;
+	enabled?: boolean;
 	onRender: (snapshot: HookSnapshot) => void;
 }): null {
 	const gitHistory = useGitHistoryData({
 		workspaceId: "project-1",
 		taskScope,
 		gitSummary: createGitSummary(taskScope ? "task-branch" : "main"),
-		enabled: true,
+		enabled,
 	});
 
 	onRender({
@@ -283,6 +285,69 @@ describe("useGitHistoryData", () => {
 
 		const firstSnapshot = snapshots[0];
 		expect(firstSnapshot).toMatchObject({
+			refs: [],
+			activeRefName: null,
+			commits: [],
+			selectedCommitHash: null,
+			isRefsLoading: true,
+			isLogLoading: true,
+			isDiffLoading: true,
+		});
+	});
+
+	it("clears cached refs and diff data when the panel closes so reopen starts cleanly", async () => {
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskScope={null}
+					onRender={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+
+		expect(snapshots.at(-1)).toMatchObject({
+			refs: ["main"],
+			activeRefName: "main",
+			commits: ["homehash1"],
+			selectedCommitHash: "homehash1",
+			isRefsLoading: false,
+			isLogLoading: false,
+			isDiffLoading: false,
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskScope={null}
+					enabled={false}
+					onRender={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+
+		const snapshotsBeforeReopen = snapshots.length;
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskScope={null}
+					enabled={true}
+					onRender={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+		});
+
+		const reopenSnapshot = snapshots[snapshotsBeforeReopen];
+		expect(reopenSnapshot).toMatchObject({
 			refs: [],
 			activeRefName: null,
 			commits: [],

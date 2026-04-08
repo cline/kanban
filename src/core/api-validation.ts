@@ -7,6 +7,7 @@ import {
 	type RuntimeClineOauthLoginRequest,
 	type RuntimeClineProviderModelsRequest,
 	type RuntimeClineProviderSettingsSaveRequest,
+	type RuntimeClineUpdateProviderRequest,
 	type RuntimeCommandRunRequest,
 	type RuntimeConfigSaveRequest,
 	type RuntimeGitCheckoutRequest,
@@ -36,6 +37,7 @@ import {
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineProviderModelsRequestSchema,
 	runtimeClineProviderSettingsSaveRequestSchema,
+	runtimeClineUpdateProviderRequestSchema,
 	runtimeCommandRunRequestSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeGitCheckoutRequestSchema,
@@ -375,15 +377,73 @@ export function parseClineAddProviderRequest(value: unknown): RuntimeClineAddPro
 	};
 }
 
+export function parseClineUpdateProviderRequest(value: unknown): RuntimeClineUpdateProviderRequest {
+	const parsed = parseWithSchema(runtimeClineUpdateProviderRequestSchema, value);
+	const providerId = parsed.providerId.trim().toLowerCase().replace(/\s+/g, "-");
+	if (!providerId) {
+		throw new Error("Provider ID cannot be empty.");
+	}
+
+	const headers =
+		parsed.headers === undefined
+			? undefined
+			: parsed.headers === null
+				? null
+				: Object.fromEntries(
+						Object.entries(parsed.headers)
+							.map(([key, entry]) => [key.trim(), entry.trim()] as const)
+							.filter(([key]) => key.length > 0),
+					);
+	const models = parsed.models?.map((model) => model.trim()).filter((model) => model.length > 0);
+
+	return {
+		providerId,
+		...(parsed.name !== undefined ? { name: parsed.name.trim() } : {}),
+		...(parsed.baseUrl !== undefined ? { baseUrl: parsed.baseUrl.trim() } : {}),
+		...(parsed.apiKey !== undefined ? { apiKey: parsed.apiKey?.trim() || null } : {}),
+		...(headers !== undefined ? { headers } : {}),
+		...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
+		...(models !== undefined ? { models: [...new Set(models)] } : {}),
+		...(parsed.defaultModelId !== undefined ? { defaultModelId: parsed.defaultModelId?.trim() || null } : {}),
+		...(parsed.modelsSourceUrl !== undefined ? { modelsSourceUrl: parsed.modelsSourceUrl?.trim() || null } : {}),
+		...(parsed.capabilities ? { capabilities: [...new Set(parsed.capabilities)] } : {}),
+	};
+}
+
 export function parseClineProviderSettingsSaveRequest(value: unknown): RuntimeClineProviderSettingsSaveRequest {
 	const parsed = parseWithSchema(runtimeClineProviderSettingsSaveRequestSchema, value);
 	const providerId = parsed.providerId.trim();
 	if (!providerId) {
 		throw new Error("Provider ID cannot be empty.");
 	}
+
+	const aws =
+		parsed.aws === undefined
+			? undefined
+			: {
+					...(parsed.aws.accessKey !== undefined ? { accessKey: parsed.aws.accessKey?.trim() || null } : {}),
+					...(parsed.aws.secretKey !== undefined ? { secretKey: parsed.aws.secretKey?.trim() || null } : {}),
+					...(parsed.aws.sessionToken !== undefined
+						? { sessionToken: parsed.aws.sessionToken?.trim() || null }
+						: {}),
+					...(parsed.aws.region !== undefined ? { region: parsed.aws.region?.trim() || null } : {}),
+					...(parsed.aws.profile !== undefined ? { profile: parsed.aws.profile?.trim() || null } : {}),
+					...(parsed.aws.authentication !== undefined ? { authentication: parsed.aws.authentication } : {}),
+					...(parsed.aws.endpoint !== undefined ? { endpoint: parsed.aws.endpoint?.trim() || null } : {}),
+				};
+	const gcp =
+		parsed.gcp === undefined
+			? undefined
+			: {
+					...(parsed.gcp.projectId !== undefined ? { projectId: parsed.gcp.projectId?.trim() || null } : {}),
+					...(parsed.gcp.region !== undefined ? { region: parsed.gcp.region?.trim() || null } : {}),
+				};
 	return {
 		...parsed,
 		providerId,
+		...(parsed.region !== undefined ? { region: parsed.region?.trim() || null } : {}),
+		...(aws ? { aws } : {}),
+		...(gcp ? { gcp } : {}),
 	};
 }
 

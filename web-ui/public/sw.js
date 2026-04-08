@@ -52,13 +52,23 @@ const FALLBACK_HTML = `<!doctype html>
   <h3>Waiting for Cline</h3>
   <p>Run <code style="background:#2D3339;padding:2px 6px;border-radius:4px;font-size:13px">cline</code> in your terminal to start the server.</p>
   <div class="spinner"></div>
+  <p id="cert-hint" style="display:none;margin-top:12px;color:#D29922;font-size:13px;line-height:1.5;max-width:420px">
+    Unable to connect. If you are using HTTPS with a self-signed certificate,<br/>
+    open this URL directly and accept the browser certificate warning (Advanced &rarr; Proceed), then reload.
+  </p>
 </div>
 <script>
-  (function poll() {
+  (function poll(failures) {
     fetch("/", { method: "HEAD", cache: "no-store" })
-      .then(function(r) { if (r.ok) location.reload(); else setTimeout(poll, 2000); })
-      .catch(function() { setTimeout(poll, 2000); });
-  })();
+      .then(function(r) { if (r.ok) location.reload(); else setTimeout(function() { poll(0); }, 2000); })
+      .catch(function() {
+        if (failures >= 3 && location.protocol === "https:") {
+          var hint = document.getElementById("cert-hint");
+          if (hint) hint.style.display = "block";
+        }
+        setTimeout(function() { poll(failures + 1); }, 2000);
+      });
+  })(0);
 </script>
 </body>
 </html>`;

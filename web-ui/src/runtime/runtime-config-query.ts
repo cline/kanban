@@ -18,8 +18,10 @@ import type {
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
 	RuntimeClineReasoningEffort,
+	RuntimeClineUpdateProviderResponse,
 	RuntimeConfigResponse,
 	RuntimeDebugResetAllStateResponse,
+	RuntimeFeaturebaseTokenResponse,
 	RuntimeProjectShortcut,
 	RuntimeTaskAgentReviewTriggerResponse,
 } from "@/runtime/types";
@@ -69,6 +71,20 @@ export async function saveClineProviderSettings(
 		apiKey?: string | null;
 		baseUrl?: string | null;
 		reasoningEffort?: RuntimeClineReasoningEffort | null;
+		region?: string | null;
+		aws?: {
+			accessKey?: string | null;
+			secretKey?: string | null;
+			sessionToken?: string | null;
+			region?: string | null;
+			profile?: string | null;
+			authentication?: "iam" | "api-key" | "profile" | null;
+			endpoint?: string | null;
+		};
+		gcp?: {
+			projectId?: string | null;
+			region?: string | null;
+		};
 	},
 ): Promise<RuntimeClineProviderSettings> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
@@ -94,6 +110,25 @@ export async function addClineProvider(
 	return await trpcClient.runtime.addClineProvider.mutate(input);
 }
 
+export async function updateClineProvider(
+	workspaceId: string | null,
+	input: {
+		providerId: string;
+		name?: string;
+		baseUrl?: string;
+		apiKey?: string | null;
+		headers?: Record<string, string> | null;
+		timeoutMs?: number | null;
+		models?: string[];
+		defaultModelId?: string | null;
+		modelsSourceUrl?: string | null;
+		capabilities?: RuntimeClineProviderCapability[];
+	},
+): Promise<RuntimeClineUpdateProviderResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.updateClineProvider.mutate(input);
+}
+
 export async function fetchClineProviderCatalog(
 	workspaceId: string | null,
 ): Promise<RuntimeClineProviderCatalogItem[]> {
@@ -112,6 +147,11 @@ export async function fetchClineAccountProfile(
 export async function fetchClineKanbanAccess(workspaceId: string | null): Promise<RuntimeClineKanbanAccessResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.getClineKanbanAccess.query();
+}
+
+export async function fetchFeaturebaseToken(workspaceId: string | null): Promise<RuntimeFeaturebaseTokenResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.getFeaturebaseToken.query();
 }
 
 export async function fetchClineProviderModels(

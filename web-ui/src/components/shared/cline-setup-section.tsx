@@ -1,5 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { Check, ExternalLink, Plus, X } from "lucide-react";
+import { Check, ExternalLink, Pencil, Plus, X } from "lucide-react";
 import { type ReactElement, useMemo, useState } from "react";
 
 import {
@@ -7,9 +7,17 @@ import {
 	CLINE_REASONING_EFFORT_OPTIONS,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
-import { ClineAddProviderDialog } from "@/components/shared/cline-add-provider-dialog";
+import {
+	ClineAddProviderDialog,
+	type ClineProviderDialogInitialValues,
+	type ClineProviderDialogMode,
+} from "@/components/shared/cline-add-provider-dialog";
 import { Button } from "@/components/ui/button";
-import type { UseRuntimeSettingsClineControllerResult } from "@/hooks/use-runtime-settings-cline-controller";
+import type {
+	AddClineProviderInput,
+	UpdateClineProviderInput,
+	UseRuntimeSettingsClineControllerResult,
+} from "@/hooks/use-runtime-settings-cline-controller";
 import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type { RuntimeClineMcpServer, RuntimeClineReasoningEffort } from "@/runtime/types";
@@ -59,6 +67,7 @@ export function ClineSetupSection({
 }): ReactElement {
 	const mcpControlsDisabled = controlsDisabled || (mcpController?.isSavingMcpSettings ?? false);
 	const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
+	const [providerDialogMode, setProviderDialogMode] = useState<ClineProviderDialogMode>("add");
 
 	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
 		const items: SearchSelectOption[] = controller.providerCatalog.map((provider) => ({
@@ -97,6 +106,38 @@ export function ClineSetupSection({
 	const shouldShowBaseUrlField =
 		!controller.isOauthProviderSelected &&
 		(selectedProvider?.supportsBaseUrl ?? controller.baseUrl.trim().length > 0);
+	const isBedrockProvider = controller.normalizedProviderId === "bedrock";
+	const isVertexProvider = controller.normalizedProviderId === "vertex";
+	const selectedProviderOption = useMemo(
+		() => clineProviderOptions.find((option) => option.value === controller.providerId) ?? null,
+		[clineProviderOptions, controller.providerId],
+	);
+	const canEditSelectedProvider = controller.providerId.trim().length > 0 && !controller.isOauthProviderSelected;
+	const selectedProviderEditInitialValues = useMemo((): ClineProviderDialogInitialValues | null => {
+		if (!canEditSelectedProvider) {
+			return null;
+		}
+		const fallbackProviderId = controller.providerId.trim();
+		const fallbackProviderName = selectedProviderOption?.label.replace(/\s+\(custom\)$/i, "") || fallbackProviderId;
+		const modelIds = controller.providerModels.map((model) => model.id);
+		const normalizedModelIds =
+			modelIds.length > 0 ? modelIds : controller.modelId.trim().length > 0 ? [controller.modelId.trim()] : [];
+		return {
+			providerId: selectedProvider?.id ?? fallbackProviderId,
+			name: selectedProvider?.name ?? fallbackProviderName,
+			baseUrl: controller.baseUrl.trim() || selectedProvider?.baseUrl?.trim() || "",
+			models: normalizedModelIds,
+			defaultModelId: controller.modelId.trim() || selectedProvider?.defaultModelId?.trim() || "",
+		};
+	}, [
+		canEditSelectedProvider,
+		controller.baseUrl,
+		controller.modelId,
+		controller.providerId,
+		controller.providerModels,
+		selectedProvider,
+		selectedProviderOption,
+	]);
 
 	const handleAddMcpServer = () => {
 		if (!mcpController) {
@@ -185,44 +226,65 @@ export function ClineSetupSection({
 			<div className="mt-2">
 				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">API provider</p>
 				<div className="min-w-0 w-1/2 max-w-full">
-					<SearchSelectDropdown
-						options={clineProviderOptions}
-						selectedValue={controller.providerId}
-						onSelect={(value) => {
-							const normalizedProviderId = value.trim().toLowerCase();
-							if (normalizedProviderId === controller.normalizedProviderId) {
-								return;
-							}
-							controller.setProviderId(value);
-							const selectedProvider =
-								controller.providerCatalog.find(
-									(provider) => provider.id.trim().toLowerCase() === normalizedProviderId,
-								) ?? null;
-							const defaultModelId = selectedProvider?.defaultModelId?.trim() ?? "";
-							const defaultBaseUrl = selectedProvider?.baseUrl?.trim() ?? "";
-							controller.setModelId(defaultModelId);
-							controller.setBaseUrl(defaultBaseUrl);
-						}}
-						disabled={controlsDisabled || controller.isLoadingProviderCatalog}
-						fill
-						size="sm"
-						buttonText={
-							controller.isLoadingProviderCatalog
-								? "Loading providers..."
-								: clineProviderOptions.find((option) => option.value === controller.providerId)?.label
-						}
-						emptyText="Select provider"
-						noResultsText="No matching providers"
-						placeholder="Search providers..."
-						showSelectedIndicator
-						footerAction={{
-							label: "Add OpenAI-compatible provider",
-							onClick: () => {
-								onError?.(null);
-								setIsAddProviderDialogOpen(true);
-							},
-						}}
-					/>
+					<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+						<div className="min-w-0">
+							<SearchSelectDropdown
+								options={clineProviderOptions}
+								selectedValue={controller.providerId}
+								onSelect={(value) => {
+									const normalizedProviderId = value.trim().toLowerCase();
+									if (normalizedProviderId === controller.normalizedProviderId) {
+										return;
+									}
+									controller.setProviderId(value);
+									const selectedProvider =
+										controller.providerCatalog.find(
+											(provider) => provider.id.trim().toLowerCase() === normalizedProviderId,
+										) ?? null;
+									const defaultModelId = selectedProvider?.defaultModelId?.trim() ?? "";
+									const defaultBaseUrl = selectedProvider?.baseUrl?.trim() ?? "";
+									controller.setModelId(defaultModelId);
+									controller.setBaseUrl(defaultBaseUrl);
+								}}
+								disabled={controlsDisabled || controller.isLoadingProviderCatalog}
+								fill
+								size="sm"
+								buttonText={
+									controller.isLoadingProviderCatalog
+										? "Loading providers..."
+										: clineProviderOptions.find((option) => option.value === controller.providerId)?.label
+								}
+								emptyText="Select provider"
+								noResultsText="No matching providers"
+								placeholder="Search providers..."
+								showSelectedIndicator
+								footerAction={{
+									label: "+ New Provider",
+									onClick: () => {
+										onError?.(null);
+										setProviderDialogMode("add");
+										setIsAddProviderDialogOpen(true);
+									},
+								}}
+							/>
+						</div>
+						{canEditSelectedProvider && (
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={<Pencil size={14} />}
+								disabled={controlsDisabled}
+								className="shrink-0"
+								onClick={() => {
+									onError?.(null);
+									setProviderDialogMode("edit");
+									setIsAddProviderDialogOpen(true);
+								}}
+							>
+								Edit
+							</Button>
+						)}
+					</div>
 				</div>
 				{controller.isLoadingProviderCatalog ? (
 					<p className="text-text-secondary text-[12px] mt-1 mb-0">Fetching Cline providers...</p>
@@ -260,6 +322,113 @@ export function ClineSetupSection({
 						</div>
 					) : null}
 				</div>
+				{isBedrockProvider ? (
+					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS region</p>
+							<input
+								value={controller.awsRegion}
+								onChange={(event) => controller.setAwsRegion(event.target.value)}
+								placeholder="us-east-1"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">Auth mode</p>
+							<select
+								value={controller.awsAuthentication}
+								onChange={(event) =>
+									controller.setAwsAuthentication(event.target.value as "" | "iam" | "api-key" | "profile")
+								}
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
+							>
+								<option value="">Auto</option>
+								<option value="iam">IAM</option>
+								<option value="api-key">Access keys</option>
+								<option value="profile">Profile</option>
+							</select>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS profile</p>
+							<input
+								value={controller.awsProfile}
+								onChange={(event) => controller.setAwsProfile(event.target.value)}
+								placeholder="default"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">Bedrock endpoint</p>
+							<input
+								value={controller.awsEndpoint}
+								onChange={(event) => controller.setAwsEndpoint(event.target.value)}
+								placeholder="https://bedrock-runtime.us-east-1.amazonaws.com"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS access key</p>
+							<input
+								type="password"
+								value={controller.awsAccessKey}
+								onChange={(event) => controller.setAwsAccessKey(event.target.value)}
+								placeholder="AKIA..."
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS secret key</p>
+							<input
+								type="password"
+								value={controller.awsSecretKey}
+								onChange={(event) => controller.setAwsSecretKey(event.target.value)}
+								placeholder="••••••••"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS session token</p>
+							<input
+								type="password"
+								value={controller.awsSessionToken}
+								onChange={(event) => controller.setAwsSessionToken(event.target.value)}
+								placeholder="Optional"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+					</div>
+				) : null}
+				{isVertexProvider ? (
+					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP project ID</p>
+							<input
+								value={controller.gcpProjectId}
+								onChange={(event) => controller.setGcpProjectId(event.target.value)}
+								placeholder="my-gcp-project"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP region</p>
+							<input
+								value={controller.gcpRegion}
+								onChange={(event) => controller.setGcpRegion(event.target.value)}
+								placeholder="us-central1"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+					</div>
+				) : null}
 				{controller.isOauthProviderSelected ? (
 					<>
 						<p className="text-text-secondary text-[12px] mt-1 mb-0">
@@ -630,11 +799,19 @@ export function ClineSetupSection({
 				open={isAddProviderDialogOpen}
 				onOpenChange={setIsAddProviderDialogOpen}
 				existingProviderIds={controller.providerCatalog.map((provider) => provider.id)}
+				mode={providerDialogMode}
+				initialValues={providerDialogMode === "edit" ? selectedProviderEditInitialValues : null}
 				onSubmit={async (input) => {
 					onError?.(null);
-					const result = await controller.addCustomProvider(input);
+					const result =
+						providerDialogMode === "edit"
+							? await controller.updateCustomProvider(input as UpdateClineProviderInput)
+							: await controller.addCustomProvider(input as AddClineProviderInput);
 					if (!result.ok) {
-						onError?.(result.message ?? "Failed to add provider.");
+						onError?.(
+							result.message ??
+								(providerDialogMode === "edit" ? "Failed to update provider." : "Failed to add provider."),
+						);
 						return result;
 					}
 					onSaved?.();

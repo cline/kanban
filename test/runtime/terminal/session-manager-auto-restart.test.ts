@@ -16,6 +16,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 import { TerminalSessionManager } from "../../../src/terminal/session-manager";
 
 interface MockSpawnRequest {
+	onData?: (chunk: Buffer) => void;
 	onExit?: (event: { exitCode: number | null; signal?: number }) => void;
 }
 
@@ -28,6 +29,9 @@ function createMockPtySession(pid: number, request: MockSpawnRequest) {
 		resume: vi.fn(),
 		stop: vi.fn(),
 		wasInterrupted: vi.fn(() => false),
+		triggerData: (chunk: string | Buffer) => {
+			request.onData?.(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8"));
+		},
 		triggerExit: (exitCode: number | null) => {
 			request.onExit?.({ exitCode });
 		},
@@ -111,5 +115,84 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
 		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.getSummary("task-1")?.pid).toBeNull();
+	});
+
+	it("sends deferred Codex startup input when the prompt marker appears", async () => {
+		const deferredStartupInput = "\u001b[200~/plan Validate rollout\u001b[201~\r";
+		prepareAgentLaunchMock.mockResolvedValue({
+			binary: "codex",
+			args: [],
+			env: {},
+			deferredStartupInput,
+		});
+
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager();
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+			startInPlanMode: true,
+		});
+
+		const session = spawnedSessions[0];
+		expect(session).toBeDefined();
+		if (!session) {
+			return;
+		}
+
+		session.triggerData("Booting Codex\n");
+		expect(session.write).not.toHaveBeenCalledWith(deferredStartupInput);
+
+		session.triggerData("› ");
+		expect(session.write).toHaveBeenCalledWith(deferredStartupInput);
+		expect(session.write).toHaveBeenCalledTimes(1);
+	});
+
+	it("sends deferred Codex startup input when the startup UI header appears", async () => {
+		const deferredStartupInput = "\u001b[200~/plan Validate startup UI detect\u001b[201~\r";
+		prepareAgentLaunchMock.mockResolvedValue({
+			binary: "codex",
+			args: [],
+			env: {},
+			deferredStartupInput,
+		});
+
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager();
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+			startInPlanMode: true,
+		});
+
+		const session = spawnedSessions[0];
+		expect(session).toBeDefined();
+		if (!session) {
+			return;
+		}
+
+		session.triggerData(">_ OpenAI Codex (v0.117.0)\n");
+		expect(session.write).toHaveBeenCalledWith(deferredStartupInput);
+		expect(session.write).toHaveBeenCalledTimes(1);
 	});
 });

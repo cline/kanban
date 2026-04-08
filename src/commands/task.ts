@@ -1,8 +1,13 @@
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import type { Command } from "commander";
 
-import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract";
-import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
+import type {
+	RuntimeBoardCard,
+	RuntimeBoardColumnId,
+	RuntimeBoardDependency,
+	RuntimeWorkspaceStateResponse,
+} from "../core/api-contract";
+import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin, getRuntimeFetch } from "../core/runtime-endpoint";
 import {
 	addTaskDependency,
 	addTaskToColumn,
@@ -97,6 +102,10 @@ function createRuntimeTrpcClient(workspaceId: string | null) {
 			httpBatchLink({
 				url: buildKanbanRuntimeUrl("/api/trpc"),
 				headers: () => (workspaceId ? { "x-kanban-workspace-id": workspaceId } : {}),
+				fetch: async (url, options) => {
+					const runtimeFetch = await getRuntimeFetch();
+					return runtimeFetch(url, options);
+				},
 			}),
 		],
 	});
@@ -167,7 +176,7 @@ function resolveTaskBaseRef(state: RuntimeWorkspaceStateResponse): string {
 function findTaskRecord(
 	state: RuntimeWorkspaceStateResponse,
 	taskId: string,
-): { task: RuntimeBoardCard; columnId: string } | null {
+): { task: RuntimeBoardCard; columnId: RuntimeBoardColumnId } | null {
 	for (const column of state.board.columns) {
 		const task = column.cards.find((candidate) => candidate.id === taskId);
 		if (task) {
@@ -180,7 +189,11 @@ function findTaskRecord(
 	return null;
 }
 
-function formatTaskRecord(state: RuntimeWorkspaceStateResponse, task: RuntimeBoardCard, columnId: string): JsonRecord {
+function formatTaskRecord(
+	state: RuntimeWorkspaceStateResponse,
+	task: RuntimeBoardCard,
+	columnId: RuntimeBoardColumnId,
+): JsonRecord {
 	const session = state.sessions[task.id] ?? null;
 	return {
 		id: task.id,
@@ -241,7 +254,7 @@ function getLinkFailureMessage(reason: RuntimeAddTaskDependencyResult["reason"])
 function findTasksInColumn(
 	state: RuntimeWorkspaceStateResponse,
 	columnId: ListTaskColumn,
-): Array<{ task: RuntimeBoardCard; columnId: string }> {
+): Array<{ task: RuntimeBoardCard; columnId: RuntimeBoardColumnId }> {
 	const column = state.board.columns.find((candidate) => candidate.id === columnId);
 	if (!column) {
 		return [];
@@ -570,11 +583,23 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 interface TrashTaskExecutionResult {
 	task: JsonRecord;
 	taskId: string;
+	previousColumnId: ListTaskColumn;
 	readyTaskIds: string[];
 	autoStartedTasks: JsonRecord[];
 	worktreeDeleted: boolean;
 	worktreeDeleteError?: string;
 	alreadyInTrash: boolean;
+}
+
+interface TrashTaskMutationValue {
+	task: JsonRecord;
+	previousColumnId: ListTaskColumn;
+	readyTaskIds: string[];
+	alreadyInTrash: boolean;
+}
+
+function columnCanHaveLiveTaskSession(columnId: ListTaskColumn): boolean {
+	return columnId === "in_progress" || columnId === "review";
 }
 
 async function trashTaskById(input: {
@@ -584,8 +609,7 @@ async function trashTaskById(input: {
 	workspaceRepoPath: string;
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>;
 }): Promise<TrashTaskExecutionResult> {
-	await stopTaskRuntimeSession(input.runtimeClient, input.taskId);
-	const mutation = await mutateWorkspaceState(input.workspaceRepoPath, (latestState) => {
+	const mutation = await mutateWorkspaceState<TrashTaskMutationValue>(input.workspaceRepoPath, (latestState) => {
 		const latestRecord = findTaskRecord(latestState, input.taskId);
 		if (!latestRecord) {
 			throw new Error(`Task "${input.taskId}" was not found in workspace ${input.workspaceRepoPath}.`);
@@ -595,6 +619,7 @@ async function trashTaskById(input: {
 				board: latestState.board,
 				value: {
 					task: formatTaskRecord(latestState, latestRecord.task, latestRecord.columnId),
+					previousColumnId: latestRecord.columnId,
 					readyTaskIds: [] as string[],
 					alreadyInTrash: true,
 				},
@@ -615,6 +640,7 @@ async function trashTaskById(input: {
 			board: trashed.board,
 			value: {
 				task: formatTaskRecord(nextState, trashed.task, "trash"),
+				previousColumnId: latestRecord.columnId,
 				readyTaskIds: trashed.readyTaskIds,
 				alreadyInTrash: false,
 			},
@@ -629,11 +655,16 @@ async function trashTaskById(input: {
 		return {
 			task: mutation.value.task,
 			taskId: input.taskId,
+			previousColumnId: mutation.value.previousColumnId,
 			readyTaskIds: [],
 			autoStartedTasks: [],
 			worktreeDeleted: false,
 			alreadyInTrash: true,
 		};
+	}
+
+	if (columnCanHaveLiveTaskSession(mutation.value.previousColumnId)) {
+		await stopTaskRuntimeSession(input.runtimeClient, input.taskId);
 	}
 
 	const autoStartedTasks: JsonRecord[] = [];
@@ -651,6 +682,7 @@ async function trashTaskById(input: {
 	return {
 		task: mutation.value.task,
 		taskId: input.taskId,
+		previousColumnId: mutation.value.previousColumnId,
 		readyTaskIds: mutation.value.readyTaskIds,
 		autoStartedTasks,
 		worktreeDeleted: deletedWorkspace.removed,
@@ -775,6 +807,7 @@ async function deleteTaskCommand(input: {
 				board: latestState.board,
 				value: {
 					deletedTaskIds: [] as string[],
+					taskIdsRequiringStop: [] as string[],
 					deletedTasks: [] as JsonRecord[],
 				},
 				save: false,
@@ -790,6 +823,7 @@ async function deleteTaskCommand(input: {
 				board: latestState.board,
 				value: {
 					deletedTaskIds: [] as string[],
+					taskIdsRequiringStop: [] as string[],
 					deletedTasks: [] as JsonRecord[],
 				},
 				save: false,
@@ -799,10 +833,14 @@ async function deleteTaskCommand(input: {
 		const deletedTasks = latestTargetRecords.map(({ task, columnId }) =>
 			formatTaskRecord(latestState, task, columnId),
 		);
+		const taskIdsRequiringStop = latestTargetRecords
+			.filter(({ columnId }) => columnCanHaveLiveTaskSession(columnId))
+			.map(({ task }) => task.id);
 		return {
 			board: deleted.board,
 			value: {
 				deletedTaskIds: deleted.deletedTaskIds,
+				taskIdsRequiringStop,
 				deletedTasks,
 			},
 		};
@@ -823,7 +861,7 @@ async function deleteTaskCommand(input: {
 	}
 
 	await Promise.all(
-		mutation.value.deletedTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)),
+		mutation.value.taskIdsRequiringStop.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)),
 	);
 
 	const workspaceCleanupResults = await Promise.all(

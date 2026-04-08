@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 const NAVBAR_HEIGHT_PX = 40;
+const COLLAPSE_SCREEN_EDGE_THRESHOLD_PX = 16;
 
 function getDefaultPaneHeight(minHeight: number): number {
 	if (typeof window === "undefined") {
@@ -24,16 +25,27 @@ function clampHeight(value: number, minHeight: number): number {
 	return Math.max(minHeight, Math.min(value, getMaxPaneHeight(minHeight)));
 }
 
+function shouldCollapsePane(rawNextHeight: number, minHeight: number, deltaY: number, pointerY: number): boolean {
+	if (typeof window === "undefined") {
+		return false;
+	}
+	const hasReachedMinimumHeight = rawNextHeight <= minHeight;
+	const isNearBottomScreenEdge = pointerY >= window.innerHeight - COLLAPSE_SCREEN_EDGE_THRESHOLD_PX;
+	return deltaY > 0 && hasReachedMinimumHeight && isNearBottomScreenEdge;
+}
+
 export function ResizableBottomPane({
 	children,
 	minHeight = 220,
 	initialHeight,
 	onHeightChange,
+	onCollapse,
 }: {
 	children: ReactNode;
 	minHeight?: number;
 	initialHeight?: number;
 	onHeightChange?: (height: number) => void;
+	onCollapse?: () => void;
 }): ReactElement {
 	const [height, setHeight] = useState<number>(() =>
 		clampHeight(initialHeight ?? getDefaultPaneHeight(minHeight), minHeight),
@@ -84,18 +96,35 @@ export function ResizableBottomPane({
 				return;
 			}
 			const deltaY = event.clientY - dragState.startY;
+			const rawNextHeight = dragState.startHeight - deltaY;
+			if (shouldCollapsePane(rawNextHeight, minHeight, deltaY, event.clientY)) {
+				stopDrag();
+				onCollapse?.();
+				return;
+			}
 			const nextHeight = clampHeight(dragState.startHeight - deltaY, minHeight);
 			setHeight(nextHeight);
 		},
-		[isDragging, minHeight],
+		[isDragging, minHeight, onCollapse, stopDrag],
 	);
 
-	const handleMouseUp = useCallback(() => {
-		if (!isDragging) {
-			return;
-		}
-		stopDrag();
-	}, [isDragging, stopDrag]);
+	const handleMouseUp = useCallback(
+		(event: MouseEvent) => {
+			if (!isDragging) {
+				return;
+			}
+			const dragState = dragStateRef.current;
+			if (dragState) {
+				const deltaY = event.clientY - dragState.startY;
+				const rawNextHeight = dragState.startHeight - deltaY;
+				if (shouldCollapsePane(rawNextHeight, minHeight, deltaY, event.clientY)) {
+					onCollapse?.();
+				}
+			}
+			stopDrag();
+		},
+		[isDragging, minHeight, onCollapse, stopDrag],
+	);
 	useWindowEvent("mousemove", isDragging ? handleMouseMove : null);
 	useWindowEvent("mouseup", isDragging ? handleMouseUp : null);
 

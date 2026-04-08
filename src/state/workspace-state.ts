@@ -300,6 +300,10 @@ async function readWorkspaceBoard(workspaceId: string): Promise<RuntimeBoardData
 	);
 }
 
+export async function loadWorkspaceBoardById(workspaceId: string): Promise<RuntimeBoardData> {
+	return await readWorkspaceBoard(workspaceId);
+}
+
 async function readWorkspaceSessions(workspaceId: string): Promise<Record<string, RuntimeTaskSessionSummary>> {
 	const sessionsPath = getWorkspaceSessionsPath(workspaceId);
 	const rawSessions = await readJsonFile(sessionsPath);

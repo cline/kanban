@@ -1,52 +1,44 @@
 import * as os from "node:os";
-import { type BasicLogger, createClineTelemetryServiceConfig, type ITelemetryService } from "@clinebot/shared";
+import { createConfiguredTelemetryService } from "@clinebot/core/telemetry";
+import {
+	type BasicLogger,
+	createClineTelemetryServiceConfig,
+	createClineTelemetryServiceMetadata,
+	type ITelemetryService,
+} from "@clinebot/shared";
 import packageJson from "../../package.json" with { type: "json" };
-import { createConfiguredTelemetryService, LoggerTelemetryAdapter } from "./sdk-runtime-boundary.js";
-
-type MutableTelemetryService = ITelemetryService & {
-	addAdapter?: (adapter: LoggerTelemetryAdapter) => void;
-};
 
 const appVersion = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 let telemetrySingleton:
 	| {
 			telemetry: ITelemetryService;
-			dispose: () => Promise<void>;
 			loggerAttached: boolean;
 	  }
 	| undefined;
 
 export function getCliTelemetryService(logger?: BasicLogger): ITelemetryService {
 	if (!telemetrySingleton) {
-		const config = createClineTelemetryServiceConfig({
-			metadata: {
-				extension_version: appVersion,
-				cline_type: "kanban",
-				platform: "kanban",
-				platform_version: process.version,
-				os_type: os.platform(),
-				os_version: os.version(),
-			},
+		const metadata = createClineTelemetryServiceMetadata({
+			extension_version: appVersion,
+			cline_type: "kanban",
+			platform: "kanban",
+			platform_version: process.version,
+			os_type: os.platform(),
+			os_version: os.version(),
 		});
-		const { telemetry, provider } = createConfiguredTelemetryService({
-			...config,
+
+		const { telemetry } = createConfiguredTelemetryService({
+			...createClineTelemetryServiceConfig({ metadata }),
 			logger,
 		});
+
 		telemetrySingleton = {
 			telemetry,
 			loggerAttached: Boolean(logger),
-			dispose: async () => {
-				await Promise.allSettled([telemetry.dispose(), provider?.dispose()]);
-			},
 		};
 	}
-	if (
-		logger &&
-		telemetrySingleton.loggerAttached !== true &&
-		typeof (telemetrySingleton.telemetry as MutableTelemetryService).addAdapter === "function"
-	) {
-		(telemetrySingleton.telemetry as MutableTelemetryService).addAdapter?.(new LoggerTelemetryAdapter({ logger }));
+	if (logger && telemetrySingleton.loggerAttached !== true) {
 		telemetrySingleton.loggerAttached = true;
 	}
 	return telemetrySingleton.telemetry;
@@ -58,5 +50,5 @@ export async function disposeCliTelemetryService(): Promise<void> {
 	}
 	const current = telemetrySingleton;
 	telemetrySingleton = undefined;
-	await current.dispose();
+	await current.telemetry.dispose();
 }

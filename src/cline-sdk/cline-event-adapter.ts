@@ -159,6 +159,18 @@ function extractAgentErrorMessage(error: unknown): string | null {
 	return null;
 }
 
+export function isClineInsufficientBalanceError(errorMessage: string | null): boolean {
+	if (!errorMessage) {
+		return false;
+	}
+	const normalized = errorMessage.toLowerCase();
+	return (
+		normalized.includes("insufficient balance") ||
+		normalized.includes("insufficient_credits") ||
+		(normalized.includes("402") && normalized.includes("balance"))
+	);
+}
+
 export function extractClineSessionId(event: unknown): string | null {
 	const record = asRecord(event);
 	if (!record) {
@@ -179,7 +191,10 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 
 	if (agentEvent?.type === "error") {
 		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
-		const recoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
+		const isInsufficientBalanceError = isClineInsufficientBalanceError(errorMessage);
+		const sdkRecoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
+		const recoverable = sdkRecoverable && !isInsufficientBalanceError;
+		const shouldShowWarningMessage = !isInsufficientBalanceError;
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		if (!recoverable) {
 			clearActiveTurnState(entry);
@@ -195,7 +210,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				: {
 						state: "awaiting_review",
 						reviewReason: "error",
-						warningMessage: errorMessage ?? "Unknown agent error",
+						warningMessage: shouldShowWarningMessage ? (errorMessage ?? "Unknown agent error") : null,
 					}),
 			lastOutputAt: now(),
 			lastHookAt: now(),
@@ -207,7 +222,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				toolInputSummary: retainedToolActivity.toolInputSummary,
 				finalMessage: recoverable ? null : (errorMessage ?? "Unknown agent error"),
 				hookEventName: "agent_error",
-				notificationType: null,
+				notificationType: isInsufficientBalanceError ? "credit_limit" : null,
 				source: "cline-sdk",
 			},
 		});
@@ -247,6 +262,9 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 
 	if (agentEvent?.type === "notice") {
 		const message = typeof agentEvent.message === "string" ? agentEvent.message.trim() : "";
+		if (isClineInsufficientBalanceError(message)) {
+			return;
+		}
 		if (message) {
 			const displayRole = typeof agentEvent.displayRole === "string" ? agentEvent.displayRole : "system";
 			const reason = typeof agentEvent.reason === "string" ? agentEvent.reason : null;
@@ -294,7 +312,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				toolInputSummary: previousHookActivity?.toolInputSummary ?? null,
 				finalMessage: finalText || (previousHookActivity?.finalMessage ?? null),
 				hookEventName: "agent_end",
-				notificationType: null,
+				notificationType: previousHookActivity?.notificationType ?? null,
 				source: "cline-sdk",
 			},
 		};

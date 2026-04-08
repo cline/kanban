@@ -4,7 +4,7 @@ import { type KeyboardEvent, type ReactElement, useEffect, useMemo, useState } f
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import type { AddClineProviderInput } from "@/hooks/use-runtime-settings-cline-controller";
+import type { AddClineProviderInput, UpdateClineProviderInput } from "@/hooks/use-runtime-settings-cline-controller";
 import type { RuntimeClineProviderCapability } from "@/runtime/types";
 
 const CAPABILITY_OPTIONS: readonly RuntimeClineProviderCapability[] = [
@@ -39,20 +39,41 @@ interface SaveResult {
 	message?: string;
 }
 
+export type ClineProviderDialogMode = "add" | "edit";
+
+export interface ClineProviderDialogInitialValues {
+	providerId: string;
+	name: string;
+	baseUrl: string;
+	apiKey?: string;
+	modelsSourceUrl?: string;
+	models: string[];
+	defaultModelId?: string;
+	timeoutMs?: number | null;
+	headers?: Record<string, string>;
+	capabilities?: RuntimeClineProviderCapability[];
+}
+
 let nextHeaderEntryId = 0;
 
-function createInitialFormState(): FormState {
+function createInitialFormState(initialValues?: ClineProviderDialogInitialValues | null): FormState {
+	const initialHeaders = Object.entries(initialValues?.headers ?? {}).map(([key, value]) => ({
+		...createHeaderEntry(),
+		key,
+		value,
+	}));
+	const initialModels = [...new Set(initialValues?.models?.map((model) => model.trim()).filter(Boolean) ?? [])];
 	return {
-		providerId: "",
-		name: "",
-		baseUrl: "",
-		apiKey: "",
-		modelsSourceUrl: "",
-		models: [],
-		defaultModelId: "",
-		timeoutMs: "",
-		headers: [],
-		capabilities: ["streaming", "tools"],
+		providerId: initialValues?.providerId ?? "",
+		name: initialValues?.name ?? "",
+		baseUrl: initialValues?.baseUrl ?? "",
+		apiKey: initialValues?.apiKey ?? "",
+		modelsSourceUrl: initialValues?.modelsSourceUrl ?? "",
+		models: initialModels,
+		defaultModelId: initialValues?.defaultModelId?.trim() || initialModels[0] || "",
+		timeoutMs: initialValues?.timeoutMs ? String(initialValues.timeoutMs) : "",
+		headers: initialHeaders,
+		capabilities: initialValues?.capabilities?.length ? initialValues.capabilities : ["streaming", "tools"],
 	};
 }
 
@@ -68,14 +89,19 @@ export function ClineAddProviderDialog({
 	open,
 	onOpenChange,
 	existingProviderIds,
+	mode = "add",
+	initialValues = null,
 	onSubmit,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	existingProviderIds: string[];
-	onSubmit: (input: AddClineProviderInput) => Promise<SaveResult>;
+	mode?: ClineProviderDialogMode;
+	initialValues?: ClineProviderDialogInitialValues | null;
+	onSubmit: (input: AddClineProviderInput | UpdateClineProviderInput) => Promise<SaveResult>;
 }): ReactElement {
-	const [form, setForm] = useState<FormState>(() => createInitialFormState());
+	const initialForm = useMemo(() => createInitialFormState(initialValues), [initialValues]);
+	const [form, setForm] = useState<FormState>(() => initialForm);
 	const [modelInput, setModelInput] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
@@ -83,22 +109,30 @@ export function ClineAddProviderDialog({
 
 	useEffect(() => {
 		if (open) {
+			setForm(initialForm);
+			setModelInput("");
+			setError(null);
+			setIsSaving(false);
+			setShowApiKey(false);
 			return;
 		}
-		setForm(createInitialFormState());
+		setForm(initialForm);
 		setModelInput("");
 		setError(null);
 		setIsSaving(false);
 		setShowApiKey(false);
-	}, [open]);
+	}, [initialForm, open]);
 
 	const normalizedProviderId = useMemo(
 		() => form.providerId.trim().toLowerCase().replace(/\s+/g, "-"),
 		[form.providerId],
 	);
 	const duplicateProviderId = useMemo(() => {
+		if (mode === "edit" && initialForm.providerId.trim().toLowerCase() === normalizedProviderId) {
+			return false;
+		}
 		return existingProviderIds.some((providerId) => providerId.trim().toLowerCase() === normalizedProviderId);
-	}, [existingProviderIds, normalizedProviderId]);
+	}, [existingProviderIds, initialForm.providerId, mode, normalizedProviderId]);
 	const normalizedPendingModel = modelInput.trim().replace(/,$/, "");
 	const draftModels = useMemo(() => {
 		if (!normalizedPendingModel || form.models.includes(normalizedPendingModel)) {
@@ -108,13 +142,47 @@ export function ClineAddProviderDialog({
 	}, [form.models, normalizedPendingModel]);
 	const hasManualModels = draftModels.length > 0;
 	const hasModelsSource = form.modelsSourceUrl.trim().length > 0;
+	const hasChangedProviderConfiguration = useMemo(() => {
+		const normalizedHeaders = Object.fromEntries(
+			form.headers.map((entry) => [entry.key.trim(), entry.value.trim()] as const).filter(([key]) => key.length > 0),
+		);
+		const initialHeaders = Object.fromEntries(
+			initialForm.headers
+				.map((entry) => [entry.key.trim(), entry.value.trim()] as const)
+				.filter(([key]) => key.length > 0),
+		);
+		return (
+			form.name.trim() !== initialForm.name.trim() ||
+			form.baseUrl.trim() !== initialForm.baseUrl.trim() ||
+			form.modelsSourceUrl.trim() !== initialForm.modelsSourceUrl.trim() ||
+			form.defaultModelId.trim() !== initialForm.defaultModelId.trim() ||
+			form.timeoutMs.trim() !== initialForm.timeoutMs.trim() ||
+			JSON.stringify(draftModels) !== JSON.stringify(initialForm.models) ||
+			JSON.stringify(form.capabilities) !== JSON.stringify(initialForm.capabilities) ||
+			JSON.stringify(normalizedHeaders) !== JSON.stringify(initialHeaders) ||
+			form.apiKey.trim().length > 0
+		);
+	}, [
+		draftModels,
+		form.apiKey,
+		form.baseUrl,
+		form.capabilities,
+		form.defaultModelId,
+		form.headers,
+		form.modelsSourceUrl,
+		form.name,
+		form.timeoutMs,
+		initialForm,
+	]);
 	const canSubmit =
 		normalizedProviderId.length > 0 &&
 		form.name.trim().length > 0 &&
 		form.baseUrl.trim().length > 0 &&
 		(hasManualModels || hasModelsSource) &&
 		!duplicateProviderId &&
-		(form.timeoutMs.trim().length === 0 || (Number.isInteger(Number(form.timeoutMs)) && Number(form.timeoutMs) > 0));
+		(form.timeoutMs.trim().length === 0 ||
+			(Number.isInteger(Number(form.timeoutMs)) && Number(form.timeoutMs) > 0)) &&
+		(mode === "add" || hasChangedProviderConfiguration);
 
 	const addModel = (rawValue: string) => {
 		const value = rawValue.trim().replace(/,$/, "");
@@ -176,25 +244,61 @@ export function ClineAddProviderDialog({
 		}
 		setIsSaving(true);
 		setError(null);
-		const result = await onSubmit({
-			providerId: normalizedProviderId,
-			name: form.name.trim(),
-			baseUrl: form.baseUrl.trim(),
-			apiKey: form.apiKey.trim() || null,
-			headers: Object.fromEntries(
-				form.headers
-					.map((entry) => [entry.key.trim(), entry.value.trim()] as const)
-					.filter(([key]) => key.length > 0),
-			),
-			timeoutMs: form.timeoutMs.trim().length > 0 ? Number(form.timeoutMs) : undefined,
-			models: draftModels,
-			defaultModelId: form.defaultModelId.trim() || draftModels[0] || null,
-			modelsSourceUrl: form.modelsSourceUrl.trim() || null,
-			capabilities: form.capabilities.length > 0 ? form.capabilities : undefined,
-		});
+		const normalizedHeaders = Object.fromEntries(
+			form.headers.map((entry) => [entry.key.trim(), entry.value.trim()] as const).filter(([key]) => key.length > 0),
+		);
+		const nextTimeoutMs = form.timeoutMs.trim().length > 0 ? Number(form.timeoutMs) : undefined;
+		const nextDefaultModelId = form.defaultModelId.trim() || draftModels[0] || null;
+		const nextModelsSourceUrl = form.modelsSourceUrl.trim() || null;
+		const payload =
+			mode === "edit"
+				? ({
+						providerId: normalizedProviderId,
+						...(form.name.trim() !== initialForm.name.trim() ? { name: form.name.trim() } : {}),
+						...(form.baseUrl.trim() !== initialForm.baseUrl.trim() ? { baseUrl: form.baseUrl.trim() } : {}),
+						...(form.apiKey.trim().length > 0 ? { apiKey: form.apiKey.trim() } : {}),
+						...(JSON.stringify(normalizedHeaders) !==
+						JSON.stringify(
+							Object.fromEntries(
+								initialForm.headers
+									.map((entry) => [entry.key.trim(), entry.value.trim()] as const)
+									.filter(([key]) => key.length > 0),
+							),
+						)
+							? { headers: normalizedHeaders }
+							: {}),
+						...(form.timeoutMs.trim() !== initialForm.timeoutMs.trim()
+							? { timeoutMs: nextTimeoutMs ?? null }
+							: {}),
+						...(JSON.stringify(draftModels) !== JSON.stringify(initialForm.models)
+							? { models: draftModels }
+							: {}),
+						...(nextDefaultModelId !== (initialForm.defaultModelId.trim() || initialForm.models[0] || null)
+							? { defaultModelId: nextDefaultModelId }
+							: {}),
+						...(nextModelsSourceUrl !== (initialForm.modelsSourceUrl.trim() || null)
+							? { modelsSourceUrl: nextModelsSourceUrl }
+							: {}),
+						...(JSON.stringify(form.capabilities) !== JSON.stringify(initialForm.capabilities)
+							? { capabilities: form.capabilities.length > 0 ? form.capabilities : [] }
+							: {}),
+					} satisfies UpdateClineProviderInput)
+				: ({
+						providerId: normalizedProviderId,
+						name: form.name.trim(),
+						baseUrl: form.baseUrl.trim(),
+						apiKey: form.apiKey.trim() || null,
+						headers: normalizedHeaders,
+						timeoutMs: nextTimeoutMs,
+						models: draftModels,
+						defaultModelId: nextDefaultModelId,
+						modelsSourceUrl: nextModelsSourceUrl,
+						capabilities: form.capabilities.length > 0 ? form.capabilities : undefined,
+					} satisfies AddClineProviderInput);
+		const result = await onSubmit(payload);
 		setIsSaving(false);
 		if (!result.ok) {
-			setError(result.message ?? "Failed to add provider.");
+			setError(result.message ?? (mode === "edit" ? "Failed to update provider." : "Failed to add provider."));
 			return;
 		}
 		onOpenChange(false);
@@ -202,7 +306,7 @@ export function ClineAddProviderDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange} contentClassName="max-w-3xl">
-			<DialogHeader title="Add OpenAI-compatible provider" />
+			<DialogHeader title={mode === "edit" ? "Edit OpenAI-compatible provider" : "Add OpenAI-compatible provider"} />
 			<DialogBody className="space-y-4">
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
 					<div className="grid gap-3 md:grid-cols-2">
@@ -212,9 +316,14 @@ export function ClineAddProviderDialog({
 								value={form.providerId}
 								onChange={(event) => setForm((current) => ({ ...current, providerId: event.target.value }))}
 								placeholder="my-provider"
+								disabled={mode === "edit"}
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
-							<p className="mt-1 text-[12px] text-text-tertiary">Used as the saved provider key.</p>
+							<p className="mt-1 text-[12px] text-text-tertiary">
+								{mode === "edit"
+									? "Provider ID is fixed for existing providers."
+									: "Used as the saved provider key."}
+							</p>
 							{duplicateProviderId ? (
 								<p className="mt-1 text-[12px] text-status-red">This provider ID already exists.</p>
 							) : null}
@@ -435,7 +544,13 @@ export function ClineAddProviderDialog({
 					Cancel
 				</Button>
 				<Button variant="primary" size="md" disabled={!canSubmit || isSaving} onClick={() => void handleSubmit()}>
-					{isSaving ? "Adding..." : "Add provider"}
+					{isSaving
+						? mode === "edit"
+							? "Updating..."
+							: "Adding..."
+						: mode === "edit"
+							? "Update provider"
+							: "Add provider"}
 				</Button>
 			</DialogFooter>
 		</Dialog>

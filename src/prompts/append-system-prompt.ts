@@ -6,7 +6,7 @@ import type { RuntimeAgentId } from "../core/api-contract";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveKanbanCommandParts } from "../core/kanban-command";
 import { buildShellCommandLine } from "../core/shell";
-import { AutoUpdatePackageManager, detectAutoUpdateInstallation } from "../update/auto-update";
+import { detectAutoUpdateInstallation, UpdatePackageManager } from "../update/update";
 
 const DEFAULT_COMMAND_PREFIX = "kanban";
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
@@ -98,16 +98,16 @@ export function resolveAppendSystemPromptCommandPrefix(
 		return fallbackCommandPrefix;
 	}
 
-	if (installation.packageManager === AutoUpdatePackageManager.NPX) {
+	if (installation.packageManager === UpdatePackageManager.NPX) {
 		return "npx -y kanban";
 	}
-	if (installation.packageManager === AutoUpdatePackageManager.PNPM) {
+	if (installation.packageManager === UpdatePackageManager.PNPM) {
 		return "pnpm dlx kanban";
 	}
-	if (installation.packageManager === AutoUpdatePackageManager.YARN) {
+	if (installation.packageManager === UpdatePackageManager.YARN) {
 		return "yarn dlx kanban";
 	}
-	if (installation.packageManager === AutoUpdatePackageManager.BUN) {
+	if (installation.packageManager === UpdatePackageManager.BUN) {
 		return "bun x kanban";
 	}
 

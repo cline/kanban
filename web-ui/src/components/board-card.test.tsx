@@ -479,6 +479,7 @@ describe("BoardCard", () => {
 		mockMeasureWidths = [240, 240, 96];
 		const preview =
 			"Reviewing the archived implementation details and collecting the final notes for the handoff before cleanup hidden tail";
+		const onCardClick = vi.fn();
 
 		await act(async () => {
 			root.render(
@@ -487,6 +488,7 @@ describe("BoardCard", () => {
 						card={createCard()}
 						index={0}
 						columnId="trash"
+						onClick={onCardClick}
 						sessionSummary={createSummary("awaiting_review", {
 							latestHookActivity: {
 								activityText: null,
@@ -514,6 +516,7 @@ describe("BoardCard", () => {
 			cardElement?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
 
+		expect(onCardClick).not.toHaveBeenCalled();
 		expect(findButton("See more")).toBeDefined();
 		expect(findButton("Less")).toBeUndefined();
 		expect(container.textContent).not.toContain("hidden tail");

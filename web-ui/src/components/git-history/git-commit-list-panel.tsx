@@ -270,6 +270,7 @@ export function GitCommitListPanel({
 	canLoadMore,
 	errorMessage,
 	refs,
+	panelWidth,
 	onSelectCommit,
 	onLoadMore,
 }: {
@@ -281,6 +282,7 @@ export function GitCommitListPanel({
 	canLoadMore: boolean;
 	errorMessage?: string | null;
 	refs: RuntimeGitRef[];
+	panelWidth: number;
 	onSelectCommit: (commit: RuntimeGitCommit) => void;
 	onLoadMore?: () => void;
 }): React.ReactElement {
@@ -340,8 +342,9 @@ export function GitCommitListPanel({
 			style={{
 				display: "flex",
 				flexDirection: "column",
-				flex: "1 1 0",
-				minWidth: 300,
+				width: panelWidth,
+				minWidth: 260,
+				flexShrink: 0,
 				overflow: "hidden",
 			}}
 		>

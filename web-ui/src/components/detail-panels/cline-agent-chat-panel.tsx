@@ -1,6 +1,8 @@
 // Layout component for the native Cline chat panel.
 // Rendering lives here, while session state and action wiring come from the
 // controller hook so multiple surfaces can share the same behavior.
+
+import { AlertTriangle } from "lucide-react";
 import React, {
 	type ReactElement,
 	useCallback,
@@ -34,6 +36,7 @@ import type {
 import type { TaskImage } from "@/types";
 
 const BOTTOM_LOCK_THRESHOLD_PX = 24;
+const CLINE_BUY_CREDITS_URL = "https://app.cline.bot/";
 
 const ThinkingShimmer = React.memo(function ThinkingShimmer() {
 	return (
@@ -50,6 +53,26 @@ const ThinkingShimmer = React.memo(function ThinkingShimmer() {
 	);
 });
 
+const ClineCreditLimitNotice = React.memo(function ClineCreditLimitNotice() {
+	return (
+		<div className="mx-1 flex items-start gap-2 rounded-md border border-status-orange/40 bg-status-orange/10 px-3 py-2 text-xs text-status-orange">
+			<AlertTriangle size={14} className="mt-0.5 shrink-0" />
+			<p className="m-0 min-w-0">
+				Out of Cline credits.{" "}
+				<a
+					href={CLINE_BUY_CREDITS_URL}
+					target="_blank"
+					rel="noreferrer"
+					className="text-accent underline-offset-2 hover:text-accent-hover hover:underline"
+				>
+					Buy more credits
+				</a>{" "}
+				to continue.
+			</p>
+		</div>
+	);
+});
+
 export interface ClineAgentChatPanelHandle {
 	appendToDraft: (text: string) => void;
 	sendText: (text: string) => Promise<void>;
@@ -62,7 +85,6 @@ export interface ClineAgentChatPanelProps {
 	defaultMode?: RuntimeTaskSessionMode;
 	composerPlaceholder?: string;
 	showComposerModeToggle?: boolean;
-	showRightBorder?: boolean;
 	workspaceId?: string | null;
 	runtimeConfig?: RuntimeConfigResponse | null;
 	onClineSettingsSaved?: () => void;
@@ -95,7 +117,6 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			defaultMode = "act",
 			composerPlaceholder = "Ask Cline to add, edit, start, or link tasks",
 			showComposerModeToggle = true,
-			showRightBorder = true,
 			workspaceId = null,
 			runtimeConfig = null,
 			onClineSettingsSaved,
@@ -153,6 +174,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		const [composerError, setComposerError] = useState<string | null>(null);
 		const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 		const [isSavingModel, setIsSavingModel] = useState(false);
+		const [isCreditLimitNoticeVisible, setIsCreditLimitNoticeVisible] = useState(false);
 		const [mode, setMode] = useState<RuntimeTaskSessionMode>(() => {
 			const persistedMode = modeByTaskIdRef.current.get(taskId);
 			return persistedMode ?? summary?.mode ?? defaultMode;
@@ -251,12 +273,21 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		}, [taskId]);
 
 		useEffect(() => {
+			setIsCreditLimitNoticeVisible(false);
+		}, [taskId]);
+
+		useEffect(() => {
 			const persistedMode = modeByTaskIdRef.current.get(taskId);
 			const nextMode = persistedMode ?? summary?.mode ?? defaultMode;
 			modeByTaskIdRef.current.set(taskId, nextMode);
 			setMode(nextMode);
 			setDraftImages([]);
 		}, [defaultMode, summary?.mode, taskId]);
+
+		useEffect(() => {
+			const isCreditLimitError = summary?.latestHookActivity?.notificationType === "credit_limit";
+			setIsCreditLimitNoticeVisible(isCreditLimitError);
+		}, [summary?.latestHookActivity?.notificationType]);
 
 		const handleModeChange = useCallback(
 			(nextMode: RuntimeTaskSessionMode) => {
@@ -390,10 +421,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		]);
 
 		return (
-			<div
-				className="flex min-h-0 min-w-0 flex-1 flex-col"
-				style={{ borderRight: showRightBorder ? "1px solid var(--color-border)" : undefined }}
-			>
+			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 				<div
 					ref={scrollContainerRef}
 					className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3"
@@ -403,6 +431,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						<ClineChatMessageItem key={message.id} message={message} />
 					))}
 					{showAgentProgressIndicator ? <ThinkingShimmer /> : null}
+					{isCreditLimitNoticeVisible ? <ClineCreditLimitNotice /> : null}
 				</div>
 				{panelError ? (
 					<div className="border-t border-status-red/30 bg-status-red/10 px-2 py-2 text-xs text-status-red">

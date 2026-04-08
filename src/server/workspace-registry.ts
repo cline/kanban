@@ -8,6 +8,7 @@ import type {
 } from "../core/api-contract";
 import {
 	listWorkspaceIndexEntries,
+	loadWorkspaceBoardById,
 	loadWorkspaceContext,
 	loadWorkspaceState,
 	type RuntimeWorkspaceIndexEntry,
@@ -289,11 +290,11 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 
 	const summarizeProjectTaskCounts = async (
 		workspaceId: string,
-		repoPath: string,
+		_repoPath: string,
 	): Promise<RuntimeProjectTaskCounts> => {
 		try {
-			const workspaceState = await loadWorkspaceState(repoPath);
-			const persistedCounts = countTasksByColumn(workspaceState.board);
+			const board = await loadWorkspaceBoardById(workspaceId);
+			const persistedCounts = countTasksByColumn(board);
 			const terminalManager = getTerminalManagerForWorkspace(workspaceId);
 			if (!terminalManager) {
 				projectTaskCountsByWorkspaceId.set(workspaceId, persistedCounts);
@@ -303,11 +304,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 			for (const summary of terminalManager.listSummaries()) {
 				liveSessionsByTaskId[summary.taskId] = summary;
 			}
-			const nextCounts = applyLiveSessionStateToProjectTaskCounts(
-				persistedCounts,
-				workspaceState.board,
-				liveSessionsByTaskId,
-			);
+			const nextCounts = applyLiveSessionStateToProjectTaskCounts(persistedCounts, board, liveSessionsByTaskId);
 			projectTaskCountsByWorkspaceId.set(workspaceId, nextCounts);
 			return nextCounts;
 		} catch {

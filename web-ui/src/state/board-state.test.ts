@@ -38,7 +38,7 @@ function createBacklogBoard(taskPrompts: string[]): {
 
 function requireTaskId(taskId: string | undefined, taskPrompt: string): string {
 	if (!taskId) {
-		throw new Error("Missing task id for " + taskPrompt);
+		throw new Error(`Missing task id for ${taskPrompt}`);
 	}
 	return taskId;
 }

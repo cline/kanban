@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.1.59]
+
+- Added a beta hint card to the project sidebar with quick access to send feedback or report issues
+- Added "Read the docs" button in the settings dialog linking to documentation
+- Adjusted prompting for the commit button to better handle stale git lock files and multiple stashes at once
+
+## [0.1.58]
+
+- More panels are now resizable (agent chat, git history, and more) and your layout preferences persist across sessions
+- Adds full Factory Droid CLI agent support
+- Add, edit, and delete custom OpenAI Compatible providers from the settings dialog
+- Fixed trashed task cards being openable from the board
+- Fixed git history cache not clearing when closing the view
+- Terminal cursor defaults now match VS Code behavior
+- Feedback widget no longer triggers authentication until you actually click it
+- Updated Cline SDK from 0.0.24 to 0.0.28, which includes: OpenAI-compatible provider support via AI SDK, custom provider CRUD in core, better handling of overloaded and insufficient-credits errors, fixed tool schema format for OpenAI-compatible providers, accurate input token reporting
+
+## [0.1.57]
+
+- Added `kanban --update` command so you can check for and install updates manually
+- Fixed Windows agents (like Codex) being incorrectly launched through cmd.exe when they're native executables
+- Reduced latency when switching between projects
+- Restored the feedback widget with proper JWT authentication
+- Fixed telemetry service configuration for Cline agents
+- Updated Cline SDK from 0.0.23 to 0.0.24, which includes reasoning details support and improved JSON Schema handling for tool definitions
+
+## [0.1.56]
+
+- Automatic context overflow recovery: when the conversation history exceeds the model's context window, Kanban now compacts old messages and retries instead of failing
+- Credit limit errors (insufficient balance / 402) are now surfaced immediately without unnecessary retries or confusing system messages
+- Added report issue and feature request links to the settings dialog
+- Added Cline icon to browser notifications
+- Updated Cline SDK from 0.0.22 to 0.0.23, which includes: LiteLLM private model support, provider-specific setting configs, loop detection as a built-in agent policy, provider ID normalization for model resolution, OAuth token refresh fix for spawned agents
+
+## [0.1.55]
+
+- Fixed non-ASCII file paths (e.g. Japanese, Chinese, Korean characters) rendering as garbled octal escape sequences in the diff view
+
+## [0.1.54]
+
+- Task agent chat panel resizing now persists when navigating between tasks
+
+## [0.1.53]
+
+- Added `/clear` slash command to reset the Cline agent chat session
+- Added hints for environment variables in Cline provider setup
+- Aligned Cline provider and model fallbacks with SDK defaults for more reliable configuration
+- Fixed Codex plan mode not working
+- Fixed slash command file watchers to reuse a single watcher per workspace instead of creating duplicates
+- Show loading skeleton in onboarding carousel while videos load
+- Added VS Code Insiders as a file open target
+
 ## [0.1.52]
 
 - Added support for custom OpenAI-compatible providers, so you can connect any OpenAI-compatible API as a Cline model provider

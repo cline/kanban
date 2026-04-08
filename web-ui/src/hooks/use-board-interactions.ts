@@ -6,8 +6,8 @@ import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
-import { triggerTaskAgentReview } from "@/runtime/runtime-config-query";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
+import { triggerTaskAgentReview } from "@/runtime/runtime-config-query";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import {
 	applyDragResult,
@@ -21,7 +21,7 @@ import {
 import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
-import { isTaskAgentReviewPinnedToReview, resolveTaskAutoReviewMode, resolveTaskAgentReviewStatus } from "@/types";
+import { isTaskAgentReviewPinnedToReview, resolveTaskAgentReviewStatus, resolveTaskAutoReviewMode } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import {
 	getBrowserNotificationPermission,
@@ -322,7 +322,9 @@ export function useBoardInteractions({
 			try {
 				const response = await triggerTaskAgentReview(currentProjectId, taskId);
 				if (response.state) {
-					setBoard((currentBoard) => updateTaskAgentReviewState(currentBoard, taskId, response.state ?? undefined));
+					setBoard((currentBoard) =>
+						updateTaskAgentReviewState(currentBoard, taskId, response.state ?? undefined),
+					);
 				}
 
 				if (!response.ok) {
@@ -799,10 +801,14 @@ export function useBoardInteractions({
 
 	const handleCardSelect = useCallback(
 		(taskId: string) => {
+			const selection = findCardSelection(board, taskId);
+			if (!selection || selection.column.id === "trash") {
+				return;
+			}
 			setSelectedTaskId(taskId);
 			setIsGitHistoryOpen(false);
 		},
-		[setIsGitHistoryOpen, setSelectedTaskId],
+		[board, setIsGitHistoryOpen, setSelectedTaskId],
 	);
 
 	const handleMoveToTrash = useCallback(() => {

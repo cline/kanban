@@ -25,11 +25,16 @@ vi.mock("@/terminal/terminal-geometry-registry", () => ({
 }));
 
 interface HookSnapshot {
+	collapseDetailTerminal: ReturnType<typeof useTerminalPanels>["collapseDetailTerminal"];
+	collapseHomeTerminal: ReturnType<typeof useTerminalPanels>["collapseHomeTerminal"];
 	detailTerminalPaneHeight: number | undefined;
 	detailTerminalTaskId: string | null;
 	handleToggleDetailTerminal: ReturnType<typeof useTerminalPanels>["handleToggleDetailTerminal"];
 	homeTerminalPaneHeight: number | undefined;
 	isDetailTerminalOpen: boolean;
+	resetBottomTerminalLayoutCustomizations: ReturnType<
+		typeof useTerminalPanels
+	>["resetBottomTerminalLayoutCustomizations"];
 	setDetailTerminalPaneHeight: ReturnType<typeof useTerminalPanels>["setDetailTerminalPaneHeight"];
 	setHomeTerminalPaneHeight: ReturnType<typeof useTerminalPanels>["setHomeTerminalPaneHeight"];
 }
@@ -104,21 +109,27 @@ function HookHarness({
 
 	useEffect(() => {
 		onSnapshot({
+			collapseDetailTerminal: result.collapseDetailTerminal,
+			collapseHomeTerminal: result.collapseHomeTerminal,
 			detailTerminalPaneHeight: result.detailTerminalPaneHeight,
 			detailTerminalTaskId: result.detailTerminalTaskId,
 			handleToggleDetailTerminal: result.handleToggleDetailTerminal,
 			homeTerminalPaneHeight: result.homeTerminalPaneHeight,
 			isDetailTerminalOpen: result.isDetailTerminalOpen,
+			resetBottomTerminalLayoutCustomizations: result.resetBottomTerminalLayoutCustomizations,
 			setDetailTerminalPaneHeight: result.setDetailTerminalPaneHeight,
 			setHomeTerminalPaneHeight: result.setHomeTerminalPaneHeight,
 		});
 	}, [
 		onSnapshot,
+		result.collapseDetailTerminal,
+		result.collapseHomeTerminal,
 		result.detailTerminalPaneHeight,
 		result.detailTerminalTaskId,
 		result.handleToggleDetailTerminal,
 		result.homeTerminalPaneHeight,
 		result.isDetailTerminalOpen,
+		result.resetBottomTerminalLayoutCustomizations,
 		result.setDetailTerminalPaneHeight,
 		result.setHomeTerminalPaneHeight,
 	]);
@@ -292,5 +303,78 @@ describe("useTerminalPanels", () => {
 		await renderHarness(selectionA);
 		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBe(410);
 		expect(requireSnapshot(latestSnapshot).detailTerminalPaneHeight).toBe(410);
+	});
+
+	it("resets the shared bottom terminal height when collapsed", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const selection = createSelection("task-a");
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					selectedCard={selection}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).handleToggleDetailTerminal();
+			await flushPromises();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setDetailTerminalPaneHeight(320);
+			await flushPromises();
+		});
+
+		expect(requireSnapshot(latestSnapshot).detailTerminalPaneHeight).toBe(320);
+		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBe("320");
+		expect(requireSnapshot(latestSnapshot).isDetailTerminalOpen).toBe(true);
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).collapseDetailTerminal();
+			await flushPromises();
+		});
+
+		expect(requireSnapshot(latestSnapshot).detailTerminalPaneHeight).toBeUndefined();
+		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBeUndefined();
+		expect(requireSnapshot(latestSnapshot).isDetailTerminalOpen).toBe(false);
+		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBeNull();
+	});
+
+	it("resets the shared bottom terminal height without closing the current pane", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					selectedCard={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushPromises();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setHomeTerminalPaneHeight(420);
+			await flushPromises();
+		});
+
+		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBe(420);
+		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBe("420");
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).resetBottomTerminalLayoutCustomizations();
+			await flushPromises();
+		});
+
+		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBeUndefined();
+		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBeNull();
 	});
 });

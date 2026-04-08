@@ -66,6 +66,7 @@ export function GitRefsPanel({
 	selectedRefName,
 	isLoading,
 	errorMessage,
+	panelWidth,
 	workingCopyChanges,
 	isWorkingCopySelected,
 	onSelectRef,
@@ -76,6 +77,7 @@ export function GitRefsPanel({
 	selectedRefName: string | null;
 	isLoading: boolean;
 	errorMessage?: string | null;
+	panelWidth: number;
 	workingCopyChanges: number | null;
 	isWorkingCopySelected?: boolean;
 	onSelectRef: (ref: RuntimeGitRef) => void;
@@ -122,9 +124,9 @@ export function GitRefsPanel({
 			style={{
 				display: "flex",
 				flexDirection: "column",
-				width: 220,
+				width: panelWidth,
 				minWidth: 180,
-				maxWidth: 280,
+				flexShrink: 0,
 				overflow: "hidden",
 				background: "var(--color-surface-1)",
 			}}

@@ -23,11 +23,14 @@ import type {
 	RuntimeClineProviderModelsResponse,
 	RuntimeClineProviderSettingsSaveRequest,
 	RuntimeClineProviderSettingsSaveResponse,
+	RuntimeClineUpdateProviderRequest,
+	RuntimeClineUpdateProviderResponse,
 	RuntimeCommandRunRequest,
 	RuntimeCommandRunResponse,
 	RuntimeConfigResponse,
 	RuntimeConfigSaveRequest,
 	RuntimeDebugResetAllStateResponse,
+	RuntimeFeaturebaseTokenResponse,
 	RuntimeGitCheckoutRequest,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitCommitDiffRequest,
@@ -102,11 +105,14 @@ import {
 	runtimeClineProviderModelsResponseSchema,
 	runtimeClineProviderSettingsSaveRequestSchema,
 	runtimeClineProviderSettingsSaveResponseSchema,
+	runtimeClineUpdateProviderRequestSchema,
+	runtimeClineUpdateProviderResponseSchema,
 	runtimeCommandRunRequestSchema,
 	runtimeCommandRunResponseSchema,
 	runtimeConfigResponseSchema,
 	runtimeConfigSaveRequestSchema,
 	runtimeDebugResetAllStateResponseSchema,
+	runtimeFeaturebaseTokenResponseSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeGitCheckoutResponseSchema,
 	runtimeGitCommitDiffRequestSchema,
@@ -186,6 +192,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineAddProviderRequest,
 		) => Promise<RuntimeClineAddProviderResponse>;
+		updateClineProvider: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+			input: RuntimeClineUpdateProviderRequest,
+		) => Promise<RuntimeClineUpdateProviderResponse>;
 		startTaskSession: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskSessionStartRequest,
@@ -228,6 +238,7 @@ export interface RuntimeTrpcContext {
 		) => Promise<RuntimeClineProviderCatalogResponse>;
 		getClineAccountProfile: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeClineAccountProfileResponse>;
 		getClineKanbanAccess: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeClineKanbanAccessResponse>;
+		getFeaturebaseToken: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeFeaturebaseTokenResponse>;
 		getClineProviderModels: (
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineProviderModelsRequest,
@@ -405,6 +416,12 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.addClineProvider(ctx.workspaceScope, input);
 			}),
+		updateClineProvider: t.procedure
+			.input(runtimeClineUpdateProviderRequestSchema)
+			.output(runtimeClineUpdateProviderResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.updateClineProvider(ctx.workspaceScope, input);
+			}),
 		startTaskSession: workspaceProcedure
 			.input(runtimeTaskSessionStartRequestSchema)
 			.output(runtimeTaskSessionStartResponseSchema)
@@ -470,6 +487,9 @@ export const runtimeAppRouter = t.router({
 		}),
 		getClineKanbanAccess: t.procedure.output(runtimeClineKanbanAccessResponseSchema).query(async ({ ctx }) => {
 			return await ctx.runtimeApi.getClineKanbanAccess(ctx.workspaceScope);
+		}),
+		getFeaturebaseToken: t.procedure.output(runtimeFeaturebaseTokenResponseSchema).query(async ({ ctx }) => {
+			return await ctx.runtimeApi.getFeaturebaseToken(ctx.workspaceScope);
 		}),
 		getClineProviderModels: t.procedure
 			.input(runtimeClineProviderModelsRequestSchema)

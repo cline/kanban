@@ -8,10 +8,13 @@ import { ClineAgentChatPanel, type ClineAgentChatPanelHandle } from "@/component
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
-import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { Button } from "@/components/ui/button";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
+import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
+import { ResizeHandle } from "@/resize/resize-handle";
+import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
+import { useResizeDrag } from "@/resize/use-resize-drag";
 import { isNativeClineAgentSelected } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
@@ -22,23 +25,18 @@ import type {
 } from "@/runtime/types";
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
-import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
+import { useTerminalThemeColors } from "@/terminal/theme-colors";
 import {
 	type BoardCard,
 	type CardSelection,
 	getTaskAgentReviewStatusLabel,
 	getTaskAutoReviewCancelButtonLabel,
 } from "@/types";
-import { useUnmount, useWindowEvent } from "@/utils/react-use";
+import { useWindowEvent } from "@/utils/react-use";
 
 // We still poll the open detail diff because line content can change without changing
 // the overall file or line counts that drive the shared workspace metadata stream.
 const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
-const COLLAPSED_FILE_TREE_PANEL_BASIS = "33.3333%";
-const EXPANDED_FILE_TREE_PANEL_BASIS = "16%";
-const DEFAULT_AGENT_PANEL_RATIO = 0.4;
-const MIN_AGENT_PANEL_RATIO = 0.15;
-const MAX_AGENT_PANEL_RATIO = 0.75;
 
 type AgentPaneView = "task" | "reviewer";
 
@@ -236,6 +234,7 @@ export function CardDetailView({
 	bottomTerminalSummary,
 	bottomTerminalSubtitle,
 	onBottomTerminalClose,
+	onBottomTerminalCollapse,
 	bottomTerminalPaneHeight,
 	onBottomTerminalPaneHeightChange,
 	onBottomTerminalConnectionReady,
@@ -297,6 +296,7 @@ export function CardDetailView({
 	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
 	bottomTerminalSubtitle?: string | null;
 	onBottomTerminalClose: () => void;
+	onBottomTerminalCollapse?: () => void;
 	bottomTerminalPaneHeight?: number;
 	onBottomTerminalPaneHeightChange?: (height: number) => void;
 	onBottomTerminalConnectionReady?: (taskId: string) => void;
@@ -307,84 +307,103 @@ export function CardDetailView({
 	isDocumentVisible?: boolean;
 	onClineSettingsSaved?: () => void;
 }): React.ReactElement {
+	const terminalThemeColors = useTerminalThemeColors();
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
 	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
-	const [agentPanelRatio, setAgentPanelRatio] = useState(DEFAULT_AGENT_PANEL_RATIO);
-	const [isResizing, setIsResizing] = useState(false);
-	const [activeAgentPaneView, setActiveAgentPaneView] = useState<AgentPaneView>("task");
-	const resizeDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
-	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
-	const mainRowRef = useRef<HTMLDivElement | null>(null);
-	const clineAgentChatPanelRef = useRef<ClineAgentChatPanelHandle | null>(null);
-
-	const stopResize = useCallback(() => {
-		setIsResizing(false);
-		const previousBodyStyle = previousBodyStyleRef.current;
-		if (previousBodyStyle) {
-			document.body.style.userSelect = previousBodyStyle.userSelect;
-			document.body.style.cursor = previousBodyStyle.cursor;
-			previousBodyStyleRef.current = null;
-		}
-		resizeDragRef.current = null;
-	}, []);
-
-	useUnmount(() => {
-		stopResize();
+	const {
+		taskCardsPanelRatio,
+		setTaskCardsPanelRatio,
+		agentPanelRatio,
+		setAgentPanelRatio,
+		detailDiffFileTreeRatio,
+		setDetailDiffFileTreeRatio,
+	} = useCardDetailLayout({
+		isDiffExpanded,
 	});
-
-	const handleResizeMouseMove = useCallback(
-		(event: MouseEvent) => {
-			const dragState = resizeDragRef.current;
-			if (!isResizing || !dragState) {
-				return;
-			}
-			const deltaX = event.clientX - dragState.startX;
-			const deltaRatio = deltaX / dragState.containerWidth;
-			const nextRatio = Math.max(
-				MIN_AGENT_PANEL_RATIO,
-				Math.min(MAX_AGENT_PANEL_RATIO, dragState.startRatio + deltaRatio),
-			);
-			setAgentPanelRatio(nextRatio);
-		},
-		[isResizing],
-	);
-
-	const handleResizeMouseUp = useCallback(() => {
-		if (!isResizing) {
-			return;
-		}
-		stopResize();
-	}, [isResizing, stopResize]);
-
-	useWindowEvent("mousemove", isResizing ? handleResizeMouseMove : null);
-	useWindowEvent("mouseup", isResizing ? handleResizeMouseUp : null);
+	const [activeAgentPaneView, setActiveAgentPaneView] = useState<AgentPaneView>("task");
+	const { startDrag: startTaskCardsPanelResize } = useResizeDrag();
+	const { startDrag: startAgentPanelResize } = useResizeDrag();
+	const { startDrag: startDetailDiffResize } = useResizeDrag();
+	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
+	const mainRowRef = useRef<HTMLDivElement | null>(null);
+	const detailDiffRowRef = useRef<HTMLDivElement | null>(null);
+	const clineAgentChatPanelRef = useRef<ClineAgentChatPanelHandle | null>(null);
 
 	const handleSeparatorMouseDown = useCallback(
 		(event: ReactMouseEvent<HTMLDivElement>) => {
-			event.preventDefault();
-			if (isResizing) {
-				stopResize();
+			const container = detailLayoutRef.current;
+			if (!container) {
+				return;
 			}
+			const containerWidth = Math.max(container.offsetWidth, 1);
+			const startX = event.clientX;
+			const startRatio = taskCardsPanelRatio;
+			startTaskCardsPanelResize(event, {
+				axis: "x",
+				cursor: "ew-resize",
+				onMove: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setTaskCardsPanelRatio(startRatio + deltaRatio);
+				},
+				onEnd: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setTaskCardsPanelRatio(startRatio + deltaRatio);
+				},
+			});
+		},
+		[setTaskCardsPanelRatio, startTaskCardsPanelResize, taskCardsPanelRatio],
+	);
+
+	const handleAgentDiffSeparatorMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
 			const container = mainRowRef.current;
 			if (!container) {
 				return;
 			}
-			resizeDragRef.current = {
-				startX: event.clientX,
-				startRatio: agentPanelRatio,
-				containerWidth: container.offsetWidth,
-			};
-			setIsResizing(true);
-			previousBodyStyleRef.current = {
-				userSelect: document.body.style.userSelect,
-				cursor: document.body.style.cursor,
-			};
-			document.body.style.userSelect = "none";
-			document.body.style.cursor = "ew-resize";
+			const containerWidth = Math.max(container.offsetWidth, 1);
+			const startX = event.clientX;
+			const startRatio = agentPanelRatio;
+			startAgentPanelResize(event, {
+				axis: "x",
+				cursor: "ew-resize",
+				onMove: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setAgentPanelRatio(startRatio + deltaRatio);
+				},
+				onEnd: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setAgentPanelRatio(startRatio + deltaRatio);
+				},
+			});
 		},
-		[agentPanelRatio, isResizing, stopResize],
+		[agentPanelRatio, setAgentPanelRatio, startAgentPanelResize],
+	);
+
+	const handleDetailDiffSeparatorMouseDown = useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			const container = detailDiffRowRef.current;
+			if (!container) {
+				return;
+			}
+			const containerWidth = Math.max(container.offsetWidth, 1);
+			const startX = event.clientX;
+			const startRatio = detailDiffFileTreeRatio;
+			startDetailDiffResize(event, {
+				axis: "x",
+				cursor: "ew-resize",
+				onMove: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setDetailDiffFileTreeRatio(startRatio - deltaRatio);
+				},
+				onEnd: (pointerX) => {
+					const deltaRatio = (pointerX - startX) / containerWidth;
+					setDetailDiffFileTreeRatio(startRatio - deltaRatio);
+				},
+			});
+		},
+		[detailDiffFileTreeRatio, setDetailDiffFileTreeRatio, startDetailDiffResize],
 	);
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
 	const lastTurnViewKey =
@@ -410,9 +429,13 @@ export function CardDetailView({
 	const hasNoWorkspaceFileChanges =
 		isRuntimeAvailable && workspaceChanges !== null && runtimeFiles !== null && runtimeFiles.length === 0;
 	const emptyDiffTitle = diffMode === "last_turn" ? "No changes since last turn" : "No working changes";
+	const taskCardsPanelPercent = `${(taskCardsPanelRatio * 100).toFixed(1)}%`;
+	const detailContentPanelPercent = `${((1 - taskCardsPanelRatio) * 100).toFixed(1)}%`;
 	const agentPanelPercent = `${(agentPanelRatio * 100).toFixed(1)}%`;
 	const diffPanelPercent = `${((1 - agentPanelRatio) * 100).toFixed(1)}%`;
-	const fileTreePanelFlex = `0 0 ${isDiffExpanded ? EXPANDED_FILE_TREE_PANEL_BASIS : COLLAPSED_FILE_TREE_PANEL_BASIS}`;
+	const detailDiffFileTreePanelPercent = `${(detailDiffFileTreeRatio * 100).toFixed(1)}%`;
+	const detailDiffContentPanelPercent = `${((1 - detailDiffFileTreeRatio) * 100).toFixed(1)}%`;
+	const detailDiffFileTreePanelFlex = `0 0 ${detailDiffFileTreePanelPercent}`;
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const showTaskAgentPane = activeAgentPaneView === "task";
@@ -561,6 +584,7 @@ export function CardDetailView({
 
 	return (
 		<div
+			ref={detailLayoutRef}
 			style={{
 				display: "flex",
 				flex: "1 1 0",
@@ -570,33 +594,51 @@ export function CardDetailView({
 			}}
 		>
 			{!isDiffExpanded ? (
-				<ColumnContextPanel
-					selection={selection}
-					workspacePath={workspacePath}
-					onCardSelect={onCardSelect}
-					taskSessions={taskSessions}
-					onTaskDragEnd={onTaskDragEnd}
-					onCreateTask={onCreateTask}
-					onStartTask={onStartTask}
-					onStartAllTasks={onStartAllTasks}
-					onClearTrash={onClearTrash}
-					editingTaskId={editingTaskId}
-					inlineTaskEditor={inlineTaskEditor}
-					onEditTask={onEditTask}
-					onCommitTask={onCommitTask}
-					onOpenPrTask={onOpenPrTask}
-					onMoveToTrashTask={onMoveReviewCardToTrash}
-					onRestoreFromTrashTask={onRestoreTaskFromTrash}
-					commitTaskLoadingById={commitTaskLoadingById}
-					openPrTaskLoadingById={openPrTaskLoadingById}
-					moveToTrashLoadingById={moveToTrashLoadingById}
-				/>
+				<>
+					<div
+						style={{
+							display: "flex",
+							width: taskCardsPanelPercent,
+							minWidth: 0,
+							minHeight: 0,
+						}}
+					>
+						<ColumnContextPanel
+							selection={selection}
+							workspacePath={workspacePath}
+							onCardSelect={onCardSelect}
+							taskSessions={taskSessions}
+							onTaskDragEnd={onTaskDragEnd}
+							onCreateTask={onCreateTask}
+							onStartTask={onStartTask}
+							onStartAllTasks={onStartAllTasks}
+							onClearTrash={onClearTrash}
+							editingTaskId={editingTaskId}
+							inlineTaskEditor={inlineTaskEditor}
+							onEditTask={onEditTask}
+							onCommitTask={onCommitTask}
+							onOpenPrTask={onOpenPrTask}
+							onMoveToTrashTask={onMoveReviewCardToTrash}
+							onRestoreFromTrashTask={onRestoreTaskFromTrash}
+							commitTaskLoadingById={commitTaskLoadingById}
+							openPrTaskLoadingById={openPrTaskLoadingById}
+							moveToTrashLoadingById={moveToTrashLoadingById}
+							panelWidth="100%"
+						/>
+					</div>
+					<ResizeHandle
+						orientation="vertical"
+						ariaLabel="Resize task cards and detail panels"
+						onMouseDown={handleSeparatorMouseDown}
+						className="z-10"
+					/>
+				</>
 			) : null}
 			<div
 				style={{
 					display: "flex",
 					flexDirection: "column",
-					width: isDiffExpanded ? "100%" : "80%",
+					width: isDiffExpanded ? "100%" : detailContentPanelPercent,
 					minWidth: 0,
 					minHeight: 0,
 					overflow: "hidden",
@@ -655,9 +697,8 @@ export function CardDetailView({
 										onSummary={onSessionSummary}
 										showSessionToolbar={false}
 										autoFocus
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-										showRightBorder={false}
+										panelBackgroundColor={terminalThemeColors.surfacePrimary}
+										terminalBackgroundColor={terminalThemeColors.surfacePrimary}
 										taskColumnId={selection.column.id}
 									/>
 								) : showClineAgentChatPanel ? (
@@ -720,38 +761,19 @@ export function CardDetailView({
 												: null
 										}
 										reviewState={selection.card.agentReview ?? null}
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfacePrimary}
-										showRightBorder={false}
+										panelBackgroundColor={terminalThemeColors.surfacePrimary}
+										terminalBackgroundColor={terminalThemeColors.surfacePrimary}
 										taskColumnId={selection.column.id}
 									/>
 								)}
 							</div>
 							{!isDiffExpanded ? (
-								<div
-									role="separator"
-									aria-orientation="vertical"
-									aria-label="Resize agent and diff panels"
-									style={{
-										position: "relative",
-										flex: "0 0 1px",
-										background: "var(--color-divider)",
-										zIndex: 2,
-									}}
-								>
-									<div
-										onMouseDown={handleSeparatorMouseDown}
-										className="hover:bg-accent/30"
-										style={{
-											position: "absolute",
-											left: -2,
-											right: -2,
-											top: 0,
-											bottom: 0,
-											cursor: "ew-resize",
-										}}
-									/>
-								</div>
+								<ResizeHandle
+									orientation="vertical"
+									ariaLabel="Resize agent and diff panels"
+									onMouseDown={handleAgentDiffSeparatorMouseDown}
+									className="z-10"
+								/>
 							) : null}
 							<div
 								style={{
@@ -772,36 +794,60 @@ export function CardDetailView({
 								) : null}
 								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
 									{isWorkspaceChangesPending ? (
-										<WorkspaceChangesLoadingPanel panelFlex={fileTreePanelFlex} />
+										<WorkspaceChangesLoadingPanel panelFlex={detailDiffFileTreePanelFlex} />
 									) : hasNoWorkspaceFileChanges ? (
 										<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
 									) : (
-										<>
-											<DiffViewerPanel
-												workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-												selectedPath={selectedPath}
-												onSelectedPathChange={setSelectedPath}
-												viewMode={isDiffExpanded ? "split" : "unified"}
-												onAddToTerminal={
-													onAddReviewComments || showClineAgentChatPanel
-														? handleAddDiffComments
-														: undefined
-												}
-												onSendToTerminal={
-													onSendReviewComments || showClineAgentChatPanel
-														? handleSendDiffComments
-														: undefined
-												}
-												comments={diffComments}
-												onCommentsChange={setDiffComments}
+										<div ref={detailDiffRowRef} style={{ display: "flex", flex: "1 1 0", minWidth: 0 }}>
+											<div
+												style={{
+													display: "flex",
+													flex: `0 0 ${detailDiffContentPanelPercent}`,
+													minWidth: 0,
+													minHeight: 0,
+												}}
+											>
+												<DiffViewerPanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectedPathChange={setSelectedPath}
+													viewMode={isDiffExpanded ? "split" : "unified"}
+													onAddToTerminal={
+														onAddReviewComments || showClineAgentChatPanel
+															? handleAddDiffComments
+															: undefined
+													}
+													onSendToTerminal={
+														onSendReviewComments || showClineAgentChatPanel
+															? handleSendDiffComments
+															: undefined
+													}
+													comments={diffComments}
+													onCommentsChange={setDiffComments}
+												/>
+											</div>
+											<ResizeHandle
+												orientation="vertical"
+												ariaLabel="Resize detail diff panels"
+												onMouseDown={handleDetailDiffSeparatorMouseDown}
+												className="z-10"
 											/>
-											<FileTreePanel
-												workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-												selectedPath={selectedPath}
-												onSelectPath={setSelectedPath}
-												panelFlex={fileTreePanelFlex}
-											/>
-										</>
+											<div
+												style={{
+													display: "flex",
+													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
+													minWidth: 0,
+													minHeight: 0,
+												}}
+											>
+												<FileTreePanel
+													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+													selectedPath={selectedPath}
+													onSelectPath={setSelectedPath}
+													panelFlex="1 1 0"
+												/>
+											</div>
+										</div>
 									)}
 								</div>
 							</div>
@@ -811,6 +857,7 @@ export function CardDetailView({
 								minHeight={200}
 								initialHeight={bottomTerminalPaneHeight}
 								onHeightChange={onBottomTerminalPaneHeightChange}
+								onCollapse={onBottomTerminalCollapse}
 							>
 								<div
 									style={{
@@ -832,10 +879,9 @@ export function CardDetailView({
 										onClose={onBottomTerminalClose}
 										minimalHeaderTitle="Terminal"
 										minimalHeaderSubtitle={bottomTerminalSubtitle}
-										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
-										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
-										showRightBorder={false}
+										panelBackgroundColor={terminalThemeColors.surfaceRaised}
+										terminalBackgroundColor={terminalThemeColors.surfaceRaised}
+										cursorColor={terminalThemeColors.textPrimary}
 										onConnectionReady={onBottomTerminalConnectionReady}
 										agentCommand={bottomTerminalAgentCommand}
 										onSendAgentCommand={onBottomTerminalSendAgentCommand}

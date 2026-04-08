@@ -3,6 +3,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitCommitDiffPanel, type GitCommitDiffSource } from "@/components/git-history/git-commit-diff-panel";
 
+vi.mock("@/resize/layout-customizations", () => ({
+	useLayoutResetEffect: () => {},
+}));
+
 function createRect(top: number): DOMRect {
 	return {
 		x: 0,
