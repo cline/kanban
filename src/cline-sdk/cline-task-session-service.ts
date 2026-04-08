@@ -145,6 +145,7 @@ function formatStartWarnings(warnings: readonly string[] | undefined): string | 
 
 export class InMemoryClineTaskSessionService implements ClineTaskSessionService {
 	private readonly pendingTurnCancelTaskIds = new Set<string>();
+	private readonly providerIdByTaskId = new Map<string, string>();
 	private readonly sessionRuntime: ClineSessionRuntime;
 	private readonly messageRepository: ClineMessageRepository;
 	private readonly watcherRegistry: ClineWatcherRegistry;
@@ -174,6 +175,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return this.messageRepository.onMessage(listener);
 	}
 
+	private isClineProviderForTask(taskId: string): boolean {
+		return (this.providerIdByTaskId.get(taskId) ?? SDK_DEFAULT_PROVIDER_ID) === "cline";
+	}
+
 	private emitTaskFailure(
 		taskId: string,
 		entry: ClineTaskSessionEntry,
@@ -181,7 +186,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		error: unknown,
 	): void {
 		const errorMessage = toErrorMessage(error);
-		const creditLimitError = isCreditLimitError(errorMessage);
+		const creditLimitError = this.isClineProviderForTask(taskId) && isCreditLimitError(errorMessage);
 		if (!creditLimitError) {
 			const systemMessage = createMessage(
 				taskId,
@@ -285,6 +290,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		}
 
 		const providerId = request.providerId?.trim().toLowerCase() || SDK_DEFAULT_PROVIDER_ID;
+		this.providerIdByTaskId.set(request.taskId, providerId);
 		const modelId = request.modelId?.trim() || SDK_DEFAULT_MODEL_ID;
 		const resolvedMode: RuntimeTaskSessionMode = request.mode ?? "act";
 		const persistedResumeSnapshot = request.resumeFromTrash
@@ -811,6 +817,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			taskId,
 			entry,
 			pendingTurnCancelTaskIds: this.pendingTurnCancelTaskIds,
+			isClineProvider: this.isClineProviderForTask(taskId),
 			emitSummary: (summary: RuntimeTaskSessionSummary) => {
 				latestSummary = summary;
 				this.emitSummary(summary);

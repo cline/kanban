@@ -23,6 +23,7 @@ function applyEvent(input: {
 	entry?: ClineTaskSessionEntry;
 	event: unknown;
 	pendingTurnCancelTaskIds?: Set<string>;
+	isClineProvider?: boolean;
 }) {
 	const taskId = input.taskId ?? "task-1";
 	const entry = input.entry ?? createEntry(taskId);
@@ -35,6 +36,7 @@ function applyEvent(input: {
 		taskId,
 		entry,
 		pendingTurnCancelTaskIds,
+		isClineProvider: input.isClineProvider ?? true,
 		emitSummary: (summary) => {
 			summaries.push(summary);
 		},
@@ -562,6 +564,32 @@ describe("applyClineSessionEvent", () => {
 		expect(result.entry.summary.state).toBe("awaiting_review");
 		expect(result.entry.summary.latestHookActivity?.notificationType).toBe("credit_limit");
 		expect(result.entry.summary.warningMessage).toBeNull();
+	});
+
+	it("does not detect credit-limit errors for non-Cline providers", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			isClineProvider: false,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "error",
+						error: new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
+						recoverable: false,
+						iteration: 1,
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("awaiting_review");
+		expect(result.entry.summary.latestHookActivity?.notificationType).toBeNull();
+		expect(result.entry.summary.warningMessage).toBe("402 Insufficient balance. Your Cline Credits balance is $0.00");
 	});
 
 	it("keeps unrecoverable agent errors resumable", () => {

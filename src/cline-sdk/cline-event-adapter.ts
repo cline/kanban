@@ -46,6 +46,7 @@ export interface ApplyClineSessionEventInput {
 	taskId: string;
 	entry: ClineTaskSessionEntry;
 	pendingTurnCancelTaskIds: Set<string>;
+	isClineProvider: boolean;
 	emitSummary: (summary: RuntimeTaskSessionSummary) => void;
 	emitMessage: (taskId: string, message: ClineTaskMessage) => void;
 }
@@ -183,7 +184,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		const rawMessage = typeof agentEvent.message === "string" ? agentEvent.message.trim() || null : null;
 		const creditLimitSource = errorMessage ?? rawMessage;
 		const sdkRecoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
-		const creditLimitError = isCreditLimitError(creditLimitSource);
+		const creditLimitError = input.isClineProvider && isCreditLimitError(creditLimitSource);
 		const recoverable = sdkRecoverable && !creditLimitError;
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		if (!recoverable) {
@@ -253,7 +254,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 	if (agentEvent?.type === "notice") {
 		const message = typeof agentEvent.message === "string" ? agentEvent.message.trim() : "";
 		const noticeReason: string | null = typeof agentEvent.reason === "string" ? agentEvent.reason : null;
-		if (isCreditLimitError(message) && noticeReason === "recovery") {
+		if (input.isClineProvider && isCreditLimitError(message) && noticeReason === "recovery") {
 			return;
 		}
 		if (message) {
