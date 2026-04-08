@@ -504,6 +504,52 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("clears hydrated persisted history even when no live task entry exists", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.readPersistedTaskSessionMock
+			.mockResolvedValueOnce({
+				record: {
+					sessionId: "task-1-persisted",
+					source: "core" as ClinePersistedTaskSessionSnapshot["record"]["source"],
+					status: "completed",
+					startedAt: "2026-03-17T10:00:00.000Z",
+					updatedAt: "2026-03-17T10:05:00.000Z",
+					interactive: true,
+					provider: "anthropic",
+					model: "claude-sonnet-4-6",
+					cwd: "/tmp/worktree",
+					workspaceRoot: "/tmp/workspace-root",
+					enableTools: true,
+					enableSpawn: false,
+					enableTeams: false,
+					isSubagent: false,
+				},
+				messages: [
+					{
+						role: "user",
+						content: "Recovered prompt",
+					},
+					{
+						role: "assistant",
+						content: "Recovered answer",
+					},
+				],
+			})
+			.mockResolvedValue(null);
+
+		expect((await service.loadTaskSessionMessages("task-1")).map((message) => message.content)).toEqual([
+			"Recovered prompt",
+			"Recovered answer",
+		]);
+
+		const clearedSummary = await service.clearTaskSession("task-1");
+
+		expect(clearedSummary).toBeNull();
+		expect(runtime.clearTaskSessionsMock).toHaveBeenCalledWith("task-1");
+		expect(await service.loadTaskSessionMessages("task-1")).toEqual([]);
+		expect(runtime.readPersistedTaskSessionMock).toHaveBeenCalledTimes(2);
+	});
+
 	it("keeps resume-from-trash sessions awaiting review until the user sends a message", async () => {
 		const { service } = createTrackedService();
 

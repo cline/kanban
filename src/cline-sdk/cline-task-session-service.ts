@@ -677,6 +677,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		const existingEntry = this.messageRepository.getTaskEntry(taskId);
 		this.pendingTurnCancelTaskIds.delete(taskId);
 		await this.sessionRuntime.clearTaskSessions(taskId).catch(() => undefined);
+		this.messageRepository.clearHydratedTaskMessages(taskId);
 		if (!existingEntry) {
 			return null;
 		}

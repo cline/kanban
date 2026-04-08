@@ -131,4 +131,26 @@ describe("InMemoryClineMessageRepository", () => {
 		expect(messages.map((message) => message.content)).toEqual(["Live response"]);
 		expect(loadPersistedSession).not.toHaveBeenCalled();
 	});
+
+	it("drops hydrated message cache when explicitly cleared", async () => {
+		const repository = createInMemoryClineMessageRepository();
+		const loadPersistedSession = vi
+			.fn()
+			.mockResolvedValueOnce(
+				createPersistedSnapshot([
+					{
+						role: "assistant",
+						content: "Persisted response",
+					},
+				]),
+			)
+			.mockResolvedValueOnce(null);
+
+		expect(
+			(await repository.hydrateTaskMessages("task-1", loadPersistedSession)).map((message) => message.content),
+		).toEqual(["Persisted response"]);
+		repository.clearHydratedTaskMessages("task-1");
+		expect(await repository.hydrateTaskMessages("task-1", loadPersistedSession)).toEqual([]);
+		expect(loadPersistedSession).toHaveBeenCalledTimes(2);
+	});
 });
