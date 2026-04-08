@@ -11,6 +11,7 @@ import { createIdleTaskSession } from "@/hooks/app-utils";
 import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -53,6 +54,7 @@ export function useHomeSidebarAgentPanel({
 	latestTaskChatMessage,
 	taskChatMessagesByTaskId,
 }: UseHomeSidebarAgentPanelInput): ReactElement | null {
+	const isMobile = useIsMobile();
 	const terminalThemeColors = useTerminalThemeColors();
 	const [sessionSummaries, setSessionSummaries] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const upsertSessionSummary = useCallback((summary: RuntimeTaskSessionSummary) => {
@@ -178,7 +180,7 @@ export function useHomeSidebarAgentPanel({
 				summary={homeAgentPanelSummary}
 				onSummary={upsertSessionSummary}
 				showSessionToolbar={false}
-				autoFocus
+				autoFocus={!isMobile}
 				panelBackgroundColor={terminalThemeColors.surfaceRaised}
 				terminalBackgroundColor={terminalThemeColors.surfaceRaised}
 				cursorColor={terminalThemeColors.textPrimary}

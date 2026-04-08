@@ -1,5 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { GitCompareArrows, Maximize2, Minimize2, X } from "lucide-react";
+import { Files, GitCompareArrows, Maximize2, MessageSquare, Minimize2, X } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -9,8 +9,10 @@ import { ColumnContextPanel } from "@/components/detail-panels/column-context-pa
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
@@ -44,69 +46,143 @@ function isEventInsideDialog(target: EventTarget | null): boolean {
 	return target instanceof Element && target.closest("[role='dialog']") !== null;
 }
 
+/** Shared factory for the three horizontal resize-drag handlers in the detail view. */
+function useResizeHandler(
+	containerRef: React.RefObject<HTMLDivElement | null>,
+	ratio: number,
+	setRatio: (r: number) => void,
+	startDrag: ReturnType<typeof useResizeDrag>["startDrag"],
+	invert = false,
+): (event: ReactMouseEvent<HTMLDivElement>) => void {
+	return useCallback(
+		(event: ReactMouseEvent<HTMLDivElement>) => {
+			const container = containerRef.current;
+			if (!container) {
+				return;
+			}
+			const containerWidth = Math.max(container.offsetWidth, 1);
+			const startX = event.clientX;
+			const sign = invert ? -1 : 1;
+			const applyDelta = (pointerX: number) => {
+				setRatio(ratio + sign * ((pointerX - startX) / containerWidth));
+			};
+			startDrag(event, { axis: "x", cursor: "ew-resize", onMove: applyDelta, onEnd: applyDelta });
+		},
+		[containerRef, ratio, setRatio, startDrag, invert],
+	);
+}
+
+function SkeletonLine({ width, mb }: { width: string; mb?: boolean }): React.ReactElement {
+	return <div className={cn("kb-skeleton h-[13px] rounded-sm", mb && "mb-[7px]")} style={{ width }} />;
+}
+
+function SkeletonFileRow({ width }: { width: string }): React.ReactElement {
+	return (
+		<div className="mb-0.5 flex items-center gap-2 px-2 py-1.5">
+			<div className="kb-skeleton h-3 w-3 rounded-sm" />
+			<div className="kb-skeleton h-[13px] rounded-sm" style={{ width }} />
+		</div>
+	);
+}
+
 function WorkspaceChangesLoadingPanel({ panelFlex }: { panelFlex: string }): React.ReactElement {
 	return (
-		<div
-			style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}
-		>
-			<div
-				style={{
-					display: "flex",
-					flex: "1 1 0",
-					flexDirection: "column",
-					borderRight: "1px solid var(--color-divider)",
-				}}
-			>
-				<div
-					style={{
-						padding: "10px 10px 6px",
-					}}
-				>
-					<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-						<div className="kb-skeleton" style={{ height: 14, width: "62%", borderRadius: 3 }} />
-						<div className="kb-skeleton" style={{ height: 16, width: 42, borderRadius: 999 }} />
+		<div className="flex min-h-0 min-w-0 bg-surface-0" style={{ flex: "1.6 1 0" }}>
+			<div className="flex flex-1 flex-col border-r border-divider">
+				<div className="px-2.5 pt-2.5 pb-1.5">
+					<div className="mb-2.5 flex items-center gap-2">
+						<div className="kb-skeleton h-3.5 rounded-sm" style={{ width: "62%" }} />
+						<div className="kb-skeleton h-4 w-[42px] rounded-full" />
 					</div>
-					<div className="kb-skeleton" style={{ height: 13, width: "92%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "84%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "95%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "79%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "88%", borderRadius: 3, marginBottom: 7 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "76%", borderRadius: 3 }} />
+					<SkeletonLine width="92%" mb />
+					<SkeletonLine width="84%" mb />
+					<SkeletonLine width="95%" mb />
+					<SkeletonLine width="79%" mb />
+					<SkeletonLine width="88%" mb />
+					<SkeletonLine width="76%" />
 				</div>
-				<div style={{ flex: "1 1 0" }} />
+				<div className="flex-1" />
 			</div>
-			<div
-				style={{
-					display: "flex",
-					flex: panelFlex,
-					flexDirection: "column",
-					padding: "10px 8px",
-				}}
-			>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "61%", borderRadius: 3 }} />
-				</div>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "70%", borderRadius: 3 }} />
-				</div>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 2 }}>
-					<div className="kb-skeleton" style={{ height: 12, width: 12, borderRadius: 2 }} />
-					<div className="kb-skeleton" style={{ height: 13, width: "53%", borderRadius: 3 }} />
-				</div>
-				<div style={{ flex: "1 1 0" }} />
+			<div className="flex flex-col px-2 py-2.5" style={{ flex: panelFlex }}>
+				<SkeletonFileRow width="61%" />
+				<SkeletonFileRow width="70%" />
+				<SkeletonFileRow width="53%" />
+				<div className="flex-1" />
 			</div>
 		</div>
 	);
 }
 
+function BottomTerminalSection({
+	taskId,
+	workspaceId,
+	summary,
+	onSummary,
+	onClose,
+	subtitle,
+	terminalThemeColors,
+	onConnectionReady,
+	agentCommand,
+	onSendAgentCommand,
+	paneHeight,
+	onPaneHeightChange,
+	onCollapse,
+	isExpanded,
+	onToggleExpand,
+}: {
+	taskId: string;
+	workspaceId: string | null;
+	summary: RuntimeTaskSessionSummary | null;
+	onSummary: (summary: RuntimeTaskSessionSummary) => void;
+	onClose: () => void;
+	subtitle?: string | null;
+	terminalThemeColors: { surfaceRaised: string; textPrimary: string };
+	onConnectionReady?: (taskId: string) => void;
+	agentCommand?: string | null;
+	onSendAgentCommand?: () => void;
+	paneHeight?: number;
+	onPaneHeightChange?: (height: number) => void;
+	onCollapse?: () => void;
+	isExpanded?: boolean;
+	onToggleExpand?: () => void;
+}): React.ReactElement {
+	return (
+		<ResizableBottomPane
+			minHeight={200}
+			initialHeight={paneHeight}
+			onHeightChange={onPaneHeightChange}
+			onCollapse={onCollapse}
+			isExpanded={isExpanded}
+		>
+			<div className="flex min-w-0 flex-1 px-3">
+				<AgentTerminalPanel
+					taskId={taskId}
+					workspaceId={workspaceId}
+					summary={summary}
+					onSummary={onSummary}
+					showSessionToolbar={false}
+					autoFocus
+					onClose={onClose}
+					minimalHeaderTitle="Terminal"
+					minimalHeaderSubtitle={subtitle}
+					panelBackgroundColor={terminalThemeColors.surfaceRaised}
+					terminalBackgroundColor={terminalThemeColors.surfaceRaised}
+					cursorColor={terminalThemeColors.textPrimary}
+					onConnectionReady={onConnectionReady}
+					agentCommand={agentCommand}
+					onSendAgentCommand={onSendAgentCommand}
+					isExpanded={isExpanded}
+					onToggleExpand={onToggleExpand}
+				/>
+			</div>
+		</ResizableBottomPane>
+	);
+}
+
 function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactElement {
 	return (
-		<div
-			style={{ display: "flex", flex: "1.6 1 0", minWidth: 0, minHeight: 0, background: "var(--color-surface-0)" }}
-		>
-			<div className="kb-empty-state-center" style={{ flex: 1 }}>
+		<div className="flex min-h-0 min-w-0 bg-surface-0" style={{ flex: "1.6 1 0" }}>
+			<div className="kb-empty-state-center flex-1">
 				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
 					<GitCompareArrows size={40} />
 					<h3 className="font-semibold text-text-secondary">{title}</h3>
@@ -116,19 +192,79 @@ function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactEl
 	);
 }
 
+type MobileTab = "chat" | "diff" | "files";
+
+const MOBILE_TABS: { id: MobileTab; label: string; icon: React.ReactElement }[] = [
+	{ id: "chat", label: "Chat", icon: <MessageSquare size={14} /> },
+	{ id: "diff", label: "Diff", icon: <GitCompareArrows size={14} /> },
+	{ id: "files", label: "Files", icon: <Files size={14} /> },
+];
+
+function MobileDetailTabBar({
+	activeTab,
+	onTabChange,
+}: {
+	activeTab: MobileTab;
+	onTabChange: (tab: MobileTab) => void;
+}): React.ReactElement {
+	const tabs = MOBILE_TABS;
+	return (
+		<div className="flex items-center border-b border-border" style={{ minHeight: 36 }}>
+			{tabs.map((tab) => (
+				<button
+					key={tab.id}
+					type="button"
+					className={cn(
+						"relative flex flex-1 items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium transition-colors",
+						activeTab === tab.id ? "text-accent" : "text-text-secondary",
+					)}
+					onClick={() => onTabChange(tab.id)}
+				>
+					{tab.icon}
+					{tab.label}
+					{activeTab === tab.id ? <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" /> : null}
+				</button>
+			))}
+		</div>
+	);
+}
+
+function DiffModeButton({
+	active,
+	onClick,
+	children,
+}: {
+	active: boolean;
+	onClick: () => void;
+	children: React.ReactNode;
+}): React.ReactElement {
+	return (
+		<Button
+			variant="ghost"
+			size="sm"
+			onClick={onClick}
+			className={cn("h-5 rounded-sm text-xs", active && "bg-surface-3 text-text-primary")}
+		>
+			{children}
+		</Button>
+	);
+}
+
 function DiffToolbar({
 	mode,
 	onModeChange,
 	isExpanded,
 	onToggleExpand,
+	hideExpand,
 }: {
 	mode: RuntimeWorkspaceChangesMode;
 	onModeChange: (mode: RuntimeWorkspaceChangesMode) => void;
 	isExpanded: boolean;
 	onToggleExpand: () => void;
+	hideExpand?: boolean;
 }): React.ReactElement {
 	return (
-		<div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: "1px solid var(--color-divider)" }}>
+		<div className="flex items-center gap-1 border-b border-divider px-2 py-1">
 			{isExpanded ? (
 				<Button
 					variant="ghost"
@@ -140,41 +276,23 @@ function DiffToolbar({
 				/>
 			) : null}
 			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={() => onModeChange("working_copy")}
-					className="h-5 rounded-sm text-xs"
-					style={
-						mode === "working_copy"
-							? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" }
-							: undefined
-					}
-				>
+				<DiffModeButton active={mode === "working_copy"} onClick={() => onModeChange("working_copy")}>
 					All Changes
-				</Button>
+				</DiffModeButton>
+				<DiffModeButton active={mode === "last_turn"} onClick={() => onModeChange("last_turn")}>
+					Last Turn
+				</DiffModeButton>
+			</div>
+			{!hideExpand ? (
 				<Button
 					variant="ghost"
 					size="sm"
-					onClick={() => onModeChange("last_turn")}
-					className="h-5 rounded-sm text-xs"
-					style={
-						mode === "last_turn"
-							? { backgroundColor: "var(--color-surface-3)", color: "var(--color-text-primary)" }
-							: undefined
-					}
-				>
-					Last Turn
-				</Button>
-			</div>
-			<Button
-				variant="ghost"
-				size="sm"
-				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-				onClick={onToggleExpand}
-				className="ml-auto h-5"
-				aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
-			/>
+					icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+					onClick={onToggleExpand}
+					className="ml-auto h-5"
+					aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
+				/>
+			) : null}
 		</div>
 	);
 }
@@ -296,6 +414,8 @@ export function CardDetailView({
 	isDocumentVisible?: boolean;
 	onClineSettingsSaved?: () => void;
 }): React.ReactElement {
+	const isMobile = useIsMobile();
+	const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
 	const terminalThemeColors = useTerminalThemeColors();
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
@@ -319,79 +439,24 @@ export function CardDetailView({
 	const detailDiffRowRef = useRef<HTMLDivElement | null>(null);
 	const clineAgentChatPanelRef = useRef<ClineAgentChatPanelHandle | null>(null);
 
-	const handleSeparatorMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			const container = detailLayoutRef.current;
-			if (!container) {
-				return;
-			}
-			const containerWidth = Math.max(container.offsetWidth, 1);
-			const startX = event.clientX;
-			const startRatio = taskCardsPanelRatio;
-			startTaskCardsPanelResize(event, {
-				axis: "x",
-				cursor: "ew-resize",
-				onMove: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setTaskCardsPanelRatio(startRatio + deltaRatio);
-				},
-				onEnd: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setTaskCardsPanelRatio(startRatio + deltaRatio);
-				},
-			});
-		},
-		[setTaskCardsPanelRatio, startTaskCardsPanelResize, taskCardsPanelRatio],
+	const handleSeparatorMouseDown = useResizeHandler(
+		detailLayoutRef,
+		taskCardsPanelRatio,
+		setTaskCardsPanelRatio,
+		startTaskCardsPanelResize,
 	);
-
-	const handleAgentDiffSeparatorMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			const container = mainRowRef.current;
-			if (!container) {
-				return;
-			}
-			const containerWidth = Math.max(container.offsetWidth, 1);
-			const startX = event.clientX;
-			const startRatio = agentPanelRatio;
-			startAgentPanelResize(event, {
-				axis: "x",
-				cursor: "ew-resize",
-				onMove: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setAgentPanelRatio(startRatio + deltaRatio);
-				},
-				onEnd: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setAgentPanelRatio(startRatio + deltaRatio);
-				},
-			});
-		},
-		[agentPanelRatio, setAgentPanelRatio, startAgentPanelResize],
+	const handleAgentDiffSeparatorMouseDown = useResizeHandler(
+		mainRowRef,
+		agentPanelRatio,
+		setAgentPanelRatio,
+		startAgentPanelResize,
 	);
-
-	const handleDetailDiffSeparatorMouseDown = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			const container = detailDiffRowRef.current;
-			if (!container) {
-				return;
-			}
-			const containerWidth = Math.max(container.offsetWidth, 1);
-			const startX = event.clientX;
-			const startRatio = detailDiffFileTreeRatio;
-			startDetailDiffResize(event, {
-				axis: "x",
-				cursor: "ew-resize",
-				onMove: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setDetailDiffFileTreeRatio(startRatio - deltaRatio);
-				},
-				onEnd: (pointerX) => {
-					const deltaRatio = (pointerX - startX) / containerWidth;
-					setDetailDiffFileTreeRatio(startRatio - deltaRatio);
-				},
-			});
-		},
-		[detailDiffFileTreeRatio, setDetailDiffFileTreeRatio, startDetailDiffResize],
+	const handleDetailDiffSeparatorMouseDown = useResizeHandler(
+		detailDiffRowRef,
+		detailDiffFileTreeRatio,
+		setDetailDiffFileTreeRatio,
+		startDetailDiffResize,
+		true,
 	);
 	const taskWorkspaceStateVersion = useTaskWorkspaceStateVersionValue(selection.card.id);
 	const lastTurnViewKey =
@@ -507,9 +572,6 @@ export function CardDetailView({
 
 	useEffect(() => {
 		setDiffComments(new Map());
-	}, [selection.card.id]);
-
-	useEffect(() => {
 		setDiffMode("working_copy");
 	}, [selection.card.id]);
 
@@ -545,27 +607,171 @@ export function CardDetailView({
 		[onSendReviewComments, selection.card.id, showClineAgentChatPanel],
 	);
 
+	const showBottomTerminal = bottomTerminalOpen && !!bottomTerminalTaskId;
+
+	const agentChatPanel = showClineAgentChatPanel ? (
+		<ClineAgentChatPanel
+			ref={clineAgentChatPanelRef}
+			taskId={selection.card.id}
+			summary={sessionSummary}
+			taskColumnId={selection.column.id}
+			defaultMode={selection.card.startInPlanMode ? "plan" : "act"}
+			workspaceId={currentProjectId}
+			runtimeConfig={runtimeConfig}
+			onClineSettingsSaved={onClineSettingsSaved}
+			onSendMessage={onSendClineChatMessage}
+			onCancelTurn={onCancelClineChatTurn}
+			onLoadMessages={onLoadClineChatMessages}
+			incomingMessages={streamedClineChatMessages}
+			incomingMessage={latestClineChatMessage}
+			onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
+			onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
+			isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
+			isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
+			showMoveToTrash={showMoveToTrashActions}
+			onMoveToTrash={onMoveToTrash}
+			isMoveToTrashLoading={isMoveToTrashLoading}
+			onCancelAutomaticAction={
+				selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
+					? () => onCancelAutomaticTaskAction(selection.card.id)
+					: undefined
+			}
+			cancelAutomaticActionLabel={
+				selection.card.autoReviewEnabled === true
+					? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
+					: null
+			}
+		/>
+	) : (
+		<AgentTerminalPanel
+			taskId={selection.card.id}
+			workspaceId={currentProjectId}
+			terminalEnabled={isTaskTerminalEnabled}
+			summary={sessionSummary}
+			onSummary={onSessionSummary}
+			onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
+			onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
+			isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
+			isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
+			showSessionToolbar={false}
+			autoFocus
+			showMoveToTrash={showMoveToTrashActions}
+			onMoveToTrash={onMoveToTrash}
+			isMoveToTrashLoading={isMoveToTrashLoading}
+			onCancelAutomaticAction={
+				selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
+					? () => onCancelAutomaticTaskAction(selection.card.id)
+					: undefined
+			}
+			cancelAutomaticActionLabel={
+				selection.card.autoReviewEnabled === true
+					? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
+					: null
+			}
+			panelBackgroundColor={terminalThemeColors.surfacePrimary}
+			terminalBackgroundColor={terminalThemeColors.surfacePrimary}
+			taskColumnId={selection.column.id}
+		/>
+	);
+
+	if (isMobile) {
+		return (
+			<div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-0">
+				<MobileDetailTabBar activeTab={mobileTab} onTabChange={setMobileTab} />
+				<div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+					<div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+						{/* Chat panel */}
+						<div
+							className="min-h-0 min-w-0 flex-1 flex-col"
+							style={{ display: mobileTab === "chat" ? "flex" : "none" }}
+						>
+							{agentChatPanel}
+						</div>
+						{/* Diff panel */}
+						<div
+							className="min-h-0 min-w-0 flex-1 flex-col"
+							style={{ display: mobileTab === "diff" ? "flex" : "none" }}
+						>
+							{isRuntimeAvailable ? (
+								<DiffToolbar
+									mode={diffMode}
+									onModeChange={setDiffMode}
+									isExpanded={false}
+									onToggleExpand={handleToggleDiffExpand}
+									hideExpand
+								/>
+							) : null}
+							<div className="flex min-h-0 flex-1">
+								{isWorkspaceChangesPending ? (
+									<WorkspaceChangesLoadingPanel panelFlex="1 1 0" />
+								) : hasNoWorkspaceFileChanges ? (
+									<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
+								) : (
+									<DiffViewerPanel
+										workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+										selectedPath={selectedPath}
+										onSelectedPathChange={setSelectedPath}
+										viewMode="unified"
+										onAddToTerminal={
+											onAddReviewComments || showClineAgentChatPanel ? handleAddDiffComments : undefined
+										}
+										onSendToTerminal={
+											onSendReviewComments || showClineAgentChatPanel ? handleSendDiffComments : undefined
+										}
+										comments={diffComments}
+										onCommentsChange={setDiffComments}
+									/>
+								)}
+							</div>
+						</div>
+						{/* Files panel */}
+						<div
+							className="min-h-0 min-w-0 flex-1 flex-col"
+							style={{ display: mobileTab === "files" ? "flex" : "none" }}
+						>
+							<FileTreePanel
+								workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+								selectedPath={selectedPath}
+								onSelectPath={(path: string) => {
+									setSelectedPath(path);
+									setMobileTab("diff");
+								}}
+								panelFlex="1 1 0"
+							/>
+						</div>
+					</div>
+					{/* Terminal panel — bottom overlay */}
+					{showBottomTerminal ? (
+						<div className="absolute bottom-0 left-0 right-0 z-20">
+							<BottomTerminalSection
+								taskId={bottomTerminalTaskId}
+								workspaceId={currentProjectId}
+								summary={bottomTerminalSummary}
+								onSummary={onSessionSummary}
+								onClose={onBottomTerminalClose}
+								subtitle={bottomTerminalSubtitle}
+								terminalThemeColors={terminalThemeColors}
+								onConnectionReady={onBottomTerminalConnectionReady}
+								agentCommand={bottomTerminalAgentCommand}
+								onSendAgentCommand={onBottomTerminalSendAgentCommand}
+								paneHeight={bottomTerminalPaneHeight}
+								onPaneHeightChange={onBottomTerminalPaneHeightChange}
+								onCollapse={onBottomTerminalCollapse}
+								isExpanded={isBottomTerminalExpanded}
+								onToggleExpand={onBottomTerminalToggleExpand}
+							/>
+						</div>
+					) : null}
+				</div>
+			</div>
+		);
+	}
+
 	return (
-		<div
-			ref={detailLayoutRef}
-			style={{
-				display: "flex",
-				flex: "1 1 0",
-				minHeight: 0,
-				overflow: "hidden",
-				background: "var(--color-surface-0)",
-			}}
-		>
+		<div ref={detailLayoutRef} className="flex min-h-0 flex-1 overflow-hidden bg-surface-0">
 			{!isDiffExpanded ? (
 				<>
-					<div
-						style={{
-							display: "flex",
-							width: taskCardsPanelPercent,
-							minWidth: 0,
-							minHeight: 0,
-						}}
-					>
+					<div className="flex min-h-0 min-w-0" style={{ width: taskCardsPanelPercent }}>
 						<ColumnContextPanel
 							selection={selection}
 							workspacePath={workspacePath}
@@ -598,92 +804,19 @@ export function CardDetailView({
 				</>
 			) : null}
 			<div
-				style={{
-					display: "flex",
-					flexDirection: "column",
-					width: isDiffExpanded ? "100%" : detailContentPanelPercent,
-					minWidth: 0,
-					minHeight: 0,
-					overflow: "hidden",
-				}}
+				className="flex min-h-0 min-w-0 flex-col overflow-hidden"
+				style={{ width: isDiffExpanded ? "100%" : detailContentPanelPercent }}
 			>
 				{gitHistoryPanel ? (
-					<div style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>{gitHistoryPanel}</div>
+					<div className="flex min-h-0 flex-1 overflow-hidden">{gitHistoryPanel}</div>
 				) : (
 					<>
-						<div ref={mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+						<div ref={mainRowRef} className="flex min-h-0 flex-1 overflow-hidden">
 							<div
-								style={{
-									display: isDiffExpanded ? "none" : "flex",
-									width: agentPanelPercent,
-									minWidth: 0,
-									minHeight: 0,
-								}}
+								className="min-h-0 min-w-0"
+								style={{ display: isDiffExpanded ? "none" : "flex", width: agentPanelPercent }}
 							>
-								{showClineAgentChatPanel ? (
-									<ClineAgentChatPanel
-										ref={clineAgentChatPanelRef}
-										taskId={selection.card.id}
-										summary={sessionSummary}
-										taskColumnId={selection.column.id}
-										defaultMode={selection.card.startInPlanMode ? "plan" : "act"}
-										workspaceId={currentProjectId}
-										runtimeConfig={runtimeConfig}
-										onClineSettingsSaved={onClineSettingsSaved}
-										onSendMessage={onSendClineChatMessage}
-										onCancelTurn={onCancelClineChatTurn}
-										onLoadMessages={onLoadClineChatMessages}
-										incomingMessages={streamedClineChatMessages}
-										incomingMessage={latestClineChatMessage}
-										onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
-										onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
-										isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
-										isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
-										showMoveToTrash={showMoveToTrashActions}
-										onMoveToTrash={onMoveToTrash}
-										isMoveToTrashLoading={isMoveToTrashLoading}
-										onCancelAutomaticAction={
-											selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
-												? () => onCancelAutomaticTaskAction(selection.card.id)
-												: undefined
-										}
-										cancelAutomaticActionLabel={
-											selection.card.autoReviewEnabled === true
-												? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
-												: null
-										}
-									/>
-								) : (
-									<AgentTerminalPanel
-										taskId={selection.card.id}
-										workspaceId={currentProjectId}
-										terminalEnabled={isTaskTerminalEnabled}
-										summary={sessionSummary}
-										onSummary={onSessionSummary}
-										onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
-										onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
-										isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}
-										isOpenPrLoading={agentOpenPrTaskLoadingById?.[selection.card.id] ?? false}
-										showSessionToolbar={false}
-										autoFocus
-										showMoveToTrash={showMoveToTrashActions}
-										onMoveToTrash={onMoveToTrash}
-										isMoveToTrashLoading={isMoveToTrashLoading}
-										onCancelAutomaticAction={
-											selection.card.autoReviewEnabled === true && onCancelAutomaticTaskAction
-												? () => onCancelAutomaticTaskAction(selection.card.id)
-												: undefined
-										}
-										cancelAutomaticActionLabel={
-											selection.card.autoReviewEnabled === true
-												? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
-												: null
-										}
-										panelBackgroundColor={terminalThemeColors.surfacePrimary}
-										terminalBackgroundColor={terminalThemeColors.surfacePrimary}
-										taskColumnId={selection.column.id}
-									/>
-								)}
+								{agentChatPanel}
 							</div>
 							{!isDiffExpanded ? (
 								<ResizeHandle
@@ -694,13 +827,8 @@ export function CardDetailView({
 								/>
 							) : null}
 							<div
-								style={{
-									display: "flex",
-									width: isDiffExpanded ? "100%" : diffPanelPercent,
-									minWidth: 0,
-									minHeight: 0,
-									flexDirection: "column",
-								}}
+								className="flex min-h-0 min-w-0 flex-col"
+								style={{ width: isDiffExpanded ? "100%" : diffPanelPercent }}
 							>
 								{isRuntimeAvailable ? (
 									<DiffToolbar
@@ -710,20 +838,16 @@ export function CardDetailView({
 										onToggleExpand={handleToggleDiffExpand}
 									/>
 								) : null}
-								<div style={{ display: "flex", flex: "1 1 0", minHeight: 0 }}>
+								<div className="flex min-h-0 flex-1">
 									{isWorkspaceChangesPending ? (
 										<WorkspaceChangesLoadingPanel panelFlex={detailDiffFileTreePanelFlex} />
 									) : hasNoWorkspaceFileChanges ? (
 										<WorkspaceChangesEmptyPanel title={emptyDiffTitle} />
 									) : (
-										<div ref={detailDiffRowRef} style={{ display: "flex", flex: "1 1 0", minWidth: 0 }}>
+										<div ref={detailDiffRowRef} className="flex min-w-0 flex-1">
 											<div
-												style={{
-													display: "flex",
-													flex: `0 0 ${detailDiffContentPanelPercent}`,
-													minWidth: 0,
-													minHeight: 0,
-												}}
+												className="flex min-h-0 min-w-0"
+												style={{ flex: `0 0 ${detailDiffContentPanelPercent}` }}
 											>
 												<DiffViewerPanel
 													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
@@ -751,12 +875,8 @@ export function CardDetailView({
 												className="z-10"
 											/>
 											<div
-												style={{
-													display: "flex",
-													flex: `0 0 ${detailDiffFileTreePanelPercent}`,
-													minWidth: 0,
-													minHeight: 0,
-												}}
+												className="flex min-h-0 min-w-0"
+												style={{ flex: `0 0 ${detailDiffFileTreePanelPercent}` }}
 											>
 												<FileTreePanel
 													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
@@ -771,43 +891,23 @@ export function CardDetailView({
 							</div>
 						</div>
 						{bottomTerminalOpen && bottomTerminalTaskId ? (
-							<ResizableBottomPane
-								minHeight={200}
-								initialHeight={bottomTerminalPaneHeight}
-								onHeightChange={onBottomTerminalPaneHeightChange}
+							<BottomTerminalSection
+								taskId={bottomTerminalTaskId}
+								workspaceId={currentProjectId}
+								summary={bottomTerminalSummary}
+								onSummary={onSessionSummary}
+								onClose={onBottomTerminalClose}
+								subtitle={bottomTerminalSubtitle}
+								terminalThemeColors={terminalThemeColors}
+								onConnectionReady={onBottomTerminalConnectionReady}
+								agentCommand={bottomTerminalAgentCommand}
+								onSendAgentCommand={onBottomTerminalSendAgentCommand}
+								paneHeight={bottomTerminalPaneHeight}
+								onPaneHeightChange={onBottomTerminalPaneHeightChange}
 								onCollapse={onBottomTerminalCollapse}
-							>
-								<div
-									style={{
-										display: "flex",
-										flex: "1 1 0",
-										minWidth: 0,
-										paddingLeft: 12,
-										paddingRight: 12,
-									}}
-								>
-									<AgentTerminalPanel
-										key={`detail-shell-${bottomTerminalTaskId}`}
-										taskId={bottomTerminalTaskId}
-										workspaceId={currentProjectId}
-										summary={bottomTerminalSummary}
-										onSummary={onSessionSummary}
-										showSessionToolbar={false}
-										autoFocus
-										onClose={onBottomTerminalClose}
-										minimalHeaderTitle="Terminal"
-										minimalHeaderSubtitle={bottomTerminalSubtitle}
-										panelBackgroundColor={terminalThemeColors.surfaceRaised}
-										terminalBackgroundColor={terminalThemeColors.surfaceRaised}
-										cursorColor={terminalThemeColors.textPrimary}
-										onConnectionReady={onBottomTerminalConnectionReady}
-										agentCommand={bottomTerminalAgentCommand}
-										onSendAgentCommand={onBottomTerminalSendAgentCommand}
-										isExpanded={isBottomTerminalExpanded}
-										onToggleExpand={onBottomTerminalToggleExpand}
-									/>
-								</div>
-							</ResizableBottomPane>
+								isExpanded={isBottomTerminalExpanded}
+								onToggleExpand={onBottomTerminalToggleExpand}
+							/>
 						) : null}
 					</>
 				)}

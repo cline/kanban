@@ -213,6 +213,7 @@ body,
 	color: var(--color-text-primary);
 }
 
+
 /* -- Shared layout -- */
 
 .kb-board {
@@ -241,9 +242,10 @@ body,
 	flex-direction: column;
 	min-height: 0;
 	overflow-y: auto;
-	overscroll-behavior: contain;
 	padding: 6px;
 }
+
+
 
 .kb-board[data-programmatic-card-move="true"] [data-rfd-draggable-context-id],
 .kb-board[data-programmatic-card-move="true"] [data-rfd-placeholder-context-id] {
@@ -406,18 +408,20 @@ body.kb-dependency-link-mode {
 	opacity: 0;
 }
 
-.kb-project-row:hover {
-	background: var(--color-surface-2);
+@media (hover: hover) {
+	.kb-project-row:hover {
+		background: var(--color-surface-2);
+	}
+
+	.kb-project-row:hover .kb-project-row-actions {
+		opacity: 1;
+	}
 }
 
 .kb-project-row-selected,
 .kb-project-row-selected:hover {
 	background: #0084FF;
 	color: #fff;
-}
-
-.kb-project-row:hover .kb-project-row-actions {
-	opacity: 1;
 }
 
 .kb-project-count-tag {
@@ -887,6 +891,53 @@ body.kb-dependency-link-mode {
 	}
 }
 
+@keyframes kb-dialog-show-mobile {
+	from {
+		opacity: 0;
+		transform: scale(0.96);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes kb-sidebar-slide-up {
+	from {
+		transform: translateY(100%);
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+
+@keyframes kb-sidebar-slide-in {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(0);
+	}
+}
+
+@keyframes kb-sidebar-slide-out {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(-100%);
+	}
+}
+
+@keyframes kb-overlay-hide {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
 @keyframes kb-tooltip-show {
 	from {
 		opacity: 0;
@@ -921,6 +972,83 @@ body.kb-dependency-link-mode {
 
 .kb-markdown > * + * {
 	margin-top: 0.5em;
+}
+
+/* -- Mobile: prevent Safari auto-zoom on input focus -- */
+
+@media (max-width: 768px) {
+	input,
+	textarea,
+	select {
+		font-size: 16px !important;
+	}
+}
+
+/* -- Mobile board -- */
+
+@media (max-width: 768px) {
+	.kb-board {
+		overflow-x: auto;
+		overflow-y: hidden;
+		scroll-snap-type: x mandatory;
+		-webkit-overflow-scrolling: touch;
+		padding-left: 4vw;
+		padding-right: 4vw;
+	}
+
+	.kb-board > section {
+		flex: 0 0 auto !important;
+		min-width: 280px;
+		width: 92vw;
+		scroll-snap-align: center;
+	}
+
+	.kb-board > [role="separator"] {
+		display: none;
+	}
+
+	.kb-board-card-shell {
+		touch-action: manipulation;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.kb-board-card-shell:active > div {
+		background-color: var(--color-surface-3);
+		border-color: var(--color-border-bright);
+	}
+
+	.kb-project-row {
+		touch-action: manipulation;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.kb-project-row:active {
+		background: var(--color-surface-3);
+	}
+}
+
+/* -- Dialog (desktop + mobile) -- */
+
+.kb-dialog-content {
+	transform: translate(-50%, -50%);
+	animation: kb-dialog-show 150ms ease;
+}
+
+@media (width <= 768px) {
+	.kb-dialog-content {
+		inset: 8px;
+		left: 8px;
+		top: 8px;
+		width: auto;
+		max-width: none;
+		max-height: none;
+		transform: none;
+		animation: kb-dialog-show-mobile 150ms ease;
+	}
+
+	.kb-dialog-content button:not([role='checkbox']):not([role='switch']) {
+		min-height: 44px;
+	}
 }
 
 /* -- PWA Window Controls Overlay --

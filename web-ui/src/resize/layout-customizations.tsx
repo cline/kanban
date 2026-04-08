@@ -53,7 +53,8 @@ export function useLayoutCustomizations(): LayoutCustomizationsContextValue {
 }
 
 export function useLayoutResetEffect(onReset: () => void): void {
-	const { layoutResetNonce } = useLayoutCustomizations();
+	const contextValue = useContext(LayoutCustomizationsContext);
+	const layoutResetNonce = contextValue?.layoutResetNonce ?? 0;
 	const onResetRef = useRef(onReset);
 	const hasMountedRef = useRef(false);
 
