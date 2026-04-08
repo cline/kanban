@@ -139,6 +139,93 @@ function parseToolInput(input: unknown): unknown {
 	}
 }
 
+/**
+ * Maps a `kanban task <subcommand>` to a human-friendly display label.
+ */
+const KANBAN_SUBCOMMAND_LABELS: Record<string, string> = {
+	create: "Creating task",
+	link: "Linking tasks",
+	unlink: "Unlinking tasks",
+	trash: "Trashing task",
+	delete: "Deleting task",
+	start: "Starting task",
+	update: "Updating task",
+	list: "Listing tasks",
+};
+
+/**
+ * Detects whether a command string is a kanban task CLI invocation and returns
+ * a friendly display override. The command may be prefixed with a full node
+ * binary path (e.g. `'/opt/homebrew/.../node' '/opt/.../cli.js' task create ...`)
+ * or a simple `kanban task create ...`.
+ */
+function resolveKanbanCommandDisplay(command: string): ClineToolCallDisplay | null {
+	if (!/kanban/i.test(command)) {
+		return null;
+	}
+	const taskSubcommandMatch = command.match(/\btask\s+(create|link|unlink|trash|delete|start|update|list)\b/);
+	if (!taskSubcommandMatch?.[1]) {
+		return null;
+	}
+
+	const subcommand = taskSubcommandMatch[1];
+	const label = KANBAN_SUBCOMMAND_LABELS[subcommand];
+	if (!label) {
+		return null;
+	}
+
+	let inputSummary: string | null = null;
+
+	if (subcommand === "create") {
+		const promptMatch = command.match(/--prompt\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+		const prompt = promptMatch?.[1] ?? promptMatch?.[2] ?? promptMatch?.[3] ?? null;
+		if (prompt) {
+			inputSummary = prompt.length > 80 ? `${prompt.slice(0, 80)}…` : prompt;
+		}
+	} else if (subcommand === "link") {
+		const taskIdMatch = command.match(/--task-id\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+		const linkedIdMatch = command.match(/--linked-task-id\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+		const taskId = taskIdMatch?.[1] ?? taskIdMatch?.[2] ?? taskIdMatch?.[3] ?? null;
+		const linkedId = linkedIdMatch?.[1] ?? linkedIdMatch?.[2] ?? linkedIdMatch?.[3] ?? null;
+		if (taskId && linkedId) {
+			inputSummary = `${shortId(taskId)} → ${shortId(linkedId)}`;
+		}
+	} else if (subcommand === "unlink") {
+		const depIdMatch = command.match(/--dependency-id\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+		const depId = depIdMatch?.[1] ?? depIdMatch?.[2] ?? depIdMatch?.[3] ?? null;
+		if (depId) {
+			inputSummary = shortId(depId);
+		}
+	} else if (subcommand === "list") {
+		const columnMatch = command.match(/--column\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+		const column = columnMatch?.[1] ?? columnMatch?.[2] ?? columnMatch?.[3] ?? null;
+		if (column) {
+			inputSummary = column;
+		}
+	} else {
+		// trash, delete, start, update — show the task ID or column
+		const taskIdMatch = command.match(/--task-id\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+		const taskId = taskIdMatch?.[1] ?? taskIdMatch?.[2] ?? taskIdMatch?.[3] ?? null;
+		if (taskId) {
+			inputSummary = shortId(taskId);
+		} else {
+			const columnMatch = command.match(/--column\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+			const column = columnMatch?.[1] ?? columnMatch?.[2] ?? columnMatch?.[3] ?? null;
+			if (column) {
+				inputSummary = column;
+			}
+		}
+	}
+
+	return { toolName: label, inputSummary };
+}
+
+/** Truncate a UUID-style ID to its first 6 characters for display. */
+function shortId(id: string): string {
+	const trimmed = id.trim();
+	return trimmed.length > 6 ? trimmed.slice(0, 6) : trimmed;
+}
+
 function summarizeParsedToolInput(toolName: string, input: unknown): string | null {
 	if (input === null || input === undefined) {
 		return null;
@@ -216,9 +303,37 @@ function summarizeParsedToolInput(toolName: string, input: unknown): string | nu
 	return null;
 }
 
+/**
+ * Resolves a kanban-friendly display from run_commands input when the command
+ * is a kanban task CLI invocation. Returns null for non-kanban commands.
+ */
+function resolveKanbanRunCommandDisplay(input: unknown): ClineToolCallDisplay | null {
+	if (!isRecord(input)) {
+		return null;
+	}
+	const commands = input.commands;
+	if (!Array.isArray(commands) || commands.length === 0) {
+		return null;
+	}
+	for (const cmd of commands) {
+		const display = resolveKanbanCommandDisplay(String(cmd));
+		if (display) {
+			return display;
+		}
+	}
+	return null;
+}
+
 export function getClineToolCallDisplay(toolName: string | null | undefined, input: unknown): ClineToolCallDisplay {
 	const normalizedToolName = normalizeDisplayToolName(toolName);
 	const parsedInput = parseToolInput(input);
+
+	if (normalizeToolName(normalizedToolName) === "runcommands") {
+		const kanbanDisplay = resolveKanbanRunCommandDisplay(parsedInput);
+		if (kanbanDisplay) {
+			return kanbanDisplay;
+		}
+	}
 
 	return {
 		toolName: normalizedToolName,

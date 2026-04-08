@@ -5,6 +5,7 @@ import type { BoardData, TaskAutoReviewMode } from "@/types";
 export const TASK_START_IN_PLAN_MODE_STORAGE_KEY = LocalStorageKey.TaskStartInPlanMode;
 export const TASK_AUTO_REVIEW_ENABLED_STORAGE_KEY = LocalStorageKey.TaskAutoReviewEnabled;
 export const TASK_AUTO_REVIEW_MODE_STORAGE_KEY = LocalStorageKey.TaskAutoReviewMode;
+const DETAIL_TASK_QUERY_PARAM = "task";
 
 export function normalizeStoredTaskAutoReviewMode(value: string): TaskAutoReviewMode | null {
 	if (value === "commit" || value === "pr" || value === "move_to_trash") {
@@ -69,6 +70,28 @@ export function parseProjectIdFromPathname(pathname: string): string | null {
 
 export function buildProjectPathname(projectId: string): string {
 	return `/${encodeURIComponent(projectId)}`;
+}
+
+export function parseDetailTaskIdFromSearch(search: string): string | null {
+	const params = new URLSearchParams(search);
+	const taskId = params.get(DETAIL_TASK_QUERY_PARAM)?.trim();
+	return taskId ? taskId : null;
+}
+
+export function buildDetailTaskUrl(input: {
+	pathname: string;
+	search: string;
+	hash: string;
+	taskId: string | null;
+}): string {
+	const params = new URLSearchParams(input.search);
+	if (input.taskId) {
+		params.set(DETAIL_TASK_QUERY_PARAM, input.taskId);
+	} else {
+		params.delete(DETAIL_TASK_QUERY_PARAM);
+	}
+	const nextSearch = params.toString();
+	return `${input.pathname}${nextSearch ? `?${nextSearch}` : ""}${input.hash}`;
 }
 
 export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary {
