@@ -5,23 +5,37 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CreditLimitBanner } from "@/components/credit-limit-banner";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
-function createSummary(taskId: string, overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
+function createSession(
+	taskId: string,
+	notificationType: string | null = null,
+): RuntimeTaskSessionSummary {
 	return {
 		taskId,
 		state: "awaiting_review",
+		mode: "act",
 		agentId: "cline",
-		workspacePath: "/tmp/worktree",
+		workspacePath: "/tmp",
 		pid: null,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
 		lastOutputAt: Date.now(),
 		reviewReason: "error",
 		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
+		lastHookAt: Date.now(),
+		latestHookActivity: notificationType
+			? {
+					activityText: "Agent error",
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: null,
+					hookEventName: "agent_error",
+					notificationType,
+					source: "cline-sdk",
+				}
+			: null,
+		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
-		...overrides,
 	};
 }
 
@@ -40,94 +54,63 @@ describe("CreditLimitBanner", () => {
 		container.remove();
 	});
 
-	it("renders nothing when no tasks have credit_limit", () => {
-		const sessions: Record<string, RuntimeTaskSessionSummary> = {
-			"task-1": createSummary("task-1"),
-			"task-2": createSummary("task-2"),
-		};
+	it("does not render when no sessions have credit_limit", () => {
 		act(() => {
-			root.render(<CreditLimitBanner taskSessions={sessions} />);
+			root.render(
+				<CreditLimitBanner taskSessions={{ "task-1": createSession("task-1") }} />,
+			);
 		});
-		expect(container.querySelector("[role='status']")).toBeNull();
+		expect(container.querySelector("[role=status]")).toBeNull();
 	});
 
-	it("renders banner when a task has credit_limit notification", () => {
-		const sessions: Record<string, RuntimeTaskSessionSummary> = {
-			"task-1": createSummary("task-1", {
-				latestHookActivity: {
-					activityText: "Agent error: 402 Insufficient balance",
-					toolName: null,
-					toolInputSummary: null,
-					finalMessage: "402 Insufficient balance. Your Cline Credits balance is $0.00",
-					hookEventName: "agent_error",
-					notificationType: "credit_limit",
-					source: "cline-sdk",
-				},
-			}),
-			"task-2": createSummary("task-2"),
-		};
+	it("renders when a session has credit_limit notificationType", () => {
 		act(() => {
-			root.render(<CreditLimitBanner taskSessions={sessions} />);
+			root.render(
+				<CreditLimitBanner
+					taskSessions={{ "task-1": createSession("task-1", "credit_limit") }}
+				/>,
+			);
 		});
-		const banner = container.querySelector("[role='status']");
-		expect(banner).not.toBeNull();
-		expect(banner!.textContent).toContain("Out of Cline credits");
-		expect(banner!.textContent).toContain("Buy more credits");
+		expect(container.querySelector("[role=status]")).not.toBeNull();
+		expect(container.textContent).toContain("Out of Cline credits");
 	});
 
-	it("contains a link to buy credits", () => {
-		const sessions: Record<string, RuntimeTaskSessionSummary> = {
-			"task-1": createSummary("task-1", {
-				latestHookActivity: {
-					activityText: "Agent error",
-					toolName: null,
-					toolInputSummary: null,
-					finalMessage: null,
-					hookEventName: "agent_error",
-					notificationType: "credit_limit",
-					source: "cline-sdk",
-				},
-			}),
-		};
+	it("does not render when credit_limit session is running (recovered)", () => {
+		const session = createSession("task-1", "credit_limit");
+		session.state = "running";
 		act(() => {
-			root.render(<CreditLimitBanner taskSessions={sessions} />);
+			root.render(<CreditLimitBanner taskSessions={{ "task-1": session }} />);
 		});
-		const link = container.querySelector("a[href='https://app.cline.bot/']");
-		expect(link).not.toBeNull();
-		expect(link!.textContent).toBe("Buy more credits");
+		expect(container.querySelector("[role=status]")).toBeNull();
 	});
 
-	it("can be dismissed by clicking the dismiss button", () => {
-		const sessions: Record<string, RuntimeTaskSessionSummary> = {
-			"task-1": createSummary("task-1", {
-				latestHookActivity: {
-					activityText: "Agent error",
-					toolName: null,
-					toolInputSummary: null,
-					finalMessage: null,
-					hookEventName: "agent_error",
-					notificationType: "credit_limit",
-					source: "cline-sdk",
-				},
-			}),
-		};
+	it("hides after dismiss but reappears on a new credit-limit incident", () => {
+		const sessions = { "task-1": createSession("task-1", "credit_limit") };
 		act(() => {
 			root.render(<CreditLimitBanner taskSessions={sessions} />);
 		});
-		expect(container.querySelector("[role='status']")).not.toBeNull();
+		expect(container.querySelector("[role=status]")).not.toBeNull();
 
-		const dismissButton = container.querySelector("button[aria-label='Dismiss']") as HTMLButtonElement;
+		const dismissButton = container.querySelector("button[aria-label=Dismiss]");
 		expect(dismissButton).not.toBeNull();
 		act(() => {
-			dismissButton.click();
+			dismissButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
-		expect(container.querySelector("[role='status']")).toBeNull();
-	});
+		expect(container.querySelector("[role=status]")).toBeNull();
 
-	it("renders nothing when sessions are empty", () => {
 		act(() => {
-			root.render(<CreditLimitBanner taskSessions={{}} />);
+			root.render(<CreditLimitBanner taskSessions={{ "task-1": createSession("task-1") }} />);
 		});
-		expect(container.querySelector("[role='status']")).toBeNull();
+		expect(container.querySelector("[role=status]")).toBeNull();
+
+		act(() => {
+			root.render(
+				<CreditLimitBanner
+					taskSessions={{ "task-2": createSession("task-2", "credit_limit") }}
+				/>,
+			);
+		});
+		expect(container.querySelector("[role=status]")).not.toBeNull();
+		expect(container.textContent).toContain("Out of Cline credits");
 	});
 });

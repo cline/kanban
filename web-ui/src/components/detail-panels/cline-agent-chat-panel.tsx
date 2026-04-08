@@ -21,6 +21,7 @@ import {
 	formatClineSelectedModelButtonText,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { Button } from "@/components/ui/button";
+import { Link } from "@/components/ui/link";
 import { Spinner } from "@/components/ui/spinner";
 import { ShimmeringText } from "@/components/ui/text-shimmer";
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
@@ -59,14 +60,9 @@ const ClineCreditLimitNotice = React.memo(function ClineCreditLimitNotice() {
 			<AlertTriangle size={14} className="mt-0.5 shrink-0" />
 			<p className="m-0 min-w-0">
 				Out of Cline credits.{" "}
-				<a
-					href={CLINE_BUY_CREDITS_URL}
-					target="_blank"
-					rel="noreferrer"
-					className="text-accent underline-offset-2 hover:text-accent-hover hover:underline"
-				>
+				<Link href={CLINE_BUY_CREDITS_URL} external>
 					Buy more credits
-				</a>{" "}
+				</Link>{" "}
 				to continue.
 			</p>
 		</div>

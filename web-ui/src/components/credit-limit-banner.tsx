@@ -1,7 +1,9 @@
 import { AlertTriangle, X } from "lucide-react";
 import type { ReactElement } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Link } from "@/components/ui/link";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
 const CLINE_BUY_CREDITS_URL = "https://app.cline.bot/";
@@ -20,9 +22,17 @@ export function CreditLimitBanner({ taskSessions }: CreditLimitBannerProps): Rea
 
 	const hasCreditLimitTask = useMemo(() => {
 		return Object.values(taskSessions).some(
-			(session) => session.latestHookActivity?.notificationType === "credit_limit",
+			(session) =>
+				(session.state === "awaiting_review" || session.state === "failed") &&
+				session.latestHookActivity?.notificationType === "credit_limit",
 		);
 	}, [taskSessions]);
+
+	useEffect(() => {
+		if (hasCreditLimitTask) {
+			setIsDismissed(false);
+		}
+	}, [hasCreditLimitTask]);
 
 	const handleDismiss = useCallback(() => {
 		setIsDismissed(true);
@@ -40,22 +50,18 @@ export function CreditLimitBanner({ taskSessions }: CreditLimitBannerProps): Rea
 		>
 			<AlertTriangle size={14} className="shrink-0" />
 			<span>Out of Cline credits.</span>
-			<a
-				href={CLINE_BUY_CREDITS_URL}
-				target="_blank"
-				rel="noreferrer"
-				className="text-accent underline-offset-2 hover:text-accent-hover hover:underline"
-			>
+			<Link href={CLINE_BUY_CREDITS_URL} external>
 				Buy more credits
-			</a>
-			<button
-				type="button"
+			</Link>
+			<Button
+				variant="ghost"
+				size="sm"
 				onClick={handleDismiss}
 				className="ml-1 inline-flex cursor-pointer items-center justify-center rounded p-0.5 text-status-orange/70 hover:text-status-orange"
 				aria-label="Dismiss"
 			>
 				<X size={14} />
-			</button>
+			</Button>
 		</div>
 	);
 }

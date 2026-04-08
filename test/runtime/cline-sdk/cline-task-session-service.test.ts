@@ -1317,6 +1317,48 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("sets credit_limit notificationType on start/send failure path for insufficient-balance errors", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.startTaskSessionMock.mockRejectedValueOnce(
+			new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
+		);
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+
+		await vi.waitFor(() => {
+			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
+		});
+
+		expect(service.getSummary("task-1")?.latestHookActivity?.notificationType).toBe("credit_limit");
+	});
+
+	it("aborts the task session when an agent event signals credit exhaustion", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
+
+		runtime.emitAgentEvent(sessionId, {
+			type: "error",
+			error: new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
+			recoverable: false,
+			iteration: 1,
+		});
+
+		await vi.waitFor(() => {
+			expect(runtime.abortTaskSessionMock).toHaveBeenCalledWith("task-1");
+		});
+		expect(service.getSummary("task-1")?.latestHookActivity?.notificationType).toBe("credit_limit");
+	});
+
 	it("allows follow-up input after a startup error", async () => {
 		const { service, runtime } = createTrackedService();
 		runtime.startTaskSessionMock.mockRejectedValueOnce(new Error("Maximum consecutive mistakes reached."));

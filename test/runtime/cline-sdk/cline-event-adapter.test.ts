@@ -440,6 +440,107 @@ describe("applyClineSessionEvent", () => {
 		expect(result.entry.summary.latestHookActivity?.notificationType).toBe("credit_limit");
 	});
 
+	it("forces credit-limit errors to non-recoverable even when SDK marks them recoverable", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "error",
+						error: new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
+						recoverable: true,
+						iteration: 1,
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("awaiting_review");
+		expect(result.entry.summary.reviewReason).toBe("error");
+		expect(result.entry.summary.warningMessage).toBeNull();
+		expect(result.entry.summary.latestHookActivity?.notificationType).toBe("credit_limit");
+		expect(result.messages).toHaveLength(0);
+	});
+
+	it("suppresses recovery notices containing credit-limit text", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "notice",
+						message: "The previous turn failed with 402 Insufficient balance. Retry and continue from the latest state",
+						displayRole: "system",
+						reason: "recovery",
+					},
+				},
+			},
+		});
+
+		expect(result.messages).toHaveLength(0);
+		expect(result.summaries).toHaveLength(0);
+	});
+
+	it("passes through non-recovery notices even when they contain credit-limit text", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "notice",
+						message: "402 Insufficient balance. Your Cline Credits balance is $0.00",
+						displayRole: "system",
+						reason: "info",
+					},
+				},
+			},
+		});
+
+		expect(result.messages).toHaveLength(1);
+		expect(result.messages[0]?.role).toBe("system");
+	});
+
+	it("detects credit-limit from agentEvent.message when error is absent", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "error",
+						error: undefined,
+						message: "402 Insufficient balance for this request",
+						recoverable: true,
+						iteration: 1,
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("awaiting_review");
+		expect(result.entry.summary.latestHookActivity?.notificationType).toBe("credit_limit");
+		expect(result.entry.summary.warningMessage).toBeNull();
+	});
+
 	it("keeps unrecoverable agent errors resumable", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";

@@ -180,8 +180,12 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 
 	if (agentEvent?.type === "error") {
 		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
-		const recoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
-		const creditLimitError = isCreditLimitError(errorMessage);
+		const rawMessage = (agentEvent as unknown as Record<string, unknown>).message;
+		const creditLimitSource = errorMessage
+			?? (typeof rawMessage === "string" ? rawMessage.trim() || null : null);
+		const sdkRecoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
+		const creditLimitError = isCreditLimitError(creditLimitSource);
+		const recoverable = sdkRecoverable && !creditLimitError;
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		if (!recoverable) {
 			clearActiveTurnState(entry);
@@ -249,6 +253,10 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 
 	if (agentEvent?.type === "notice") {
 		const message = typeof agentEvent.message === "string" ? agentEvent.message.trim() : "";
+		const noticeReason: string | null = typeof agentEvent.reason === "string" ? agentEvent.reason : null;
+		if (isCreditLimitError(message) && noticeReason === "recovery") {
+			return;
+		}
 		if (message) {
 			const displayRole = typeof agentEvent.displayRole === "string" ? agentEvent.displayRole : "system";
 			const reason = typeof agentEvent.reason === "string" ? agentEvent.reason : null;

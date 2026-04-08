@@ -204,7 +204,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				toolInputSummary: null,
 				finalMessage: errorMessage,
 				hookEventName: "agent_error",
-				notificationType: null,
+				notificationType: creditLimitError ? "credit_limit" : null,
 				source: "cline-sdk",
 			},
 		});
@@ -819,8 +819,14 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				this.emitMessage(taskIdFromEvent, message);
 			},
 		});
+		const shouldAbortForCreditLimit =
+			entry.summary.latestHookActivity?.notificationType === "credit_limit" &&
+			previousSummary?.latestHookActivity?.notificationType !== "credit_limit";
 		if (this.shouldCaptureReviewCheckpoint(previousSummary, latestSummary)) {
 			this.captureReviewCheckpoint(taskId, latestSummary);
+		}
+		if (shouldAbortForCreditLimit) {
+			void this.sessionRuntime.abortTaskSession(taskId).catch(() => undefined);
 		}
 	}
 }

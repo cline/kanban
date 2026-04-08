@@ -123,7 +123,13 @@ function resolveToolCallLabel(
 }
 
 function isCardCreditLimitError(summary: RuntimeTaskSessionSummary | undefined): boolean {
-	return summary?.latestHookActivity?.notificationType === "credit_limit";
+	if (!summary) {
+		return false;
+	}
+	if (summary.state !== "awaiting_review" && summary.state !== "failed") {
+		return false;
+	}
+	return summary.latestHookActivity?.notificationType === "credit_limit";
 }
 
 function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
