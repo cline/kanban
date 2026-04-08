@@ -34,6 +34,7 @@ import {
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
+import { formatBalance } from "@/utils/format-balance";
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform } from "@/utils/platform";
@@ -608,7 +609,7 @@ export function TopBar({
 					{activeAccountLabel ? (
 						<Tooltip
 							side="bottom"
-							content={`Active: ${activeAccountLabel}${activeAccountBalance !== null && activeAccountBalance !== undefined ? ` · ${activeAccountBalance.toFixed(2)}` : ""}`}
+							content={`Active: ${activeAccountLabel}${activeAccountBalance !== null && activeAccountBalance !== undefined ? ` · ${formatBalance(activeAccountBalance)}` : ""}`}
 						>
 							<button
 								type="button"
@@ -618,7 +619,7 @@ export function TopBar({
 								<Coins size={12} />
 								<span>
 									{activeAccountBalance !== null && activeAccountBalance !== undefined
-										? `${activeAccountBalance.toFixed(2)}`
+										? formatBalance(activeAccountBalance)
 										: activeAccountLabel}
 								</span>
 							</button>

@@ -144,7 +144,10 @@ export default function App(): ReactElement {
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
-	const accountBalanceData = useClineAccountBalance(settingsWorkspaceId);
+	const isClineProvider = settingsRuntimeProjectConfig?.selectedAgentId === "cline";
+	const accountBalanceData = useClineAccountBalance(isClineProvider ? settingsWorkspaceId : null, {
+		paused: isSettingsOpen,
+	});
 	const featurebaseFeedbackState = useFeaturebaseFeedbackWidget({
 		workspaceId: settingsWorkspaceId,
 		clineProviderSettings: settingsRuntimeProjectConfig?.clineProviderSettings ?? null,

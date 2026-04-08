@@ -9,7 +9,6 @@ import * as ClineCore from "@clinebot/core/node";
 import {
 	addLocalProvider,
 	type ClineAccountBalance,
-	type ClineAccountOrganization,
 	type ClineAccountOrganizationBalance,
 	ClineAccountService,
 	type ClineAccountUser,
@@ -36,8 +35,6 @@ import {
 	ProviderSettingsManager,
 	type Tool,
 } from "@clinebot/core/node";
-
-export type { ClineAccountBalance, ClineAccountOrganization, ClineAccountOrganizationBalance };
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
@@ -605,12 +602,4 @@ export async function switchSdkClineAccount(
 		getAuthToken: async () => input.accessToken,
 	});
 	await accountService.switchAccount(input.organizationId ?? undefined);
-}
-
-export async function fetchSdkUserOrganizations(input: ApiRequestParams): Promise<ClineAccountOrganization[]> {
-	const accountService = new ClineAccountService({
-		apiBaseUrl: input.apiBaseUrl,
-		getAuthToken: async () => input.accessToken,
-	});
-	return await accountService.fetchUserOrganizations();
 }

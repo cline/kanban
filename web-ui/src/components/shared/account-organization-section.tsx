@@ -1,7 +1,7 @@
 // Account & organization switching section for the settings dialog.
 // Shows active account, organization dropdown, credit balance, and dashboard link.
 import { ExternalLink } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -10,15 +10,9 @@ import {
 	switchClineAccount,
 } from "@/runtime/runtime-config-query";
 import type { RuntimeClineAccountBalanceResponse, RuntimeClineAccountOrganization } from "@/runtime/types";
+import { formatBalance } from "@/utils/format-balance";
 
 const BALANCE_REFRESH_INTERVAL_MS = 60_000;
-
-function formatBalance(balance: number | null): string {
-	if (balance === null || balance === undefined) {
-		return "—";
-	}
-	return `$${balance.toFixed(2)}`;
-}
 
 export function AccountOrganizationSection({
 	workspaceId,
@@ -33,28 +27,52 @@ export function AccountOrganizationSection({
 	const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 	const [isSwitching, setIsSwitching] = useState(false);
 	const [switchError, setSwitchError] = useState<string | null>(null);
+	const [balanceError, setBalanceError] = useState<string | null>(null);
+	const [orgsError, setOrgsError] = useState<string | null>(null);
+	const [hadAccountContext, setHadAccountContext] = useState(false);
+	const balanceGenRef = useRef(0);
+	const orgsGenRef = useRef(0);
 
 	const refreshBalance = useCallback(async () => {
+		const generation = ++balanceGenRef.current;
 		setIsLoadingBalance(true);
 		try {
 			const response = await fetchClineAccountBalance(workspaceId);
+			if (generation !== balanceGenRef.current) return;
 			setBalanceData(response);
-		} catch {
-			// Silently fail balance fetch.
+			setBalanceError(response.error ?? null);
+			if (!response.error) {
+				setHadAccountContext(true);
+			}
+		} catch (error) {
+			if (generation !== balanceGenRef.current) return;
+			setBalanceData(null);
+			setBalanceError(error instanceof Error ? error.message : "Failed to load account balance.");
 		} finally {
-			setIsLoadingBalance(false);
+			if (generation === balanceGenRef.current) {
+				setIsLoadingBalance(false);
+			}
 		}
 	}, [workspaceId]);
 
 	const refreshOrgs = useCallback(async () => {
+		const generation = ++orgsGenRef.current;
 		setIsLoadingOrgs(true);
 		try {
 			const response = await fetchClineAccountOrganizations(workspaceId);
+			if (generation !== orgsGenRef.current) return;
 			setOrganizations(response.organizations);
-		} catch {
-			// Silently fail org fetch.
+			setOrgsError(response.error ?? null);
+			if (response.organizations.length > 0) {
+				setHadAccountContext(true);
+			}
+		} catch (error) {
+			if (generation !== orgsGenRef.current) return;
+			setOrgsError(error instanceof Error ? error.message : "Failed to load organizations.");
 		} finally {
-			setIsLoadingOrgs(false);
+			if (generation === orgsGenRef.current) {
+				setIsLoadingOrgs(false);
+			}
 		}
 	}, [workspaceId]);
 
@@ -62,6 +80,8 @@ export function AccountOrganizationSection({
 		if (!open) {
 			return;
 		}
+		setBalanceError(null);
+		setOrgsError(null);
 		void refreshOrgs();
 		void refreshBalance();
 	}, [open, refreshOrgs, refreshBalance]);
@@ -104,18 +124,26 @@ export function AccountOrganizationSection({
 		[workspaceId, refreshBalance, refreshOrgs],
 	);
 
-	// Don't render if we have no data and no organizations.
-	if (!isLoadingOrgs && !isLoadingBalance && organizations.length === 0 && balanceData === null) {
+	// Don't render if we've never had data and nothing is loading.
+	if (
+		!isLoadingOrgs &&
+		!isLoadingBalance &&
+		organizations.length === 0 &&
+		balanceData === null &&
+		!hadAccountContext
+	) {
 		return null;
 	}
 
 	const dropdownValue = selectedOrgId ?? "personal";
+	const showSelector = balanceData !== null || organizations.length > 0 || hadAccountContext;
+	const loadError = balanceError ?? orgsError;
 
 	return (
 		<div>
 			<h6 className="font-semibold text-text-primary mt-4 mb-2">Account</h6>
 
-			{organizations.length > 0 ? (
+			{showSelector ? (
 				<div className="flex items-center gap-2 mb-2">
 					<label htmlFor="account-org-select" className="text-[13px] text-text-secondary shrink-0">
 						Active account
@@ -158,7 +186,16 @@ export function AccountOrganizationSection({
 				) : null}
 			</div>
 
-			{switchError ? <p className="text-status-red text-[13px] mt-0 mb-2">{switchError}</p> : null}
+			{loadError ? (
+				<p role="alert" className="text-status-orange text-[13px] mt-0 mb-2">
+					{loadError}
+				</p>
+			) : null}
+			{switchError ? (
+				<p role="alert" className="text-status-red text-[13px] mt-0 mb-2">
+					{switchError}
+				</p>
+			) : null}
 
 			<Button
 				size="sm"
@@ -166,7 +203,7 @@ export function AccountOrganizationSection({
 				icon={<ExternalLink size={14} />}
 				onClick={() => window.open("https://app.cline.bot/", "_blank")}
 			>
-				Dashboard &amp; Buy credits
+				Dashboard & Buy credits
 			</Button>
 		</div>
 	);

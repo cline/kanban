@@ -98,7 +98,7 @@ function toErrorMessage(error: unknown): string {
 	if (error instanceof Error) {
 		return error.message;
 	}
-	return String(error);
+	return "An unexpected error occurred.";
 }
 
 function parseClineRemoteConfigValue(value: string): ClineRemoteConfig {
@@ -379,6 +379,31 @@ export function createClineProviderService() {
 	const getProviderSettingsSummary = (): RuntimeClineProviderSettings =>
 		toProviderSettingsSummary(getSelectedProviderSettings());
 
+	// Dedup concurrent fetchSdkClineAccountProfile calls (e.g. balance + orgs on dialog open).
+	// Cached for 5s so back-to-back callers share a single network round-trip.
+	const PROFILE_CACHE_TTL_MS = 5_000;
+	let profileCache: {
+		key: string;
+		promise: ReturnType<typeof fetchSdkClineAccountProfile>;
+		expiresAt: number;
+	} | null = null;
+
+	function fetchProfileDeduped(apiParams: { apiBaseUrl: string; accessToken: string }) {
+		const cacheKey = `${apiParams.apiBaseUrl}::${apiParams.accessToken}`;
+		if (profileCache && profileCache.key === cacheKey && Date.now() < profileCache.expiresAt) {
+			return profileCache.promise;
+		}
+		const promise = fetchSdkClineAccountProfile(apiParams);
+		profileCache = { key: cacheKey, promise, expiresAt: Date.now() + PROFILE_CACHE_TTL_MS };
+		// Clear cache on failure so retries aren't stuck with a rejected promise.
+		promise.catch(() => {
+			if (profileCache?.promise === promise) {
+				profileCache = null;
+			}
+		});
+		return promise;
+	}
+
 	return {
 		getProviderSettingsSummary(): RuntimeClineProviderSettings {
 			return getProviderSettingsSummary();
@@ -407,7 +432,7 @@ export function createClineProviderService() {
 					if (!rawAccessToken) {
 						return null;
 					}
-					const me = await fetchSdkClineAccountProfile({
+					const me = await fetchProfileDeduped({
 						apiBaseUrl: settings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
 						accessToken: ensureWorkosPrefix(rawAccessToken),
 					});
@@ -538,7 +563,7 @@ export function createClineProviderService() {
 						apiBaseUrl: settings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
 						accessToken: ensureWorkosPrefix(rawAccessToken),
 					};
-					const me = await fetchSdkClineAccountProfile(apiParams);
+					const me = await fetchProfileDeduped(apiParams);
 					const activeOrg = me.organizations?.find((org) => org.active) ?? null;
 					if (activeOrg) {
 						const orgBalance = await fetchSdkOrganizationBalance({
@@ -601,7 +626,7 @@ export function createClineProviderService() {
 						apiBaseUrl: settings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
 						accessToken: ensureWorkosPrefix(rawAccessToken),
 					};
-					const me = await fetchSdkClineAccountProfile(apiParams);
+					const me = await fetchProfileDeduped(apiParams);
 					return {
 						organizations: (me.organizations ?? []).map((org) => ({
 							organizationId: org.organizationId,
@@ -651,6 +676,7 @@ export function createClineProviderService() {
 						accessToken: ensureWorkosPrefix(rawAccessToken),
 						organizationId,
 					});
+					profileCache = null;
 					return { ok: true };
 				};
 
