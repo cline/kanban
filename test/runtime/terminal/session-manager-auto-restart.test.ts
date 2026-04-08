@@ -117,6 +117,91 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.getSummary("task-1")?.pid).toBeNull();
 	});
 
+	it("does not auto-restart agents that disable restart-on-exit", async () => {
+		prepareAgentLaunchMock.mockResolvedValue({
+			binary: "pi",
+			args: [],
+			env: {},
+			autoRestartOnExit: false,
+		});
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager();
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		spawnedSessions[0]?.triggerExit(0);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.getSummary("task-1")?.reviewReason).toBe("exit");
+	});
+
+	it("reconciles Pi final review activity on clean exit when the live hook path missed it", async () => {
+		prepareAgentLaunchMock.mockResolvedValue({
+			binary: "pi",
+			args: [],
+			env: {},
+			autoRestartOnExit: false,
+			resolveExitReviewActivity: vi.fn(async () => ({
+				source: "pi",
+				hookEventName: "assistant_message",
+				finalMessage: "Finished from exit reconciliation",
+				activityText: "Final: Finished from exit reconciliation",
+			})),
+		});
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager();
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		spawnedSessions[0]?.triggerExit(0);
+		await vi.waitFor(() => {
+			expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+			expect(manager.getSummary("task-1")?.latestHookActivity?.finalMessage).toBe(
+				"Finished from exit reconciliation",
+			);
+		});
+		expect(manager.getSummary("task-1")?.reviewReason).toBe("exit");
+	});
+
 	it("sends deferred Codex startup input when the prompt marker appears", async () => {
 		const deferredStartupInput = "\u001b[200~/plan Validate rollout\u001b[201~\r";
 		prepareAgentLaunchMock.mockResolvedValue({

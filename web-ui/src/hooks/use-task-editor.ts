@@ -99,7 +99,9 @@ export function useTaskEditor({
 		"commit",
 		normalizeStoredTaskAutoReviewMode,
 	);
-	const isNewTaskStartInPlanModeDisabled = newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash";
+	const isPiSelected = selectedAgentId === "pi";
+	const isNewTaskStartInPlanModeDisabled =
+		isPiSelected || (newTaskAutoReviewEnabled && newTaskAutoReviewMode === "move_to_trash");
 	const [newTaskBranchRef, setNewTaskBranchRef] = useState("");
 	const [lastCreatedTaskBranchByProjectId, setLastCreatedTaskBranchByProjectId] = useState<Record<string, string>>({});
 	const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -108,7 +110,8 @@ export function useTaskEditor({
 	const [editTaskStartInPlanMode, setEditTaskStartInPlanMode] = useState(false);
 	const [editTaskAutoReviewEnabled, setEditTaskAutoReviewEnabled] = useState(false);
 	const [editTaskAutoReviewMode, setEditTaskAutoReviewMode] = useState<TaskAutoReviewMode>("commit");
-	const isEditTaskStartInPlanModeDisabled = editTaskAutoReviewEnabled && editTaskAutoReviewMode === "move_to_trash";
+	const isEditTaskStartInPlanModeDisabled =
+		isPiSelected || (editTaskAutoReviewEnabled && editTaskAutoReviewMode === "move_to_trash");
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
 	const lastCreatedTaskBranchRef = useMemo(() => {

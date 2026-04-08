@@ -436,6 +436,55 @@ describe("CardDetailView", () => {
 		expect(mockAgentTerminalPanel).toHaveBeenCalled();
 	});
 
+	it("passes Pi original-prompt resend controls to the terminal panel when needed", async () => {
+		const onSendOriginalTaskPrompt = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="pi"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "running",
+						agentId: "pi",
+						workspacePath: null,
+						pid: null,
+						startedAt: null,
+						updatedAt: Date.now(),
+						lastOutputAt: null,
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: null,
+						latestHookActivity: null,
+						warningMessage: null,
+						needsManualPromptResend: true,
+					}}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					onSendOriginalTaskPrompt={onSendOriginalTaskPrompt}
+					sendOriginalPromptLoadingByTaskId={{ "task-1": true }}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(mockAgentTerminalPanel).toHaveBeenCalled();
+		const lastCall = mockAgentTerminalPanel.mock.calls.at(-1)?.[0] as {
+			onSendOriginalPrompt?: () => Promise<void>;
+			isSendingOriginalPrompt?: boolean;
+		};
+		expect(lastCall.onSendOriginalPrompt).toBeTypeOf("function");
+		expect(lastCall.isSendingOriginalPrompt).toBe(true);
+	});
+
 	it("uses surface-primary colors for the detail terminal panel", async () => {
 		await act(async () => {
 			root.render(

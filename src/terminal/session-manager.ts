@@ -11,6 +11,7 @@ import type {
 } from "../core/api-contract";
 import {
 	type AgentAdapterLaunchInput,
+	type AgentExitReviewActivityResolver,
 	type AgentOutputTransitionDetector,
 	type AgentOutputTransitionInspectionPredicate,
 	prepareAgentLaunch,
@@ -58,6 +59,8 @@ interface ActiveProcessState {
 	deferredStartupInput: string | null;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
+	resolveExitReviewActivity: AgentExitReviewActivityResolver | null;
+	autoRestartOnExit: boolean;
 	awaitingCodexPromptAfterEnter: boolean;
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
@@ -121,6 +124,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		lastHookAt: null,
 		latestHookActivity: null,
 		warningMessage: null,
+		needsManualPromptResend: false,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};
@@ -452,31 +456,52 @@ export class TerminalSessionManager implements TerminalSessionService {
 						return;
 					}
 					stopWorkspaceTrustTimers(currentActive);
+					void (async () => {
+						const interrupted = currentActive.session.wasInterrupted();
+						if (currentActive.resolveExitReviewActivity && currentEntry.summary.state === "running") {
+							try {
+								const exitReviewActivity = await currentActive.resolveExitReviewActivity(
+									cloneSummary(currentEntry.summary),
+									event.exitCode,
+									interrupted,
+								);
+								if (exitReviewActivity && currentEntry.summary.state === "running") {
+									const activitySummary = this.applyHookActivity(request.taskId, exitReviewActivity);
+									if (activitySummary) {
+										this.emitSummary(activitySummary);
+									}
+									this.applySessionEvent(currentEntry, { type: "hook.to_review" });
+								}
+							} catch {
+								// Best effort only.
+							}
+						}
 
-					const summary = this.applySessionEvent(currentEntry, {
-						type: "process.exit",
-						exitCode: event.exitCode,
-						interrupted: currentActive.session.wasInterrupted(),
-					});
-					const shouldAutoRestart = this.shouldAutoRestart(currentEntry);
-
-					for (const taskListener of currentEntry.listeners.values()) {
-						taskListener.onState?.(cloneSummary(summary));
-						taskListener.onExit?.(event.exitCode);
-					}
-					currentEntry.active = null;
-					this.emitSummary(summary);
-					if (shouldAutoRestart) {
-						this.scheduleAutoRestart(currentEntry);
-					}
-
-					const cleanupFn = currentActive.onSessionCleanup;
-					currentActive.onSessionCleanup = null;
-					if (cleanupFn) {
-						cleanupFn().catch(() => {
-							// Best effort: cleanup failure is non-critical.
+						const summary = this.applySessionEvent(currentEntry, {
+							type: "process.exit",
+							exitCode: event.exitCode,
+							interrupted,
 						});
-					}
+						const shouldAutoRestart = this.shouldAutoRestart(currentEntry);
+
+						for (const taskListener of currentEntry.listeners.values()) {
+							taskListener.onState?.(cloneSummary(summary));
+							taskListener.onExit?.(event.exitCode);
+						}
+						currentEntry.active = null;
+						this.emitSummary(summary);
+						if (shouldAutoRestart) {
+							this.scheduleAutoRestart(currentEntry);
+						}
+
+						const cleanupFn = currentActive.onSessionCleanup;
+						currentActive.onSessionCleanup = null;
+						if (cleanupFn) {
+							cleanupFn().catch(() => {
+								// Best effort: cleanup failure is non-critical.
+							});
+						}
+					})();
 				},
 			});
 		} catch (error) {
@@ -497,6 +522,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				exitCode: null,
 				lastHookAt: null,
 				latestHookActivity: null,
+				needsManualPromptResend: false,
 				latestTurnCheckpoint: null,
 				previousTurnCheckpoint: null,
 			});
@@ -522,6 +548,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			deferredStartupInput: launch.deferredStartupInput ?? null,
 			detectOutputTransition: launch.detectOutputTransition ?? null,
 			shouldInspectOutputForTransition: launch.shouldInspectOutputForTransition ?? null,
+			resolveExitReviewActivity: launch.resolveExitReviewActivity ?? null,
+			autoRestartOnExit: launch.autoRestartOnExit ?? true,
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
@@ -542,6 +570,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			lastHookAt: null,
 			latestHookActivity: null,
 			warningMessage: null,
+			needsManualPromptResend: false,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});
@@ -656,6 +685,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				exitCode: null,
 				lastHookAt: null,
 				latestHookActivity: null,
+				needsManualPromptResend: false,
 				latestTurnCheckpoint: null,
 				previousTurnCheckpoint: null,
 			});
@@ -675,6 +705,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			deferredStartupInput: null,
 			detectOutputTransition: null,
 			shouldInspectOutputForTransition: null,
+			resolveExitReviewActivity: null,
+			autoRestartOnExit: false,
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
@@ -694,6 +726,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			lastHookAt: null,
 			latestHookActivity: null,
 			warningMessage: null,
+			needsManualPromptResend: false,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});
@@ -723,6 +756,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
+			needsManualPromptResend: false,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});
@@ -748,6 +782,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 			(data.includes(13) || data.includes(10))
 		) {
 			entry.active.awaitingCodexPromptAfterEnter = true;
+		}
+		if (entry.summary.warningMessage) {
+			const summary = updateSummary(entry, {
+				warningMessage: null,
+			});
+			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+			this.emitSummary(summary);
 		}
 		entry.active.session.write(data);
 		return cloneSummary(entry.summary);
@@ -889,6 +932,47 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return cloneSummary(summary);
 	}
 
+	applyWarningMessage(taskId: string, warningMessage: string | null): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+		const nextWarning = warningMessage?.trim() || null;
+		if ((entry.summary.warningMessage ?? null) === nextWarning) {
+			return cloneSummary(entry.summary);
+		}
+		const summary = updateSummary(entry, {
+			warningMessage: nextWarning,
+		});
+		if (entry.active) {
+			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+		}
+		this.emitSummary(summary);
+		return cloneSummary(summary);
+	}
+
+	applyNeedsManualPromptResend(taskId: string, needsManualPromptResend: boolean): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+		if ((entry.summary.needsManualPromptResend ?? false) === needsManualPromptResend) {
+			return cloneSummary(entry.summary);
+		}
+		const summary = updateSummary(entry, {
+			needsManualPromptResend,
+		});
+		if (entry.active) {
+			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+		}
+		this.emitSummary(summary);
+		return cloneSummary(summary);
+	}
+
 	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry) {
@@ -985,7 +1069,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (wasSuppressed) {
 			return false;
 		}
-		if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
+		if (
+			entry.listeners.size === 0 ||
+			entry.restartRequest?.kind !== "task" ||
+			entry.active?.autoRestartOnExit === false
+		) {
 			return false;
 		}
 		const currentTime = now();

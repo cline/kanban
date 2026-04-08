@@ -125,6 +125,9 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 	if (!summary) {
 		return null;
 	}
+	if (summary.state === "running" && (summary.warningMessage?.trim() || summary.needsManualPromptResend === true)) {
+		return { dotColor: SESSION_ACTIVITY_COLOR.waiting, text: "Waiting for user action" };
+	}
 	const hookActivity = summary.latestHookActivity;
 	const activityText = hookActivity?.activityText?.trim();
 	const toolName = hookActivity?.toolName?.trim() ?? null;
@@ -159,6 +162,9 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 			};
 		}
 		if (text.startsWith("Final: ")) {
+			if (hookActivity?.source === "pi" && summary.state === "running") {
+				return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
+			}
 			dotColor = SESSION_ACTIVITY_COLOR.success;
 			text = text.slice(7);
 		} else if (text.startsWith("Agent: ")) {
@@ -170,6 +176,9 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		} else if (text.startsWith("Failed ")) {
 			dotColor = SESSION_ACTIVITY_COLOR.error;
 		} else if (text === "Agent active" || text === "Working on task" || text.startsWith("Resumed")) {
+			if (summary.state === "awaiting_review") {
+				return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Waiting for review" };
+			}
 			return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
 		}
 		return { dotColor, text };
@@ -370,6 +379,12 @@ export function BoardCard({
 		});
 	}, [descriptionFont, descriptionWidth, displayPromptSplit.description]);
 
+	const warningMessage = sessionSummary?.warningMessage?.trim() || null;
+	const showUserActionTag =
+		columnId === "in_progress" &&
+		sessionSummary?.state === "running" &&
+		(Boolean(warningMessage) || sessionSummary?.needsManualPromptResend === true);
+
 	const sessionPreviewDisplay = useMemo(() => {
 		if (!sessionActivity?.text) {
 			return {
@@ -395,6 +410,9 @@ export function BoardCard({
 		if (columnId === "in_progress") {
 			if (sessionSummary?.state === "failed") {
 				return <AlertCircle size={12} className="text-status-red" />;
+			}
+			if (sessionSummary?.warningMessage?.trim() || sessionSummary?.needsManualPromptResend === true) {
+				return <AlertCircle size={12} className="text-status-orange" />;
 			}
 			return <Spinner size={12} />;
 		}
@@ -615,6 +633,19 @@ export function BoardCard({
 											)
 										) : null}
 									</p>
+								</div>
+							) : null}
+							{showUserActionTag ? (
+								<div className="mt-[6px]">
+									<Tooltip
+										content={
+											warningMessage ?? "Finish the required Pi setup, then resend the original task prompt."
+										}
+									>
+										<span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-status-orange/15 text-status-orange">
+											User action needed
+										</span>
+									</Tooltip>
 								</div>
 							) : null}
 							{sessionActivity ? (

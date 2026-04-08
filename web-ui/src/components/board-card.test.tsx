@@ -523,6 +523,106 @@ describe("BoardCard", () => {
 		expect(container.textContent).toContain(preview);
 	});
 
+	it("shows a user action needed tag for running cards with warnings", async () => {
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={createSummary("running", {
+							agentId: "pi",
+							warningMessage: "Pi is not ready: No API key found for openai-codex. Use /login in the terminal.",
+						})}
+					/>
+				</TooltipProvider>,
+			);
+		});
+
+		expect(container.textContent).toContain("User action needed");
+		expect(container.textContent).toContain("Waiting for user action");
+		expect(container.textContent).not.toContain("Thinking...");
+		expect(container.querySelector("svg.text-status-orange")).toBeTruthy();
+		expect(container.querySelector("svg.animate-spin")).toBeFalsy();
+	});
+
+	it("keeps the user action tag visible while Pi still needs manual prompt resend", async () => {
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<BoardCard
+						card={createCard()}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={createSummary("running", {
+							agentId: "pi",
+							warningMessage: null,
+							needsManualPromptResend: true,
+						})}
+					/>
+				</TooltipProvider>,
+			);
+		});
+
+		expect(container.textContent).toContain("User action needed");
+	});
+
+	it("keeps Pi cards on thinking while running even if a final-looking activity text appears", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					sessionSummary={createSummary("running", {
+						agentId: "pi",
+						latestHookActivity: {
+							activityText: "Final: Hello! What can I help you with?",
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: "Hello! What can I help you with?",
+							hookEventName: "assistant_message",
+							notificationType: null,
+							source: "pi",
+						},
+					})}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Thinking...");
+		expect(container.textContent).not.toContain("Hello! What can I help you with?");
+	});
+
+	it("does not show thinking for review cards with stale in-progress hook text", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="review"
+					sessionSummary={createSummary("awaiting_review", {
+						agentId: "pi",
+						reviewReason: "hook",
+						latestHookActivity: {
+							activityText: "Working on task",
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: null,
+							hookEventName: "user_message",
+							notificationType: null,
+							source: "pi",
+						},
+					})}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Waiting for review");
+		expect(container.textContent).not.toContain("Thinking...");
+	});
+
 	it("shows the latest assistant preview on active task cards", async () => {
 		await act(async () => {
 			root.render(

@@ -109,6 +109,7 @@ export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary
 		lastHookAt: null,
 		latestHookActivity: null,
 		warningMessage: null,
+		needsManualPromptResend: false,
 	};
 }
 

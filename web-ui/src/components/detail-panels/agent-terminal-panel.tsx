@@ -1,6 +1,6 @@
 import "@xterm/xterm/css/xterm.css";
 
-import { Command, Maximize2, MessageSquare, Minimize2, X } from "lucide-react";
+import { Command, Maximize2, MessageSquare, Minimize2, Play, X } from "lucide-react";
 import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
@@ -48,6 +48,8 @@ export interface AgentTerminalPanelProps {
 	onConnectionReady?: (taskId: string) => void;
 	agentCommand?: string | null;
 	onSendAgentCommand?: () => void;
+	onSendOriginalPrompt?: () => Promise<void>;
+	isSendingOriginalPrompt?: boolean;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
 }
@@ -168,6 +170,8 @@ function AgentTerminalPanelLayout({
 	onConnectionReady: _onConnectionReady,
 	agentCommand,
 	onSendAgentCommand,
+	onSendOriginalPrompt,
+	isSendingOriginalPrompt = false,
 	isExpanded = false,
 	onToggleExpand,
 	sessionControls,
@@ -183,6 +187,13 @@ function AgentTerminalPanelLayout({
 		}
 		return normalizedCommand.split(/\s+/)[0] ?? null;
 	}, [agentCommand]);
+	const warningMessage = summary?.warningMessage?.trim() || null;
+	const showSendOriginalPrompt =
+		summary?.agentId === "pi" &&
+		summary.state === "running" &&
+		(summary.needsManualPromptResend === true || isSendingOriginalPrompt) &&
+		typeof onSendOriginalPrompt === "function";
+	const promptResendMessage = warningMessage ?? "Complete Pi login in the terminal, then resume this task.";
 
 	return (
 		<div
@@ -309,6 +320,26 @@ function AgentTerminalPanelLayout({
 					style={{ height: "100%", width: "100%", background: terminalBackgroundColor }}
 				/>
 			</div>
+			{showSendOriginalPrompt ? (
+				<div className="flex items-start justify-between gap-3 border-t border-status-orange/30 bg-status-orange/10 p-3 text-[13px] text-status-orange">
+					<div className="min-w-0">
+						<div className="font-medium">User action needed</div>
+						<div className="mt-1 text-[12px] leading-relaxed text-status-orange/90">{promptResendMessage}</div>
+					</div>
+					<Button
+						variant="primary"
+						size="sm"
+						className="shrink-0 whitespace-nowrap"
+						icon={isSendingOriginalPrompt ? <Spinner size={14} /> : <Play size={14} />}
+						disabled={isSendingOriginalPrompt}
+						onClick={() => {
+							void onSendOriginalPrompt?.();
+						}}
+					>
+						{isSendingOriginalPrompt ? "Resuming..." : "Resume task"}
+					</Button>
+				</div>
+			) : null}
 			{lastError ? (
 				<div className="flex gap-2 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-[13px] text-status-red">
 					{lastError}

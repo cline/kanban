@@ -39,6 +39,13 @@ interface SendTaskSessionInputResult {
 	message?: string;
 }
 
+interface SendTaskSessionInputOptions {
+	appendNewline?: boolean;
+	preferTerminal?: boolean;
+	mode?: SendTerminalInputOptions["mode"];
+	clearNeedsManualPromptResend?: boolean;
+}
+
 interface StartTaskSessionResult {
 	ok: boolean;
 	message?: string;
@@ -56,7 +63,7 @@ export interface UseTaskSessionsResult {
 	sendTaskSessionInput: (
 		taskId: string,
 		text: string,
-		options?: SendTerminalInputOptions,
+		options?: SendTaskSessionInputOptions,
 	) => Promise<SendTaskSessionInputResult>;
 	sendTaskChatMessage: (
 		taskId: string,
@@ -199,7 +206,11 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 	);
 
 	const sendTaskSessionInput = useCallback(
-		async (taskId: string, text: string, options?: SendTerminalInputOptions): Promise<SendTaskSessionInputResult> => {
+		async (
+			taskId: string,
+			text: string,
+			options?: SendTaskSessionInputOptions,
+		): Promise<SendTaskSessionInputResult> => {
 			const appendNewline = options?.appendNewline ?? true;
 			const controller = options?.preferTerminal === false ? null : getTerminalController(taskId);
 			if (controller) {
@@ -220,6 +231,7 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					taskId,
 					text,
 					appendNewline,
+					clearNeedsManualPromptResend: options?.clearNeedsManualPromptResend,
 				});
 				if (!payload.ok) {
 					const errorMessage = payload.error || "Task session input failed.";

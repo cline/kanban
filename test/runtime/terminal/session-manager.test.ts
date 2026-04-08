@@ -69,6 +69,99 @@ describe("TerminalSessionManager", () => {
 		expect(typeof updated?.lastHookAt).toBe("number");
 	});
 
+	it("applies warning messages to active sessions", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "running", warningMessage: null }),
+		});
+		const entry = {
+			summary: manager.getSummary("task-1") ?? createSummary({ state: "running", warningMessage: null }),
+			active: {
+				session: {
+					write: vi.fn(),
+				},
+			},
+			terminalStateMirror: null,
+			listenerIdCounter: 1,
+			listeners: new Map(),
+			restartRequest: null,
+			suppressAutoRestartOnExit: false,
+			autoRestartTimestamps: [],
+			pendingAutoRestart: null,
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-1", entry);
+
+		const updated = manager.applyWarningMessage("task-1", "Pi is not ready: No API key found.");
+
+		expect(updated?.warningMessage).toBe("Pi is not ready: No API key found.");
+	});
+
+	it("tracks manual prompt resend requirements on active sessions", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "running", needsManualPromptResend: false }),
+		});
+		const entry = {
+			summary: manager.getSummary("task-1") ?? createSummary({ state: "running", needsManualPromptResend: false }),
+			active: {
+				session: {
+					write: vi.fn(),
+				},
+			},
+			terminalStateMirror: null,
+			listenerIdCounter: 1,
+			listeners: new Map(),
+			restartRequest: null,
+			suppressAutoRestartOnExit: false,
+			autoRestartTimestamps: [],
+			pendingAutoRestart: null,
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-1", entry);
+
+		const updated = manager.applyNeedsManualPromptResend("task-1", true);
+
+		expect(updated?.needsManualPromptResend).toBe(true);
+	});
+
+	it("clears warning messages when the user sends input to an active session", () => {
+		const manager = new TerminalSessionManager();
+		const writeSpy = vi.fn();
+		const entry = {
+			summary: createSummary({ taskId: "task-warning", state: "running", warningMessage: "Pi is not ready" }),
+			active: {
+				session: {
+					write: writeSpy,
+				},
+				awaitingCodexPromptAfterEnter: false,
+			},
+			terminalStateMirror: null,
+			listenerIdCounter: 1,
+			listeners: new Map(),
+			restartRequest: null,
+			suppressAutoRestartOnExit: false,
+			autoRestartTimestamps: [],
+			pendingAutoRestart: null,
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-warning", entry);
+
+		const updated = manager.writeInput("task-warning", Buffer.from("/login\n", "utf8"));
+
+		expect(writeSpy).toHaveBeenCalledWith(Buffer.from("/login\n", "utf8"));
+		expect(updated?.warningMessage).toBeNull();
+	});
+
 	it("resets stale running sessions without active processes", () => {
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({
