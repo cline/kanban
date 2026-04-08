@@ -124,7 +124,7 @@ export interface ClineSdkErrorEvent {
 	error: Error;
 	recoverable: boolean;
 	iteration: number;
-	/** Fallback message field — some SDK versions surface error text here when `error` is absent. */
+	/** Fallback message field — used for credit-limit detection when `error` does not contain parseable text. */
 	message?: string;
 }
 

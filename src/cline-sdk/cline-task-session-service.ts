@@ -175,8 +175,22 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return this.messageRepository.onMessage(listener);
 	}
 
+	private resolveProviderIdForTask(taskId: string): string {
+		const cached = this.providerIdByTaskId.get(taskId);
+		if (cached) {
+			return cached;
+		}
+		// Fall back to the runtime's last-start-request for tasks rebound from persistence.
+		const fromRuntime = this.sessionRuntime.getTaskProviderId(taskId);
+		if (fromRuntime) {
+			this.providerIdByTaskId.set(taskId, fromRuntime);
+			return fromRuntime;
+		}
+		return SDK_DEFAULT_PROVIDER_ID;
+	}
+
 	private isClineProviderForTask(taskId: string): boolean {
-		return (this.providerIdByTaskId.get(taskId) ?? SDK_DEFAULT_PROVIDER_ID) === "cline";
+		return this.resolveProviderIdForTask(taskId) === "cline";
 	}
 
 	private emitTaskFailure(
@@ -645,6 +659,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 	async clearTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
 		const existingEntry = this.messageRepository.getTaskEntry(taskId);
 		this.pendingTurnCancelTaskIds.delete(taskId);
+		this.providerIdByTaskId.delete(taskId);
 		await this.sessionRuntime.clearTaskSessions(taskId).catch(() => undefined);
 		if (!existingEntry) {
 			return null;

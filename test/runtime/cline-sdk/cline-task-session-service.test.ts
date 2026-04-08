@@ -236,6 +236,9 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 			getTaskSessionId(taskId: string): string | null {
 				return sessionIdByTaskId.get(taskId) ?? null;
 			},
+			getTaskProviderId(taskId: string): string | null {
+				return lastStartRequestByTaskId.get(taskId)?.providerId ?? null;
+			},
 			async readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
 				return await readPersistedTaskSessionMock(taskId);
 			},

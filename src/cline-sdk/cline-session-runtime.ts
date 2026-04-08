@@ -101,6 +101,7 @@ export interface ClineSessionRuntime {
 	abortTaskSession(taskId: string): Promise<void>;
 	clearTaskSessions(taskId: string): Promise<void>;
 	getTaskSessionId(taskId: string): string | null;
+	getTaskProviderId(taskId: string): string | null;
 	readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	dispose(): Promise<void>;
 }
@@ -322,6 +323,10 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 
 	getTaskSessionId(taskId: string): string | null {
 		return this.sessionIdByTaskId.get(taskId) ?? null;
+	}
+
+	getTaskProviderId(taskId: string): string | null {
+		return this.lastStartRequestByTaskId.get(taskId)?.providerId ?? null;
 	}
 
 	async readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
