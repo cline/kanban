@@ -4,7 +4,7 @@
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
+import { getRuntimeLaunchSupportedAgentCatalog, isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
 import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { detectInstalledCommands } from "../terminal/agent-registry";
@@ -54,7 +54,7 @@ const PROJECT_CONFIG_PARENT_DIR = ".cline";
 const PROJECT_CONFIG_DIR = "kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
-const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "droid"];
+const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "cursor", "codex", "droid"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree on a detached HEAD. When you are finished with the task, commit the working changes onto {{base_ref}}.
@@ -101,9 +101,25 @@ Steps:
    - Any follow-up needed`;
 
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
-	const detected = new Set(detectedCommands);
+	const detectedAgentIds = new Set<RuntimeAgentId>();
+	const binaryToAgentId = new Map(
+		getRuntimeLaunchSupportedAgentCatalog().map((entry) => [entry.binary, entry.id] as const),
+	);
+
+	for (const detectedCommand of detectedCommands) {
+		const detectedAgentId = binaryToAgentId.get(detectedCommand);
+		if (detectedAgentId) {
+			detectedAgentIds.add(detectedAgentId);
+			continue;
+		}
+		// Backward compatibility for tests/callers that already pass agent IDs.
+		if (isRuntimeAgentLaunchSupported(detectedCommand as RuntimeAgentId)) {
+			detectedAgentIds.add(detectedCommand as RuntimeAgentId);
+		}
+	}
+
 	for (const agentId of AUTO_SELECT_AGENT_PRIORITY) {
-		if (detected.has(agentId)) {
+		if (detectedAgentIds.has(agentId)) {
 			return agentId;
 		}
 	}
@@ -118,6 +134,7 @@ function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): 
 	if (
 		(agentId === "claude" ||
 			agentId === "codex" ||
+			agentId === "cursor" ||
 			agentId === "gemini" ||
 			agentId === "opencode" ||
 			agentId === "droid" ||

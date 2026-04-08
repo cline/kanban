@@ -69,6 +69,7 @@ describe("renderAppendSystemPrompt", () => {
 		expect(rendered).toContain("If the user asks for GitHub work");
 		expect(rendered).toContain("gh issue view");
 		expect(rendered).toContain("If the user references Linear");
+		expect(rendered).toContain("run Kanban `task` commands first");
 		expect(rendered).toContain("Current home agent: `unknown`");
 		expect(rendered).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
 		expect(rendered).not.toContain("codex mcp add linear --url https://mcp.linear.app/mcp");
@@ -118,5 +119,19 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		});
 		expect(prompt).toContain("Current home agent: `droid`");
 		expect(prompt).toContain("droid mcp add linear https://mcp.linear.app/mcp --type http");
+	});
+
+	it("returns active-agent guidance for cursor home sidebar sessions", () => {
+		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:cursor", {
+			currentVersion: "0.1.10",
+			cwd: "/Users/example/repo",
+			execPath: "/usr/local/bin/node",
+			execArgv: [],
+			argv: ["node", "/Users/example/repo/dist/cli.js"],
+			resolveRealPath: (path) => path,
+		});
+		expect(prompt).toContain("Current home agent: `cursor`");
+		expect(prompt).toContain("agent mcp login linear");
+		expect(prompt).toContain(".cursor/mcp.json");
 	});
 });

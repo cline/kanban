@@ -84,6 +84,23 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(existsSync(wrapperPath)).toBe(false);
 	});
 
+	it("wires Cursor hook runtime env when workspace context exists", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-cursor",
+			agentId: "cursor",
+			binary: "agent",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-cursor");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.args).not.toContain("--settings");
+	});
+
 	it("appends Kanban sidebar instructions for home Claude sessions", async () => {
 		setupTempHome();
 		setKanbanProcessContext();
@@ -123,6 +140,43 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args[configArgIndex + 1]).toContain(
 			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
 		);
+	});
+
+	it("injects Kanban sidebar instructions into home Cursor prompts", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:cursor",
+			agentId: "cursor",
+			binary: "agent",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Create 3 onboarding tasks",
+		});
+
+		const mergedPrompt = launch.args.at(-1) ?? "";
+		expect(mergedPrompt).toContain("Kanban sidebar agent");
+		expect(mergedPrompt).toContain("Create 3 onboarding tasks");
+		expect(mergedPrompt).toContain("agent mcp login linear");
+		expect(mergedPrompt).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
+	});
+
+	it("injects Kanban sidebar bootstrap guidance for empty home Cursor prompts", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:cursor",
+			agentId: "cursor",
+			binary: "agent",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const mergedPrompt = launch.args.at(-1) ?? "";
+		expect(mergedPrompt).toContain("Kanban sidebar agent");
+		expect(mergedPrompt).toContain("No user request yet.");
+		expect(mergedPrompt).toContain("Wait for the next user message before taking action.");
 	});
 
 	it("writes Claude settings with explicit permission hook", async () => {
@@ -355,6 +409,25 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
 	});
 
+	it("enforces Cursor plan mode and drops force-style args", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-cursor-plan",
+			agentId: "cursor",
+			binary: "agent",
+			args: ["--force", "--mode", "ask"],
+			cwd: "/tmp",
+			prompt: "Review deployment strategy",
+			startInPlanMode: true,
+		});
+
+		expect(launch.args).toContain("--plan");
+		expect(launch.args).not.toContain("--force");
+		expect(launch.args).not.toContain("--mode");
+		expect(launch.args).not.toContain("ask");
+		expect(launch.args.at(-1)).toContain("Review deployment strategy");
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -439,6 +512,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(codexLaunch.args).toEqual(expect.arrayContaining(["resume", "--last"]));
 
+		const cursorLaunch = await prepareAgentLaunch({
+			taskId: "task-cursor",
+			agentId: "cursor",
+			binary: "agent",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(cursorLaunch.args).toContain("--continue");
+
 		const claudeLaunch = await prepareAgentLaunch({
 			taskId: "task-claude",
 			agentId: "claude",
@@ -520,6 +604,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
 
+		const cursorLaunch = await prepareAgentLaunch({
+			taskId: "task-cursor-auto",
+			agentId: "cursor",
+			binary: "agent",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(cursorLaunch.args).toContain("--force");
+
 		const geminiLaunch = await prepareAgentLaunch({
 			taskId: "task-gemini-auto",
 			agentId: "gemini",
@@ -567,6 +662,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
+
+		const cursorLaunch = await prepareAgentLaunch({
+			taskId: "task-cursor-no-auto",
+			agentId: "cursor",
+			binary: "agent",
+			args: ["--force"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(cursorLaunch.args).toContain("--force");
 
 		const geminiLaunch = await prepareAgentLaunch({
 			taskId: "task-gemini-no-auto",
