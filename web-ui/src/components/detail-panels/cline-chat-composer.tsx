@@ -156,6 +156,10 @@ export function ClineChatComposer({
 		if (!canSend) {
 			return;
 		}
+		// Skip auto-focus on mobile to prevent iOS Safari viewport shift
+		if (window.matchMedia("(max-width: 768px)").matches) {
+			return;
+		}
 		textareaRef.current?.focus();
 	}, [canSend, taskId]);
 

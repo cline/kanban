@@ -271,7 +271,7 @@ describe("kanban command display", () => {
 		const display = getToolDisplay(
 			"run_commands",
 			JSON.stringify({
-				commands: ["git status", "kanban task create --prompt \"Fix the bug\""],
+				commands: ["git status", 'kanban task create --prompt "Fix the bug"'],
 			}),
 		);
 		expect(display.toolName).toBe("Creating task");
@@ -280,10 +280,7 @@ describe("kanban command display", () => {
 
 	it("does not match non-kanban tools that use task subcommands", () => {
 		// A tool named 'grunt' or 'task' itself should not trigger kanban labels
-		const display = getToolDisplay(
-			"run_commands",
-			JSON.stringify({ commands: ["grunt task create --name foo"] }),
-		);
+		const display = getToolDisplay("run_commands", JSON.stringify({ commands: ["grunt task create --name foo"] }));
 		expect(display.toolName).toBe("run_commands");
 	});
 

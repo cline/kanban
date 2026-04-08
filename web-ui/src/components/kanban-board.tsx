@@ -84,6 +84,7 @@ export function KanbanBoard({
 	const latestDataRef = useRef<BoardData>(data);
 	const programmaticCardMoveInFlightRef = useRef<ProgrammaticCardMoveInFlight | null>(null);
 	const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
+
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 	const [programmaticCardMoveInFlight, setProgrammaticCardMoveInFlight] =
 		useState<ProgrammaticCardMoveInFlight | null>(null);

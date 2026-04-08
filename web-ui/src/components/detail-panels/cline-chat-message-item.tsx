@@ -135,7 +135,7 @@ function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): Reac
 				<Brain size={12} />
 				<span>Reasoning</span>
 			</div>
-			<div className="w-full text-sm whitespace-pre-wrap text-text-secondary">{message.content}</div>
+			<div className="w-full text-sm whitespace-pre-wrap break-words text-text-secondary">{message.content}</div>
 		</div>
 	);
 }
@@ -152,7 +152,9 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 		const hasImages = Boolean(message.images && message.images.length > 0);
 		return (
 			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm text-text-primary">
-				{hasText ? <div className="whitespace-pre-wrap">{normalizeUserInput(message.content)}</div> : null}
+				{hasText ? (
+					<div className="whitespace-pre-wrap break-words">{normalizeUserInput(message.content)}</div>
+				) : null}
 				{hasImages ? (
 					<TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} />
 				) : null}
@@ -162,7 +164,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 	if (message.role === "assistant") {
 		const normalizedAssistantContent = message.content.replace(/^\n+/, "");
 		return (
-			<div className="w-full px-1.5 text-sm text-text-primary">
+			<div className="min-w-0 w-full px-1.5 text-sm text-text-primary">
 				<ClineMarkdownContent content={normalizedAssistantContent} />
 			</div>
 		);
