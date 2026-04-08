@@ -17,15 +17,17 @@ vi.mock("node:child_process", () => ({
 	}),
 }));
 
-// ── Mock fs/promises for access & mkdir ───────────────────
+// ── Mock fs/promises for access, mkdir & stat ─────────────
 const fsMocks = vi.hoisted(() => ({
 	access: vi.fn(),
 	mkdir: vi.fn(),
+	stat: vi.fn(),
 }));
 
 vi.mock("node:fs/promises", () => ({
 	access: fsMocks.access,
 	mkdir: fsMocks.mkdir,
+	stat: fsMocks.stat,
 }));
 
 import { cloneGitRepository, deriveRepoNameFromUrl, validateCloneDestination } from "../../../src/workspace/git-clone";
@@ -120,6 +122,7 @@ describe("cloneGitRepository", () => {
 		childProcessMocks.execFilePromise.mockReset();
 		fsMocks.access.mockReset();
 		fsMocks.mkdir.mockReset();
+		fsMocks.stat.mockReset();
 	});
 
 	afterEach(() => {
@@ -155,8 +158,40 @@ describe("cloneGitRepository", () => {
 		expect(result.clonedPath).toBe(customDest);
 	});
 
-	it("returns error when destination already exists", async () => {
+	it("clones into an existing directory by appending repo name", async () => {
+		const existingDir = join(testCwd, "projects");
+		// First access() succeeds (existingDir exists), stat says it's a directory
 		fsMocks.access.mockResolvedValueOnce(undefined);
+		fsMocks.stat.mockResolvedValueOnce({ isDirectory: () => true });
+		// Second access() for the nested path (projects/my-repo) rejects — does not exist
+		fsMocks.access.mockRejectedValueOnce(new Error("ENOENT"));
+		fsMocks.mkdir.mockResolvedValueOnce(undefined);
+		childProcessMocks.execFilePromise.mockResolvedValueOnce({ stdout: "", stderr: "" });
+
+		const result = await cloneGitRepository("https://github.com/user/my-repo.git", testCwd, existingDir);
+
+		expect(result.ok).toBe(true);
+		expect(result.clonedPath).toBe(join(existingDir, "my-repo"));
+	});
+
+	it("returns error when existing directory already contains the repo folder", async () => {
+		const existingDir = join(testCwd, "projects");
+		// First access() succeeds (existingDir exists), stat says it's a directory
+		fsMocks.access.mockResolvedValueOnce(undefined);
+		fsMocks.stat.mockResolvedValueOnce({ isDirectory: () => true });
+		// Second access() for the nested path (projects/my-repo) also succeeds — already exists
+		fsMocks.access.mockResolvedValueOnce(undefined);
+
+		const result = await cloneGitRepository("https://github.com/user/my-repo.git", testCwd, existingDir);
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toContain("Destination already exists");
+		expect(childProcessMocks.execFilePromise).not.toHaveBeenCalled();
+	});
+
+	it("returns error when destination exists but is not a directory", async () => {
+		fsMocks.access.mockResolvedValueOnce(undefined);
+		fsMocks.stat.mockResolvedValueOnce({ isDirectory: () => false });
 
 		const result = await cloneGitRepository("https://github.com/user/my-repo.git", testCwd);
 

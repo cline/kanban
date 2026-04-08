@@ -2,10 +2,10 @@ import { FolderOpen, GitBranch, Search } from "lucide-react";
 import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
-import { RemoteFileBrowserDialog } from "@/components/remote-file-browser-dialog";
+import { DirectoryAutocomplete } from "@/components/directory-autocomplete";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
-import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 
@@ -26,50 +26,81 @@ export function AddProjectDialog({
 }: AddProjectDialogProps): ReactElement {
 	const [activeTab, setActiveTab] = useState<AddProjectTab>("path");
 	const [pathInput, setPathInput] = useState("");
-	const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false);
 	const [isAddingByPath, setIsAddingByPath] = useState(false);
 	const [pendingGitInitPath, setPendingGitInitPath] = useState<string | null>(null);
 	const [isInitializingGit, setIsInitializingGit] = useState(false);
 	const [gitUrlInput, setGitUrlInput] = useState("");
 	const [cloneDestInput, setCloneDestInput] = useState("");
+	const [cloneFolderName, setCloneFolderName] = useState("");
 	const [isCloning, setIsCloning] = useState(false);
 	const pathInputRef = useRef<HTMLInputElement>(null);
 	const gitUrlInputRef = useRef<HTMLInputElement>(null);
+	const [serverRootPath, setServerRootPath] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (!open) {
 			return;
 		}
 		setActiveTab("path");
-		setPathInput("");
+		setPathInput("/");
 		setGitUrlInput("");
-		setCloneDestInput("");
+		setCloneDestInput("/");
+		setCloneFolderName("");
 		setIsAddingByPath(false);
 		setIsCloning(false);
 		setPendingGitInitPath(null);
 		setIsInitializingGit(false);
-	}, [open]);
 
+		// Fetch the server root path to display at the top of the dialog
+		const fetchRoot = async () => {
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const response = await trpcClient.projects.listDirectoryContents.query({});
+				if (response.ok && response.rootPath) {
+					setServerRootPath(response.rootPath);
+				}
+			} catch {
+				// Best effort — display will be blank if fetch fails
+			}
+		};
+		void fetchRoot();
+	}, [open, currentProjectId]);
+
+	// Focus the git URL input when switching to the clone tab (since it
+	// doesn't have a dropdown that would pop open). We intentionally do NOT
+	// auto-focus the path input to avoid the autocomplete dropdown opening
+	// immediately when the dialog appears.
 	useEffect(() => {
-		if (!open) {
+		if (!open || activeTab !== "clone") {
 			return;
 		}
 		const timer = setTimeout(() => {
-			if (activeTab === "path") {
-				pathInputRef.current?.focus();
-			} else {
-				gitUrlInputRef.current?.focus();
-			}
+			gitUrlInputRef.current?.focus();
 		}, 50);
 		return () => clearTimeout(timer);
 	}, [open, activeTab]);
 
+	// Convert the relative path (e.g. "/kanban/") to an absolute path
+	// by combining with the server root.
+	const resolveToAbsolutePath = useCallback(
+		(relativePath: string): string => {
+			const cleaned = relativePath.replace(/^\/+/, "").replace(/\/+$/, "");
+			if (!serverRootPath) {
+				return cleaned;
+			}
+			const root = serverRootPath.endsWith("/") ? serverRootPath.slice(0, -1) : serverRootPath;
+			return cleaned ? `${root}/${cleaned}` : root;
+		},
+		[serverRootPath],
+	);
+
 	const handleAddByPath = useCallback(
 		async (path: string, initializeGit = false) => {
-			const trimmed = path.trim();
-			if (!trimmed) {
+			const absolutePath = resolveToAbsolutePath(path);
+			if (!absolutePath) {
 				return;
 			}
+			const trimmed = absolutePath;
 			if (initializeGit) {
 				setIsInitializingGit(true);
 			} else {
@@ -96,7 +127,7 @@ export function AddProjectDialog({
 				setIsInitializingGit(false);
 			}
 		},
-		[currentProjectId, onOpenChange, onProjectAdded],
+		[currentProjectId, onOpenChange, onProjectAdded, resolveToAbsolutePath],
 	);
 
 	const handleClone = useCallback(async () => {
@@ -109,8 +140,15 @@ export function AddProjectDialog({
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
 			const mutationInput: { gitUrl: string; path?: string } = { gitUrl: trimmedUrl };
 			const trimmedDest = cloneDestInput.trim();
-			if (trimmedDest) {
-				mutationInput.path = trimmedDest;
+			const trimmedFolder = cloneFolderName.trim();
+
+			if (trimmedDest && trimmedDest !== "/") {
+				// Append custom folder name to the destination if provided
+				const resolvedDest = resolveToAbsolutePath(trimmedDest);
+				mutationInput.path = trimmedFolder ? `${resolvedDest}/${trimmedFolder}` : resolvedDest;
+			} else if (trimmedFolder) {
+				// Custom folder name with default destination (server root)
+				mutationInput.path = serverRootPath ? `${serverRootPath}/${trimmedFolder}` : trimmedFolder;
 			}
 			const added = await trpcClient.projects.add.mutate(mutationInput);
 			if (!added.ok || !added.project) {
@@ -125,12 +163,30 @@ export function AddProjectDialog({
 		} finally {
 			setIsCloning(false);
 		}
-	}, [cloneDestInput, currentProjectId, gitUrlInput, onOpenChange, onProjectAdded]);
+	}, [
+		cloneDestInput,
+		cloneFolderName,
+		currentProjectId,
+		gitUrlInput,
+		onOpenChange,
+		onProjectAdded,
+		resolveToAbsolutePath,
+		serverRootPath,
+	]);
 
-	const handleFileBrowserSelect = useCallback((selectedPath: string) => {
-		setPathInput(selectedPath);
-		setIsFileBrowserOpen(false);
-		setPendingGitInitPath(null);
+	// Prevent Escape from closing the dialog when any input is focused.
+	// For combobox inputs (DirectoryAutocomplete), just prevent close and
+	// let the autocomplete handle its own escape logic (close dropdown → blur).
+	// For regular inputs, blur immediately.
+	const handleDialogEscapeKeyDown = useCallback((event: KeyboardEvent) => {
+		const active = document.activeElement;
+		if (active instanceof HTMLInputElement) {
+			event.preventDefault();
+			// Let DirectoryAutocomplete handle its own Escape internally
+			if (active.role !== "combobox") {
+				active.blur();
+			}
+		}
 	}, []);
 
 	const isBusy = isAddingByPath || isCloning || isInitializingGit;
@@ -147,9 +203,19 @@ export function AddProjectDialog({
 				}}
 				contentClassName="max-w-lg"
 				contentAriaDescribedBy="add-project-dialog-description"
+				onEscapeKeyDown={handleDialogEscapeKeyDown}
 			>
 				<DialogHeader title="Add Project" icon={<FolderOpen size={16} />} />
-				<DialogBody className="flex flex-col gap-4 p-4">
+				{/* Plain div instead of DialogBody so the autocomplete dropdown
+				    isn't clipped by DialogBody's default overflow-y-auto */}
+				<div className="flex flex-col gap-4 p-4 bg-surface-1">
+					{/* Server root indicator */}
+					{serverRootPath ? (
+						<div className="text-[11px] text-text-tertiary font-mono truncate" title={serverRootPath}>
+							Server root: {serverRootPath}
+						</div>
+					) : null}
+
 					{/* Tab switcher */}
 					<div className="rounded-md bg-surface-2 p-1">
 						<div className="grid grid-cols-2 gap-1">
@@ -203,11 +269,11 @@ export function AddProjectDialog({
 							isAddingByPath={isAddingByPath}
 							isInitializingGit={isInitializingGit}
 							pendingGitInitPath={pendingGitInitPath}
-							onBrowse={() => setIsFileBrowserOpen(true)}
 							onSubmitPath={() => void handleAddByPath(pathInput)}
 							onSubmitGitInit={() => {
 								if (pendingGitInitPath) void handleAddByPath(pendingGitInitPath, true);
 							}}
+							currentProjectId={currentProjectId}
 						/>
 					) : (
 						<CloneTabContent
@@ -215,12 +281,15 @@ export function AddProjectDialog({
 							setGitUrlInput={setGitUrlInput}
 							cloneDestInput={cloneDestInput}
 							setCloneDestInput={setCloneDestInput}
+							cloneFolderName={cloneFolderName}
+							setCloneFolderName={setCloneFolderName}
 							gitUrlInputRef={gitUrlInputRef}
 							isCloning={isCloning}
 							onSubmitClone={() => void handleClone()}
+							currentProjectId={currentProjectId}
 						/>
 					)}
-				</DialogBody>
+				</div>
 				<DialogFooter>
 					<Button variant="default" onClick={() => onOpenChange(false)} disabled={isBusy}>
 						Cancel
@@ -230,7 +299,7 @@ export function AddProjectDialog({
 							<Button
 								variant="primary"
 								onClick={() => void handleAddByPath(pathInput)}
-								disabled={!pathInput.trim() || isAddingByPath}
+								disabled={pathInput.trim() === "/" || isAddingByPath}
 							>
 								{isAddingByPath ? (
 									<>
@@ -275,12 +344,6 @@ export function AddProjectDialog({
 					)}
 				</DialogFooter>
 			</Dialog>
-			<RemoteFileBrowserDialog
-				open={isFileBrowserOpen}
-				onOpenChange={setIsFileBrowserOpen}
-				onSelect={handleFileBrowserSelect}
-				workspaceId={currentProjectId}
-			/>
 		</>
 	);
 }
@@ -292,9 +355,9 @@ function PathTabContent({
 	isAddingByPath,
 	isInitializingGit,
 	pendingGitInitPath,
-	onBrowse,
 	onSubmitPath,
 	onSubmitGitInit,
+	currentProjectId,
 }: {
 	pathInput: string;
 	setPathInput: (value: string) => void;
@@ -302,9 +365,9 @@ function PathTabContent({
 	isAddingByPath: boolean;
 	isInitializingGit: boolean;
 	pendingGitInitPath: string | null;
-	onBrowse: () => void;
 	onSubmitPath: () => void;
 	onSubmitGitInit: () => void;
+	currentProjectId: string | null;
 }): ReactElement {
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -318,31 +381,17 @@ function PathTabContent({
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-3">
 			<div>
-				<label htmlFor="add-project-path-input" className="block text-[12px] text-text-secondary mb-1.5">
-					Enter a directory path on the server
-				</label>
-				<div className="flex gap-2">
-					<input
-						ref={pathInputRef}
-						type="text"
-						value={pathInput}
-						onChange={(e) => setPathInput(e.target.value)}
-						placeholder="e.g. /home/user/my-project"
-						className="flex-1 min-w-0 h-8 px-2.5 text-[13px] font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
-						disabled={isAddingByPath || isInitializingGit}
-						id="add-project-path-input"
-						aria-label="Server path input"
-					/>
-					<Button
-						variant="default"
-						size="sm"
-						onClick={onBrowse}
-						disabled={isAddingByPath || isInitializingGit}
-						type="button"
-					>
-						Browse
-					</Button>
-				</div>
+				<span className="block text-[12px] text-text-secondary mb-1.5">Directory path</span>
+				<DirectoryAutocomplete
+					inputRef={pathInputRef}
+					value={pathInput}
+					onChange={setPathInput}
+					placeholder="Search directories…"
+					disabled={isAddingByPath || isInitializingGit}
+					id="add-project-path-input"
+					ariaLabel="Server path input"
+					workspaceId={currentProjectId}
+				/>
 			</div>
 			{pendingGitInitPath !== null ? (
 				<div className="rounded-md border border-status-yellow/30 bg-status-yellow/5 px-3 py-2.5 flex flex-col gap-2">
@@ -369,27 +418,48 @@ function PathTabContent({
 	);
 }
 
+/** Derive a display-friendly repo name from a git URL for use as placeholder text. */
+function deriveRepoNameFromUrl(gitUrl: string): string {
+	const trimmed = gitUrl.trim().replace(/\/+$/, "");
+	if (!trimmed) {
+		return "";
+	}
+	// Handle SSH-style URLs: git@host:user/repo.git
+	const sshMatch = trimmed.match(/^[^@]+@[^:]+:(.+)$/);
+	const pathPart = sshMatch?.[1] ?? trimmed;
+	const lastSegment = pathPart.split("/").pop() ?? "";
+	return lastSegment.endsWith(".git") ? lastSegment.slice(0, -4) : lastSegment;
+}
+
 function CloneTabContent({
 	gitUrlInput,
 	setGitUrlInput,
 	cloneDestInput,
 	setCloneDestInput,
+	cloneFolderName,
+	setCloneFolderName,
 	gitUrlInputRef,
 	isCloning,
 	onSubmitClone,
+	currentProjectId,
 }: {
 	gitUrlInput: string;
 	setGitUrlInput: (value: string) => void;
 	cloneDestInput: string;
 	setCloneDestInput: (value: string) => void;
+	cloneFolderName: string;
+	setCloneFolderName: (value: string) => void;
 	gitUrlInputRef: React.RefObject<HTMLInputElement>;
 	isCloning: boolean;
 	onSubmitClone: () => void;
+	currentProjectId: string | null;
 }): ReactElement {
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
 		onSubmitClone();
 	};
+
+	const derivedName = deriveRepoNameFromUrl(gitUrlInput);
 
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -409,20 +479,34 @@ function CloneTabContent({
 					aria-label="Git URL input"
 				/>
 			</div>
-			<div>
-				<label htmlFor="add-project-clone-dest-input" className="block text-[12px] text-text-secondary mb-1.5">
-					Clone destination <span className="text-text-tertiary">(optional, defaults to server CWD)</span>
-				</label>
-				<input
-					type="text"
-					value={cloneDestInput}
-					onChange={(e) => setCloneDestInput(e.target.value)}
-					placeholder="e.g. my-project"
-					className="w-full h-8 px-2.5 text-[13px] font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
-					disabled={isCloning}
-					id="add-project-clone-dest-input"
-					aria-label="Clone destination path"
-				/>
+			<div className="grid grid-cols-2 gap-2">
+				<div>
+					<span className="block text-[12px] text-text-secondary mb-1.5">Clone into</span>
+					<DirectoryAutocomplete
+						value={cloneDestInput}
+						onChange={setCloneDestInput}
+						placeholder="Search directories…"
+						disabled={isCloning}
+						id="add-project-clone-dest-input"
+						ariaLabel="Clone destination path"
+						workspaceId={currentProjectId}
+					/>
+				</div>
+				<div>
+					<label htmlFor="add-project-folder-name-input" className="block text-[12px] text-text-secondary mb-1.5">
+						Folder name
+					</label>
+					<input
+						type="text"
+						id="add-project-folder-name-input"
+						value={cloneFolderName}
+						onChange={(e) => setCloneFolderName(e.target.value.replace(/\//g, ""))}
+						placeholder={derivedName || "repo-name"}
+						className="w-full h-8 px-2.5 text-[13px] font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
+						disabled={isCloning}
+						aria-label="Clone folder name"
+					/>
+				</div>
 			</div>
 			{isCloning ? (
 				<div className="flex items-center gap-2 text-[13px] text-text-secondary">

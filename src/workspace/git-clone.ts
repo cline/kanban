@@ -1,4 +1,4 @@
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, stat } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 
 import { runGit } from "./git-utils.js";
@@ -88,14 +88,41 @@ export async function cloneGitRepository(
 		};
 	}
 
-	// Check if destination already exists.
+	// If the destination already exists and is a directory, append the repo name
+	// so the behavior matches native `git clone <url> <existing-dir>` — the repo
+	// is cloned *into* the directory rather than rejected outright.
 	try {
 		await access(clonePath);
-		return {
-			ok: false,
-			clonedPath: clonePath,
-			error: `Destination already exists: "${clonePath}".`,
-		};
+		const destStat = await stat(clonePath);
+		if (destStat.isDirectory() && repoName) {
+			const nestedPath = resolve(clonePath, repoName);
+			try {
+				clonePath = validateCloneDestination(nestedPath, serverCwd);
+			} catch (error) {
+				return {
+					ok: false,
+					clonedPath: nestedPath,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+			// Verify the nested destination doesn't already exist.
+			try {
+				await access(clonePath);
+				return {
+					ok: false,
+					clonedPath: clonePath,
+					error: `Destination already exists: "${clonePath}".`,
+				};
+			} catch {
+				// Good — the nested path does not exist yet.
+			}
+		} else {
+			return {
+				ok: false,
+				clonedPath: clonePath,
+				error: `Destination already exists: "${clonePath}".`,
+			};
+		}
 	} catch {
 		// Expected: destination does not exist yet.
 	}
