@@ -452,7 +452,7 @@ export function createClineProviderService() {
 					apiBaseUrl: selectedSettings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
 					accessToken: ensureWorkosPrefix(rawAccessToken),
 				});
-				if (!remoteConfigResponse.enabled || !remoteConfigResponse.organizationId) {
+				if (!remoteConfigResponse?.enabled || !remoteConfigResponse?.organizationId) {
 					return { enabled: true };
 				}
 
