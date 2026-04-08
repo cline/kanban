@@ -222,11 +222,13 @@ function runtimeStateStreamReducer(
 		};
 	}
 	if (action.type === "task_chat_cleared") {
-		const { [action.payload.taskId]: _cleared, ...remainingByTaskId } = state.taskChatMessagesByTaskId;
 		return {
 			...state,
 			latestTaskChatMessage: null,
-			taskChatMessagesByTaskId: remainingByTaskId,
+			taskChatMessagesByTaskId: {
+				...state.taskChatMessagesByTaskId,
+				[action.payload.taskId]: [],
+			},
 		};
 	}
 	if (action.type === "workspace_metadata_updated") {
