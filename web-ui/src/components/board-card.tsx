@@ -126,7 +126,7 @@ function isCardCreditLimitError(summary: RuntimeTaskSessionSummary | undefined):
 	if (!summary) {
 		return false;
 	}
-	if (summary.state !== "awaiting_review" && summary.state !== "failed") {
+	if (summary.state !== "awaiting_review" && summary.state !== "failed" && summary.state !== "interrupted") {
 		return false;
 	}
 	return summary.latestHookActivity?.notificationType === "credit_limit";

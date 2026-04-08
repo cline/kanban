@@ -23,7 +23,7 @@ export function CreditLimitBanner({ taskSessions }: CreditLimitBannerProps): Rea
 	const hasCreditLimitTask = useMemo(() => {
 		return Object.values(taskSessions).some(
 			(session) =>
-				(session.state === "awaiting_review" || session.state === "failed") &&
+				(session.state === "awaiting_review" || session.state === "failed" || session.state === "interrupted") &&
 				session.latestHookActivity?.notificationType === "credit_limit",
 		);
 	}, [taskSessions]);
