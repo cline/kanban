@@ -1,7 +1,7 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Plus } from "lucide-react";
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { canShowFeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
@@ -19,7 +19,7 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
-import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
@@ -54,6 +54,10 @@ export function ProjectNavigationPanel({
 	onSelectProject,
 	onRemoveProject,
 	onAddProject,
+	sidebarWidth,
+	setExpandedSidebarWidth,
+	isCollapsed,
+	setSidebarCollapsed,
 }: {
 	projects: RuntimeProjectSummary[];
 	isLoadingProjects?: boolean;
@@ -69,6 +73,10 @@ export function ProjectNavigationPanel({
 	onSelectProject: (projectId: string) => void;
 	onRemoveProject: (projectId: string) => Promise<boolean>;
 	onAddProject: () => void;
+	sidebarWidth: number;
+	setExpandedSidebarWidth: (width: number) => void;
+	isCollapsed: boolean;
+	setSidebarCollapsed: (collapsed: boolean, persist?: boolean) => void;
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
@@ -86,7 +94,33 @@ export function ProjectNavigationPanel({
 			pendingProjectRemoval.taskCounts.trash
 		: 0;
 
-	const { sidebarWidth, setExpandedSidebarWidth, isCollapsed, setSidebarCollapsed } = useProjectNavigationLayout();
+	const isMobile = useIsMobile();
+	const [isMobileClosing, setIsMobileClosing] = useState(false);
+
+	useEffect(() => {
+		if (isMobile) {
+			setSidebarCollapsed(true, false);
+		}
+		// Only auto-collapse when crossing the mobile breakpoint, not on every isCollapsed change.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isMobile]);
+
+	const setCollapsed = useCallback(
+		(collapsed: boolean) => {
+			if (isMobile && collapsed) {
+				setIsMobileClosing(true);
+				return;
+			}
+			setSidebarCollapsed(collapsed, !isMobile);
+		},
+		[isMobile, setSidebarCollapsed],
+	);
+
+	const handleMobileCloseAnimationEnd = useCallback(() => {
+		setIsMobileClosing(false);
+		setSidebarCollapsed(true, false);
+	}, [setSidebarCollapsed]);
+
 	const [isDragging, setIsDragging] = useState(false);
 	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
@@ -117,16 +151,16 @@ export function ProjectNavigationPanel({
 			const newWidth = dragState.startWidth + delta;
 			if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
 				if (!isCollapsed) {
-					setSidebarCollapsed(true);
+					setCollapsed(true);
 				}
 				return;
 			}
 			if (isCollapsed) {
-				setSidebarCollapsed(false);
+				setCollapsed(false);
 			}
 			setExpandedSidebarWidth(newWidth);
 		},
-		[isCollapsed, isDragging, setExpandedSidebarWidth, setSidebarCollapsed],
+		[isCollapsed, isDragging, setExpandedSidebarWidth, setCollapsed],
 	);
 
 	const handleMouseUp = useCallback(() => {
@@ -157,23 +191,31 @@ export function ProjectNavigationPanel({
 		[isCollapsed, isDragging, sidebarWidth, stopDrag],
 	);
 
+	if (isMobile && isCollapsed && !isMobileClosing) {
+		return <></>;
+	}
+
+	const collapsedWidth = COLLAPSED_WIDTH;
+
 	if (isCollapsed) {
 		return (
 			<aside
 				className="flex flex-col items-center min-h-0 overflow-hidden bg-surface-1 relative shrink-0 py-2 gap-1.5"
 				style={{
-					width: COLLAPSED_WIDTH,
-					minWidth: COLLAPSED_WIDTH,
+					width: collapsedWidth,
+					minWidth: collapsedWidth,
 					borderRight: "1px solid var(--color-divider)",
 				}}
 			>
-				<div
-					role="separator"
-					aria-orientation="vertical"
-					aria-label="Resize sidebar"
-					onMouseDown={startDrag}
-					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
-				/>
+				{!isMobile && (
+					<div
+						role="separator"
+						aria-orientation="vertical"
+						aria-label="Resize sidebar"
+						onMouseDown={startDrag}
+						className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
+					/>
+				)}
 				{sortedProjects.map((project) => {
 					const isCurrent = currentProjectId === project.id;
 					const letter = project.name.charAt(0).toUpperCase();
@@ -182,9 +224,15 @@ export function ProjectNavigationPanel({
 							key={project.id}
 							type="button"
 							title={project.name}
-							onClick={() => onSelectProject(project.id)}
+							onClick={() => {
+								if (isMobile) {
+									setCollapsed(false);
+								}
+								onSelectProject(project.id);
+							}}
 							className={cn(
-								"w-8 h-8 rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
+								"rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
+								isMobile ? "w-11 h-11" : "w-8 h-8",
 								isCurrent
 									? "bg-accent text-white"
 									: "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
@@ -199,7 +247,10 @@ export function ProjectNavigationPanel({
 					title="Add project"
 					onClick={onAddProject}
 					disabled={removingProjectId !== null}
-					className="w-8 h-8 rounded-md text-xs shrink-0 border-0 cursor-pointer flex items-center justify-center bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 mt-auto"
+					className={cn(
+						"rounded-md text-xs shrink-0 border-0 cursor-pointer flex items-center justify-center bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 mt-auto",
+						isMobile ? "w-11 h-11" : "w-8 h-8",
+					)}
 				>
 					<Plus size={16} />
 				</button>
@@ -209,27 +260,52 @@ export function ProjectNavigationPanel({
 
 	return (
 		<aside
-			className="flex flex-col min-h-0 overflow-hidden bg-surface-1 relative shrink-0"
-			style={{
-				width: sidebarWidth,
-				minWidth: SIDEBAR_MIN_EXPANDED_WIDTH,
-				maxWidth: SIDEBAR_MAX_EXPANDED_WIDTH,
-				borderRight: "1px solid var(--color-divider)",
-			}}
+			className={cn(
+				"flex flex-col min-h-0 overflow-hidden bg-surface-1 shrink-0",
+				isMobile ? "fixed inset-y-0 left-0 z-50 shadow-2xl" : "relative",
+			)}
+			onAnimationEnd={isMobileClosing ? handleMobileCloseAnimationEnd : undefined}
+			style={
+				isMobile
+					? {
+							width: "100vw",
+							animation: isMobileClosing
+								? "kb-sidebar-slide-out 200ms ease forwards"
+								: "kb-sidebar-slide-in 200ms ease",
+						}
+					: {
+							width: sidebarWidth,
+							minWidth: SIDEBAR_MIN_EXPANDED_WIDTH,
+							maxWidth: SIDEBAR_MAX_EXPANDED_WIDTH,
+							borderRight: "1px solid var(--color-divider)",
+						}
+			}
 		>
-			<div
-				role="separator"
-				aria-orientation="vertical"
-				aria-label="Resize sidebar"
-				onMouseDown={startDrag}
-				className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
-			/>
+			{!isMobile && (
+				<div
+					role="separator"
+					aria-orientation="vertical"
+					aria-label="Resize sidebar"
+					onMouseDown={startDrag}
+					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
+				/>
+			)}
 			<div style={{ padding: "12px 12px 8px" }}>
-				<div>
+				<div className="flex items-center justify-between">
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
 						<ClineIcon size={18} className="text-text-primary shrink-0 self-center" />
 						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
+					{isMobile ? (
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={<Plus size={16} className="rotate-45" />}
+							onClick={() => setCollapsed(true)}
+							aria-label="Close sidebar"
+							className="min-w-[44px] min-h-[44px] -mr-2"
+						/>
+					) : null}
 				</div>
 				<div className="mt-2 rounded-md bg-surface-2 p-1">
 					<div className="grid grid-cols-2 gap-1">
@@ -289,7 +365,12 @@ export function ProjectNavigationPanel({
 								project={project}
 								isCurrent={currentProjectId === project.id}
 								removingProjectId={removingProjectId}
-								onSelect={onSelectProject}
+								onSelect={(projectId) => {
+									onSelectProject(projectId);
+									if (isMobile) {
+										setCollapsed(true);
+									}
+								}}
 								onRemove={(projectId) => {
 									const found = sortedProjects.find((item) => item.id === projectId);
 									if (!found) {
@@ -418,15 +499,15 @@ function ProjectSupportFooter({
 
 	return (
 		<div style={{ padding: "4px 12px 12px" }}>
-			<div className="flex items-start gap-2 rounded-md border border-status-orange/25 bg-status-orange/5 px-3 py-2.5">
-				<Info size={14} className="mt-px shrink-0 text-status-orange" />
+			<div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
+				<Info size={14} className="mt-px shrink-0 text-text-tertiary" />
 				<div className="flex flex-col gap-1.5">
-					<p className="m-0 text-xs text-status-orange/80">
+					<p className="m-0 text-xs text-text-secondary">
 						Kanban is in beta. Help us improve by sharing your experience.
 					</p>
 					<button
 						type="button"
-						className="m-0 flex cursor-pointer items-center gap-1 self-start border-none bg-transparent p-0 text-xs font-semibold text-status-orange hover:text-status-orange/80 active:text-status-orange/60 disabled:cursor-default disabled:opacity-50"
+						className="m-0 flex cursor-pointer items-center gap-1 self-start border-none bg-transparent p-0 text-xs font-semibold text-text-secondary hover:text-text-primary active:text-text-tertiary disabled:cursor-default disabled:opacity-50"
 						disabled={shouldShowFeaturebaseFeedback && isOpening}
 						onClick={handleAction}
 					>

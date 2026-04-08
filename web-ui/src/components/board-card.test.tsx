@@ -34,6 +34,7 @@ vi.mock("@/stores/workspace-metadata-store", () => ({
 }));
 
 vi.mock("@/utils/react-use", () => ({
+	useMedia: () => false,
 	useMeasure: () => {
 		mockMeasureCallCount += 1;
 		const width = mockMeasureWidths[(mockMeasureCallCount - 1) % mockMeasureWidths.length] ?? 240;

@@ -1,6 +1,7 @@
 import type { ReactElement, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
 const NAVBAR_HEIGHT_PX = 40;
@@ -40,12 +41,14 @@ export function ResizableBottomPane({
 	initialHeight,
 	onHeightChange,
 	onCollapse,
+	isExpanded,
 }: {
 	children: ReactNode;
 	minHeight?: number;
 	initialHeight?: number;
 	onHeightChange?: (height: number) => void;
 	onCollapse?: () => void;
+	isExpanded?: boolean;
 }): ReactElement {
 	const [height, setHeight] = useState<number>(() =>
 		clampHeight(initialHeight ?? getDefaultPaneHeight(minHeight), minHeight),
@@ -148,6 +151,31 @@ export function ResizableBottomPane({
 		},
 		[height, isDragging, stopDrag],
 	);
+
+	const isMobile = useIsMobile();
+
+	if (isMobile) {
+		return (
+			<div
+				style={{
+					position: "fixed",
+					bottom: 0,
+					left: 0,
+					right: 0,
+					height: isExpanded ? "100svh" : "65svh",
+					zIndex: 40,
+					display: "flex",
+					flexDirection: "column",
+					borderTop: "1px solid var(--color-divider)",
+					background: "var(--color-surface-1)",
+					boxShadow: "0 -4px 20px rgba(0,0,0,0.4)",
+					animation: "kb-sidebar-slide-up 200ms ease",
+				}}
+			>
+				<div style={{ display: "flex", flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>{children}</div>
+			</div>
+		);
+	}
 
 	return (
 		<div

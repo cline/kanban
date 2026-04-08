@@ -38,6 +38,7 @@ import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallba
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
 import { useDebugTools } from "@/hooks/use-debug-tools";
+import { useDetailTaskNavigation } from "@/hooks/use-detail-task-navigation";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import { useGitActions } from "@/hooks/use-git-actions";
@@ -57,6 +58,7 @@ import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
+import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
 import {
 	getTaskAgentNavbarHint,
 	isTaskAgentSetupSatisfied,
@@ -82,7 +84,6 @@ export default function App(): ReactElement {
 	const terminalThemeColors = useTerminalThemeColors();
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
-	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const [canPersistWorkspaceState, setCanPersistWorkspaceState] = useState(false);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [settingsInitialSection, setSettingsInitialSection] = useState<RuntimeSettingsSection | null>(null);
@@ -94,7 +95,6 @@ export default function App(): ReactElement {
 	const lastStreamErrorRef = useRef<string | null>(null);
 	const handleProjectSwitchStart = useCallback(() => {
 		setCanPersistWorkspaceState(false);
-		setSelectedTaskId(null);
 		setIsGitHistoryOpen(false);
 		setPendingTaskStartAfterEditId(null);
 		taskEditorResetRef.current();
@@ -207,12 +207,6 @@ export default function App(): ReactElement {
 		setSessions,
 	});
 
-	const selectedCard = useMemo(() => {
-		if (!selectedTaskId) {
-			return null;
-		}
-		return findCardSelection(board, selectedTaskId);
-	}, [board, selectedTaskId]);
 	const {
 		workspacePath,
 		workspaceGit,
@@ -232,6 +226,16 @@ export default function App(): ReactElement {
 		setBoard,
 		setSessions,
 		setCanPersistWorkspaceState,
+	});
+	const { selectedTaskId, selectedCard, setSelectedTaskId, handleBack } = useDetailTaskNavigation({
+		board,
+		currentProjectId,
+		isAwaitingWorkspaceSnapshot,
+		isInitialRuntimeLoad,
+		isProjectSwitching,
+		onDetailClosed: () => {
+			setIsGitHistoryOpen(false);
+		},
 	});
 
 	useEffect(() => {
@@ -501,7 +505,6 @@ export default function App(): ReactElement {
 	}, [isRuntimeDisconnected, streamError]);
 
 	useEffect(() => {
-		setSelectedTaskId(null);
 		resetTaskEditorState();
 		setIsClearTrashDialogOpen(false);
 		resetGitActionState();
@@ -514,12 +517,6 @@ export default function App(): ReactElement {
 		resetTaskEditorState,
 		resetTerminalPanelsState,
 	]);
-
-	useEffect(() => {
-		if (selectedTaskId && !selectedCard) {
-			setSelectedTaskId(null);
-		}
-	}, [selectedTaskId, selectedCard]);
 
 	useEffect(() => {
 		if (selectedCard) {
@@ -537,11 +534,6 @@ export default function App(): ReactElement {
 		() => workspacePath ?? navigationProjectPath ?? null,
 		[navigationProjectPath, workspacePath],
 	);
-
-	const handleBack = useCallback(() => {
-		setSelectedTaskId(null);
-		setIsGitHistoryOpen(false);
-	}, []);
 
 	const handleOpenSettings = useCallback((section?: RuntimeSettingsSection) => {
 		setSettingsInitialSection(section ?? null);
@@ -686,6 +678,11 @@ export default function App(): ReactElement {
 		return undefined;
 	}, [selectedCard]);
 
+	const sidebarLayout = useProjectNavigationLayout();
+	const handleToggleSidebar = useCallback(() => {
+		sidebarLayout.setSidebarCollapsed(!sidebarLayout.isCollapsed);
+	}, [sidebarLayout]);
+
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
 	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
 	const navbarRuntimeHint = hasNoProjects ? undefined : runtimeHint;
@@ -772,10 +769,15 @@ export default function App(): ReactElement {
 						onAddProject={() => {
 							void handleAddProject();
 						}}
+						sidebarWidth={sidebarLayout.sidebarWidth}
+						setExpandedSidebarWidth={sidebarLayout.setExpandedSidebarWidth}
+						isCollapsed={sidebarLayout.isCollapsed}
+						setSidebarCollapsed={sidebarLayout.setSidebarCollapsed}
 					/>
 				) : null}
 				<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 					<TopBar
+						onToggleSidebar={!selectedCard ? handleToggleSidebar : undefined}
 						onBack={selectedCard ? handleBack : undefined}
 						workspacePath={navbarWorkspacePath}
 						isWorkspacePathLoading={shouldShowProjectLoadingState}
@@ -911,6 +913,7 @@ export default function App(): ReactElement {
 											initialHeight={homeTerminalPaneHeight}
 											onHeightChange={setHomeTerminalPaneHeight}
 											onCollapse={collapseHomeTerminal}
+											isExpanded={isHomeTerminalExpanded}
 										>
 											<div
 												style={{
