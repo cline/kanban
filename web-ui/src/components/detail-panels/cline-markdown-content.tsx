@@ -88,11 +88,7 @@ const markdownComponents: Components = {
 		<h3 className={cn("mt-2 text-sm font-semibold text-text-primary", className)} {...props} />
 	),
 	p: ({ className, ...props }) => (
-		<p
-			className={cn("leading-snug whitespace-pre-wrap text-sm text-text-primary", className)}
-			style={{ overflowWrap: "anywhere" }}
-			{...props}
-		/>
+		<p className={cn("leading-snug whitespace-pre-wrap text-sm text-text-primary", className)} {...props} />
 	),
 	ul: ({ className, ...props }) => (
 		<ul className={cn("list-disc pl-5 leading-snug text-sm text-text-primary", className)} {...props} />
@@ -155,7 +151,7 @@ export function ClineMarkdownContent({ content }: { content: string }): ReactEle
 		return <span className="text-text-secondary" />;
 	}
 	return (
-		<div className="kb-markdown min-w-0 overflow-hidden">
+		<div className="kb-markdown min-w-0">
 			<ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
 				{content}
 			</ReactMarkdown>

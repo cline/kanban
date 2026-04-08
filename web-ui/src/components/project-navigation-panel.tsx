@@ -258,7 +258,7 @@ export function ProjectNavigationPanel({
 		);
 	}
 
-	const expandedSidebar = (
+	return (
 		<aside
 			className={cn(
 				"flex flex-col min-h-0 overflow-hidden bg-surface-1 shrink-0",
@@ -476,12 +476,6 @@ export function ProjectNavigationPanel({
 			</AlertDialog>
 		</aside>
 	);
-
-	if (isMobile) {
-		return expandedSidebar;
-	}
-
-	return expandedSidebar;
 }
 
 function ProjectSupportFooter({

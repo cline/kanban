@@ -84,37 +84,6 @@ export function KanbanBoard({
 	const latestDataRef = useRef<BoardData>(data);
 	const programmaticCardMoveInFlightRef = useRef<ProgrammaticCardMoveInFlight | null>(null);
 	const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
-	const [activeColumnIndex, setActiveColumnIndex] = useState(0);
-	const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
-
-	// Track which column is centered on mobile for the pagination dots.
-	useEffect(() => {
-		const board = boardRef.current;
-		if (!board || !isMobile) {
-			return;
-		}
-		function handleScroll(): void {
-			if (!board) {
-				return;
-			}
-			const sections = board.querySelectorAll<HTMLElement>("section[data-column-id]");
-			const boardCenter = board.scrollLeft + board.clientWidth / 2;
-			let closestIndex = 0;
-			let closestDistance = Number.POSITIVE_INFINITY;
-			sections.forEach((section, index) => {
-				const sectionCenter = section.offsetLeft + section.offsetWidth / 2;
-				const distance = Math.abs(boardCenter - sectionCenter);
-				if (distance < closestDistance) {
-					closestDistance = distance;
-					closestIndex = index;
-				}
-			});
-			setActiveColumnIndex(closestIndex);
-		}
-		board.addEventListener("scroll", handleScroll, { passive: true });
-		handleScroll();
-		return () => board.removeEventListener("scroll", handleScroll);
-	}, [isMobile]);
 
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 	const [programmaticCardMoveInFlight, setProgrammaticCardMoveInFlight] =
