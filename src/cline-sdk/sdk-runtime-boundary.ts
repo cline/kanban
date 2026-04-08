@@ -124,6 +124,8 @@ export interface ClineSdkErrorEvent {
 	error: Error;
 	recoverable: boolean;
 	iteration: number;
+	/** Fallback message field — some SDK versions surface error text here when `error` is absent. */
+	message?: string;
 }
 
 export type ClineSdkAgentEvent =

@@ -180,9 +180,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 
 	if (agentEvent?.type === "error") {
 		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
-		const rawMessage = (agentEvent as unknown as Record<string, unknown>).message;
-		const creditLimitSource = errorMessage
-			?? (typeof rawMessage === "string" ? rawMessage.trim() || null : null);
+		const rawMessage = typeof agentEvent.message === "string" ? agentEvent.message.trim() || null : null;
+		const creditLimitSource = errorMessage ?? rawMessage;
 		const sdkRecoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
 		const creditLimitError = isCreditLimitError(creditLimitSource);
 		const recoverable = sdkRecoverable && !creditLimitError;

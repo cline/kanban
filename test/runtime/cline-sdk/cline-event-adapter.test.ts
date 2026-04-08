@@ -491,6 +491,29 @@ describe("applyClineSessionEvent", () => {
 		expect(result.summaries).toHaveLength(0);
 	});
 
+	it("passes through credit-limit notices when reason is absent", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "notice",
+						message: "402 Insufficient balance. Your Cline Credits balance is $0.00",
+						displayRole: "system",
+					},
+				},
+			},
+		});
+
+		expect(result.messages).toHaveLength(1);
+		expect(result.messages[0]?.role).toBe("system");
+	});
+
 	it("passes through non-recovery notices even when they contain credit-limit text", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";

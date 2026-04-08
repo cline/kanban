@@ -23,7 +23,7 @@ const CREDIT_LIMIT_PATTERNS = [
 	"credits exhausted",
 	"out of credits",
 	"no remaining credits",
-	"payment required",
+	"402 payment required",
 ] as const;
 
 export function isCreditLimitError(errorMessage: string | null): boolean {
