@@ -1,6 +1,10 @@
-export function formatBalance(balance: number | null | undefined): string {
-	if (balance === null || balance === undefined) {
+// The Cline API returns balance in micro-units (1 credit = 1,000,000 micro-units).
+const MICRO_UNITS_PER_CREDIT = 1_000_000;
+
+export function formatBalance(microUnits: number | null | undefined): string {
+	if (microUnits === null || microUnits === undefined) {
 		return "—";
 	}
-	return `$${balance.toFixed(2)}`;
+	const credits = microUnits / MICRO_UNITS_PER_CREDIT;
+	return credits.toFixed(2);
 }

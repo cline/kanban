@@ -698,7 +698,9 @@ export function RuntimeSettingsDialog({
 					/>
 				) : null}
 
-				{selectedAgentId === "cline" ? <AccountOrganizationSection workspaceId={workspaceId} open={open} /> : null}
+				{selectedAgentId === "cline" && clineSettings.providerId.trim() === "cline" ? (
+					<AccountOrganizationSection workspaceId={workspaceId} open={open} />
+				) : null}
 
 				<div className="flex items-center justify-between mt-4 mb-1">
 					<h6 className="font-semibold text-text-primary m-0">Git button prompts</h6>

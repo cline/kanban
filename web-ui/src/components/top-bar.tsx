@@ -8,7 +8,6 @@ import {
 	Check,
 	ChevronDown,
 	CircleArrowDown,
-	Coins,
 	Command,
 	GitBranch,
 	Menu,
@@ -37,7 +36,6 @@ import {
 	useTaskWorkspaceInfoValue,
 	useTaskWorkspaceSnapshotValue,
 } from "@/stores/workspace-metadata-store";
-import { formatBalance } from "@/utils/format-balance";
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform } from "@/utils/platform";
@@ -426,8 +424,6 @@ export function TopBar({
 	canOpenWorkspace,
 	isOpeningWorkspace,
 	hideProjectDependentActions = false,
-	activeAccountLabel,
-	activeAccountBalance,
 }: {
 	onToggleSidebar?: () => void;
 	onBack?: () => void;
@@ -463,8 +459,6 @@ export function TopBar({
 	canOpenWorkspace: boolean;
 	isOpeningWorkspace: boolean;
 	hideProjectDependentActions?: boolean;
-	activeAccountLabel?: string | null;
-	activeAccountBalance?: number | null;
 }): React.ReactElement {
 	const isMobile = useIsMobile();
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
@@ -794,25 +788,6 @@ export function TopBar({
 								/>
 							) : null}
 						</>
-					) : null}
-					{activeAccountLabel ? (
-						<Tooltip
-							side="bottom"
-							content={`Active: ${activeAccountLabel}${activeAccountBalance !== null && activeAccountBalance !== undefined ? ` · ${formatBalance(activeAccountBalance)}` : ""}`}
-						>
-							<button
-								type="button"
-								onClick={() => onOpenSettings?.()}
-								className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-text-secondary hover:text-text-primary rounded-md hover:bg-surface-3 transition-colors"
-							>
-								<Coins size={12} />
-								<span>
-									{activeAccountBalance !== null && activeAccountBalance !== undefined
-										? formatBalance(activeAccountBalance)
-										: activeAccountLabel}
-								</span>
-							</button>
-						</Tooltip>
 					) : null}
 
 					{/* Settings: always visible */}

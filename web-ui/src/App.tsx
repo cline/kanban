@@ -36,7 +36,6 @@ import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallb
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
-import { useClineAccountBalance } from "@/hooks/use-cline-account-balance";
 import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDetailTaskNavigation } from "@/hooks/use-detail-task-navigation";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
@@ -144,10 +143,6 @@ export default function App(): ReactElement {
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
-	const isClineProvider = settingsRuntimeProjectConfig?.selectedAgentId === "cline";
-	const accountBalanceData = useClineAccountBalance(isClineProvider ? settingsWorkspaceId : null, {
-		paused: isSettingsOpen,
-	});
 	const featurebaseFeedbackState = useFeaturebaseFeedbackWidget({
 		workspaceId: settingsWorkspaceId,
 		clineProviderSettings: settingsRuntimeProjectConfig?.clineProviderSettings ?? null,
@@ -835,8 +830,6 @@ export default function App(): ReactElement {
 						onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
 						isGitHistoryOpen={isGitHistoryOpen}
 						hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
-						activeAccountLabel={accountBalanceData?.activeAccountLabel ?? null}
-						activeAccountBalance={accountBalanceData?.balance ?? null}
 					/>
 					<div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
 						<div

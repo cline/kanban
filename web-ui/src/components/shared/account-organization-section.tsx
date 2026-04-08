@@ -1,9 +1,10 @@
 // Account & organization switching section for the settings dialog.
 // Shows active account, organization dropdown, credit balance, and dashboard link.
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
 	fetchClineAccountBalance,
 	fetchClineAccountOrganizations,
@@ -13,6 +14,12 @@ import type { RuntimeClineAccountBalanceResponse, RuntimeClineAccountOrganizatio
 import { formatBalance } from "@/utils/format-balance";
 
 const BALANCE_REFRESH_INTERVAL_MS = 60_000;
+const CLINE_APP_BASE_URL = "https://app.cline.bot";
+
+function getCreditsUrl(isOrg: boolean): string {
+	const route = isOrg ? "organization" : "account";
+	return `${CLINE_APP_BASE_URL}/${route}?tab=credits&redirect=true`;
+}
 
 export function AccountOrganizationSection({
 	workspaceId,
@@ -100,7 +107,6 @@ export function AccountOrganizationSection({
 	}, [open, refreshBalance]);
 
 	const selectedOrgId = balanceData?.activeOrganizationId ?? null;
-	const activeLabel = balanceData?.activeAccountLabel ?? null;
 
 	const handleAccountChange = useCallback(
 		async (orgId: string) => {
@@ -138,6 +144,9 @@ export function AccountOrganizationSection({
 	const dropdownValue = selectedOrgId ?? "personal";
 	const showSelector = balanceData !== null || organizations.length > 0 || hadAccountContext;
 	const loadError = balanceError ?? orgsError;
+	const activeOrg = selectedOrgId ? organizations.find((org) => org.organizationId === selectedOrgId) : null;
+	const roleLabel = activeOrg?.roles?.[0];
+	const formattedRole = roleLabel ? roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1) : null;
 
 	return (
 		<div>
@@ -165,11 +174,16 @@ export function AccountOrganizationSection({
 						))}
 					</select>
 					{isSwitching ? <Spinner size={14} /> : null}
+					{formattedRole ? (
+						<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-accent/10 text-accent">
+							{formattedRole}
+						</span>
+					) : null}
 				</div>
 			) : null}
 
-			<div className="flex items-center gap-3 mb-2">
-				<div className="flex items-center gap-2">
+			<div className="flex items-center justify-between mb-2">
+				<div className="flex items-center gap-1.5">
 					<span className="text-[13px] text-text-secondary">Credits:</span>
 					{isLoadingBalance && balanceData === null ? (
 						<Spinner size={14} />
@@ -178,12 +192,26 @@ export function AccountOrganizationSection({
 							{formatBalance(balanceData?.balance ?? null)}
 						</span>
 					)}
+					<Tooltip side="bottom" content="Refresh balance">
+						<button
+							type="button"
+							onClick={() => void refreshBalance()}
+							disabled={isLoadingBalance}
+							aria-label="Refresh balance"
+							className="inline-flex items-center justify-center rounded-md p-0.5 text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors disabled:opacity-40"
+						>
+							<RefreshCw size={12} className={isLoadingBalance ? "animate-spin" : ""} />
+						</button>
+					</Tooltip>
 				</div>
-				{activeLabel ? (
-					<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-accent/10 text-accent">
-						{activeLabel}
-					</span>
-				) : null}
+				<Button
+					variant="default"
+					size="sm"
+					icon={<ExternalLink size={14} />}
+					onClick={() => window.open(getCreditsUrl(selectedOrgId !== null), "_blank", "noopener,noreferrer")}
+				>
+					Add Credits
+				</Button>
 			</div>
 
 			{loadError ? (
@@ -196,15 +224,6 @@ export function AccountOrganizationSection({
 					{switchError}
 				</p>
 			) : null}
-
-			<Button
-				size="sm"
-				variant="ghost"
-				icon={<ExternalLink size={14} />}
-				onClick={() => window.open("https://app.cline.bot/", "_blank")}
-			>
-				Dashboard & Buy credits
-			</Button>
 		</div>
 	);
 }
