@@ -156,7 +156,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				if (body.resumeFromTrash) {
 					deps.broadcastTaskChatCleared?.(workspaceScope.workspaceId, body.taskId);
 				}
-				const requestedTaskMode = body.mode ?? (body.startInPlanMode ? "plan" : "act");
+				const requestedClineTaskMode = body.mode ?? "act";
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
 				const taskCwd = isHomeAgentSessionId(body.taskId)
 					? workspaceScope.workspacePath
@@ -202,7 +202,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						resumeFromTrash: body.resumeFromTrash,
 						providerId: clineLaunchConfig.providerId,
 						modelId: clineLaunchConfig.modelId,
-						mode: requestedTaskMode,
+						mode: requestedClineTaskMode,
+						startInPlanMode: body.startInPlanMode,
 						apiKey: clineLaunchConfig.apiKey,
 						baseUrl: clineLaunchConfig.baseUrl,
 						reasoningEffort: clineLaunchConfig.reasoningEffort,
