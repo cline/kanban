@@ -482,15 +482,28 @@ const TERMINAL_AGENT_HINTS: readonly { label: string; hint: string }[] = [
 	{ label: "Import issues", hint: "Pull issues into task cards via GitHub CLI or Linear MCP" },
 ];
 
+const AGENT_TIPS_DISMISSED_KEY = "kb-agent-tips-dismissed";
+
 function TerminalAgentHints({ agentId }: { agentId: RuntimeAgentId }): React.ReactElement {
-	const [isDismissed, setIsDismissed] = useState(false);
+	const [isDismissed, setIsDismissed] = useState(() => localStorage.getItem(AGENT_TIPS_DISMISSED_KEY) === "true");
 	const agentLabel = getRuntimeAgentCatalogEntry(agentId)?.label ?? agentId;
+
+	const dismiss = useCallback(() => {
+		setIsDismissed(true);
+		localStorage.setItem(AGENT_TIPS_DISMISSED_KEY, "true");
+	}, []);
+
+	const restore = useCallback(() => {
+		setIsDismissed(false);
+		localStorage.removeItem(AGENT_TIPS_DISMISSED_KEY);
+	}, []);
+
 	if (isDismissed) {
 		return (
 			<div className="shrink-0 px-3 pt-1">
 				<button
 					type="button"
-					onClick={() => setIsDismissed(false)}
+					onClick={restore}
 					className="flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[11px] text-text-tertiary hover:text-text-secondary"
 				>
 					<Lightbulb size={11} />
@@ -508,7 +521,7 @@ function TerminalAgentHints({ agentId }: { agentId: RuntimeAgentId }): React.Rea
 				</span>
 				<button
 					type="button"
-					onClick={() => setIsDismissed(true)}
+					onClick={dismiss}
 					className="cursor-pointer border-none bg-transparent p-0 text-[10px] text-text-tertiary hover:text-text-secondary"
 				>
 					Hide
