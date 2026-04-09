@@ -236,6 +236,12 @@ describe("CardDetailView", () => {
 			);
 		});
 
+		// First show the diff panel
+		const showDiffButton = container.querySelector('button[aria-label="Show diff panel"]') as HTMLButtonElement;
+		await act(async () => {
+			showDiffButton.click();
+		});
+
 		const expandButton = container.querySelector('button[aria-label="Expand split diff view"]');
 		expect(expandButton).toBeInstanceOf(HTMLButtonElement);
 		if (!(expandButton instanceof HTMLButtonElement)) {
@@ -279,6 +285,12 @@ describe("CardDetailView", () => {
 					onBottomTerminalClose={() => {}}
 				/>,
 			);
+		});
+
+		// First show the diff panel
+		const showDiffButton = container.querySelector('button[aria-label="Show diff panel"]') as HTMLButtonElement;
+		await act(async () => {
+			showDiffButton.click();
 		});
 
 		const lastTurnButton = Array.from(container.querySelectorAll("button")).find(
@@ -488,6 +500,12 @@ describe("CardDetailView", () => {
 			);
 		});
 
+		// First show the diff panel
+		const showDiffButton = container.querySelector('button[aria-label="Show diff panel"]') as HTMLButtonElement;
+		await act(async () => {
+			showDiffButton.click();
+		});
+
 		const diffProps = getLastMockFirstArg<MockedDiffViewerProps>(mockDiffViewerPanel);
 		expect(diffProps.onAddToTerminal).toBeTypeOf("function");
 
@@ -521,6 +539,12 @@ describe("CardDetailView", () => {
 					onBottomTerminalClose={() => {}}
 				/>,
 			);
+		});
+
+		// First show the diff panel
+		const showDiffButton2 = container.querySelector('button[aria-label="Show diff panel"]') as HTMLButtonElement;
+		await act(async () => {
+			showDiffButton2.click();
 		});
 
 		const diffProps = getLastMockFirstArg<MockedDiffViewerProps>(mockDiffViewerPanel);
@@ -654,6 +678,127 @@ describe("CardDetailView", () => {
 		expect(restoredRatio).toBeCloseTo(Number(expectedRatio), 2);
 	});
 
+	it("hides diff content by default and shows only the diff toggle icon", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		// Diff toggle icon should be present
+		const toggleButton = container.querySelector('button[aria-label="Show diff panel"]');
+		expect(toggleButton).toBeInstanceOf(HTMLButtonElement);
+
+		// All Changes and Last Turn buttons should not be visible
+		const buttons = Array.from(container.querySelectorAll("button"));
+		expect(buttons.find((b) => b.textContent?.trim() === "All Changes")).toBeUndefined();
+		expect(buttons.find((b) => b.textContent?.trim() === "Last Turn")).toBeUndefined();
+
+		// Expand button should not be visible
+		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeNull();
+
+		// Diff content should not be rendered
+		expect(container.querySelector('[data-testid="diff-viewer-panel"]')).toBeNull();
+		expect(container.querySelector('[data-testid="file-tree-panel"]')).toBeNull();
+	});
+
+	it("shows diff content with tabs and expand button when diff toggle is clicked", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		// Click the toggle to show diff
+		const toggleButton = container.querySelector('button[aria-label="Show diff panel"]') as HTMLButtonElement;
+		expect(toggleButton).toBeInstanceOf(HTMLButtonElement);
+		await act(async () => {
+			toggleButton.click();
+		});
+
+		// All Changes and Last Turn should now be visible
+		const buttons = Array.from(container.querySelectorAll("button"));
+		expect(buttons.find((b) => b.textContent?.trim() === "All Changes")).toBeDefined();
+		expect(buttons.find((b) => b.textContent?.trim() === "Last Turn")).toBeDefined();
+
+		// Expand button should appear
+		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
+
+		// Toggle button should now show "Hide" label
+		expect(container.querySelector('button[aria-label="Hide diff panel"]')).toBeInstanceOf(HTMLButtonElement);
+
+		// Diff content should be rendered
+		expect(container.querySelector('[data-testid="diff-viewer-panel"]')).toBeInstanceOf(HTMLDivElement);
+		expect(container.querySelector('[data-testid="file-tree-panel"]')).toBeInstanceOf(HTMLDivElement);
+	});
+
+	it("hides diff content when the diff toggle is clicked again", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		// Show diff
+		const showButton = container.querySelector('button[aria-label="Show diff panel"]') as HTMLButtonElement;
+		await act(async () => {
+			showButton.click();
+		});
+
+		// Hide diff
+		const hideButton = container.querySelector('button[aria-label="Hide diff panel"]') as HTMLButtonElement;
+		expect(hideButton).toBeInstanceOf(HTMLButtonElement);
+		await act(async () => {
+			hideButton.click();
+		});
+
+		// Should be back to hidden state
+		expect(container.querySelector('button[aria-label="Show diff panel"]')).toBeInstanceOf(HTMLButtonElement);
+		const buttons = Array.from(container.querySelectorAll("button"));
+		expect(buttons.find((b) => b.textContent?.trim() === "All Changes")).toBeUndefined();
+		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeNull();
+		expect(container.querySelector('[data-testid="diff-viewer-panel"]')).toBeNull();
+	});
+
 	it("uses separate file-tree ratios for collapsed and expanded diff layouts", async () => {
 		window.localStorage.setItem(LocalStorageKey.DetailDiffFileTreePanelRatio, "0.42");
 		window.localStorage.setItem(LocalStorageKey.DetailExpandedDiffFileTreePanelRatio, "0.18");
@@ -675,6 +820,12 @@ describe("CardDetailView", () => {
 					onBottomTerminalClose={() => {}}
 				/>,
 			);
+		});
+
+		// First show the diff panel
+		const showDiffButton = container.querySelector('button[aria-label="Show diff panel"]') as HTMLButtonElement;
+		await act(async () => {
+			showDiffButton.click();
 		});
 
 		expect(requireDetailDiffFileTreePanel(container).style.flex).toBe("0 0 42%");
