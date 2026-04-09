@@ -254,6 +254,7 @@ export function BoardCard({
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [draftTitle, setDraftTitle] = useState(card.title);
 	const titleInputRef = useRef<HTMLInputElement | null>(null);
+	const titleEditCancelledRef = useRef(false);
 	const [descriptionContainerRef, descriptionRect] = useMeasure<HTMLDivElement>();
 	const [sessionPreviewContainerRef, sessionPreviewRect] = useMeasure<HTMLDivElement>();
 	const descriptionRef = useRef<HTMLParagraphElement | null>(null);
@@ -346,6 +347,10 @@ export function BoardCard({
 	};
 
 	const submitTitle = () => {
+		if (titleEditCancelledRef.current) {
+			titleEditCancelledRef.current = false;
+			return;
+		}
 		setIsEditingTitle(false);
 		if (!onSaveTitle) {
 			return;
@@ -367,8 +372,10 @@ export function BoardCard({
 		if (event.key === "Escape") {
 			event.preventDefault();
 			event.stopPropagation();
+			titleEditCancelledRef.current = true;
 			setDraftTitle(card.title);
 			setIsEditingTitle(false);
+			titleInputRef.current?.blur();
 		}
 	};
 

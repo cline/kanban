@@ -118,7 +118,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	if (!baseRef) {
 		return null;
 	}
-	const title = typeof card.title === "string" ? card.title.trim() : prompt;
+	const title = (typeof card.title === "string" ? card.title.trim() : "") || prompt;
 	if (!title) {
 		return null;
 	}
