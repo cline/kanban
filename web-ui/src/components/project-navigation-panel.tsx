@@ -1,6 +1,5 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
 import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Lightbulb, Plus } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { canShowFeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
@@ -484,9 +483,8 @@ const TERMINAL_AGENT_HINTS: readonly { label: string; hint: string }[] = [
 
 const AGENT_TIPS_DISMISSED_KEY = "kb-agent-tips-dismissed";
 
-function TerminalAgentHints({ agentId }: { agentId: RuntimeAgentId }): React.ReactElement {
+function TerminalAgentHints(_props: { agentId: RuntimeAgentId }): React.ReactElement {
 	const [isDismissed, setIsDismissed] = useState(() => localStorage.getItem(AGENT_TIPS_DISMISSED_KEY) === "true");
-	const agentLabel = getRuntimeAgentCatalogEntry(agentId)?.label ?? agentId;
 
 	const dismiss = useCallback(() => {
 		setIsDismissed(true);
