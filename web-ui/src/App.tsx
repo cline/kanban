@@ -136,7 +136,7 @@ export default function App(): ReactElement {
 		isLoading: isRuntimeProjectConfigLoading,
 		refresh: refreshRuntimeProjectConfig,
 	} = useRuntimeProjectConfig(currentProjectId);
-	const { isBlocked: isKanbanAccessBlocked } = useKanbanAccessGate({
+	const { isBlocked: isKanbanAccessBlocked, refresh: refreshKanbanAccess } = useKanbanAccessGate({
 		workspaceId: currentProjectId,
 	});
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
@@ -1037,6 +1037,7 @@ export default function App(): ReactElement {
 						refreshRuntimeProjectConfig();
 						refreshSettingsRuntimeProjectConfig();
 					}}
+					onAccountSwitched={refreshKanbanAccess}
 				/>
 				<DebugDialog
 					open={isDebugDialogOpen}

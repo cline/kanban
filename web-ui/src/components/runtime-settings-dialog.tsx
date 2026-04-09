@@ -288,6 +288,7 @@ export function RuntimeSettingsDialog({
 	liveMcpAuthStatuses = null,
 	onOpenChange,
 	onSaved,
+	onAccountSwitched,
 	initialSection,
 }: {
 	open: boolean;
@@ -296,6 +297,7 @@ export function RuntimeSettingsDialog({
 	liveMcpAuthStatuses?: RuntimeClineMcpServerAuthStatus[] | null;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
+	onAccountSwitched?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
@@ -699,7 +701,11 @@ export function RuntimeSettingsDialog({
 				) : null}
 
 				{selectedAgentId === "cline" && clineSettings.providerId.trim() === "cline" ? (
-					<AccountOrganizationSection workspaceId={workspaceId} open={open} />
+					<AccountOrganizationSection
+						workspaceId={workspaceId}
+						open={open}
+						onAccountSwitched={onAccountSwitched}
+					/>
 				) : null}
 
 				<div className="flex items-center justify-between mt-4 mb-1">

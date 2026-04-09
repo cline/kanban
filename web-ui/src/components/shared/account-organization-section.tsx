@@ -24,9 +24,11 @@ function getCreditsUrl(isOrg: boolean): string {
 export function AccountOrganizationSection({
 	workspaceId,
 	open,
+	onAccountSwitched,
 }: {
 	workspaceId: string | null;
 	open: boolean;
+	onAccountSwitched?: () => void;
 }): React.ReactElement | null {
 	const [organizations, setOrganizations] = useState<RuntimeClineAccountOrganization[]>([]);
 	const [balanceData, setBalanceData] = useState<RuntimeClineAccountBalanceResponse | null>(null);
@@ -48,7 +50,7 @@ export function AccountOrganizationSection({
 			if (generation !== balanceGenRef.current) return;
 			setBalanceData(response);
 			setBalanceError(response.error ?? null);
-			if (!response.error) {
+			if (!response.error && response.activeAccountLabel !== null) {
 				setHadAccountContext(true);
 			}
 		} catch (error) {
@@ -120,6 +122,7 @@ export function AccountOrganizationSection({
 				} else {
 					await refreshBalance();
 					await refreshOrgs();
+					onAccountSwitched?.();
 				}
 			} catch (error) {
 				setSwitchError(error instanceof Error ? error.message : "Failed to switch account.");
@@ -127,22 +130,21 @@ export function AccountOrganizationSection({
 				setIsSwitching(false);
 			}
 		},
-		[workspaceId, refreshBalance, refreshOrgs],
+		[workspaceId, refreshBalance, refreshOrgs, onAccountSwitched],
 	);
 
-	// Don't render if we've never had data and nothing is loading.
-	if (
-		!isLoadingOrgs &&
-		!isLoadingBalance &&
-		organizations.length === 0 &&
-		balanceData === null &&
-		!hadAccountContext
-	) {
+	// Don't render if we've never had authenticated data and nothing is loading.
+	const hasAuthenticatedData =
+		(balanceData !== null && balanceData.activeAccountLabel !== null) ||
+		organizations.length > 0 ||
+		hadAccountContext;
+	if (!isLoadingOrgs && !isLoadingBalance && !hasAuthenticatedData) {
 		return null;
 	}
 
 	const dropdownValue = selectedOrgId ?? "personal";
-	const showSelector = balanceData !== null || organizations.length > 0 || hadAccountContext;
+	const hasAccountData = balanceData !== null && balanceData.activeAccountLabel !== null;
+	const showSelector = hasAccountData || organizations.length > 0 || hadAccountContext;
 	const loadError = balanceError ?? orgsError;
 	const activeOrg = selectedOrgId ? organizations.find((org) => org.organizationId === selectedOrgId) : null;
 	const roleLabel = activeOrg?.roles?.[0];

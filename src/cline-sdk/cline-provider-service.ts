@@ -490,7 +490,7 @@ export function createClineProviderService() {
 				const orgData = await fetchSdkOrgData({
 					apiBaseUrl: selectedSettings.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL,
 					accessToken: ensureWorkosPrefix(rawAccessToken),
-					organizatinId: remoteConfigResponse.organizationId,
+					organizationId: remoteConfigResponse.organizationId,
 				});
 
 				const parsedRemoteConfig = parseClineRemoteConfigValue(remoteConfigResponse.value);

@@ -544,12 +544,14 @@ export async function fetchSdkClineAccountProfile(input: ApiRequestParams): Prom
 	return me;
 }
 
-export async function fetchSdkOrgData(input: ApiRequestParams & { organizatinId: string }): Promise<ClineOrganization> {
+export async function fetchSdkOrgData(
+	input: ApiRequestParams & { organizationId: string },
+): Promise<ClineOrganization> {
 	const accountService = new ClineAccountService({
 		apiBaseUrl: input.apiBaseUrl,
 		getAuthToken: async () => input.accessToken,
 	});
-	return await accountService.fetchOrganization(input.organizatinId);
+	return await accountService.fetchOrganization(input.organizationId);
 }
 
 export async function fetchSdkFeaturebaseToken(input: ApiRequestParams): Promise<{ featurebaseJwt: string }> {
