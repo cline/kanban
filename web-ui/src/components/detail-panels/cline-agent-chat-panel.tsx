@@ -427,13 +427,13 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						<ClineChatMessageItem key={message.id} message={message} />
 					))}
 					{showAgentProgressIndicator ? <ThinkingShimmer /> : null}
+					{isCreditLimitNoticeVisible ? <ClineCreditLimitNotice /> : null}
 				</div>
 				{panelError ? (
 					<div className="border-t border-status-red/30 bg-status-red/10 px-2 py-2 text-xs text-status-red">
 						{panelError}
 					</div>
 				) : null}
-				{isCreditLimitNoticeVisible ? <ClineCreditLimitNotice /> : null}
 				<div className="px-2 py-3">
 					<ClineChatComposer
 						taskId={taskId}
