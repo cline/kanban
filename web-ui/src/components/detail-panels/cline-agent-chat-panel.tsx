@@ -21,6 +21,7 @@ import {
 	formatClineSelectedModelButtonText,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { Button } from "@/components/ui/button";
+import { Link } from "@/components/ui/link";
 import { Spinner } from "@/components/ui/spinner";
 import { ShimmeringText } from "@/components/ui/text-shimmer";
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
@@ -59,14 +60,9 @@ const ClineCreditLimitNotice = React.memo(function ClineCreditLimitNotice() {
 			<AlertTriangle size={14} className="mt-0.5 shrink-0" />
 			<p className="m-0 min-w-0">
 				Out of Cline credits.{" "}
-				<a
-					href={CLINE_BUY_CREDITS_URL}
-					target="_blank"
-					rel="noreferrer"
-					className="text-accent underline-offset-2 hover:text-accent-hover hover:underline"
-				>
+				<Link href={CLINE_BUY_CREDITS_URL} external>
 					Buy more credits
-				</a>{" "}
+				</Link>{" "}
 				to continue.
 			</p>
 		</div>
@@ -174,7 +170,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		const [composerError, setComposerError] = useState<string | null>(null);
 		const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 		const [isSavingModel, setIsSavingModel] = useState(false);
-		const [isCreditLimitNoticeVisible, setIsCreditLimitNoticeVisible] = useState(false);
+		const isCreditLimitNoticeVisible = summary?.latestHookActivity?.notificationType === "credit_limit";
 		const [mode, setMode] = useState<RuntimeTaskSessionMode>(() => {
 			const persistedMode = modeByTaskIdRef.current.get(taskId);
 			return persistedMode ?? summary?.mode ?? defaultMode;
@@ -273,21 +269,12 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		}, [taskId]);
 
 		useEffect(() => {
-			setIsCreditLimitNoticeVisible(false);
-		}, [taskId]);
-
-		useEffect(() => {
 			const persistedMode = modeByTaskIdRef.current.get(taskId);
 			const nextMode = persistedMode ?? summary?.mode ?? defaultMode;
 			modeByTaskIdRef.current.set(taskId, nextMode);
 			setMode(nextMode);
 			setDraftImages([]);
 		}, [defaultMode, summary?.mode, taskId]);
-
-		useEffect(() => {
-			const isCreditLimitError = summary?.latestHookActivity?.notificationType === "credit_limit";
-			setIsCreditLimitNoticeVisible(isCreditLimitError);
-		}, [summary?.latestHookActivity?.notificationType]);
 
 		const handleModeChange = useCallback(
 			(nextMode: RuntimeTaskSessionMode) => {

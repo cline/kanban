@@ -124,6 +124,8 @@ export interface ClineSdkErrorEvent {
 	error: Error;
 	recoverable: boolean;
 	iteration: number;
+	/** Fallback message field — used for credit-limit detection when `error` does not contain parseable text. */
+	message?: string;
 }
 
 export type ClineSdkAgentEvent =

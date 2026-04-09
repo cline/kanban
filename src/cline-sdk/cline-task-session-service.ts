@@ -16,7 +16,7 @@ import {
 	compactPersistedMessagesForContextOverflow,
 	isContextOverflowError,
 } from "./cline-context-overflow-compaction";
-import { applyClineSessionEvent, isClineInsufficientBalanceError } from "./cline-event-adapter";
+import { applyClineSessionEvent } from "./cline-event-adapter";
 import {
 	type ClineMessageRepository,
 	createInMemoryClineMessageRepository,
@@ -36,6 +36,7 @@ import {
 	createAssistantMessage,
 	createDefaultSummary,
 	createMessage,
+	isCreditLimitError,
 	now,
 	setOrCreateAssistantMessage,
 	updateSummary,
@@ -59,6 +60,7 @@ export interface StartClineTaskSessionRequest {
 	taskId: string;
 	cwd: string;
 	prompt: string;
+	startInPlanMode?: boolean;
 	initialMessages?: ClineSdkPersistedMessage[];
 	images?: RuntimeTaskImage[];
 	resumeFromTrash?: boolean;
@@ -142,42 +144,21 @@ function formatStartWarnings(warnings: readonly string[] | undefined): string | 
 	return `${normalized[0]} (+${normalized.length - 1} more MCP warning${normalized.length === 2 ? "" : "s"})`;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+function buildClineStartPrompt(prompt: string, startInPlanMode?: boolean): string {
+	if (!startInPlanMode) {
+		return prompt;
+	}
+	const trimmedPrompt = prompt.trim();
+	return [
+		"First, inspect the codebase and produce a clear implementation plan only.",
+		"Do not modify files, do not use write tools, and do not implement anything yet.",
+		"After you present the plan, ask for approval before making changes.",
+		trimmedPrompt ? `\n\nTask:\n${trimmedPrompt}` : " Ask the user what they want planned if the task is unclear.",
+	].join(" ");
 }
-
-function extractAgentErrorMessageFromEvent(event: unknown): string | null {
-	const eventRecord = asRecord(event);
-	if (!eventRecord || eventRecord.type !== "agent_event") {
-		return null;
-	}
-	const payload = asRecord(eventRecord.payload);
-	const agentEvent = asRecord(payload?.event);
-	if (!agentEvent || agentEvent.type !== "error") {
-		return null;
-	}
-	if (typeof agentEvent.error === "string") {
-		const normalized = agentEvent.error.trim();
-		return normalized.length > 0 ? normalized : null;
-	}
-	if (agentEvent.error instanceof Error) {
-		const normalized = agentEvent.error.message.trim();
-		return normalized.length > 0 ? normalized : null;
-	}
-	const errorRecord = asRecord(agentEvent.error);
-	if (typeof errorRecord?.message === "string") {
-		const normalized = errorRecord.message.trim();
-		return normalized.length > 0 ? normalized : null;
-	}
-	if (typeof agentEvent.message === "string") {
-		const normalized = agentEvent.message.trim();
-		return normalized.length > 0 ? normalized : null;
-	}
-	return null;
-}
-
 export class InMemoryClineTaskSessionService implements ClineTaskSessionService {
 	private readonly pendingTurnCancelTaskIds = new Set<string>();
+	private readonly providerIdByTaskId = new Map<string, string>();
 	private readonly sessionRuntime: ClineSessionRuntime;
 	private readonly messageRepository: ClineMessageRepository;
 	private readonly watcherRegistry: ClineWatcherRegistry;
@@ -207,6 +188,24 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return this.messageRepository.onMessage(listener);
 	}
 
+	private resolveProviderIdForTask(taskId: string): string {
+		const cached = this.providerIdByTaskId.get(taskId);
+		if (cached) {
+			return cached;
+		}
+		// Fall back to the runtime's last-start-request for tasks rebound from persistence.
+		const fromRuntime = this.sessionRuntime.getTaskProviderId(taskId);
+		if (fromRuntime) {
+			this.providerIdByTaskId.set(taskId, fromRuntime);
+			return fromRuntime;
+		}
+		return SDK_DEFAULT_PROVIDER_ID;
+	}
+
+	private isClineProviderForTask(taskId: string): boolean {
+		return this.resolveProviderIdForTask(taskId) === "cline";
+	}
+
 	private emitTaskFailure(
 		taskId: string,
 		entry: ClineTaskSessionEntry,
@@ -214,8 +213,8 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		error: unknown,
 	): void {
 		const errorMessage = toErrorMessage(error);
-		const isInsufficientBalanceError = isClineInsufficientBalanceError(errorMessage);
-		if (!isInsufficientBalanceError) {
+		const creditLimitError = this.isClineProviderForTask(taskId) && isCreditLimitError(errorMessage);
+		if (!creditLimitError) {
 			const systemMessage = createMessage(
 				taskId,
 				"system",
@@ -230,14 +229,14 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			reviewReason: "error",
 			lastOutputAt: now(),
 			lastHookAt: now(),
-			warningMessage: isInsufficientBalanceError ? null : errorMessage,
+			warningMessage: creditLimitError ? null : errorMessage,
 			latestHookActivity: {
 				activityText: `${context === "start" ? "Start" : "Send"} failed: ${errorMessage}`,
 				toolName: null,
 				toolInputSummary: null,
 				finalMessage: errorMessage,
 				hookEventName: "agent_error",
-				notificationType: null,
+				notificationType: creditLimitError ? "credit_limit" : null,
 				source: "cline-sdk",
 			},
 		});
@@ -322,8 +321,9 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		}
 
 		const providerId = request.providerId?.trim().toLowerCase() || SDK_DEFAULT_PROVIDER_ID;
+		this.providerIdByTaskId.set(request.taskId, providerId);
 		const modelId = request.modelId?.trim() || SDK_DEFAULT_MODEL_ID;
-		const resolvedMode: RuntimeTaskSessionMode = request.mode ?? "act";
+		const resolvedMode: RuntimeTaskSessionMode = request.startInPlanMode ? "act" : (request.mode ?? "act");
 		const persistedResumeSnapshot = request.resumeFromTrash
 			? await this.sessionRuntime.readPersistedTaskSession(request.taskId).catch(() => null)
 			: null;
@@ -387,7 +387,9 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			const assistantCountBeforeStart = entry.messages.filter((message) => message.role === "assistant").length;
 			try {
 				const runtimeSetup = await this.ensureRuntimeSetup(request.cwd);
-				const runtimePrompt = runtimeSetup.resolvePrompt(request.prompt);
+				const runtimePrompt = runtimeSetup.resolvePrompt(
+					buildClineStartPrompt(request.prompt, request.startInPlanMode),
+				);
 				let systemPrompt =
 					request.systemPrompt?.trim() ||
 					(await resolveClineSdkSystemPrompt({
@@ -676,7 +678,9 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 	async clearTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
 		const existingEntry = this.messageRepository.getTaskEntry(taskId);
 		this.pendingTurnCancelTaskIds.delete(taskId);
+		this.providerIdByTaskId.delete(taskId);
 		await this.sessionRuntime.clearTaskSessions(taskId).catch(() => undefined);
+		this.messageRepository.clearHydratedTaskMessages(taskId);
 		if (!existingEntry) {
 			return null;
 		}
@@ -836,10 +840,6 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return lease.setup;
 	}
 
-	private shouldForceAbortFromTaskEvent(event: unknown): boolean {
-		return isClineInsufficientBalanceError(extractAgentErrorMessageFromEvent(event));
-	}
-
 	private handleTaskEvent(taskId: string, event: unknown): void {
 		const entry = this.messageRepository.getTaskEntry(taskId);
 		if (!entry) {
@@ -852,6 +852,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			taskId,
 			entry,
 			pendingTurnCancelTaskIds: this.pendingTurnCancelTaskIds,
+			isClineProvider: this.isClineProviderForTask(taskId),
 			emitSummary: (summary: RuntimeTaskSessionSummary) => {
 				latestSummary = summary;
 				this.emitSummary(summary);
@@ -860,10 +861,13 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				this.emitMessage(taskIdFromEvent, message);
 			},
 		});
+		const shouldAbortForCreditLimit =
+			entry.summary.latestHookActivity?.notificationType === "credit_limit" &&
+			previousSummary?.latestHookActivity?.notificationType !== "credit_limit";
 		if (this.shouldCaptureReviewCheckpoint(previousSummary, latestSummary)) {
 			this.captureReviewCheckpoint(taskId, latestSummary);
 		}
-		if (this.shouldForceAbortFromTaskEvent(event)) {
+		if (shouldAbortForCreditLimit) {
 			void this.sessionRuntime.abortTaskSession(taskId).catch(() => undefined);
 		}
 	}

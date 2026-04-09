@@ -21,6 +21,7 @@ export interface ClineMessageRepository {
 	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void;
 	onMessage(listener: (taskId: string, message: ClineTaskMessage) => void): () => void;
 	setTaskEntry(taskId: string, entry: ClineTaskSessionEntry): void;
+	clearHydratedTaskMessages(taskId: string): void;
 	getTaskEntry(taskId: string): ClineTaskSessionEntry | null;
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
 	listSummaries(): RuntimeTaskSessionSummary[];
@@ -58,6 +59,10 @@ export class InMemoryClineMessageRepository implements ClineMessageRepository {
 
 	setTaskEntry(taskId: string, entry: ClineTaskSessionEntry): void {
 		this.entries.set(taskId, entry);
+		this.hydratedMessagesByTaskId.delete(taskId);
+	}
+
+	clearHydratedTaskMessages(taskId: string): void {
 		this.hydratedMessagesByTaskId.delete(taskId);
 	}
 

@@ -1,7 +1,7 @@
 import { Draggable } from "@hello-pangea/dnd";
 import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
-import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -32,6 +32,7 @@ const SESSION_ACTIVITY_COLOR = {
 	success: "var(--color-status-green)",
 	waiting: "var(--color-status-gold)",
 	error: "var(--color-status-red)",
+	warning: "var(--color-status-orange)",
 	muted: "var(--color-text-tertiary)",
 	secondary: "var(--color-text-secondary)",
 } as const;
@@ -121,9 +122,22 @@ function resolveToolCallLabel(
 	return formatClineToolCallLabel(parsed.toolName, parsed.toolInputSummary);
 }
 
+function isCardCreditLimitError(summary: RuntimeTaskSessionSummary | undefined): boolean {
+	if (!summary) {
+		return false;
+	}
+	if (summary.state !== "awaiting_review" && summary.state !== "failed" && summary.state !== "interrupted") {
+		return false;
+	}
+	return summary.latestHookActivity?.notificationType === "credit_limit";
+}
+
 function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
 	if (!summary) {
 		return null;
+	}
+	if (isCardCreditLimitError(summary)) {
+		return { dotColor: SESSION_ACTIVITY_COLOR.warning, text: "Out of credits" };
 	}
 	const hookActivity = summary.latestHookActivity;
 	const activityText = hookActivity?.activityText?.trim();
@@ -391,7 +405,11 @@ export function BoardCard({
 		});
 	}, [sessionActivity?.text, sessionPreviewFont, sessionPreviewWidth]);
 
+	const isCreditLimit = isCardCreditLimitError(sessionSummary);
 	const renderStatusMarker = () => {
+		if (isCreditLimit) {
+			return <AlertTriangle size={12} className="text-status-orange" />;
+		}
 		if (columnId === "in_progress") {
 			if (sessionSummary?.state === "failed") {
 				return <AlertCircle size={12} className="text-status-red" />;

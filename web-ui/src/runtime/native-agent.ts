@@ -108,9 +108,9 @@ export function selectLatestTaskChatMessageForTask(
 export function selectTaskChatMessagesForTask(
 	taskId: string | null | undefined,
 	taskChatMessagesByTaskId: Record<string, RuntimeTaskChatMessage[]>,
-): RuntimeTaskChatMessage[] {
+): RuntimeTaskChatMessage[] | null {
 	if (!taskId) {
-		return [];
+		return null;
 	}
-	return taskChatMessagesByTaskId[taskId] ?? [];
+	return taskChatMessagesByTaskId[taskId] ?? null;
 }

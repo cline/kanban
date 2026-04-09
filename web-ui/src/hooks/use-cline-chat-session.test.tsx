@@ -35,6 +35,7 @@ function HookHarness({
 	taskId,
 	onSendMessage,
 	onLoadMessages,
+	incomingMessages,
 	incomingMessage,
 	onSnapshot,
 }: {
@@ -45,6 +46,7 @@ function HookHarness({
 		options?: { mode?: RuntimeTaskSessionMode; images?: RuntimeTaskImage[] },
 	) => Promise<{ ok: boolean; message?: string; chatMessage?: ClineChatMessage | null }>;
 	onLoadMessages?: (taskId: string) => Promise<ClineChatMessage[] | null>;
+	incomingMessages?: ClineChatMessage[] | null;
 	incomingMessage?: ClineChatMessage | null;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
@@ -52,6 +54,7 @@ function HookHarness({
 		taskId,
 		onSendMessage,
 		onLoadMessages,
+		incomingMessages,
 		incomingMessage,
 	});
 
@@ -428,5 +431,99 @@ describe("useClineChatSession", () => {
 
 		expect(snapshots.at(-1)?.messageIds).toEqual(["task-2-message"]);
 		expect(snapshots.at(-1)?.lastMessageContent).toBe("Task two");
+	});
+
+	it("clears local messages when incomingMessages transitions to an explicit empty array", async () => {
+		const loadedMessages: ClineChatMessage[] = [
+			{
+				id: "loaded-1",
+				role: "user",
+				content: "Hello",
+				createdAt: 1,
+			},
+			{
+				id: "loaded-2",
+				role: "assistant",
+				content: "Hi there",
+				createdAt: 2,
+			},
+		];
+		const onLoadMessages = vi.fn(async () => loadedMessages);
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onLoadMessages={onLoadMessages}
+					incomingMessages={null}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual(["loaded-1", "loaded-2"]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onLoadMessages={onLoadMessages}
+					incomingMessages={[]}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual([]);
+	});
+
+	it("preserves loaded history across rerenders when incomingMessages stays null", async () => {
+		const loadedMessages: ClineChatMessage[] = [
+			{
+				id: "loaded-1",
+				role: "user",
+				content: "Hello",
+				createdAt: 1,
+			},
+			{
+				id: "loaded-2",
+				role: "assistant",
+				content: "Hi there",
+				createdAt: 2,
+			},
+		];
+		const onLoadMessages = vi.fn(async () => loadedMessages);
+		const snapshots: HookSnapshot[] = [];
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onLoadMessages={onLoadMessages}
+					incomingMessages={null}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual(["loaded-1", "loaded-2"]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="task-1"
+					onLoadMessages={onLoadMessages}
+					incomingMessages={null}
+					onSnapshot={(snapshot) => snapshots.push(snapshot)}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		expect(snapshots.at(-1)?.messageIds).toEqual(["loaded-1", "loaded-2"]);
 	});
 });
