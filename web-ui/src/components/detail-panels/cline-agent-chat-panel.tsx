@@ -170,7 +170,9 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		const [composerError, setComposerError] = useState<string | null>(null);
 		const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 		const [isSavingModel, setIsSavingModel] = useState(false);
-		const [isCreditLimitNoticeVisible, setIsCreditLimitNoticeVisible] = useState(false);
+		const [isCreditLimitNoticeVisible, setIsCreditLimitNoticeVisible] = useState(
+			() => summary?.latestHookActivity?.notificationType === "credit_limit",
+		);
 		const [mode, setMode] = useState<RuntimeTaskSessionMode>(() => {
 			const persistedMode = modeByTaskIdRef.current.get(taskId);
 			return persistedMode ?? summary?.mode ?? defaultMode;
@@ -266,10 +268,6 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 
 		useEffect(() => {
 			setIsAutoScrollEnabled(true);
-		}, [taskId]);
-
-		useEffect(() => {
-			setIsCreditLimitNoticeVisible(false);
 		}, [taskId]);
 
 		useEffect(() => {
