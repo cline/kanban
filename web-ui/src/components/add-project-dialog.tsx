@@ -394,7 +394,7 @@ function PathTabContent({
 				/>
 			</div>
 			{pendingGitInitPath !== null ? (
-				<div className="rounded-md border border-status-yellow/30 bg-status-yellow/5 px-3 py-2.5 flex flex-col gap-2">
+				<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2.5 flex flex-col gap-2">
 					<p className="text-[13px] text-text-primary">
 						This directory is not a git repository. Kanban requires git to manage worktrees for tasks.
 					</p>
