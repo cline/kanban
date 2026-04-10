@@ -15,6 +15,7 @@ import {
 	startCodexSessionWatcher,
 } from "./hook-events/codex-hook-events";
 import { enrichDroidReviewMetadata } from "./hook-events/droid-hook-events";
+import { asRecord, normalizeWhitespace, readNestedString, readStringField } from "./hook-events/hook-utils";
 import { normalizeKiroHookMetadata } from "./hook-events/kiro-hook-events";
 
 export {
@@ -80,42 +81,6 @@ function parseHookEvent(value: string): RuntimeHookEvent {
 		throw new Error(`Invalid event "${value}". Must be one of: ${[...VALID_EVENTS].join(", ")}`);
 	}
 	return value as RuntimeHookEvent;
-}
-
-function normalizeWhitespace(value: string): string {
-	return value.replace(/\s+/g, " ").trim();
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return null;
-	}
-	return value as Record<string, unknown>;
-}
-
-function readStringField(record: Record<string, unknown>, key: string): string | null {
-	const value = record[key];
-	if (typeof value !== "string") {
-		return null;
-	}
-	const normalized = normalizeWhitespace(value);
-	return normalized.length > 0 ? normalized : null;
-}
-
-function readNestedString(record: Record<string, unknown>, path: string[]): string | null {
-	let current: unknown = record;
-	for (const key of path) {
-		const candidate = asRecord(current);
-		if (!candidate || !(key in candidate)) {
-			return null;
-		}
-		current = candidate[key];
-	}
-	if (typeof current !== "string") {
-		return null;
-	}
-	const normalized = normalizeWhitespace(current);
-	return normalized.length > 0 ? normalized : null;
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {
