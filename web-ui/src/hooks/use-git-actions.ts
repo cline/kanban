@@ -299,25 +299,15 @@ export function useGitActions({
 					}
 					return true;
 				}
-				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
-				if (!typed.ok) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: typed.message ?? "Could not send instructions to the task session.",
-						timeout: 7000,
-					});
-					return false;
-				}
-				await new Promise<void>((resolve) => {
-					window.setTimeout(resolve, 200);
+				const sent = await sendTaskSessionInput(taskId, prompt, {
+					appendNewline: false,
+					mode: "paste-submit",
 				});
-				const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
-				if (!submitted.ok) {
+				if (!sent.ok) {
 					showAppToast({
 						intent: "danger",
 						icon: "warning-sign",
-						message: submitted.message ?? "Could not submit instructions to the task session.",
+						message: sent.message ?? "Could not send instructions to the task session.",
 						timeout: 7000,
 					});
 					return false;

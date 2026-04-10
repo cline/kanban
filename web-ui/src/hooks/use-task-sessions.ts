@@ -204,10 +204,17 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 			const appendNewline = options?.appendNewline ?? true;
 			const controller = options?.preferTerminal === false ? null : getTerminalController(taskId);
 			if (controller) {
-				const sent =
-					options?.mode === "paste"
-						? !appendNewline && controller.paste(text)
-						: controller.input(appendNewline ? `${text}\n` : text);
+				let sent: boolean;
+				if (options?.mode === "paste") {
+					sent = !appendNewline && controller.paste(text);
+				} else if (options?.mode === "paste-submit") {
+					// Single atomic write: bracketed paste + carriage return.
+					// Avoids the split-write timing issue where some CLIs
+					// (e.g. Copilot) ignore a bare \r sent after the paste.
+					sent = controller.input(`\x1b[200~${text}\x1b[201~\r`);
+				} else {
+					sent = controller.input(appendNewline ? `${text}\n` : text);
+				}
 				if (sent) {
 					return { ok: true };
 				}

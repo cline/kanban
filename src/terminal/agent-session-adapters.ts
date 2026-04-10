@@ -1394,6 +1394,36 @@ function buildCopilotHookEntry(
 	};
 }
 
+// Copilot CLI prints tool status lines prefixed with ● (e.g. "● Task complete").
+const COPILOT_TASK_COMPLETE_PATTERN = /(?:^|\n)\s*●\s*Task complete/i;
+// Keep enough trailing output to catch "Task complete" split across two chunks.
+const COPILOT_OUTPUT_BUFFER_SIZE = 32;
+
+function createCopilotTaskCompleteDetector(): AgentOutputTransitionDetector {
+	let tailBuffer = "";
+	return (data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null => {
+		if (summary.state !== "running") {
+			return null;
+		}
+		const stripped = stripAnsi(data);
+		// Join the tail of the previous chunk with the current chunk so
+		// "Task complete" is detected even when split across two writes.
+		const combined = tailBuffer + stripped;
+		tailBuffer =
+			stripped.length >= COPILOT_OUTPUT_BUFFER_SIZE
+				? stripped.slice(-COPILOT_OUTPUT_BUFFER_SIZE)
+				: combined.slice(-COPILOT_OUTPUT_BUFFER_SIZE);
+		if (COPILOT_TASK_COMPLETE_PATTERN.test(combined)) {
+			return { type: "agent.task-complete" };
+		}
+		return null;
+	};
+}
+
+function shouldInspectCopilotOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
+	return summary.state === "running";
+}
+
 const copilotAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -1439,21 +1469,9 @@ const copilotAdapter: AgentSessionAdapter = {
 				hooks: {
 					agentStop: [buildCopilotHookEntry("to_review", { source: "copilot" })],
 					subagentStop: [buildCopilotHookEntry("activity", { source: "copilot" })],
-					preToolUse: [
-						{
-							matcher: "task_complete",
-							...buildCopilotHookEntry("to_review", { source: "copilot" }),
-						},
-						buildCopilotHookEntry("activity", { source: "copilot" }),
-					],
-					permissionRequest: [buildCopilotHookEntry("to_review", { source: "copilot" })],
-					postToolUse: [
-						{
-							matcher: "task_complete",
-							...buildCopilotHookEntry("to_review", { source: "copilot" }),
-						},
-						buildCopilotHookEntry("to_in_progress", { source: "copilot" }),
-					],
+					preToolUse: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					permissionRequest: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					postToolUse: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
 					postToolUseFailure: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
 					userPromptSubmitted: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
 					notification: [
@@ -1495,6 +1513,8 @@ const copilotAdapter: AgentSessionAdapter = {
 				...withPromptLaunch.env,
 				...env,
 			},
+			detectOutputTransition: createCopilotTaskCompleteDetector(),
+			shouldInspectOutputForTransition: shouldInspectCopilotOutputForTransition,
 			...(hooksFilePath
 				? {
 						cleanup: async () => {
