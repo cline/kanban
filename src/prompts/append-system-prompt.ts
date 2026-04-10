@@ -65,7 +65,7 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 		case "droid":
 			return "- If Linear MCP is not available in the current agent (Droid), suggest running: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
 		case "kiro":
-			return "- If Linear MCP is not available in the current agent (Kiro CLI), suggest running: `kiro-cli mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
+			return "- If Linear MCP is not available in the current agent (Kiro CLI), suggest running: `kiro-cli mcp add --name linear --url https://mcp.linear.app/mcp --scope global`";
 		default:
 			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
 	}
