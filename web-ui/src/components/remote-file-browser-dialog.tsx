@@ -7,6 +7,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Spinner } from "@/components/ui/spinner";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeDirectoryListEntry, RuntimeDirectoryListResponse } from "@/runtime/types";
+import { serverRootLabel, splitServerPath, toUiRelative } from "@/utils/server-path";
 
 export interface RemoteFileBrowserDialogProps {
 	open: boolean;
@@ -306,23 +307,20 @@ function buildBreadcrumbs(currentPath: string, rootPath: string): BreadcrumbSegm
 		return [];
 	}
 
-	const segments: BreadcrumbSegment[] = [{ label: "/", path: rootPath }];
+	const segments: BreadcrumbSegment[] = [{ label: serverRootLabel(rootPath), path: rootPath }];
 
 	if (currentPath === rootPath) {
 		return segments;
 	}
 
-	const normalizedRoot = rootPath.endsWith("/") ? rootPath : `${rootPath}/`;
-	const relativePath = currentPath.startsWith(normalizedRoot)
-		? currentPath.slice(normalizedRoot.length)
-		: currentPath.slice(rootPath.length + 1);
+	const relativePath = toUiRelative(rootPath, currentPath);
 
 	if (!relativePath) {
 		return segments;
 	}
 
-	const parts = relativePath.split("/").filter(Boolean);
-	let accumulated = rootPath;
+	const parts = splitServerPath(relativePath);
+	let accumulated = rootPath.replace(/[\\/]+$/, "");
 
 	for (const part of parts) {
 		accumulated = `${accumulated}/${part}`;

@@ -8,6 +8,7 @@ import { cn } from "@/components/ui/cn";
 import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import { toServerAbsolute } from "@/utils/server-path";
 
 type AddProjectTab = "path" | "clone";
 
@@ -84,15 +85,15 @@ export function AddProjectDialog({
 	}, [open, activeTab]);
 
 	// Convert the relative path (e.g. "/kanban/") to an absolute path
-	// by combining with the server root.
+	// by combining with the server root.  Uses the server's native
+	// separator so Windows paths like "C:\workspace\repo" are handled.
 	const resolveToAbsolutePath = useCallback(
 		(relativePath: string): string => {
-			const cleaned = relativePath.replace(/^\/+/, "").replace(/\/+$/, "");
+			const cleaned = relativePath.replace(/^[\\/]+/, "").replace(/[\\/]+$/, "");
 			if (!serverRootPath) {
 				return cleaned;
 			}
-			const root = serverRootPath.endsWith("/") ? serverRootPath.slice(0, -1) : serverRootPath;
-			return cleaned ? `${root}/${cleaned}` : root;
+			return toServerAbsolute(serverRootPath, cleaned);
 		},
 		[serverRootPath],
 	);
@@ -174,10 +175,10 @@ export function AddProjectDialog({
 			if (trimmedDest && trimmedDest !== "/") {
 				// Append custom folder name to the destination if provided
 				const resolvedDest = resolveToAbsolutePath(trimmedDest);
-				mutationInput.path = trimmedFolder ? `${resolvedDest}/${trimmedFolder}` : resolvedDest;
+				mutationInput.path = trimmedFolder ? toServerAbsolute(resolvedDest, trimmedFolder) : resolvedDest;
 			} else if (trimmedFolder) {
 				// Custom folder name with default destination (server root)
-				mutationInput.path = serverRootPath ? `${serverRootPath}/${trimmedFolder}` : trimmedFolder;
+				mutationInput.path = serverRootPath ? toServerAbsolute(serverRootPath, trimmedFolder) : trimmedFolder;
 			}
 			const added = await trpcClient.projects.add.mutate(mutationInput);
 			if (!added.ok || !added.project) {
@@ -531,7 +532,7 @@ function CloneTabContent({
 						type="text"
 						id="add-project-folder-name-input"
 						value={cloneFolderName}
-						onChange={(e) => setCloneFolderName(e.target.value.replace(/\//g, ""))}
+						onChange={(e) => setCloneFolderName(e.target.value.replace(/[\\/]/g, ""))}
 						placeholder={derivedName || "repo-name"}
 						className="w-full h-8 px-2.5 text-[13px] font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
 						disabled={isCloning}

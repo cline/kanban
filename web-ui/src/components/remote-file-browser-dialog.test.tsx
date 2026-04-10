@@ -233,4 +233,91 @@ describe("RemoteFileBrowserDialog", () => {
 
 		expect(mockQuery).toHaveBeenLastCalledWith({ path: "/srv/projects" });
 	});
+
+	/* -------------------------------------------------------------- */
+	/* Windows path tests                                              */
+	/* -------------------------------------------------------------- */
+
+	function makeWindowsResponse(overrides: Record<string, unknown> = {}) {
+		return {
+			ok: true,
+			currentPath: "C:\\workspace",
+			parentPath: null,
+			rootPath: "C:\\workspace",
+			entries: [
+				{ name: "repo", path: "C:\\workspace\\repo", isGitRepository: true },
+				{ name: "docs", path: "C:\\workspace\\docs", isGitRepository: false },
+			],
+			...overrides,
+		};
+	}
+
+	it("renders Windows root path and entries", async () => {
+		mockQuery.mockResolvedValue(makeWindowsResponse());
+		renderDialog();
+		await flushQuery();
+		expect(bodyText()).toContain("Server root: C:\\workspace");
+		expect(bodyText()).toContain("repo");
+		expect(bodyText()).toContain("docs");
+	});
+
+	it("shows breadcrumbs with drive letter for Windows paths", async () => {
+		mockQuery.mockResolvedValue(
+			makeWindowsResponse({
+				currentPath: "C:\\workspace\\repo\\src",
+				parentPath: "C:\\workspace\\repo",
+				rootPath: "C:\\workspace",
+				entries: [],
+			}),
+		);
+		renderDialog();
+		await flushQuery();
+		const bc = q('[aria-label="Breadcrumb"]');
+		expect(bc).not.toBeNull();
+		// Root breadcrumb should show "C:/" instead of "/"
+		expect(bc!.textContent).toContain("C:/");
+		expect(bc!.textContent).toContain("repo");
+		expect(bc!.textContent).toContain("src");
+	});
+
+	it("navigates into a Windows directory on click", async () => {
+		mockQuery.mockResolvedValueOnce(makeWindowsResponse());
+		renderDialog();
+		await flushQuery();
+
+		mockQuery.mockResolvedValueOnce(
+			makeWindowsResponse({
+				currentPath: "C:\\workspace\\repo",
+				parentPath: "C:\\workspace",
+				entries: [{ name: "src", path: "C:\\workspace\\repo\\src", isGitRepository: false }],
+			}),
+		);
+
+		const entry = q('[data-testid="dir-entry-repo"]') as HTMLButtonElement;
+		expect(entry).not.toBeNull();
+		act(() => {
+			entry.click();
+		});
+		await flushQuery();
+
+		expect(mockQuery).toHaveBeenCalledTimes(2);
+		expect(mockQuery).toHaveBeenLastCalledWith({ path: "C:\\workspace\\repo" });
+		expect(bodyText()).toContain("src");
+	});
+
+	it("fires onSelect with Windows path", async () => {
+		mockQuery.mockResolvedValue(makeWindowsResponse());
+		const onSelect = vi.fn();
+		renderDialog({ onSelect });
+		await flushQuery();
+
+		const selectBtn = Array.from(document.body.querySelectorAll("button")).find(
+			(b) => b.textContent?.trim() === "Select",
+		)!;
+		expect(selectBtn).toBeDefined();
+		act(() => {
+			selectBtn.click();
+		});
+		expect(onSelect).toHaveBeenCalledWith("C:\\workspace");
+	});
 });

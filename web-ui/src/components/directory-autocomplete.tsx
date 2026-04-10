@@ -5,6 +5,7 @@ import { cn } from "@/components/ui/cn";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeDirectoryListEntry, RuntimeDirectoryListResponse } from "@/runtime/types";
 import { useDebouncedEffect } from "@/utils/react-use";
+import { toUiRelative } from "@/utils/server-path";
 
 export interface DirectoryAutocompleteProps {
 	value: string;
@@ -41,8 +42,9 @@ export function DirectoryAutocomplete({
 	const userInteractedRef = useRef(false);
 
 	// The displayed value after the fixed "/" prefix.
-	// Strip leading slashes since the "/" prefix is shown separately.
-	const displayValue = value.replace(/^\/+/, "");
+	// Strip leading slashes (or backslashes from Windows paths) since the
+	// "/" prefix is shown separately.
+	const displayValue = value.replace(/^[\\/]+/, "");
 
 	const handleInputChange = useCallback(
 		(rawInput: string) => {
@@ -74,11 +76,12 @@ export function DirectoryAutocomplete({
 		}
 
 		// Strip leading "/" — the API resolves relative paths against serverCwd.
-		const relativePath = debouncedValue.trim().replace(/^\/+/, "");
+		const relativePath = debouncedValue.trim().replace(/^[\\/]+/, "");
 
-		const endsWithSlash = relativePath === "" || debouncedValue.trim().endsWith("/");
-		const parentDir = endsWithSlash ? relativePath : relativePath.slice(0, relativePath.lastIndexOf("/") + 1);
-		const namePrefix = endsWithSlash ? "" : relativePath.slice(relativePath.lastIndexOf("/") + 1).toLowerCase();
+		const endsWithSep = relativePath === "" || /[\\/]$/.test(debouncedValue.trim());
+		const lastSepIndex = Math.max(relativePath.lastIndexOf("/"), relativePath.lastIndexOf("\\"));
+		const parentDir = endsWithSep ? relativePath : relativePath.slice(0, lastSepIndex + 1);
+		const namePrefix = endsWithSep ? "" : relativePath.slice(lastSepIndex + 1).toLowerCase();
 
 		const fetchId = ++fetchIdRef.current;
 
@@ -142,15 +145,7 @@ export function DirectoryAutocomplete({
 			// Convert the absolute entry path to a relative path from the server root,
 			// then prefix with "/" (our visual root indicator) and append trailing "/"
 			// so the next debounce immediately lists the selected directory's contents.
-			let relativePath = entry.path;
-			if (serverRootPath) {
-				const rootPrefix = serverRootPath.endsWith("/") ? serverRootPath : `${serverRootPath}/`;
-				if (entry.path.startsWith(rootPrefix)) {
-					relativePath = entry.path.slice(rootPrefix.length);
-				} else if (entry.path === serverRootPath) {
-					relativePath = "";
-				}
-			}
+			const relativePath = serverRootPath ? toUiRelative(serverRootPath, entry.path) : entry.path;
 			const pathWithSlash = relativePath.endsWith("/") ? relativePath : `${relativePath}/`;
 			onChange(`/${pathWithSlash}`);
 			setIsOpen(false);
