@@ -1439,9 +1439,21 @@ const copilotAdapter: AgentSessionAdapter = {
 				hooks: {
 					agentStop: [buildCopilotHookEntry("to_review", { source: "copilot" })],
 					subagentStop: [buildCopilotHookEntry("activity", { source: "copilot" })],
-					preToolUse: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					preToolUse: [
+						{
+							matcher: "task_complete",
+							...buildCopilotHookEntry("to_review", { source: "copilot" }),
+						},
+						buildCopilotHookEntry("activity", { source: "copilot" }),
+					],
 					permissionRequest: [buildCopilotHookEntry("to_review", { source: "copilot" })],
-					postToolUse: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
+					postToolUse: [
+						{
+							matcher: "task_complete",
+							...buildCopilotHookEntry("to_review", { source: "copilot" }),
+						},
+						buildCopilotHookEntry("to_in_progress", { source: "copilot" }),
+					],
 					postToolUseFailure: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
 					userPromptSubmitted: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
 					notification: [
@@ -1469,15 +1481,13 @@ const copilotAdapter: AgentSessionAdapter = {
 		}
 
 		const trimmed = input.prompt.trim();
-		let deferredStartupInput: string | undefined;
-		if (input.startInPlanMode) {
-			deferredStartupInput = toBracketedPasteSubmission(trimmed ? `/plan ${trimmed}` : "/plan");
-		}
-
-		const withPromptLaunch =
-			input.startInPlanMode || !trimmed
-				? { args, env: {} }
-				: withPrompt(args, input.prompt, "flag", "--interactive");
+		// Use --interactive for all prompt delivery including plan mode.
+		// Copilot's --interactive flag accepts slash commands directly, so
+		// /plan <prompt> works as the initial prompt without needing deferred input.
+		const effectivePrompt = input.startInPlanMode ? (trimmed ? `/plan ${trimmed}` : "/plan") : input.prompt;
+		const withPromptLaunch = effectivePrompt.trim()
+			? withPrompt(args, effectivePrompt, "flag", "--interactive")
+			: { args, env: {} };
 
 		return {
 			...withPromptLaunch,
@@ -1485,7 +1495,6 @@ const copilotAdapter: AgentSessionAdapter = {
 				...withPromptLaunch.env,
 				...env,
 			},
-			deferredStartupInput,
 			...(hooksFilePath
 				? {
 						cleanup: async () => {
