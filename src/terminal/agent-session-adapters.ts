@@ -1394,26 +1394,31 @@ function buildCopilotHookEntry(
 	};
 }
 
-// Copilot CLI prints tool status lines prefixed with ● (e.g. "● Task complete").
-const COPILOT_TASK_COMPLETE_PATTERN = /(?:^|\n)\s*●\s*Task complete/i;
-// Keep enough trailing output to catch "Task complete" split across two chunks.
-const COPILOT_OUTPUT_BUFFER_SIZE = 32;
+// Copilot CLI shows an "(Esc to cancel" status bar while the agent is
+// actively working.  Track its presence across output chunks: when it
+// appears the agent is busy (In Progress), when it disappears for
+// enough consecutive chunks the agent is idle (Review).
+const COPILOT_IDLE_CHUNK_THRESHOLD = 15;
 
 function createCopilotTaskCompleteDetector(): AgentOutputTransitionDetector {
-	let tailBuffer = "";
+	let chunksWithoutStatusBar = 0;
 	return (data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null => {
-		if (summary.state !== "running") {
+		if (summary.state !== "running" && summary.state !== "awaiting_review") {
 			return null;
 		}
 		const stripped = stripAnsi(data);
-		// Join the tail of the previous chunk with the current chunk so
-		// "Task complete" is detected even when split across two writes.
-		const combined = tailBuffer + stripped;
-		tailBuffer =
-			stripped.length >= COPILOT_OUTPUT_BUFFER_SIZE
-				? stripped.slice(-COPILOT_OUTPUT_BUFFER_SIZE)
-				: combined.slice(-COPILOT_OUTPUT_BUFFER_SIZE);
-		if (COPILOT_TASK_COMPLETE_PATTERN.test(combined)) {
+		const hasStatusBar = stripped.includes("(Esc to cancel");
+
+		if (hasStatusBar) {
+			chunksWithoutStatusBar = 0;
+			if (summary.state === "awaiting_review") {
+				return { type: "hook.to_in_progress" };
+			}
+			return null;
+		}
+
+		chunksWithoutStatusBar += 1;
+		if (chunksWithoutStatusBar >= COPILOT_IDLE_CHUNK_THRESHOLD && summary.state === "running") {
 			return { type: "agent.task-complete" };
 		}
 		return null;
@@ -1421,7 +1426,7 @@ function createCopilotTaskCompleteDetector(): AgentOutputTransitionDetector {
 }
 
 function shouldInspectCopilotOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
-	return summary.state === "running";
+	return summary.state === "running" || summary.state === "awaiting_review";
 }
 
 const copilotAdapter: AgentSessionAdapter = {
@@ -1467,22 +1472,14 @@ const copilotAdapter: AgentSessionAdapter = {
 			const hooksConfig = {
 				version: 1,
 				hooks: {
-					agentStop: [buildCopilotHookEntry("to_review", { source: "copilot" })],
+					agentStop: [buildCopilotHookEntry("activity", { source: "copilot" })],
 					subagentStop: [buildCopilotHookEntry("activity", { source: "copilot" })],
 					preToolUse: [buildCopilotHookEntry("activity", { source: "copilot" })],
 					permissionRequest: [buildCopilotHookEntry("activity", { source: "copilot" })],
-					postToolUse: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
-					postToolUseFailure: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
+					postToolUse: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					postToolUseFailure: [buildCopilotHookEntry("activity", { source: "copilot" })],
 					userPromptSubmitted: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
-					notification: [
-						{
-							matcher: "elicitation_dialog",
-							...buildCopilotHookEntry("to_review", {
-								source: "copilot",
-								notificationType: "elicitation_dialog",
-							}),
-						},
-					],
+					notification: [buildCopilotHookEntry("activity", { source: "copilot" })],
 				},
 			};
 			await Promise.all([ensureTextFile(hooksFilePath, JSON.stringify(hooksConfig, null, 2)), trustPromise]);

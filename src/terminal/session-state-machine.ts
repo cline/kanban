@@ -43,14 +43,14 @@ export function reduceSessionTransition(
 			};
 		}
 		case "agent.task-complete": {
-			if (summary.state !== "running") {
+			if (summary.state !== "running" && summary.state !== "awaiting_review") {
 				return { changed: false, patch: {}, clearAttentionBuffer: false };
 			}
 			return {
 				changed: true,
 				patch: {
 					state: "awaiting_review",
-					reviewReason: "exit",
+					reviewReason: "hook",
 				},
 				clearAttentionBuffer: true,
 			};
