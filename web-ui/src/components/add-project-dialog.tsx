@@ -16,6 +16,8 @@ export interface AddProjectDialogProps {
 	onOpenChange: (open: boolean) => void;
 	onProjectAdded: (projectId: string) => void;
 	currentProjectId: string | null;
+	/** When set, the dialog opens directly to the git-init confirmation for this absolute path. */
+	initialGitInitPath?: string | null;
 }
 
 export function AddProjectDialog({
@@ -23,6 +25,7 @@ export function AddProjectDialog({
 	onOpenChange,
 	onProjectAdded,
 	currentProjectId,
+	initialGitInitPath,
 }: AddProjectDialogProps): ReactElement {
 	const [activeTab, setActiveTab] = useState<AddProjectTab>("path");
 	const [pathInput, setPathInput] = useState("");
@@ -48,7 +51,7 @@ export function AddProjectDialog({
 		setCloneFolderName("");
 		setIsAddingByPath(false);
 		setIsCloning(false);
-		setPendingGitInitPath(null);
+		setPendingGitInitPath(initialGitInitPath ?? null);
 		setIsInitializingGit(false);
 
 		// Fetch the server root path to display at the top of the dialog
@@ -64,7 +67,7 @@ export function AddProjectDialog({
 			}
 		};
 		void fetchRoot();
-	}, [open, currentProjectId]);
+	}, [open, currentProjectId, initialGitInitPath]);
 
 	// Focus the git URL input when switching to the clone tab (since it
 	// doesn't have a dropdown that would pop open). We intentionally do NOT
@@ -128,6 +131,32 @@ export function AddProjectDialog({
 			}
 		},
 		[currentProjectId, onOpenChange, onProjectAdded, resolveToAbsolutePath],
+	);
+
+	// Initialize git and add a project using an already-absolute path.
+	// pendingGitInitPath is always an absolute path (either resolved by
+	// handleAddByPath or provided via initialGitInitPath from the native
+	// OS picker), so it must not go through resolveToAbsolutePath again.
+	const handleInitializeGit = useCallback(
+		async (absolutePath: string) => {
+			setIsInitializingGit(true);
+			try {
+				const trpcClient = getRuntimeTrpcClient(currentProjectId);
+				const added = await trpcClient.projects.add.mutate({ path: absolutePath, initializeGit: true });
+				if (!added.ok || !added.project) {
+					throw new Error(added.error ?? "Could not add project.");
+				}
+				setPendingGitInitPath(null);
+				onProjectAdded(added.project.id);
+				onOpenChange(false);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				showAppToast({ intent: "danger", icon: "warning-sign", message, timeout: 7000 });
+			} finally {
+				setIsInitializingGit(false);
+			}
+		},
+		[currentProjectId, onOpenChange, onProjectAdded],
 	);
 
 	const handleClone = useCallback(async () => {
@@ -271,7 +300,7 @@ export function AddProjectDialog({
 							pendingGitInitPath={pendingGitInitPath}
 							onSubmitPath={() => void handleAddByPath(pathInput)}
 							onSubmitGitInit={() => {
-								if (pendingGitInitPath) void handleAddByPath(pendingGitInitPath, true);
+								if (pendingGitInitPath) void handleInitializeGit(pendingGitInitPath);
 							}}
 							currentProjectId={currentProjectId}
 						/>
@@ -313,7 +342,9 @@ export function AddProjectDialog({
 						) : (
 							<Button
 								variant="primary"
-								onClick={() => void handleAddByPath(pendingGitInitPath, true)}
+								onClick={() => {
+									if (pendingGitInitPath) void handleInitializeGit(pendingGitInitPath);
+								}}
 								disabled={isInitializingGit}
 							>
 								{isInitializingGit ? (

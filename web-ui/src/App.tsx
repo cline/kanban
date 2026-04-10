@@ -120,6 +120,7 @@ export default function App(): ReactElement {
 		handleRemoveProject,
 		isAddProjectDialogOpen,
 		setIsAddProjectDialogOpen,
+		pendingNativeGitInitPath,
 		resetProjectNavigationState,
 	} = useProjectNavigation({
 		onProjectSwitchStart: handleProjectSwitchStart,
@@ -1102,6 +1103,7 @@ export default function App(): ReactElement {
 					onOpenChange={setIsAddProjectDialogOpen}
 					onProjectAdded={handleAddProjectSuccess}
 					currentProjectId={currentProjectId}
+					initialGitInitPath={pendingNativeGitInitPath}
 				/>
 
 				<AlertDialog
