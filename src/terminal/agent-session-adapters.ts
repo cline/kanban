@@ -1,5 +1,6 @@
-import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type {
@@ -13,6 +14,7 @@ import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
+import { getGitStdout } from "../workspace/git-utils";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
 	getOpenCodeAuthPathCandidates,
@@ -90,7 +92,7 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 	};
 }
 
-function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
+function buildHookCommandParts(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string[] {
 	const parts = buildHooksCommandParts(["ingest", "--event", event]);
 	if (metadata?.source) {
 		parts.push("--source", metadata.source);
@@ -104,7 +106,11 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 	if (metadata?.notificationType) {
 		parts.push("--notification-type", metadata.notificationType);
 	}
-	return parts.map(quoteShellArg).join(" ");
+	return parts;
+}
+
+function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
+	return buildHookCommandParts(event, metadata).map(quoteShellArg).join(" ");
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
@@ -1327,6 +1333,174 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+async function addToWorktreeGitExclude(worktreePath: string, pattern: string): Promise<void> {
+	try {
+		// Use git itself to resolve the correct info/exclude path, which correctly
+		// handles linked worktrees by following the commondir pointer.
+		const excludePathOutput = await getGitStdout(["rev-parse", "--git-path", "info/exclude"], worktreePath);
+		if (!excludePathOutput) {
+			return;
+		}
+		const excludePath = isAbsolute(excludePathOutput) ? excludePathOutput : join(worktreePath, excludePathOutput);
+		await mkdir(join(excludePath, ".."), { recursive: true });
+		let existing = "";
+		try {
+			existing = await readFile(excludePath, "utf8");
+		} catch {
+			// file doesn't exist yet
+		}
+		if (!existing.split("\n").some((line) => line.trim() === pattern)) {
+			const separator = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
+			await writeFile(excludePath, `${existing}${separator}${pattern}\n`, "utf8");
+		}
+	} catch {
+		// best-effort
+	}
+}
+
+async function addCopilotTrustedFolder(folderPath: string): Promise<void> {
+	try {
+		const copilotHome = process.env.COPILOT_HOME ?? join(homedir(), ".copilot");
+		const configPath = join(copilotHome, "config.json");
+		let config: Record<string, unknown> = {};
+		try {
+			const content = await readFile(configPath, "utf8");
+			config = JSON.parse(content) as Record<string, unknown>;
+		} catch {
+			// config doesn't exist yet, start fresh
+		}
+		const trusted = Array.isArray(config.trusted_folders) ? [...(config.trusted_folders as string[])] : [];
+		const normalizedPath = folderPath.replace(/\/+$/u, "");
+		if (!trusted.includes(normalizedPath)) {
+			trusted.push(normalizedPath);
+			config.trusted_folders = trusted;
+			await mkdir(copilotHome, { recursive: true });
+			await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+		}
+	} catch {
+		// best-effort
+	}
+}
+
+function buildCopilotHookEntry(
+	event: RuntimeHookEvent,
+	metadata?: HookCommandMetadata,
+): { type: "command"; bash: string; powershell: string } {
+	const parts = buildHookCommandParts(event, metadata);
+	return {
+		type: "command",
+		bash: parts.map(quoteShellArg).join(" "),
+		powershell: parts.map(powerShellQuote).join(" "),
+	};
+}
+
+const copilotAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled) {
+			// Autonomous mode uses --allow-all (superset of --allow-all-tools + --allow-all-paths)
+			// plus --autopilot for unattended continuation.
+			if (!hasCliOption(args, "--allow-all")) {
+				args.push("--allow-all");
+			}
+			if (!hasCliOption(args, "--autopilot")) {
+				args.push("--autopilot");
+			}
+		} else {
+			// Always allow tool and file access — without these Copilot prompts for
+			// permission on every tool call, making it unusable in an automated context.
+			if (!hasCliOption(args, "--allow-all") && !hasCliOption(args, "--allow-all-tools")) {
+				args.push("--allow-all-tools");
+			}
+			if (!hasCliOption(args, "--allow-all") && !hasCliOption(args, "--allow-all-paths")) {
+				args.push("--allow-all-paths");
+			}
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
+			args.push("--continue");
+		}
+
+		if (!hasCliOption(args, "--add-dir")) {
+			args.push("--add-dir", input.cwd);
+		}
+
+		const hooks = resolveHookContext(input);
+		let hooksFilePath: string | null = null;
+		// Pre-trust the worktree path so Copilot doesn't show a folder trust dialog on launch.
+		// Run in parallel with hooks setup since they're independent.
+		const trustPromise = addCopilotTrustedFolder(input.cwd);
+		if (hooks) {
+			hooksFilePath = join(input.cwd, ".github", "hooks", "kanban.json");
+			const hooksConfig = {
+				version: 1,
+				hooks: {
+					agentStop: [buildCopilotHookEntry("to_review", { source: "copilot" })],
+					subagentStop: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					preToolUse: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					permissionRequest: [buildCopilotHookEntry("to_review", { source: "copilot" })],
+					postToolUse: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
+					postToolUseFailure: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
+					userPromptSubmitted: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
+					notification: [
+						{
+							matcher: "elicitation_dialog",
+							...buildCopilotHookEntry("to_review", {
+								source: "copilot",
+								notificationType: "elicitation_dialog",
+							}),
+						},
+					],
+				},
+			};
+			await Promise.all([ensureTextFile(hooksFilePath, JSON.stringify(hooksConfig, null, 2)), trustPromise]);
+			await addToWorktreeGitExclude(input.cwd, ".github/hooks/kanban.json");
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		} else {
+			await trustPromise;
+		}
+
+		const trimmed = input.prompt.trim();
+		let deferredStartupInput: string | undefined;
+		if (input.startInPlanMode) {
+			deferredStartupInput = toBracketedPasteSubmission(trimmed ? `/plan ${trimmed}` : "/plan");
+		}
+
+		const withPromptLaunch =
+			input.startInPlanMode || !trimmed
+				? { args, env: {} }
+				: withPrompt(args, input.prompt, "flag", "--interactive");
+
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+			deferredStartupInput,
+			...(hooksFilePath
+				? {
+						cleanup: async () => {
+							try {
+								await unlink(hooksFilePath);
+							} catch {
+								// best-effort cleanup
+							}
+						},
+					}
+				: {}),
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1334,6 +1508,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
 	cline: clineAdapter,
+	copilot: copilotAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
