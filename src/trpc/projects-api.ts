@@ -1,6 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-
 import type {
 	RuntimeBoardData,
 	RuntimeDirectoryListResponse,
@@ -20,6 +19,7 @@ import {
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { cloneGitRepository } from "../workspace/git-clone";
 import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo";
+import { isPathWithinRoot } from "../workspace/path-sandbox";
 import { deleteTaskWorktree } from "../workspace/task-worktree";
 import type { RuntimeTrpcContext } from "./app-router";
 
@@ -260,8 +260,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			const requestedPath = body.path?.trim() || "";
 			// Reject absolute paths that fall outside the sandbox
 			if (requestedPath && isAbsolute(requestedPath)) {
-				const normalizedRoot = rootPath.endsWith("/") ? rootPath : `${rootPath}/`;
-				if (requestedPath !== rootPath && !requestedPath.startsWith(normalizedRoot)) {
+				if (!isPathWithinRoot(rootPath, requestedPath)) {
 					return {
 						ok: false,
 						currentPath: rootPath,
@@ -275,8 +274,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			}
 			const resolvedPath = resolve(rootPath, requestedPath) || rootPath;
 
-			const normalizedRoot = rootPath.endsWith("/") ? rootPath : `${rootPath}/`;
-			if (resolvedPath !== rootPath && !resolvedPath.startsWith(normalizedRoot)) {
+			if (!isPathWithinRoot(rootPath, resolvedPath)) {
 				return {
 					ok: false,
 					currentPath: rootPath,
@@ -333,7 +331,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 
 				const isAtRoot = resolvedPath === rootPath;
 				const rawParent = dirname(resolvedPath);
-				const parentIsWithinRoot = rawParent === rootPath || rawParent.startsWith(normalizedRoot);
+				const parentIsWithinRoot = isPathWithinRoot(rootPath, rawParent);
 				const parentPath = isAtRoot ? null : parentIsWithinRoot ? rawParent : null;
 
 				return {

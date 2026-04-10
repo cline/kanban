@@ -2,6 +2,7 @@ import { access, mkdir, stat } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 
 import { runGit } from "./git-utils.js";
+import { isPathWithinRoot } from "./path-sandbox.js";
 
 export interface GitCloneResult {
 	ok: boolean;
@@ -43,8 +44,7 @@ export function deriveRepoNameFromUrl(gitUrl: string): string | null {
  */
 export function validateCloneDestination(destination: string, serverCwd: string): string {
 	const resolved = resolve(destination);
-	const normalizedCwd = serverCwd.endsWith("/") ? serverCwd : `${serverCwd}/`;
-	if (resolved !== serverCwd && !resolved.startsWith(normalizedCwd)) {
+	if (!isPathWithinRoot(serverCwd, resolved)) {
 		throw new Error(
 			`Clone destination is outside the server working directory. Destination "${resolved}" must be within "${serverCwd}".`,
 		);
