@@ -266,9 +266,7 @@ export function BoardCard({
 	const [descriptionFont, setDescriptionFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [sessionPreviewFont, setSessionPreviewFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
-	const [isSessionPreviewExpanded, setIsSessionPreviewExpanded] = useState(false);
-	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
-	const isTrashCard = columnId === "trash";
+	const descriptionWidth = descriptionRect.width > 0 ? descriptionRect.width : descriptionWidthFallback;
 	const isCardInteractive = true;
 	const descriptionWidth = descriptionRect.width > 0 ? descriptionRect.width : descriptionWidthFallback;
 	const sessionPreviewWidth = sessionPreviewRect.width > 0 ? sessionPreviewRect.width : sessionPreviewWidthFallback;
