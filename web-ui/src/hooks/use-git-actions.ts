@@ -299,11 +299,16 @@ export function useGitActions({
 					}
 					return true;
 				}
-				// Send text and Enter as separate writes — Copilot's TUI
-				// needs Enter as a distinct input event, not appended.
-				await sendTaskSessionInput(taskId, prompt, {
+				// Send text to the pty, then Enter as a separate write after
+				// a short delay so the TUI processes them as distinct events.
+				// Prepend focus-in (\x1b[I) since clicking the commit button
+				// defocuses the terminal.
+				await sendTaskSessionInput(taskId, "\x1b[I" + prompt, {
 					appendNewline: false,
 					preferTerminal: false,
+				});
+				await new Promise<void>((resolve) => {
+					window.setTimeout(resolve, 300);
 				});
 				const sent = await sendTaskSessionInput(taskId, "\r", {
 					appendNewline: false,
