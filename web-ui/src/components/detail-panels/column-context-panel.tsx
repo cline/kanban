@@ -64,9 +64,11 @@ function ColumnSection({
 		if (isTrashColumn) {
 			const stored = readLocalStorageItem(LocalStorageKey.TrashColumnCollapsed);
 			// Default to collapsed (false) if not set, otherwise use stored value
+			if (stored === null) return defaultOpen;
 			return stored !== "true";
 		}
 		return defaultOpen;
+	});
 	});
 
 	const handleToggleOpen = useCallback(() => {
