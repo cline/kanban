@@ -736,7 +736,7 @@ export function useBoardInteractions({
 	const handleCardSelect = useCallback(
 		(taskId: string) => {
 			const selection = findCardSelection(board, taskId);
-			if (!selection || selection.column.id === "trash") {
+			if (!selection) {
 				return;
 			}
 			setSelectedTaskId(taskId);
