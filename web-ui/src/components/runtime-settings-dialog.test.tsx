@@ -51,6 +51,15 @@ vi.mock("@/hooks/use-runtime-settings-cline-mcp-controller", () => ({
 	useRuntimeSettingsClineMcpController: () => ({
 		hasUnsavedChanges: false,
 		saveMcpSettings: vi.fn(async () => ({ ok: true })),
+		mcpServers: [],
+		setMcpServers: vi.fn(),
+		isLoadingMcpSettings: false,
+		isSavingMcpSettings: false,
+		mcpSettingsPath: "",
+		mcpAuthStatusByServerName: {},
+		authenticatingMcpServerName: null,
+		runMcpServerOauth: vi.fn(async () => ({ ok: true })),
+		linearMcpPreset: { status: "not-configured", isSettingUp: false, setup: vi.fn(async () => ({ ok: true })) },
 	}),
 }));
 
