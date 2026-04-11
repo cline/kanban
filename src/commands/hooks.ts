@@ -403,11 +403,11 @@ async function ingestHookEvent(args: HooksIngestArgs): Promise<void> {
 	}
 }
 
-function spawnDetachedKanban(args: string[]): void {
+function spawnBackgroundKanban(args: string[]): void {
 	try {
 		const commandParts = buildKanbanCommandParts(args);
 		const child = spawn(commandParts[0], commandParts.slice(1), {
-			detached: true,
+			detached: false,
 			stdio: "ignore",
 			env: process.env,
 		});
@@ -443,7 +443,7 @@ function appendMetadataFlags(args: string[], metadata?: Partial<RuntimeTaskHookA
 }
 
 function notifyCodexSessionWatcherEvent(mapped: CodexMappedHookEvent): void {
-	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
+	spawnBackgroundKanban(appendMetadataFlags(["hooks", "notify", "--event", mapped.event], mapped.metadata));
 }
 
 async function enrichCodexReviewMetadata(args: HooksIngestArgs, cwd: string): Promise<HooksIngestArgs> {
@@ -565,7 +565,7 @@ async function runGeminiHookSubcommand(): Promise<void> {
 		source: "gemini",
 		hookEventName: hookEventName || undefined,
 	});
-	spawnDetachedKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
+	spawnBackgroundKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
 }
 
 export function buildCodexWrapperChildArgs(agentArgs: string[]): string[] {
