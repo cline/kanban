@@ -1500,12 +1500,11 @@ const copilotAdapter: AgentSessionAdapter = {
 		}
 
 		const hooks = resolveHookContext(input);
-		let hooksFilePath: string | null = null;
+		const hooksFilePath: string | null = hooks ? join(input.cwd, ".github", "hooks", "kanban.json") : null;
 		// Pre-trust the worktree path so Copilot doesn't show a folder trust dialog on launch.
 		// Run in parallel with hooks setup since they're independent.
 		const trustPromise = addCopilotTrustedFolder(input.cwd);
-		if (hooks) {
-			hooksFilePath = join(input.cwd, ".github", "hooks", "kanban.json");
+		if (hooks && hooksFilePath) {
 			const hooksConfig = {
 				version: 1,
 				hooks: {
