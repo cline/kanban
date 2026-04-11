@@ -394,7 +394,9 @@ export function ProjectNavigationPanel({
 							</button>
 						) : null}
 					</div>
+					<div className="border-t border-border mx-3" />
 					<ShortcutsCard />
+					<div className="border-t border-border mx-3" />
 					<ProjectSupportFooter
 						shouldShowFeaturebaseFeedback={shouldShowFeaturebaseFeedback}
 						featurebaseFeedbackState={featurebaseFeedbackState}

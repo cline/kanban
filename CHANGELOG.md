@@ -19,6 +19,7 @@
 - Fixed diff mode toggle not reflecting its active state
 - Disabled unnecessary startup update checks for Codex agent
 - Faster trash restore for Codex tasks by skipping unnecessary session probes
+- Updated Cline SDK from 0.0.28 to 0.0.29, which includes: unified logger interface, restructured LLM provider and model namespaces, renamed telemetry adapter, and updated system prompt API
 
 ## [0.1.59]
 
