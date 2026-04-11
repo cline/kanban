@@ -142,9 +142,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const developerInstructions = getCodexConfigOverrideValues(launch.args, "developer_instructions");
 		expect(developerInstructions).toHaveLength(1);
 		expect(developerInstructions[0]).toContain("Kanban sidebar agent");
-		expect(developerInstructions[0]).toContain(
-			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
-		);
+		expect(developerInstructions[0]).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
 		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
 	});
 
@@ -341,6 +339,44 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
 	});
 
+	it("writes Kiro agent hooks and uses a Kanban-managed soft planning prompt", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-kiro-1",
+			agentId: "kiro",
+			binary: "kiro-cli",
+			args: ["chat"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "Investigate deployment drift",
+			startInPlanMode: true,
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-kiro-1");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.args).toContain("--agent");
+		expect(launch.args[launch.args.indexOf("--agent") + 1]).toBe("kanban");
+		expect(launch.args).toContain("--trust-all-tools");
+		const initialPrompt = launch.args.at(-1) ?? "";
+		expect(initialPrompt).toContain("Do not modify files");
+		expect(initialPrompt).toContain("Task:\nInvestigate deployment drift");
+
+		const configPath = join(homedir(), ".kiro", "agents", "kanban.json");
+		const config = JSON.parse(readFileSync(configPath, "utf8")) as {
+			tools?: string[];
+			hooks?: Record<string, Array<{ command?: string }>>;
+		};
+		expect(config.tools).toEqual(["*"]);
+		expect(config.hooks?.agentSpawn?.[0]?.command).toContain("to_in_progress");
+		expect(config.hooks?.userPromptSubmit?.[0]?.command).toContain("to_in_progress");
+		expect(config.hooks?.preToolUse?.[0]?.command).toContain("activity");
+		expect(config.hooks?.preToolUse?.[1]?.command).toContain("to_in_progress");
+		expect(config.hooks?.postToolUse?.[0]?.command).toContain("activity");
+		expect(config.hooks?.stop?.[0]?.command).toContain("to_review");
+		expect(config.hooks?.stop?.[0]?.command).toContain("Waiting for review");
+	});
+
 	it("materializes task images for CLI prompts", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -534,6 +570,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(droidLaunch.args).toContain("--resume");
 
+		const kiroLaunch = await prepareAgentLaunch({
+			taskId: "task-kiro",
+			agentId: "kiro",
+			binary: "kiro-cli",
+			args: ["chat"],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(kiroLaunch.args).toContain("--resume");
+
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline",
 			agentId: "cline",
@@ -581,6 +628,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(geminiLaunch.args).toContain("--yolo");
+
+		const kiroLaunch = await prepareAgentLaunch({
+			taskId: "task-kiro-auto",
+			agentId: "kiro",
+			binary: "kiro-cli",
+			args: ["chat"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(kiroLaunch.args).toContain("--trust-all-tools");
 
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline-auto",
@@ -640,5 +698,16 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(clineLaunch.args).toContain("--auto-approve-all");
+
+		const kiroLaunch = await prepareAgentLaunch({
+			taskId: "task-kiro-no-auto",
+			agentId: "kiro",
+			binary: "kiro-cli",
+			args: ["chat", "--trust-all-tools"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(kiroLaunch.args).toContain("--trust-all-tools");
 	});
 });

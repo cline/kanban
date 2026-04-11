@@ -1,4 +1,3 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as RadixPopover from "@radix-ui/react-popover";
 import {
 	ArrowDown,
@@ -44,9 +43,6 @@ type SettingsSection = "shortcuts";
 type CreateShortcutResult = { ok: boolean; message?: string };
 
 const MOBILE_TOUCH_TARGET = "min-w-[44px] min-h-[44px]";
-
-const DROPDOWN_ITEM_CLASS =
-	"flex items-center gap-2 px-2.5 py-2 text-[13px] text-text-primary rounded-md hover:bg-surface-3 cursor-default outline-none data-[highlighted]:bg-surface-3";
 
 function getWorkspacePathSegments(path: string): string[] {
 	return path
@@ -282,113 +278,6 @@ function TopBarGitStatusSection({
 	return null;
 }
 
-function TopBarMobileOverflowMenu({
-	selectedShortcut,
-	SelectedShortcutIcon,
-	runningShortcutLabel,
-	onRunShortcut,
-	onCreateFirstShortcut,
-	onOpenCreateShortcutDialog,
-	onToggleTerminal,
-	isTerminalOpen,
-	isTerminalLoading,
-	showDebugButton,
-	onOpenDebugDialog,
-	workspaceHint,
-	runtimeHint,
-	onOpenSettings,
-}: {
-	selectedShortcut: RuntimeProjectShortcut | null;
-	SelectedShortcutIcon: React.ComponentType<{ size?: string | number }>;
-	runningShortcutLabel?: string | null;
-	onRunShortcut?: (shortcutLabel: string) => void;
-	onCreateFirstShortcut?: (shortcut: RuntimeProjectShortcut) => Promise<CreateShortcutResult>;
-	onOpenCreateShortcutDialog: () => void;
-	onToggleTerminal?: () => void;
-	isTerminalOpen?: boolean;
-	isTerminalLoading?: boolean;
-	showDebugButton?: boolean;
-	onOpenDebugDialog?: () => void;
-	workspaceHint?: string;
-	runtimeHint?: string;
-	onOpenSettings?: (section?: SettingsSection) => void;
-}): React.ReactElement {
-	return (
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger asChild>
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={<Menu size={16} />}
-					aria-label="More actions"
-					className={MOBILE_TOUCH_TARGET}
-				/>
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Portal>
-				<DropdownMenu.Content
-					className="z-50 min-w-[200px] rounded-lg border border-border bg-surface-2 p-1 shadow-xl"
-					style={{ animation: "kb-tooltip-show 100ms ease" }}
-					sideOffset={5}
-					align="end"
-				>
-					{selectedShortcut && onRunShortcut ? (
-						<DropdownMenu.Item
-							className={DROPDOWN_ITEM_CLASS}
-							disabled={Boolean(runningShortcutLabel)}
-							onSelect={() => onRunShortcut(selectedShortcut.label)}
-						>
-							<SelectedShortcutIcon size={14} />
-							<span>{selectedShortcut.label}</span>
-						</DropdownMenu.Item>
-					) : onCreateFirstShortcut ? (
-						<DropdownMenu.Item className={DROPDOWN_ITEM_CLASS} onSelect={onOpenCreateShortcutDialog}>
-							<Play size={14} />
-							<span>Run</span>
-						</DropdownMenu.Item>
-					) : null}
-					{onToggleTerminal ? (
-						<DropdownMenu.Item
-							className={DROPDOWN_ITEM_CLASS}
-							disabled={Boolean(isTerminalLoading)}
-							onSelect={onToggleTerminal}
-						>
-							<Terminal size={14} />
-							<span>{isTerminalOpen ? "Close terminal" : "Open terminal"}</span>
-						</DropdownMenu.Item>
-					) : null}
-					{showDebugButton && onOpenDebugDialog ? (
-						<DropdownMenu.Item className={DROPDOWN_ITEM_CLASS} onSelect={onOpenDebugDialog}>
-							<Bug size={14} />
-							<span>Debug</span>
-						</DropdownMenu.Item>
-					) : null}
-					{workspaceHint || runtimeHint ? (
-						<>
-							<DropdownMenu.Separator className="h-px bg-border my-1" />
-							{workspaceHint ? (
-								<DropdownMenu.Item
-									className="flex items-center gap-2 px-2.5 py-2 text-[13px] text-text-secondary rounded-md cursor-default outline-none"
-									disabled
-								>
-									{workspaceHint}
-								</DropdownMenu.Item>
-							) : null}
-							{runtimeHint ? (
-								<DropdownMenu.Item
-									className={cn(DROPDOWN_ITEM_CLASS, "text-status-orange")}
-									onSelect={() => onOpenSettings?.()}
-								>
-									{runtimeHint}
-								</DropdownMenu.Item>
-							) : null}
-						</>
-					) : null}
-				</DropdownMenu.Content>
-			</DropdownMenu.Portal>
-		</DropdownMenu.Root>
-	);
-}
-
 export function TopBar({
 	onToggleSidebar,
 	onBack,
@@ -506,12 +395,6 @@ export function TopBar({
 		}
 		setIsCreateShortcutDialogOpen(false);
 	};
-
-	const hasOverflowItems =
-		Boolean(onToggleTerminal) ||
-		Boolean(showDebugButton && onOpenDebugDialog) ||
-		Boolean(!hideProjectDependentActions && onRunShortcut && selectedShortcut) ||
-		Boolean(onCreateFirstShortcut);
 
 	return (
 		<>

@@ -1,3 +1,4 @@
+import type { ContentBlock } from "@clinebot/shared";
 import type { ClineSdkPersistedMessage } from "./sdk-runtime-boundary";
 
 /**
@@ -45,7 +46,7 @@ function readMessagePreview(message: ClineSdkPersistedMessage): string {
 		typeof message.content === "string"
 			? message.content
 			: message.content
-					.map((block) => {
+					.map((block: ContentBlock) => {
 						if (block.type === "text") {
 							return block.text;
 						}

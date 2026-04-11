@@ -331,6 +331,32 @@ describe("BoardCard", () => {
 		expect(container.textContent).not.toContain("Completed Read");
 	});
 
+	it("keeps canonical tool names in the session preview label", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					sessionSummary={createSummary("running", {
+						agentId: "kiro",
+						latestHookActivity: {
+							activityText: "Using fs_write: src/index.ts",
+							toolName: "fs_write",
+							toolInputSummary: null,
+							finalMessage: null,
+							hookEventName: "preToolUse",
+							notificationType: null,
+							source: "kiro",
+						},
+					})}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("fs_write(src/index.ts)");
+	});
+
 	it("parses codex tool activity into the compact tool label format", async () => {
 		await act(async () => {
 			root.render(
@@ -356,6 +382,33 @@ describe("BoardCard", () => {
 
 		expect(container.textContent).toContain("Read(src/index.ts)");
 		expect(container.textContent).not.toContain("Calling Read");
+	});
+
+	it("does not show a stale bare tool name for non-tool review updates", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="review"
+					sessionSummary={createSummary("awaiting_review", {
+						agentId: "kiro",
+						latestHookActivity: {
+							activityText: "Waiting for review",
+							toolName: "fs_write",
+							toolInputSummary: null,
+							finalMessage: null,
+							hookEventName: "stop",
+							notificationType: null,
+							source: "kiro",
+						},
+					})}
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Waiting for review");
+		expect(container.textContent).not.toContain("fs_write");
 	});
 
 	it("keeps showing the last cline tool label during assistant streaming", async () => {

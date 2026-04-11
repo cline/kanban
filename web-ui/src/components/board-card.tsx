@@ -108,10 +108,11 @@ function resolveToolCallLabel(
 	toolInputSummary: string | null,
 ): string | null {
 	if (toolName) {
-		return formatClineToolCallLabel(
-			toolName,
-			toolInputSummary ?? extractToolInputSummaryFromActivityText(activityText ?? "", toolName),
-		);
+		const parsedSummary = extractToolInputSummaryFromActivityText(activityText ?? "", toolName);
+		if (!toolInputSummary && !parsedSummary) {
+			return null;
+		}
+		return formatClineToolCallLabel(toolName, toolInputSummary ?? parsedSummary);
 	}
 	if (!activityText) {
 		return null;

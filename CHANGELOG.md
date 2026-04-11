@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.60]
+
+- Pick from 10 new color themes to personalize your board
+- Kiro CLI agent support
+- Cline account organization switching and credit balance display in settings
+- Editable task titles that sync across the board and detail view
+- Mobile-responsive layout for the web UI, including adaptive navigation, task detail views, and chat panels
+- Incremental expand in the diff viewer -- click to show 20 more lines in collapsed context blocks
+- Friendly labels for task commands (like file edits and shell commands) in the sidebar chat
+- Tips container in the sidebar for terminal-based agents (Claude Code, Codex, Kiro)
+- HTTPS and passcode authentication support for secure remote access
+- Credit limit banner now appears at the board level with a link to manage your plan
+- Fixed startup onboarding reappearing after being dismissed
+- Fixed browser back button not returning from task detail view to the board
+- Fixed chat state not reinitializing properly when resuming a trashed task
+- Fixed `/clear` not fully resetting chat for restored sessions
+- Fixed diff mode toggle not reflecting its active state
+- Disabled unnecessary startup update checks for Codex agent
+- Faster trash restore for Codex tasks by skipping unnecessary session probes
+- Updated Cline SDK from 0.0.28 to 0.0.29, which includes: unified logger interface, restructured LLM provider and model namespaces, renamed telemetry adapter, and updated system prompt API
+
 ## [0.1.59]
 
 - Added a beta hint card to the project sidebar with quick access to send feedback or report issues

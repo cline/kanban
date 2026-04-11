@@ -78,9 +78,15 @@ export function createKanbanClineLogger(bindings?: Record<string, unknown>): Bas
 	};
 
 	return {
-		debug: (message: string, metadata: Record<string, unknown> | undefined) => emit("debug", message, metadata),
-		info: (message: string, metadata: Record<string, unknown> | undefined) => emit("info", message, metadata),
-		warn: (message: string, metadata: Record<string, unknown> | undefined) => emit("warn", message, metadata),
-		error: (message: string, metadata: Record<string, unknown> | undefined) => emit("error", message, metadata),
+		debug: (message: string, metadata?: Record<string, unknown>) => emit("debug", message, metadata),
+		log: (message: string, metadata?: Record<string, unknown>) => {
+			const severity = (metadata as { severity?: string } | undefined)?.severity;
+			if (severity === "warn") {
+				emit("warn", message, metadata);
+			} else {
+				emit("info", message, metadata);
+			}
+		},
+		error: (message: string, metadata?: Record<string, unknown>) => emit("error", message, metadata),
 	};
 }

@@ -3,7 +3,7 @@ import { open, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
+import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../../core/api-contract";
 
 const CODEX_LOG_POLL_INTERVAL_MS = 200;
 const CODEX_ROLLOUT_POLL_INTERVAL_MS = 1000;

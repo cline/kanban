@@ -319,8 +319,8 @@ describe("InMemoryClineSessionRuntime", () => {
 						maxConsecutiveMistakes: 6,
 					}),
 					logger: expect.objectContaining({
-						info: expect.any(Function),
-						warn: expect.any(Function),
+						debug: expect.any(Function),
+						log: expect.any(Function),
 						error: expect.any(Function),
 					}),
 				}),
