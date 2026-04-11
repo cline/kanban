@@ -1407,14 +1407,21 @@ function createCopilotTaskCompleteDetector(): AgentOutputTransitionDetector {
 			return null;
 		}
 		const stripped = stripAnsi(data);
-		const hasStatusBar = stripped.includes("(Esc to cancel");
+		const isWorking = stripped.includes("(Esc to cancel");
+		const isAskingUser = stripped.includes("Enter to confirm") || stripped.includes("Enter to submit");
 
-		if (hasStatusBar) {
+		if (isWorking && !isAskingUser) {
 			chunksWithoutStatusBar = 0;
 			if (summary.state === "awaiting_review") {
 				return { type: "hook.to_in_progress" };
 			}
 			return null;
+		}
+
+		// Agent is asking a question — move to review immediately.
+		if (isAskingUser && summary.state === "running") {
+			chunksWithoutStatusBar = 0;
+			return { type: "agent.task-complete" };
 		}
 
 		chunksWithoutStatusBar += 1;
@@ -1436,12 +1443,9 @@ const copilotAdapter: AgentSessionAdapter = {
 
 		if (input.autonomousModeEnabled) {
 			// Autonomous mode uses --allow-all (superset of --allow-all-tools + --allow-all-paths)
-			// plus --autopilot for unattended continuation.
+			// but NOT --autopilot, so the agent still pauses for user questions.
 			if (!hasCliOption(args, "--allow-all")) {
 				args.push("--allow-all");
-			}
-			if (!hasCliOption(args, "--autopilot")) {
-				args.push("--autopilot");
 			}
 		} else {
 			// Always allow tool and file access — without these Copilot prompts for

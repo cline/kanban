@@ -299,9 +299,15 @@ export function useGitActions({
 					}
 					return true;
 				}
-				const sent = await sendTaskSessionInput(taskId, prompt, {
+				// Send text and Enter as separate writes — Copilot's TUI
+				// needs Enter as a distinct input event, not appended.
+				await sendTaskSessionInput(taskId, prompt, {
 					appendNewline: false,
-					mode: "paste-submit",
+					preferTerminal: false,
+				});
+				const sent = await sendTaskSessionInput(taskId, "\r", {
+					appendNewline: false,
+					preferTerminal: false,
 				});
 				if (!sent.ok) {
 					showAppToast({

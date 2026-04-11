@@ -235,7 +235,7 @@ export function useBoardInteractions({
 
 	const handleSendReviewComments = useCallback(
 		async (taskId: string, text: string) => {
-			const sent = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste-submit" });
+			const sent = await sendTaskSessionInput(taskId, text, { appendNewline: true });
 			if (!sent.ok) {
 				showAppToast({
 					intent: "danger",

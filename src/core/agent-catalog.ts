@@ -39,7 +39,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		label: "GitHub Copilot CLI",
 		binary: "copilot",
 		baseArgs: ["--allow-all-tools", "--allow-all-paths"],
-		autonomousArgs: ["--allow-all", "--autopilot"],
+		autonomousArgs: ["--allow-all"],
 		installUrl: "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference",
 	},
 	{
