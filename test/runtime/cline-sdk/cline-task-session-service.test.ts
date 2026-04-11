@@ -236,6 +236,9 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 			getTaskSessionId(taskId: string): string | null {
 				return sessionIdByTaskId.get(taskId) ?? null;
 			},
+			getTaskProviderId(taskId: string): string | null {
+				return lastStartRequestByTaskId.get(taskId)?.providerId ?? null;
+			},
 			async readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
 				return await readPersistedTaskSessionMock(taskId);
 			},
@@ -841,6 +844,33 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(service.getSummary("task-1")?.mode).toBe("plan");
 	});
 
+	it("prepends a Kanban-managed planning prompt when start in plan mode is enabled", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			startInPlanMode: true,
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mode: "act",
+				prompt: expect.stringContaining("Do not modify files, do not use write tools"),
+			}),
+		);
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				prompt: expect.stringContaining("Task:\nInvestigate startup"),
+			}),
+		);
+		expect(service.getSummary("task-1")?.mode).toBe("act");
+	});
+
 	it("keeps the most recent mode for subsequent follow-up input", async () => {
 		const { service, runtime } = createTrackedService();
 
@@ -1428,6 +1458,48 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 	});
 
+	it("sets credit_limit notificationType on start/send failure path for insufficient-balance errors", async () => {
+		const { service, runtime } = createTrackedService();
+		runtime.startTaskSessionMock.mockRejectedValueOnce(
+			new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
+		);
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Initial prompt",
+		});
+
+		await vi.waitFor(() => {
+			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
+		});
+
+		expect(service.getSummary("task-1")?.latestHookActivity?.notificationType).toBe("credit_limit");
+	});
+
+	it("aborts the task session when an agent event signals credit exhaustion", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+		});
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
+
+		runtime.emitAgentEvent(sessionId, {
+			type: "error",
+			error: new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
+			recoverable: false,
+			iteration: 1,
+		});
+
+		await vi.waitFor(() => {
+			expect(runtime.abortTaskSessionMock).toHaveBeenCalledWith("task-1");
+		});
+		expect(service.getSummary("task-1")?.latestHookActivity?.notificationType).toBe("credit_limit");
+	});
+
 	it("allows follow-up input after a startup error", async () => {
 		const { service, runtime } = createTrackedService();
 		runtime.startTaskSessionMock.mockRejectedValueOnce(new Error("Maximum consecutive mistakes reached."));
@@ -1521,30 +1593,6 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(service.listMessages("task-1").some((message) => message.content.includes("Cline SDK send failed"))).toBe(
 			false,
 		);
-	});
-
-	it("forces session abort on insufficient-balance errors to stop retry loops", async () => {
-		const { service, runtime } = createTrackedService();
-
-		await service.startTaskSession({
-			taskId: "task-1",
-			cwd: "/tmp/worktree",
-			prompt: "Initial prompt",
-		});
-		const sessionId = await waitForTaskSessionId(runtime, "task-1");
-
-		runtime.emitAgentEvent(sessionId, {
-			type: "error",
-			error: new Error("402 Insufficient balance. Your Cline Credits balance is $0.00"),
-			recoverable: true,
-			iteration: 1,
-		});
-
-		await vi.waitFor(() => {
-			expect(service.getSummary("task-1")?.state).toBe("awaiting_review");
-		});
-		expect(runtime.abortTaskSessionMock).toHaveBeenCalledWith("task-1");
-		expect(service.listMessages("task-1").some((message) => message.content.includes("Retrying:"))).toBe(false);
 	});
 
 	it("restarts the live session from persisted history after the SDK ends the task on send failure", async () => {

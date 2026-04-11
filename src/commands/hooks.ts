@@ -13,15 +13,17 @@ import {
 	type CodexMappedHookEvent,
 	resolveCodexRolloutFinalMessageForCwd,
 	startCodexSessionWatcher,
-} from "./codex-hook-events";
-import { enrichDroidReviewMetadata } from "./droid-hook-events";
+} from "./hook-events/codex-hook-events";
+import { enrichDroidReviewMetadata } from "./hook-events/droid-hook-events";
+import { asRecord, normalizeWhitespace, readNestedString, readStringField } from "./hook-events/hook-utils";
+import { normalizeKiroHookMetadata } from "./hook-events/kiro-hook-events";
 
 export {
 	createCodexWatcherState,
 	parseCodexEventLine,
 	resolveCodexRolloutFinalMessageForCwd,
 	startCodexSessionWatcher,
-} from "./codex-hook-events";
+} from "./hook-events/codex-hook-events";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
 
@@ -79,42 +81,6 @@ function parseHookEvent(value: string): RuntimeHookEvent {
 		throw new Error(`Invalid event "${value}". Must be one of: ${[...VALID_EVENTS].join(", ")}`);
 	}
 	return value as RuntimeHookEvent;
-}
-
-function normalizeWhitespace(value: string): string {
-	return value.replace(/\s+/g, " ").trim();
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return null;
-	}
-	return value as Record<string, unknown>;
-}
-
-function readStringField(record: Record<string, unknown>, key: string): string | null {
-	const value = record[key];
-	if (typeof value !== "string") {
-		return null;
-	}
-	const normalized = normalizeWhitespace(value);
-	return normalized.length > 0 ? normalized : null;
-}
-
-function readNestedString(record: Record<string, unknown>, path: string[]): string | null {
-	let current: unknown = record;
-	for (const key of path) {
-		const candidate = asRecord(current);
-		if (!candidate || !(key in candidate)) {
-			return null;
-		}
-		current = candidate[key];
-	}
-	if (typeof current !== "string") {
-		return null;
-	}
-	const normalized = normalizeWhitespace(current);
-	return normalized.length > 0 ? normalized : null;
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {
@@ -309,6 +275,9 @@ export function inferHookSourceFromPayload(payload: Record<string, unknown> | nu
 	if (normalizedTranscriptPath?.includes("/.claude/")) {
 		return "claude";
 	}
+	if (normalizedTranscriptPath?.includes("/.kiro/")) {
+		return "kiro";
+	}
 	if (normalizedTranscriptPath?.includes("/.factory/")) {
 		return "droid";
 	}
@@ -323,6 +292,20 @@ function normalizeHookMetadata(
 	payload: Record<string, unknown> | null,
 	flagMetadata: Partial<RuntimeTaskHookActivity>,
 ): Partial<RuntimeTaskHookActivity> | undefined {
+	const inferredSource = inferHookSourceFromPayload(payload);
+	const sourceHint = flagMetadata.source ?? inferredSource;
+	if (sourceHint?.toLowerCase() === "kiro") {
+		const kiroMetadata = normalizeKiroHookMetadata({
+			event,
+			payload,
+			flagMetadata,
+			sourceHint,
+		});
+		if (kiroMetadata) {
+			return kiroMetadata;
+		}
+	}
+
 	const hookEventName = payload
 		? (readStringField(payload, "hook_event_name") ??
 			readStringField(payload, "hookEventName") ??
@@ -351,8 +334,6 @@ function normalizeHookMetadata(
 			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
 			readNestedString(payload, ["taskComplete", "result"]))
 		: null;
-
-	const inferredSource = inferHookSourceFromPayload(payload);
 
 	const activityText = inferActivityText(event, payload, toolName, finalMessage, notificationType);
 	const merged: Partial<RuntimeTaskHookActivity> = {

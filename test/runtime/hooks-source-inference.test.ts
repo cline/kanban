@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveDroidFinalMessageFromTranscriptText } from "../../src/commands/droid-hook-events";
+import { resolveDroidFinalMessageFromTranscriptText } from "../../src/commands/hook-events/droid-hook-events";
 import { inferHookSourceFromPayload } from "../../src/commands/hooks";
 
 describe("inferHookSourceFromPayload", () => {
@@ -34,6 +34,14 @@ describe("inferHookSourceFromPayload", () => {
 				transcriptPath: "/Users/dev/.factory/logs/session.jsonl",
 			}),
 		).toBe("droid");
+	});
+
+	it("infers kiro from transcript path", () => {
+		expect(
+			inferHookSourceFromPayload({
+				transcript_path: "/Users/dev/.kiro/hooks/session.jsonl",
+			}),
+		).toBe("kiro");
 	});
 
 	it("falls back to codex event type when transcript path does not infer a source", () => {

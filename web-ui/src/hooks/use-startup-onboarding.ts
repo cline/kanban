@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { isSelectedAgentAuthenticated, shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
+import { shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
 import { saveRuntimeConfig as saveRuntimeConfigQuery } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
@@ -32,7 +32,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		currentProjectId,
 		runtimeProjectConfig,
 		isRuntimeProjectConfigLoading,
-		isTaskAgentReady,
 		refreshRuntimeProjectConfig,
 		refreshSettingsRuntimeProjectConfig,
 	} = options;
@@ -43,11 +42,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		LocalStorageKey.OnboardingDialogShown,
 		false,
 	);
-	const selectedAgentAuthenticated = isSelectedAgentAuthenticated(
-		runtimeProjectConfig?.selectedAgentId,
-		runtimeProjectConfig?.clineProviderSettings,
-	);
-
 	useEffect(() => {
 		setDidDismissStartupOnboardingForSession(false);
 		setIsStartupOnboardingDialogForcedOpen(false);
@@ -69,8 +63,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		setIsStartupOnboardingDialogOpen(
 			shouldShowStartupOnboardingDialog({
 				hasShownOnboardingDialog,
-				isTaskAgentReady,
-				isSelectedAgentAuthenticated: selectedAgentAuthenticated,
 			}),
 		);
 	}, [
@@ -78,9 +70,7 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		hasShownOnboardingDialog,
 		isStartupOnboardingDialogForcedOpen,
 		isRuntimeProjectConfigLoading,
-		isTaskAgentReady,
 		runtimeProjectConfig,
-		selectedAgentAuthenticated,
 	]);
 
 	const handleOpenStartupOnboardingDialog = useCallback(() => {

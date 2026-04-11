@@ -5,9 +5,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as ClineCore from "@clinebot/core/node";
-
 import {
 	addLocalProvider,
+	type ClineAccountBalance,
+	type ClineAccountOrganizationBalance,
 	ClineAccountService,
 	type ClineAccountUser,
 	type ClineOrganization,
@@ -24,8 +25,6 @@ import {
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
 	InMemoryMcpManager,
-	LlmsModels,
-	LlmsProviders,
 	loginClineOAuth,
 	loginOcaOAuth,
 	loginOpenAICodex,
@@ -33,11 +32,12 @@ import {
 	ProviderSettingsManager,
 	type Tool,
 } from "@clinebot/core/node";
+import type * as Llms from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
-export type SdkReasoningEffort = NonNullable<NonNullable<LlmsProviders.ProviderSettings["reasoning"]>["effort"]>;
+export type SdkReasoningEffort = NonNullable<NonNullable<Llms.ProviderSettings["reasoning"]>["effort"]>;
 export const SDK_DEFAULT_PROVIDER_ID = "cline";
-export const SDK_DEFAULT_MODEL_ID = LlmsModels.CLINE_DEFAULT_MODEL;
+export const SDK_DEFAULT_MODEL_ID = "anthropic/claude-sonnet-4.6";
 
 export interface ManagedOauthCredentials {
 	access: string;
@@ -67,9 +67,9 @@ export interface SdkUserRemoteConfigResponse {
 	enabled: boolean;
 }
 
-export type SdkProviderModelRecord = Record<string, LlmsProviders.ModelInfo>;
+export type SdkProviderModelRecord = Record<string, Llms.ModelInfo>;
 
-export type SdkProviderSettings = LlmsProviders.ProviderSettings;
+export type SdkProviderSettings = Llms.ProviderSettings;
 export type SdkCustomProviderCapability = "streaming" | "tools" | "reasoning" | "vision" | "prompt-cache";
 
 export interface SaveSdkProviderSettingsInput {
@@ -265,15 +265,15 @@ export async function loginManagedOauthProvider(input: {
 }
 
 export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
-	return await LlmsModels.getAllProviders();
+	return await ClineCore.Llms.getAllProviders();
 }
 
 export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
-	return await LlmsModels.getModelsForProvider(providerId);
+	return await ClineCore.Llms.getModelsForProvider(providerId);
 }
 
-export function supportsSdkModelThinking(modelInfo: LlmsProviders.ModelInfo): boolean {
-	return LlmsProviders.supportsModelThinking(modelInfo);
+export function supportsSdkModelThinking(modelInfo: Llms.ModelInfo): boolean {
+	return modelInfo.capabilities?.includes("reasoning") === true || modelInfo.thinkingConfig != null;
 }
 
 const providerManager = new ProviderSettingsManager();
@@ -433,7 +433,7 @@ export async function deleteSdkCustomProvider(providerId: string): Promise<void>
 	}
 	delete state.providers[normalizedProviderId];
 	await writeModelsRegistry(state);
-	LlmsModels.unregisterProvider(normalizedProviderId);
+	ClineCore.Llms.unregisterProvider(normalizedProviderId);
 
 	const settingsState = providerManager.read();
 	delete settingsState.providers[normalizedProviderId];
@@ -542,12 +542,14 @@ export async function fetchSdkClineAccountProfile(input: ApiRequestParams): Prom
 	return me;
 }
 
-export async function fetchSdkOrgData(input: ApiRequestParams & { organizatinId: string }): Promise<ClineOrganization> {
+export async function fetchSdkOrgData(
+	input: ApiRequestParams & { organizationId: string },
+): Promise<ClineOrganization> {
 	const accountService = new ClineAccountService({
 		apiBaseUrl: input.apiBaseUrl,
 		getAuthToken: async () => input.accessToken,
 	});
-	return await accountService.fetchOrganization(input.organizatinId);
+	return await accountService.fetchOrganization(input.organizationId);
 }
 
 export async function fetchSdkFeaturebaseToken(input: ApiRequestParams): Promise<{ featurebaseJwt: string }> {
@@ -574,4 +576,32 @@ export async function fetchSdkClineUserRemoteConfig(
 		getAuthToken: async () => input.accessToken,
 	});
 	return await accountService.fetchRemoteConfig();
+}
+
+export async function fetchSdkClineAccountBalance(input: ApiRequestParams): Promise<ClineAccountBalance> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	return await accountService.fetchBalance();
+}
+
+export async function fetchSdkOrganizationBalance(
+	input: ApiRequestParams & { organizationId: string },
+): Promise<ClineAccountOrganizationBalance> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	return await accountService.fetchOrganizationBalance(input.organizationId);
+}
+
+export async function switchSdkClineAccount(
+	input: ApiRequestParams & { organizationId?: string | null },
+): Promise<void> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	await accountService.switchAccount(input.organizationId ?? undefined);
 }

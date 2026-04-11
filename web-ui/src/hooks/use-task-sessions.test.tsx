@@ -33,6 +33,7 @@ interface HookSnapshot {
 function createTask(): BoardCard {
 	return {
 		id: "task-1",
+		title: "Resume me",
 		prompt: "Resume me",
 		startInPlanMode: false,
 		autoReviewEnabled: false,
@@ -179,6 +180,8 @@ describe("useTaskSessions", () => {
 		expect(startTaskSessionMutateMock).toHaveBeenCalledWith({
 			taskId: "task-1",
 			prompt: "Resume me",
+			taskTitle: "Resume me",
+			images: undefined,
 			startInPlanMode: true,
 			resumeFromTrash: undefined,
 			baseRef: "main",

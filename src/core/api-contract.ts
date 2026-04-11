@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveTaskTitle } from "./task-title.js";
 
 export const runtimeWorkspaceFileStatusSchema = z.enum([
 	"modified",
@@ -70,7 +71,7 @@ export const runtimeSlashCommandsResponseSchema = z.object({
 });
 export type RuntimeSlashCommandsResponse = z.infer<typeof runtimeSlashCommandsResponseSchema>;
 
-export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "cline"]);
+export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "kiro", "cline"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
 export const runtimeBoardColumnIdSchema = z.enum(["backlog", "in_progress", "review", "trash"]);
@@ -87,17 +88,23 @@ export const runtimeTaskImageSchema = z.object({
 });
 export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
 
-export const runtimeBoardCardSchema = z.object({
-	id: z.string(),
-	prompt: z.string(),
-	startInPlanMode: z.boolean(),
-	autoReviewEnabled: z.boolean().optional(),
-	autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
-	images: z.array(runtimeTaskImageSchema).optional(),
-	baseRef: z.string(),
-	createdAt: z.number(),
-	updatedAt: z.number(),
-});
+export const runtimeBoardCardSchema = z
+	.object({
+		id: z.string(),
+		title: z.string().optional(),
+		prompt: z.string(),
+		startInPlanMode: z.boolean(),
+		autoReviewEnabled: z.boolean().optional(),
+		autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
+		images: z.array(runtimeTaskImageSchema).optional(),
+		baseRef: z.string(),
+		createdAt: z.number(),
+		updatedAt: z.number(),
+	})
+	.transform((card) => ({
+		...card,
+		title: resolveTaskTitle(card.title, card.prompt),
+	}));
 export type RuntimeBoardCard = z.infer<typeof runtimeBoardCardSchema>;
 
 export const runtimeBoardColumnSchema = z.object({
@@ -568,6 +575,39 @@ export const runtimeClineKanbanAccessResponseSchema = z.object({
 });
 export type RuntimeClineKanbanAccessResponse = z.infer<typeof runtimeClineKanbanAccessResponseSchema>;
 
+export const runtimeClineAccountOrganizationSchema = z.object({
+	organizationId: z.string(),
+	name: z.string(),
+	active: z.boolean(),
+	roles: z.array(z.string()),
+});
+export type RuntimeClineAccountOrganization = z.infer<typeof runtimeClineAccountOrganizationSchema>;
+
+export const runtimeClineAccountOrganizationsResponseSchema = z.object({
+	organizations: z.array(runtimeClineAccountOrganizationSchema),
+	error: z.string().optional(),
+});
+export type RuntimeClineAccountOrganizationsResponse = z.infer<typeof runtimeClineAccountOrganizationsResponseSchema>;
+
+export const runtimeClineAccountBalanceResponseSchema = z.object({
+	balance: z.number().nullable(),
+	activeAccountLabel: z.string().nullable(),
+	activeOrganizationId: z.string().nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeClineAccountBalanceResponse = z.infer<typeof runtimeClineAccountBalanceResponseSchema>;
+
+export const runtimeClineAccountSwitchRequestSchema = z.object({
+	organizationId: z.string().nullable(),
+});
+export type RuntimeClineAccountSwitchRequest = z.infer<typeof runtimeClineAccountSwitchRequestSchema>;
+
+export const runtimeClineAccountSwitchResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeClineAccountSwitchResponse = z.infer<typeof runtimeClineAccountSwitchResponseSchema>;
+
 export const runtimeFeaturebaseTokenResponseSchema = z.object({
 	featurebaseJwt: z.string(),
 });
@@ -829,6 +869,8 @@ export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSc
 export const runtimeTaskSessionStartRequestSchema = z.object({
 	taskId: z.string(),
 	prompt: z.string(),
+	/** Display title from the Kanban task card. Propagated to SDK session metadata as a convenience copy. */
+	taskTitle: z.string().optional(),
 	images: z.array(runtimeTaskImageSchema).optional(),
 	startInPlanMode: z.boolean().optional(),
 	mode: runtimeTaskSessionModeSchema.optional(),

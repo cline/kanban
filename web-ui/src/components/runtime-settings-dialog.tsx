@@ -8,6 +8,7 @@ import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } fr
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AccountOrganizationSection } from "@/components/shared/account-organization-section";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import {
 	getRuntimeShortcutIconComponent,
@@ -74,7 +75,7 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 
 export type RuntimeSettingsSection = "shortcuts";
 
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid"];
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro"];
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -287,6 +288,7 @@ export function RuntimeSettingsDialog({
 	liveMcpAuthStatuses = null,
 	onOpenChange,
 	onSaved,
+	onAccountSwitched,
 	initialSection,
 }: {
 	open: boolean;
@@ -295,6 +297,7 @@ export function RuntimeSettingsDialog({
 	liveMcpAuthStatuses?: RuntimeClineMcpServerAuthStatus[] | null;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
+	onAccountSwitched?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
@@ -693,6 +696,15 @@ export function RuntimeSettingsDialog({
 						mcpController={clineMcpSettings}
 						controlsDisabled={controlsDisabled}
 						workspaceId={workspaceId}
+						accountSection={
+							clineSettings.providerId.trim() === "cline" ? (
+								<AccountOrganizationSection
+									workspaceId={workspaceId}
+									open={open}
+									onAccountSwitched={onAccountSwitched}
+								/>
+							) : null
+						}
 						onError={setSaveError}
 					/>
 				) : null}

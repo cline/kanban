@@ -5,7 +5,6 @@
 
 import {
 	buildWorkspaceMetadata,
-	type LlmsProviders as ClineSdkProviders,
 	createSessionHost,
 	createUserInstructionConfigWatcher,
 	getClineDefaultSystemPrompt,
@@ -18,12 +17,13 @@ import {
 	type ToolApprovalResult,
 	type UserInstructionConfigWatcher,
 } from "@clinebot/core";
+import type * as Llms from "@clinebot/llms";
 import type { BasicLogger } from "@clinebot/shared";
 import { resolveClineDataDir } from "@clinebot/shared/storage";
 import { CLINE_BUILTIN_SLASH_COMMANDS } from "./cline-slash-commands";
 import { getCliTelemetryService } from "./cline-telemetry-service";
 
-export { LoggerTelemetryAdapter, TelemetryService } from "@clinebot/core";
+export { TelemetryLoggerSink, TelemetryService } from "@clinebot/core";
 
 export type ClineSdkSessionHost = SessionHost;
 export type ClineSdkStartSessionInput = StartSessionInput;
@@ -124,6 +124,8 @@ export interface ClineSdkErrorEvent {
 	error: Error;
 	recoverable: boolean;
 	iteration: number;
+	/** Fallback message field — used for credit-limit detection when `error` does not contain parseable text. */
+	message?: string;
 }
 
 export type ClineSdkAgentEvent =
@@ -194,7 +196,7 @@ export type ClineSdkSessionEvent =
 	  };
 
 export type ClineSdkSessionRecord = Awaited<ReturnType<ClineSdkSessionHost["list"]>>[number];
-export type ClineSdkPersistedMessage = ClineSdkProviders.MessageWithMetadata;
+export type ClineSdkPersistedMessage = Llms.MessageWithMetadata;
 export type ClineSdkUserInstructionWatcher = UserInstructionConfigWatcher;
 export interface ClineSdkSlashCommand {
 	name: string;
@@ -271,5 +273,5 @@ export async function resolveClineSdkSystemPrompt(input: {
 	// its repo-aware behavior in the same way the official CLI does.
 	const shouldAppendWorkspaceMetadata = input.providerId === "cline";
 	const workspaceMetadata = shouldAppendWorkspaceMetadata ? await buildWorkspaceMetadata(input.cwd) : "";
-	return getClineDefaultSystemPrompt("Kanban", input.cwd, workspaceMetadata, input.rules ?? "");
+	return getClineDefaultSystemPrompt("Kanban", input.cwd, input.providerId, workspaceMetadata, input.rules ?? "");
 }

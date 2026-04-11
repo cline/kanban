@@ -11,19 +11,9 @@ export function isSelectedAgentAuthenticated(
 	return isClineProviderAuthenticated(clineProviderSettings);
 }
 
-export function shouldShowStartupOnboardingDialog(input: {
-	hasShownOnboardingDialog: boolean;
-	isTaskAgentReady: boolean | null | undefined;
-	isSelectedAgentAuthenticated: boolean;
-}): boolean {
+export function shouldShowStartupOnboardingDialog(input: { hasShownOnboardingDialog: boolean }): boolean {
 	if (!input.hasShownOnboardingDialog) {
 		return true;
 	}
-	if (input.isTaskAgentReady === null || input.isTaskAgentReady === undefined) {
-		return false;
-	}
-	if (!input.isSelectedAgentAuthenticated) {
-		return true;
-	}
-	return input.isTaskAgentReady === false;
+	return false;
 }

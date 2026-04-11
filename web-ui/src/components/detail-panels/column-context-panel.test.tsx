@@ -36,6 +36,7 @@ vi.mock("@hello-pangea/dnd", () => ({
 function createCard(id: string, prompt: string) {
 	return {
 		id,
+		title: prompt,
 		prompt,
 		startInPlanMode: false,
 		autoReviewEnabled: false,

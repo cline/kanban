@@ -134,7 +134,7 @@ export default function App(): ReactElement {
 		isLoading: isRuntimeProjectConfigLoading,
 		refresh: refreshRuntimeProjectConfig,
 	} = useRuntimeProjectConfig(currentProjectId);
-	const { isBlocked: isKanbanAccessBlocked } = useKanbanAccessGate({
+	const { isBlocked: isKanbanAccessBlocked, refresh: refreshKanbanAccess } = useKanbanAccessGate({
 		workspaceId: currentProjectId,
 	});
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
@@ -284,6 +284,8 @@ export default function App(): ReactElement {
 
 	const {
 		isInlineTaskCreateOpen,
+		newTaskTitle,
+		setNewTaskTitle,
 		newTaskPrompt,
 		setNewTaskPrompt,
 		newTaskImages,
@@ -298,6 +300,8 @@ export default function App(): ReactElement {
 		newTaskBranchRef,
 		setNewTaskBranchRef,
 		editingTaskId,
+		editTaskTitle,
+		setEditTaskTitle,
 		editTaskPrompt,
 		setEditTaskPrompt,
 		editTaskImages,
@@ -317,6 +321,7 @@ export default function App(): ReactElement {
 		handleCancelEditTask,
 		handleSaveEditedTask,
 		handleSaveAndStartEditedTask,
+		handleSaveTaskTitle,
 		handleCreateTask,
 		handleCreateTasks,
 		resetTaskEditorState,
@@ -713,6 +718,8 @@ export default function App(): ReactElement {
 
 	const inlineTaskEditor = editingTaskId ? (
 		<TaskInlineCreateCard
+			title={editTaskTitle}
+			onTitleChange={setEditTaskTitle}
 			prompt={editTaskPrompt}
 			onPromptChange={setEditTaskPrompt}
 			images={editTaskImages}
@@ -885,6 +892,7 @@ export default function App(): ReactElement {
 												editingTaskId={editingTaskId}
 												inlineTaskEditor={inlineTaskEditor}
 												onEditTask={handleOpenEditTask}
+												onSaveTaskTitle={handleSaveTaskTitle}
 												onCommitTask={handleCommitTask}
 												onOpenPrTask={handleOpenPrTask}
 												onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
@@ -968,6 +976,7 @@ export default function App(): ReactElement {
 									onEditTask={(task) => {
 										handleOpenEditTask(task, { preserveDetailSelection: true });
 									}}
+									onSaveTaskTitle={handleSaveTaskTitle}
 									onCommitTask={handleCommitTask}
 									onOpenPrTask={handleOpenPrTask}
 									onAgentCommitTask={handleAgentCommitTask}
@@ -1035,6 +1044,7 @@ export default function App(): ReactElement {
 						refreshRuntimeProjectConfig();
 						refreshSettingsRuntimeProjectConfig();
 					}}
+					onAccountSwitched={refreshKanbanAccess}
 				/>
 				<DebugDialog
 					open={isDebugDialogOpen}
@@ -1046,6 +1056,8 @@ export default function App(): ReactElement {
 				<TaskCreateDialog
 					open={isInlineTaskCreateOpen}
 					onOpenChange={handleCreateDialogOpenChange}
+					title={newTaskTitle}
+					onTitleChange={setNewTaskTitle}
 					prompt={newTaskPrompt}
 					onPromptChange={setNewTaskPrompt}
 					images={newTaskImages}

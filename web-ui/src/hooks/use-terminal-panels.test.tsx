@@ -42,6 +42,7 @@ interface HookSnapshot {
 function createSelection(taskId: string): CardSelection {
 	const card = {
 		id: taskId,
+		title: `Task ${taskId}`,
 		prompt: `Task ${taskId}`,
 		startInPlanMode: false,
 		autoReviewEnabled: false,

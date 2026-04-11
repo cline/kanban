@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+	type RuntimeClineAccountSwitchRequest,
 	type RuntimeClineAddProviderRequest,
 	type RuntimeClineMcpOAuthRequest,
 	type RuntimeClineMcpSettingsSaveRequest,
@@ -31,6 +32,7 @@ import {
 	type RuntimeWorkspaceStateSaveRequest,
 	type RuntimeWorktreeDeleteRequest,
 	type RuntimeWorktreeEnsureRequest,
+	runtimeClineAccountSwitchRequestSchema,
 	runtimeClineAddProviderRequestSchema,
 	runtimeClineMcpOAuthRequestSchema,
 	runtimeClineMcpSettingsSaveRequestSchema,
@@ -586,4 +588,8 @@ export function parseTerminalWsClientMessage(value: unknown): RuntimeTerminalWsC
 
 export function parseDirectoryListRequest(value: unknown): RuntimeDirectoryListRequest {
 	return parseWithSchema(runtimeDirectoryListRequestSchema, value);
+}
+
+export function parseClineAccountSwitchRequest(value: unknown): RuntimeClineAccountSwitchRequest {
+	return parseWithSchema(runtimeClineAccountSwitchRequestSchema, value);
 }
