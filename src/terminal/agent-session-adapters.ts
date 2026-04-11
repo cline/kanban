@@ -756,6 +756,10 @@ const codexAdapter: AgentSessionAdapter = {
 		let deferredStartupInput: string | undefined;
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 
+		if (!hasCodexConfigOverride(codexArgs, "check_for_update_on_startup")) {
+			codexArgs.push("-c", "check_for_update_on_startup=false");
+		}
+
 		if (input.autonomousModeEnabled && !hasCliOption(codexArgs, "--dangerously-bypass-approvals-and-sandbox")) {
 			codexArgs.push("--dangerously-bypass-approvals-and-sandbox");
 		}
