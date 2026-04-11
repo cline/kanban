@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1387,6 +1387,45 @@ async function addCopilotTrustedFolder(folderPath: string): Promise<void> {
 	}
 }
 
+/**
+ * Find the most recent Copilot CLI session ID for a given working directory.
+ * Scans `~/.copilot/session-state/` workspace manifests to match by cwd.
+ */
+async function findCopilotSessionIdForCwd(cwd: string): Promise<string | null> {
+	try {
+		const copilotHome = process.env.COPILOT_HOME ?? join(homedir(), ".copilot");
+		const sessionStateDir = join(copilotHome, "session-state");
+		const entries = await readdir(sessionStateDir);
+		const normalizedCwd = cwd.replace(/\/+$/u, "");
+		const results = await Promise.all(
+			entries.map(async (entry) => {
+				try {
+					const content = await readFile(join(sessionStateDir, entry, "workspace.yaml"), "utf8");
+					const cwdMatch = content.match(/^cwd:\s*(.+)$/mu);
+					if (cwdMatch?.[1]?.replace(/\/+$/u, "") !== normalizedCwd) {
+						return null;
+					}
+					const updatedMatch = content.match(/^updated_at:\s*(.+)$/mu);
+					return { id: entry, updated: updatedMatch?.[1] ?? "" };
+				} catch {
+					return null;
+				}
+			}),
+		);
+		let bestId: string | null = null;
+		let bestUpdated = "";
+		for (const result of results) {
+			if (result && result.updated > bestUpdated) {
+				bestUpdated = result.updated;
+				bestId = result.id;
+			}
+		}
+		return bestId;
+	} catch {
+		return null;
+	}
+}
+
 function buildCopilotHookEntry(
 	event: RuntimeHookEvent,
 	metadata?: HookCommandMetadata,
@@ -1495,8 +1534,13 @@ const copilotAdapter: AgentSessionAdapter = {
 			}
 		}
 
-		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
-			args.push("--continue");
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume")) {
+			// --continue resumes the most recent global session, not the
+			// task-specific one.  Look up the session ID by worktree path.
+			const sessionId = await findCopilotSessionIdForCwd(input.cwd);
+			if (sessionId) {
+				args.push(`--resume=${sessionId}`);
+			}
 		}
 
 		if (!hasCliOption(args, "--add-dir")) {
@@ -1535,11 +1579,17 @@ const copilotAdapter: AgentSessionAdapter = {
 			await trustPromise;
 		}
 
+		// Skip the prompt when resuming — --interactive conflicts with --resume
+		// and causes Copilot to treat the prompt as a new instruction and exit.
+		const isResuming = hasCliOption(args, "--resume");
 		const trimmed = input.prompt.trim();
-		// Use --interactive for all prompt delivery including plan mode.
-		// Copilot's --interactive flag accepts slash commands directly, so
-		// /plan <prompt> works as the initial prompt without needing deferred input.
-		const effectivePrompt = input.startInPlanMode ? (trimmed ? `/plan ${trimmed}` : "/plan") : input.prompt;
+		const effectivePrompt = isResuming
+			? ""
+			: input.startInPlanMode
+				? trimmed
+					? `/plan ${trimmed}`
+					: "/plan"
+				: input.prompt;
 		const withPromptLaunch = effectivePrompt.trim()
 			? withPrompt(args, effectivePrompt, "flag", "--interactive")
 			: { args, env: {} };
