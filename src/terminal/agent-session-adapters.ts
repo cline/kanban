@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -1395,23 +1396,49 @@ function buildCopilotHookEntry(
 }
 
 // Copilot CLI shows an "(Esc to cancel" status bar while the agent is
-// actively working.  Track its presence across output chunks: when it
-// appears the agent is busy (In Progress), when it disappears for
-// enough consecutive chunks the agent is idle (Review).
-const COPILOT_IDLE_CHUNK_THRESHOLD = 15;
+// actively working.  Track its presence: when it appears the agent is
+// busy (In Progress), when it disappears for long enough the agent is
+// idle (Review).  Uses a real timer so the transition fires even if the
+// TUI stops producing output chunks when idle.
+const COPILOT_IDLE_TIMEOUT_MS = 3_000;
 
-function createCopilotTaskCompleteDetector(): AgentOutputTransitionDetector {
-	let chunksWithoutStatusBar = 0;
+function createCopilotTaskCompleteDetector(onIdleTimeout: () => void): AgentOutputTransitionDetector {
+	let idleTimer: ReturnType<typeof setTimeout> | null = null;
+	let statusBarWasActive = false;
+
+	function clearIdleTimer(): void {
+		if (idleTimer !== null) {
+			clearTimeout(idleTimer);
+			idleTimer = null;
+		}
+	}
+
+	function startIdleTimer(): void {
+		if (idleTimer !== null) {
+			return;
+		}
+		idleTimer = setTimeout(() => {
+			idleTimer = null;
+			onIdleTimeout();
+		}, COPILOT_IDLE_TIMEOUT_MS);
+	}
+
 	return (data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null => {
 		if (summary.state !== "running" && summary.state !== "awaiting_review") {
+			clearIdleTimer();
 			return null;
 		}
 		const stripped = stripAnsi(data);
-		const isWorking = stripped.includes("(Esc to cancel");
-		const isAskingUser = stripped.includes("Enter to confirm") || stripped.includes("Enter to submit");
+		// Check only the tail for the active status bar — old status bar
+		// text from previous operations persists in the TUI screen buffer
+		// but the current status bar is always at the bottom.
+		const tail = stripped.slice(-100);
+		const isWorking = tail.includes("(Esc to cancel");
+		const isAskingUser = tail.includes("Enter to confirm") || tail.includes("Enter to submit");
 
 		if (isWorking && !isAskingUser) {
-			chunksWithoutStatusBar = 0;
+			clearIdleTimer();
+			statusBarWasActive = true;
 			if (summary.state === "awaiting_review") {
 				return { type: "hook.to_in_progress" };
 			}
@@ -1420,13 +1447,13 @@ function createCopilotTaskCompleteDetector(): AgentOutputTransitionDetector {
 
 		// Agent is asking a question — move to review immediately.
 		if (isAskingUser && summary.state === "running") {
-			chunksWithoutStatusBar = 0;
+			clearIdleTimer();
 			return { type: "agent.task-complete" };
 		}
 
-		chunksWithoutStatusBar += 1;
-		if (chunksWithoutStatusBar >= COPILOT_IDLE_CHUNK_THRESHOLD && summary.state === "running") {
-			return { type: "agent.task-complete" };
+		// Status bar gone — start idle timer if we previously saw it active.
+		if (statusBarWasActive && summary.state === "running") {
+			startIdleTimer();
 		}
 		return null;
 	};
@@ -1476,7 +1503,7 @@ const copilotAdapter: AgentSessionAdapter = {
 			const hooksConfig = {
 				version: 1,
 				hooks: {
-					agentStop: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					agentStop: [buildCopilotHookEntry("to_review", { source: "copilot" })],
 					subagentStop: [buildCopilotHookEntry("activity", { source: "copilot" })],
 					preToolUse: [buildCopilotHookEntry("activity", { source: "copilot" })],
 					permissionRequest: [buildCopilotHookEntry("activity", { source: "copilot" })],
@@ -1508,13 +1535,26 @@ const copilotAdapter: AgentSessionAdapter = {
 			? withPrompt(args, effectivePrompt, "flag", "--interactive")
 			: { args, env: {} };
 
-		return {
+		const launch: PreparedAgentLaunch = {
 			...withPromptLaunch,
 			env: {
 				...withPromptLaunch.env,
 				...env,
 			},
-			detectOutputTransition: createCopilotTaskCompleteDetector(),
+			detectOutputTransition: createCopilotTaskCompleteDetector(() => {
+				// Fire the idle transition via the existing hooks ingest pipeline
+				// so no core session manager changes are needed.
+				const parts = buildHookCommandParts("to_review", { source: "copilot" });
+				const [cmd, ...cmdArgs] = parts;
+				if (cmd) {
+					const child = spawn(cmd, cmdArgs, {
+						stdio: "ignore",
+						detached: true,
+						env: { ...process.env, ...env },
+					});
+					child.unref();
+				}
+			}),
 			shouldInspectOutputForTransition: shouldInspectCopilotOutputForTransition,
 			...(hooksFilePath
 				? {
@@ -1528,6 +1568,7 @@ const copilotAdapter: AgentSessionAdapter = {
 					}
 				: {}),
 		};
+		return launch;
 	},
 };
 
