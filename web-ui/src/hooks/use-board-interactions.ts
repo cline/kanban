@@ -18,7 +18,7 @@ import {
 	updateTask,
 } from "@/state/board-state";
 import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
+import { type SendTerminalInputOptions, sendTuiInputWithSubmit } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
@@ -235,20 +235,7 @@ export function useBoardInteractions({
 
 	const handleSendReviewComments = useCallback(
 		async (taskId: string, text: string) => {
-			// Send text then Enter as separate writes with a delay — Copilot's
-			// TUI needs to process the text before it can accept Enter.
-			// Prepend focus-in since clicking the send button defocuses the terminal.
-			await sendTaskSessionInput(taskId, "\x1b[I" + text, {
-				appendNewline: false,
-				preferTerminal: false,
-			});
-			await new Promise<void>((resolve) => {
-				setTimeout(resolve, 300);
-			});
-			const sent = await sendTaskSessionInput(taskId, "\r", {
-				appendNewline: false,
-				preferTerminal: false,
-			});
+			const sent = await sendTuiInputWithSubmit(sendTaskSessionInput, taskId, text);
 			if (!sent.ok) {
 				showAppToast({
 					intent: "danger",

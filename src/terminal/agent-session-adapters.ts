@@ -1402,7 +1402,12 @@ function buildCopilotHookEntry(
 // TUI stops producing output chunks when idle.
 const COPILOT_IDLE_TIMEOUT_MS = 3_000;
 
-function createCopilotTaskCompleteDetector(onIdleTimeout: () => void): AgentOutputTransitionDetector {
+interface CopilotDetector {
+	detect: AgentOutputTransitionDetector;
+	dispose: () => void;
+}
+
+function createCopilotTaskCompleteDetector(onIdleTimeout: () => void): CopilotDetector {
 	let idleTimer: ReturnType<typeof setTimeout> | null = null;
 	let statusBarWasActive = false;
 
@@ -1423,16 +1428,15 @@ function createCopilotTaskCompleteDetector(onIdleTimeout: () => void): AgentOutp
 		}, COPILOT_IDLE_TIMEOUT_MS);
 	}
 
-	return (data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null => {
+	const detect: AgentOutputTransitionDetector = (data, summary) => {
 		if (summary.state !== "running" && summary.state !== "awaiting_review") {
 			clearIdleTimer();
 			return null;
 		}
-		const stripped = stripAnsi(data);
-		// Check only the tail for the active status bar — old status bar
-		// text from previous operations persists in the TUI screen buffer
-		// but the current status bar is always at the bottom.
-		const tail = stripped.slice(-100);
+		// Only strip ANSI on the tail — the full output can be large and
+		// stripAnsi iterates character-by-character.  The active status bar
+		// is always at the bottom of the TUI (end of output).
+		const tail = stripAnsi(data.slice(-200));
 		const isWorking = tail.includes("(Esc to cancel");
 		const isAskingUser = tail.includes("Enter to confirm") || tail.includes("Enter to submit");
 
@@ -1448,7 +1452,7 @@ function createCopilotTaskCompleteDetector(onIdleTimeout: () => void): AgentOutp
 		// Agent is asking a question — move to review immediately.
 		if (isAskingUser && summary.state === "running") {
 			clearIdleTimer();
-			return { type: "agent.task-complete" };
+			return { type: "hook.to_review" };
 		}
 
 		// Status bar gone — start idle timer if we previously saw it active.
@@ -1457,6 +1461,8 @@ function createCopilotTaskCompleteDetector(onIdleTimeout: () => void): AgentOutp
 		}
 		return null;
 	};
+
+	return { detect, dispose: clearIdleTimer };
 }
 
 function shouldInspectCopilotOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
@@ -1535,38 +1541,39 @@ const copilotAdapter: AgentSessionAdapter = {
 			? withPrompt(args, effectivePrompt, "flag", "--interactive")
 			: { args, env: {} };
 
+		const copilotDetector = createCopilotTaskCompleteDetector(() => {
+			// Fire the idle transition via the existing hooks ingest pipeline
+			// so no core session manager changes are needed.
+			const parts = buildHookCommandParts("to_review", { source: "copilot" });
+			const [cmd, ...cmdArgs] = parts;
+			if (cmd) {
+				const child = spawn(cmd, cmdArgs, {
+					stdio: "ignore",
+					detached: true,
+					env: { ...process.env, ...env },
+				});
+				child.unref();
+			}
+		});
+
 		const launch: PreparedAgentLaunch = {
 			...withPromptLaunch,
 			env: {
 				...withPromptLaunch.env,
 				...env,
 			},
-			detectOutputTransition: createCopilotTaskCompleteDetector(() => {
-				// Fire the idle transition via the existing hooks ingest pipeline
-				// so no core session manager changes are needed.
-				const parts = buildHookCommandParts("to_review", { source: "copilot" });
-				const [cmd, ...cmdArgs] = parts;
-				if (cmd) {
-					const child = spawn(cmd, cmdArgs, {
-						stdio: "ignore",
-						detached: true,
-						env: { ...process.env, ...env },
-					});
-					child.unref();
-				}
-			}),
+			detectOutputTransition: copilotDetector.detect,
 			shouldInspectOutputForTransition: shouldInspectCopilotOutputForTransition,
-			...(hooksFilePath
-				? {
-						cleanup: async () => {
-							try {
-								await unlink(hooksFilePath);
-							} catch {
-								// best-effort cleanup
-							}
-						},
+			cleanup: async () => {
+				copilotDetector.dispose();
+				if (hooksFilePath) {
+					try {
+						await unlink(hooksFilePath);
+					} catch {
+						// best-effort cleanup
 					}
-				: {}),
+				}
+			},
 		};
 		return launch;
 	},
