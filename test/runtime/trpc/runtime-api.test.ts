@@ -506,7 +506,8 @@ describe("createRuntimeApi startTaskSession", () => {
 				],
 				providerId: "anthropic",
 				apiKey: "anthropic-api-key",
-				mode: "plan",
+				mode: "act",
+				startInPlanMode: true,
 				resumeFromTrash: undefined,
 			}),
 		);

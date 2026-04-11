@@ -194,7 +194,7 @@ describe("useStartupOnboarding", () => {
 		expect(snapshot.isStartupOnboardingDialogOpen).toBe(false);
 	});
 
-	it("reopens after a project is added when setup is still incomplete", async () => {
+	it("stays closed once onboarding has already been shown, even when setup is incomplete", async () => {
 		window.localStorage.setItem(LocalStorageKey.OnboardingDialogShown, "true");
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -218,7 +218,67 @@ describe("useStartupOnboarding", () => {
 		}
 
 		const snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.isStartupOnboardingDialogOpen).toBe(false);
+	});
+
+	it("stays dismissed after closing, even when current project changes", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId={null}
+					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
+					isRuntimeProjectConfigLoading={false}
+					isTaskAgentReady={false}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a startup onboarding snapshot.");
+		}
+
+		let snapshot = latestSnapshot as HookSnapshot;
 		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
+
+		await act(async () => {
+			snapshot.handleCloseStartupOnboardingDialog();
+			await Promise.resolve();
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a startup onboarding snapshot.");
+		}
+
+		snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.isStartupOnboardingDialogOpen).toBe(false);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId={"project-1"}
+					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
+					isRuntimeProjectConfigLoading={false}
+					isTaskAgentReady={false}
+					onSnapshot={(nextSnapshot) => {
+						latestSnapshot = nextSnapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a startup onboarding snapshot.");
+		}
+
+		snapshot = latestSnapshot as HookSnapshot;
+		expect(snapshot.isStartupOnboardingDialogOpen).toBe(false);
 	});
 
 	it("can be manually opened from debug tools even when normal criteria would keep it closed", async () => {

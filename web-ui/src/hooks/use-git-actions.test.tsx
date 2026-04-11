@@ -60,6 +60,7 @@ function createBoard(): BoardData {
 				cards: [
 					{
 						id: "task-1",
+						title: "Ship it",
 						prompt: "Ship it",
 						startInPlanMode: false,
 						autoReviewEnabled: false,

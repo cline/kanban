@@ -111,7 +111,11 @@ export function useClineChatSession({
 	}, [onLoadMessages, taskId]);
 
 	useEffect(() => {
-		if (!incomingMessages || incomingMessages.length === 0) {
+		if (incomingMessages === null) {
+			return;
+		}
+		if (incomingMessages.length === 0) {
+			setMessages([]);
 			return;
 		}
 		setMessages((currentMessages) => mergeMessages(currentMessages, incomingMessages));

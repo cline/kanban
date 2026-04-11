@@ -6,7 +6,11 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type {
+	RuntimeClineAccountBalanceResponse,
+	RuntimeClineAccountOrganizationsResponse,
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineAccountSwitchRequest,
+	RuntimeClineAccountSwitchResponse,
 	RuntimeClineAddProviderRequest,
 	RuntimeClineAddProviderResponse,
 	RuntimeClineKanbanAccessResponse,
@@ -86,7 +90,11 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract";
 import {
+	runtimeClineAccountBalanceResponseSchema,
+	runtimeClineAccountOrganizationsResponseSchema,
 	runtimeClineAccountProfileResponseSchema,
+	runtimeClineAccountSwitchRequestSchema,
+	runtimeClineAccountSwitchResponseSchema,
 	runtimeClineAddProviderRequestSchema,
 	runtimeClineAddProviderResponseSchema,
 	runtimeClineKanbanAccessResponseSchema,
@@ -231,6 +239,14 @@ export interface RuntimeTrpcContext {
 		getClineAccountProfile: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeClineAccountProfileResponse>;
 		getClineKanbanAccess: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeClineKanbanAccessResponse>;
 		getFeaturebaseToken: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeFeaturebaseTokenResponse>;
+		getClineAccountBalance: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeClineAccountBalanceResponse>;
+		getClineAccountOrganizations: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+		) => Promise<RuntimeClineAccountOrganizationsResponse>;
+		switchClineAccount: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+			input: RuntimeClineAccountSwitchRequest,
+		) => Promise<RuntimeClineAccountSwitchResponse>;
 		getClineProviderModels: (
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineProviderModelsRequest,
@@ -477,6 +493,20 @@ export const runtimeAppRouter = t.router({
 		getFeaturebaseToken: t.procedure.output(runtimeFeaturebaseTokenResponseSchema).query(async ({ ctx }) => {
 			return await ctx.runtimeApi.getFeaturebaseToken(ctx.workspaceScope);
 		}),
+		getClineAccountBalance: t.procedure.output(runtimeClineAccountBalanceResponseSchema).query(async ({ ctx }) => {
+			return await ctx.runtimeApi.getClineAccountBalance(ctx.workspaceScope);
+		}),
+		getClineAccountOrganizations: t.procedure
+			.output(runtimeClineAccountOrganizationsResponseSchema)
+			.query(async ({ ctx }) => {
+				return await ctx.runtimeApi.getClineAccountOrganizations(ctx.workspaceScope);
+			}),
+		switchClineAccount: t.procedure
+			.input(runtimeClineAccountSwitchRequestSchema)
+			.output(runtimeClineAccountSwitchResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.switchClineAccount(ctx.workspaceScope, input);
+			}),
 		getClineProviderModels: t.procedure
 			.input(runtimeClineProviderModelsRequestSchema)
 			.output(runtimeClineProviderModelsResponseSchema)

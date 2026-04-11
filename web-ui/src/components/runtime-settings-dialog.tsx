@@ -8,6 +8,7 @@ import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } fr
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import { Check, ChevronDown, Circle, CircleDot, ExternalLink, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AccountOrganizationSection } from "@/components/shared/account-organization-section";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import {
 	getRuntimeShortcutIconComponent,
@@ -287,6 +288,7 @@ export function RuntimeSettingsDialog({
 	liveMcpAuthStatuses = null,
 	onOpenChange,
 	onSaved,
+	onAccountSwitched,
 	initialSection,
 }: {
 	open: boolean;
@@ -295,6 +297,7 @@ export function RuntimeSettingsDialog({
 	liveMcpAuthStatuses?: RuntimeClineMcpServerAuthStatus[] | null;
 	onOpenChange: (open: boolean) => void;
 	onSaved?: () => void;
+	onAccountSwitched?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
 	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
@@ -693,6 +696,15 @@ export function RuntimeSettingsDialog({
 						mcpController={clineMcpSettings}
 						controlsDisabled={controlsDisabled}
 						workspaceId={workspaceId}
+						accountSection={
+							clineSettings.providerId.trim() === "cline" ? (
+								<AccountOrganizationSection
+									workspaceId={workspaceId}
+									open={open}
+									onAccountSwitched={onAccountSwitched}
+								/>
+							) : null
+						}
 						onError={setSaveError}
 					/>
 				) : null}
@@ -789,11 +801,13 @@ export function RuntimeSettingsDialog({
 								previewThemeId(theme.id);
 							}}
 							className={cn(
-								"w-7 h-7 rounded-full border-2 cursor-pointer transition-all hover:scale-110",
-								draftThemeId === theme.id ? "border-accent ring-2 ring-accent/40" : "border-transparent",
+								"w-7 h-7 rounded-full cursor-pointer hover:opacity-80",
+								draftThemeId === theme.id ? "border-2 border-white" : "border-2",
 							)}
 							style={{
-								background: `radial-gradient(circle at 60% 40%, ${theme.accent}, ${theme.surface})`,
+								backgroundColor: theme.accent,
+								borderColor:
+									draftThemeId === theme.id ? "white" : `color-mix(in srgb, ${theme.accent} 50%, black)`,
 							}}
 						/>
 					))}

@@ -8,6 +8,8 @@ import * as ClineCore from "@clinebot/core/node";
 
 import {
 	addLocalProvider,
+	type ClineAccountBalance,
+	type ClineAccountOrganizationBalance,
 	ClineAccountService,
 	type ClineAccountUser,
 	type ClineOrganization,
@@ -542,12 +544,14 @@ export async function fetchSdkClineAccountProfile(input: ApiRequestParams): Prom
 	return me;
 }
 
-export async function fetchSdkOrgData(input: ApiRequestParams & { organizatinId: string }): Promise<ClineOrganization> {
+export async function fetchSdkOrgData(
+	input: ApiRequestParams & { organizationId: string },
+): Promise<ClineOrganization> {
 	const accountService = new ClineAccountService({
 		apiBaseUrl: input.apiBaseUrl,
 		getAuthToken: async () => input.accessToken,
 	});
-	return await accountService.fetchOrganization(input.organizatinId);
+	return await accountService.fetchOrganization(input.organizationId);
 }
 
 export async function fetchSdkFeaturebaseToken(input: ApiRequestParams): Promise<{ featurebaseJwt: string }> {
@@ -562,7 +566,9 @@ export async function fetchSdkFeaturebaseToken(input: ApiRequestParams): Promise
 	return { featurebaseJwt: response.featurebaseJwt };
 }
 
-export async function fetchSdkClineUserRemoteConfig(input: ApiRequestParams): Promise<SdkUserRemoteConfigResponse> {
+export async function fetchSdkClineUserRemoteConfig(
+	input: ApiRequestParams,
+): Promise<SdkUserRemoteConfigResponse | null> {
 	const accountServiceConstructor = ClineAccountService;
 	if (!accountServiceConstructor) {
 		throw new Error("ClineAccountService is not available from @clinebot/core/node.");
@@ -572,4 +578,32 @@ export async function fetchSdkClineUserRemoteConfig(input: ApiRequestParams): Pr
 		getAuthToken: async () => input.accessToken,
 	});
 	return await accountService.fetchRemoteConfig();
+}
+
+export async function fetchSdkClineAccountBalance(input: ApiRequestParams): Promise<ClineAccountBalance> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	return await accountService.fetchBalance();
+}
+
+export async function fetchSdkOrganizationBalance(
+	input: ApiRequestParams & { organizationId: string },
+): Promise<ClineAccountOrganizationBalance> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	return await accountService.fetchOrganizationBalance(input.organizationId);
+}
+
+export async function switchSdkClineAccount(
+	input: ApiRequestParams & { organizationId?: string | null },
+): Promise<void> {
+	const accountService = new ClineAccountService({
+		apiBaseUrl: input.apiBaseUrl,
+		getAuthToken: async () => input.accessToken,
+	});
+	await accountService.switchAccount(input.organizationId ?? undefined);
 }

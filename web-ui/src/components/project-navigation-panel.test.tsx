@@ -3,12 +3,24 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
+import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
 import type { RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 
 vi.mock("@/resize/layout-customizations", () => ({
 	useLayoutResetEffect: () => {},
 }));
+
+/** Wrapper that owns the sidebar layout state via the hook and passes it as props. */
+function PanelWithLayout(
+	props: Omit<
+		ComponentProps<typeof ProjectNavigationPanel>,
+		"sidebarWidth" | "setExpandedSidebarWidth" | "isCollapsed" | "setSidebarCollapsed"
+	>,
+): React.ReactElement {
+	const layout = useProjectNavigationLayout();
+	return <ProjectNavigationPanel {...props} {...layout} />;
+}
 
 const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
 const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
@@ -55,6 +67,14 @@ function getResizeHandle(container: HTMLElement): HTMLElement {
 		throw new Error("Resize handle was not rendered");
 	}
 	return handle as HTMLElement;
+}
+
+function getButtonByText(container: HTMLElement, text: string): HTMLButtonElement {
+	const button = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent === text);
+	if (!(button instanceof HTMLButtonElement)) {
+		throw new Error(`Button with text "${text}" was not rendered`);
+	}
+	return button;
 }
 
 describe("ProjectNavigationPanel width persistence", () => {
@@ -106,10 +126,10 @@ describe("ProjectNavigationPanel width persistence", () => {
 		});
 	});
 
-	function renderPanel(overrides: Partial<ComponentProps<typeof ProjectNavigationPanel>> = {}): void {
+	function renderPanel(overrides: Partial<ComponentProps<typeof PanelWithLayout>> = {}): void {
 		act(() => {
 			root.render(
-				<ProjectNavigationPanel
+				<PanelWithLayout
 					projects={PROJECTS}
 					currentProjectId="project-1"
 					removingProjectId={null}
@@ -189,5 +209,30 @@ describe("ProjectNavigationPanel width persistence", () => {
 		expect(container.textContent).toContain("Kanban is in beta. Help us improve by sharing your experience.");
 		expect(container.textContent).toContain("Send feedback");
 		expect(container.textContent).not.toContain("Report issue");
+	});
+
+	it("persists terminal tips dismissal", () => {
+		renderPanel({
+			activeSection: "agent",
+			selectedAgentId: "droid",
+		});
+		expect(container.textContent).toContain("Tips");
+		expect(localStorage.getItem(LocalStorageKey.AgentTipsDismissed)).toBeNull();
+
+		const hideButton = container.querySelector('[aria-label="Dismiss tips"]') as HTMLButtonElement;
+		act(() => {
+			hideButton.click();
+		});
+
+		expect(container.textContent).toContain("Show tips");
+		expect(localStorage.getItem(LocalStorageKey.AgentTipsDismissed)).toBe("true");
+
+		const showTipsButton = getButtonByText(container, "Show tips");
+		act(() => {
+			showTipsButton.click();
+		});
+
+		expect(container.textContent).toContain("Tips");
+		expect(localStorage.getItem(LocalStorageKey.AgentTipsDismissed)).toBeNull();
 	});
 });

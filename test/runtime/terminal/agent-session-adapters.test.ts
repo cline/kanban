@@ -29,6 +29,29 @@ function setKanbanProcessContext(): void {
 	});
 }
 
+function getCodexConfigOverrideValues(args: string[], key: string): string[] {
+	const values: string[] = [];
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "-c" || arg === "--config") {
+			const next = args[index + 1];
+			if (typeof next === "string" && next.startsWith(`${key}=`)) {
+				values.push(next.slice(key.length + 1));
+			}
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith(`-c${key}=`)) {
+			values.push(arg.slice(key.length + 3));
+			continue;
+		}
+		if (arg.startsWith(`--config=${key}=`)) {
+			values.push(arg.slice(key.length + 10));
+		}
+	}
+	return values;
+}
+
 afterEach(() => {
 	if (originalHome === undefined) {
 		delete process.env.HOME;
@@ -116,13 +139,41 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 
-		const configArgIndex = launch.args.indexOf("-c");
-		expect(configArgIndex).toBeGreaterThanOrEqual(0);
-		expect(launch.args[configArgIndex + 1]).toContain("developer_instructions=");
-		expect(launch.args[configArgIndex + 1]).toContain("Kanban sidebar agent");
-		expect(launch.args[configArgIndex + 1]).toContain(
+		const developerInstructions = getCodexConfigOverrideValues(launch.args, "developer_instructions");
+		expect(developerInstructions).toHaveLength(1);
+		expect(developerInstructions[0]).toContain("Kanban sidebar agent");
+		expect(developerInstructions[0]).toContain(
 			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
 		);
+		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
+	});
+
+	it("disables Codex startup update checks for Kanban-launched sessions", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-updates",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
+	});
+
+	it("preserves an explicit Codex update-check override", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-custom-update-check",
+			agentId: "codex",
+			binary: "codex",
+			args: ["-c", "check_for_update_on_startup=true"],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["true"]);
 	});
 
 	it("writes Claude settings with explicit permission hook", async () => {

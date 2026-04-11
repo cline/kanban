@@ -2,6 +2,7 @@ export enum LocalStorageKey {
 	TaskStartInPlanMode = "kanban.task-start-in-plan-mode",
 	TaskAutoReviewEnabled = "kanban.task-auto-review-enabled",
 	TaskAutoReviewMode = "kanban.task-auto-review-mode",
+	AgentTipsDismissed = "kanban.agent-tips-dismissed",
 	TaskCreatePrimaryStartAction = "kanban.task-create-primary-start-action",
 	BottomTerminalPaneHeight = "kanban.bottom-terminal-pane-height",
 	DetailAgentPanelRatio = "kanban.detail-agent-panel-ratio",

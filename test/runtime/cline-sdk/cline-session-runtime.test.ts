@@ -54,6 +54,95 @@ function createPersistedRecord(input: {
 }
 
 describe("InMemoryClineSessionRuntime", () => {
+	it("persists provided task title to session metadata when supported", async () => {
+		const updateSession = vi.fn(async () => ({ updated: true }));
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+			sessionService: {
+				updateSession,
+			},
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		const result = await runtime.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			taskTitle: "Readable task title",
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-6",
+			systemPrompt: "You are a helpful coding assistant.",
+		});
+
+		expect(result.sessionId).toBeTruthy();
+		expect(updateSession).toHaveBeenCalledWith({
+			sessionId: result.sessionId,
+			title: "Readable task title",
+		});
+	});
+
+	it("ignores session metadata update failures during start", async () => {
+		const updateSession = vi.fn(async () => {
+			throw new Error("storage unavailable");
+		});
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+			sessionService: {
+				updateSession,
+			},
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await expect(
+			runtime.startTaskSession({
+				taskId: "task-1",
+				cwd: "/tmp/worktree",
+				prompt: "Investigate startup",
+				taskTitle: "Readable task title",
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-6",
+				systemPrompt: "You are a helpful coding assistant.",
+			}),
+		).resolves.toEqual(
+			expect.objectContaining({
+				sessionId: expect.any(String),
+			}),
+		);
+		expect(updateSession).toHaveBeenCalledTimes(1);
+	});
+
 	it("routes host events through the pending requested session id before start resolves", async () => {
 		const startDeferred = createDeferred<{ sessionId: string; result: unknown }>();
 		const onTaskEvent = vi.fn();

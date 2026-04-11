@@ -18,6 +18,7 @@ import {
 } from "@/types";
 
 export interface TaskDraft {
+	title?: string;
 	prompt: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
@@ -99,6 +100,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	const card = rawCard as {
 		id?: unknown;
+		title?: unknown;
 		prompt?: unknown;
 		startInPlanMode?: unknown;
 		autoReviewEnabled?: unknown;
@@ -116,11 +118,16 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	if (!baseRef) {
 		return null;
 	}
+	const title = (typeof card.title === "string" ? card.title.trim() : "") || prompt;
+	if (!title) {
+		return null;
+	}
 
 	const now = Date.now();
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
+		title,
 		prompt,
 		startInPlanMode: typeof card.startInPlanMode === "boolean" ? card.startInPlanMode : false,
 		autoReviewEnabled: typeof card.autoReviewEnabled === "boolean" ? card.autoReviewEnabled : false,
@@ -268,6 +275,7 @@ export function addTaskToColumnWithResult(
 		board,
 		columnId,
 		{
+			title: draft.title,
 			prompt,
 			startInPlanMode: draft.startInPlanMode,
 			autoReviewEnabled: draft.autoReviewEnabled,
@@ -441,6 +449,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 	if (!prompt) {
 		return { board, updated: false };
 	}
+	const title = typeof draft.title === "string" ? draft.title.trim() : "";
 	const baseRef = draft.baseRef.trim();
 	if (!baseRef) {
 		return { board, updated: false };
@@ -457,6 +466,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 			updated = true;
 			return {
 				...card,
+				title: title || card.title,
 				prompt,
 				startInPlanMode: Boolean(draft.startInPlanMode),
 				autoReviewEnabled: Boolean(draft.autoReviewEnabled),
@@ -478,6 +488,26 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 		return { board, updated: false };
 	}
 	return { board: withUpdatedColumns(board, columns), updated: true };
+}
+
+export function updateTaskTitle(
+	board: BoardData,
+	taskId: string,
+	title: string,
+): { board: BoardData; updated: boolean } {
+	const selection = findCardSelection(board, taskId);
+	if (!selection) {
+		return { board, updated: false };
+	}
+	return updateTask(board, taskId, {
+		title,
+		prompt: selection.card.prompt,
+		startInPlanMode: selection.card.startInPlanMode,
+		autoReviewEnabled: selection.card.autoReviewEnabled,
+		autoReviewMode: selection.card.autoReviewMode,
+		images: selection.card.images,
+		baseRef: selection.card.baseRef,
+	});
 }
 
 export function disableTaskAutoReview(board: BoardData, taskId: string): { board: BoardData; updated: boolean } {

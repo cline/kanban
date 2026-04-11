@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
 	clampTextWithInlineSuffix,
-	splitPromptToTitleDescriptionByWidth,
+	getTaskPromptDescription,
+	normalizePromptForDisplay,
 	truncateTaskPromptLabel,
 } from "@/utils/task-prompt";
 
@@ -13,38 +14,19 @@ describe("truncateTaskPromptLabel", () => {
 	});
 });
 
-describe("splitPromptToTitleDescriptionByWidth", () => {
-	it("moves single-line overflow into description based on measured width", () => {
-		const measured = splitPromptToTitleDescriptionByWidth("1234567890", {
-			maxTitleWidthPx: 5,
-			measureText: (value) => value.length,
-		});
-		expect(measured).toEqual({
-			title: "12345",
-			description: "67890",
-		});
+describe("normalizePromptForDisplay", () => {
+	it("collapses whitespace and trims", () => {
+		expect(normalizePromptForDisplay("  hello\n\tworld  ")).toBe("hello world");
+	});
+});
+
+describe("getTaskPromptDescription", () => {
+	it("returns the suffix after a leading title", () => {
+		expect(getTaskPromptDescription("Fix bugs: update tests", "Fix bugs")).toBe("update tests");
 	});
 
-	it("prefers a word boundary when truncating", () => {
-		const measured = splitPromptToTitleDescriptionByWidth("hello world again", {
-			maxTitleWidthPx: 13,
-			measureText: (value) => value.length,
-		});
-		expect(measured).toEqual({
-			title: "hello world",
-			description: "again",
-		});
-	});
-
-	it("normalizes multiline prompts before splitting", () => {
-		const measured = splitPromptToTitleDescriptionByWidth("abcdefghij\nline two", {
-			maxTitleWidthPx: 4,
-			measureText: (value) => value.length,
-		});
-		expect(measured).toEqual({
-			title: "abcd",
-			description: "efghij line two",
-		});
+	it("returns empty when prompt equals title", () => {
+		expect(getTaskPromptDescription("Fix bugs", "Fix bugs")).toBe("");
 	});
 });
 

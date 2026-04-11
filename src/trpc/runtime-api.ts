@@ -16,6 +16,7 @@ import type { RuntimeConfigState } from "../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
 import type { RuntimeCommandRunResponse } from "../core/api-contract";
 import {
+	parseClineAccountSwitchRequest,
 	parseClineAddProviderRequest,
 	parseClineMcpOAuthRequest,
 	parseClineMcpSettingsSaveRequest,
@@ -36,6 +37,7 @@ import {
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { resolveTaskTitle } from "../core/task-title.js";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
@@ -156,7 +158,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				if (body.resumeFromTrash) {
 					deps.broadcastTaskChatCleared?.(workspaceScope.workspaceId, body.taskId);
 				}
-				const requestedTaskMode = body.mode ?? (body.startInPlanMode ? "plan" : "act");
+				const requestedClineTaskMode = body.mode ?? "act";
 				const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
 				const taskCwd = isHomeAgentSessionId(body.taskId)
 					? workspaceScope.workspacePath
@@ -194,15 +196,18 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				if (useClinePath) {
 					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
+					const resolvedClineTitle = resolveTaskTitle(body.taskTitle?.trim(), body.prompt);
 					const summary = await clineTaskSessionService.startTaskSession({
 						taskId: body.taskId,
 						cwd: taskCwd,
 						prompt: body.prompt,
+						taskTitle: resolvedClineTitle.length > 0 ? resolvedClineTitle : undefined,
 						images: body.images,
 						resumeFromTrash: body.resumeFromTrash,
 						providerId: clineLaunchConfig.providerId,
 						modelId: clineLaunchConfig.modelId,
-						mode: requestedTaskMode,
+						mode: requestedClineTaskMode,
+						startInPlanMode: body.startInPlanMode,
 						apiKey: clineLaunchConfig.apiKey,
 						baseUrl: clineLaunchConfig.baseUrl,
 						reasoningEffort: clineLaunchConfig.reasoningEffort,
@@ -467,6 +472,16 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		},
 		getFeaturebaseToken: async (_workspaceScope) => {
 			return await clineProviderService.getFeaturebaseToken();
+		},
+		getClineAccountBalance: async (_workspaceScope) => {
+			return await clineProviderService.getClineAccountBalance();
+		},
+		getClineAccountOrganizations: async (_workspaceScope) => {
+			return await clineProviderService.getClineAccountOrganizations();
+		},
+		switchClineAccount: async (_workspaceScope, input) => {
+			const body = parseClineAccountSwitchRequest(input);
+			return await clineProviderService.switchClineAccount(body.organizationId);
 		},
 		getClineProviderModels: async (_workspaceScope, input) => {
 			const body = parseClineProviderModelsRequest(input);

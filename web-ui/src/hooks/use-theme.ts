@@ -29,15 +29,15 @@ export interface ThemeDefinition {
 
 export const THEMES: readonly ThemeDefinition[] = [
 	{ id: "default", label: "Default", accent: "#0084FF", surface: "#1F2428" },
-	{ id: "midnight", label: "Midnight", accent: "#7C8AFF", surface: "#181B2E" },
 	{ id: "forest", label: "Forest", accent: "#5DB85D", surface: "#1A2418" },
-	{ id: "sunset", label: "Sunset", accent: "#E8943A", surface: "#261E18" },
 	{ id: "ocean", label: "Ocean", accent: "#34B5C8", surface: "#162028" },
-	{ id: "rose", label: "Rosé", accent: "#E05A8A", surface: "#261A22" },
-	{ id: "lavender", label: "Lavender", accent: "#A07CDB", surface: "#201C28" },
-	{ id: "slate", label: "Slate", accent: "#6094C0", surface: "#1C2028" },
-	{ id: "ember", label: "Ember", accent: "#D05A4A", surface: "#261C1A" },
 	{ id: "nord", label: "Nord", accent: "#88C0D0", surface: "#2E3440" },
+	{ id: "slate", label: "Slate", accent: "#6094C0", surface: "#1C2028" },
+	{ id: "midnight", label: "Midnight", accent: "#7C8AFF", surface: "#181B2E" },
+	{ id: "lavender", label: "Lavender", accent: "#A07CDB", surface: "#201C28" },
+	{ id: "rose", label: "Rosé", accent: "#E05A8A", surface: "#261A22" },
+	{ id: "ember", label: "Ember", accent: "#D05A4A", surface: "#261C1A" },
+	{ id: "sunset", label: "Sunset", accent: "#E8943A", surface: "#261E18" },
 ] as const;
 
 const THEME_IDS = new Set<string>(THEMES.map((theme) => theme.id));

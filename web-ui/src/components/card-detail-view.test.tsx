@@ -26,6 +26,10 @@ vi.mock("react-hotkeys-hook", () => ({
 	useHotkeys: () => {},
 }));
 
+vi.mock("@/hooks/use-is-mobile", () => ({
+	useIsMobile: () => false,
+}));
+
 vi.mock("@/components/detail-panels/agent-terminal-panel", () => ({
 	AgentTerminalPanel: mockAgentTerminalPanel,
 }));
@@ -75,6 +79,7 @@ vi.mock("@/resize/layout-customizations", () => ({
 function createCard(id: string): BoardCard {
 	return {
 		id,
+		title: `Task ${id}`,
 		prompt: `Task ${id}`,
 		startInPlanMode: false,
 		autoReviewEnabled: false,

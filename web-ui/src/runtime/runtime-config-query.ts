@@ -4,7 +4,10 @@
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
+	RuntimeClineAccountBalanceResponse,
+	RuntimeClineAccountOrganizationsResponse,
 	RuntimeClineAccountProfileResponse,
+	RuntimeClineAccountSwitchResponse,
 	RuntimeClineAddProviderResponse,
 	RuntimeClineKanbanAccessResponse,
 	RuntimeClineMcpAuthStatusResponse,
@@ -197,4 +200,26 @@ export async function resetRuntimeDebugState(workspaceId: string | null): Promis
 export async function openFileOnHost(workspaceId: string | null, filePath: string): Promise<void> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	await trpcClient.runtime.openFile.mutate({ filePath });
+}
+
+export async function fetchClineAccountBalance(
+	workspaceId: string | null,
+): Promise<RuntimeClineAccountBalanceResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.getClineAccountBalance.query();
+}
+
+export async function fetchClineAccountOrganizations(
+	workspaceId: string | null,
+): Promise<RuntimeClineAccountOrganizationsResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.getClineAccountOrganizations.query();
+}
+
+export async function switchClineAccount(
+	workspaceId: string | null,
+	organizationId: string | null,
+): Promise<RuntimeClineAccountSwitchResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.switchClineAccount.mutate({ organizationId });
 }
