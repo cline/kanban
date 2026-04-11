@@ -34,7 +34,7 @@ export function isCreditLimitError(errorMessage: string | null): boolean {
 	if (CREDIT_LIMIT_PATTERNS.some((pattern) => normalized.includes(pattern))) {
 		return true;
 	}
-	return (normalized.includes("402") && (normalized.includes("balance") || normalized.includes("credit")));
+	return normalized.includes("402") && (normalized.includes("balance") || normalized.includes("credit"));
 }
 
 const WINDOWS_INVALID_SESSION_ID_CHARS = /[<>:"/\\|?*]/g;

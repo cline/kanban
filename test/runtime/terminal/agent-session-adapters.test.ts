@@ -142,9 +142,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const developerInstructions = getCodexConfigOverrideValues(launch.args, "developer_instructions");
 		expect(developerInstructions).toHaveLength(1);
 		expect(developerInstructions[0]).toContain("Kanban sidebar agent");
-		expect(developerInstructions[0]).toContain(
-			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
-		);
+		expect(developerInstructions[0]).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
 		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
 	});
 

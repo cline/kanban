@@ -481,7 +481,8 @@ describe("applyClineSessionEvent", () => {
 					sessionId: "session-1",
 					event: {
 						type: "notice",
-						message: "The previous turn failed with 402 Insufficient balance. Retry and continue from the latest state",
+						message:
+							"The previous turn failed with 402 Insufficient balance. Retry and continue from the latest state",
 						displayRole: "system",
 						reason: "recovery",
 					},
