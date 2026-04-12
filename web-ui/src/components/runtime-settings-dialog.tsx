@@ -35,6 +35,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { NativeSelect } from "@/components/ui/native-select";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
@@ -850,11 +851,10 @@ export function RuntimeSettingsDialog({
 							Modify the prompts sent to the agent when using Commit or Make PR on tasks in Review.
 						</p>
 						<div className="flex items-center justify-between gap-2 mb-2">
-							<select
+							<NativeSelect
 								value={selectedPromptVariant}
 								onChange={(event) => setSelectedPromptVariant(event.target.value as TaskGitAction)}
 								disabled={controlsDisabled}
-								className="h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
 								style={{ minWidth: 220 }}
 							>
 								{GIT_PROMPT_VARIANT_OPTIONS.map((option) => (
@@ -862,7 +862,7 @@ export function RuntimeSettingsDialog({
 										{option.label}
 									</option>
 								))}
-							</select>
+							</NativeSelect>
 							<Button
 								variant="ghost"
 								size="sm"

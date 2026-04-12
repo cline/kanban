@@ -1,9 +1,11 @@
 import type {
+	RuntimeAgentId,
 	RuntimeBoardCard,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeBoardDependency,
 	RuntimeTaskAutoReviewMode,
+	RuntimeTaskClineSettings,
 	RuntimeTaskImage,
 } from "./api-contract";
 import { createUniqueTaskId } from "./task-id";
@@ -17,6 +19,8 @@ export interface RuntimeCreateTaskInput {
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
+	agentId?: RuntimeAgentId;
+	clineSettings?: RuntimeTaskClineSettings;
 	baseRef: string;
 }
 
@@ -27,6 +31,8 @@ export interface RuntimeUpdateTaskInput {
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: RuntimeTaskAutoReviewMode;
 	images?: RuntimeTaskImage[];
+	agentId?: RuntimeAgentId | null;
+	clineSettings?: RuntimeTaskClineSettings | null;
 	baseRef: string;
 }
 
@@ -40,6 +46,19 @@ function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | u
 // Copy image metadata so board tasks do not retain caller-owned array or object references.
 function cloneTaskImages(images?: RuntimeTaskImage[]): RuntimeTaskImage[] | undefined {
 	return images && images.length > 0 ? images.map((image) => ({ ...image })) : undefined;
+}
+
+function cloneTaskClineSettings(settings?: RuntimeTaskClineSettings | null): RuntimeTaskClineSettings | undefined {
+	if (settings === undefined || settings === null) {
+		return undefined;
+	}
+	const providerId = settings.providerId?.trim();
+	const modelId = settings.modelId?.trim();
+	return {
+		...(providerId ? { providerId } : {}),
+		...(modelId ? { modelId } : {}),
+		...(settings.reasoningEffort ? { reasoningEffort: settings.reasoningEffort } : {}),
+	};
 }
 
 export interface RuntimeCreateTaskResult {
@@ -288,6 +307,8 @@ export function addTaskToColumn(
 		autoReviewEnabled: Boolean(input.autoReviewEnabled),
 		autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 		images: cloneTaskImages(input.images),
+		...(input.agentId ? { agentId: input.agentId } : {}),
+		...(input.clineSettings !== undefined ? { clineSettings: cloneTaskClineSettings(input.clineSettings) } : {}),
 		baseRef,
 		createdAt: now,
 		updatedAt: now,
@@ -602,6 +623,13 @@ export function updateTask(
 				autoReviewEnabled: Boolean(input.autoReviewEnabled),
 				autoReviewMode: normalizeTaskAutoReviewMode(input.autoReviewMode),
 				images: input.images === undefined ? card.images : cloneTaskImages(input.images),
+				agentId: input.agentId === undefined ? card.agentId : (input.agentId ?? undefined),
+				clineSettings:
+					input.clineSettings === undefined
+						? cloneTaskClineSettings(card.clineSettings)
+						: input.clineSettings === null
+							? undefined
+							: cloneTaskClineSettings(input.clineSettings),
 				baseRef,
 				updatedAt: now,
 			};

@@ -5,6 +5,8 @@ import {
 	addTaskDependency,
 	addTaskToColumn,
 	applyDragResult,
+	applyTaskDetailClineSettingsChange,
+	applyTaskDetailClineSettingsSelection,
 	clearColumnTasks,
 	disableTaskAutoReview,
 	getTaskColumnId,
@@ -591,5 +593,264 @@ describe("board dependency state", () => {
 		expect(updatedTask?.title).toBe("Updated title");
 		expect(updatedTask?.prompt).toBe("Task A prompt");
 		expect(updatedTask?.baseRef).toBe("main");
+	});
+
+	it("preserves task-level cline overrides when updating the title", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task with cline overrides",
+			agentId: "cline",
+			clineSettings: {
+				providerId: "openrouter",
+				modelId: "openai/gpt-5.4",
+				reasoningEffort: "low",
+			},
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected backlog task to exist");
+		}
+
+		const updated = updateTaskTitle(board, task.id, "Updated title");
+		expect(updated.updated).toBe(true);
+		const updatedTask = updated.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(updatedTask?.title).toBe("Updated title");
+		expect(updatedTask?.agentId).toBe("cline");
+		expect(updatedTask?.clineSettings).toEqual({
+			providerId: "openrouter",
+			modelId: "openai/gpt-5.4",
+			reasoningEffort: "low",
+		});
+	});
+
+	it("preserves model fields when disabling auto-review", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "review", {
+			prompt: "Task with model",
+			autoReviewEnabled: true,
+			autoReviewMode: "move_to_trash",
+			agentId: "codex",
+			clineSettings: {
+				providerId: "my-provider",
+				modelId: "my-model",
+				reasoningEffort: "high",
+			},
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "review")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected review task to exist");
+		}
+		expect(task.agentId).toBe("codex");
+		expect(task.clineSettings).toEqual({
+			providerId: "my-provider",
+			modelId: "my-model",
+			reasoningEffort: "high",
+		});
+
+		const disabled = disableTaskAutoReview(board, task.id);
+		expect(disabled.updated).toBe(true);
+
+		const updatedTask = disabled.board.columns.find((column) => column.id === "review")?.cards[0];
+		expect(updatedTask?.autoReviewEnabled).toBe(false);
+		expect(updatedTask?.agentId).toBe("codex");
+		expect(updatedTask?.clineSettings).toEqual({
+			providerId: "my-provider",
+			modelId: "my-model",
+			reasoningEffort: "high",
+		});
+	});
+
+	it("does not create task model overrides for tasks inheriting global agent settings", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task with inherited settings",
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected backlog task to exist");
+		}
+
+		const result = applyTaskDetailClineSettingsSelection(board, task.id, {
+			agentId: "cline",
+			clineSettings: {
+				providerId: "openrouter",
+				modelId: "anthropic/claude-opus-4.6",
+			},
+		});
+		expect(result.updated).toBe(false);
+		const unchangedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(unchangedTask?.agentId).toBeUndefined();
+		expect(unchangedTask?.clineSettings).toBeUndefined();
+	});
+
+	it("updates task model overrides when the task already has explicit task-level settings", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task with explicit override",
+			agentId: "cline",
+			clineSettings: {
+				providerId: "openrouter",
+				modelId: "anthropic/claude-sonnet-4.6",
+				reasoningEffort: "low",
+			},
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected backlog task to exist");
+		}
+
+		const result = applyTaskDetailClineSettingsSelection(board, task.id, {
+			agentId: "cline",
+			clineSettings: {
+				providerId: "openrouter",
+				modelId: "anthropic/claude-opus-4.6",
+				reasoningEffort: "high",
+			},
+		});
+		expect(result.updated).toBe(true);
+		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(updatedTask?.agentId).toBe("cline");
+		expect(updatedTask?.clineSettings).toEqual({
+			providerId: "openrouter",
+			modelId: "anthropic/claude-opus-4.6",
+			reasoningEffort: "high",
+		});
+	});
+
+	it("updates reasoning-only task overrides without forcing provider or model overrides", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task with reasoning-only override",
+			clineSettings: {
+				reasoningEffort: "low",
+			},
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected backlog task to exist");
+		}
+
+		const result = applyTaskDetailClineSettingsSelection(board, task.id, {
+			clineSettings: {
+				reasoningEffort: "high",
+			},
+		});
+		expect(result.updated).toBe(true);
+		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(updatedTask?.agentId).toBeUndefined();
+		expect(updatedTask?.clineSettings).toEqual({
+			reasoningEffort: "high",
+		});
+	});
+
+	it("does not treat non-cline agent overrides as explicit cline settings", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task with codex override",
+			agentId: "codex",
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected backlog task to exist");
+		}
+
+		const result = applyTaskDetailClineSettingsSelection(board, task.id, {
+			agentId: "cline",
+			clineSettings: {
+				providerId: "openrouter",
+				modelId: "anthropic/claude-opus-4.6",
+			},
+		});
+		expect(result.updated).toBe(false);
+		const unchangedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(unchangedTask?.agentId).toBe("codex");
+		expect(unchangedTask?.clineSettings).toBeUndefined();
+	});
+
+	it("materializes a concrete cline override when saving task-level chat settings", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task with explicit empty override",
+			clineSettings: {},
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected backlog task to exist");
+		}
+
+		const result = applyTaskDetailClineSettingsChange(
+			board,
+			task.id,
+			{
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4.6",
+				reasoningEffort: "",
+			},
+			{
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4.6",
+			},
+		);
+		expect(result.updated).toBe(true);
+		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(updatedTask?.agentId).toBe("cline");
+		expect(updatedTask?.clineSettings).toEqual({
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4.6",
+		});
+	});
+
+	it("keeps tasks pinned to cline when the global selected agent is different", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task pinned to cline",
+			agentId: "cline",
+			clineSettings: {
+				providerId: "openrouter",
+				modelId: "anthropic/claude-sonnet-4.6",
+			},
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected backlog task to exist");
+		}
+
+		const result = applyTaskDetailClineSettingsChange(
+			board,
+			task.id,
+			{
+				providerId: "openrouter",
+				modelId: "anthropic/claude-opus-4.6",
+				reasoningEffort: "medium",
+			},
+			{
+				providerId: "openai",
+				modelId: "openai/gpt-5.4",
+			},
+		);
+		expect(result.updated).toBe(true);
+		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(updatedTask?.agentId).toBe("cline");
+		expect(updatedTask?.clineSettings).toEqual({
+			providerId: "openrouter",
+			modelId: "anthropic/claude-opus-4.6",
+			reasoningEffort: "medium",
+		});
 	});
 });

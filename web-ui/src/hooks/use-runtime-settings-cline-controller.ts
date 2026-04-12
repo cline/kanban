@@ -20,6 +20,7 @@ import type {
 	RuntimeClineProviderSettings,
 	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
+	RuntimeTaskClineSettings,
 } from "@/runtime/types";
 
 interface UseRuntimeSettingsClineControllerOptions {
@@ -27,6 +28,7 @@ interface UseRuntimeSettingsClineControllerOptions {
 	workspaceId: string | null;
 	selectedAgentId: RuntimeAgentId;
 	config: RuntimeConfigResponse | null;
+	taskClineSettings?: RuntimeTaskClineSettings;
 }
 
 interface SaveResult {
@@ -193,7 +195,7 @@ function getDefaultModelIdForProvider(providers: RuntimeClineProviderCatalogItem
 export function useRuntimeSettingsClineController(
 	options: UseRuntimeSettingsClineControllerOptions,
 ): UseRuntimeSettingsClineControllerResult {
-	const { open, workspaceId, selectedAgentId, config } = options;
+	const { open, workspaceId, selectedAgentId, config, taskClineSettings } = options;
 	const [providerId, setProviderId] = useState("");
 	const [modelId, setModelId] = useState("");
 	const [apiKey, setApiKey] = useState("");
@@ -218,14 +220,21 @@ export function useRuntimeSettingsClineController(
 
 	const effectiveProviderSettings = getEffectiveProviderSettings(config, providerSettingsOverride);
 	const configProviderSettings = getRuntimeClineProviderSettings(config);
-	const initialProviderId = effectiveProviderSettings?.providerId ?? effectiveProviderSettings?.oauthProvider ?? "";
-	const initialModelId = effectiveProviderSettings?.modelId ?? "";
+	const hasTaskClineSettingsOverride = taskClineSettings !== undefined;
+	const initialProviderId =
+		taskClineSettings?.providerId ||
+		effectiveProviderSettings?.providerId ||
+		effectiveProviderSettings?.oauthProvider ||
+		"";
+	const initialModelId = taskClineSettings?.modelId || effectiveProviderSettings?.modelId || "";
 	const initialBaseUrl = resolveBaseUrlForProvider(
 		providerCatalog,
 		initialProviderId,
 		effectiveProviderSettings?.baseUrl,
 	);
-	const initialReasoningEffort = effectiveProviderSettings?.reasoningEffort ?? "";
+	const initialReasoningEffort = hasTaskClineSettingsOverride
+		? (taskClineSettings?.reasoningEffort ?? "")
+		: (effectiveProviderSettings?.reasoningEffort ?? "");
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	const managedOauthProvider = toManagedClineOauthProvider(normalizedProviderId);
 	const isOauthProviderSelected = managedOauthProvider !== null;
@@ -311,13 +320,19 @@ export function useRuntimeSettingsClineController(
 		if (!open) {
 			return;
 		}
-		const nextProviderId = configProviderSettings.providerId ?? configProviderSettings.oauthProvider ?? "";
+		const nextProviderId =
+			taskClineSettings?.providerId ||
+			(configProviderSettings.providerId ?? configProviderSettings.oauthProvider ?? "");
 		setProviderId(nextProviderId);
-		setModelId(configProviderSettings.modelId ?? "");
+		setModelId(taskClineSettings?.modelId || (configProviderSettings.modelId ?? ""));
 		setApiKey("");
 		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, configProviderSettings.baseUrl));
 		setRegion("");
-		setReasoningEffort(configProviderSettings.reasoningEffort ?? "");
+		setReasoningEffort(
+			hasTaskClineSettingsOverride
+				? (taskClineSettings?.reasoningEffort ?? "")
+				: (configProviderSettings.reasoningEffort ?? ""),
+		);
 		setAwsAccessKey("");
 		setAwsSecretKey("");
 		setAwsSessionToken("");
@@ -334,7 +349,9 @@ export function useRuntimeSettingsClineController(
 		configProviderSettings.oauthProvider,
 		configProviderSettings.providerId,
 		configProviderSettings.reasoningEffort,
+		hasTaskClineSettingsOverride,
 		open,
+		taskClineSettings,
 	]);
 
 	useEffect(() => {

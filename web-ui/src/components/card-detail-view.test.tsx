@@ -364,6 +364,33 @@ describe("CardDetailView", () => {
 		expect(container.querySelector('[data-testid="agent-terminal-panel"]')).toBeNull();
 	});
 
+	it("does not render native chat panel when the task explicitly uses a non-cline agent", async () => {
+		const selection = createSelection();
+		selection.card.agentId = "codex";
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={selection}
+					currentProjectId="workspace-1"
+					selectedAgentId="cline"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeNull();
+	});
+
 	it("shows cline chat panel when task session agentId is cline even if global agent is claude", async () => {
 		await act(async () => {
 			root.render(

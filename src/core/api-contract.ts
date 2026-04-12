@@ -80,6 +80,14 @@ export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;
 export const runtimeTaskAutoReviewModeSchema = z.enum(["commit", "pr", "move_to_trash"]);
 export type RuntimeTaskAutoReviewMode = z.infer<typeof runtimeTaskAutoReviewModeSchema>;
 
+export const runtimeClineReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
+export type RuntimeClineReasoningEffort = z.infer<typeof runtimeClineReasoningEffortSchema>;
+export const runtimeTaskClineSettingsSchema = z.object({
+	providerId: z.string().optional(),
+	modelId: z.string().optional(),
+	reasoningEffort: runtimeClineReasoningEffortSchema.optional(),
+});
+export type RuntimeTaskClineSettings = z.infer<typeof runtimeTaskClineSettingsSchema>;
 export const runtimeTaskImageSchema = z.object({
 	id: z.string(),
 	data: z.string(),
@@ -87,6 +95,31 @@ export const runtimeTaskImageSchema = z.object({
 	name: z.string().optional(),
 });
 export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
+
+const runtimeLegacyTaskClineReasoningEffortSchema = z.enum(["default", "low", "medium", "high", "xhigh"]);
+
+function normalizeRuntimeTaskClineSettings(input: {
+	clineSettings?: RuntimeTaskClineSettings;
+	clineProviderId?: string;
+	clineModelId?: string;
+	clineReasoningEffort?: z.infer<typeof runtimeLegacyTaskClineReasoningEffortSchema>;
+}): RuntimeTaskClineSettings | undefined {
+	if (input.clineSettings !== undefined) {
+		return input.clineSettings;
+	}
+	const providerId = input.clineProviderId?.trim();
+	const modelId = input.clineModelId?.trim();
+	if (!providerId && !modelId && input.clineReasoningEffort === undefined) {
+		return undefined;
+	}
+	return {
+		...(providerId ? { providerId } : {}),
+		...(modelId ? { modelId } : {}),
+		...(input.clineReasoningEffort && input.clineReasoningEffort !== "default"
+			? { reasoningEffort: input.clineReasoningEffort }
+			: {}),
+	};
+}
 
 export const runtimeBoardCardSchema = z
 	.object({
@@ -97,14 +130,35 @@ export const runtimeBoardCardSchema = z
 		autoReviewEnabled: z.boolean().optional(),
 		autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
 		images: z.array(runtimeTaskImageSchema).optional(),
+		agentId: runtimeAgentIdSchema.optional(),
+		clineSettings: runtimeTaskClineSettingsSchema.optional(),
+		clineProviderId: z.string().optional(),
+		clineModelId: z.string().optional(),
+		clineReasoningEffort: runtimeLegacyTaskClineReasoningEffortSchema.optional(),
 		baseRef: z.string(),
 		createdAt: z.number(),
 		updatedAt: z.number(),
 	})
-	.transform((card) => ({
-		...card,
-		title: resolveTaskTitle(card.title, card.prompt),
-	}));
+	.transform(
+		({
+			clineProviderId: _legacyProviderId,
+			clineModelId: _legacyModelId,
+			clineReasoningEffort: _legacyReasoningEffort,
+			...card
+		}) => {
+			const clineSettings = normalizeRuntimeTaskClineSettings({
+				clineSettings: card.clineSettings,
+				clineProviderId: _legacyProviderId,
+				clineModelId: _legacyModelId,
+				clineReasoningEffort: _legacyReasoningEffort,
+			});
+			return {
+				...card,
+				...(clineSettings !== undefined ? { clineSettings } : {}),
+				title: resolveTaskTitle(card.title, card.prompt),
+			};
+		},
+	);
 export type RuntimeBoardCard = z.infer<typeof runtimeBoardCardSchema>;
 
 export const runtimeBoardColumnSchema = z.object({
@@ -539,9 +593,6 @@ export type RuntimeProjectShortcut = z.infer<typeof runtimeProjectShortcutSchema
 export const runtimeClineOauthProviderSchema = z.enum(["cline", "oca", "openai-codex"]);
 export type RuntimeClineOauthProvider = z.infer<typeof runtimeClineOauthProviderSchema>;
 
-export const runtimeClineReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
-export type RuntimeClineReasoningEffort = z.infer<typeof runtimeClineReasoningEffortSchema>;
-
 export const runtimeClineProviderSettingsSchema = z.object({
 	providerId: z.string().nullable(),
 	modelId: z.string().nullable(),
@@ -878,6 +929,8 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	baseRef: z.string(),
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),
+	agentId: runtimeAgentIdSchema.optional(),
+	clineSettings: runtimeTaskClineSettingsSchema.optional(),
 });
 export type RuntimeTaskSessionStartRequest = z.infer<typeof runtimeTaskSessionStartRequestSchema>;
 
