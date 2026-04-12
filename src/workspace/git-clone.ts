@@ -59,11 +59,14 @@ export function validateCloneDestination(destination: string, serverCwd: string)
  * @param serverCwd - The server's current working directory (sandbox root).
  * @param destinationPath - Optional custom destination path. If omitted, the
  *   clone is placed at `<serverCwd>/<repo-name>`.
+ * @param allowedRootPath - Optional root boundary for destination validation.
+ *   Defaults to `serverCwd`.
  */
 export async function cloneGitRepository(
 	gitUrl: string,
 	serverCwd: string,
 	destinationPath?: string,
+	allowedRootPath: string = serverCwd,
 ): Promise<GitCloneResult> {
 	const repoName = deriveRepoNameFromUrl(gitUrl);
 	if (!repoName && !destinationPath) {
@@ -79,7 +82,7 @@ export async function cloneGitRepository(
 
 	let clonePath: string;
 	try {
-		clonePath = validateCloneDestination(rawDestination, serverCwd);
+		clonePath = validateCloneDestination(rawDestination, allowedRootPath);
 	} catch (error) {
 		return {
 			ok: false,
@@ -97,7 +100,7 @@ export async function cloneGitRepository(
 		if (destStat.isDirectory() && repoName) {
 			const nestedPath = resolve(clonePath, repoName);
 			try {
-				clonePath = validateCloneDestination(nestedPath, serverCwd);
+				clonePath = validateCloneDestination(nestedPath, allowedRootPath);
 			} catch (error) {
 				return {
 					ok: false,

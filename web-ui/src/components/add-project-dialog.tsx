@@ -239,13 +239,6 @@ export function AddProjectDialog({
 				{/* Plain div instead of DialogBody so the autocomplete dropdown
 				    isn't clipped by DialogBody's default overflow-y-auto */}
 				<div className="flex flex-col gap-4 p-4 bg-surface-1">
-					{/* Server root indicator */}
-					{serverRootPath ? (
-						<div className="text-[11px] text-text-tertiary font-mono truncate" title={serverRootPath}>
-							Server root: {serverRootPath}
-						</div>
-					) : null}
-
 					{/* Tab switcher */}
 					<div className="rounded-md bg-surface-2 p-1">
 						<div className="grid grid-cols-2 gap-1">

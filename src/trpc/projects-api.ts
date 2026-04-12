@@ -59,6 +59,8 @@ export interface CreateProjectsApiDependencies {
 }
 
 export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeTrpcContext["projectsApi"] {
+	const filesystemRoot = resolve(deps.serverCwd, "/");
+
 	return {
 		listProjects: async (preferredWorkspaceId) => {
 			const payload = await deps.buildProjectsPayload(preferredWorkspaceId);
@@ -77,13 +79,13 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				let projectPath: string;
 				if (body.gitUrl) {
 					// Clone from Git URL. If a custom path is provided alongside
-					// gitUrl, use it as the clone destination (still validated
-					// within CWD). Otherwise derive a destination from the URL.
-					// Resolve relative to serverCwd (the sandbox root), not the
+					// gitUrl, use it as the clone destination. Otherwise derive
+					// a destination from the URL.
+					// Resolve relative to serverCwd (the default clone base), not the
 					// active project — the clone target belongs under the kanban
 					// working directory, not inside another project.
 					const customDest = body.path ? deps.resolveProjectInputPath(body.path, deps.serverCwd) : undefined;
-					const cloneResult = await cloneGitRepository(body.gitUrl, deps.serverCwd, customDest);
+					const cloneResult = await cloneGitRepository(body.gitUrl, deps.serverCwd, customDest, filesystemRoot);
 					if (!cloneResult.ok) {
 						return {
 							ok: false,
@@ -256,7 +258,7 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 		},
 		listDirectoryContents: async (_preferredWorkspaceId, input) => {
 			const body = parseDirectoryListRequest(input);
-			const rootPath = deps.serverCwd;
+			const rootPath = filesystemRoot;
 			const requestedPath = body.path?.trim() || "";
 			// Reject absolute paths that fall outside the sandbox
 			if (requestedPath && isAbsolute(requestedPath)) {

@@ -208,6 +208,18 @@ describe("cloneGitRepository", () => {
 		expect(childProcessMocks.execFilePromise).not.toHaveBeenCalled();
 	});
 
+	it("allows destination outside CWD when allowedRootPath is broader", async () => {
+		const outsidePath = "/tmp/outside-repo";
+		fsMocks.access.mockRejectedValueOnce(new Error("ENOENT"));
+		fsMocks.mkdir.mockResolvedValueOnce(undefined);
+		childProcessMocks.execFilePromise.mockResolvedValueOnce({ stdout: "", stderr: "" });
+
+		const result = await cloneGitRepository("https://github.com/user/my-repo.git", testCwd, outsidePath, "/");
+
+		expect(result.ok).toBe(true);
+		expect(result.clonedPath).toBe(outsidePath);
+	});
+
 	it("returns error when repo name cannot be derived and no destination provided", async () => {
 		const result = await cloneGitRepository("   ", testCwd);
 
