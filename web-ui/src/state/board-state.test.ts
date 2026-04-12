@@ -779,7 +779,7 @@ describe("board dependency state", () => {
 		expect(unchangedTask?.clineSettings).toBeUndefined();
 	});
 
-	it("preserves an explicit empty task override when clearing reasoning to inherit model defaults", () => {
+	it("materializes a concrete cline override when saving task-level chat settings", () => {
 		let board = createInitialBoardData();
 		board = addTaskToColumn(board, "backlog", {
 			prompt: "Task with explicit empty override",
@@ -801,16 +801,17 @@ describe("board dependency state", () => {
 				reasoningEffort: "",
 			},
 			{
-				selectedAgentId: "cline",
 				providerId: "anthropic",
 				modelId: "claude-sonnet-4.6",
-				reasoningEffort: "high",
 			},
 		);
 		expect(result.updated).toBe(true);
 		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
-		expect(updatedTask?.agentId).toBeUndefined();
-		expect(updatedTask?.clineSettings).toEqual({});
+		expect(updatedTask?.agentId).toBe("cline");
+		expect(updatedTask?.clineSettings).toEqual({
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4.6",
+		});
 	});
 
 	it("keeps tasks pinned to cline when the global selected agent is different", () => {
@@ -839,10 +840,8 @@ describe("board dependency state", () => {
 				reasoningEffort: "medium",
 			},
 			{
-				selectedAgentId: "codex",
 				providerId: "openai",
 				modelId: "openai/gpt-5.4",
-				reasoningEffort: "high",
 			},
 		);
 		expect(result.updated).toBe(true);

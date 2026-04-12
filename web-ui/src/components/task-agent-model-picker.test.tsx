@@ -212,6 +212,86 @@ describe("useTaskAgentModelPicker – providerDefaultModels", () => {
 });
 
 describe("useTaskAgentModelPicker – provider-aware model default label", () => {
+	it("loads inherited models for managed OAuth providers and derives their catalog default model", async () => {
+		const catalog: RuntimeClineProviderCatalogItem[] = [
+			createProvider("cline", "Cline", true, "cline-sonnet"),
+			createProvider("anthropic", "Anthropic", true, "claude-opus-4-20250514"),
+		];
+		const clineModels = [
+			{ id: "cline-sonnet", name: "Cline Sonnet" },
+			{ id: "cline-opus", name: "Cline Opus" },
+		];
+		fetchClineProviderCatalogMock.mockResolvedValue(catalog);
+		fetchClineProviderModelsMock.mockResolvedValue(clineModels);
+
+		let snapshot: UseTaskAgentModelPickerResult | null = null;
+		const { useTaskAgentModelPicker } = await import("@/components/task-agent-model-picker");
+
+		function Harness() {
+			const result = useTaskAgentModelPicker({
+				active: true,
+				workspaceId: null,
+				agentId: "cline",
+				clineSettings: undefined,
+				defaultAgentId: "cline",
+				defaultProviderId: "cline",
+				defaultModelId: null,
+			});
+			useEffect(() => {
+				snapshot = result;
+			});
+			return null;
+		}
+
+		await act(async () => root.render(<Harness />));
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 0));
+		});
+
+		expect(fetchClineProviderModelsMock).toHaveBeenCalledWith(null, "cline");
+		expect(snapshot).not.toBeNull();
+		expect(snapshot!.providerModels).toEqual(clineModels);
+		expect(snapshot!.effectiveDefaultModelId).toBe("cline-sonnet");
+	});
+
+	it("does not borrow the global default model for an overridden provider without a catalog default", async () => {
+		const catalog: RuntimeClineProviderCatalogItem[] = [
+			createProvider("anthropic", "Anthropic", true, "claude-opus-4-20250514"),
+			createProvider("custom", "Custom Provider", true),
+		];
+		const customModels = [{ id: "custom/model-a", name: "Model A" }];
+		fetchClineProviderCatalogMock.mockResolvedValue(catalog);
+		fetchClineProviderModelsMock.mockResolvedValue(customModels);
+
+		let snapshot: UseTaskAgentModelPickerResult | null = null;
+		const { useTaskAgentModelPicker } = await import("@/components/task-agent-model-picker");
+
+		function Harness() {
+			const result = useTaskAgentModelPicker({
+				active: true,
+				workspaceId: null,
+				agentId: "cline",
+				clineSettings: createTaskClineSettings({ providerId: "custom" }),
+				defaultAgentId: "cline",
+				defaultProviderId: "anthropic",
+				defaultModelId: "claude-opus-4-20250514",
+			});
+			useEffect(() => {
+				snapshot = result;
+			});
+			return null;
+		}
+
+		await act(async () => root.render(<Harness />));
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 0));
+		});
+
+		expect(snapshot).not.toBeNull();
+		expect(snapshot!.effectiveDefaultModelId).toBeNull();
+		expect(snapshot!.clineModelOptions[0]).toEqual({ value: "", label: "Default" });
+	});
+
 	it("shows the selected provider's default model name when provider is overridden", async () => {
 		const catalog: RuntimeClineProviderCatalogItem[] = [
 			createProvider("anthropic", "Anthropic", true, "claude-opus-4-20250514"),

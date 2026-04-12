@@ -175,10 +175,12 @@ export function useTaskAgentModelPicker({
 	const effectiveDefaultModelId = useMemo(() => {
 		if (clineProviderId) {
 			const provider = providerCatalog.find((p) => p.id === clineProviderId);
-			return provider?.defaultModelId ?? defaultModelId ?? null;
+			return provider?.defaultModelId ?? null;
 		}
-		return defaultModelId ?? null;
-	}, [clineProviderId, providerCatalog, defaultModelId]);
+		const inheritedProviderDefaultModelId =
+			providerCatalog.find((p) => p.id === defaultProviderId)?.defaultModelId ?? null;
+		return defaultModelId ?? inheritedProviderDefaultModelId;
+	}, [clineProviderId, defaultModelId, defaultProviderId, providerCatalog]);
 
 	const clineModelOptions = useMemo(() => {
 		let defaultLabel = "Default";

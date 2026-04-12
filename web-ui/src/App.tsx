@@ -716,6 +716,10 @@ export default function App(): ReactElement {
 		selectedCard?.card.id,
 		latestTaskChatMessage,
 	);
+	const defaultTaskClineProviderId =
+		runtimeProjectConfig?.clineProviderSettings?.providerId ??
+		runtimeProjectConfig?.clineProviderSettings?.oauthProvider ??
+		null;
 	const handleClineTaskSettingsChangedForTask = useCallback(
 		({
 			providerId,
@@ -740,19 +744,14 @@ export default function App(): ReactElement {
 						reasoningEffort,
 					},
 					{
-						selectedAgentId: runtimeProjectConfig?.selectedAgentId ?? null,
-						providerId:
-							runtimeProjectConfig?.clineProviderSettings?.providerId ??
-							runtimeProjectConfig?.clineProviderSettings?.oauthProvider ??
-							null,
+						providerId: defaultTaskClineProviderId,
 						modelId: runtimeProjectConfig?.clineProviderSettings?.modelId ?? null,
-						reasoningEffort: runtimeProjectConfig?.clineProviderSettings?.reasoningEffort ?? null,
 					},
 				);
 				return result.updated ? result.board : currentBoard;
 			});
 		},
-		[runtimeProjectConfig, selectedCard, setBoard],
+		[defaultTaskClineProviderId, runtimeProjectConfig, selectedCard, setBoard],
 	);
 
 	const handleCreateDialogOpenChange = useCallback(
@@ -791,7 +790,7 @@ export default function App(): ReactElement {
 			clineSettings={editTaskClineSettings}
 			onClineSettingsChange={setEditTaskClineSettings}
 			defaultAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
-			defaultProviderId={runtimeProjectConfig?.clineProviderSettings?.providerId ?? null}
+			defaultProviderId={defaultTaskClineProviderId}
 			defaultModelId={runtimeProjectConfig?.clineProviderSettings?.modelId ?? null}
 			defaultReasoningEffort={runtimeProjectConfig?.clineProviderSettings?.reasoningEffort ?? null}
 			mode="edit"
@@ -1141,7 +1140,7 @@ export default function App(): ReactElement {
 					clineSettings={newTaskClineSettings}
 					onClineSettingsChange={setNewTaskClineSettings}
 					defaultAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
-					defaultProviderId={runtimeProjectConfig?.clineProviderSettings?.providerId ?? null}
+					defaultProviderId={defaultTaskClineProviderId}
 					defaultModelId={runtimeProjectConfig?.clineProviderSettings?.modelId ?? null}
 					defaultReasoningEffort={runtimeProjectConfig?.clineProviderSettings?.reasoningEffort ?? null}
 				/>

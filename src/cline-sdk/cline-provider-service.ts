@@ -65,7 +65,7 @@ export interface ResolvedClineLaunchConfig {
 	modelId: string | null;
 	apiKey: string | null;
 	baseUrl: string | null;
-	reasoningEffort: RuntimeClineReasoningEffort | null;
+	reasoningEffort?: RuntimeClineReasoningEffort | null;
 }
 
 export interface AddCustomClineProviderInput {
@@ -736,7 +736,7 @@ export function createClineProviderService() {
 				reasoningEffort:
 					overrides && "reasoningEffortOverride" in overrides
 						? (overrides.reasoningEffortOverride ?? null)
-						: toRuntimeReasoningEffort(resolvedSettings.reasoning?.effort),
+						: (toRuntimeReasoningEffort(resolvedSettings.reasoning?.effort) ?? undefined),
 			};
 		},
 

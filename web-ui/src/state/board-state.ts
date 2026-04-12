@@ -619,10 +619,8 @@ export function applyTaskDetailClineSettingsChange(
 		reasoningEffort: RuntimeClineReasoningEffort | "";
 	},
 	defaults: {
-		selectedAgentId?: RuntimeAgentId | null;
 		providerId?: string | null;
 		modelId?: string | null;
-		reasoningEffort?: RuntimeClineReasoningEffort | null;
 	},
 ): { board: BoardData; updated: boolean } {
 	const selection = findCardSelection(board, taskId);
@@ -636,34 +634,19 @@ export function applyTaskDetailClineSettingsChange(
 		return { board, updated: false };
 	}
 
-	const globalProviderId = defaults.providerId?.trim() ?? "";
-	const globalModelId = defaults.modelId?.trim() ?? "";
-	const globalReasoningEffort = defaults.reasoningEffort ?? "";
-	const nextTaskAgentId = defaults.selectedAgentId === "cline" ? undefined : "cline";
-	const nextTaskProviderId =
-		change.providerId.trim().length > 0 && change.providerId.trim() !== globalProviderId
-			? change.providerId
-			: undefined;
-	const nextTaskModelId =
-		change.modelId.trim().length > 0 && change.modelId.trim() !== globalModelId ? change.modelId : undefined;
-	const nextTaskReasoningEffort =
-		change.reasoningEffort && change.reasoningEffort !== globalReasoningEffort ? change.reasoningEffort : undefined;
-	const shouldPersistEmptyTaskClineSettings =
-		change.reasoningEffort === "" &&
-		(Boolean(globalReasoningEffort) ||
-			(selection.card.clineSettings !== undefined && Object.keys(selection.card.clineSettings).length === 0));
-	const nextTaskClineSettings =
-		nextTaskProviderId || nextTaskModelId || nextTaskReasoningEffort || shouldPersistEmptyTaskClineSettings
-			? {
-					...(nextTaskProviderId ? { providerId: nextTaskProviderId } : {}),
-					...(nextTaskModelId ? { modelId: nextTaskModelId } : {}),
-					...(nextTaskReasoningEffort ? { reasoningEffort: nextTaskReasoningEffort } : {}),
-				}
-			: undefined;
+	const nextTaskProviderId = change.providerId.trim() || defaults.providerId?.trim() || "";
+	const nextTaskModelId = change.modelId.trim() || defaults.modelId?.trim() || "";
+	if (!nextTaskProviderId || !nextTaskModelId) {
+		return { board, updated: false };
+	}
 
 	return applyTaskDetailClineSettingsSelection(board, taskId, {
-		agentId: nextTaskAgentId,
-		clineSettings: nextTaskClineSettings,
+		agentId: "cline",
+		clineSettings: {
+			providerId: nextTaskProviderId,
+			modelId: nextTaskModelId,
+			...(change.reasoningEffort ? { reasoningEffort: change.reasoningEffort } : {}),
+		},
 	});
 }
 
