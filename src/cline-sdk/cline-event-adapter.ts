@@ -504,6 +504,50 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
+	// Handle token usage events from the SDK
+	if (agentEvent?.type === "usage") {
+		// Accumulate usage values instead of overwriting
+		const currentInputTokens = entry.summary.inputTokens ?? 0;
+		const currentOutputTokens = entry.summary.outputTokens ?? 0;
+		const currentCacheReadTokens = entry.summary.cacheReadTokens ?? 0;
+		const currentCacheWriteTokens = entry.summary.cacheWriteTokens ?? 0;
+		const currentCost = entry.summary.cost ?? 0;
+
+		const usageEvent = agentEvent as unknown as Record<string, unknown>;
+		const addInputTokens = typeof usageEvent.inputTokens === "number" ? usageEvent.inputTokens : 0;
+		const addOutputTokens = typeof usageEvent.outputTokens === "number" ? usageEvent.outputTokens : 0;
+		const addCacheReadTokens = typeof usageEvent.cacheReadTokens === "number" ? usageEvent.cacheReadTokens : 0;
+		const addCacheWriteTokens = typeof usageEvent.cacheWriteTokens === "number" ? usageEvent.cacheWriteTokens : 0;
+		const addCost = typeof usageEvent.cost === "number" ? usageEvent.cost : 0;
+
+			// Context window is passed directly from core API in usage event
+		// This is the single source of truth - no guesswork needed
+		let contextWindow: number | null = null;
+		
+		// Use actual context window sent from core API (this is already the correct model-specific value)
+		if (typeof usageEvent.contextWindow === "number") {
+			contextWindow = usageEvent.contextWindow;
+		}
+		// Fall back to existing stored value if we already have it
+		else if (entry.summary.maxTokens != null && entry.summary.maxTokens > 0) {
+			contextWindow = entry.summary.maxTokens;
+		}
+		// Final safe default when no context info is available
+		else {
+			contextWindow = 200000;
+		}
+
+		emitSummary(input, {
+			inputTokens: currentInputTokens + addInputTokens,
+			outputTokens: currentOutputTokens + addOutputTokens,
+			cacheReadTokens: currentCacheReadTokens + addCacheReadTokens,
+			cacheWriteTokens: currentCacheWriteTokens + addCacheWriteTokens,
+			cost: currentCost + addCost,
+			maxTokens: contextWindow,
+		});
+		return;
+	}
+
 	if (statusEvent) {
 		if (statusEvent.payload.status !== "running") {
 			clearActiveTurnState(entry);

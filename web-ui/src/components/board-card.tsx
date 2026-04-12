@@ -291,6 +291,41 @@ export function BoardCard({
 		() => getTaskPromptDescription(card.prompt, displayTitle),
 		[card.prompt, displayTitle],
 	);
+	const usageDisplay = useMemo(() => {
+		if (!sessionSummary) return null;
+		const { inputTokens, outputTokens, cost, maxTokens, cacheReadTokens, cacheWriteTokens } = sessionSummary;
+		const hasUsage = (inputTokens ?? 0) > 0 || (outputTokens ?? 0) > 0 || (cost ?? 0) > 0;
+		if (!hasUsage) return null;
+		const totalUsed = (inputTokens ?? 0) + (outputTokens ?? 0);
+		const effectiveMax = maxTokens ?? 200000;
+		const usagePercent = Math.min((totalUsed / effectiveMax) * 100, 100);
+		
+		let contextColor = "var(--color-status-green)";
+		if (usagePercent > 80) contextColor = "var(--color-status-red)";
+		else if (usagePercent > 50) contextColor = "var(--color-status-gold)";
+		
+		const formatTokens = (n: number): string => {
+			if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+			if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+			return String(n);
+		};
+		const displayTokens = formatTokens(totalUsed);
+		const displayMax = formatTokens(effectiveMax);
+		const displayCost = cost && cost > 0 ? (cost < 0.01 ? "<$0.01" : "$" + cost.toFixed(2)) : "$0.00";
+		
+		return {
+			text: displayTokens + "/" + displayMax + " • " + displayCost,
+			usagePercent,
+			contextColor,
+			totalUsed,
+			maxTokens: effectiveMax,
+			cost,
+			inputTokens: inputTokens ?? 0,
+			outputTokens: outputTokens ?? 0,
+			cacheRead: cacheReadTokens ?? 0,
+			cacheWrite: cacheWriteTokens ?? 0
+		};
+	}, [sessionSummary]);
 
 	useLayoutEffect(() => {
 		if (descriptionRect.width > 0 || !displayDescription) {
@@ -826,6 +861,40 @@ export function BoardCard({
 											</>
 										) : null}
 									</p>
+								) : null}
+								{usageDisplay ? (
+									<>
+										<div
+											style={{
+												height: 3,
+												background: "var(--color-border-muted)",
+												borderRadius: 2,
+												marginTop: 6,
+												overflow: "hidden"
+											}}
+										>
+											<div
+												style={{
+													height: "100%",
+													width: `${usageDisplay.usagePercent}%`,
+													backgroundColor: usageDisplay.contextColor,
+													borderRadius: 2,
+													transition: "width 0.3s ease, background-color 0.3s ease"
+												}}
+											/>
+										</div>
+										<p
+											className="font-mono"
+											style={{
+												margin: "3px 0 0",
+												fontSize: 12,
+												lineHeight: 1.4,
+												color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : SESSION_ACTIVITY_COLOR.muted,
+											}}
+										>
+											{usageDisplay.text}
+										</p>
+									</>
 								) : null}
 								{showReviewGitActions ? (
 									<div className="flex gap-1.5 mt-1.5">
