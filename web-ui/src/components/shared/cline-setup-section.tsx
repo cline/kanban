@@ -225,8 +225,8 @@ export function ClineSetupSection({
 	return (
 		<>
 			{showHeading ? <h6 className="font-semibold text-text-primary mt-4 mb-2">Cline setup</h6> : null}
-			<div className="rounded-lg border border-border bg-surface-0 p-4 mt-2">
-				<p className="text-text-primary font-semibold text-[13px] mt-0 mb-3">API provider</p>
+			<div className="mt-2">
+				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">API provider</p>
 				<div className="min-w-0 w-1/2 max-w-full">
 					<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
 						<div className="min-w-0">
@@ -291,36 +291,41 @@ export function ClineSetupSection({
 				{controller.isLoadingProviderCatalog ? (
 					<p className="text-text-secondary text-[12px] mt-1 mb-0">Fetching Cline providers...</p>
 				) : null}
-				{controller.isOauthProviderSelected ? null : (
-					<div className="min-w-0 mt-4">
-						<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
-						<input
-							type="password"
-							value={controller.apiKey}
-							onChange={(event) => controller.setApiKey(event.target.value)}
-							placeholder={apiKeyPlaceholder}
-							disabled={controlsDisabled}
-							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-						/>
-						{providerEnvHint ? (
-							<p className="text-text-tertiary text-[11px] mt-1 mb-0 break-all">Or use {providerEnvHint}</p>
-						) : null}
-					</div>
-				)}
-				{shouldShowBaseUrlField ? (
-					<div className="min-w-0 mt-4">
-						<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
-						<input
-							value={controller.baseUrl}
-							onChange={(event) => controller.setBaseUrl(event.target.value)}
-							placeholder="https://api.cline.bot"
-							disabled={controlsDisabled}
-							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-						/>
-					</div>
-				) : null}
+				<div
+					className="grid gap-2 mt-3"
+					style={{ gridTemplateColumns: controller.isOauthProviderSelected ? "1fr" : "1fr 1fr" }}
+				>
+					{controller.isOauthProviderSelected ? null : (
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
+							<input
+								type="password"
+								value={controller.apiKey}
+								onChange={(event) => controller.setApiKey(event.target.value)}
+								placeholder={apiKeyPlaceholder}
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+							{providerEnvHint ? (
+								<p className="text-text-tertiary text-[11px] mt-1 mb-0 break-all">Or use {providerEnvHint}</p>
+							) : null}
+						</div>
+					)}
+					{shouldShowBaseUrlField ? (
+						<div className="min-w-0">
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
+							<input
+								value={controller.baseUrl}
+								onChange={(event) => controller.setBaseUrl(event.target.value)}
+								placeholder="https://api.cline.bot"
+								disabled={controlsDisabled}
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							/>
+						</div>
+					) : null}
+				</div>
 				{isBedrockProvider ? (
-					<div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 						<div className="min-w-0">
 							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS region</p>
 							<input
@@ -403,7 +408,7 @@ export function ClineSetupSection({
 					</div>
 				) : null}
 				{isVertexProvider ? (
-					<div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 						<div className="min-w-0">
 							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP project ID</p>
 							<input
@@ -427,31 +432,21 @@ export function ClineSetupSection({
 					</div>
 				) : null}
 				{controller.isOauthProviderSelected ? (
-					<div className="mt-4 pt-4 border-t border-border/40">
-						<p className="text-text-primary font-semibold text-[13px] mt-0 mb-2">Account</p>
-						<div className="flex flex-col gap-1.5">
-							<div className="flex items-baseline justify-between">
-								<span className="text-text-secondary text-[12px]">Status</span>
-								<span className="text-text-primary text-[12px] font-medium">
-									{controller.oauthConfigured ? "Signed in" : "Not signed in"}
-								</span>
-							</div>
-							{controller.oauthAccountId ? (
-								<div className="flex items-baseline justify-between">
-									<span className="text-text-secondary text-[12px]">Account ID</span>
-									<span className="text-text-primary text-[12px] font-mono">{controller.oauthAccountId}</span>
-								</div>
-							) : null}
-							{controller.oauthExpiresAt ? (
-								<div className="flex items-baseline justify-between">
-									<span className="text-text-secondary text-[12px]">Expiry</span>
-									<span className="text-text-primary text-[12px]">
-										{formatExpiry(controller.oauthExpiresAt)}
-									</span>
-								</div>
-							) : null}
-						</div>
-						<div className="mt-3">
+					<>
+						<p className="text-text-secondary text-[12px] mt-1 mb-0">
+							Status: {controller.oauthConfigured ? "Signed in" : "Not signed in"}
+						</p>
+						{controller.oauthAccountId ? (
+							<p className="text-text-secondary text-[12px] mt-1 mb-0">
+								Account ID: <span className="text-text-primary">{controller.oauthAccountId}</span>
+							</p>
+						) : null}
+						{controller.oauthExpiresAt ? (
+							<p className="text-text-secondary text-[12px] mt-1 mb-0">
+								Expiry: <span className="text-text-primary">{formatExpiry(controller.oauthExpiresAt)}</span>
+							</p>
+						) : null}
+						<div className="mt-2">
 							<Button
 								variant="default"
 								size="sm"
@@ -465,15 +460,15 @@ export function ClineSetupSection({
 										: `Sign in with ${controller.managedOauthProvider ?? "OAuth"}`}
 							</Button>
 						</div>
-					</div>
+					</>
 				) : null}
 			</div>
 			{accountSection ? <div className="mt-4">{accountSection}</div> : null}
 
-			<div className="rounded-lg border border-border bg-surface-0 p-4 mt-3">
-				<p className="text-text-primary font-semibold text-[13px] mt-0 mb-3">Model</p>
+			<div className="mt-4">
+				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">Model</p>
 				<div
-					className="grid gap-4"
+					className="grid gap-2"
 					style={{ gridTemplateColumns: controller.selectedModelSupportsReasoningEffort ? "1fr 1fr" : "1fr" }}
 				>
 					<div className="min-w-0">
@@ -522,7 +517,7 @@ export function ClineSetupSection({
 					) : null}
 				</div>
 				{controller.isLoadingProviderModels ? (
-					<p className="text-text-secondary text-[12px] mt-2 mb-0">Fetching Cline models...</p>
+					<p className="text-text-secondary text-[12px] mt-1 mb-0">Fetching Cline models...</p>
 				) : null}
 			</div>
 

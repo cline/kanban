@@ -1051,16 +1051,6 @@ body.kb-dependency-link-mode {
 	}
 }
 
-/* -- Settings scroll layout (v3) --
-   Override sticky panel headers when all sections share one scroll container.
-   Converts the bottom margin to padding so bg-surface-1 covers the gap
-   and prevents content from peeking through below the stuck header. */
-
-[data-scroll-settings] .sticky {
-	margin-bottom: 0 !important;
-	padding-bottom: 1.75rem !important;
-}
-
 /* -- PWA Window Controls Overlay --
    When installed as a PWA with display_override: window-controls-overlay,
    the title bar disappears and web content extends to the top of the window.
