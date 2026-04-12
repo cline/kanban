@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardColumnId, isCardDropDisabled } from "@/state/drag-rules";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import type { BoardCard as BoardCardModel, BoardColumn, BoardColumnId, CardSelection } from "@/types";
 
 function ColumnSection({
@@ -57,7 +58,29 @@ function ColumnSection({
 	activeDragSourceColumnId?: BoardColumnId | null;
 	workspacePath?: string | null;
 }): React.ReactElement {
-	const [open, setOpen] = useState(defaultOpen);
+	// For trash column, persist collapse state in localStorage
+	const isTrashColumn = column.id === "trash";
+	const [open, setOpen] = useState(() => {
+		if (isTrashColumn) {
+			const stored = readLocalStorageItem(LocalStorageKey.TrashColumnCollapsed);
+			// Default to collapsed (false) if not set, otherwise use stored value
+			if (stored === null) return defaultOpen;
+			return stored !== "true";
+		}
+		return defaultOpen;
+	});
+	});
+
+	const handleToggleOpen = useCallback(() => {
+		setOpen((prev) => {
+			const newValue = !prev;
+			if (isTrashColumn) {
+				writeLocalStorageItem(LocalStorageKey.TrashColumnCollapsed, String(!newValue));
+			}
+			return newValue;
+		});
+	}, [isTrashColumn]);
+
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -82,7 +105,7 @@ function ColumnSection({
 			>
 				<button
 					type="button"
-					onClick={() => setOpen((prev) => !prev)}
+					onClick={handleToggleOpen}
 					className="hover:bg-surface-0 rounded-md"
 					style={{
 						height: 32,
@@ -203,6 +226,7 @@ function ColumnSection({
 														onEditTask?.(card);
 														return;
 													}
+													// Allow clicking on trash cards to open them (but not editing)
 													onCardClick(card);
 												}}
 											/>,
