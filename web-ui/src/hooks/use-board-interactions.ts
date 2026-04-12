@@ -15,6 +15,7 @@ import {
 	findCardSelection,
 	getTaskColumnId,
 	moveTaskToColumn,
+	removeTask,
 	updateTask,
 } from "@/state/board-state";
 import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
@@ -89,6 +90,7 @@ export interface UseBoardInteractionsResult {
 	handleConfirmClearTrash: () => void;
 	handleAddReviewComments: (taskId: string, text: string) => Promise<void>;
 	handleSendReviewComments: (taskId: string, text: string) => Promise<void>;
+	handlePermanentlyDeleteTask: (taskId: string) => void;
 	moveToTrashLoadingById: Record<string, boolean>;
 	trashTaskCount: number;
 }
@@ -736,7 +738,7 @@ export function useBoardInteractions({
 	const handleCardSelect = useCallback(
 		(taskId: string) => {
 			const selection = findCardSelection(board, taskId);
-			if (!selection || selection.column.id === "trash") {
+			if (!selection) {
 				return;
 			}
 			setSelectedTaskId(taskId);
@@ -863,6 +865,27 @@ export function useBoardInteractions({
 		trashTaskIds,
 	]);
 
+	const handlePermanentlyDeleteTask = useCallback(
+		(taskId: string) => {
+			setBoard((currentBoard) => removeTask(currentBoard, taskId).board);
+			setSessions((currentSessions) => {
+				const nextSessions = { ...currentSessions };
+				delete nextSessions[taskId];
+				return nextSessions;
+			});
+			if (selectedTaskId === taskId) {
+				setSelectedTaskId(null);
+				clearTaskWorkspaceInfo(selectedTaskId);
+			}
+
+			void (async () => {
+				await stopTaskSession(taskId);
+				await cleanupTaskWorkspace(taskId);
+			})();
+		},
+		[cleanupTaskWorkspace, selectedTaskId, setBoard, setSelectedTaskId, setSessions, stopTaskSession],
+	);
+
 	const resetBoardInteractionsState = useCallback(() => {
 		previousSessionsRef.current = {};
 		moveToTrashLoadingByIdRef.current = {};
@@ -896,6 +919,7 @@ export function useBoardInteractions({
 		handleConfirmClearTrash,
 		handleAddReviewComments,
 		handleSendReviewComments,
+		handlePermanentlyDeleteTask,
 		moveToTrashLoadingById,
 		trashTaskCount,
 	};

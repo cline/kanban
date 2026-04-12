@@ -234,6 +234,13 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	warningMessage: z.string().nullable().optional(),
 	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
+	// Token usage and cost tracking
+	inputTokens: z.number().int().nonnegative().nullable().optional(),
+	outputTokens: z.number().int().nonnegative().nullable().optional(),
+	cacheReadTokens: z.number().int().nonnegative().nullable().optional(),
+	cacheWriteTokens: z.number().int().nonnegative().nullable().optional(),
+	cost: z.number().nullable().optional(),
+	maxTokens: z.number().int().nonnegative().nullable().optional(),
 });
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 

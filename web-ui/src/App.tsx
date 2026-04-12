@@ -569,6 +569,7 @@ export default function App(): ReactElement {
 		handleConfirmClearTrash,
 		handleAddReviewComments,
 		handleSendReviewComments,
+		handlePermanentlyDeleteTask,
 		moveToTrashLoadingById,
 		trashTaskCount,
 	} = useBoardInteractions({
@@ -902,6 +903,7 @@ export default function App(): ReactElement {
 												moveToTrashLoadingById={moveToTrashLoadingById}
 												onMoveToTrashTask={handleMoveReviewCardToTrash}
 												onRestoreFromTrashTask={handleRestoreTaskFromTrash}
+												onPermanentlyDeleteTask={handlePermanentlyDeleteTask}
 												dependencies={board.dependencies}
 												onCreateDependency={handleCreateDependency}
 												onDeleteDependency={handleDeleteDependency}
