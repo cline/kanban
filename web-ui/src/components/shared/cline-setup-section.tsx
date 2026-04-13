@@ -1,6 +1,6 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { Check, ExternalLink, Pencil, Plus, X } from "lucide-react";
-import { type ReactElement, type ReactNode, useMemo, useState } from "react";
+import { Check, Copy, ExternalLink, Pencil, Plus, X } from "lucide-react";
+import { type ReactElement, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
 	buildClineAgentModelPickerOptions,
@@ -23,6 +23,7 @@ import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-run
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type { RuntimeClineMcpServer, RuntimeClineReasoningEffort } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
+import { useCopyToClipboard } from "@/utils/react-use";
 
 function formatExpiry(value: string): string {
 	const trimmed = value.trim();
@@ -71,6 +72,42 @@ export function ClineSetupSection({
 	const mcpControlsDisabled = controlsDisabled || (mcpController?.isSavingMcpSettings ?? false);
 	const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
 	const [providerDialogMode, setProviderDialogMode] = useState<ClineProviderDialogMode>("add");
+	const [isDeviceCodeCopied, setIsDeviceCodeCopied] = useState(false);
+	const deviceCodeCopiedResetTimerRef = useRef<number | null>(null);
+	const [copiedDeviceCodeState, copyDeviceCode] = useCopyToClipboard();
+
+	useEffect(() => {
+		return () => {
+			if (deviceCodeCopiedResetTimerRef.current !== null) {
+				window.clearTimeout(deviceCodeCopiedResetTimerRef.current);
+				deviceCodeCopiedResetTimerRef.current = null;
+			}
+		};
+	}, []);
+
+	useEffect(() => {
+		setIsDeviceCodeCopied(false);
+	}, [controller.deviceAuthInfo?.userCode]);
+
+	useEffect(() => {
+		if (!copiedDeviceCodeState.value || copiedDeviceCodeState.value !== controller.deviceAuthInfo?.userCode) {
+			return;
+		}
+		if (copiedDeviceCodeState.error) {
+			onError?.("Could not copy code automatically. Please copy it manually.");
+			setIsDeviceCodeCopied(false);
+			return;
+		}
+		onError?.(null);
+		setIsDeviceCodeCopied(true);
+		if (deviceCodeCopiedResetTimerRef.current !== null) {
+			window.clearTimeout(deviceCodeCopiedResetTimerRef.current);
+		}
+		deviceCodeCopiedResetTimerRef.current = window.setTimeout(() => {
+			setIsDeviceCodeCopied(false);
+			deviceCodeCopiedResetTimerRef.current = null;
+		}, 2000);
+	}, [copiedDeviceCodeState, controller.deviceAuthInfo?.userCode, onError]);
 
 	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
 		const items: SearchSelectOption[] = controller.providerCatalog.map((provider) => ({
@@ -221,6 +258,12 @@ export function ClineSetupSection({
 			const message = error instanceof Error ? error.message : String(error);
 			onError?.(`Could not open file on host: ${message}`);
 		});
+	};
+
+	const handleCopyDeviceCode = (code: string) => {
+		setIsDeviceCodeCopied(false);
+		onError?.(null);
+		copyDeviceCode(code);
 	};
 
 	return (
@@ -448,22 +491,44 @@ export function ClineSetupSection({
 							</p>
 						) : null}
 						{controller.isRunningOauthLogin && controller.deviceAuthInfo ? (
-							<div className="mt-2 p-3 bg-surface-2 rounded-md">
-								<p className="text-text-primary text-[13px] font-medium mb-1">
-									Enter this code in your browser:
-								</p>
-								<p className="text-text-primary text-[18px] font-mono font-bold tracking-wider mb-2">
-									{controller.deviceAuthInfo.userCode}
-								</p>
-								<a
-									href={controller.deviceAuthInfo.verificationUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-accent text-[12px] underline"
-								>
-									{controller.deviceAuthInfo.verificationUrl}
-								</a>
-								<p className="text-text-secondary text-[11px] mt-1">Waiting for browser confirmation...</p>
+							<div className="mt-2 rounded-md border border-border bg-surface-2 p-3">
+								<p className="text-text-secondary text-[13px] font-medium mt-0 mb-2">Sign in to Cline</p>
+								<ol className="list-decimal pl-4 text-[12px] text-text-primary m-0">
+									<li>
+										Go to this URL:{" "}
+										<a
+											href={controller.deviceAuthInfo.verificationUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="break-all text-accent underline"
+										>
+											{controller.deviceAuthInfo.verificationUrl}
+										</a>
+									</li>
+									<li className="mt-2">
+										Enter this code:
+										<div className="mt-1 flex items-center gap-2">
+											<p className="text-text-primary text-[18px] font-mono font-bold tracking-wider m-0">
+												{controller.deviceAuthInfo.userCode}
+											</p>
+											<Button
+												variant="ghost"
+												size="sm"
+												icon={isDeviceCodeCopied ? <Check size={14} /> : <Copy size={14} />}
+												onClick={() => {
+													const userCode = controller.deviceAuthInfo?.userCode;
+													if (!userCode) {
+														return;
+													}
+													handleCopyDeviceCode(userCode);
+												}}
+												disabled={controlsDisabled || !controller.deviceAuthInfo}
+											>
+												{isDeviceCodeCopied ? "Copied" : "Copy"}
+											</Button>
+										</div>
+									</li>
+								</ol>
 							</div>
 						) : null}
 						<div className="mt-2">
