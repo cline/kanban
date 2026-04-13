@@ -231,6 +231,7 @@ export default function App(): ReactElement {
 		isAwaitingWorkspaceSnapshot,
 		isInitialRuntimeLoad,
 		isProjectSwitching,
+		isWorkspaceMetadataPending,
 		onDetailClosed: () => {
 			setIsGitHistoryOpen(false);
 		},
