@@ -2,7 +2,11 @@ import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, X } 
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { type DiffHighlightRange, DiffSelectionToolbar } from "@/components/detail-panels/diff-selection-toolbar";
+import {
+	DiffHighlightCommentBox,
+	type DiffHighlightRange,
+	formatSnippetReference,
+} from "@/components/detail-panels/diff-selection-toolbar";
 import {
 	buildDisplayItems,
 	buildHighlightedLineMap,
@@ -146,20 +150,28 @@ function UnifiedDiff({
 	oldText,
 	newText,
 	comments,
-	onAddComment,
+	_onAddComment,
 	onUpdateComment,
 	onDeleteComment,
 	highlightedKeys,
 	onLineNumberClick,
+	lastHighlightedRowKey,
+	highlightRange,
+	onSendHighlightComment,
+	onDismissHighlight,
 }: {
 	path: string;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
-	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
+	_onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
 	highlightedKeys?: ReadonlySet<string>;
+	lastHighlightedRowKey?: string | null;
+	highlightRange?: DiffHighlightRange | null;
+	onSendHighlightComment?: (formatted: string) => void;
+	onDismissHighlight?: () => void;
 	onLineNumberClick?: (
 		filePath: string,
 		lineNumber: number,
@@ -260,6 +272,15 @@ function UnifiedDiff({
 						comment={existingComment}
 						onChange={(text) => onUpdateComment(row.lineNumber!, row.variant, text)}
 						onDelete={() => onDeleteComment(row.lineNumber!, row.variant)}
+					/>
+				) : null}
+				{rowKey === lastHighlightedRowKey && highlightRange && onSendHighlightComment && onDismissHighlight ? (
+					<DiffHighlightCommentBox
+						range={highlightRange}
+						onSend={(formatted) => {
+							onSendHighlightComment(formatted);
+						}}
+						onCancel={onDismissHighlight}
 					/>
 				) : null}
 			</div>
@@ -797,7 +818,6 @@ export function DiffViewerPanel({
 
 	// --- Line-number highlight state ---
 	const [lineHighlight, setLineHighlight] = useState<LineHighlightState | null>(null);
-	const [toolbarPos, setToolbarPos] = useState<{ top: number; left: number } | null>(null);
 
 	const highlightedKeys = useMemo(() => {
 		if (!lineHighlight) {
@@ -861,63 +881,14 @@ export function DiffViewerPanel({
 		[groupedByPath, lineHighlight],
 	);
 
-	// Position toolbar below the last highlighted row
-	useEffect(() => {
+	/** The key identifying the last row in the highlight — the comment box renders after this row. */
+	const lastHighlightedRowKey = useMemo(() => {
 		if (!lineHighlight || lineHighlight.rows.length === 0) {
-			setToolbarPos(null);
-			return;
+			return null;
 		}
-		const container = scrollContainerRef.current;
-		if (!container) {
-			return;
-		}
-		// Find the last highlighted row's DOM element via data attribute
-		const lastRow = lineHighlight.rows[lineHighlight.rows.length - 1]!;
-		const selector = `[data-diff-row-id="${rowIdKey(lastRow.filePath, lastRow.lineNumber, lastRow.variant)}"]`;
-		const el = container.querySelector(selector);
-		if (!el) {
-			return;
-		}
-		const containerRect = container.getBoundingClientRect();
-		const elRect = el.getBoundingClientRect();
-		setToolbarPos({
-			top: elRect.bottom - containerRect.top + container.scrollTop + 4,
-			left: elRect.left - containerRect.left + elRect.width / 2,
-		});
+		const last = lineHighlight.rows[lineHighlight.rows.length - 1]!;
+		return rowIdKey(last.filePath, last.lineNumber, last.variant);
 	}, [lineHighlight]);
-
-	// Also handle native text selection → show toolbar
-	const handleMouseUp = useCallback(() => {
-		if (!onAddToTerminal && !onSendToTerminal) {
-			return;
-		}
-		requestAnimationFrame(() => {
-			const sel = window.getSelection();
-			if (!sel || sel.isCollapsed || lineHighlight) {
-				return;
-			}
-			const text = sel.toString().trim();
-			if (text.length === 0) {
-				return;
-			}
-			const container = scrollContainerRef.current;
-			if (!container) {
-				return;
-			}
-			const range = sel.getRangeAt(0);
-			const rect = range.getBoundingClientRect();
-			const containerRect = container.getBoundingClientRect();
-			// Build a synthetic highlight from the text selection
-			setLineHighlight({
-				anchor: { filePath: "", lineNumber: 0, variant: "context", text },
-				rows: [{ filePath: "", lineNumber: 0, variant: "context", text }],
-			});
-			setToolbarPos({
-				top: rect.bottom - containerRect.top + container.scrollTop + 4,
-				left: rect.left - containerRect.left + rect.width / 2,
-			});
-		});
-	}, [lineHighlight, onAddToTerminal, onSendToTerminal]);
 
 	const highlightRange: DiffHighlightRange | null = useMemo(() => {
 		if (!lineHighlight || lineHighlight.rows.length === 0) {
@@ -933,7 +904,6 @@ export function DiffViewerPanel({
 
 	const handleDismissHighlight = useCallback(() => {
 		setLineHighlight(null);
-		setToolbarPos(null);
 		window.getSelection()?.removeAllRanges();
 	}, []);
 
@@ -950,20 +920,6 @@ export function DiffViewerPanel({
 		document.addEventListener("keydown", handleKey);
 		return () => document.removeEventListener("keydown", handleKey);
 	}, [handleDismissHighlight, lineHighlight]);
-
-	// Dismiss highlight when native selection collapses
-	useEffect(() => {
-		const handleSelectionChange = () => {
-			const sel = window.getSelection();
-			if (sel?.isCollapsed && lineHighlight && lineHighlight.anchor.filePath === "") {
-				// This was a text-selection-based highlight
-				setLineHighlight(null);
-				setToolbarPos(null);
-			}
-		};
-		document.addEventListener("selectionchange", handleSelectionChange);
-		return () => document.removeEventListener("selectionchange", handleSelectionChange);
-	}, [lineHighlight]);
 
 	const hasAnyComments = comments.size > 0;
 	const nonEmptyCount = nonEmptyComments.length;
@@ -1040,9 +996,7 @@ export function DiffViewerPanel({
 					<div
 						ref={scrollContainerRef}
 						onScroll={handleDiffScroll}
-						onMouseUp={handleMouseUp}
 						style={{
-							position: "relative",
 							flex: "1 1 0",
 							minHeight: 0,
 							overflowY: "auto",
@@ -1050,26 +1004,6 @@ export function DiffViewerPanel({
 							padding: "0 12px 12px",
 						}}
 					>
-						{highlightRange && toolbarPos && (onAddToTerminal || onSendToTerminal) ? (
-							<DiffSelectionToolbar
-								range={highlightRange}
-								anchorTop={toolbarPos.top}
-								anchorLeft={toolbarPos.left}
-								onAddToChat={(formatted) => {
-									onAddToTerminal?.(formatted);
-									handleDismissHighlight();
-								}}
-								onSendToAgent={
-									onSendToTerminal
-										? (formatted) => {
-												onSendToTerminal(formatted);
-												handleDismissHighlight();
-											}
-										: undefined
-								}
-								onDismiss={handleDismissHighlight}
-							/>
-						) : null}
 						{groupedByPath.map((group) => {
 							const isExpanded = expandedPaths[group.path] ?? true;
 							const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
@@ -1148,7 +1082,7 @@ export function DiffViewerPanel({
 															oldText={entry.oldText}
 															newText={entry.newText}
 															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
+															_onAddComment={(lineNumber, lineText, variant) =>
 																handleAddComment(group.path, lineNumber, lineText, variant)
 															}
 															onUpdateComment={(lineNumber, variant, text) =>
@@ -1159,6 +1093,17 @@ export function DiffViewerPanel({
 															}
 															highlightedKeys={highlightedKeys}
 															onLineNumberClick={handleLineNumberClick}
+															lastHighlightedRowKey={lastHighlightedRowKey}
+															highlightRange={highlightRange}
+															onSendHighlightComment={
+																onSendToTerminal
+																	? (f) => {
+																			onSendToTerminal(f);
+																			handleDismissHighlight();
+																		}
+																	: undefined
+															}
+															onDismissHighlight={handleDismissHighlight}
 														/>
 													)}
 												</div>
