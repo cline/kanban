@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, X } 
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { type DiffHighlightRange, DiffSelectionToolbar } from "@/components/detail-panels/diff-selection-toolbar";
 import {
 	buildDisplayItems,
 	buildHighlightedLineMap,
@@ -20,6 +21,26 @@ import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { buildFileTree } from "@/utils/file-tree";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 import { isMacPlatform } from "@/utils/platform";
+
+/** Identifies a single row for highlight tracking. */
+interface RowIdentity {
+	filePath: string;
+	lineNumber: number;
+	variant: "added" | "removed" | "context";
+	text: string;
+}
+
+/** State for the current line-number-based highlight. */
+interface LineHighlightState {
+	/** The row that was clicked first (anchor). */
+	anchor: RowIdentity;
+	/** All rows currently in the highlighted range (inclusive). */
+	rows: RowIdentity[];
+}
+
+function rowIdKey(filePath: string, lineNumber: number, variant: string): string {
+	return `${filePath}:${variant}:${lineNumber}`;
+}
 
 interface FileDiffGroup {
 	path: string;
@@ -128,6 +149,8 @@ function UnifiedDiff({
 	onAddComment,
 	onUpdateComment,
 	onDeleteComment,
+	highlightedKeys,
+	onLineNumberClick,
 }: {
 	path: string;
 	oldText: string | null | undefined;
@@ -136,6 +159,14 @@ function UnifiedDiff({
 	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+	highlightedKeys?: ReadonlySet<string>;
+	onLineNumberClick?: (
+		filePath: string,
+		lineNumber: number,
+		variant: "added" | "removed" | "context",
+		text: string,
+		shiftKey: boolean,
+	) => void;
 }): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
@@ -161,8 +192,14 @@ function UnifiedDiff({
 				: row.variant === "removed"
 					? "kb-diff-row kb-diff-row-removed"
 					: "kb-diff-row kb-diff-row-context";
-		const rowClass = hasComment ? `${baseClass} kb-diff-row-commented` : baseClass;
-		const canClickRow = row.lineNumber != null && !hasComment;
+		const isHighlighted = row.lineNumber != null && highlightedKeys?.has(rowIdKey(path, row.lineNumber, row.variant));
+		const rowClass = [
+			baseClass,
+			hasComment ? "kb-diff-row-commented" : "",
+			isHighlighted ? "kb-diff-row-highlighted" : "",
+		]
+			.filter(Boolean)
+			.join(" ");
 		const highlightedLineHtml =
 			row.lineNumber == null
 				? null
@@ -170,17 +207,24 @@ function UnifiedDiff({
 					? (highlightedOldByLine.get(row.lineNumber) ?? null)
 					: (highlightedNewByLine.get(row.lineNumber) ?? null);
 
-		const handleRowClick =
-			row.lineNumber != null && !hasComment
-				? () => {
-						onAddComment(row.lineNumber!, row.text, row.variant);
-					}
-				: undefined;
-
 		return (
-			<div key={row.key}>
-				<div className={rowClass} style={canClickRow ? undefined : { cursor: "default" }} onClick={handleRowClick}>
-					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
+			<div
+				key={row.key}
+				data-diff-row-id={row.lineNumber != null ? rowIdKey(path, row.lineNumber, row.variant) : undefined}
+			>
+				<div className={rowClass}>
+					<span
+						className={`kb-diff-line-number${onLineNumberClick && row.lineNumber != null ? " kb-diff-line-number-selectable" : ""}`}
+						style={{ color: "var(--color-text-tertiary)" }}
+						onClick={
+							onLineNumberClick && row.lineNumber != null
+								? (e) => {
+										e.stopPropagation();
+										onLineNumberClick(path, row.lineNumber!, row.variant, row.text, e.shiftKey);
+									}
+								: undefined
+						}
+					>
 						<span className="kb-diff-line-number-text">{row.lineNumber ?? ""}</span>
 						{row.lineNumber != null ? (
 							<span
@@ -331,6 +375,8 @@ function SplitDiff({
 	onAddComment,
 	onUpdateComment,
 	onDeleteComment,
+	highlightedKeys,
+	onLineNumberClick,
 }: {
 	path: string;
 	oldText: string | null | undefined;
@@ -339,6 +385,14 @@ function SplitDiff({
 	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+	highlightedKeys?: ReadonlySet<string>;
+	onLineNumberClick?: (
+		filePath: string,
+		lineNumber: number,
+		variant: "added" | "removed" | "context",
+		text: string,
+		shiftKey: boolean,
+	) => void;
 }): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
@@ -752,6 +806,176 @@ export function DiffViewerPanel({
 		onCommentsChange(new Map());
 	}, [onCommentsChange]);
 
+	// --- Line-number highlight state ---
+	const [lineHighlight, setLineHighlight] = useState<LineHighlightState | null>(null);
+	const [toolbarPos, setToolbarPos] = useState<{ top: number; left: number } | null>(null);
+
+	const highlightedKeys = useMemo(() => {
+		if (!lineHighlight) {
+			return undefined;
+		}
+		const keys = new Set<string>();
+		for (const r of lineHighlight.rows) {
+			keys.add(rowIdKey(r.filePath, r.lineNumber, r.variant));
+		}
+		return keys;
+	}, [lineHighlight]);
+
+	const handleLineNumberClick = useCallback(
+		(
+			filePath: string,
+			lineNumber: number,
+			variant: "added" | "removed" | "context",
+			text: string,
+			shiftKey: boolean,
+		) => {
+			const clickedRow: RowIdentity = { filePath, lineNumber, variant, text };
+			if (
+				shiftKey &&
+				lineHighlight &&
+				lineHighlight.anchor.filePath === filePath &&
+				lineHighlight.anchor.variant === variant
+			) {
+				// Extend range from anchor to clicked line — need all rows from the diff
+				// We already track the anchor, so we look up all rows from the grouped data
+				const group = groupedByPath.find((g) => g.path === filePath);
+				if (!group) {
+					return;
+				}
+				// Build all rows for this file
+				const allRows: RowIdentity[] = [];
+				for (const entry of group.entries) {
+					if (entry.isBinary) {
+						continue;
+					}
+					const diffRows = buildUnifiedDiffRows(entry.oldText, entry.newText);
+					for (const r of diffRows) {
+						if (r.lineNumber != null) {
+							allRows.push({ filePath, lineNumber: r.lineNumber, variant: r.variant, text: r.text });
+						}
+					}
+				}
+				const anchor = lineHighlight.anchor;
+				const startLine = Math.min(anchor.lineNumber, lineNumber);
+				const endLine = Math.max(anchor.lineNumber, lineNumber);
+				const rangeRows = allRows.filter(
+					(r) => r.variant === variant && r.lineNumber >= startLine && r.lineNumber <= endLine,
+				);
+				if (rangeRows.length > 0) {
+					setLineHighlight({ anchor, rows: rangeRows });
+				}
+			} else {
+				// New anchor — single line
+				setLineHighlight({ anchor: clickedRow, rows: [clickedRow] });
+			}
+		},
+		[groupedByPath, lineHighlight],
+	);
+
+	// Position toolbar below the last highlighted row
+	useEffect(() => {
+		if (!lineHighlight || lineHighlight.rows.length === 0) {
+			setToolbarPos(null);
+			return;
+		}
+		const container = scrollContainerRef.current;
+		if (!container) {
+			return;
+		}
+		// Find the last highlighted row's DOM element via data attribute
+		const lastRow = lineHighlight.rows[lineHighlight.rows.length - 1]!;
+		const selector = `[data-diff-row-id="${rowIdKey(lastRow.filePath, lastRow.lineNumber, lastRow.variant)}"]`;
+		const el = container.querySelector(selector);
+		if (!el) {
+			return;
+		}
+		const containerRect = container.getBoundingClientRect();
+		const elRect = el.getBoundingClientRect();
+		setToolbarPos({
+			top: elRect.bottom - containerRect.top + container.scrollTop + 4,
+			left: elRect.left - containerRect.left + elRect.width / 2,
+		});
+	}, [lineHighlight]);
+
+	// Also handle native text selection → show toolbar
+	const handleMouseUp = useCallback(() => {
+		if (!onAddToTerminal && !onSendToTerminal) {
+			return;
+		}
+		requestAnimationFrame(() => {
+			const sel = window.getSelection();
+			if (!sel || sel.isCollapsed || lineHighlight) {
+				return;
+			}
+			const text = sel.toString().trim();
+			if (text.length === 0) {
+				return;
+			}
+			const container = scrollContainerRef.current;
+			if (!container) {
+				return;
+			}
+			const range = sel.getRangeAt(0);
+			const rect = range.getBoundingClientRect();
+			const containerRect = container.getBoundingClientRect();
+			// Build a synthetic highlight from the text selection
+			setLineHighlight({
+				anchor: { filePath: "", lineNumber: 0, variant: "context", text },
+				rows: [{ filePath: "", lineNumber: 0, variant: "context", text }],
+			});
+			setToolbarPos({
+				top: rect.bottom - containerRect.top + container.scrollTop + 4,
+				left: rect.left - containerRect.left + rect.width / 2,
+			});
+		});
+	}, [lineHighlight, onAddToTerminal, onSendToTerminal]);
+
+	const highlightRange: DiffHighlightRange | null = useMemo(() => {
+		if (!lineHighlight || lineHighlight.rows.length === 0) {
+			return null;
+		}
+		const rows = lineHighlight.rows;
+		const filePath = rows[0]!.filePath;
+		const startLine = Math.min(...rows.map((r) => r.lineNumber));
+		const endLine = Math.max(...rows.map((r) => r.lineNumber));
+		const text = rows.map((r) => r.text).join("\n");
+		return { filePath, startLine, endLine, text };
+	}, [lineHighlight]);
+
+	const handleDismissHighlight = useCallback(() => {
+		setLineHighlight(null);
+		setToolbarPos(null);
+		window.getSelection()?.removeAllRanges();
+	}, []);
+
+	// Dismiss on Escape
+	useEffect(() => {
+		if (!lineHighlight) {
+			return;
+		}
+		const handleKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				handleDismissHighlight();
+			}
+		};
+		document.addEventListener("keydown", handleKey);
+		return () => document.removeEventListener("keydown", handleKey);
+	}, [handleDismissHighlight, lineHighlight]);
+
+	// Dismiss highlight when native selection collapses
+	useEffect(() => {
+		const handleSelectionChange = () => {
+			const sel = window.getSelection();
+			if (sel?.isCollapsed && lineHighlight && lineHighlight.anchor.filePath === "") {
+				// This was a text-selection-based highlight
+				setLineHighlight(null);
+				setToolbarPos(null);
+			}
+		};
+		document.addEventListener("selectionchange", handleSelectionChange);
+		return () => document.removeEventListener("selectionchange", handleSelectionChange);
+	}, [lineHighlight]);
+
 	const hasAnyComments = comments.size > 0;
 	const nonEmptyCount = nonEmptyComments.length;
 
@@ -827,7 +1051,9 @@ export function DiffViewerPanel({
 					<div
 						ref={scrollContainerRef}
 						onScroll={handleDiffScroll}
+						onMouseUp={handleMouseUp}
 						style={{
+							position: "relative",
 							flex: "1 1 0",
 							minHeight: 0,
 							overflowY: "auto",
@@ -835,6 +1061,26 @@ export function DiffViewerPanel({
 							padding: "0 12px 12px",
 						}}
 					>
+						{highlightRange && toolbarPos && (onAddToTerminal || onSendToTerminal) ? (
+							<DiffSelectionToolbar
+								range={highlightRange}
+								anchorTop={toolbarPos.top}
+								anchorLeft={toolbarPos.left}
+								onAddToChat={(formatted) => {
+									onAddToTerminal?.(formatted);
+									handleDismissHighlight();
+								}}
+								onSendToAgent={
+									onSendToTerminal
+										? (formatted) => {
+												onSendToTerminal(formatted);
+												handleDismissHighlight();
+											}
+										: undefined
+								}
+								onDismiss={handleDismissHighlight}
+							/>
+						) : null}
 						{groupedByPath.map((group) => {
 							const isExpanded = expandedPaths[group.path] ?? true;
 							const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
@@ -904,6 +1150,8 @@ export function DiffViewerPanel({
 															onDeleteComment={(lineNumber, variant) =>
 																handleDeleteComment(group.path, lineNumber, variant)
 															}
+															highlightedKeys={highlightedKeys}
+															onLineNumberClick={handleLineNumberClick}
 														/>
 													) : (
 														<UnifiedDiff
@@ -920,6 +1168,8 @@ export function DiffViewerPanel({
 															onDeleteComment={(lineNumber, variant) =>
 																handleDeleteComment(group.path, lineNumber, variant)
 															}
+															highlightedKeys={highlightedKeys}
+															onLineNumberClick={handleLineNumberClick}
 														/>
 													)}
 												</div>
