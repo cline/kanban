@@ -960,6 +960,21 @@ body.kb-dependency-link-mode {
 	border-radius: var(--radius-sm);
 }
 
+@keyframes kb-chat-message-appear {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.kb-chat-message-appear {
+	animation: kb-chat-message-appear 300ms ease-out both;
+}
+
 /* -- Chat markdown -- */
 
 .kb-markdown > * {
