@@ -233,7 +233,7 @@ const TERMINAL_COLORS_BY_THEME: Record<ThemeId, ThemeTerminalColors> = {
 		selectionBackground: "#0084FF4D",
 		selectionForeground: "#ffffff",
 		selectionInactiveBackground: "#2D333966",
-		isLightBackground: true,
+		isLightBackground: false,
 	},
 	overcast: {
 		textPrimary: "#E6EDF3",
@@ -242,7 +242,7 @@ const TERMINAL_COLORS_BY_THEME: Record<ThemeId, ThemeTerminalColors> = {
 		selectionBackground: "#0D948844",
 		selectionForeground: "#ffffff",
 		selectionInactiveBackground: "#2D333966",
-		isLightBackground: true,
+		isLightBackground: false,
 	},
 	"solarized-light": {
 		textPrimary: "#E6EDF3",
@@ -251,7 +251,7 @@ const TERMINAL_COLORS_BY_THEME: Record<ThemeId, ThemeTerminalColors> = {
 		selectionBackground: "#4A7C964D",
 		selectionForeground: "#ffffff",
 		selectionInactiveBackground: "#2D333966",
-		isLightBackground: true,
+		isLightBackground: false,
 	},
 	latte: {
 		textPrimary: "#E6EDF3",
@@ -260,7 +260,7 @@ const TERMINAL_COLORS_BY_THEME: Record<ThemeId, ThemeTerminalColors> = {
 		selectionBackground: "#9C887844",
 		selectionForeground: "#ffffff",
 		selectionInactiveBackground: "#2D333966",
-		isLightBackground: true,
+		isLightBackground: false,
 	},
 	"high-contrast-dark": {
 		textPrimary: "#FFFFFF",
@@ -278,7 +278,7 @@ const TERMINAL_COLORS_BY_THEME: Record<ThemeId, ThemeTerminalColors> = {
 		selectionBackground: "#0050A04D",
 		selectionForeground: "#ffffff",
 		selectionInactiveBackground: "#2D333966",
-		isLightBackground: true,
+		isLightBackground: false,
 	},
 };
 
