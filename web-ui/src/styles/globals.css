@@ -810,7 +810,7 @@ body.kb-dependency-link-mode {
 }
 
 .kb-diff-ask-dialog-backdrop {
-	position: absolute;
+	position: fixed;
 	inset: 0;
 	z-index: 60;
 	display: flex;

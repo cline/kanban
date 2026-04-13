@@ -421,22 +421,11 @@ function SplitDiff({
 			: canCommentOnSide
 				? baseClass
 				: `${baseClass} kb-diff-row-noncommentable`;
-		const canClickRow = canCommentOnSide && !hasComment;
 		const highlightedLineHtml = getHighlightedLineHtml(row.text, prismGrammar, prismLanguage);
 
 		return (
 			<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-				<div
-					className={rowClass}
-					style={canClickRow ? undefined : { cursor: "default" }}
-					onClick={
-						canClickRow
-							? () => {
-									onAddComment(rowLineNumber, row.text, row.variant);
-								}
-							: undefined
-					}
-				>
+				<div className={rowClass}>
 					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
 						<span className="kb-diff-line-number-text">{rowLineNumber}</span>
 						{canCommentOnSide ? (
