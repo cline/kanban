@@ -13,6 +13,7 @@ const saveClineProviderSettingsMock = vi.hoisted(() => vi.fn());
 const runClineProviderOauthLoginMock = vi.hoisted(() => vi.fn());
 const startClineDeviceAuthMock = vi.hoisted(() => vi.fn());
 const completeClineDeviceAuthMock = vi.hoisted(() => vi.fn());
+const isLocalhostAccessMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/runtime-config-query", () => ({
 	addClineProvider: addClineProviderMock,
@@ -23,6 +24,10 @@ vi.mock("@/runtime/runtime-config-query", () => ({
 	runClineProviderOauthLogin: runClineProviderOauthLoginMock,
 	startClineDeviceAuth: startClineDeviceAuthMock,
 	completeClineDeviceAuth: completeClineDeviceAuthMock,
+}));
+
+vi.mock("@/utils/localhost-detection", () => ({
+	isLocalhostAccess: isLocalhostAccessMock,
 }));
 
 interface HookSnapshot {
@@ -188,6 +193,8 @@ describe("useRuntimeSettingsClineController", () => {
 		runClineProviderOauthLoginMock.mockReset();
 		startClineDeviceAuthMock.mockReset();
 		completeClineDeviceAuthMock.mockReset();
+		isLocalhostAccessMock.mockReset();
+		isLocalhostAccessMock.mockReturnValue(true);
 		fetchClineProviderCatalogMock.mockResolvedValue([]);
 		fetchClineProviderModelsMock.mockResolvedValue([]);
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -801,7 +808,8 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
 	});
 
-	it("applies OAuth login results to the local settings state", async () => {
+	it("applies OAuth login results to the local settings state (device auth, remote)", async () => {
+		isLocalhostAccessMock.mockReturnValue(false);
 		const config = createRuntimeConfigResponse({
 			providerId: "cline",
 			oauthProvider: "cline",
@@ -865,6 +873,7 @@ describe("useRuntimeSettingsClineController", () => {
 	});
 
 	it("uses the provider default when OAuth login returns no model", async () => {
+		isLocalhostAccessMock.mockReturnValue(false);
 		const config = createRuntimeConfigResponse({
 			providerId: "cline",
 			oauthProvider: "cline",
@@ -1041,5 +1050,127 @@ describe("useRuntimeSettingsClineController", () => {
 			reasoningEffort: null,
 		});
 		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("");
+	});
+
+	it("uses browser OAuth for cline provider when accessing from localhost", async () => {
+		isLocalhostAccessMock.mockReturnValue(true);
+		const config = createRuntimeConfigResponse({
+			providerId: "cline",
+			oauthProvider: "cline",
+			oauthAccessTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		runClineProviderOauthLoginMock.mockResolvedValue({
+			ok: true,
+			provider: "cline",
+			settings: {
+				providerId: "cline",
+				modelId: "claude-sonnet-4-6",
+				baseUrl: null,
+				reasoningEffort: null,
+				apiKeyConfigured: false,
+				oauthProvider: "cline",
+				oauthAccessTokenConfigured: true,
+				oauthRefreshTokenConfigured: true,
+				oauthAccountId: "acct-browser",
+				oauthExpiresAt: 123456789,
+			},
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			expect(await requireSnapshot(latestSnapshot).runOauthLogin()).toEqual({ ok: true });
+		});
+
+		// Should use browser OAuth, NOT device auth
+		expect(runClineProviderOauthLoginMock).toHaveBeenCalledWith("workspace-1", {
+			provider: "cline",
+		});
+		expect(startClineDeviceAuthMock).not.toHaveBeenCalled();
+		expect(completeClineDeviceAuthMock).not.toHaveBeenCalled();
+		expect(requireSnapshot(latestSnapshot).oauthConfigured).toBe(true);
+		expect(requireSnapshot(latestSnapshot).oauthAccountId).toBe("acct-browser");
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("uses device auth for cline provider when accessing remotely", async () => {
+		isLocalhostAccessMock.mockReturnValue(false);
+		const config = createRuntimeConfigResponse({
+			providerId: "cline",
+			oauthProvider: "cline",
+			oauthAccessTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		startClineDeviceAuthMock.mockResolvedValue({
+			deviceCode: "device-code-headless",
+			userCode: "HEAD-LESS",
+			verificationUrl: "https://auth.cline.bot/verify",
+			expiresInSeconds: 300,
+			pollIntervalSeconds: 5,
+		});
+		completeClineDeviceAuthMock.mockResolvedValue({
+			ok: true,
+			provider: "cline",
+			settings: {
+				providerId: "cline",
+				modelId: "claude-sonnet-4-6",
+				baseUrl: null,
+				reasoningEffort: null,
+				apiKeyConfigured: false,
+				oauthProvider: "cline",
+				oauthAccessTokenConfigured: true,
+				oauthRefreshTokenConfigured: true,
+				oauthAccountId: "acct-device",
+				oauthExpiresAt: 123456789,
+			},
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			expect(await requireSnapshot(latestSnapshot).runOauthLogin()).toEqual({ ok: true });
+		});
+
+		// Should use device auth, NOT browser OAuth
+		expect(startClineDeviceAuthMock).toHaveBeenCalledWith("workspace-1");
+		expect(completeClineDeviceAuthMock).toHaveBeenCalledWith("workspace-1", {
+			deviceCode: "device-code-headless",
+			expiresInSeconds: 300,
+			pollIntervalSeconds: 5,
+		});
+		expect(runClineProviderOauthLoginMock).not.toHaveBeenCalled();
+		expect(requireSnapshot(latestSnapshot).oauthConfigured).toBe(true);
+		expect(requireSnapshot(latestSnapshot).oauthAccountId).toBe("acct-device");
 	});
 });

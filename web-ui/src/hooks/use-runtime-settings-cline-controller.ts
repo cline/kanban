@@ -25,6 +25,7 @@ import type {
 	RuntimeConfigResponse,
 	RuntimeTaskClineSettings,
 } from "@/runtime/types";
+import { isLocalhostAccess } from "@/utils/localhost-detection";
 
 interface UseRuntimeSettingsClineControllerOptions {
 	open: boolean;
@@ -625,8 +626,12 @@ export function useRuntimeSettingsClineController(
 		setDeviceAuthInfo(null);
 		try {
 			let response: RuntimeClineOauthLoginResponse;
-			if (managedOauthProvider === "cline") {
-				// Two-phase device auth
+			// Local users (accessing via localhost) get the smoother browser OAuth
+			// flow. Remote/headless users fall back to the device-code flow since
+			// the server may not be able to open the user's browser.
+			const useDeviceAuth = managedOauthProvider === "cline" && !isLocalhostAccess();
+			if (useDeviceAuth) {
+				// Two-phase device auth for remote/headless environments
 				const startResult = await startClineDeviceAuth(workspaceId);
 				setDeviceAuthInfo({
 					userCode: startResult.userCode,
@@ -638,7 +643,7 @@ export function useRuntimeSettingsClineController(
 					pollIntervalSeconds: startResult.pollIntervalSeconds,
 				});
 			} else {
-				// Legacy flow for oca / openai-codex
+				// Browser OAuth flow for local sessions and non-cline providers
 				response = await runClineProviderOauthLogin(workspaceId, {
 					provider: managedOauthProvider,
 				});
