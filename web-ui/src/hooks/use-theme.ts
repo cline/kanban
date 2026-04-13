@@ -17,9 +17,7 @@ export type ThemeId =
 	| "solarized-light"
 	| "latte"
 	| "high-contrast-dark"
-	| "high-contrast-light"
-	| "soft-contrast-dark"
-	| "soft-contrast-light";
+	| "high-contrast-light";
 
 export type ThemeGroup = "dark" | "light" | "high-contrast";
 
@@ -108,7 +106,7 @@ export const THEMES: readonly ThemeDefinition[] = [
 		group: "light",
 		accent: "#0D9488",
 		accent2: "#D97706",
-		surface: "#F0F0F0",
+		surface: "#EEF0F3",
 		accentFg: "#FFFFFF",
 		accent2Fg: "#FFFFFF",
 	},
@@ -135,7 +133,7 @@ export const THEMES: readonly ThemeDefinition[] = [
 	/* High contrast */
 	{
 		id: "high-contrast-dark",
-		label: "Dark High Contrast+",
+		label: "High Contrast Dark",
 		group: "high-contrast",
 		accent: "#FFFFFF",
 		accent2: "#FF4081",
@@ -145,31 +143,11 @@ export const THEMES: readonly ThemeDefinition[] = [
 	},
 	{
 		id: "high-contrast-light",
-		label: "Light High Contrast+",
+		label: "High Contrast Light",
 		group: "high-contrast",
 		accent: "#0050A0",
 		accent2: "#B91C1C",
 		surface: "#FFFFFF",
-		accentFg: "#FFFFFF",
-		accent2Fg: "#FFFFFF",
-	},
-	{
-		id: "soft-contrast-dark",
-		label: "Dark High Contrast",
-		group: "high-contrast",
-		accent: "#38BDF8",
-		accent2: "#F472B6",
-		surface: "#0F0F0F",
-		accentFg: "#000000",
-		accent2Fg: "#000000",
-	},
-	{
-		id: "soft-contrast-light",
-		label: "Light High Contrast",
-		group: "high-contrast",
-		accent: "#1565C0",
-		accent2: "#C62828",
-		surface: "#FAFAFA",
 		accentFg: "#FFFFFF",
 		accent2Fg: "#FFFFFF",
 	},
@@ -298,24 +276,6 @@ const TERMINAL_COLORS_BY_THEME: Record<ThemeId, ThemeTerminalColors> = {
 		surfacePrimary: "#000000",
 		surfaceRaised: "#000000",
 		selectionBackground: "#0050A04D",
-		selectionForeground: "#ffffff",
-		selectionInactiveBackground: "#2D333966",
-		isLightBackground: true,
-	},
-	"soft-contrast-dark": {
-		textPrimary: "#F0F0F0",
-		surfacePrimary: "#0F0F0F",
-		surfaceRaised: "#1A1A1A",
-		selectionBackground: "#38BDF84D",
-		selectionForeground: "#000000",
-		selectionInactiveBackground: "#22222266",
-		isLightBackground: false,
-	},
-	"soft-contrast-light": {
-		textPrimary: "#E6EDF3",
-		surfacePrimary: "#000000",
-		surfaceRaised: "#000000",
-		selectionBackground: "#1565C04D",
 		selectionForeground: "#ffffff",
 		selectionInactiveBackground: "#2D333966",
 		isLightBackground: true,

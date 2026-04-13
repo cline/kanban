@@ -7,6 +7,7 @@ import { useCallback } from "react";
 import { notifyError } from "@/components/app-toaster";
 import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import { type ClineChatActionResult, useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
+import { getTerminalThemeColors, readStoredThemeId } from "@/hooks/use-theme";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
@@ -164,18 +165,7 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					baseRef: task.baseRef,
 					cols: geometry.cols,
 					rows: geometry.rows,
-					terminalColorScheme:
-						document.documentElement.hasAttribute("data-theme") &&
-						[
-							"light",
-							"overcast",
-							"solarized-light",
-							"latte",
-							"high-contrast-light",
-							"soft-contrast-light",
-						].includes(document.documentElement.getAttribute("data-theme") ?? "")
-							? "light"
-							: "dark",
+					terminalColorScheme: getTerminalThemeColors(readStoredThemeId()).isLightBackground ? "light" : "dark",
 					agentId: task.agentId,
 					clineSettings: task.clineSettings,
 				});

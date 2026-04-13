@@ -750,6 +750,8 @@ export function RuntimeSettingsDialog({
 		[draftThemeId, onOpenChange],
 	);
 
+	const currentThemeDef = THEMES.find((t) => t.id === draftThemeId);
+
 	return (
 		<Dialog open={open} onOpenChange={handleDialogOpenChange} contentClassName="!max-w-[780px]">
 			<DialogHeader title="Settings" icon={<Settings size={16} />} />
@@ -964,18 +966,9 @@ export function RuntimeSettingsDialog({
 							>
 								<span className="flex items-center gap-2.5">
 									<span className="flex shrink-0 h-5 w-10 rounded overflow-hidden border border-border">
-										<span
-											className="flex-1"
-											style={{ background: THEMES.find((t) => t.id === draftThemeId)?.surface ?? "#1F2428" }}
-										/>
-										<span
-											className="flex-1"
-											style={{ background: THEMES.find((t) => t.id === draftThemeId)?.accent ?? "#0084FF" }}
-										/>
-										<span
-											className="flex-1"
-											style={{ background: THEMES.find((t) => t.id === draftThemeId)?.accent2 ?? "#7C5CFF" }}
-										/>
+										<span className="flex-1" style={{ background: currentThemeDef?.surface ?? "#1F2428" }} />
+										<span className="flex-1" style={{ background: currentThemeDef?.accent ?? "#0084FF" }} />
+										<span className="flex-1" style={{ background: currentThemeDef?.accent2 ?? "#7C5CFF" }} />
 									</span>
 									<RadixSelect.Value />
 								</span>
@@ -1036,8 +1029,6 @@ export function RuntimeSettingsDialog({
 							Reset sidebar, split pane, and terminal resize customizations back to their defaults.
 						</p>
 					</div>
-
-					{/* ---- Project ---- */}
 					<div data-settings-section="project" />
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
 						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
