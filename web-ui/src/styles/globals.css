@@ -985,10 +985,10 @@ body.kb-dependency-link-mode {
 }
 
 /* -- Terminal light-mode inversion --
-   Terminal internally renders pure black bg with dark-mode colors so all CLI
-   agent ANSI output (including 24-bit RGB) is correct. The CSS filter inverts
-   the xterm canvas to appear light. Pure black (#000) inverts to pure white
-   (#FFF) so there's no gray tint. Panel chrome stays untouched. */
+   Terminal renders dark internally so CLI agents output correct ANSI colors.
+   CSS filter inverts the xterm canvas, then a multiply-blend overlay tints
+   the resulting white bg to match the theme's actual surface color.
+   Multiply blend: white × surface = surface; dark × surface ≈ dark. */
 
 [data-theme="light"] .kb-terminal-container,
 [data-theme="overcast"] .kb-terminal-container,
@@ -996,7 +996,17 @@ body.kb-dependency-link-mode {
 [data-theme="latte"] .kb-terminal-container,
 [data-theme="high-contrast-light"] .kb-terminal-container,
 [data-theme="soft-contrast-light"] .kb-terminal-container {
-	background: var(--color-surface-1) !important;
+	background: var(--color-surface-0) !important;
+}
+
+[data-theme="light"] .kb-terminal-container,
+[data-theme="overcast"] .kb-terminal-container,
+[data-theme="solarized-light"] .kb-terminal-container,
+[data-theme="latte"] .kb-terminal-container,
+[data-theme="high-contrast-light"] .kb-terminal-container,
+[data-theme="soft-contrast-light"] .kb-terminal-container {
+	position: relative;
+	isolation: isolate;
 }
 
 [data-theme="light"] .kb-terminal-container .xterm,
@@ -1006,6 +1016,21 @@ body.kb-dependency-link-mode {
 [data-theme="high-contrast-light"] .kb-terminal-container .xterm,
 [data-theme="soft-contrast-light"] .kb-terminal-container .xterm {
 	filter: invert(1) hue-rotate(180deg);
+}
+
+[data-theme="light"] .kb-terminal-container::after,
+[data-theme="overcast"] .kb-terminal-container::after,
+[data-theme="solarized-light"] .kb-terminal-container::after,
+[data-theme="latte"] .kb-terminal-container::after,
+[data-theme="high-contrast-light"] .kb-terminal-container::after,
+[data-theme="soft-contrast-light"] .kb-terminal-container::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: var(--color-surface-0);
+	mix-blend-mode: multiply;
+	pointer-events: none;
+	z-index: 1;
 }
 
 /* -- Animations -- */
