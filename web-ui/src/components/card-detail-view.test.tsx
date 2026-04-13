@@ -72,6 +72,11 @@ vi.mock("@/stores/workspace-metadata-store", () => ({
 	useTaskWorkspaceStateVersionValue: () => 0,
 }));
 
+vi.mock("@/components/ui/tooltip", () => ({
+	Tooltip: ({ children }: { children: ReactNode }) => children,
+	TooltipProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
 vi.mock("@/resize/layout-customizations", () => ({
 	useLayoutResetEffect: () => {},
 }));
