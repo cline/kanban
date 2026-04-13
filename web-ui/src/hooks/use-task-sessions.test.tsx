@@ -187,6 +187,9 @@ describe("useTaskSessions", () => {
 			baseRef: "main",
 			cols: 120,
 			rows: 40,
+			agentId: undefined,
+			clineSettings: undefined,
+			terminalColorScheme: "dark",
 		});
 	});
 

@@ -491,7 +491,7 @@ describe("CardDetailView", () => {
 
 		const lastCall = mockAgentTerminalPanel.mock.calls.at(-1);
 		expect(lastCall?.[0]).toMatchObject({
-			panelBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
+			panelBackgroundColor: "var(--color-surface-0)",
 			terminalBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
 		});
 	});
