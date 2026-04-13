@@ -27,11 +27,15 @@ export function ClineChatModelSelector({
 	selectedModelButtonText,
 	onSelectModel,
 	reasoningEnabledModelIds = [],
+	defaultOptionSupportsReasoningEffort = false,
 	selectedReasoningEffort,
 	onSelectReasoningEffort,
 	disabled = false,
 	isModelLoading = false,
 	isModelSaving = false,
+	fill = false,
+	triggerVariant = "subtle",
+	onPopoverOpenChange,
 }: {
 	modelOptions: readonly SearchSelectOption[];
 	recommendedModelIds?: readonly string[];
@@ -40,11 +44,15 @@ export function ClineChatModelSelector({
 	selectedModelButtonText: string;
 	onSelectModel: (value: string) => void;
 	reasoningEnabledModelIds?: readonly string[];
+	defaultOptionSupportsReasoningEffort?: boolean;
 	selectedReasoningEffort: RuntimeClineReasoningEffort | "";
 	onSelectReasoningEffort: (value: RuntimeClineReasoningEffort | "") => void;
 	disabled?: boolean;
 	isModelLoading?: boolean;
 	isModelSaving?: boolean;
+	fill?: boolean;
+	triggerVariant?: "default" | "subtle";
+	onPopoverOpenChange?: (open: boolean) => void;
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -61,7 +69,10 @@ export function ClineChatModelSelector({
 		() => new Set(reasoningEnabledModelIds.map((value) => value.trim()).filter((value) => value.length > 0)),
 		[reasoningEnabledModelIds],
 	);
-	const selectedModelSupportsReasoningEffort = reasoningEnabledModelIdSet.has(selectedModelId);
+	const selectedModelSupportsReasoningEffort =
+		selectedModelId.length === 0
+			? defaultOptionSupportsReasoningEffort
+			: reasoningEnabledModelIdSet.has(selectedModelId);
 
 	const orderedOptions = useMemo(() => {
 		const items = modelOptions.slice();
@@ -118,13 +129,17 @@ export function ClineChatModelSelector({
 		[filteredModelOptions, recommendedModelIdSet],
 	);
 
-	const handleOpenChange = useCallback((nextOpen: boolean) => {
-		setIsOpen(nextOpen);
-		setQuery("");
-		if (!nextOpen) {
-			setActiveOptionIndex(0);
-		}
-	}, []);
+	const handleOpenChange = useCallback(
+		(nextOpen: boolean) => {
+			onPopoverOpenChange?.(nextOpen);
+			setIsOpen(nextOpen);
+			setQuery("");
+			if (!nextOpen) {
+				setActiveOptionIndex(0);
+			}
+		},
+		[onPopoverOpenChange],
+	);
 
 	useEffect(() => {
 		if (filteredModelOptions.length === 0) {
@@ -202,7 +217,11 @@ export function ClineChatModelSelector({
 				}
 				onSelectModel(option.value);
 				setQuery("");
-				if (!reasoningEnabledModelIdSet.has(option.value)) {
+				const optionSupportsReasoningEffort =
+					option.value.length === 0
+						? defaultOptionSupportsReasoningEffort
+						: reasoningEnabledModelIdSet.has(option.value);
+				if (!optionSupportsReasoningEffort) {
 					handleOpenChange(false);
 				}
 				return;
@@ -248,7 +267,11 @@ export function ClineChatModelSelector({
 				onClick={() => {
 					onSelectModel(option.value);
 					setQuery("");
-					if (!reasoningEnabledModelIdSet.has(option.value)) {
+					const optionSupportsReasoningEffort =
+						option.value.length === 0
+							? defaultOptionSupportsReasoningEffort
+							: reasoningEnabledModelIdSet.has(option.value);
+					if (!optionSupportsReasoningEffort) {
 						handleOpenChange(false);
 					}
 				}}
@@ -271,8 +294,11 @@ export function ClineChatModelSelector({
 					disabled={disabled}
 					iconRight={<ChevronDown size={14} />}
 					className={cn(
-						"min-w-0 max-w-full justify-between rounded-md border-border-bright bg-surface-3 px-2 text-left text-text-secondary shadow-none hover:cursor-pointer hover:bg-surface-4 hover:text-text-primary",
+						"min-w-0 max-w-full justify-between px-2 text-left shadow-none",
+						triggerVariant === "subtle" &&
+							"bg-surface-3 text-text-secondary hover:bg-surface-4 hover:text-text-primary",
 						(isModelLoading || isModelSaving) && "text-text-tertiary",
+						fill && "w-full",
 					)}
 				>
 					<span className="flex-1 truncate text-left">{selectedModelButtonText}</span>

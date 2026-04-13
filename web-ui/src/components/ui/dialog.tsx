@@ -15,12 +15,14 @@ export function Dialog({
 	children,
 	contentClassName,
 	contentAriaDescribedBy,
+	onEscapeKeyDown,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	children: ReactNode;
 	contentClassName?: string;
 	contentAriaDescribedBy?: string;
+	onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }): React.ReactElement {
 	return (
 		<RadixDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -31,6 +33,7 @@ export function Dialog({
 				/>
 				<RadixDialog.Content
 					aria-describedby={contentAriaDescribedBy}
+					onEscapeKeyDown={onEscapeKeyDown}
 					className={cn(
 						"kb-dialog-content fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-lg max-h-[85vh] flex flex-col rounded-lg border border-[#5A6572] bg-surface-1 shadow-2xl focus:outline-none",
 						contentClassName,

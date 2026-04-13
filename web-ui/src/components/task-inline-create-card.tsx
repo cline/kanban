@@ -1,12 +1,15 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { deriveTaskTitleFromPrompt } from "@runtime-task-title";
-import { ArrowBigUp, Check, ChevronDown, Command, CornerDownLeft } from "lucide-react";
+import { ArrowBigUp, Check, Command, CornerDownLeft } from "lucide-react";
 import { type Dispatch, type ReactElement, type SetStateAction, useCallback, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { BranchSelectDropdown, type BranchSelectOption } from "@/components/branch-select-dropdown";
+import { TaskAgentModelPicker, useTaskAgentModelPicker } from "@/components/task-agent-model-picker";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
+import type { RuntimeAgentId, RuntimeClineReasoningEffort, RuntimeTaskClineSettings } from "@/runtime/types";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
 import { useDocumentEvent, useMeasure } from "@/utils/react-use";
@@ -65,6 +68,14 @@ export function TaskInlineCreateCard({
 	enabled = true,
 	mode = "create",
 	idPrefix = "inline-task",
+	agentId,
+	onAgentIdChange,
+	clineSettings,
+	onClineSettingsChange,
+	defaultAgentId,
+	defaultProviderId,
+	defaultModelId,
+	defaultReasoningEffort,
 }: {
 	title?: string;
 	onTitleChange?: (value: string) => void;
@@ -89,6 +100,18 @@ export function TaskInlineCreateCard({
 	enabled?: boolean;
 	mode?: TaskInlineCardMode;
 	idPrefix?: string;
+	agentId?: RuntimeAgentId | undefined;
+	onAgentIdChange?: (value: RuntimeAgentId | undefined) => void;
+	clineSettings?: RuntimeTaskClineSettings | undefined;
+	onClineSettingsChange?: (value: RuntimeTaskClineSettings | undefined) => void;
+	/** Default agent ID from runtimeConfig.selectedAgentId, used to show "Default (AgentName)" in picker */
+	defaultAgentId?: RuntimeAgentId | null;
+	/** Default Cline provider ID from runtimeConfig.clineProviderSettings.providerId */
+	defaultProviderId?: string | null;
+	/** Default Cline model ID from runtimeConfig.clineProviderSettings.modelId */
+	defaultModelId?: string | null;
+	/** Default Cline reasoning effort from runtimeConfig.clineProviderSettings.reasoningEffort */
+	defaultReasoningEffort?: RuntimeClineReasoningEffort | null;
 }): ReactElement {
 	const promptId = `${idPrefix}-prompt-input`;
 	const planModeId = `${idPrefix}-plan-mode-toggle`;
@@ -99,6 +122,7 @@ export function TaskInlineCreateCard({
 	const [measureRef, cardRect] = useMeasure<HTMLDivElement>();
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const [isBranchPopoverOpen, setIsBranchPopoverOpen] = useState(false);
+	const [isModelPickerPopoverOpen, setIsModelPickerPopoverOpen] = useState(false);
 	const setCardRef = useCallback(
 		(node: HTMLDivElement | null) => {
 			containerRef.current = node;
@@ -113,6 +137,25 @@ export function TaskInlineCreateCard({
 	const hideCreateShortcut = mode === "create" && isCompactActions;
 	const cancelLabel = hideCancelShortcut ? "Cancel" : "Cancel (esc)";
 	const cardMarginBottom = mode === "create" ? 6 : 0;
+
+	const {
+		agentOptions,
+		clineProviderOptions,
+		clineModelOptions,
+		effectiveDefaultModelId,
+		providerModels,
+		isLoadingProviders,
+		isLoadingModels,
+		providerDefaultModels,
+	} = useTaskAgentModelPicker({
+		active: true,
+		workspaceId,
+		agentId,
+		clineSettings,
+		defaultAgentId,
+		defaultProviderId,
+		defaultModelId,
+	});
 
 	useHotkeys(
 		"escape",
@@ -138,7 +181,7 @@ export function TaskInlineCreateCard({
 	useDocumentEvent(
 		"pointerdown",
 		(event) => {
-			if (!enabled || mode !== "edit" || isBranchPopoverOpen) {
+			if (!enabled || mode !== "edit" || isBranchPopoverOpen || isModelPickerPopoverOpen) {
 				return;
 			}
 			const container = containerRef.current;
@@ -249,29 +292,43 @@ export function TaskInlineCreateCard({
 						</RadixCheckbox.Root>
 						<span>Automatically</span>
 					</label>
-					<div className="relative inline-flex">
-						<select
-							id={autoReviewModeId}
-							value={autoReviewMode}
-							onChange={(event) => onAutoReviewModeChange(event.currentTarget.value as TaskAutoReviewMode)}
-							className="h-7 appearance-none rounded-md border border-border-bright bg-surface-2 pl-2 pr-7 text-[12px] text-text-primary cursor-pointer focus:border-border-focus focus:outline-none"
-							style={{
-								width: `${AUTO_REVIEW_MODE_SELECT_WIDTH_CH}ch`,
-								maxWidth: "100%",
-							}}
-						>
-							{AUTO_REVIEW_MODE_OPTIONS.map((option) => (
-								<option key={option.value} value={option.value}>
-									{option.label}
-								</option>
-							))}
-						</select>
-						<ChevronDown
-							size={14}
-							className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-text-secondary"
-						/>
-					</div>
+					<NativeSelect
+						id={autoReviewModeId}
+						size="sm"
+						value={autoReviewMode}
+						onChange={(event) => onAutoReviewModeChange(event.currentTarget.value as TaskAutoReviewMode)}
+						style={{
+							width: `${AUTO_REVIEW_MODE_SELECT_WIDTH_CH}ch`,
+							maxWidth: "100%",
+						}}
+					>
+						{AUTO_REVIEW_MODE_OPTIONS.map((option) => (
+							<option key={option.value} value={option.value}>
+								{option.label}
+							</option>
+						))}
+					</NativeSelect>
 				</div>
+				{onAgentIdChange && onClineSettingsChange ? (
+					<TaskAgentModelPicker
+						agentId={agentId}
+						onAgentIdChange={onAgentIdChange}
+						clineSettings={clineSettings}
+						onClineSettingsChange={onClineSettingsChange}
+						agentOptions={agentOptions}
+						clineProviderOptions={clineProviderOptions}
+						clineModelOptions={clineModelOptions}
+						effectiveDefaultModelId={effectiveDefaultModelId}
+						providerModels={providerModels}
+						isLoadingProviders={isLoadingProviders}
+						isLoadingModels={isLoadingModels}
+						defaultAgentId={defaultAgentId}
+						defaultProviderId={defaultProviderId}
+						defaultReasoningEffort={defaultReasoningEffort}
+						providerDefaultModels={providerDefaultModels}
+						onPopoverOpenChange={setIsModelPickerPopoverOpen}
+					/>
+				) : null}
 			</div>
 
 			<div className={`flex gap-2 mt-3 ${mode === "edit" ? "justify-end" : "justify-between"}`}>

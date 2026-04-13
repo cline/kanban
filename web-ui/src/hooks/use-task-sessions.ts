@@ -176,6 +176,8 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 						].includes(document.documentElement.getAttribute("data-theme") ?? "")
 							? "light"
 							: "dark",
+					agentId: task.agentId,
+					clineSettings: task.clineSettings,
 				});
 				if (!payload.ok || !payload.summary) {
 					return {

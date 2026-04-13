@@ -35,7 +35,7 @@ export function SearchSelectDropdown({
 	emptyText = "No options available",
 	noResultsText = "No matching results",
 	showSelectedIndicator = false,
-	pinSelectedToTop = false,
+	pinSelectedToTop = true,
 	recommendedOptionValues = [],
 	recommendedHeading = "Recommended models",
 	matchTargetWidth = true,
@@ -148,10 +148,7 @@ export function SearchSelectDropdown({
 		(nextOpen: boolean) => {
 			setIsOpen(nextOpen);
 			setQuery("");
-			if (nextOpen) {
-				// Signal the effect to snap activeOptionIndex to the selected item.
-				setActiveOptionIndex(-1);
-			} else {
+			if (!nextOpen) {
 				setActiveOptionIndex(0);
 			}
 			onPopoverOpenChange?.(nextOpen);

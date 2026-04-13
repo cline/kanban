@@ -13,6 +13,16 @@ export const CLINE_RECOMMENDED_MODEL_IDS = [
 	"xiaomi/mimo-v2-pro",
 ] as const;
 
+const CLINE_MODEL_NAME_BY_ID: Record<string, string> = {
+	"anthropic/claude-opus-4.6": "Claude Opus 4.6",
+	"anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
+	"openai/gpt-5.3-codex": "GPT-5.3 Codex",
+	"openai/gpt-5.4": "GPT-5.4",
+	"google/gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
+	"google/gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite Preview",
+	"xiaomi/mimo-v2-pro": "Mimo v2 Pro",
+};
+
 export const CLINE_REASONING_EFFORT_OPTIONS: SearchSelectOption[] = [
 	{ value: "", label: "Default" },
 	{ value: "low", label: "Low" },
@@ -75,4 +85,53 @@ export function formatClineSelectedModelButtonText({
 		return modelName;
 	}
 	return `${modelName} (${formatClineReasoningEffortLabel(reasoningEffort)})`;
+}
+
+export function getClineReasoningEnabledModelIds(providerModels: readonly RuntimeClineProviderModel[]): string[] {
+	return providerModels.filter((model) => model.supportsReasoningEffort).map((model) => model.id);
+}
+
+export function resolveClineModelDisplayName(modelId: string): string {
+	const trimmedModelId = modelId.trim();
+	if (!trimmedModelId) {
+		return modelId;
+	}
+	return CLINE_MODEL_NAME_BY_ID[trimmedModelId] ?? trimmedModelId;
+}
+
+export function buildClineSelectedModelButtonText({
+	modelOptions,
+	selectedModelId,
+	reasoningEffort,
+	showReasoningEffort,
+	isModelLoading = false,
+	isModelSaving = false,
+	loadingLabel = "Loading models...",
+	savingLabel = "Saving model...",
+	emptyLabel = "Select model",
+}: {
+	modelOptions: readonly SearchSelectOption[];
+	selectedModelId: string;
+	reasoningEffort?: RuntimeClineReasoningEffort | "" | null;
+	showReasoningEffort: boolean;
+	isModelLoading?: boolean;
+	isModelSaving?: boolean;
+	loadingLabel?: string;
+	savingLabel?: string;
+	emptyLabel?: string;
+}): string {
+	if (isModelSaving) {
+		return savingLabel;
+	}
+	if (isModelLoading) {
+		return loadingLabel;
+	}
+	const selectedOption = modelOptions.find((option) => option.value === selectedModelId);
+	const trimmedModelId = selectedModelId.trim();
+	const selectedModelName = selectedOption?.label ?? (trimmedModelId.length > 0 ? trimmedModelId : emptyLabel);
+	return formatClineSelectedModelButtonText({
+		modelName: selectedModelName,
+		reasoningEffort,
+		showReasoningEffort,
+	});
 }

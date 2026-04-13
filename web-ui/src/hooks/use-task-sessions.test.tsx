@@ -232,4 +232,79 @@ describe("useTaskSessions", () => {
 			}),
 		);
 	});
+
+	it("forwards task-level Cline reasoning effort overrides when starting a task", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			await latestSnapshot?.startTaskSession({
+				...createTask(),
+				agentId: "cline",
+				clineSettings: {
+					providerId: "openrouter",
+					modelId: "anthropic/claude-opus-4.6",
+					reasoningEffort: "low",
+				},
+			});
+		});
+
+		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				clineSettings: {
+					providerId: "openrouter",
+					modelId: "anthropic/claude-opus-4.6",
+					reasoningEffort: "low",
+				},
+			}),
+		);
+	});
+
+	it("forwards reasoning-only overrides even when provider/model remain inherited", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			await latestSnapshot?.startTaskSession({
+				...createTask(),
+				clineSettings: {
+					reasoningEffort: "high",
+				},
+			});
+		});
+
+		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				clineSettings: {
+					reasoningEffort: "high",
+				},
+			}),
+		);
+	});
 });

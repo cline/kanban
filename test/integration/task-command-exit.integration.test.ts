@@ -527,4 +527,101 @@ describe("source task commands", () => {
 			cleanupHome();
 		}
 	});
+
+	it("treats create-time reasoning inherit as no explicit override", { timeout: 60_000 }, async () => {
+		const { path: homeDir, cleanup: cleanupHome } = createTempDir("kanban-home-task-cline-reasoning-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-task-cline-reasoning-");
+
+		try {
+			initGitRepository(projectPath);
+			writeFileSync(join(projectPath, "README.md"), "# Task Cline Reasoning Test\n", "utf8");
+			commitAll(projectPath, "init");
+
+			const port = String(await getAvailablePort());
+			const env = createGitTestEnv({
+				HOME: homeDir,
+				USERPROFILE: homeDir,
+				KANBAN_RUNTIME_PORT: port,
+			});
+
+			const serverProcess = spawn(
+				process.execPath,
+				[
+					"--require",
+					resolveShutdownIpcHookPath(),
+					"--import",
+					resolveTsxLoaderImportSpecifier(),
+					resolve(process.cwd(), "src/cli.ts"),
+					"--no-open",
+				],
+				{
+					cwd: projectPath,
+					env,
+					stdio: ["ignore", "pipe", "pipe", "ipc"],
+				},
+			);
+
+			try {
+				await waitForServerStart(serverProcess);
+
+				const inheritedCreate = await runCliCommandAndCollectOutput({
+					args: [
+						"task",
+						"create",
+						"--prompt",
+						"Create a task that inherits workspace reasoning",
+						"--project-path",
+						projectPath,
+						"--cline-reasoning-effort",
+						"inherit",
+					],
+					cwd: projectPath,
+					env,
+				});
+				expect(inheritedCreate.didExit).toBe(true);
+				expect(inheritedCreate.exitCode).toBe(0);
+
+				const inheritedPayload = JSON.parse(inheritedCreate.stdout) as {
+					ok?: boolean;
+					task?: { clineSettings?: Record<string, unknown> };
+				};
+				expect(inheritedPayload.ok).toBe(true);
+				expect(inheritedPayload.task?.clineSettings).toBeUndefined();
+
+				const defaultCreate = await runCliCommandAndCollectOutput({
+					args: [
+						"task",
+						"create",
+						"--prompt",
+						"Create a task that uses model default reasoning",
+						"--project-path",
+						projectPath,
+						"--cline-reasoning-effort",
+						"default",
+					],
+					cwd: projectPath,
+					env,
+				});
+				expect(defaultCreate.didExit).toBe(true);
+				expect(defaultCreate.exitCode).toBe(0);
+
+				const defaultPayload = JSON.parse(defaultCreate.stdout) as {
+					ok?: boolean;
+					task?: { clineSettings?: Record<string, unknown> };
+				};
+				expect(defaultPayload.ok).toBe(true);
+				expect(defaultPayload.task?.clineSettings).toEqual({});
+			} finally {
+				await requestGracefulShutdown(serverProcess);
+				const stopped = await waitForExit(serverProcess, 5_000);
+				if (!stopped) {
+					serverProcess.kill("SIGKILL");
+					await waitForExit(serverProcess, 5_000);
+				}
+			}
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
 });

@@ -201,7 +201,10 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					modelId: request.modelId,
 					apiKey: request.apiKey?.trim() || undefined,
 					baseUrl: request.baseUrl?.trim() || undefined,
-					reasoningEffort: request.reasoningEffort ?? undefined,
+					reasoningEffort:
+						request.reasoningEffort === null
+							? ("none" as ClineSdkStartSessionInput["config"]["reasoningEffort"])
+							: (request.reasoningEffort ?? undefined),
 					cwd: request.cwd,
 					mode: resolvedMode,
 					enableTools: true,
