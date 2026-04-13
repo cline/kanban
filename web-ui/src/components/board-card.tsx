@@ -614,7 +614,7 @@ export function BoardCard({
 													setIsEditingTitle(true);
 												}}
 												className={cn(
-													"shrink-0 rounded-sm p-0.5 text-text-tertiary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+													"shrink-0 cursor-pointer rounded-sm p-0.5 text-text-tertiary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
 													isHovered ? "opacity-100" : "opacity-0",
 												)}
 											>
