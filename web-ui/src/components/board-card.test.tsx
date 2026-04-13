@@ -652,7 +652,7 @@ describe("BoardCard", () => {
 		expect(container.textContent).toContain(preview);
 	});
 
-	it("shows see more for active task previews without using card click to expand", async () => {
+	it("uses single-line truncation for running task previews instead of see more", async () => {
 		mockMeasureWidths = [240, 96];
 		const preview =
 			"Reviewing the archived implementation details and collecting the final notes for the handoff before cleanup hidden tail";
@@ -682,30 +682,18 @@ describe("BoardCard", () => {
 
 		const findButton = (label: string) =>
 			Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === label);
-		const cardElement = container.querySelector('[data-task-id="task-1"]');
 
-		expect(findButton("See more")).toBeDefined();
-		expect(container.textContent).not.toContain("hidden tail");
-
-		await act(async () => {
-			cardElement?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-		});
-
-		expect(onCardClick).toHaveBeenCalledTimes(1);
-		expect(findButton("See more")).toBeDefined();
-		expect(findButton("Less")).toBeUndefined();
-		expect(container.textContent).not.toContain("hidden tail");
-
-		const seeMoreButton = findButton("See more");
-		await act(async () => {
-			seeMoreButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-			seeMoreButton?.click();
-		});
-
-		expect(onCardClick).toHaveBeenCalledTimes(1);
+		// Running tasks use single-line CSS truncation instead of See more / Less
 		expect(findButton("See more")).toBeUndefined();
-		expect(findButton("Less")).toBeDefined();
+		expect(findButton("Less")).toBeUndefined();
+
+		// The full text is still present in the DOM (CSS truncation hides overflow visually)
 		expect(container.textContent).toContain(preview);
+
+		// The session preview paragraph has the truncate class
+		const sessionPreviewP = container.querySelector("p.truncate");
+		expect(sessionPreviewP).toBeDefined();
+		expect(sessionPreviewP?.textContent).toContain(preview);
 	});
 
 	it("shows the latest assistant preview on active task cards", async () => {

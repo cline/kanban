@@ -432,6 +432,7 @@ export function BoardCard({
 		});
 	}, [sessionActivity?.text, sessionPreviewFont, sessionPreviewWidth]);
 
+	const isSessionRunning = sessionSummary?.state === "running";
 	const isCreditLimit = isCardCreditLimitError(sessionSummary);
 	const renderStatusMarker = () => {
 		if (isCreditLimit) {
@@ -778,18 +779,23 @@ export function BoardCard({
 											ref={sessionPreviewRef}
 											className={cn(
 												"m-0 font-mono",
-												!isSessionPreviewMeasured && !isSessionPreviewExpanded && "line-clamp-6",
+												isSessionRunning
+													? "truncate"
+													: !isSessionPreviewMeasured && !isSessionPreviewExpanded && "line-clamp-6",
 											)}
 											style={{
 												fontSize: 12,
-												whiteSpace: "normal",
-												overflowWrap: "anywhere",
+												...(isSessionRunning
+													? {}
+													: { whiteSpace: "normal" as const, overflowWrap: "anywhere" as const }),
 											}}
 										>
-											{isSessionPreviewExpanded || !sessionPreviewDisplay.isTruncated
+											{isSessionRunning
 												? sessionActivity.text
-												: sessionPreviewDisplay.text}
-											{sessionPreviewDisplay.isTruncated ? (
+												: isSessionPreviewExpanded || !sessionPreviewDisplay.isTruncated
+													? sessionActivity.text
+													: sessionPreviewDisplay.text}
+											{!isSessionRunning && sessionPreviewDisplay.isTruncated ? (
 												isSessionPreviewExpanded ? (
 													<>
 														{" "}
