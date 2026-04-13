@@ -448,7 +448,7 @@ export function ClineSetupSection({
 							</p>
 						) : null}
 						{controller.isRunningOauthLogin && controller.deviceAuthInfo ? (
-							<div className="mt-2 p-3 bg-surface-secondary rounded-md">
+							<div className="mt-2 p-3 bg-surface-2 rounded-md">
 								<p className="text-text-primary text-[13px] font-medium mb-1">
 									Enter this code in your browser:
 								</p>
