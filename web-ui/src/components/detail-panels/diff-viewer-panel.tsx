@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, MessageSquarePlus, X } from "lucide-react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -16,6 +16,7 @@ import {
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import type { RuntimeWorkspaceFileChange } from "@/runtime/types";
 import { buildFileTree } from "@/utils/file-tree";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
@@ -87,16 +88,20 @@ function InlineComment({
 	comment,
 	onChange,
 	onDelete,
+	onSubmit,
 }: {
 	comment: DiffLineComment;
 	onChange: (text: string) => void;
 	onDelete: () => void;
+	onSubmit?: () => void;
 }): React.ReactElement {
 	const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
 	useEffect(() => {
 		textAreaRef.current?.focus();
 	}, []);
+
+	const hasText = comment.comment.trim().length > 0;
 
 	return (
 		<div className="kb-diff-inline-comment">
@@ -108,6 +113,11 @@ function InlineComment({
 					if (event.key === "Escape") {
 						event.preventDefault();
 						onDelete();
+						return;
+					}
+					if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && onSubmit && hasText) {
+						event.preventDefault();
+						onSubmit();
 					}
 				}}
 				onClick={(event) => event.stopPropagation()}
@@ -116,6 +126,19 @@ function InlineComment({
 				className="w-full rounded-md border border-border bg-surface-2 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none"
 				style={{ fontSize: 12 }}
 			/>
+			{onSubmit ? (
+				<div className="kb-diff-inline-comment-actions">
+					<Button variant="primary" size="sm" disabled={!hasText} onClick={onSubmit}>
+						<span className="inline-flex items-center">
+							<span>Submit</span>
+							<span className="ml-1.5 inline-flex items-center gap-0.5" aria-hidden>
+								{isMacPlatform ? <Command size={11} /> : <span style={{ fontSize: 11 }}>Ctrl</span>}
+								<CornerDownLeft size={11} />
+							</span>
+						</span>
+					</Button>
+				</div>
+			) : null}
 		</div>
 	);
 }
@@ -125,17 +148,27 @@ function UnifiedDiff({
 	oldText,
 	newText,
 	comments,
-	onAddComment,
+	onGutterClick,
 	onUpdateComment,
 	onDeleteComment,
+	onSubmitComment,
+	rangeLineKeys,
 }: {
 	path: string;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
-	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
+	onGutterClick: (
+		lineNumber: number,
+		lineText: string,
+		variant: "added" | "removed" | "context",
+		shiftKey: boolean,
+		allRows: UnifiedDiffRow[],
+	) => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+	onSubmitComment?: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+	rangeLineKeys?: Set<string>;
 }): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
@@ -155,14 +188,14 @@ function UnifiedDiff({
 		const rowKey = row.lineNumber != null ? commentKey(path, row.lineNumber, row.variant) : null;
 		const existingComment = rowKey ? comments.get(rowKey) : null;
 		const hasComment = existingComment != null;
+		const isInRange = rowKey != null && rangeLineKeys?.has(rowKey);
 		const baseClass =
 			row.variant === "added"
 				? "kb-diff-row kb-diff-row-added"
 				: row.variant === "removed"
 					? "kb-diff-row kb-diff-row-removed"
 					: "kb-diff-row kb-diff-row-context";
-		const rowClass = hasComment ? `${baseClass} kb-diff-row-commented` : baseClass;
-		const canClickRow = row.lineNumber != null && !hasComment;
+		const rowClass = cn(baseClass, hasComment && "kb-diff-row-commented", isInRange && "kb-diff-row-in-range");
 		const highlightedLineHtml =
 			row.lineNumber == null
 				? null
@@ -170,30 +203,22 @@ function UnifiedDiff({
 					? (highlightedOldByLine.get(row.lineNumber) ?? null)
 					: (highlightedNewByLine.get(row.lineNumber) ?? null);
 
-		const handleRowClick =
-			row.lineNumber != null && !hasComment
-				? () => {
-						onAddComment(row.lineNumber!, row.text, row.variant);
-					}
-				: undefined;
-
 		return (
 			<div key={row.key}>
-				<div className={rowClass} style={canClickRow ? undefined : { cursor: "default" }} onClick={handleRowClick}>
+				<div className={rowClass}>
 					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
 						<span className="kb-diff-line-number-text">{row.lineNumber ?? ""}</span>
 						{row.lineNumber != null ? (
 							<span
 								className="kb-diff-comment-gutter"
-								onClick={
-									hasComment
-										? (event) => {
-												event.stopPropagation();
-												onDeleteComment(row.lineNumber!, row.variant);
-											}
-										: undefined
-								}
-								style={hasComment ? { cursor: "pointer" } : undefined}
+								onClick={(event) => {
+									event.stopPropagation();
+									if (hasComment) {
+										onDeleteComment(row.lineNumber!, row.variant);
+									} else {
+										onGutterClick(row.lineNumber!, row.text, row.variant, event.shiftKey, rows);
+									}
+								}}
 							>
 								<span className="kb-diff-gutter-icon-comment">
 									<MessageSquare size={12} />
@@ -216,6 +241,7 @@ function UnifiedDiff({
 						comment={existingComment}
 						onChange={(text) => onUpdateComment(row.lineNumber!, row.variant, text)}
 						onDelete={() => onDeleteComment(row.lineNumber!, row.variant)}
+						onSubmit={onSubmitComment ? () => onSubmitComment(row.lineNumber!, row.variant) : undefined}
 					/>
 				) : null}
 			</div>
@@ -328,17 +354,27 @@ function SplitDiff({
 	oldText,
 	newText,
 	comments,
-	onAddComment,
+	onGutterClick,
 	onUpdateComment,
 	onDeleteComment,
+	onSubmitComment,
+	rangeLineKeys,
 }: {
 	path: string;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
-	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
+	onGutterClick: (
+		lineNumber: number,
+		lineText: string,
+		variant: "added" | "removed" | "context",
+		shiftKey: boolean,
+		allRows: UnifiedDiffRow[],
+	) => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+	onSubmitComment?: (lineNumber: number, variant: "added" | "removed" | "context") => void;
+	rangeLineKeys?: Set<string>;
 }): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
@@ -367,36 +403,26 @@ function SplitDiff({
 			: canCommentOnSide
 				? baseClass
 				: `${baseClass} kb-diff-row-noncommentable`;
-		const canClickRow = canCommentOnSide && !hasComment;
 		const highlightedLineHtml = getHighlightedLineHtml(row.text, prismGrammar, prismLanguage);
+		const isInRange = rowKey != null && rangeLineKeys?.has(rowKey);
+		const rangeCn = isInRange ? `${rowClass} kb-diff-row-in-range` : rowClass;
 
 		return (
 			<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-				<div
-					className={rowClass}
-					style={canClickRow ? undefined : { cursor: "default" }}
-					onClick={
-						canClickRow
-							? () => {
-									onAddComment(rowLineNumber, row.text, row.variant);
-								}
-							: undefined
-					}
-				>
+				<div className={rangeCn}>
 					<span className="kb-diff-line-number" style={{ color: "var(--color-text-tertiary)" }}>
 						<span className="kb-diff-line-number-text">{rowLineNumber}</span>
 						{canCommentOnSide ? (
 							<span
 								className="kb-diff-comment-gutter"
-								onClick={
-									hasComment
-										? (event) => {
-												event.stopPropagation();
-												onDeleteComment(rowLineNumber, row.variant);
-											}
-										: undefined
-								}
-								style={hasComment ? { cursor: "pointer" } : undefined}
+								onClick={(event) => {
+									event.stopPropagation();
+									if (hasComment) {
+										onDeleteComment(rowLineNumber, row.variant);
+									} else {
+										onGutterClick(rowLineNumber, row.text, row.variant, event.shiftKey, rows);
+									}
+								}}
 							>
 								<span className="kb-diff-gutter-icon-comment">
 									<MessageSquare size={12} />
@@ -419,6 +445,7 @@ function SplitDiff({
 						comment={existingComment}
 						onChange={(text) => onUpdateComment(rowLineNumber, row.variant, text)}
 						onDelete={() => onDeleteComment(rowLineNumber, row.variant)}
+						onSubmit={onSubmitComment ? () => onSubmitComment(rowLineNumber, row.variant) : undefined}
 					/>
 				) : null}
 			</div>
@@ -664,6 +691,75 @@ export function DiffViewerPanel({
 		scrollToPath(selectedPath);
 	}, [scrollToPath, selectedPath]);
 
+	// --- Anchor state for multi-line gutter selection ---
+	const anchorRef = useRef<{
+		filePath: string;
+		lineNumber: number;
+		variant: DiffLineComment["variant"];
+	} | null>(null);
+
+	// Track which rows belong to a multi-line range for visual highlight
+	const [rangeLineKeys, setRangeLineKeys] = useState<Set<string>>(new Set());
+
+	// --- Text selection → "Add to Chat" popup ---
+	const [selectionPopup, setSelectionPopup] = useState<{
+		text: string;
+		top: number;
+		left: number;
+	} | null>(null);
+
+	const handleMouseUp = useCallback(() => {
+		if (!onAddToTerminal) {
+			return;
+		}
+		// Small delay so the browser finalises the selection range
+		requestAnimationFrame(() => {
+			const sel = window.getSelection();
+			if (!sel || sel.isCollapsed) {
+				setSelectionPopup(null);
+				return;
+			}
+			const text = sel.toString().trim();
+			if (text.length === 0) {
+				setSelectionPopup(null);
+				return;
+			}
+			const container = scrollContainerRef.current;
+			if (!container) {
+				return;
+			}
+			const range = sel.getRangeAt(0);
+			const rect = range.getBoundingClientRect();
+			const containerRect = container.getBoundingClientRect();
+			setSelectionPopup({
+				text,
+				top: rect.bottom - containerRect.top + container.scrollTop + 4,
+				left: rect.left - containerRect.left + rect.width / 2,
+			});
+		});
+	}, [onAddToTerminal]);
+
+	const handleSelectionAddToChat = useCallback(() => {
+		if (!selectionPopup || !onAddToTerminal) {
+			return;
+		}
+		onAddToTerminal(selectionPopup.text);
+		window.getSelection()?.removeAllRanges();
+		setSelectionPopup(null);
+	}, [onAddToTerminal, selectionPopup]);
+
+	// Dismiss popup when selection changes to collapsed
+	useEffect(() => {
+		const handleSelectionChange = () => {
+			const sel = window.getSelection();
+			if (!sel || sel.isCollapsed) {
+				setSelectionPopup(null);
+			}
+		};
+		document.addEventListener("selectionchange", handleSelectionChange);
+		return () => document.removeEventListener("selectionchange", handleSelectionChange);
+	}, []);
+
 	const handleAddComment = useCallback(
 		(filePath: string, lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => {
 			const key = commentKey(filePath, lineNumber, variant);
@@ -687,6 +783,61 @@ export function DiffViewerPanel({
 			onCommentsChange(next);
 		},
 		[comments, onCommentsChange],
+	);
+
+	/** Gutter click handler with shift-click multi-line range support. */
+	const handleGutterClick = useCallback(
+		(
+			filePath: string,
+			lineNumber: number,
+			lineText: string,
+			variant: "added" | "removed" | "context",
+			shiftKey: boolean,
+			allRows: UnifiedDiffRow[],
+		) => {
+			const anchor = anchorRef.current;
+			if (
+				shiftKey &&
+				anchor &&
+				anchor.filePath === filePath &&
+				anchor.variant === variant &&
+				anchor.lineNumber !== lineNumber
+			) {
+				const startLine = Math.min(anchor.lineNumber, lineNumber);
+				const endLine = Math.max(anchor.lineNumber, lineNumber);
+				// Gather all line texts in range
+				const linesInRange = allRows.filter(
+					(r) =>
+						r.variant === variant && r.lineNumber != null && r.lineNumber >= startLine && r.lineNumber <= endLine,
+				);
+				const joinedText = linesInRange.map((r) => r.text).join("\n");
+				const rangeKeys = new Set(linesInRange.map((r) => commentKey(filePath, r.lineNumber!, variant)));
+				setRangeLineKeys(rangeKeys);
+				// Place comment on the end line
+				const key = commentKey(filePath, endLine, variant);
+				const next = new Map(comments);
+				for (const [existingKey, existingComment] of next) {
+					if (existingComment.comment.trim() === "") {
+						next.delete(existingKey);
+					}
+				}
+				next.set(key, {
+					filePath,
+					lineNumber: startLine,
+					lineText: joinedText,
+					variant,
+					comment: "",
+				});
+				onCommentsChange(next);
+				anchorRef.current = null;
+			} else {
+				// Single line: set anchor and open comment
+				anchorRef.current = { filePath, lineNumber, variant };
+				setRangeLineKeys(new Set());
+				handleAddComment(filePath, lineNumber, lineText, variant);
+			}
+		},
+		[comments, handleAddComment, onCommentsChange],
 	);
 
 	const handleUpdateComment = useCallback(
@@ -750,7 +901,26 @@ export function DiffViewerPanel({
 
 	const handleClearAllComments = useCallback(() => {
 		onCommentsChange(new Map());
+		setRangeLineKeys(new Set());
 	}, [onCommentsChange]);
+
+	/** Submit a single inline comment directly to the agent. */
+	const handleSubmitSingleComment = useCallback(
+		(filePath: string, lineNumber: number, variant: "added" | "removed" | "context") => {
+			const key = commentKey(filePath, lineNumber, variant);
+			const entry = comments.get(key);
+			if (!entry || entry.comment.trim().length === 0 || !onSendToTerminal) {
+				return;
+			}
+			const formatted = formatCommentsForTerminal([entry]);
+			onSendToTerminal(formatted);
+			const next = new Map(comments);
+			next.delete(key);
+			onCommentsChange(next);
+			setRangeLineKeys(new Set());
+		},
+		[comments, onCommentsChange, onSendToTerminal],
+	);
 
 	const hasAnyComments = comments.size > 0;
 	const nonEmptyCount = nonEmptyComments.length;
@@ -827,7 +997,9 @@ export function DiffViewerPanel({
 					<div
 						ref={scrollContainerRef}
 						onScroll={handleDiffScroll}
+						onMouseUp={handleMouseUp}
 						style={{
+							position: "relative",
 							flex: "1 1 0",
 							minHeight: 0,
 							overflowY: "auto",
@@ -835,6 +1007,25 @@ export function DiffViewerPanel({
 							padding: "0 12px 12px",
 						}}
 					>
+						{selectionPopup && onAddToTerminal ? (
+							<div
+								className="kb-diff-selection-popup"
+								style={{
+									top: selectionPopup.top,
+									left: selectionPopup.left,
+									transform: "translateX(-50%)",
+								}}
+							>
+								<Button
+									variant="default"
+									size="sm"
+									icon={<MessageSquarePlus size={14} />}
+									onClick={handleSelectionAddToChat}
+								>
+									Add to Chat
+								</Button>
+							</div>
+						) : null}
 						{groupedByPath.map((group) => {
 							const isExpanded = expandedPaths[group.path] ?? true;
 							const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
@@ -895,8 +1086,15 @@ export function DiffViewerPanel({
 															oldText={entry.oldText}
 															newText={entry.newText}
 															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
+															onGutterClick={(lineNumber, lineText, variant, shiftKey, allRows) =>
+																handleGutterClick(
+																	group.path,
+																	lineNumber,
+																	lineText,
+																	variant,
+																	shiftKey,
+																	allRows,
+																)
 															}
 															onUpdateComment={(lineNumber, variant, text) =>
 																handleUpdateComment(group.path, lineNumber, variant, text)
@@ -904,6 +1102,13 @@ export function DiffViewerPanel({
 															onDeleteComment={(lineNumber, variant) =>
 																handleDeleteComment(group.path, lineNumber, variant)
 															}
+															onSubmitComment={
+																onSendToTerminal
+																	? (lineNumber, variant) =>
+																			handleSubmitSingleComment(group.path, lineNumber, variant)
+																	: undefined
+															}
+															rangeLineKeys={rangeLineKeys}
 														/>
 													) : (
 														<UnifiedDiff
@@ -911,8 +1116,15 @@ export function DiffViewerPanel({
 															oldText={entry.oldText}
 															newText={entry.newText}
 															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
+															onGutterClick={(lineNumber, lineText, variant, shiftKey, allRows) =>
+																handleGutterClick(
+																	group.path,
+																	lineNumber,
+																	lineText,
+																	variant,
+																	shiftKey,
+																	allRows,
+																)
 															}
 															onUpdateComment={(lineNumber, variant, text) =>
 																handleUpdateComment(group.path, lineNumber, variant, text)
@@ -920,6 +1132,13 @@ export function DiffViewerPanel({
 															onDeleteComment={(lineNumber, variant) =>
 																handleDeleteComment(group.path, lineNumber, variant)
 															}
+															onSubmitComment={
+																onSendToTerminal
+																	? (lineNumber, variant) =>
+																			handleSubmitSingleComment(group.path, lineNumber, variant)
+																	: undefined
+															}
+															rangeLineKeys={rangeLineKeys}
 														/>
 													)}
 												</div>
