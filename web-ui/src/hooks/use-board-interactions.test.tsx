@@ -516,6 +516,108 @@ describe("useBoardInteractions", () => {
 		});
 	});
 
+	it("preserves model fields when restoring a trashed task", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		const trashTask: BoardCard = {
+			id: "task-trash-model",
+			title: "Trash task with model title",
+			prompt: "Trash task with model",
+			startInPlanMode: false,
+			autoReviewEnabled: false,
+			autoReviewMode: "commit",
+			agentId: "codex",
+			clineSettings: {
+				providerId: "my-provider",
+				modelId: "my-model",
+			},
+			baseRef: "main",
+			createdAt: 2,
+			updatedAt: 2,
+		};
+		let currentBoard: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [trashTask] },
+			],
+			dependencies: [],
+		};
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((nextBoard) => {
+			if (typeof nextBoard === "function") {
+				currentBoard = nextBoard(currentBoard);
+			} else {
+				currentBoard = nextBoard;
+			}
+		});
+		const ensureTaskWorkspace = vi.fn(async () => ({
+			ok: true as const,
+			response: {
+				ok: true as const,
+				path: "/tmp/task-trash-model",
+				baseRef: "main",
+				baseCommit: "abc123",
+			},
+		}));
+		const startTaskSession = vi.fn(async () => ({ ok: true as const }));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={currentBoard}
+					setBoard={setBoard}
+					ensureTaskWorkspace={ensureTaskWorkspace}
+					startTaskSession={startTaskSession}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleRestoreTaskFromTrash("task-trash-model");
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		});
+
+		// After restore, disableTaskAutoReview is called via setBoard updater.
+		// Verify model fields survived the restore flow.
+		const reviewCards = currentBoard.columns.find((col) => col.id === "review")?.cards ?? [];
+		const restoredTask = reviewCards.find((card) => card.id === "task-trash-model");
+		expect(restoredTask).toBeDefined();
+		expect(restoredTask?.clineSettings).toEqual({
+			providerId: "my-provider",
+			modelId: "my-model",
+		});
+		expect(restoredTask?.agentId).toBe("codex");
+	});
+
 	it("ignores card selection requests for trashed tasks", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 

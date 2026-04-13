@@ -1,10 +1,16 @@
 import { Draggable } from "@hello-pangea/dnd";
+import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
 import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
-import { AlertCircle, AlertTriangle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Bot, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+	formatClineReasoningEffortLabel,
+	formatClineSelectedModelButtonText,
+	resolveClineModelDisplayName,
+} from "@/components/detail-panels/cline-model-picker-options";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -226,6 +232,7 @@ export function BoardCard({
 	isDependencyTarget = false,
 	isDependencyLinking = false,
 	workspacePath,
+	defaultClineModelId = null,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -249,6 +256,7 @@ export function BoardCard({
 	isDependencyTarget?: boolean;
 	isDependencyLinking?: boolean;
 	workspacePath?: string | null;
+	defaultClineModelId?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -458,6 +466,42 @@ export function BoardCard({
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const cancelAutomaticActionLabel =
 		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
+	const agentOverrideLabel = useMemo(
+		() => (card.agentId ? (getRuntimeAgentCatalogEntry(card.agentId)?.label ?? card.agentId) : null),
+		[card.agentId],
+	);
+	const modelOverrideLabel = useMemo(() => {
+		if (card.clineSettings === undefined) {
+			return null;
+		}
+		const explicitReasoningLabel = card.clineSettings.reasoningEffort
+			? formatClineReasoningEffortLabel(card.clineSettings.reasoningEffort)
+			: !card.clineSettings.providerId && !card.clineSettings.modelId
+				? "Default"
+				: null;
+		if (card.clineSettings.providerId && !card.clineSettings.modelId) {
+			const providerLabel = `Provider: ${card.clineSettings.providerId}`;
+			return explicitReasoningLabel ? `${providerLabel} (${explicitReasoningLabel})` : providerLabel;
+		}
+		const effectiveModelId = card.clineSettings.modelId ?? defaultClineModelId;
+		if (!effectiveModelId) {
+			return explicitReasoningLabel ? `Default model (${explicitReasoningLabel})` : null;
+		}
+		const modelName = resolveClineModelDisplayName(effectiveModelId);
+		if (explicitReasoningLabel) {
+			return `${modelName} (${explicitReasoningLabel})`;
+		}
+		const inheritedReasoningEffort = "";
+		return formatClineSelectedModelButtonText({
+			modelName,
+			reasoningEffort: inheritedReasoningEffort,
+			showReasoningEffort: Boolean(inheritedReasoningEffort),
+		});
+	}, [card.clineSettings, defaultClineModelId]);
+	const taskAgentSettingsLabel = useMemo(() => {
+		const parts = [agentOverrideLabel, modelOverrideLabel].filter((value): value is string => Boolean(value));
+		return parts.length > 0 ? parts.join(" · ") : null;
+	}, [agentOverrideLabel, modelOverrideLabel]);
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -682,6 +726,21 @@ export function BoardCard({
 											)
 										) : null}
 									</p>
+								</div>
+							) : null}
+							{taskAgentSettingsLabel ? (
+								<div className="mt-1">
+									<span
+										className={cn(
+											"inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs",
+											isTrashCard
+												? "border-border text-text-tertiary bg-surface-1"
+												: "border-status-blue/30 bg-status-blue/10 text-status-blue",
+										)}
+									>
+										<Bot size={12} className="shrink-0" />
+										<span className="truncate">{taskAgentSettingsLabel}</span>
+									</span>
 								</div>
 							) : null}
 							{sessionActivity ? (

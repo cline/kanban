@@ -4,6 +4,7 @@ import { type KeyboardEvent, type ReactElement, useEffect, useMemo, useState } f
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { NativeSelect } from "@/components/ui/native-select";
 import type { AddClineProviderInput, UpdateClineProviderInput } from "@/hooks/use-runtime-settings-cline-controller";
 import type { RuntimeClineProviderCapability } from "@/runtime/types";
 
@@ -423,17 +424,17 @@ export function ClineAddProviderDialog({
 				{draftModels.length > 1 ? (
 					<section className="rounded-lg border border-border bg-surface-1 p-3">
 						<p className="mb-1 text-[12px] text-text-secondary">Default model</p>
-						<select
+						<NativeSelect
+							fill
 							value={form.defaultModelId}
 							onChange={(event) => setForm((current) => ({ ...current, defaultModelId: event.target.value }))}
-							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary focus:border-border-focus focus:outline-none"
 						>
 							{draftModels.map((model) => (
 								<option key={model} value={model}>
 									{model}
 								</option>
 							))}
-						</select>
+						</NativeSelect>
 					</section>
 				) : null}
 

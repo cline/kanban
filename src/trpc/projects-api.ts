@@ -1,10 +1,13 @@
+import { readdir, stat } from "node:fs/promises";
+import { dirname, isAbsolute, resolve } from "node:path";
 import type {
 	RuntimeBoardData,
+	RuntimeDirectoryListResponse,
 	RuntimeProjectAddResponse,
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
 } from "../core/api-contract";
-import { parseProjectAddRequest, parseProjectRemoveRequest } from "../core/api-validation";
+import { parseDirectoryListRequest, parseProjectAddRequest, parseProjectRemoveRequest } from "../core/api-validation";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
@@ -14,7 +17,9 @@ import {
 	removeWorkspaceStateFiles,
 } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import { cloneGitRepository } from "../workspace/git-clone";
 import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo";
+import { isPathWithinRoot } from "../workspace/path-sandbox";
 import { deleteTaskWorktree } from "../workspace/task-worktree";
 import type { RuntimeTrpcContext } from "./app-router";
 
@@ -50,9 +55,12 @@ export interface CreateProjectsApiDependencies {
 		projects: RuntimeProjectSummary[];
 	}>;
 	pickDirectoryPathFromSystemDialog: () => string | null;
+	serverCwd: string;
 }
 
 export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeTrpcContext["projectsApi"] {
+	const filesystemRoot = resolve(deps.serverCwd, "/");
+
 	return {
 		listProjects: async (preferredWorkspaceId) => {
 			const payload = await deps.buildProjectsPayload(preferredWorkspaceId);
@@ -68,7 +76,28 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 				: null;
 			const resolveBasePath = preferredWorkspaceContext?.repoPath ?? deps.getActiveWorkspacePath() ?? process.cwd();
 			try {
-				const projectPath = deps.resolveProjectInputPath(body.path, resolveBasePath);
+				let projectPath: string;
+				if (body.gitUrl) {
+					// Clone from Git URL. If a custom path is provided alongside
+					// gitUrl, use it as the clone destination. Otherwise derive
+					// a destination from the URL.
+					// Resolve relative to serverCwd (the default clone base), not the
+					// active project — the clone target belongs under the kanban
+					// working directory, not inside another project.
+					const customDest = body.path ? deps.resolveProjectInputPath(body.path, deps.serverCwd) : undefined;
+					const cloneResult = await cloneGitRepository(body.gitUrl, deps.serverCwd, customDest, filesystemRoot);
+					if (!cloneResult.ok) {
+						return {
+							ok: false,
+							project: null,
+							error: cloneResult.error ?? "Git clone failed.",
+						} satisfies RuntimeProjectAddResponse;
+					}
+					projectPath = cloneResult.clonedPath;
+				} else {
+					// path is guaranteed to exist here by the schema refine and the gitUrl branch above.
+					projectPath = deps.resolveProjectInputPath(body.path as string, resolveBasePath);
+				}
 				await deps.assertPathIsDirectory(projectPath);
 				if (!deps.hasGitRepository(projectPath)) {
 					if (!body.initializeGit) {
@@ -225,6 +254,113 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					path: null,
 					error: message,
 				};
+			}
+		},
+		listDirectoryContents: async (_preferredWorkspaceId, input) => {
+			const body = parseDirectoryListRequest(input);
+			const rootPath = filesystemRoot;
+			const requestedPath = body.path?.trim() || "";
+			// Reject absolute paths that fall outside the sandbox
+			if (requestedPath && isAbsolute(requestedPath)) {
+				if (!isPathWithinRoot(rootPath, requestedPath)) {
+					return {
+						ok: false,
+						currentPath: rootPath,
+						parentPath: null,
+						rootPath,
+						entries: [],
+						error: "Access denied: absolute path is outside the server root directory.",
+					} satisfies RuntimeDirectoryListResponse;
+				}
+				// Absolute path is within sandbox — fall through to existing stat/readdir logic
+			}
+			const resolvedPath = resolve(rootPath, requestedPath) || rootPath;
+
+			if (!isPathWithinRoot(rootPath, resolvedPath)) {
+				return {
+					ok: false,
+					currentPath: rootPath,
+					parentPath: null,
+					rootPath,
+					entries: [],
+					error: "Access denied: path is outside the server root directory.",
+				} satisfies RuntimeDirectoryListResponse;
+			}
+
+			try {
+				const dirStat = await stat(resolvedPath);
+				if (!dirStat.isDirectory()) {
+					return {
+						ok: false,
+						currentPath: resolvedPath,
+						parentPath: null,
+						rootPath,
+						entries: [],
+						error: "The specified path is not a directory.",
+					} satisfies RuntimeDirectoryListResponse;
+				}
+
+				const dirEntries = await readdir(resolvedPath, { withFileTypes: true });
+				const directoryEntries = dirEntries.filter((entry) => {
+					if (!entry.isDirectory()) {
+						return false;
+					}
+					if (entry.name.startsWith(".")) {
+						return false;
+					}
+					return true;
+				});
+
+				directoryEntries.sort((a, b) => a.name.localeCompare(b.name));
+
+				const entries = await Promise.all(
+					directoryEntries.map(async (entry) => {
+						const entryPath = resolve(resolvedPath, entry.name);
+						let isGitRepository = false;
+						try {
+							const gitDirStat = await stat(resolve(entryPath, ".git"));
+							isGitRepository = gitDirStat.isDirectory() || gitDirStat.isFile();
+						} catch {
+							// .git does not exist or is not accessible
+						}
+						return {
+							name: entry.name,
+							path: entryPath,
+							isGitRepository,
+						};
+					}),
+				);
+
+				const isAtRoot = resolvedPath === rootPath;
+				const rawParent = dirname(resolvedPath);
+				const parentIsWithinRoot = isPathWithinRoot(rootPath, rawParent);
+				const parentPath = isAtRoot ? null : parentIsWithinRoot ? rawParent : null;
+
+				return {
+					ok: true,
+					currentPath: resolvedPath,
+					parentPath,
+					rootPath,
+					entries,
+				} satisfies RuntimeDirectoryListResponse;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				const isPermissionError =
+					error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EACCES";
+				const isNotFoundError =
+					error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
+				return {
+					ok: false,
+					currentPath: resolvedPath,
+					parentPath: null,
+					rootPath,
+					entries: [],
+					error: isPermissionError
+						? "Permission denied: cannot read this directory."
+						: isNotFoundError
+							? "Directory not found."
+							: message,
+				} satisfies RuntimeDirectoryListResponse;
 			}
 		},
 	};

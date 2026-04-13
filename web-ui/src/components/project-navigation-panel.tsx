@@ -480,8 +480,8 @@ export function ProjectNavigationPanel({
 }
 
 const TERMINAL_AGENT_HINTS: readonly { label: string; hint: string }[] = [
-	{ label: "Create tasks", hint: "Ask your agent to add tasks, link them, and start work" },
-	{ label: "Break down work", hint: "Ask to decompose a feature into linked subtasks" },
+	{ label: "Create tasks", hint: "Ask your agent to add tasks, link them, and start working" },
+	{ label: "Break down work", hint: "Ask to decompose a complex feature into linked subtasks" },
 	{ label: "Import issues", hint: "Pull issues into task cards via GitHub CLI or Linear MCP" },
 ];
 
@@ -517,8 +517,8 @@ function TerminalAgentHints(): React.ReactElement {
 	return (
 		<div className="shrink-0 mx-2 mt-1 mb-1 rounded-md border border-border bg-surface-2/60 px-3 py-2">
 			<div className="flex items-center justify-between mb-1.5">
-				<span className="text-[11px] font-medium text-text-secondary flex items-center gap-1">
-					<Lightbulb size={11} className="text-status-gold" />
+				<span className="text-[11px] font-medium text-status-gold flex items-center gap-1">
+					<Lightbulb size={11} />
 					Tips
 				</span>
 				<button
@@ -532,10 +532,10 @@ function TerminalAgentHints(): React.ReactElement {
 			</div>
 			<ul className="m-0 list-none space-y-1 pl-0">
 				{TERMINAL_AGENT_HINTS.map((item) => (
-					<li key={item.label} className="flex items-start gap-1.5 text-[11px] text-text-secondary">
+					<li key={item.label} className="flex items-start gap-1.5 text-[11px] text-text-primary">
 						<span className="mt-[5px] block h-1 w-1 shrink-0 rounded-full bg-text-tertiary" />
 						<span>
-							<span className="font-medium text-text-primary">{item.label}.</span> {item.hint}
+							<span className="font-medium">{item.label}.</span> {item.hint}
 						</span>
 					</li>
 				))}

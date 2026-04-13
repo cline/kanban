@@ -65,7 +65,7 @@ export interface ResolvedClineLaunchConfig {
 	modelId: string | null;
 	apiKey: string | null;
 	baseUrl: string | null;
-	reasoningEffort: RuntimeClineReasoningEffort | null;
+	reasoningEffort?: RuntimeClineReasoningEffort | null;
 }
 
 export interface AddCustomClineProviderInput {
@@ -695,8 +695,14 @@ export function createClineProviderService() {
 			}
 		},
 
-		async resolveLaunchConfig(): Promise<ResolvedClineLaunchConfig> {
-			const selectedSettings = getSelectedProviderSettings();
+		async resolveLaunchConfig(overrides?: {
+			providerIdOverride?: string;
+			modelIdOverride?: string;
+			reasoningEffortOverride?: RuntimeClineReasoningEffort | null;
+		}): Promise<ResolvedClineLaunchConfig> {
+			const selectedSettings = overrides?.providerIdOverride
+				? (getSdkProviderSettings(overrides.providerIdOverride) ?? getSelectedProviderSettings())
+				: getSelectedProviderSettings();
 			if (!selectedSettings) {
 				throw new Error(
 					"No native Cline provider is configured. Open Settings, choose a provider, and then start the task again.",
@@ -718,12 +724,19 @@ export function createClineProviderService() {
 						oauthApiKey: oauthResolution?.apiKey ?? null,
 					})
 				: resolveVisibleApiKey(resolvedSettings);
+			const modelId =
+				overrides?.modelIdOverride?.trim() ||
+				resolvedSettings.model?.trim() ||
+				(await resolveDefaultModelIdForProvider(normalizedProviderId));
 			return {
 				providerId: normalizedProviderId,
-				modelId: resolvedSettings.model?.trim() || (await resolveDefaultModelIdForProvider(normalizedProviderId)),
+				modelId,
 				apiKey,
 				baseUrl: resolvedSettings.baseUrl?.trim() || null,
-				reasoningEffort: toRuntimeReasoningEffort(resolvedSettings.reasoning?.effort),
+				reasoningEffort:
+					overrides && "reasoningEffortOverride" in overrides
+						? (overrides.reasoningEffortOverride ?? null)
+						: (toRuntimeReasoningEffort(resolvedSettings.reasoning?.effort) ?? undefined),
 			};
 		},
 
