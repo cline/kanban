@@ -145,6 +145,40 @@ function isActiveState(state: RuntimeTaskSessionState): boolean {
 	return state === "running" || state === "awaiting_review";
 }
 
+function buildPersistedReviewRestoreSnapshot(summary: RuntimeTaskSessionSummary) {
+	if (summary.state !== "awaiting_review") {
+		return null;
+	}
+
+	const lines = ["[kanban] Restored persisted review session."];
+	const finalMessage = summary.latestHookActivity?.finalMessage?.trim();
+	const activityText = summary.latestHookActivity?.activityText?.trim();
+	const warningMessage = summary.warningMessage?.trim();
+	const latestCheckpoint = summary.latestTurnCheckpoint?.commit?.trim();
+
+	if (finalMessage) {
+		lines.push("", finalMessage);
+	} else if (activityText) {
+		lines.push("", activityText);
+	} else {
+		lines.push("", "Waiting for review.");
+	}
+
+	if (warningMessage) {
+		lines.push("", `Warning: ${warningMessage}`);
+	}
+
+	if (latestCheckpoint) {
+		lines.push("", `Latest checkpoint: ${latestCheckpoint}`);
+	}
+
+	return {
+		snapshot: `${lines.join("\r\n")}\r\n`,
+		cols: 120,
+		rows: 40,
+	};
+}
+
 function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): StartTaskSessionRequest {
 	return {
 		...request,
@@ -286,8 +320,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	async getRestoreSnapshot(taskId: string) {
 		const entry = this.entries.get(taskId);
-		if (!entry?.terminalStateMirror) {
+		if (!entry) {
 			return null;
+		}
+		if (!entry.terminalStateMirror) {
+			return buildPersistedReviewRestoreSnapshot(entry.summary);
 		}
 		return await entry.terminalStateMirror.getSnapshot();
 	}
@@ -708,6 +745,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return null;
 		}
 		if (entry.active || !isActiveState(entry.summary.state)) {
+			return cloneSummary(entry.summary);
+		}
+		if (entry.summary.state === "awaiting_review") {
 			return cloneSummary(entry.summary);
 		}
 

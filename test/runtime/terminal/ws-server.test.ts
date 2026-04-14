@@ -7,6 +7,7 @@ import type { RawData } from "ws";
 import { WebSocket } from "ws";
 
 import type { RuntimeTaskSessionSummary, RuntimeTerminalWsServerMessage } from "../../../src/core/api-contract";
+import { TerminalSessionManager } from "../../../src/terminal/session-manager";
 import type { TerminalSessionListener, TerminalSessionService } from "../../../src/terminal/terminal-session-service";
 import type { TerminalRestoreSnapshot } from "../../../src/terminal/terminal-state-mirror";
 import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal/ws-server";
@@ -451,5 +452,47 @@ describe("createTerminalWebSocketBridge", () => {
 		await closeSocket(controlSocketA.socket);
 		await closeSocket(ioSocketB.socket);
 		await closeSocket(controlSocketB.socket);
+	});
+
+	it("keeps persisted awaiting-review sessions coherent across websocket reconnects", async () => {
+		terminalManager = new TerminalSessionManager() as unknown as FakeTerminalManager;
+		(terminalManager as unknown as TerminalSessionManager).hydrateFromRecord({
+			[TASK_ID]: {
+				...createSummary(),
+				state: "awaiting_review",
+				reviewReason: "hook",
+				latestHookActivity: {
+					activityText: "Final: Review the persisted session",
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: "Review the persisted session",
+					hookEventName: null,
+					notificationType: null,
+					source: "codex",
+				},
+				pid: 1234,
+			},
+		});
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=reconnect-client`;
+		const firstControl = await openQueuedWebSocket(controlUrl);
+		const firstState = await waitForControlMessage(firstControl, (message) => message.type === "state");
+		const firstRestore = await waitForControlMessage(firstControl, (message) => message.type === "restore");
+
+		expect(firstState.type).toBe("state");
+		expect(firstState.type === "state" ? firstState.summary.state : null).toBe("awaiting_review");
+		expect(firstRestore.type).toBe("restore");
+		expect(firstRestore.type === "restore" ? firstRestore.snapshot : "").toContain("Review the persisted session");
+
+		await closeSocket(firstControl.socket);
+
+		const secondControl = await openQueuedWebSocket(controlUrl);
+		const secondState = await waitForControlMessage(secondControl, (message) => message.type === "state");
+		const secondRestore = await waitForControlMessage(secondControl, (message) => message.type === "restore");
+
+		expect(secondState.type).toBe("state");
+		expect(secondState.type === "state" ? secondState.summary.state : null).toBe("awaiting_review");
+		expect(secondRestore.type === "restore" ? secondRestore.snapshot : "").toContain("Review the persisted session");
+
+		await closeSocket(secondControl.socket);
 	});
 });

@@ -84,6 +84,38 @@ describe("TerminalSessionManager", () => {
 		expect(recovered?.reviewReason).toBeNull();
 	});
 
+	it("preserves persisted awaiting-review sessions when recovering a stale reconnect", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				latestHookActivity: {
+					activityText: "Final: Review the diff",
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: "Review the diff",
+					hookEventName: null,
+					notificationType: null,
+					source: "codex",
+				},
+				latestTurnCheckpoint: {
+					turn: 2,
+					ref: "refs/kanban/checkpoints/task-1/turn/2",
+					commit: "2222222",
+					createdAt: 2,
+				},
+			}),
+		});
+
+		const recovered = manager.recoverStaleSession("task-1");
+
+		expect(recovered?.state).toBe("awaiting_review");
+		expect(recovered?.reviewReason).toBe("hook");
+		expect(recovered?.latestHookActivity?.finalMessage).toBe("Review the diff");
+		expect(recovered?.latestTurnCheckpoint?.commit).toBe("2222222");
+	});
+
 	it("tracks only the latest two turn checkpoints", () => {
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({
@@ -233,5 +265,39 @@ describe("TerminalSessionManager", () => {
 			rows: 40,
 		});
 		expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("builds a restore snapshot for persisted awaiting-review sessions without a PTY mirror", async () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-restore": createSummary({
+				taskId: "task-restore",
+				state: "awaiting_review",
+				reviewReason: "hook",
+				latestHookActivity: {
+					activityText: "Final: Ship it",
+					toolName: null,
+					toolInputSummary: null,
+					finalMessage: "Ship it",
+					hookEventName: null,
+					notificationType: null,
+					source: "codex",
+				},
+				latestTurnCheckpoint: {
+					turn: 3,
+					ref: "refs/kanban/checkpoints/task-restore/turn/3",
+					commit: "3333333",
+					createdAt: 3,
+				},
+			}),
+		});
+
+		const snapshot = await manager.getRestoreSnapshot("task-restore");
+
+		expect(snapshot).toEqual({
+			snapshot: "[kanban] Restored persisted review session.\r\n\r\nShip it\r\n\r\nLatest checkpoint: 3333333\r\n",
+			cols: 120,
+			rows: 40,
+		});
 	});
 });
