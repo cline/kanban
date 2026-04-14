@@ -44,8 +44,8 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 				) : null}
 				<span
 					className={cn(
-						"shrink-0 font-semibold group-hover:text-[#C9D1D9]",
-						expanded ? "text-[#C9D1D9]" : "text-text-secondary",
+						"shrink-0 font-semibold group-hover:text-text-primary",
+						expanded ? "text-text-primary" : "text-text-secondary",
 					)}
 				>
 					{toolDisplay.toolName}
@@ -151,7 +151,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 		const hasText = message.content.trim().length > 0;
 		const hasImages = Boolean(message.images && message.images.length > 0);
 		return (
-			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm text-text-primary">
+			<div className="ml-auto max-w-[85%] rounded-md bg-accent/10 border border-accent/20 px-3 py-2 text-sm text-text-primary">
 				{hasText ? (
 					<div className="whitespace-pre-wrap break-words">{normalizeUserInput(message.content)}</div>
 				) : null}
