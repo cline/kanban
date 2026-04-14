@@ -189,6 +189,7 @@ function createPersistedReviewSummary(
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		persistedReviewContext: null,
 	};
 }
 

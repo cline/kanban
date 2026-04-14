@@ -4,6 +4,8 @@
 import type {
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
+	RuntimeTaskPersistedReviewContext,
+	RuntimeTaskPersistedReviewWorkspaceDiff,
 	RuntimeTaskSessionReviewReason,
 	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
@@ -123,12 +125,27 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		persistedReviewContext: null,
 	};
 }
 
 function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSessionSummary {
 	return {
 		...summary,
+		latestHookActivity: summary.latestHookActivity ? { ...summary.latestHookActivity } : null,
+		latestTurnCheckpoint: summary.latestTurnCheckpoint ? { ...summary.latestTurnCheckpoint } : null,
+		previousTurnCheckpoint: summary.previousTurnCheckpoint ? { ...summary.previousTurnCheckpoint } : null,
+		persistedReviewContext: summary.persistedReviewContext
+			? {
+					...summary.persistedReviewContext,
+					workspaceDiff: summary.persistedReviewContext.workspaceDiff
+						? {
+								...summary.persistedReviewContext.workspaceDiff,
+								files: summary.persistedReviewContext.workspaceDiff.files.map((file) => ({ ...file })),
+							}
+						: null,
+				}
+			: null,
 	};
 }
 
@@ -150,11 +167,24 @@ function buildPersistedReviewRestoreSnapshot(summary: RuntimeTaskSessionSummary)
 		return null;
 	}
 
+	const persistedContext = summary.persistedReviewContext ?? null;
+	if (persistedContext?.terminalSnapshot) {
+		return {
+			snapshot: persistedContext.terminalSnapshot,
+			cols: persistedContext.terminalCols ?? 120,
+			rows: persistedContext.terminalRows ?? 40,
+		};
+	}
+
 	const lines = ["[kanban] Restored persisted review session."];
 	const finalMessage = summary.latestHookActivity?.finalMessage?.trim();
 	const activityText = summary.latestHookActivity?.activityText?.trim();
+	const toolName = summary.latestHookActivity?.toolName?.trim();
+	const toolInputSummary = summary.latestHookActivity?.toolInputSummary?.trim();
 	const warningMessage = summary.warningMessage?.trim();
-	const latestCheckpoint = summary.latestTurnCheckpoint?.commit?.trim();
+	const latestCheckpoint = summary.latestTurnCheckpoint;
+	const previousCheckpoint = summary.previousTurnCheckpoint;
+	const workspaceDiff = persistedContext?.workspaceDiff ?? null;
 
 	if (finalMessage) {
 		lines.push("", finalMessage);
@@ -168,8 +198,27 @@ function buildPersistedReviewRestoreSnapshot(summary: RuntimeTaskSessionSummary)
 		lines.push("", `Warning: ${warningMessage}`);
 	}
 
-	if (latestCheckpoint) {
-		lines.push("", `Latest checkpoint: ${latestCheckpoint}`);
+	if (toolName) {
+		lines.push("", `Latest tool: ${toolName}${toolInputSummary ? ` (${toolInputSummary})` : ""}`);
+	}
+
+	if (workspaceDiff && workspaceDiff.changedFiles > 0) {
+		lines.push(
+			"",
+			`Workspace diff: ${workspaceDiff.changedFiles} file${workspaceDiff.changedFiles === 1 ? "" : "s"} changed (+${workspaceDiff.additions} -${workspaceDiff.deletions})`,
+		);
+		for (const file of workspaceDiff.files) {
+			const renameSuffix = file.previousPath ? ` <- ${file.previousPath}` : "";
+			lines.push(`- ${file.path}${renameSuffix} [${file.status}] (+${file.additions} -${file.deletions})`);
+		}
+	}
+
+	if (latestCheckpoint?.commit?.trim()) {
+		lines.push("", `Latest checkpoint: turn ${latestCheckpoint.turn} @ ${latestCheckpoint.commit.trim()}`);
+	}
+
+	if (previousCheckpoint?.commit?.trim()) {
+		lines.push(`Previous checkpoint: turn ${previousCheckpoint.turn} @ ${previousCheckpoint.commit.trim()}`);
 	}
 
 	return {
@@ -536,6 +585,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				latestHookActivity: null,
 				latestTurnCheckpoint: null,
 				previousTurnCheckpoint: null,
+				persistedReviewContext: null,
 			});
 			this.emitSummary(summary);
 			throw new Error(formatSpawnFailure(commandBinary, error));
@@ -567,6 +617,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.terminalStateMirror = terminalStateMirror;
 
 		const startedAt = now();
+		const persistedReviewContext = request.resumeFromTrash ? (entry.summary.persistedReviewContext ?? null) : null;
 		updateSummary(entry, {
 			state: request.resumeFromTrash ? "awaiting_review" : "running",
 			agentId: request.agentId,
@@ -581,6 +632,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			warningMessage: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
+			persistedReviewContext,
 		});
 		this.emitSummary(entry.summary);
 
@@ -695,6 +747,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				latestHookActivity: null,
 				latestTurnCheckpoint: null,
 				previousTurnCheckpoint: null,
+				persistedReviewContext: null,
 			});
 			this.emitSummary(summary);
 			throw new Error(formatShellSpawnFailure(request.binary, error));
@@ -733,6 +786,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			warningMessage: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
+			persistedReviewContext: null,
 		});
 		this.emitSummary(entry.summary);
 
@@ -765,6 +819,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			latestHookActivity: null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
+			persistedReviewContext: null,
 		});
 
 		for (const listener of entry.listeners.values()) {
@@ -929,6 +984,51 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return cloneSummary(summary);
 	}
 
+	async capturePersistedReviewContext(
+		taskId: string,
+		input: {
+			workspaceDiff?: RuntimeTaskPersistedReviewWorkspaceDiff | null;
+		} = {},
+	): Promise<RuntimeTaskSessionSummary | null> {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+
+		const previousContext = entry.summary.persistedReviewContext ?? null;
+		let terminalSnapshot = previousContext?.terminalSnapshot ?? null;
+		let terminalCols = previousContext?.terminalCols ?? null;
+		let terminalRows = previousContext?.terminalRows ?? null;
+
+		if (entry.terminalStateMirror) {
+			try {
+				const snapshot = await entry.terminalStateMirror.getSnapshot();
+				terminalSnapshot = snapshot.snapshot;
+				terminalCols = snapshot.cols;
+				terminalRows = snapshot.rows;
+			} catch {
+				// Best effort snapshot capture only.
+			}
+		}
+
+		const summary = updateSummary(entry, {
+			persistedReviewContext: {
+				capturedAt: now(),
+				terminalSnapshot,
+				terminalCols,
+				terminalRows,
+				workspaceDiff: input.workspaceDiff ?? previousContext?.workspaceDiff ?? null,
+			} satisfies RuntimeTaskPersistedReviewContext,
+		});
+		if (entry.active) {
+			for (const listener of entry.listeners.values()) {
+				listener.onState?.(cloneSummary(summary));
+			}
+		}
+		this.emitSummary(summary);
+		return cloneSummary(summary);
+	}
+
 	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		if (!entry) {
@@ -993,10 +1093,17 @@ export class TerminalSessionManager implements TerminalSessionService {
 				entry.active.workspaceTrustBuffer = "";
 			}
 		}
+		const patch =
+			transition.patch.state === "running"
+				? {
+						...transition.patch,
+						persistedReviewContext: null,
+					}
+				: transition.patch;
 		if (entry.active && transition.changed && transition.patch.state === "awaiting_review") {
 			entry.active.awaitingCodexPromptAfterEnter = false;
 		}
-		return updateSummary(entry, transition.patch);
+		return updateSummary(entry, patch);
 	}
 
 	private ensureEntry(taskId: string): SessionEntry {

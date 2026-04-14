@@ -1,12 +1,18 @@
 import type {
 	RuntimeHookEvent,
 	RuntimeHookIngestResponse,
+	RuntimeTaskPersistedReviewWorkspaceDiff,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
 import { parseHookIngestRequest } from "../core/api-validation";
 import { loadWorkspaceContextById } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import {
+	getWorkspaceChanges,
+	getWorkspaceChangesBetweenRefs,
+	getWorkspaceChangesFromRef,
+} from "../workspace/get-workspace-changes";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext } from "./app-router";
 
@@ -34,6 +40,61 @@ function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event
 		summary.state === "awaiting_review" &&
 		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
 	);
+}
+
+const MAX_PERSISTED_REVIEW_DIFF_FILES = 6;
+
+function summarizePersistedReviewWorkspaceDiff(
+	mode: RuntimeTaskPersistedReviewWorkspaceDiff["mode"],
+	response: Awaited<ReturnType<typeof getWorkspaceChanges>>,
+): RuntimeTaskPersistedReviewWorkspaceDiff {
+	const files = response.files.slice(0, MAX_PERSISTED_REVIEW_DIFF_FILES).map((file) => ({
+		path: file.path,
+		previousPath: file.previousPath,
+		status: file.status,
+		additions: file.additions,
+		deletions: file.deletions,
+	}));
+	return {
+		mode,
+		generatedAt: response.generatedAt,
+		changedFiles: response.files.length,
+		additions: response.files.reduce((total, file) => total + file.additions, 0),
+		deletions: response.files.reduce((total, file) => total + file.deletions, 0),
+		files,
+	};
+}
+
+async function capturePersistedReviewWorkspaceDiff(
+	cwd: string,
+	summary: RuntimeTaskSessionSummary,
+): Promise<RuntimeTaskPersistedReviewWorkspaceDiff | null> {
+	try {
+		const toCheckpoint = summary.latestTurnCheckpoint;
+		const fromCheckpoint = summary.previousTurnCheckpoint;
+		if (!toCheckpoint) {
+			return summarizePersistedReviewWorkspaceDiff("working_copy", await getWorkspaceChanges(cwd));
+		}
+		if (summary.state === "running" || !fromCheckpoint) {
+			return summarizePersistedReviewWorkspaceDiff(
+				"working_copy",
+				await getWorkspaceChangesFromRef({
+					cwd,
+					fromRef: toCheckpoint.commit,
+				}),
+			);
+		}
+		return summarizePersistedReviewWorkspaceDiff(
+			"last_turn",
+			await getWorkspaceChangesBetweenRefs({
+				cwd,
+				fromRef: fromCheckpoint.commit,
+				toRef: toCheckpoint.commit,
+			}),
+		);
+	} catch {
+		return null;
+	}
 }
 
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
@@ -75,7 +136,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				const transitionedSummary =
+				let transitionedSummary =
 					event === "to_review" ? manager.transitionToReview(taskId, "hook") : manager.transitionToRunning(taskId);
 				if (!transitionedSummary) {
 					return {
@@ -94,7 +155,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 							taskId,
 							turn: nextTurn,
 						});
-						manager.applyTurnCheckpoint(taskId, checkpoint);
+						transitionedSummary = manager.applyTurnCheckpoint(taskId, checkpoint) ?? transitionedSummary;
 						if (staleRef) {
 							void checkpointRefDelete({
 								cwd: checkpointCwd,
@@ -109,7 +170,17 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				}
 
 				if (body.metadata) {
-					manager.applyHookActivity(taskId, body.metadata);
+					transitionedSummary = manager.applyHookActivity(taskId, body.metadata) ?? transitionedSummary;
+				}
+
+				if (event === "to_review") {
+					const diffSummary = await capturePersistedReviewWorkspaceDiff(
+						transitionedSummary.workspacePath ?? workspacePath,
+						transitionedSummary,
+					);
+					await manager.capturePersistedReviewContext(taskId, {
+						workspaceDiff: diffSummary,
+					});
 				}
 
 				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);

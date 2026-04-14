@@ -1,7 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import type { TerminalSessionManager } from "../../../src/terminal/session-manager";
+
+const workspaceChangesMocks = vi.hoisted(() => ({
+	getWorkspaceChanges: vi.fn(),
+	getWorkspaceChangesBetweenRefs: vi.fn(),
+	getWorkspaceChangesFromRef: vi.fn(),
+}));
+
+vi.mock("../../../src/workspace/get-workspace-changes.js", () => ({
+	getWorkspaceChanges: workspaceChangesMocks.getWorkspaceChanges,
+	getWorkspaceChangesBetweenRefs: workspaceChangesMocks.getWorkspaceChangesBetweenRefs,
+	getWorkspaceChangesFromRef: workspaceChangesMocks.getWorkspaceChangesFromRef,
+}));
+
 import { createHooksApi } from "../../../src/trpc/hooks-api";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -23,12 +36,34 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 }
 
 describe("createHooksApi", () => {
+	beforeEach(() => {
+		workspaceChangesMocks.getWorkspaceChanges.mockReset();
+		workspaceChangesMocks.getWorkspaceChangesBetweenRefs.mockReset();
+		workspaceChangesMocks.getWorkspaceChangesFromRef.mockReset();
+		workspaceChangesMocks.getWorkspaceChanges.mockResolvedValue({
+			repoRoot: "/tmp/worktree",
+			generatedAt: 10,
+			files: [],
+		});
+		workspaceChangesMocks.getWorkspaceChangesBetweenRefs.mockResolvedValue({
+			repoRoot: "/tmp/worktree",
+			generatedAt: 20,
+			files: [],
+		});
+		workspaceChangesMocks.getWorkspaceChangesFromRef.mockResolvedValue({
+			repoRoot: "/tmp/worktree",
+			generatedAt: 30,
+			files: [],
+		});
+	});
+
 	it("treats ineligible hook transitions as successful no-ops", async () => {
 		const manager = {
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			transitionToReview: vi.fn(),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
+			capturePersistedReviewContext: vi.fn(),
 		} as unknown as TerminalSessionManager;
 
 		const api = createHooksApi({
@@ -56,6 +91,7 @@ describe("createHooksApi", () => {
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
 			applyTurnCheckpoint: vi.fn(),
+			capturePersistedReviewContext: vi.fn(),
 		} as unknown as TerminalSessionManager;
 
 		const api = createHooksApi({
@@ -107,7 +143,17 @@ describe("createHooksApi", () => {
 			transitionToReview: vi.fn(() => transitionedSummary),
 			transitionToRunning: vi.fn(),
 			applyHookActivity: vi.fn(),
-			applyTurnCheckpoint: vi.fn(),
+			applyTurnCheckpoint: vi.fn((taskId, checkpoint) =>
+				createSummary({
+					taskId,
+					state: "awaiting_review",
+					reviewReason: "hook",
+					workspacePath: "/tmp/worktree",
+					latestTurnCheckpoint: checkpoint,
+					previousTurnCheckpoint: transitionedSummary.latestTurnCheckpoint,
+				}),
+			),
+			capturePersistedReviewContext: vi.fn(async () => transitionedSummary),
 		} as unknown as TerminalSessionManager;
 
 		const captureTaskTurnCheckpoint = vi.fn(async () => ({
@@ -143,6 +189,93 @@ describe("createHooksApi", () => {
 		expect(deleteTaskTurnCheckpointRef).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
 			ref: "refs/kanban/checkpoints/task-1/turn/1",
+		});
+		expect(workspaceChangesMocks.getWorkspaceChangesBetweenRefs).toHaveBeenCalledWith({
+			cwd: "/tmp/worktree",
+			fromRef: "2222222",
+			toRef: "3333333",
+		});
+		expect(manager.capturePersistedReviewContext).toHaveBeenCalledWith("task-1", {
+			workspaceDiff: {
+				mode: "last_turn",
+				generatedAt: 20,
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				files: [],
+			},
+		});
+	});
+
+	it("falls back to working copy diff summary when the previous checkpoint is unavailable", async () => {
+		const transitionedSummary = createSummary({
+			state: "awaiting_review",
+			reviewReason: "hook",
+			workspacePath: "/tmp/worktree",
+			latestTurnCheckpoint: {
+				turn: 3,
+				ref: "refs/kanban/checkpoints/task-1/turn/3",
+				commit: "3333333",
+				createdAt: 3,
+			},
+			previousTurnCheckpoint: null,
+		});
+		workspaceChangesMocks.getWorkspaceChangesFromRef.mockResolvedValue({
+			repoRoot: "/tmp/worktree",
+			generatedAt: 40,
+			files: [
+				{
+					path: "src/review.ts",
+					status: "modified",
+					additions: 4,
+					deletions: 2,
+					oldText: null,
+					newText: null,
+				},
+			],
+		});
+		const manager = {
+			getSummary: vi.fn(() => createSummary({ state: "running" })),
+			transitionToReview: vi.fn(() => transitionedSummary),
+			transitionToRunning: vi.fn(),
+			applyHookActivity: vi.fn(),
+			applyTurnCheckpoint: vi.fn(),
+			capturePersistedReviewContext: vi.fn(async () => transitionedSummary),
+		} as unknown as TerminalSessionManager;
+		const api = createHooksApi({
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastTaskReadyForReview: vi.fn(),
+		});
+
+		await api.ingest({
+			taskId: "task-1",
+			workspaceId: "workspace-1",
+			event: "to_review",
+		});
+
+		expect(workspaceChangesMocks.getWorkspaceChangesFromRef).toHaveBeenCalledWith({
+			cwd: "/tmp/worktree",
+			fromRef: "3333333",
+		});
+		expect(manager.capturePersistedReviewContext).toHaveBeenCalledWith("task-1", {
+			workspaceDiff: {
+				mode: "working_copy",
+				generatedAt: 40,
+				changedFiles: 1,
+				additions: 4,
+				deletions: 2,
+				files: [
+					{
+						path: "src/review.ts",
+						status: "modified",
+						additions: 4,
+						deletions: 2,
+						previousPath: undefined,
+					},
+				],
+			},
 		});
 	});
 });

@@ -495,4 +495,34 @@ describe("createTerminalWebSocketBridge", () => {
 
 		await closeSocket(secondControl.socket);
 	});
+
+	it("sends the persisted terminal snapshot through the restore control message", async () => {
+		terminalManager = new TerminalSessionManager() as unknown as FakeTerminalManager;
+		(terminalManager as unknown as TerminalSessionManager).hydrateFromRecord({
+			[TASK_ID]: {
+				...createSummary(),
+				state: "awaiting_review",
+				reviewReason: "hook",
+				persistedReviewContext: {
+					capturedAt: 2,
+					terminalSnapshot: "persisted review terminal",
+					terminalCols: 132,
+					terminalRows: 40,
+					workspaceDiff: null,
+				},
+			},
+		});
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=persisted-snapshot-client`;
+		const control = await openQueuedWebSocket(controlUrl);
+		const restore = await waitForControlMessage(control, (message) => message.type === "restore");
+
+		expect(restore).toEqual({
+			type: "restore",
+			snapshot: "persisted review terminal",
+			cols: 132,
+			rows: 40,
+		});
+
+		await closeSocket(control.socket);
+	});
 });

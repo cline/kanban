@@ -75,6 +75,17 @@ export function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSes
 		latestHookActivity: summary.latestHookActivity ? { ...summary.latestHookActivity } : null,
 		latestTurnCheckpoint: summary.latestTurnCheckpoint ? { ...summary.latestTurnCheckpoint } : null,
 		previousTurnCheckpoint: summary.previousTurnCheckpoint ? { ...summary.previousTurnCheckpoint } : null,
+		persistedReviewContext: summary.persistedReviewContext
+			? {
+					...summary.persistedReviewContext,
+					workspaceDiff: summary.persistedReviewContext.workspaceDiff
+						? {
+								...summary.persistedReviewContext.workspaceDiff,
+								files: summary.persistedReviewContext.workspaceDiff.files.map((file) => ({ ...file })),
+							}
+						: null,
+				}
+			: null,
 	};
 }
 
@@ -104,6 +115,7 @@ export function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary 
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		persistedReviewContext: null,
 	};
 }
 

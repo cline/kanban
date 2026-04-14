@@ -289,15 +289,163 @@ describe("TerminalSessionManager", () => {
 					commit: "3333333",
 					createdAt: 3,
 				},
+				previousTurnCheckpoint: {
+					turn: 2,
+					ref: "refs/kanban/checkpoints/task-restore/turn/2",
+					commit: "2222222",
+					createdAt: 2,
+				},
+				persistedReviewContext: {
+					capturedAt: 4,
+					terminalSnapshot: null,
+					terminalCols: null,
+					terminalRows: null,
+					workspaceDiff: {
+						mode: "last_turn",
+						generatedAt: 5,
+						changedFiles: 2,
+						additions: 11,
+						deletions: 4,
+						files: [
+							{
+								path: "src/session-manager.ts",
+								status: "modified",
+								additions: 8,
+								deletions: 3,
+							},
+							{
+								path: "src/ws-server.ts",
+								status: "added",
+								additions: 3,
+								deletions: 1,
+							},
+						],
+					},
+				},
 			}),
 		});
 
 		const snapshot = await manager.getRestoreSnapshot("task-restore");
 
 		expect(snapshot).toEqual({
-			snapshot: "[kanban] Restored persisted review session.\r\n\r\nShip it\r\n\r\nLatest checkpoint: 3333333\r\n",
+			snapshot:
+				"[kanban] Restored persisted review session.\r\n\r\nShip it\r\n\r\nWorkspace diff: 2 files changed (+11 -4)\r\n- src/session-manager.ts [modified] (+8 -3)\r\n- src/ws-server.ts [added] (+3 -1)\r\n\r\nLatest checkpoint: turn 3 @ 3333333\r\nPrevious checkpoint: turn 2 @ 2222222\r\n",
 			cols: 120,
 			rows: 40,
 		});
+	});
+
+	it("prefers a persisted terminal snapshot when restoring a review session", async () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-restore": createSummary({
+				taskId: "task-restore",
+				state: "awaiting_review",
+				reviewReason: "hook",
+				persistedReviewContext: {
+					capturedAt: 4,
+					terminalSnapshot: "serialized persisted terminal",
+					terminalCols: 132,
+					terminalRows: 44,
+					workspaceDiff: null,
+				},
+			}),
+		});
+
+		const snapshot = await manager.getRestoreSnapshot("task-restore");
+
+		expect(snapshot).toEqual({
+			snapshot: "serialized persisted terminal",
+			cols: 132,
+			rows: 44,
+		});
+	});
+
+	it("captures persisted review context from the live terminal snapshot", async () => {
+		const manager = new TerminalSessionManager();
+		const entry = {
+			summary: createSummary({ taskId: "task-review", state: "awaiting_review", reviewReason: "hook" }),
+			active: null,
+			terminalStateMirror: {
+				getSnapshot: vi.fn(async () => ({
+					snapshot: "live review terminal",
+					cols: 140,
+					rows: 48,
+				})),
+			},
+			listenerIdCounter: 1,
+			listeners: new Map(),
+			restartRequest: null,
+			suppressAutoRestartOnExit: false,
+			autoRestartTimestamps: [],
+			pendingAutoRestart: null,
+		};
+		(
+			manager as unknown as {
+				entries: Map<string, typeof entry>;
+			}
+		).entries.set("task-review", entry);
+
+		const updated = await manager.capturePersistedReviewContext("task-review", {
+			workspaceDiff: {
+				mode: "last_turn",
+				generatedAt: 5,
+				changedFiles: 1,
+				additions: 2,
+				deletions: 1,
+				files: [
+					{
+						path: "src/task.ts",
+						status: "modified",
+						additions: 2,
+						deletions: 1,
+					},
+				],
+			},
+		});
+
+		expect(updated?.persistedReviewContext).toEqual({
+			capturedAt: expect.any(Number),
+			terminalSnapshot: "live review terminal",
+			terminalCols: 140,
+			terminalRows: 48,
+			workspaceDiff: {
+				mode: "last_turn",
+				generatedAt: 5,
+				changedFiles: 1,
+				additions: 2,
+				deletions: 1,
+				files: [
+					{
+						path: "src/task.ts",
+						status: "modified",
+						additions: 2,
+						deletions: 1,
+					},
+				],
+			},
+		});
+	});
+
+	it("clears persisted review context when returning to running", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				persistedReviewContext: {
+					capturedAt: 4,
+					terminalSnapshot: "serialized persisted terminal",
+					terminalCols: 132,
+					terminalRows: 44,
+					workspaceDiff: null,
+				},
+			}),
+		});
+
+		const updated = manager.transitionToRunning("task-1");
+
+		expect(updated?.state).toBe("running");
+		expect(updated?.persistedReviewContext).toBeNull();
 	});
 });
