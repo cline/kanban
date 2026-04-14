@@ -43,6 +43,51 @@ npx kanban
 npm i -g kanban
 kanban
 ```
+
+### Code changes (light default)
+
+This `0.1.60-light` build changes the default theme from dark to light. Three files are modified:
+
+**`package.json`**
+- `version`: `"0.1.60"` → `"0.1.60-light"` (custom suffix to distinguish the build)
+
+**`web-ui/src/hooks/use-theme.ts`** — line `readStoredThemeId()`
+- Fallback return value: `"default"` → `"light"`
+- When no theme is saved in localStorage, the hook returns `"light"` instead of `"default"`
+
+**`web-ui/src/main.tsx`** — lines 16–28 (startup theme block)
+- Before: if no saved theme (or saved theme is `"default"`), nothing was set — CSS `@theme {}` defaults (dark) took effect
+- After: if no saved theme exists, `data-theme="light"` is applied immediately on `<html>`, preventing any flash of the dark theme
+
+### Install from source
+
+Build and install a local copy with a custom version suffix (e.g. `0.1.60-light`):
+
+```bash
+# 1. Set the desired version in package.json
+#    Edit "version" to e.g. "0.1.60-light"
+
+# 2. Install dependencies (root + web-ui)
+npm run install:all
+
+# 3. Build the project (web-ui SPA + bundled backend)
+npm run build
+
+# 4. Install to global node_modules
+sudo rm -rf /usr/local/lib/node_modules/kanban /usr/local/bin/kanban
+sudo mkdir -p /usr/local/lib/node_modules/kanban
+sudo cp -r dist web-ui package.json /usr/local/lib/node_modules/kanban/
+cd /usr/local/lib/node_modules/kanban
+sudo npm install --omit=dev --ignore-scripts
+
+# 5. Create the global bin symlink
+sudo ln -s ../lib/node_modules/kanban/dist/cli.js /usr/local/bin/kanban
+
+# 6. Verify
+kanban --version
+```
+
+> **Note:** Adjust the sudo / permission commands to match your system. The key steps are: copy `dist/`, `web-ui/`, and `package.json` into `/usr/local/lib/node_modules/kanban/`, run `npm install --omit=dev --ignore-scripts` inside that directory, and symlink `dist/cli.js` to `/usr/local/bin/kanban`.
 Run this from the root of any git repo. Kanban will detect your installed CLI agent and launch a local running webserver in your browser. No account or setup required, it works right out of the box.
 
 ### 2. Create tasks
