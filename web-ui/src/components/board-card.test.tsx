@@ -691,8 +691,7 @@ describe("BoardCard", () => {
 		expect(container.textContent).toContain(preview);
 
 		// The session preview paragraph has the truncate class
-		const sessionPreviewP = container.querySelector("p.truncate");
-		expect(sessionPreviewP).toBeDefined();
+		expect(sessionPreviewP).not.toBeNull();
 		expect(sessionPreviewP?.textContent).toContain(preview);
 	});
 
