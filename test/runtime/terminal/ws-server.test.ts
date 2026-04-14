@@ -47,6 +47,7 @@ function rawDataToBuffer(data: RawData): Buffer {
 
 class FakeTerminalManager implements TerminalSessionService {
 	private readonly listenersByTaskId = new Map<string, Set<TerminalSessionListener>>();
+	readonly activeTaskIds = new Set<string>([TASK_ID]);
 
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null {
 		const listeners = this.listenersByTaskId.get(taskId) ?? new Set<TerminalSessionListener>();
@@ -68,6 +69,7 @@ class FakeTerminalManager implements TerminalSessionService {
 			rows: 24,
 		}),
 	);
+	hasActiveSession = vi.fn((taskId: string) => this.activeTaskIds.has(taskId));
 	recoverStaleSession = vi.fn(() => createSummary());
 	writeInput = vi.fn(() => createSummary());
 	resize = vi.fn(() => true);
@@ -496,6 +498,50 @@ describe("createTerminalWebSocketBridge", () => {
 		await closeSocket(secondControl.socket);
 	});
 
+	it("keeps restored review sockets open until the user resumes the session", async () => {
+		terminalManager = new TerminalSessionManager() as unknown as FakeTerminalManager;
+		(terminalManager as unknown as TerminalSessionManager).hydrateFromRecord({
+			[TASK_ID]: {
+				...createSummary(),
+				state: "awaiting_review",
+				reviewReason: "hook",
+				persistedReviewContext: {
+					capturedAt: 2,
+					terminalSnapshot: "persisted review terminal",
+					terminalCols: 120,
+					terminalRows: 40,
+					workspaceDiff: null,
+				},
+			},
+		});
+		const ioUrl = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=resume-client`;
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=resume-client`;
+
+		const ioSocket = await openQueuedWebSocket(ioUrl);
+		const controlSocket = await openQueuedWebSocket(controlUrl);
+		const restore = await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+
+		expect(restore).toMatchObject({
+			type: "restore",
+			requiresResume: true,
+		});
+
+		ioSocket.socket.send(Buffer.from("\r", "utf8"));
+		const hint = await waitForIoMessage(ioSocket);
+		expect(hint.toString("utf8")).toContain("Use Resume to reconnect before sending input.");
+
+		await new Promise<void>((resolve, reject) => {
+			const timeoutId = setTimeout(resolve, 100);
+			ioSocket.socket.once("close", () => {
+				clearTimeout(timeoutId);
+				reject(new Error("Expected restored review IO socket to remain open."));
+			});
+		});
+
+		await closeSocket(ioSocket.socket);
+		await closeSocket(controlSocket.socket);
+	});
+
 	it("sends the persisted terminal snapshot through the restore control message", async () => {
 		terminalManager = new TerminalSessionManager() as unknown as FakeTerminalManager;
 		(terminalManager as unknown as TerminalSessionManager).hydrateFromRecord({
@@ -516,11 +562,12 @@ describe("createTerminalWebSocketBridge", () => {
 		const control = await openQueuedWebSocket(controlUrl);
 		const restore = await waitForControlMessage(control, (message) => message.type === "restore");
 
-		expect(restore).toEqual({
+		expect(restore).toMatchObject({
 			type: "restore",
 			snapshot: "persisted review terminal",
 			cols: 132,
 			rows: 40,
+			requiresResume: true,
 		});
 
 		await closeSocket(control.socket);

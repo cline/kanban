@@ -130,6 +130,7 @@ function BottomTerminalSection({
 	onCollapse,
 	isExpanded,
 	onToggleExpand,
+	onResumePersistedReviewSession,
 }: {
 	taskId: string;
 	workspaceId: string | null;
@@ -146,6 +147,7 @@ function BottomTerminalSection({
 	onCollapse?: () => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
+	onResumePersistedReviewSession?: () => void;
 }): React.ReactElement {
 	return (
 		<ResizableBottomPane
@@ -174,6 +176,7 @@ function BottomTerminalSection({
 					onSendAgentCommand={onSendAgentCommand}
 					isExpanded={isExpanded}
 					onToggleExpand={onToggleExpand}
+					onResumePersistedReviewSession={onResumePersistedReviewSession}
 				/>
 			</div>
 		</ResizableBottomPane>
@@ -324,6 +327,7 @@ export function CardDetailView({
 	onAgentOpenPrTask,
 	onMoveReviewCardToTrash,
 	onRestoreTaskFromTrash,
+	onResumeReviewTask,
 	onCancelAutomaticTaskAction,
 	commitTaskLoadingById,
 	openPrTaskLoadingById,
@@ -382,6 +386,7 @@ export function CardDetailView({
 	onAgentOpenPrTask?: (taskId: string) => void;
 	onMoveReviewCardToTrash?: (taskId: string) => void;
 	onRestoreTaskFromTrash?: (taskId: string) => void;
+	onResumeReviewTask?: (taskId: string) => void;
 	onCancelAutomaticTaskAction?: (taskId: string) => void;
 	commitTaskLoadingById?: Record<string, boolean>;
 	openPrTaskLoadingById?: Record<string, boolean>;
@@ -689,6 +694,7 @@ export function CardDetailView({
 			terminalBackgroundColor={terminalThemeColors.surfacePrimary}
 			cursorColor={terminalThemeColors.textPrimary}
 			taskColumnId={selection.column.id}
+			onResumePersistedReviewSession={onResumeReviewTask ? () => onResumeReviewTask(selection.card.id) : undefined}
 		/>
 	);
 
@@ -777,6 +783,11 @@ export function CardDetailView({
 								onCollapse={onBottomTerminalCollapse}
 								isExpanded={isBottomTerminalExpanded}
 								onToggleExpand={onBottomTerminalToggleExpand}
+								onResumePersistedReviewSession={
+									onResumeReviewTask && bottomTerminalTaskId
+										? () => onResumeReviewTask(bottomTerminalTaskId)
+										: undefined
+								}
 							/>
 						</div>
 					) : null}

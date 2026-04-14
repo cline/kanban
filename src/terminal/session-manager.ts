@@ -378,6 +378,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return await entry.terminalStateMirror.getSnapshot();
 	}
 
+	hasActiveSession(taskId: string): boolean {
+		return this.entries.get(taskId)?.active != null;
+	}
+
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const entry = this.ensureEntry(request.taskId);
 		entry.restartRequest = {

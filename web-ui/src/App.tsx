@@ -572,6 +572,7 @@ export default function App(): ReactElement {
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
+		handleResumeReviewTask,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
@@ -1044,6 +1045,7 @@ export default function App(): ReactElement {
 									moveToTrashLoadingById={moveToTrashLoadingById}
 									onMoveReviewCardToTrash={handleMoveReviewCardToTrash}
 									onRestoreTaskFromTrash={handleRestoreTaskFromTrash}
+									onResumeReviewTask={handleResumeReviewTask}
 									onCancelAutomaticTaskAction={handleCancelAutomaticTaskAction}
 									onAddReviewComments={(taskId: string, text: string) => {
 										void handleAddReviewComments(taskId, text);

@@ -67,6 +67,7 @@ const NOOP_RUN_AUTO_REVIEW = async (): Promise<boolean> => false;
 
 interface HookSnapshot {
 	handleRestoreTaskFromTrash: (taskId: string) => void;
+	handleResumeReviewTask: (taskId: string) => void;
 	handleStartTask: (taskId: string) => void;
 	handleCardSelect: (taskId: string) => void;
 }
@@ -132,10 +133,17 @@ function HookHarness({
 	useEffect(() => {
 		onSnapshot?.({
 			handleRestoreTaskFromTrash: actions.handleRestoreTaskFromTrash,
+			handleResumeReviewTask: actions.handleResumeReviewTask,
 			handleStartTask: actions.handleStartTask,
 			handleCardSelect: actions.handleCardSelect,
 		});
-	}, [actions.handleCardSelect, actions.handleRestoreTaskFromTrash, actions.handleStartTask, onSnapshot]);
+	}, [
+		actions.handleCardSelect,
+		actions.handleRestoreTaskFromTrash,
+		actions.handleResumeReviewTask,
+		actions.handleStartTask,
+		onSnapshot,
+	]);
 
 	return null;
 }
@@ -616,6 +624,75 @@ describe("useBoardInteractions", () => {
 			modelId: "my-model",
 		});
 		expect(restoredTask?.agentId).toBe("codex");
+	});
+
+	it("resumes a review task in place when the restored terminal requires reconnect", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		let currentBoard: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [createTask("task-review", "Review task", 2)] },
+				{ id: "trash", title: "Trash", cards: [] },
+			],
+			dependencies: [],
+		};
+		const startTaskSession = vi.fn(async () => ({ ok: true as const }));
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={currentBoard}
+					setBoard={(updater) => {
+						currentBoard = typeof updater === "function" ? updater(currentBoard) : updater;
+						return currentBoard;
+					}}
+					ensureTaskWorkspace={async () => ({ ok: true as const })}
+					startTaskSession={startTaskSession}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleResumeReviewTask("task-review");
+			for (let i = 0; i < 10; i += 1) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(startTaskSession).toHaveBeenCalledWith(expect.objectContaining({ id: "task-review" }), {
+			resumeFromTrash: true,
+		});
+		expect(currentBoard.columns.find((column) => column.id === "review")?.cards.map((card) => card.id)).toEqual([
+			"task-review",
+		]);
+		expect(currentBoard.columns.find((column) => column.id === "trash")?.cards).toHaveLength(0);
 	});
 
 	it("ignores card selection requests for trashed tasks", async () => {

@@ -84,6 +84,7 @@ export interface UseBoardInteractionsResult {
 	handleMoveToTrash: () => void;
 	handleMoveReviewCardToTrash: (taskId: string) => void;
 	handleRestoreTaskFromTrash: (taskId: string) => void;
+	handleResumeReviewTask: (taskId: string) => void;
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
 	handleOpenClearTrash: () => void;
 	handleConfirmClearTrash: () => void;
@@ -797,6 +798,17 @@ export function useBoardInteractions({
 		[board, resumeTaskFromTrash, setBoard, tryProgrammaticCardMove],
 	);
 
+	const handleResumeReviewTask = useCallback(
+		(taskId: string) => {
+			const selection = findCardSelection(board, taskId);
+			if (!selection || selection.column.id !== "review") {
+				return;
+			}
+			void resumeTaskFromTrash(selection.card, taskId);
+		},
+		[board, resumeTaskFromTrash],
+	);
+
 	const handleCancelAutomaticTaskAction = useCallback(
 		(taskId: string) => {
 			setBoard((currentBoard) => {
@@ -894,6 +906,7 @@ export function useBoardInteractions({
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
+		handleResumeReviewTask,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,
