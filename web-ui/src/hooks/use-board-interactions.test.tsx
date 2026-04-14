@@ -1,3 +1,4 @@
+import type { DropResult } from "@hello-pangea/dnd";
 import { act, type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +71,7 @@ interface HookSnapshot {
 	handleResumeReviewTask: (taskId: string) => void;
 	handleStartTask: (taskId: string) => void;
 	handleCardSelect: (taskId: string) => void;
+	handleDragEnd: (result: DropResult) => void;
 }
 
 function createRect(width: number, height: number): DOMRect {
@@ -93,6 +95,7 @@ function HookHarness({
 	startTaskSession,
 	selectedCard = null,
 	setSelectedTaskIdOverride,
+	initialSessions,
 	onSnapshot,
 }: {
 	board: BoardData;
@@ -101,9 +104,10 @@ function HookHarness({
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
 	selectedCard?: { card: BoardCard; column: { id: "backlog" | "in_progress" | "review" | "trash" } } | null;
 	setSelectedTaskIdOverride?: Dispatch<SetStateAction<string | null>>;
+	initialSessions?: Record<string, RuntimeTaskSessionSummary>;
 	onSnapshot?: (snapshot: HookSnapshot) => void;
 }): null {
-	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
+	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>(initialSessions ?? {});
 	const [, setSelectedTaskId] = useState<string | null>(null);
 	const [, setIsClearTrashDialogOpen] = useState(false);
 	const [, setIsGitHistoryOpen] = useState(false);
@@ -136,9 +140,11 @@ function HookHarness({
 			handleResumeReviewTask: actions.handleResumeReviewTask,
 			handleStartTask: actions.handleStartTask,
 			handleCardSelect: actions.handleCardSelect,
+			handleDragEnd: actions.handleDragEnd,
 		});
 	}, [
 		actions.handleCardSelect,
+		actions.handleDragEnd,
 		actions.handleRestoreTaskFromTrash,
 		actions.handleResumeReviewTask,
 		actions.handleStartTask,
@@ -168,6 +174,23 @@ describe("useBoardInteractions", () => {
 		showAppToastMock.mockReset();
 		useLinkedBacklogTaskActionsMock.mockReset();
 		useProgrammaticCardMovesMock.mockReset();
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -320,6 +343,22 @@ describe("useBoardInteractions", () => {
 					setBoard={setBoard}
 					ensureTaskWorkspace={ensureTaskWorkspace}
 					startTaskSession={startTaskSession}
+					initialSessions={{
+						"task-trash": {
+							taskId: "task-trash",
+							state: "running",
+							agentId: "codex",
+							workspacePath: "/tmp/task-trash",
+							pid: null,
+							startedAt: 1,
+							updatedAt: 2,
+							lastOutputAt: null,
+							reviewReason: null,
+							exitCode: null,
+							lastHookAt: null,
+							latestHookActivity: null,
+						},
+					}}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -456,7 +495,7 @@ describe("useBoardInteractions", () => {
 		});
 
 		const trashTask = createTask("task-trash", "Trash task", 2);
-		const board: BoardData = {
+		let currentBoard: BoardData = {
 			columns: [
 				{ id: "backlog", title: "Backlog", cards: [] },
 				{ id: "in_progress", title: "In Progress", cards: [] },
@@ -465,8 +504,9 @@ describe("useBoardInteractions", () => {
 			],
 			dependencies: [],
 		};
-		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((_nextBoard) => {
-			// The optimistic move is not part of this assertion.
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((nextBoard) => {
+			currentBoard = typeof nextBoard === "function" ? nextBoard(currentBoard) : nextBoard;
+			return currentBoard;
 		});
 		const ensureTaskWorkspace = vi.fn(async () => ({
 			ok: true as const,
@@ -483,10 +523,26 @@ describe("useBoardInteractions", () => {
 		await act(async () => {
 			root.render(
 				<HookHarness
-					board={board}
+					board={currentBoard}
 					setBoard={setBoard}
 					ensureTaskWorkspace={ensureTaskWorkspace}
 					startTaskSession={startTaskSession}
+					initialSessions={{
+						"task-trash": {
+							taskId: "task-trash",
+							state: "running",
+							agentId: "codex",
+							workspacePath: "/tmp/task-trash",
+							pid: null,
+							startedAt: 1,
+							updatedAt: 2,
+							lastOutputAt: null,
+							reviewReason: null,
+							exitCode: null,
+							lastHookAt: null,
+							latestHookActivity: null,
+						},
+					}}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -522,6 +578,125 @@ describe("useBoardInteractions", () => {
 			message: "Saved task changes could not be reapplied automatically.",
 			timeout: 7000,
 		});
+		expect(currentBoard.columns.find((column) => column.id === "in_progress")?.cards.map((card) => card.id)).toEqual([
+			"task-trash",
+		]);
+		expect(currentBoard.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
+	});
+
+	it("restores a trashed awaiting-review task back to review", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const trashTask = createTask("task-trash-review", "Review restore", 2);
+		let currentBoard: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [trashTask] },
+			],
+			dependencies: [],
+		};
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((nextBoard) => {
+			currentBoard = typeof nextBoard === "function" ? nextBoard(currentBoard) : nextBoard;
+			return currentBoard;
+		});
+		const startTaskSession = vi.fn(async () => ({ ok: true as const }));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={currentBoard}
+					setBoard={setBoard}
+					ensureTaskWorkspace={async () => ({ ok: true as const })}
+					startTaskSession={startTaskSession}
+					initialSessions={{
+						"task-trash-review": {
+							taskId: "task-trash-review",
+							state: "awaiting_review",
+							agentId: "codex",
+							workspacePath: "/tmp/task-trash-review",
+							pid: null,
+							startedAt: 1,
+							updatedAt: 2,
+							lastOutputAt: null,
+							reviewReason: "attention",
+							exitCode: null,
+							lastHookAt: null,
+							latestHookActivity: null,
+						},
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleRestoreTaskFromTrash("task-trash-review");
+			for (let i = 0; i < 10; i += 1) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(startTaskSession).toHaveBeenCalledWith(expect.objectContaining({ id: "task-trash-review" }), {
+			resumeFromTrash: true,
+		});
+		expect(currentBoard.columns.find((column) => column.id === "review")?.cards.map((card) => card.id)).toEqual([
+			"task-trash-review",
+		]);
+		expect(currentBoard.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
+	});
+
+	it("falls back to review when restoring a trashed task without a saved summary", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const trashTask = createTask("task-trash-fallback", "Fallback restore", 2);
+		let currentBoard: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [trashTask] },
+			],
+			dependencies: [],
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={currentBoard}
+					setBoard={(updater) => {
+						currentBoard = typeof updater === "function" ? updater(currentBoard) : updater;
+						return currentBoard;
+					}}
+					ensureTaskWorkspace={async () => ({ ok: true as const })}
+					startTaskSession={async () => ({ ok: true as const })}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleRestoreTaskFromTrash("task-trash-fallback");
+			for (let i = 0; i < 10; i += 1) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(currentBoard.columns.find((column) => column.id === "review")?.cards.map((card) => card.id)).toEqual([
+			"task-trash-fallback",
+		]);
+		expect(currentBoard.columns.find((column) => column.id === "in_progress")?.cards).toHaveLength(0);
 	});
 
 	it("preserves model fields when restoring a trashed task", async () => {
@@ -693,6 +868,87 @@ describe("useBoardInteractions", () => {
 			"task-review",
 		]);
 		expect(currentBoard.columns.find((column) => column.id === "trash")?.cards).toHaveLength(0);
+	});
+
+	it("uses the saved running state for drag restore from trash", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const trashTask = createTask("task-trash-drag", "Drag restore", 2);
+		let currentBoard: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [trashTask] },
+			],
+			dependencies: [],
+		};
+		const startTaskSession = vi.fn(async () => ({ ok: true as const }));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={currentBoard}
+					setBoard={(updater) => {
+						currentBoard = typeof updater === "function" ? updater(currentBoard) : updater;
+						return currentBoard;
+					}}
+					ensureTaskWorkspace={async () => ({ ok: true as const })}
+					startTaskSession={startTaskSession}
+					initialSessions={{
+						"task-trash-drag": {
+							taskId: "task-trash-drag",
+							state: "running",
+							agentId: "codex",
+							workspacePath: "/tmp/task-trash-drag",
+							pid: null,
+							startedAt: 1,
+							updatedAt: 2,
+							lastOutputAt: null,
+							reviewReason: null,
+							exitCode: null,
+							lastHookAt: null,
+							latestHookActivity: null,
+						},
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleDragEnd({
+				draggableId: "task-trash-drag",
+				type: "CARD",
+				source: {
+					droppableId: "trash",
+					index: 0,
+				},
+				destination: {
+					droppableId: "review",
+					index: 0,
+				},
+				reason: "DROP",
+				mode: "FLUID",
+				combine: null,
+			});
+			for (let i = 0; i < 10; i += 1) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(startTaskSession).toHaveBeenCalledWith(expect.objectContaining({ id: "task-trash-drag" }), {
+			resumeFromTrash: true,
+		});
+		expect(currentBoard.columns.find((column) => column.id === "in_progress")?.cards.map((card) => card.id)).toEqual([
+			"task-trash-drag",
+		]);
+		expect(currentBoard.columns.find((column) => column.id === "review")?.cards).toHaveLength(0);
 	});
 
 	it("ignores card selection requests for trashed tasks", async () => {
