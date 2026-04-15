@@ -613,10 +613,13 @@ export function BoardCard({
 													setDraftTitle(card.title);
 													setIsEditingTitle(true);
 												}}
-											className={cn(
-												"shrink-0 cursor-pointer rounded-sm p-0.5 text-text-tertiary hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-												isHovered ? "opacity-100" : "opacity-0",
-											)}
+												className={cn(
+													"shrink-0 cursor-pointer rounded-sm p-0.5 text-text-tertiary hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+													isHovered ? "opacity-100" : "opacity-0",
+												)}
+											>
+												<Pencil size={12} />
+											</button>
 										</div>
 									) : (
 										<p
