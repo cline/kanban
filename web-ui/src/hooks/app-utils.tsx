@@ -72,6 +72,17 @@ export function buildProjectPathname(projectId: string): string {
 	return `/${encodeURIComponent(projectId)}`;
 }
 
+/**
+ * Parse a locked projectId from the URL search params (`?projectId=...`).
+ * Used by Electron multi-window mode to lock a window to a specific project.
+ * Returns null if the param is absent or empty.
+ */
+export function parseLockedProjectIdFromSearch(search: string): string | null {
+	const params = new URLSearchParams(search);
+	const raw = params.get("projectId")?.trim();
+	return raw || null;
+}
+
 export function parseDetailTaskIdFromSearch(search: string): string | null {
 	const params = new URLSearchParams(search);
 	const taskId = params.get(DETAIL_TASK_QUERY_PARAM)?.trim();

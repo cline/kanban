@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
-import { buildProjectPathname, parseProjectIdFromPathname } from "@/hooks/app-utils";
+import { buildProjectPathname, parseLockedProjectIdFromSearch, parseProjectIdFromPathname } from "@/hooks/app-utils";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { useRuntimeStateStream } from "@/runtime/use-runtime-state-stream";
 import { isLocalhostAccess } from "@/utils/localhost-detection";
@@ -54,23 +54,41 @@ export interface UseProjectNavigationResult {
 	latestTaskReadyForReview: ReturnType<typeof useRuntimeStateStream>["latestTaskReadyForReview"];
 	latestMcpAuthStatuses: ReturnType<typeof useRuntimeStateStream>["latestMcpAuthStatuses"];
 	clineSessionContextVersion: ReturnType<typeof useRuntimeStateStream>["clineSessionContextVersion"];
+	runtimeVersion: string;
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
 	hasNoProjects: boolean;
 	isProjectSwitching: boolean;
+	isLocal: boolean;
+	reconnectAttemptCount: number;
 	handleSelectProject: (projectId: string) => void;
 	handleAddProject: () => void;
 	handleAddProjectSuccess: (projectId: string) => void;
 	handleRemoveProject: (projectId: string) => Promise<boolean>;
 	resetProjectNavigationState: () => void;
+	/**
+	 * Non-null when the window is locked to a specific project via
+	 * `?projectId=` search param (Electron multi-window mode).
+	 * When set, the sidebar should hide the project switcher.
+	 */
+	lockedProjectId: string | null;
 }
 
 export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigationInput): UseProjectNavigationResult {
+	// Check for Electron multi-window lock via ?projectId= search param.
+	const [lockedProjectId] = useState<string | null>(() => {
+		if (typeof window === "undefined") return null;
+		return parseLockedProjectIdFromSearch(window.location.search);
+	});
+
 	const [requestedProjectId, setRequestedProjectId] = useState<string | null>(() => {
 		if (typeof window === "undefined") {
 			return null;
 		}
+		// Prefer locked projectId from search params (Electron multi-window).
+		const locked = parseLockedProjectIdFromSearch(window.location.search);
+		if (locked) return locked;
 		return parseProjectIdFromPathname(window.location.pathname);
 	});
 	const [pendingAddedProjectId, setPendingAddedProjectId] = useState<string | null>(null);
@@ -88,9 +106,12 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		latestTaskReadyForReview,
 		latestMcpAuthStatuses,
 		clineSessionContextVersion,
+		runtimeVersion,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
+		isLocal,
+		reconnectAttemptCount,
 	} = useRuntimeStateStream(requestedProjectId);
 
 	const hasNoProjects = hasReceivedSnapshot && projects.length === 0 && currentProjectId === null;
@@ -277,15 +298,19 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		latestTaskReadyForReview,
 		latestMcpAuthStatuses,
 		clineSessionContextVersion,
+		runtimeVersion,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
 		hasNoProjects,
 		isProjectSwitching,
+		isLocal,
+		reconnectAttemptCount,
 		handleSelectProject,
 		handleAddProject,
 		handleAddProjectSuccess,
 		handleRemoveProject,
 		resetProjectNavigationState,
+		lockedProjectId,
 	};
 }

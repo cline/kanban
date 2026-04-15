@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDetailTaskUrl, parseDetailTaskIdFromSearch } from "@/hooks/app-utils";
+import { buildDetailTaskUrl, parseDetailTaskIdFromSearch, parseLockedProjectIdFromSearch } from "@/hooks/app-utils";
 
 describe("parseDetailTaskIdFromSearch", () => {
 	it("returns the selected task id when present", () => {
@@ -35,5 +35,30 @@ describe("buildDetailTaskUrl", () => {
 				taskId: null,
 			}),
 		).toBe("/project-1?view=board");
+	});
+});
+
+describe("parseLockedProjectIdFromSearch", () => {
+	it("returns the projectId when present", () => {
+		expect(parseLockedProjectIdFromSearch("?projectId=project-abc")).toBe("project-abc");
+	});
+
+	it("returns projectId when mixed with other params", () => {
+		expect(parseLockedProjectIdFromSearch("?view=board&projectId=proj-1&task=t1")).toBe("proj-1");
+	});
+
+	it("returns null when projectId is missing", () => {
+		expect(parseLockedProjectIdFromSearch("")).toBeNull();
+		expect(parseLockedProjectIdFromSearch("?view=board")).toBeNull();
+	});
+
+	it("returns null when projectId is empty or whitespace", () => {
+		expect(parseLockedProjectIdFromSearch("?projectId=")).toBeNull();
+		expect(parseLockedProjectIdFromSearch("?projectId=%20%20")).toBeNull();
+		expect(parseLockedProjectIdFromSearch("?projectId=  ")).toBeNull();
+	});
+
+	it("trims whitespace from projectId", () => {
+		expect(parseLockedProjectIdFromSearch("?projectId=%20abc%20")).toBe("abc");
 	});
 });

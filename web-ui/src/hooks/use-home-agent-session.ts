@@ -55,6 +55,7 @@ function buildClineDescriptor(config: RuntimeConfigResponse): string {
 		modelId: clineProviderSettings.modelId ?? "",
 		baseUrl: clineProviderSettings.baseUrl ?? "",
 		reasoningEffort: clineProviderSettings.reasoningEffort ?? null,
+		promptHash: config.homeAgentPromptHash,
 	});
 }
 
@@ -62,6 +63,7 @@ function buildTerminalDescriptor(config: RuntimeConfigResponse): string {
 	return JSON.stringify({
 		agentId: config.selectedAgentId,
 		command: config.effectiveCommand ?? "",
+		promptHash: config.homeAgentPromptHash,
 	});
 }
 
@@ -181,6 +183,7 @@ export function useHomeAgentSession({
 		clineProviderSettings.providerId,
 		runtimeProjectConfig?.effectiveCommand,
 		runtimeProjectConfig?.selectedAgentId,
+		runtimeProjectConfig?.homeAgentPromptHash,
 	]);
 
 	const descriptorTaskId = descriptor?.taskId ?? null;

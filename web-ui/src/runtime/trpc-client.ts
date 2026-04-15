@@ -21,6 +21,12 @@ export function getRuntimeTrpcClient(workspaceId: string | null): RuntimeTrpcCli
 			httpBatchLink({
 				url: "/api/trpc",
 				headers: () => (workspaceId ? { "x-kanban-workspace-id": workspaceId } : {}),
+				fetch(url, options) {
+					return fetch(url, {
+						...options,
+						credentials: "same-origin",
+					});
+				},
 			}),
 		],
 	});

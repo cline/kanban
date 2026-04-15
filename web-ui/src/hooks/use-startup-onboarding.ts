@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
 import { saveRuntimeConfig as saveRuntimeConfigQuery } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
@@ -27,6 +27,27 @@ export interface UseStartupOnboardingResult {
 	handleOnboardingClineSetupSaved: () => void;
 }
 
+/**
+ * Access the Electron desktop persistent settings API (if available).
+ * Returns null when running in a browser (non-desktop).
+ */
+function getDesktopApi(): {
+	getDesktopSetting: (key: string) => Promise<string | null>;
+	setDesktopSetting: (key: string, value: string) => void;
+} | null {
+	const w = window as unknown as Record<string, unknown>;
+	if (typeof w.desktop === "object" && w.desktop !== null) {
+		const d = w.desktop as Record<string, unknown>;
+		if (typeof d.getDesktopSetting === "function" && typeof d.setDesktopSetting === "function") {
+			return d as {
+				getDesktopSetting: (key: string) => Promise<string | null>;
+				setDesktopSetting: (key: string, value: string) => void;
+			};
+		}
+	}
+	return null;
+}
+
 export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseStartupOnboardingResult {
 	const {
 		currentProjectId,
@@ -42,6 +63,26 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		LocalStorageKey.OnboardingDialogShown,
 		false,
 	);
+
+	// On mount, hydrate from desktop persistent settings (survives port changes).
+	const didHydrateRef = useRef(false);
+	useEffect(() => {
+		if (didHydrateRef.current) return;
+		didHydrateRef.current = true;
+		const desktopApi = getDesktopApi();
+		if (!desktopApi) return;
+		desktopApi
+			.getDesktopSetting(LocalStorageKey.OnboardingDialogShown)
+			.then((value) => {
+				if (value === "true") {
+					setHasShownOnboardingDialog(true);
+				}
+			})
+			.catch(() => {
+				/* best effort */
+			});
+	}, [setHasShownOnboardingDialog]);
+
 	useEffect(() => {
 		setDidDismissStartupOnboardingForSession(false);
 		setIsStartupOnboardingDialogForcedOpen(false);
@@ -84,6 +125,8 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		setHasShownOnboardingDialog(true);
 		setDidDismissStartupOnboardingForSession(true);
 		setIsStartupOnboardingDialogOpen(false);
+		// Also persist to desktop file-backed store (survives port/origin changes).
+		getDesktopApi()?.setDesktopSetting(LocalStorageKey.OnboardingDialogShown, "true");
 	}, [setHasShownOnboardingDialog]);
 
 	const handleSelectOnboardingAgent = useCallback(

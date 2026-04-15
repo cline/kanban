@@ -59,6 +59,7 @@ function createRuntimeConfigResponse(
 		openPrPromptTemplate: "",
 		commitPromptTemplateDefault: "",
 		openPrPromptTemplateDefault: "",
+		homeAgentPromptHash: "test-hash",
 	};
 	return {
 		...nextConfig,

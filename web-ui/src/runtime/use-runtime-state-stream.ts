@@ -47,6 +47,7 @@ function getRuntimeStreamUrl(workspaceId: string | null): string {
 }
 
 export interface UseRuntimeStateStreamResult {
+	runtimeVersion: string;
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
@@ -59,9 +60,12 @@ export interface UseRuntimeStateStreamResult {
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
+	isLocal: boolean;
+	reconnectAttemptCount: number;
 }
 
 interface RuntimeStateStreamStore {
+	runtimeVersion: string;
 	currentProjectId: string | null;
 	projects: RuntimeProjectSummary[];
 	workspaceState: RuntimeWorkspaceStateResponse | null;
@@ -74,6 +78,8 @@ interface RuntimeStateStreamStore {
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
+	isLocal: boolean;
+	reconnectAttemptCount: number;
 }
 
 type RuntimeStateStreamAction =
@@ -98,6 +104,7 @@ type RuntimeStateStreamAction =
 
 function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | null): RuntimeStateStreamStore {
 	return {
+		runtimeVersion: "",
 		currentProjectId: requestedWorkspaceId,
 		projects: [],
 		workspaceState: null,
@@ -110,6 +117,8 @@ function createInitialRuntimeStateStreamStore(requestedWorkspaceId: string | nul
 		streamError: null,
 		isRuntimeDisconnected: false,
 		hasReceivedSnapshot: false,
+		isLocal: true,
+		reconnectAttemptCount: 0,
 	};
 }
 
@@ -169,6 +178,7 @@ function runtimeStateStreamReducer(
 			...state,
 			streamError: null,
 			isRuntimeDisconnected: false,
+			reconnectAttemptCount: 0,
 		};
 	}
 	if (action.type === "snapshot") {
@@ -181,7 +191,11 @@ function runtimeStateStreamReducer(
 					),
 				}
 			: null;
+		// isLocal may be provided by the server snapshot (Task 2.2); default to true when absent.
+		const snapshotIsLocal = (action.payload as Record<string, unknown>).isLocal;
+		const nextIsLocal = typeof snapshotIsLocal === "boolean" ? snapshotIsLocal : true;
 		return {
+			runtimeVersion: action.payload.runtimeVersion,
 			currentProjectId: action.payload.currentProjectId,
 			projects: action.payload.projects,
 			workspaceState: nextWorkspaceState,
@@ -194,6 +208,8 @@ function runtimeStateStreamReducer(
 			streamError: null,
 			isRuntimeDisconnected: false,
 			hasReceivedSnapshot: true,
+			isLocal: nextIsLocal,
+			reconnectAttemptCount: 0,
 		};
 	}
 	if (action.type === "projects_updated") {
@@ -292,6 +308,7 @@ function runtimeStateStreamReducer(
 			...state,
 			streamError: action.message,
 			isRuntimeDisconnected: true,
+			reconnectAttemptCount: state.reconnectAttemptCount + 1,
 		};
 	}
 	return state;
@@ -502,6 +519,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 	}, [requestedWorkspaceId]);
 
 	return {
+		runtimeVersion: state.runtimeVersion,
 		currentProjectId: state.currentProjectId,
 		projects: state.projects,
 		workspaceState: state.workspaceState,
@@ -514,5 +532,7 @@ export function useRuntimeStateStream(requestedWorkspaceId: string | null): UseR
 		streamError: state.streamError,
 		isRuntimeDisconnected: state.isRuntimeDisconnected,
 		hasReceivedSnapshot: state.hasReceivedSnapshot,
+		isLocal: state.isLocal,
+		reconnectAttemptCount: state.reconnectAttemptCount,
 	};
 }
