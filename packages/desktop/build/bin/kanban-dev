@@ -1,0 +1,18 @@
+#!/bin/bash
+# Kanban CLI dev-mode shim — used during `npm run dev` (non-packaged Electron).
+#
+# In dev mode, process.resourcesPath doesn't point to the app's real
+# resources, so the production shim can't find the CLI entry point.
+# This dev shim resolves the CLI from node_modules instead.
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DESKTOP_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+CLI_ENTRY="$DESKTOP_ROOT/node_modules/kanban/dist/cli.js"
+
+if [ ! -f "$CLI_ENTRY" ]; then
+  echo "error: Kanban CLI not found at $CLI_ENTRY" >&2
+  echo "hint: Run 'npm install' in packages/desktop" >&2
+  exit 1
+fi
+
+exec node "$CLI_ENTRY" "$@"

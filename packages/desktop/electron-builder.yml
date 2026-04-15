@@ -1,0 +1,143 @@
+appId: com.cline.kanban
+productName: Kanban
+copyright: Copyright © 2025 Cline
+
+# Directories
+directories:
+  output: out
+  buildResources: build
+
+# afterSign hook — notarizes the macOS .app bundle via Apple notarytool.
+# Requires APPLE_ID, APPLE_ID_PASSWORD, and APPLE_TEAM_ID env vars.
+# The hook is a no-op on non-mac platforms or when env vars are missing.
+afterSign: ./scripts/notarize.cjs
+
+# Files to include in the app bundle
+files:
+  - dist/**/*
+  - package.json
+  # Exclude non-essential files from the kanban file:../../ dependency
+  - "!**/.*"
+  - "!**/.*/**"
+  - "!**/test/**"
+  - "!**/tests/**"
+  - "!**/web-ui/src/**"
+  - "!**/web-ui/tests/**"
+  - "!**/web-ui/node_modules/**"
+  - "!**/web-ui/*.config.*"
+  - "!**/web-ui/*.setup.*"
+  - "!**/docs/**"
+  - "!**/man/**"
+  - "!**/grit/**"
+  - "!**/scripts/**"
+  - "!**/*.md"
+  - "!**/*.test.ts"
+  - "!**/*.test.js"
+  - "!**/vitest.config.*"
+  - "!**/biome.json"
+  - "!**/tsconfig*.json"
+
+# Custom protocol — registers kanban:// deep-links for OAuth callbacks.
+# On macOS this ends up in the Info.plist CFBundleURLTypes; on Windows it
+# registers the protocol in the registry; on Linux it creates the appropriate
+# XDG mime handler.
+protocols:
+  - name: Kanban
+    schemes:
+      - kanban
+
+# node-pty is a native addon that must be rebuilt for Electron's Node version.
+# @electron/rebuild handles this via the postinstall hook (electron-builder install-app-deps).
+
+# Bundle the CLI shim scripts in Resources/bin/ so the desktop app can
+# invoke the Kanban CLI without depending on a global npm install.
+extraResources:
+  - from: build/bin
+    to: bin
+    filter:
+      - "**/*"
+
+asar: true
+
+# ── asarUnpack ──
+# Files that MUST live outside the ASAR archive.
+#
+# WHY each entry exists:
+#
+#   package.json
+#     Node.js reads the nearest package.json to detect "type": "module"
+#     when fork()ing the runtime child. Must be on the real filesystem.
+#
+#   **/runtime-child-entry.js
+#     The fork() target for the runtime child process. child_process.fork()
+#     requires a real file path, not an ASAR virtual path.
+#
+#   node_modules/**
+#     The runtime child process runs with ELECTRON_RUN_AS_NODE=1 and
+#     imports `kanban/runtime-start` from the unpacked filesystem.
+#     Module resolution from unpacked paths does NOT fall back to the
+#     ASAR archive, so ALL node_modules must be unpacked — including
+#     hoisted transitive dependencies (e.g. proper-lockfile, graceful-fs)
+#     that the kanban runtime needs at startup.
+#     Selectively listing packages is fragile: npm may hoist different
+#     subsets depending on install order/versions, causing silent
+#     breakage in packaged builds.
+#
+# NOTE: Native addons (node-pty, better-sqlite3, @img/*, etc.) are
+# included by this pattern as well — dlopen() requires real files.
+asarUnpack:
+  - "package.json"
+  - "**/runtime-child-entry.js"
+  - "node_modules/**"
+
+# ──────────────────────────────────────────
+# Auto-update: publish to GitHub Releases
+# ──────────────────────────────────────────
+# electron-updater reads this at build time to embed the update feed URL.
+# At runtime, autoUpdater.checkForUpdates() fetches the latest release
+# from the GitHub repo and compares versions.
+#
+# Code signing is configured separately (Tasks 3.2, 3.3).
+publish:
+  provider: github
+  owner: cline
+  repo: kanban
+  releaseType: release
+
+# ──────────────────────────────────────────
+# macOS configuration
+# ──────────────────────────────────────────
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  # dmg for user-facing download, zip for electron-updater's differential updates.
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Merge extra keys into the generated Info.plist.
+  # NSAppSleepDisabled prevents App Nap from throttling background runtime work.
+  extendInfo:
+    NSAppSleepDisabled: true
+    NSSupportsAutomaticTermination: false
+    NSSupportsSuddenTermination: false
+
+dmg:
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
