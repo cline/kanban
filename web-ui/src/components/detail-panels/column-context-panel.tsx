@@ -74,7 +74,7 @@ function ColumnSection({
 	}, [column.cards, selectedCardId]);
 
 	return (
-		<div className="bg-surface-1 rounded-lg shrink-0">
+		<div className="bg-surface-1 rounded-lg shrink-0 border border-border">
 			<div
 				style={{
 					display: "flex",

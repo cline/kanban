@@ -758,6 +758,26 @@ export const runtimeClineOauthLoginResponseSchema = z.object({
 });
 export type RuntimeClineOauthLoginResponse = z.infer<typeof runtimeClineOauthLoginResponseSchema>;
 
+export const runtimeClineDeviceAuthStartResponseSchema = z.object({
+	deviceCode: z.string(),
+	userCode: z.string(),
+	verificationUrl: z.string(),
+	expiresInSeconds: z.number(),
+	pollIntervalSeconds: z.number(),
+});
+export type RuntimeClineDeviceAuthStartResponse = z.infer<typeof runtimeClineDeviceAuthStartResponseSchema>;
+
+export const runtimeClineDeviceAuthCompleteRequestSchema = z.object({
+	deviceCode: z.string(),
+	expiresInSeconds: z.number(),
+	pollIntervalSeconds: z.number(),
+	baseUrl: z.string().nullable().optional(),
+});
+export type RuntimeClineDeviceAuthCompleteRequest = z.infer<typeof runtimeClineDeviceAuthCompleteRequestSchema>;
+
+export const runtimeClineDeviceAuthCompleteResponseSchema = runtimeClineOauthLoginResponseSchema;
+export type RuntimeClineDeviceAuthCompleteResponse = z.infer<typeof runtimeClineDeviceAuthCompleteResponseSchema>;
+
 export const runtimeClineProviderSettingsSaveRequestSchema = z.object({
 	providerId: z.string(),
 	modelId: z.string().nullable().optional(),
