@@ -4,11 +4,32 @@
  * VS Code "Dev (Full Stack)" launch config.
  */
 import { createServer, connect } from "node:net";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
 import { spawn } from "node:child_process";
 import treeKill from "tree-kill";
 import open from "open";
 
 const isWindows = process.platform === "win32";
+
+async function ensureDependenciesInstalled() {
+	const lockIndicator = join(process.cwd(), "node_modules", ".package-lock.json");
+	try {
+		await access(lockIndicator);
+	} catch {
+		console.warn("node_modules not installed in this worktree. Running npm ci...");
+		await run("npm", ["ci"]);
+		await run("npm", ["--prefix", "web-ui", "ci"]);
+	}
+}
+
+function run(command, args) {
+	return new Promise((resolve, reject) => {
+		const child = spawn(command, args, { stdio: "inherit", shell: isWindows });
+		child.on("error", reject);
+		child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${command} exited ${code}`))));
+	});
+}
 
 function findPort(start, reserved = new Set()) {
 	if (reserved.has(start)) {
@@ -44,8 +65,19 @@ function waitForPort(port, timeout = 15000) {
 	});
 }
 
+await ensureDependenciesInstalled();
+
 const runtimePort = await findPort(3484);
 const webUiPort = await findPort(4173, new Set([runtimePort]));
+const requestedRuntimeArgs = process.argv.slice(2);
+const hasExplicitCleanupArg = requestedRuntimeArgs.some((arg) => arg === "--skip-shutdown-cleanup");
+const runtimeCliArgs = [
+	"--port",
+	String(runtimePort),
+	"--no-open",
+	...(hasExplicitCleanupArg ? [] : ["--skip-shutdown-cleanup"]),
+	...requestedRuntimeArgs,
+];
 
 console.log(`\n  Runtime port: ${runtimePort}`);
 console.log(`  Web UI:       http://127.0.0.1:${webUiPort}\n`);
@@ -57,7 +89,7 @@ const env = {
 };
 
 const tsxBin = isWindows ? "node_modules/.bin/tsx.cmd" : "node_modules/.bin/tsx";
-const runtime = spawn(tsxBin, ["watch", "src/cli.ts", "--port", String(runtimePort), "--no-open"], {
+const runtime = spawn(tsxBin, ["watch", "src/cli.ts", ...runtimeCliArgs], {
 	env,
 	stdio: "inherit",
 });
