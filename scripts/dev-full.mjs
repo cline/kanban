@@ -6,9 +6,7 @@
 import { createServer, connect } from "node:net";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
-import treeKill from "tree-kill";
-import open from "open";
+import { spawn, spawnSync } from "node:child_process";
 
 const isWindows = process.platform === "win32";
 
@@ -16,20 +14,28 @@ async function ensureDependenciesInstalled() {
 	const lockIndicator = join(process.cwd(), "node_modules", ".package-lock.json");
 	try {
 		await access(lockIndicator);
+		return;
 	} catch {
-		console.warn("node_modules not installed in this worktree. Running npm ci...");
-		await run("npm", ["ci"]);
-		await run("npm", ["--prefix", "web-ui", "ci"]);
+		// node_modules is missing; fall through to install below.
+	}
+	console.warn("node_modules not installed in this worktree. Running npm ci...");
+	for (const args of [["ci"], ["--prefix", "web-ui", "ci"]]) {
+		const result = spawnSync("npm", args, { stdio: "inherit", shell: isWindows });
+		if (result.status !== 0) {
+			process.exit(result.status ?? 1);
+		}
 	}
 }
 
-function run(command, args) {
-	return new Promise((resolve, reject) => {
-		const child = spawn(command, args, { stdio: "inherit", shell: isWindows });
-		child.on("error", reject);
-		child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${command} exited ${code}`))));
-	});
-}
+// Must run before importing any third-party modules so a fresh worktree with
+// an empty node_modules can bootstrap itself using only node: built-ins.
+await ensureDependenciesInstalled();
+
+// Deferred until after ensureDependenciesInstalled so these resolve against
+// the freshly-installed node_modules. Static top-level imports would be
+// resolved before any code runs and fail with ERR_MODULE_NOT_FOUND.
+const { default: treeKill } = await import("tree-kill");
+const { default: open } = await import("open");
 
 function findPort(start, reserved = new Set()) {
 	if (reserved.has(start)) {
@@ -64,8 +70,6 @@ function waitForPort(port, timeout = 15000) {
 		attempt();
 	});
 }
-
-await ensureDependenciesInstalled();
 
 const runtimePort = await findPort(3484);
 const webUiPort = await findPort(4173, new Set([runtimePort]));
