@@ -66,6 +66,7 @@ export interface StartClineTaskSessionRequest {
 	initialMessages?: ClineSdkPersistedMessage[];
 	images?: RuntimeTaskImage[];
 	resumeFromTrash?: boolean;
+	resumeFromPersistence?: boolean;
 	providerId?: string | null;
 	modelId?: string | null;
 	mode?: RuntimeTaskSessionMode;
@@ -316,6 +317,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		const existing = this.messageRepository.getTaskEntry(request.taskId);
 		if (
 			!request.resumeFromTrash &&
+			!request.resumeFromPersistence &&
 			existing &&
 			(existing.summary.state === "running" || existing.summary.state === "awaiting_review")
 		) {
@@ -326,36 +328,36 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		this.providerIdByTaskId.set(request.taskId, providerId);
 		const modelId = request.modelId?.trim() || SDK_DEFAULT_MODEL_ID;
 		const resolvedMode: RuntimeTaskSessionMode = request.startInPlanMode ? "act" : (request.mode ?? "act");
-		const persistedResumeSnapshot = request.resumeFromTrash
+		const shouldHydratePersistedHistory = request.resumeFromTrash || request.resumeFromPersistence;
+		const persistedResumeSnapshot = shouldHydratePersistedHistory
 			? await this.sessionRuntime.readPersistedTaskSession(request.taskId).catch(() => null)
 			: null;
 
-		const entry =
-			request.resumeFromTrash && persistedResumeSnapshot
-				? createTaskEntryFromPersistedSession(request.taskId, persistedResumeSnapshot.messages, {
-						state: "awaiting_review",
+		const entry = persistedResumeSnapshot
+			? createTaskEntryFromPersistedSession(request.taskId, persistedResumeSnapshot.messages, {
+					state: request.resumeFromTrash ? "awaiting_review" : "running",
+					mode: resolvedMode,
+					workspacePath: request.cwd,
+					startedAt: now(),
+					lastOutputAt: now(),
+					reviewReason: request.resumeFromTrash ? "attention" : null,
+				})
+			: ({
+					summary: {
+						...createDefaultSummary(request.taskId),
+						state: request.resumeFromTrash ? "awaiting_review" : "running",
 						mode: resolvedMode,
 						workspacePath: request.cwd,
 						startedAt: now(),
 						lastOutputAt: now(),
-						reviewReason: "attention",
-					})
-				: ({
-						summary: {
-							...createDefaultSummary(request.taskId),
-							state: request.resumeFromTrash ? "awaiting_review" : "running",
-							mode: resolvedMode,
-							workspacePath: request.cwd,
-							startedAt: now(),
-							lastOutputAt: now(),
-							reviewReason: request.resumeFromTrash ? "attention" : null,
-						},
-						messages: [],
-						activeAssistantMessageId: null,
-						activeReasoningMessageId: null,
-						toolMessageIdByToolCallId: new Map<string, string>(),
-						toolInputByToolCallId: new Map<string, unknown>(),
-					} satisfies ClineTaskSessionEntry);
+						reviewReason: request.resumeFromTrash ? "attention" : null,
+					},
+					messages: [],
+					activeAssistantMessageId: null,
+					activeReasoningMessageId: null,
+					toolMessageIdByToolCallId: new Map<string, string>(),
+					toolInputByToolCallId: new Map<string, unknown>(),
+				} satisfies ClineTaskSessionEntry);
 		this.messageRepository.setTaskEntry(request.taskId, entry);
 		this.pendingTurnCancelTaskIds.delete(request.taskId);
 
@@ -409,7 +411,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					cwd: request.cwd,
 					prompt: runtimePrompt,
 					taskTitle: request.taskTitle,
-					initialMessages: request.resumeFromTrash ? persistedResumeSnapshot?.messages : request.initialMessages,
+					initialMessages: persistedResumeSnapshot?.messages ?? request.initialMessages,
 					images: request.images,
 					providerId,
 					modelId,
@@ -710,7 +712,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		if (existingEntry && existingEntry.summary.state !== "failed") {
 			return cloneSummary(existingEntry.summary);
 		}
-		const snapshot = await this.sessionRuntime.resumeTaskSession(taskId);
+		const snapshot = await this.sessionRuntime.readPersistedTaskSession(taskId);
 		if (!snapshot) {
 			return existingEntry ? cloneSummary(existingEntry.summary) : null;
 		}

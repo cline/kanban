@@ -1,7 +1,7 @@
 export const columnIndicatorColors: Record<string, string> = {
 	backlog: "var(--color-text-primary)",
 	in_progress: "var(--color-accent)",
-	review: "var(--color-status-green)",
+	review: "var(--color-accent-2)",
 	trash: "var(--color-status-red)",
 };
 

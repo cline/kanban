@@ -1,9 +1,78 @@
-import { act } from "react";
+import type { ReactNode } from "react";
+import { act, createContext, useContext } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RuntimeSettingsDialog } from "@/components/runtime-settings-dialog";
 import type { RuntimeConfigResponse } from "@/runtime/types";
+
+/*
+ * Radix Select depends on pointer-capture APIs that jsdom lacks.
+ * Replace it with a minimal native <select> so the theme-picker tests
+ * can exercise onValueChange without fighting jsdom limitations.
+ */
+const RadixSelectCtx = createContext<{
+	value: string;
+	onValueChange: (v: string) => void;
+}>({ value: "", onValueChange: () => {} });
+
+vi.mock("@radix-ui/react-select", () => ({
+	Root: ({
+		value,
+		onValueChange,
+		children,
+	}: {
+		value: string;
+		onValueChange: (v: string) => void;
+		children: ReactNode;
+	}) => {
+		const open = false;
+		return (
+			<RadixSelectCtx.Provider value={{ value, onValueChange }}>
+				<div data-radix-select-root="" data-state={open ? "open" : "closed"} data-open-setter={String(open)}>
+					{typeof children === "function" ? null : children}
+				</div>
+			</RadixSelectCtx.Provider>
+		);
+	},
+	Trigger: ({ children, ...props }: { children: ReactNode; "aria-label"?: string }) => {
+		return (
+			<button type="button" {...props} data-radix-select-trigger="">
+				{children}
+			</button>
+		);
+	},
+	Value: ({ placeholder }: { placeholder?: string }) => {
+		const ctx = useContext(RadixSelectCtx);
+		return <span>{ctx.value || placeholder}</span>;
+	},
+	Icon: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+	Portal: ({ children }: { children: ReactNode }) => <>{children}</>,
+	Content: ({ children }: { children: ReactNode }) => <div data-radix-select-content="">{children}</div>,
+	ScrollUpButton: () => null,
+	ScrollDownButton: () => null,
+	Viewport: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+	Group: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+	Label: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+	Separator: () => <hr />,
+	Item: ({ value, children, ...rest }: { value: string; children: ReactNode }) => {
+		const ctx = useContext(RadixSelectCtx);
+		return (
+			<button
+				type="button"
+				role="option"
+				aria-label={value}
+				data-radix-select-item=""
+				onClick={() => ctx.onValueChange(value)}
+				{...rest}
+			>
+				{children}
+			</button>
+		);
+	},
+	ItemText: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+	ItemIndicator: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+}));
 
 const resetLayoutCustomizationsMock = vi.hoisted(() => vi.fn());
 
@@ -220,18 +289,26 @@ describe("RuntimeSettingsDialog", () => {
 
 		const saveButton = findButtonByText(document.body, "Save");
 		const cancelButton = findButtonByText(document.body, "Cancel");
-		const sunsetThemeButton = findButtonByAriaLabel(document.body, "Sunset");
+		const themeSelectTrigger = findButtonByAriaLabel(document.body, "Theme");
 
 		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
 		expect(cancelButton).toBeInstanceOf(HTMLButtonElement);
-		expect(sunsetThemeButton).toBeInstanceOf(HTMLButtonElement);
+		expect(themeSelectTrigger).toBeInstanceOf(HTMLButtonElement);
 		expect(saveButton?.disabled).toBe(true);
+		expect(themeSelectTrigger?.className).toContain("cursor-pointer");
+		expect(themeSelectTrigger?.parentElement?.parentElement?.className).toContain("w-1/2");
 
+		// The mock Radix Select renders items as buttons with role="option".
+		// Click the Graphite option to trigger onValueChange.
+		const graphiteOption = Array.from(document.querySelectorAll('[role="option"]')).find((el) =>
+			el.textContent?.includes("Graphite"),
+		) as HTMLElement | undefined;
+		expect(graphiteOption).toBeTruthy();
 		await act(async () => {
-			sunsetThemeButton?.click();
+			graphiteOption?.click();
 		});
 
-		expect(document.documentElement.getAttribute("data-theme")).toBe("sunset");
+		expect(document.documentElement.getAttribute("data-theme")).toBe("graphite");
 		expect(saveButton?.disabled).toBe(false);
 		expect(window.localStorage.getItem("kanban.theme")).toBeNull();
 
@@ -258,13 +335,16 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		const saveButton = findButtonByText(document.body, "Save");
-		const sunsetThemeButton = findButtonByAriaLabel(document.body, "Sunset");
 
 		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
-		expect(sunsetThemeButton).toBeInstanceOf(HTMLButtonElement);
 
+		// Click the Graphite option to trigger onValueChange.
+		const graphiteOption = Array.from(document.querySelectorAll('[role="option"]')).find((el) =>
+			el.textContent?.includes("Graphite"),
+		) as HTMLElement | undefined;
+		expect(graphiteOption).toBeTruthy();
 		await act(async () => {
-			sunsetThemeButton?.click();
+			graphiteOption?.click();
 		});
 
 		expect(window.localStorage.getItem("kanban.theme")).toBeNull();
@@ -274,7 +354,7 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(handleOpenChange).toHaveBeenCalledWith(false);
-		expect(window.localStorage.getItem("kanban.theme")).toBe("sunset");
-		expect(document.documentElement.getAttribute("data-theme")).toBe("sunset");
+		expect(window.localStorage.getItem("kanban.theme")).toBe("graphite");
+		expect(document.documentElement.getAttribute("data-theme")).toBe("graphite");
 	});
 });

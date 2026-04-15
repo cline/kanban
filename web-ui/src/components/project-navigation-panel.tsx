@@ -240,7 +240,7 @@ export function ProjectNavigationPanel({
 								"rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
 								isMobile ? "w-11 h-11" : "w-8 h-8",
 								isCurrent
-									? "bg-accent text-white"
+									? "bg-accent text-accent-fg"
 									: "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
 							)}
 						>
@@ -313,7 +313,7 @@ export function ProjectNavigationPanel({
 						/>
 					) : null}
 				</div>
-				<div className="mt-2 rounded-md bg-surface-2 p-1">
+				<div className="mt-2 rounded-md bg-surface-2 border border-border p-1">
 					<div className="grid grid-cols-2 gap-1">
 						<button
 							type="button"
@@ -321,8 +321,8 @@ export function ProjectNavigationPanel({
 							className={cn(
 								"cursor-pointer rounded-sm px-2 py-1 text-xs font-medium",
 								activeSection === "projects"
-									? "bg-surface-4 text-text-primary"
-									: "text-text-secondary hover:text-text-primary",
+									? "bg-surface-4 text-text-primary border border-border"
+									: "text-text-secondary hover:text-text-primary border border-transparent",
 							)}
 						>
 							Projects
@@ -334,8 +334,8 @@ export function ProjectNavigationPanel({
 							className={cn(
 								"cursor-pointer rounded-sm px-2 py-1 text-xs font-medium",
 								activeSection === "agent"
-									? "bg-surface-4 text-text-primary"
-									: "text-text-secondary hover:text-text-primary",
+									? "bg-surface-4 text-text-primary border border-border"
+									: "text-text-secondary hover:text-text-primary border border-transparent",
 								!canShowAgentSection ? "cursor-not-allowed opacity-50" : null,
 							)}
 						>
@@ -724,7 +724,7 @@ function ProjectRow({
 			id: "review",
 			title: "Review",
 			shortLabel: "R",
-			toneClassName: "bg-status-green/20 text-status-green",
+			toneClassName: "bg-accent-2/20 text-accent-2",
 			count: project.taskCounts.review,
 		},
 		{
@@ -759,7 +759,7 @@ function ProjectRow({
 				<div
 					className={cn(
 						"font-medium whitespace-nowrap overflow-hidden text-ellipsis text-sm",
-						isCurrent ? "text-white" : "text-text-primary",
+						isCurrent ? "text-accent-fg" : "text-text-primary",
 					)}
 				>
 					{project.name}
@@ -767,7 +767,7 @@ function ProjectRow({
 				<div
 					className={cn(
 						"font-mono text-[10px] whitespace-nowrap overflow-hidden text-ellipsis",
-						isCurrent ? "text-white/60" : "text-text-secondary",
+						isCurrent ? "text-accent-fg/60" : "text-text-secondary",
 					)}
 				>
 					{displayPath}
@@ -779,7 +779,7 @@ function ProjectRow({
 								key={badge.id}
 								className={cn(
 									"inline-flex items-center gap-1 rounded-full text-[10px] px-1.5 py-px font-medium",
-									isCurrent ? "bg-white/20 text-white" : badge.toneClassName,
+									isCurrent ? "bg-accent-fg/20 text-accent-fg" : badge.toneClassName,
 								)}
 								title={badge.title}
 							>
@@ -800,7 +800,9 @@ function ProjectRow({
 							icon={isRemovingProject ? <Spinner size={12} /> : <Ellipsis size={14} />}
 							disabled={hasAnyProjectRemoval && !isRemovingProject}
 							className={
-								isCurrent ? "text-white hover:bg-white/20 hover:text-white active:bg-white/30" : undefined
+								isCurrent
+									? "text-accent-fg hover:bg-accent-fg/20 hover:text-accent-fg active:bg-accent-fg/30"
+									: undefined
 							}
 							onClick={(e) => {
 								e.stopPropagation();
