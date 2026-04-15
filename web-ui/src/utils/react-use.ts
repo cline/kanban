@@ -1,6 +1,7 @@
 import type { DependencyList, Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 import {
+	useCopyToClipboard as useReactUseCopyToClipboard,
 	useDebounce as useReactUseDebounce,
 	useEvent as useReactUseEvent,
 	useInterval as useReactUseInterval,
@@ -50,6 +51,10 @@ export function useInterval(callback: () => void, delayMs: number | null): void 
 
 export function useDebouncedEffect(effect: () => void, delayMs: number, deps: DependencyList): void {
 	useReactUseDebounce(effect, delayMs, deps);
+}
+
+export function useCopyToClipboard() {
+	return useReactUseCopyToClipboard();
 }
 
 function resolveNextValue<T>(nextValue: SetStateAction<T>, currentValue: T): T {

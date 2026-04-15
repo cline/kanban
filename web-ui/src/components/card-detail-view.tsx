@@ -45,6 +45,7 @@ import { useWindowEvent } from "@/utils/react-use";
 // We still poll the open detail diff because line content can change without changing
 // the overall file or line counts that drive the shared workspace metadata stream.
 const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
+const DIFF_MODE_ACTIVE_BACKGROUND = "color-mix(in srgb, var(--color-surface-3) 80%, var(--color-text-primary))";
 
 function isTypingTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) {
@@ -176,7 +177,7 @@ function BottomTerminalSection({
 					onClose={onClose}
 					minimalHeaderTitle="Terminal"
 					minimalHeaderSubtitle={subtitle}
-					panelBackgroundColor={terminalThemeColors.surfaceRaised}
+					panelBackgroundColor="var(--color-surface-1)"
 					terminalBackgroundColor={terminalThemeColors.surfaceRaised}
 					cursorColor={terminalThemeColors.textPrimary}
 					onConnectionReady={onConnectionReady}
@@ -259,7 +260,7 @@ function DiffModeButton({
 			style={
 				active
 					? {
-							backgroundColor: "var(--color-surface-3)",
+							backgroundColor: DIFF_MODE_ACTIVE_BACKGROUND,
 							color: "var(--color-text-primary)",
 						}
 					: undefined
@@ -727,8 +728,9 @@ export function CardDetailView({
 					? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
 					: null
 			}
-			panelBackgroundColor={terminalThemeColors.surfacePrimary}
+			panelBackgroundColor="var(--color-surface-0)"
 			terminalBackgroundColor={terminalThemeColors.surfacePrimary}
+			cursorColor={terminalThemeColors.textPrimary}
 			taskColumnId={selection.column.id}
 		/>
 	);

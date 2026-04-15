@@ -199,12 +199,12 @@ describe("usePersistentTerminalSession", () => {
 		);
 
 		await act(async () => {
-			saveThemeId("sunset");
+			saveThemeId("graphite");
 		});
 
 		expect(ensurePersistentTerminalMock).toHaveBeenLastCalledWith(
 			expect.objectContaining({
-				themeColors: getTerminalThemeColors("sunset"),
+				themeColors: getTerminalThemeColors("graphite"),
 			}),
 		);
 	});

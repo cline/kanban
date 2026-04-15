@@ -90,7 +90,7 @@ export function BoardColumn({
 	return (
 		<section
 			data-column-id={column.id}
-			className="flex flex-col min-w-0 min-h-0 bg-surface-1 rounded-lg overflow-hidden"
+			className="flex flex-col min-w-0 min-h-0 bg-surface-1 rounded-lg overflow-hidden border border-border"
 			style={{
 				flex: "1 1 0",
 			}}

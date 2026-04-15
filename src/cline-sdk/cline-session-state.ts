@@ -224,12 +224,17 @@ export function appendReasoningChunk(entry: ClineTaskSessionEntry, taskId: strin
 		const updatedMessage = updateMessageInEntry(entry, existingMessageId, (currentMessage) => ({
 			...currentMessage,
 			content: `${currentMessage.content}${chunk}`,
+			meta: {
+				...(currentMessage.meta ?? {}),
+				hookEventName: "reasoning_delta",
+				streamType: "reasoning",
+			},
 		}));
 		if (updatedMessage) {
 			return updatedMessage;
 		}
 	}
-	return createReasoningMessage(entry, taskId, chunk);
+	return createReasoningMessage(entry, taskId, chunk, "reasoning_delta");
 }
 
 export function setOrCreateReasoningMessage(
@@ -243,11 +248,16 @@ export function setOrCreateReasoningMessage(
 	const updatedMessage = updateMessageInEntry(entry, entry.activeReasoningMessageId, (currentMessage) => ({
 		...currentMessage,
 		content,
+		meta: {
+			...(currentMessage.meta ?? {}),
+			hookEventName: "reasoning_end",
+			streamType: "reasoning",
+		},
 	}));
 	if (updatedMessage) {
 		return updatedMessage;
 	}
-	return createReasoningMessage(entry, taskId, content);
+	return createReasoningMessage(entry, taskId, content, "reasoning_end");
 }
 
 export function createAssistantMessage(
@@ -265,8 +275,10 @@ export function createReasoningMessage(
 	entry: ClineTaskSessionEntry,
 	taskId: string,
 	content: string,
+	hookEventName: string,
 ): ClineTaskMessage {
 	const message = createMessageWithMeta(taskId, "reasoning", content, {
+		hookEventName,
 		streamType: "reasoning",
 	});
 	entry.messages.push(message);
