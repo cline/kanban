@@ -36,6 +36,8 @@ export interface CreateRuntimeStateHubDependencies {
 		WorkspaceRegistry,
 		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot"
 	>;
+	isLocal: boolean;
+	runtimeVersion: string;
 }
 
 export interface RuntimeStateHub {
@@ -433,6 +435,8 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				}
 				sendRuntimeStateMessage(client, {
 					type: "snapshot",
+					isLocal: deps.isLocal,
+					runtimeVersion: deps.runtimeVersion,
 					currentProjectId: projectsPayload.currentProjectId,
 					projects: projectsPayload.projects,
 					workspaceState,

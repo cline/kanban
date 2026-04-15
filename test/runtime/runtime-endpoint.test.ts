@@ -54,7 +54,7 @@ describe("runtime-endpoint", () => {
 	});
 
 	it("throws for invalid ports", () => {
-		expect(() => parseRuntimePort("0")).toThrow(/Invalid KANBAN_RUNTIME_PORT value/);
+		expect(parseRuntimePort("0")).toBe(0);
 		expect(() => parseRuntimePort("70000")).toThrow(/Invalid KANBAN_RUNTIME_PORT value/);
 		expect(() => parseRuntimePort("abc")).toThrow(/Invalid KANBAN_RUNTIME_PORT value/);
 	});

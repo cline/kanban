@@ -9,6 +9,7 @@ import packageJson from "../package.json" with { type: "json" };
 import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerTaskCommand } from "./commands/task";
+import { registerTokenCommand } from "./commands/token";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
 import type { RuntimeCommandRunResponse } from "./core/api-contract";
 import { createGitProcessEnv } from "./core/git-process-env";
@@ -16,6 +17,12 @@ import {
 	installGracefulShutdownHandlers,
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./core/graceful-shutdown";
+import {
+	clearRuntimeDescriptor,
+	isDescriptorStale,
+	readRuntimeDescriptor,
+	writeRuntimeDescriptor,
+} from "./core/runtime-descriptor";
 import {
 	buildKanbanRuntimeUrl,
 	clearKanbanRuntimeTls,
@@ -417,6 +424,8 @@ async function startServer(): Promise<{
 	});
 	runtimeStateHub = createRuntimeStateHub({
 		workspaceRegistry,
+		isLocal: !isKanbanRemoteHost(),
+		runtimeVersion: KANBAN_VERSION,
 	});
 	const runtimeHub = runtimeStateHub;
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
@@ -451,6 +460,7 @@ async function startServer(): Promise<{
 		disposeWorkspace: disposeTrackedWorkspace,
 		collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog,
+		version: KANBAN_VERSION,
 	});
 
 	const close = async () => {
@@ -535,6 +545,58 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		currentVersion: KANBAN_VERSION,
 	});
 
+	// ── Attach-first: reuse existing healthy runtime ──────────────────
+	// If another runtime (CLI or desktop) is already serving, open the
+	// browser to it instead of spawning a second server. For desktop
+	// runtimes, we append ?auth=TOKEN to the URL so the server sets a
+	// session cookie and the browser can authenticate.
+	const existingDescriptor = await readRuntimeDescriptor();
+	if (existingDescriptor && !isDescriptorStale(existingDescriptor)) {
+		// Verify the runtime actually responds before attaching.
+		// Use origin only — the descriptor URL may include a workspace path
+		// (e.g. /cline) that would break the /api/health endpoint.
+		let reachable = false;
+		const descriptorOrigin = new URL(existingDescriptor.url).origin;
+		try {
+			const controller = new AbortController();
+			const timer = setTimeout(() => controller.abort(), 2000);
+			const healthUrl = `${descriptorOrigin}/api/health`;
+			const resp = await fetch(healthUrl, { signal: controller.signal });
+			clearTimeout(timer);
+			reachable = resp.ok;
+		} catch {
+			// unreachable
+		}
+
+		if (reachable) {
+			console.log(
+				`Kanban runtime already running (${existingDescriptor.source}, pid ${existingDescriptor.pid}) at ${existingDescriptor.url}`,
+			);
+			if (!options.noOpen && shouldAutoOpenBrowser) {
+				// For desktop runtimes, append the auth token as a query param
+				// so the server can set a session cookie for the browser.
+				let browserUrl = existingDescriptor.url;
+				if (existingDescriptor.source === "desktop" && existingDescriptor.authToken) {
+					const parsed = new URL(existingDescriptor.url);
+					parsed.searchParams.set("auth", existingDescriptor.authToken);
+					browserUrl = parsed.toString();
+				}
+				try {
+					openInBrowser(browserUrl, {
+						warn: (message) => {
+							console.warn(message);
+						},
+					});
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					console.warn(`Could not open browser automatically: ${message}`);
+				}
+			}
+			return;
+		}
+		// Descriptor exists but runtime isn't reachable — start fresh.
+	}
+
 	let runtime: Awaited<ReturnType<typeof startServer>>;
 	try {
 		runtime = await startServerWithAutoPortRetry(options);
@@ -548,6 +610,19 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		}
 		throw error;
 	}
+
+	// Publish runtime descriptor so the desktop app (and other CLI
+	// invocations) can discover and attach to this runtime.
+	await writeRuntimeDescriptor({
+		url: runtime.url,
+		authToken: process.env.KANBAN_AUTH_TOKEN ?? "",
+		pid: process.pid,
+		updatedAt: new Date().toISOString(),
+		source: "cli",
+	}).catch(() => {
+		// Best effort — descriptor is a convenience, not critical.
+	});
+
 	console.log(`Cline Kanban running at ${runtime.url}`);
 	if (!options.noOpen && shouldAutoOpenBrowser) {
 		try {
@@ -574,6 +649,9 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		if (options.skipShutdownCleanup) {
 			console.warn("Skipping shutdown task cleanup for this instance.");
 		}
+		// Clear descriptor before shutting down the server so other
+		// processes see the descriptor disappear atomically.
+		await clearRuntimeDescriptor().catch(() => {});
 		await runtime.shutdown({
 			skipSessionCleanup: options.skipShutdownCleanup,
 		});
@@ -653,6 +731,7 @@ function createProgram(invocationArgs: string[]): Command {
 
 	registerTaskCommand(program);
 	registerHooksCommand(program);
+	registerTokenCommand(program);
 
 	program
 		.command("mcp")

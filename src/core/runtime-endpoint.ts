@@ -1,6 +1,7 @@
 import { rootCertificates } from "node:tls";
 import { Agent } from "undici";
 import { getInternalToken } from "../security/passcode-manager";
+import { isDescriptorStale, readRuntimeDescriptor } from "./runtime-descriptor";
 
 export const DEFAULT_KANBAN_RUNTIME_HOST = "127.0.0.1";
 export const DEFAULT_KANBAN_RUNTIME_PORT = 3484;
@@ -23,8 +24,8 @@ export function parseRuntimePort(rawPort: string | undefined): number {
 		return DEFAULT_KANBAN_RUNTIME_PORT;
 	}
 	const parsed = Number.parseInt(rawPort, 10);
-	if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535) {
-		throw new Error(`Invalid KANBAN_RUNTIME_PORT value "${rawPort}". Expected an integer from 1-65535.`);
+	if (!Number.isFinite(parsed) || parsed < 0 || parsed > 65535) {
+		throw new Error(`Invalid KANBAN_RUNTIME_PORT value "${rawPort}". Expected an integer from 0-65535.`);
 	}
 	return parsed;
 }
@@ -164,4 +165,125 @@ export function getRuntimeFetch(): Promise<typeof globalThis.fetch> {
 		}) as typeof globalThis.fetch;
 	})();
 	return _runtimeFetchPromise;
+}
+
+// ---------------------------------------------------------------------------
+// Resolved runtime connection — async, descriptor-first
+// ---------------------------------------------------------------------------
+
+export interface ResolvedRuntimeConnection {
+	/** Base URL of the runtime (e.g. "http://127.0.0.1:3484" or "http://127.0.0.1:52341"). */
+	origin: string;
+	/** Auth token to attach as Authorization header, or null if none required. */
+	authToken: string | null;
+	/** Where the connection was resolved from. */
+	source: "env" | "default" | "descriptor";
+}
+
+/** Whether env vars explicitly configure the runtime endpoint. */
+function hasExplicitEnvConfig(): boolean {
+	return !!(process.env.KANBAN_RUNTIME_HOST?.trim() || process.env.KANBAN_RUNTIME_PORT?.trim());
+}
+
+/** Read KANBAN_AUTH_TOKEN from environment (set by the runtime for PTY children). */
+function getEnvAuthToken(): string | null {
+	return process.env.KANBAN_AUTH_TOKEN?.trim() || null;
+}
+
+/**
+ * Extract just the origin (scheme + host + port) from a descriptor URL.
+ *
+ * Descriptor URLs may include a workspace path (e.g.
+ * "http://127.0.0.1:62929/cline") that is useful for browser navigation
+ * but must NOT be included in the API base URL — otherwise TRPC calls
+ * get routed to the wrong path.
+ */
+export function descriptorOriginFromUrl(descriptorUrl: string): string {
+	return new URL(descriptorUrl).origin;
+}
+
+/**
+ * Quick connectivity check — try to reach the runtime with a short timeout.
+ * Returns true if the server responds to a simple HTTP request.
+ *
+ * Uses /api/health as the probe endpoint.  Any HTTP response (including
+ * 401/404) means the server process is alive.  If the runtime renames or
+ * relocates that path in the future, update this probe to match.
+ */
+async function isRuntimeReachable(origin: string, timeoutMs = 1500): Promise<boolean> {
+	try {
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), timeoutMs);
+		const response = await fetch(`${origin}/api/health`, {
+			method: "GET",
+			signal: controller.signal,
+		});
+		clearTimeout(timer);
+		// Any HTTP response (even 401/404) means the server is up.
+		return response.status > 0;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Resolve the runtime connection — descriptor-first policy.
+ *
+ * The runtime descriptor (~/.cline/kanban/runtime.json) is the single
+ * shared authority pointer. All non-explicit clients should connect to
+ * whatever runtime the descriptor points at, preventing split-brain
+ * when multiple runtimes are running on different ports.
+ *
+ * Resolution priority:
+ *   1. Explicit env vars (KANBAN_RUNTIME_HOST / PORT) → use configured endpoint, no fallback.
+ *   2. Healthy runtime descriptor → the authority runtime, wherever it lives.
+ *   3. Default localhost:3484 → fallback when no descriptor exists.
+ */
+export async function resolveRuntimeConnection(): Promise<ResolvedRuntimeConnection> {
+	// Priority 1: explicit env config — use it, no fallback.
+	// KANBAN_AUTH_TOKEN is read alongside host/port so that PTY child
+	// processes spawned by the desktop app can authenticate against
+	// the same runtime without needing the descriptor file.
+	if (hasExplicitEnvConfig()) {
+		return {
+			origin: getKanbanRuntimeOrigin(),
+			authToken: getEnvAuthToken(),
+			source: "env",
+		};
+	}
+
+	// Priority 2: runtime descriptor — the shared authority pointer.
+	// Both CLI and desktop publish descriptors when they start a runtime.
+	// Clients should connect to the descriptor authority first; the default
+	// port is only a fallback when no authority has been established.
+	const descriptor = await readRuntimeDescriptor();
+	if (descriptor && !isDescriptorStale(descriptor)) {
+		const descriptorOrigin = descriptorOriginFromUrl(descriptor.url);
+		if (await isRuntimeReachable(descriptorOrigin)) {
+			return {
+				origin: descriptorOrigin,
+				authToken: descriptor.authToken,
+				source: "descriptor",
+			};
+		}
+		// Descriptor exists but runtime is unreachable — fall through to default.
+	}
+
+	// Priority 3: default endpoint — fallback when no authority descriptor exists.
+	const defaultOrigin = getKanbanRuntimeOrigin();
+	if (await isRuntimeReachable(defaultOrigin)) {
+		return {
+			origin: defaultOrigin,
+			authToken: null,
+			source: "default",
+		};
+	}
+
+	// Nothing reachable — return default anyway so callers get a clear error
+	// from the actual HTTP call rather than an opaque "no runtime found" message.
+	return {
+		origin: defaultOrigin,
+		authToken: null,
+		source: "default",
+	};
 }

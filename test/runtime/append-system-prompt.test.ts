@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	computeHomeAgentPromptHash,
 	renderAppendSystemPrompt,
 	resolveAppendSystemPromptCommandPrefix,
 	resolveHomeAgentAppendSystemPrompt,
@@ -132,5 +133,24 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		expect(prompt).toContain("Current home agent: `kiro`");
 		expect(prompt).toContain("kiro-cli mcp add --name linear --url https://mcp.linear.app/mcp --scope global");
 		expect(prompt).not.toContain("--scope user");
+	});
+});
+
+describe("computeHomeAgentPromptHash", () => {
+	it("returns a 16-char hex string", () => {
+		const hash = computeHomeAgentPromptHash("claude");
+		expect(hash).toMatch(/^[0-9a-f]{16}$/);
+	});
+
+	it("returns the same hash for the same agent", () => {
+		const a = computeHomeAgentPromptHash("claude");
+		const b = computeHomeAgentPromptHash("claude");
+		expect(a).toBe(b);
+	});
+
+	it("returns different hashes for different agents", () => {
+		const claudeHash = computeHomeAgentPromptHash("claude");
+		const codexHash = computeHomeAgentPromptHash("codex");
+		expect(claudeHash).not.toBe(codexHash);
 	});
 });

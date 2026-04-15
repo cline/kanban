@@ -368,6 +368,8 @@ export type RuntimeClineMcpServerAuthStatus = z.infer<typeof runtimeClineMcpServ
 
 export const runtimeStateStreamSnapshotMessageSchema = z.object({
 	type: z.literal("snapshot"),
+	isLocal: z.boolean(),
+	runtimeVersion: z.string(),
 	currentProjectId: z.string().nullable(),
 	projects: z.array(runtimeProjectSummarySchema),
 	workspaceState: runtimeWorkspaceStateResponseSchema.nullable(),
@@ -758,26 +760,6 @@ export const runtimeClineOauthLoginResponseSchema = z.object({
 });
 export type RuntimeClineOauthLoginResponse = z.infer<typeof runtimeClineOauthLoginResponseSchema>;
 
-export const runtimeClineDeviceAuthStartResponseSchema = z.object({
-	deviceCode: z.string(),
-	userCode: z.string(),
-	verificationUrl: z.string(),
-	expiresInSeconds: z.number(),
-	pollIntervalSeconds: z.number(),
-});
-export type RuntimeClineDeviceAuthStartResponse = z.infer<typeof runtimeClineDeviceAuthStartResponseSchema>;
-
-export const runtimeClineDeviceAuthCompleteRequestSchema = z.object({
-	deviceCode: z.string(),
-	expiresInSeconds: z.number(),
-	pollIntervalSeconds: z.number(),
-	baseUrl: z.string().nullable().optional(),
-});
-export type RuntimeClineDeviceAuthCompleteRequest = z.infer<typeof runtimeClineDeviceAuthCompleteRequestSchema>;
-
-export const runtimeClineDeviceAuthCompleteResponseSchema = runtimeClineOauthLoginResponseSchema;
-export type RuntimeClineDeviceAuthCompleteResponse = z.infer<typeof runtimeClineDeviceAuthCompleteResponseSchema>;
-
 export const runtimeClineProviderSettingsSaveRequestSchema = z.object({
 	providerId: z.string(),
 	modelId: z.string().nullable().optional(),
@@ -923,6 +905,7 @@ export const runtimeConfigResponseSchema = z.object({
 	openPrPromptTemplate: z.string(),
 	commitPromptTemplateDefault: z.string(),
 	openPrPromptTemplateDefault: z.string(),
+	homeAgentPromptHash: z.string(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 

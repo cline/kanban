@@ -1,6 +1,7 @@
 // PTY-backed runtime for non-Cline task sessions and the workspace shell terminal.
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
+import { delimiter } from "node:path";
 import type {
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
@@ -163,19 +164,41 @@ function cloneStartShellSessionRequest(request: StartShellSessionRequest): Start
 }
 
 function formatSpawnFailure(binary: string, error: unknown): string {
+	const code = (error as NodeJS.ErrnoException).code ?? "unknown";
 	const message = error instanceof Error ? error.message : String(error);
 	const normalized = message.toLowerCase();
-	if (normalized.includes("posix_spawnp failed") || normalized.includes("enoent")) {
-		return `Failed to launch "${binary}". Command not found. Install a supported agent CLI and select it in Settings.`;
+
+	if (
+		normalized.includes("posix_spawnp failed") ||
+		normalized.includes("posix_spawn failed") ||
+		normalized.includes("enoent") ||
+		code === "ENOENT"
+	) {
+		const pathEntries = (process.env.PATH ?? "").split(delimiter);
+		const pathSummary =
+			pathEntries.length <= 5
+				? pathEntries.join(", ")
+				: `${pathEntries.slice(0, 3).join(", ")} ... (${pathEntries.length} total)`;
+		return (
+			`Agent binary "${binary}" not found. ` +
+			`PATH has ${pathEntries.length} entries: ${pathSummary}. ` +
+			"Install a supported agent CLI and select it in Settings."
+		);
 	}
-	return `Failed to launch "${binary}": ${message}`;
+
+	return `Failed to launch "${binary}": ${message}${code !== "unknown" ? ` (${code})` : ""}`;
 }
 
-function formatShellSpawnFailure(binary: string, error: unknown): string {
+function formatShellSpawnFailure(binary: string, error: unknown, cwd?: string): string {
 	const message = error instanceof Error ? error.message : String(error);
 	const normalized = message.toLowerCase();
-	if (normalized.includes("posix_spawnp failed") || normalized.includes("enoent")) {
-		return `Failed to launch "${binary}". Command not found on this system.`;
+	if (
+		normalized.includes("posix_spawnp failed") ||
+		normalized.includes("posix_spawn failed") ||
+		normalized.includes("enoent")
+	) {
+		const cwdHint = cwd ? ` Verify the workspace directory "${cwd}" exists and the shell binary is installed.` : "";
+		return `Failed to launch "${binary}": No such file or directory.${cwdHint}`;
 	}
 	return `Failed to launch "${binary}": ${message}`;
 }
@@ -660,7 +683,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				previousTurnCheckpoint: null,
 			});
 			this.emitSummary(summary);
-			throw new Error(formatShellSpawnFailure(request.binary, error));
+			throw new Error(formatShellSpawnFailure(request.binary, error, request.cwd));
 		}
 
 		const active: ActiveProcessState = {

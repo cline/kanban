@@ -1,6 +1,6 @@
 {
   "name": "kanban",
-  "version": "0.1.61",
+  "version": "0.1.60",
   "description": "A kanban foundation for coding agents",
   "publishConfig": {
     "access": "public",
@@ -33,6 +33,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./runtime-start": {
+      "types": "./dist/runtime-start.d.ts",
+      "import": "./dist/runtime-start.js"
+    },
+    "./server/directory-picker": {
+      "types": "./dist/server/directory-picker.d.ts",
+      "import": "./dist/server/directory-picker.js"
+    },
+    "./core/runtime-descriptor": {
+      "types": "./dist/core/runtime-descriptor.d.ts",
+      "import": "./dist/core/runtime-descriptor.js"
     }
   },
   "files": [
@@ -42,7 +54,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "clean": "shx rm -rf dist coverage",
@@ -91,10 +103,10 @@
     "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.9"
   },
   "dependencies": {
-    "@clinebot/agents": "^0.0.34",
-    "@clinebot/core": "^0.0.34",
-    "@clinebot/llms": "^0.0.34",
-    "@clinebot/shared": "^0.0.34",
+    "@clinebot/agents": "^0.0.33",
+    "@clinebot/core": "^0.0.33",
+    "@clinebot/llms": "^0.0.33",
+    "@clinebot/shared": "^0.0.33",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",
