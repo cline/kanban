@@ -798,8 +798,10 @@ body.kb-dependency-link-mode {
 }
 
 .kb-diff-highlight-comment-box {
-	padding: 6px 8px;
-	border-top: 1px solid var(--color-border);
+	margin: 4px 6px;
+	padding: 8px;
+	border: 1px solid var(--color-border-bright);
+	border-radius: var(--radius-md);
 	background: var(--color-surface-1);
 }
 

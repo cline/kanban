@@ -29,7 +29,7 @@ export function formatSnippetReference(range: DiffHighlightRange): string {
 
 /**
  * Inline comment box rendered directly below the last highlighted diff row.
- * "Ask Cline" sends the snippet reference + comment to the agent.
+ * "Send" posts the snippet reference + user comment to the agent terminal.
  * "Cancel" (or Escape) dismisses the highlight and closes the box.
  */
 export function DiffHighlightCommentBox({
@@ -81,9 +81,9 @@ export function DiffHighlightCommentBox({
 				value={text}
 				onChange={(e) => setText(e.target.value)}
 				onKeyDown={handleKeyDown}
-				placeholder="Ask about this code..."
+				placeholder="Comment on this code..."
 				rows={2}
-				className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none"
+				className="w-full rounded-md border-none bg-surface-2 px-3 py-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-border-bright resize-none"
 			/>
 			<div className="kb-diff-highlight-comment-actions">
 				<Button variant="ghost" size="sm" onClick={onCancel}>
@@ -96,7 +96,7 @@ export function DiffHighlightCommentBox({
 					icon={<Send size={14} />}
 					onClick={handleSend}
 				>
-					Ask Cline
+					Send
 				</Button>
 			</div>
 		</div>

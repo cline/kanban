@@ -387,6 +387,7 @@ function SplitDiff({
 	oldText,
 	newText,
 	comments,
+	onAddComment,
 	onUpdateComment,
 	onDeleteComment,
 }: {
@@ -394,6 +395,7 @@ function SplitDiff({
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
+	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
 }): React.ReactElement {
@@ -434,15 +436,15 @@ function SplitDiff({
 						{canCommentOnSide ? (
 							<span
 								className="kb-diff-comment-gutter"
-								onClick={
-									hasComment
-										? (event) => {
-												event.stopPropagation();
-												onDeleteComment(rowLineNumber, row.variant);
-											}
-										: undefined
-								}
-								style={hasComment ? { cursor: "pointer" } : undefined}
+								onClick={(event) => {
+									event.stopPropagation();
+									if (hasComment) {
+										onDeleteComment(rowLineNumber, row.variant);
+									} else {
+										onAddComment(rowLineNumber, row.text, row.variant);
+									}
+								}}
+								style={{ cursor: "pointer" }}
 							>
 								<span className="kb-diff-gutter-icon-comment">
 									<MessageSquare size={12} />
@@ -1058,6 +1060,9 @@ export function DiffViewerPanel({
 															oldText={entry.oldText}
 															newText={entry.newText}
 															comments={comments}
+															onAddComment={(lineNumber, lineText, variant) =>
+																handleAddComment(group.path, lineNumber, lineText, variant)
+															}
 															onUpdateComment={(lineNumber, variant, text) =>
 																handleUpdateComment(group.path, lineNumber, variant, text)
 															}
