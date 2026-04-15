@@ -304,6 +304,59 @@ describe("CardDetailView", () => {
 		expect(lastCall?.[7]).toBe(true);
 	});
 
+	it("keeps the active diff mode visually highlighted", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const getDiffModeButton = (label: string): HTMLButtonElement => {
+			const button = Array.from(container.querySelectorAll("button")).find(
+				(candidate) => candidate.textContent?.trim() === label,
+			);
+			if (!(button instanceof HTMLButtonElement)) {
+				throw new Error(`Expected a ${label} button.`);
+			}
+			return button;
+		};
+
+		const allChangesButton = getDiffModeButton("All Changes");
+		const lastTurnButton = getDiffModeButton("Last Turn");
+
+		expect(allChangesButton.getAttribute("aria-pressed")).toBe("true");
+		expect(allChangesButton.getAttribute("style")).toContain(
+			"background-color: color-mix(in srgb, var(--color-surface-3) 80%, var(--color-text-primary))",
+		);
+		expect(lastTurnButton.getAttribute("aria-pressed")).toBe("false");
+		expect(lastTurnButton.style.backgroundColor).toBe("");
+
+		await act(async () => {
+			lastTurnButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			lastTurnButton.click();
+		});
+
+		expect(getDiffModeButton("All Changes").getAttribute("aria-pressed")).toBe("false");
+		expect(getDiffModeButton("All Changes").style.backgroundColor).toBe("");
+		expect(getDiffModeButton("Last Turn").getAttribute("aria-pressed")).toBe("true");
+		expect(getDiffModeButton("Last Turn").getAttribute("style")).toContain(
+			"background-color: color-mix(in srgb, var(--color-surface-3) 80%, var(--color-text-primary))",
+		);
+	});
+
 	it("closes git history before handling other Escape behavior", async () => {
 		const onCloseGitHistory = vi.fn();
 

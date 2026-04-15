@@ -35,6 +35,7 @@ import { useWindowEvent } from "@/utils/react-use";
 // We still poll the open detail diff because line content can change without changing
 // the overall file or line counts that drive the shared workspace metadata stream.
 const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
+const DIFF_MODE_ACTIVE_BACKGROUND = "color-mix(in srgb, var(--color-surface-3) 80%, var(--color-text-primary))";
 
 function isTypingTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) {
@@ -245,7 +246,15 @@ function DiffModeButton({
 			size="sm"
 			onClick={onClick}
 			aria-pressed={active}
-			className={cn("h-5 rounded-sm text-xs", active && "bg-surface-3 text-text-primary")}
+			className="h-5 rounded-sm text-xs"
+			style={
+				active
+					? {
+							backgroundColor: DIFF_MODE_ACTIVE_BACKGROUND,
+							color: "var(--color-text-primary)",
+						}
+					: undefined
+			}
 		>
 			{children}
 		</Button>

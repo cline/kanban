@@ -555,7 +555,6 @@ export function TaskStartAgentOnboardingCarousel({
 									<ClineSetupSection
 										controller={clineSettings}
 										controlsDisabled={false}
-										showHeading={false}
 										showMcpSettings={false}
 										onError={setClineSetupError}
 										onSaved={onClineSetupSaved}

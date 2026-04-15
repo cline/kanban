@@ -1037,6 +1037,28 @@ body.kb-dependency-link-mode {
 	}
 }
 
+@keyframes kb-collapsible-down {
+	from {
+		height: 0;
+		opacity: 0;
+	}
+	to {
+		height: var(--radix-collapsible-content-height);
+		opacity: 1;
+	}
+}
+
+@keyframes kb-collapsible-up {
+	from {
+		height: var(--radix-collapsible-content-height);
+		opacity: 1;
+	}
+	to {
+		height: 0;
+		opacity: 0;
+	}
+}
+
 @keyframes kb-overlay-hide {
 	from {
 		opacity: 1;

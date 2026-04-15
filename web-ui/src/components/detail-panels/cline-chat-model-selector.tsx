@@ -60,6 +60,7 @@ export function ClineChatModelSelector({
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+	const shouldScrollSelectedModelOnOpenRef = useRef(false);
 
 	const recommendedModelIdSet = useMemo(
 		() => new Set(recommendedModelIds.map((value) => value.trim()).filter((value) => value.length > 0)),
@@ -119,6 +120,10 @@ export function ClineChatModelSelector({
 		() => new Map(filteredModelOptions.map((item, index) => [item.value, index] as const)),
 		[filteredModelOptions],
 	);
+	const selectedModelIndex = useMemo(
+		() => filteredModelOptions.findIndex((option) => option.value === selectedModelId),
+		[filteredModelOptions, selectedModelId],
+	);
 	const showRecommendedSection = query.trim().length === 0 && recommendedModelIdSet.size > 0;
 	const recommendedItems = useMemo(
 		() => filteredModelOptions.filter((item) => recommendedModelIdSet.has(item.value)),
@@ -134,11 +139,16 @@ export function ClineChatModelSelector({
 			onPopoverOpenChange?.(nextOpen);
 			setIsOpen(nextOpen);
 			setQuery("");
+			if (nextOpen) {
+				setActiveOptionIndex(selectedModelIndex >= 0 ? selectedModelIndex : 0);
+				shouldScrollSelectedModelOnOpenRef.current = true;
+				return;
+			}
 			if (!nextOpen) {
 				setActiveOptionIndex(0);
 			}
 		},
-		[onPopoverOpenChange],
+		[onPopoverOpenChange, selectedModelIndex],
 	);
 
 	useEffect(() => {
@@ -159,11 +169,20 @@ export function ClineChatModelSelector({
 	}, [filteredModelOptions, selectedModelId]);
 
 	useEffect(() => {
-		if (!isOpen) {
+		if (!isOpen || !shouldScrollSelectedModelOnOpenRef.current) {
 			return;
 		}
-		const optionElement = optionRefs.current[activeOptionIndex] ?? null;
-		optionElement?.scrollIntoView({ block: "nearest" });
+		shouldScrollSelectedModelOnOpenRef.current = false;
+		const nextActiveIndex = activeOptionIndex;
+		const frameId = window.requestAnimationFrame(() => {
+			const optionElement = optionRefs.current[nextActiveIndex] ?? null;
+			if (optionElement && typeof optionElement.scrollIntoView === "function") {
+				optionElement.scrollIntoView({ block: "center" });
+			}
+		});
+		return () => {
+			window.cancelAnimationFrame(frameId);
+		};
 	}, [activeOptionIndex, isOpen]);
 
 	useEffect(() => {
@@ -258,10 +277,12 @@ export function ClineChatModelSelector({
 					optionRefs.current[optionIndex] = node;
 				}}
 				className={cn(
-					"flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px]",
-					isActive
-						? "bg-surface-3 text-text-primary"
-						: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
+					"flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px]",
+					isSelected
+						? "bg-accent text-accent-fg hover:bg-accent"
+						: isActive
+							? "bg-surface-3 text-text-primary"
+							: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
 				)}
 				onMouseEnter={() => setActiveOptionIndex(optionIndex)}
 				onClick={() => {
@@ -279,7 +300,7 @@ export function ClineChatModelSelector({
 				<span className="flex-1 break-all">
 					{renderFuzzyHighlightedText(option.label, match?.positions, MATCHED_TEXT_STYLE)}
 				</span>
-				{isSelected ? <Check size={14} className="shrink-0 text-text-secondary" /> : null}
+				{isSelected ? <Check size={14} className="shrink-0 text-accent-fg" /> : null}
 			</button>
 		);
 	};
@@ -370,9 +391,9 @@ export function ClineChatModelSelector({
 												type="button"
 												key={option.value}
 												className={cn(
-													"flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px]",
+													"flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px]",
 													isSelected
-														? "bg-surface-3 text-text-primary"
+														? "bg-accent text-accent-fg hover:bg-accent"
 														: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
 												)}
 												onClick={() => {
@@ -385,7 +406,7 @@ export function ClineChatModelSelector({
 														option.value as RuntimeClineReasoningEffort | "",
 													)}
 												</span>
-												{isSelected ? <Check size={14} className="shrink-0 text-text-secondary" /> : null}
+												{isSelected ? <Check size={14} className="shrink-0 text-accent-fg" /> : null}
 											</button>
 										);
 									})}

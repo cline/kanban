@@ -1,7 +1,7 @@
 // Builds the view model for the native Cline chat panel.
 // Keep panel-specific UI state here so the panel component can stay mostly
 // declarative and shared across detail and sidebar surfaces.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import { type ClineChatMessage, useClineChatSession } from "@/hooks/use-cline-chat-session";
@@ -47,114 +47,6 @@ interface UseClineChatPanelControllerResult {
 	handleCancelTurn: () => void;
 }
 
-const ASSISTANT_STREAM_ACTIVITY_GRACE_MS = 500;
-
-function isAssistantLikeIncomingMessage(message: ClineChatMessage | null): boolean {
-	return message?.role === "assistant" || message?.role === "reasoning";
-}
-
-function getLatestAssistantLikeIncomingMessage(messages: ClineChatMessage[] | null): ClineChatMessage | null {
-	if (!messages || messages.length === 0) {
-		return null;
-	}
-
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index];
-		if (message && isAssistantLikeIncomingMessage(message)) {
-			return message;
-		}
-	}
-
-	return null;
-}
-
-function hasVisibleStreamingMessage(
-	messages: ClineChatMessage[],
-	incomingMessage: ClineChatMessage | null,
-	hasRecentAssistantStreamActivity: boolean,
-): boolean {
-	if (hasRecentAssistantStreamActivity) {
-		return true;
-	}
-
-	if (incomingMessage) {
-		if (incomingMessage.role === "tool" && incomingMessage.meta?.hookEventName === "tool_call_start") {
-			return true;
-		}
-	}
-
-	return messages.some((message) => message.role === "tool" && message.meta?.hookEventName === "tool_call_start");
-}
-
-function hasFreshAssistantSummarySignal(summary: RuntimeTaskSessionSummary | null): boolean {
-	if (summary?.latestHookActivity?.hookEventName !== "assistant_delta" || summary.updatedAt === null) {
-		return false;
-	}
-
-	return Date.now() - summary.updatedAt < ASSISTANT_STREAM_ACTIVITY_GRACE_MS;
-}
-
-function useRecentAssistantStreamActivity(
-	summary: RuntimeTaskSessionSummary | null,
-	incomingMessages: ClineChatMessage[] | null,
-	incomingMessage: ClineChatMessage | null,
-): boolean {
-	const latestHookEventName = summary?.latestHookActivity?.hookEventName ?? null;
-	const latestAssistantLikeIncomingMessage = isAssistantLikeIncomingMessage(incomingMessage)
-		? incomingMessage
-		: getLatestAssistantLikeIncomingMessage(incomingMessages);
-	const [hasRecentIncomingAssistantActivity, setHasRecentIncomingAssistantActivity] = useState(
-		() => latestAssistantLikeIncomingMessage !== null,
-	);
-	const [hasRecentAssistantSummaryActivity, setHasRecentAssistantSummaryActivity] = useState(() =>
-		hasFreshAssistantSummarySignal(summary),
-	);
-
-	useEffect(() => {
-		if (!latestAssistantLikeIncomingMessage) {
-			setHasRecentIncomingAssistantActivity(false);
-			return;
-		}
-
-		setHasRecentIncomingAssistantActivity(true);
-		const timeoutId = window.setTimeout(() => {
-			setHasRecentIncomingAssistantActivity(false);
-		}, ASSISTANT_STREAM_ACTIVITY_GRACE_MS);
-		return () => {
-			window.clearTimeout(timeoutId);
-		};
-	}, [
-		latestAssistantLikeIncomingMessage?.id,
-		latestAssistantLikeIncomingMessage?.role,
-		latestAssistantLikeIncomingMessage?.content,
-		latestAssistantLikeIncomingMessage?.meta?.hookEventName,
-	]);
-
-	useEffect(() => {
-		const summaryUpdatedAt = summary?.updatedAt ?? null;
-		if (latestHookEventName !== "assistant_delta" || summaryUpdatedAt === null) {
-			setHasRecentAssistantSummaryActivity(false);
-			return;
-		}
-
-		const remainingMs = summaryUpdatedAt + ASSISTANT_STREAM_ACTIVITY_GRACE_MS - Date.now();
-		if (remainingMs <= 0) {
-			setHasRecentAssistantSummaryActivity(false);
-			return;
-		}
-
-		setHasRecentAssistantSummaryActivity(true);
-		const timeoutId = window.setTimeout(() => {
-			setHasRecentAssistantSummaryActivity(false);
-		}, remainingMs);
-		return () => {
-			window.clearTimeout(timeoutId);
-		};
-	}, [latestHookEventName, summary?.updatedAt]);
-
-	return hasRecentIncomingAssistantActivity || hasRecentAssistantSummaryActivity;
-}
-
 export function useClineChatPanelController({
 	taskId,
 	summary,
@@ -188,14 +80,7 @@ export function useClineChatPanelController({
 		(reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0 &&
 		Boolean(onCommit) &&
 		Boolean(onOpenPr);
-	const hasRecentAssistantStreamActivity = useRecentAssistantStreamActivity(
-		summary,
-		incomingMessages,
-		incomingMessage,
-	);
-	const showAgentProgressIndicator =
-		summary?.state === "running" &&
-		!hasVisibleStreamingMessage(messages, incomingMessage, hasRecentAssistantStreamActivity);
+	const showAgentProgressIndicator = summary?.state === "running";
 	const showActionFooter = showMoveToTrash && Boolean(onMoveToTrash);
 	const showCancelAutomaticAction = Boolean(cancelAutomaticActionLabel && onCancelAutomaticAction);
 

@@ -53,7 +53,6 @@ export function ClineSetupSection({
 	mcpController,
 	controlsDisabled,
 	workspaceId = null,
-	showHeading = true,
 	showMcpSettings = true,
 	accountSection = null,
 	onError,
@@ -63,7 +62,6 @@ export function ClineSetupSection({
 	mcpController?: UseRuntimeSettingsClineMcpControllerResult;
 	controlsDisabled: boolean;
 	workspaceId?: string | null;
-	showHeading?: boolean;
 	showMcpSettings?: boolean;
 	accountSection?: ReactNode;
 	onError?: (message: string | null) => void;
@@ -268,7 +266,6 @@ export function ClineSetupSection({
 
 	return (
 		<>
-			{showHeading ? <h6 className="font-semibold text-text-primary mt-4 mb-2">Cline setup</h6> : null}
 			<div className="mt-2">
 				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">API provider</p>
 				<div className="min-w-0 w-1/2 max-w-full">
@@ -608,10 +605,10 @@ export function ClineSetupSection({
 				) : null}
 			</div>
 
-			{showHeading && mcpController && showMcpSettings ? (
+			{mcpController && showMcpSettings ? (
 				<>
 					<div className="flex items-center justify-between mt-4 mb-2">
-						<h6 className="font-semibold text-text-primary m-0">MCP servers</h6>
+						<h6 className="font-semibold text-[12px] text-text-primary m-0">MCP servers</h6>
 						<Button
 							variant="ghost"
 							size="sm"

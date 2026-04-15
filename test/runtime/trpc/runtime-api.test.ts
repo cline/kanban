@@ -1602,6 +1602,57 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(response.message).toEqual(latestMessage);
 	});
 
+	it("starts home chat sessions from persisted history with current launch config", async () => {
+		const summary = createSummary({ agentId: "cline", pid: null });
+		const latestMessage = {
+			id: "message-home-rebound-1",
+			role: "user" as const,
+			content: "continue home",
+			createdAt: Date.now(),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.sendTaskSessionInput.mockResolvedValueOnce(null);
+		clineTaskSessionService.startTaskSession.mockResolvedValue(summary);
+		clineTaskSessionService.listMessages.mockReturnValue([latestMessage]);
+		setSelectedProviderSettings({
+			provider: "cline",
+			auth: {
+				accessToken: "seed-token",
+				refreshToken: "seed-refresh",
+				expiresAt: Date.now() + 3_600_000,
+			},
+		});
+
+		const api = createRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.sendTaskChatMessage(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "__home_agent__:workspace-1", text: "continue home" },
+		);
+
+		expect(response.ok).toBe(true);
+		expect(clineTaskSessionService.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				taskId: "__home_agent__:workspace-1",
+				cwd: "/tmp/repo",
+				prompt: "continue home",
+				resumeFromPersistence: true,
+				providerId: "cline",
+				apiKey: "workos:oauth-access",
+			}),
+		);
+		expect(clineTaskSessionService.sendTaskSessionInput).toHaveBeenCalledTimes(1);
+		expect(response.message).toEqual(latestMessage);
+	});
+
 	it("home chat auto-start keeps manual API key for non-OAuth providers", async () => {
 		const summary = createSummary({ agentId: "cline", pid: null });
 		const terminalManager = {

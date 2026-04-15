@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act, createContext, useContext, useState } from "react";
+import { act, createContext, useContext } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,7 +26,7 @@ vi.mock("@radix-ui/react-select", () => ({
 		onValueChange: (v: string) => void;
 		children: ReactNode;
 	}) => {
-		const [open, setOpen] = useState(false);
+		const open = false;
 		return (
 			<RadixSelectCtx.Provider value={{ value, onValueChange }}>
 				<div data-radix-select-root="" data-state={open ? "open" : "closed"} data-open-setter={String(open)}>
@@ -36,7 +36,6 @@ vi.mock("@radix-ui/react-select", () => ({
 		);
 	},
 	Trigger: ({ children, ...props }: { children: ReactNode; "aria-label"?: string }) => {
-		const ctx = useContext(RadixSelectCtx);
 		return (
 			<button type="button" {...props} data-radix-select-trigger="">
 				{children}
@@ -296,6 +295,8 @@ describe("RuntimeSettingsDialog", () => {
 		expect(cancelButton).toBeInstanceOf(HTMLButtonElement);
 		expect(themeSelectTrigger).toBeInstanceOf(HTMLButtonElement);
 		expect(saveButton?.disabled).toBe(true);
+		expect(themeSelectTrigger?.className).toContain("cursor-pointer");
+		expect(themeSelectTrigger?.parentElement?.parentElement?.className).toContain("w-1/2");
 
 		// The mock Radix Select renders items as buttons with role="option".
 		// Click the Graphite option to trigger onValueChange.

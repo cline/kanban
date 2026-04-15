@@ -340,7 +340,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		const reasoning = typeof agentEvent.reasoning === "string" ? agentEvent.reasoning : null;
 		if (reasoning) {
 			const message =
-				setOrCreateReasoningMessage(entry, taskId, reasoning) ?? createReasoningMessage(entry, taskId, reasoning);
+				setOrCreateReasoningMessage(entry, taskId, reasoning) ??
+				createReasoningMessage(entry, taskId, reasoning, "reasoning_end");
 			input.emitMessage(taskId, message);
 		}
 		entry.activeReasoningMessageId = null;

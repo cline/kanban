@@ -597,6 +597,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							cwd: workspaceScope.workspacePath,
 							prompt: body.text,
 							images: body.images,
+							resumeFromPersistence: true,
 							providerId: clineLaunchConfig.providerId,
 							modelId: clineLaunchConfig.modelId,
 							mode: requestedMode,
