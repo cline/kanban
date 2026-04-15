@@ -394,7 +394,6 @@ function SplitDiff({
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
-	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
 }): React.ReactElement {
@@ -850,10 +849,10 @@ export function DiffViewerPanel({
 					return;
 				}
 				const anchor = lineHighlight.anchor;
-				const anchorKey = rowIdKey(anchor.filePath, anchor.lineNumber, anchor.variant);
-				const clickedKey = rowIdKey(filePath, lineNumber, variant);
-				const anchorIdx = allRows.findIndex((r) => rowIdKey(r.filePath, r.lineNumber, r.variant) === anchorKey);
-				const clickedIdx = allRows.findIndex((r) => rowIdKey(r.filePath, r.lineNumber, r.variant) === clickedKey);
+				const anchorIdx = allRows.findIndex(
+					(r) => r.lineNumber === anchor.lineNumber && r.variant === anchor.variant,
+				);
+				const clickedIdx = allRows.findIndex((r) => r.lineNumber === lineNumber && r.variant === variant);
 				if (anchorIdx === -1 || clickedIdx === -1) {
 					return;
 				}
@@ -1059,9 +1058,6 @@ export function DiffViewerPanel({
 															oldText={entry.oldText}
 															newText={entry.newText}
 															comments={comments}
-															onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
-															}
 															onUpdateComment={(lineNumber, variant, text) =>
 																handleUpdateComment(group.path, lineNumber, variant, text)
 															}
