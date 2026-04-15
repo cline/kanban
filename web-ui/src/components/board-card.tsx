@@ -45,7 +45,7 @@ const SESSION_ACTIVITY_COLOR = {
 } as const;
 
 const DESCRIPTION_COLLAPSE_LINES = 3;
-const SESSION_PREVIEW_COLLAPSE_LINES = 6;
+const DESCRIPTION_EXPANDED_MAX_LINES = 10;
 const DESCRIPTION_EXPAND_LABEL = "See more";
 const DESCRIPTION_COLLAPSE_LABEL = "Less";
 const DESCRIPTION_COLLAPSE_SUFFIX = `… ${DESCRIPTION_EXPAND_LABEL}`;
@@ -264,20 +264,14 @@ export function BoardCard({
 	const titleInputRef = useRef<HTMLInputElement | null>(null);
 	const titleEditCancelledRef = useRef(false);
 	const [descriptionContainerRef, descriptionRect] = useMeasure<HTMLDivElement>();
-	const [sessionPreviewContainerRef, sessionPreviewRect] = useMeasure<HTMLDivElement>();
 	const descriptionRef = useRef<HTMLParagraphElement | null>(null);
-	const sessionPreviewRef = useRef<HTMLParagraphElement | null>(null);
 	const [descriptionWidthFallback, setDescriptionWidthFallback] = useState(0);
-	const [sessionPreviewWidthFallback, setSessionPreviewWidthFallback] = useState(0);
 	const [descriptionFont, setDescriptionFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
-	const [sessionPreviewFont, setSessionPreviewFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
-	const [isSessionPreviewExpanded, setIsSessionPreviewExpanded] = useState(false);
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
 	const descriptionWidth = descriptionRect.width > 0 ? descriptionRect.width : descriptionWidthFallback;
-	const sessionPreviewWidth = sessionPreviewRect.width > 0 ? sessionPreviewRect.width : sessionPreviewWidthFallback;
 	const rawSessionActivity = useMemo(() => getCardSessionActivity(sessionSummary), [sessionSummary]);
 	const lastSessionActivityRef = useRef<CardSessionActivity | null>(null);
 	const lastSessionActivityCardIdRef = useRef<string | null>(null);
@@ -309,30 +303,12 @@ export function BoardCard({
 	}, [descriptionRect.width, descriptionWidthFallback, displayDescription]);
 
 	useLayoutEffect(() => {
-		if (sessionPreviewRect.width > 0 || !isTrashCard || !sessionActivity?.text) {
-			return;
-		}
-		const nextWidth = sessionPreviewRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
-		if (nextWidth > 0 && nextWidth !== sessionPreviewWidthFallback) {
-			setSessionPreviewWidthFallback(nextWidth);
-		}
-	}, [isTrashCard, sessionActivity?.text, sessionPreviewRect.width, sessionPreviewWidthFallback]);
-
-	useLayoutEffect(() => {
 		setDescriptionFont(readElementFontShorthand(descriptionRef.current, DEFAULT_TEXT_MEASURE_FONT));
 	}, [descriptionWidth, displayDescription]);
-
-	useLayoutEffect(() => {
-		setSessionPreviewFont(readElementFontShorthand(sessionPreviewRef.current, DEFAULT_TEXT_MEASURE_FONT));
-	}, [sessionActivity?.text, sessionPreviewWidth]);
 
 	useEffect(() => {
 		setIsDescriptionExpanded(false);
 	}, [card.id, displayDescription]);
-
-	useEffect(() => {
-		setIsSessionPreviewExpanded(false);
-	}, [card.id, sessionActivity?.text]);
 
 	useEffect(() => {
 		setDraftTitle(card.title);
@@ -388,51 +364,37 @@ export function BoardCard({
 	};
 
 	const isDescriptionMeasured = descriptionRect.width > 0;
-	const isSessionPreviewMeasured = sessionPreviewRect.width > 0;
 
 	const descriptionDisplay = useMemo(() => {
 		if (!displayDescription) {
 			return {
-				text: "",
-				isTruncated: false,
+				collapsed: { text: "", isTruncated: false },
+				expanded: { text: "", isTruncated: false },
 			};
 		}
 		if (descriptionWidth <= 0) {
 			return {
-				text: displayDescription,
-				isTruncated: false,
+				collapsed: { text: displayDescription, isTruncated: false },
+				expanded: { text: displayDescription, isTruncated: false },
 			};
 		}
-		return clampTextWithInlineSuffix(displayDescription, {
-			maxWidthPx: descriptionWidth,
-			maxLines: DESCRIPTION_COLLAPSE_LINES,
-			suffix: DESCRIPTION_COLLAPSE_SUFFIX,
-			measureText: (value) => measureTextWidth(value, descriptionFont),
-		});
+		const measure = (value: string) => measureTextWidth(value, descriptionFont);
+		return {
+			collapsed: clampTextWithInlineSuffix(displayDescription, {
+				maxWidthPx: descriptionWidth,
+				maxLines: DESCRIPTION_COLLAPSE_LINES,
+				suffix: DESCRIPTION_COLLAPSE_SUFFIX,
+				measureText: measure,
+			}),
+			expanded: clampTextWithInlineSuffix(displayDescription, {
+				maxWidthPx: descriptionWidth,
+				maxLines: DESCRIPTION_EXPANDED_MAX_LINES,
+				suffix: DESCRIPTION_COLLAPSE_SUFFIX,
+				measureText: measure,
+			}),
+		};
 	}, [descriptionFont, descriptionWidth, displayDescription]);
 
-	const sessionPreviewDisplay = useMemo(() => {
-		if (!sessionActivity?.text) {
-			return {
-				text: "",
-				isTruncated: false,
-			};
-		}
-		if (sessionPreviewWidth <= 0) {
-			return {
-				text: sessionActivity.text,
-				isTruncated: false,
-			};
-		}
-		return clampTextWithInlineSuffix(sessionActivity.text, {
-			maxWidthPx: sessionPreviewWidth,
-			maxLines: SESSION_PREVIEW_COLLAPSE_LINES,
-			suffix: DESCRIPTION_COLLAPSE_SUFFIX,
-			measureText: (value) => measureTextWidth(value, sessionPreviewFont),
-		});
-	}, [sessionActivity?.text, sessionPreviewFont, sessionPreviewWidth]);
-
-	const isSessionRunning = sessionSummary?.state === "running";
 	const isCreditLimit = isCardCreditLimitError(sessionSummary);
 	const renderStatusMarker = () => {
 		if (isCreditLimit) {
@@ -700,46 +662,60 @@ export function BoardCard({
 											margin: "2px 0 0",
 										}}
 									>
-										{isDescriptionExpanded || !descriptionDisplay.isTruncated
-											? displayDescription
-											: descriptionDisplay.text}
-										{descriptionDisplay.isTruncated ? (
-											isDescriptionExpanded ? (
+										{(() => {
+											const activeDisplay = isDescriptionExpanded
+												? descriptionDisplay.expanded
+												: descriptionDisplay.collapsed;
+											const showFull = isDescriptionExpanded && !activeDisplay.isTruncated;
+											return (
 												<>
-													{" "}
-													<button
-														type="button"
-														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-														aria-expanded={isDescriptionExpanded}
-														aria-label="Collapse task description"
-														onMouseDown={stopEvent}
-														onClick={(event) => {
-															stopEvent(event);
-															setIsDescriptionExpanded(false);
-														}}
-													>
-														{DESCRIPTION_COLLAPSE_LABEL}
-													</button>
+													{showFull || !activeDisplay.isTruncated
+														? displayDescription
+														: activeDisplay.text}
+													{activeDisplay.isTruncated ? (
+														<>
+															{"… "}
+															<button
+																type="button"
+																className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+																aria-expanded={isDescriptionExpanded}
+																aria-label={
+																	isDescriptionExpanded
+																		? "Collapse task description"
+																		: "Expand task description"
+																}
+																onMouseDown={stopEvent}
+																onClick={(event) => {
+																	stopEvent(event);
+																	setIsDescriptionExpanded(!isDescriptionExpanded);
+																}}
+															>
+																{isDescriptionExpanded
+																	? DESCRIPTION_COLLAPSE_LABEL
+																	: DESCRIPTION_EXPAND_LABEL}
+															</button>
+														</>
+													) : isDescriptionExpanded && descriptionDisplay.collapsed.isTruncated ? (
+														<>
+															{" "}
+															<button
+																type="button"
+																className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+																aria-expanded={isDescriptionExpanded}
+																aria-label="Collapse task description"
+																onMouseDown={stopEvent}
+																onClick={(event) => {
+																	stopEvent(event);
+																	setIsDescriptionExpanded(false);
+																}}
+															>
+																{DESCRIPTION_COLLAPSE_LABEL}
+															</button>
+														</>
+													) : null}
 												</>
-											) : (
-												<>
-													{"… "}
-													<button
-														type="button"
-														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-														aria-expanded={isDescriptionExpanded}
-														aria-label="Expand task description"
-														onMouseDown={stopEvent}
-														onClick={(event) => {
-															stopEvent(event);
-															setIsDescriptionExpanded(true);
-														}}
-													>
-														{DESCRIPTION_EXPAND_LABEL}
-													</button>
-												</>
-											)
-										) : null}
+											);
+										})()}
 									</p>
 								</div>
 							) : null}
@@ -774,64 +750,9 @@ export function BoardCard({
 											marginTop: 4,
 										}}
 									/>
-									<div ref={sessionPreviewContainerRef} className="min-w-0 flex-1">
-										<p
-											ref={sessionPreviewRef}
-											className={cn(
-												"m-0 font-mono",
-												isSessionRunning
-													? "truncate"
-													: !isSessionPreviewMeasured && !isSessionPreviewExpanded && "line-clamp-6",
-											)}
-											style={{
-												fontSize: 12,
-												...(isSessionRunning
-													? {}
-													: { whiteSpace: "normal" as const, overflowWrap: "anywhere" as const }),
-											}}
-										>
-											{isSessionRunning
-												? sessionActivity.text
-												: isSessionPreviewExpanded || !sessionPreviewDisplay.isTruncated
-													? sessionActivity.text
-													: sessionPreviewDisplay.text}
-											{!isSessionRunning && sessionPreviewDisplay.isTruncated ? (
-												isSessionPreviewExpanded ? (
-													<>
-														{" "}
-														<button
-															type="button"
-															className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-															aria-expanded={isSessionPreviewExpanded}
-															aria-label="Collapse task agent preview"
-															onMouseDown={stopEvent}
-															onClick={(event) => {
-																stopEvent(event);
-																setIsSessionPreviewExpanded(false);
-															}}
-														>
-															{DESCRIPTION_COLLAPSE_LABEL}
-														</button>
-													</>
-												) : (
-													<>
-														{"… "}
-														<button
-															type="button"
-															className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-															aria-expanded={isSessionPreviewExpanded}
-															aria-label="Expand task agent preview"
-															onMouseDown={stopEvent}
-															onClick={(event) => {
-																stopEvent(event);
-																setIsSessionPreviewExpanded(true);
-															}}
-														>
-															{DESCRIPTION_EXPAND_LABEL}
-														</button>
-													</>
-												)
-											) : null}
+									<div className="min-w-0 flex-1">
+										<p className="m-0 font-mono truncate" style={{ fontSize: 12 }}>
+											{sessionActivity.text}
 										</p>
 									</div>
 								</div>
