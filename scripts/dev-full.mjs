@@ -69,13 +69,16 @@ await ensureDependenciesInstalled();
 
 const runtimePort = await findPort(3484);
 const webUiPort = await findPort(4173, new Set([runtimePort]));
-const requestedRuntimeArgs = process.argv.slice(2);
-const hasExplicitCleanupArg = requestedRuntimeArgs.some((arg) => arg === "--skip-shutdown-cleanup");
+const requestedDevFullArgs = process.argv.slice(2);
+const withShutdownCleanupFlag = "--with-shutdown-cleanup";
+const requestedRuntimeArgs = requestedDevFullArgs.filter((arg) => arg !== withShutdownCleanupFlag);
+const hasExplicitSkipCleanupArg = requestedRuntimeArgs.some((arg) => arg === "--skip-shutdown-cleanup");
+const shouldDefaultSkipShutdownCleanup = !requestedDevFullArgs.includes(withShutdownCleanupFlag);
 const runtimeCliArgs = [
 	"--port",
 	String(runtimePort),
 	"--no-open",
-	...(hasExplicitCleanupArg ? [] : ["--skip-shutdown-cleanup"]),
+	...(shouldDefaultSkipShutdownCleanup && !hasExplicitSkipCleanupArg ? ["--skip-shutdown-cleanup"] : []),
 	...requestedRuntimeArgs,
 ];
 

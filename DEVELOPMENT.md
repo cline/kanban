@@ -50,6 +50,12 @@ Use `npm run dev:full` when you are actively developing Kanban and want fast ite
 
 By default, `dev:full` now starts Kanban with `--skip-shutdown-cleanup` so stopping a debug/dev instance does not move cards to Trash or delete task worktrees from your active boards.
 
+To opt back into shutdown cleanup while using `dev:full`, run:
+
+```bash
+npm run dev:full -- --with-shutdown-cleanup
+```
+
 If `node_modules` has not been installed in this worktree, `dev:full` auto-runs `npm ci` before launch.
 
 Use `npm run dogfood` when you want to validate the latest built CLI behavior more realistically. It builds the current checkout and launches `dist/cli.js`, which is better for checking packaged behavior, startup and shutdown flows, multi-instance dogfooding, and launch behavior against a target project.
