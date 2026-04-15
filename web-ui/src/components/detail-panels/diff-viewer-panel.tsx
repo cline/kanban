@@ -2,11 +2,7 @@ import { ChevronDown, ChevronRight, Command, CornerDownLeft, MessageSquare, X } 
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import {
-	DiffHighlightCommentBox,
-	type DiffHighlightRange,
-	formatSnippetReference,
-} from "@/components/detail-panels/diff-selection-toolbar";
+import { DiffHighlightCommentBox, type DiffHighlightRange } from "@/components/detail-panels/diff-selection-toolbar";
 import {
 	buildDisplayItems,
 	buildHighlightedLineMap,
@@ -150,7 +146,6 @@ function UnifiedDiff({
 	oldText,
 	newText,
 	comments,
-	_onAddComment,
 	onUpdateComment,
 	onDeleteComment,
 	highlightedKeys,
@@ -164,7 +159,6 @@ function UnifiedDiff({
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
-	_onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
 	highlightedKeys?: ReadonlySet<string>;
@@ -393,11 +387,8 @@ function SplitDiff({
 	oldText,
 	newText,
 	comments,
-	onAddComment,
 	onUpdateComment,
 	onDeleteComment,
-	highlightedKeys,
-	onLineNumberClick,
 }: {
 	path: string;
 	oldText: string | null | undefined;
@@ -406,14 +397,6 @@ function SplitDiff({
 	onAddComment: (lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => void;
 	onUpdateComment: (lineNumber: number, variant: "added" | "removed" | "context", text: string) => void;
 	onDeleteComment: (lineNumber: number, variant: "added" | "removed" | "context") => void;
-	highlightedKeys?: ReadonlySet<string>;
-	onLineNumberClick?: (
-		filePath: string,
-		lineNumber: number,
-		variant: "added" | "removed" | "context",
-		text: string,
-		shiftKey: boolean,
-	) => void;
 }): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
 	const prismLanguage = useMemo(() => resolvePrismLanguage(path), [path]);
@@ -830,6 +813,27 @@ export function DiffViewerPanel({
 		return keys;
 	}, [lineHighlight]);
 
+	/** Memoized map of filePath → all RowIdentity[] for the file, used by shift+click range selection. */
+	const allRowsByPath = useMemo(() => {
+		const map = new Map<string, RowIdentity[]>();
+		for (const group of groupedByPath) {
+			const rows: RowIdentity[] = [];
+			for (const entry of group.entries) {
+				if (entry.isBinary) {
+					continue;
+				}
+				const diffRows = buildUnifiedDiffRows(entry.oldText, entry.newText);
+				for (const r of diffRows) {
+					if (r.lineNumber != null) {
+						rows.push({ filePath: group.path, lineNumber: r.lineNumber, variant: r.variant, text: r.text });
+					}
+				}
+			}
+			map.set(group.path, rows);
+		}
+		return map;
+	}, [groupedByPath]);
+
 	const handleLineNumberClick = useCallback(
 		(
 			filePath: string,
@@ -839,37 +843,23 @@ export function DiffViewerPanel({
 			shiftKey: boolean,
 		) => {
 			const clickedRow: RowIdentity = { filePath, lineNumber, variant, text };
-			if (
-				shiftKey &&
-				lineHighlight &&
-				lineHighlight.anchor.filePath === filePath &&
-				lineHighlight.anchor.variant === variant
-			) {
-				// Extend range from anchor to clicked line — need all rows from the diff
-				// We already track the anchor, so we look up all rows from the grouped data
-				const group = groupedByPath.find((g) => g.path === filePath);
-				if (!group) {
+			if (shiftKey && lineHighlight && lineHighlight.anchor.filePath === filePath) {
+				// Extend range from anchor to clicked line (contiguous, cross-variant)
+				const allRows = allRowsByPath.get(filePath);
+				if (!allRows || allRows.length === 0) {
 					return;
 				}
-				// Build all rows for this file
-				const allRows: RowIdentity[] = [];
-				for (const entry of group.entries) {
-					if (entry.isBinary) {
-						continue;
-					}
-					const diffRows = buildUnifiedDiffRows(entry.oldText, entry.newText);
-					for (const r of diffRows) {
-						if (r.lineNumber != null) {
-							allRows.push({ filePath, lineNumber: r.lineNumber, variant: r.variant, text: r.text });
-						}
-					}
-				}
 				const anchor = lineHighlight.anchor;
-				const startLine = Math.min(anchor.lineNumber, lineNumber);
-				const endLine = Math.max(anchor.lineNumber, lineNumber);
-				const rangeRows = allRows.filter(
-					(r) => r.variant === variant && r.lineNumber >= startLine && r.lineNumber <= endLine,
-				);
+				const anchorKey = rowIdKey(anchor.filePath, anchor.lineNumber, anchor.variant);
+				const clickedKey = rowIdKey(filePath, lineNumber, variant);
+				const anchorIdx = allRows.findIndex((r) => rowIdKey(r.filePath, r.lineNumber, r.variant) === anchorKey);
+				const clickedIdx = allRows.findIndex((r) => rowIdKey(r.filePath, r.lineNumber, r.variant) === clickedKey);
+				if (anchorIdx === -1 || clickedIdx === -1) {
+					return;
+				}
+				const startIdx = Math.min(anchorIdx, clickedIdx);
+				const endIdx = Math.max(anchorIdx, clickedIdx);
+				const rangeRows = allRows.slice(startIdx, endIdx + 1);
 				if (rangeRows.length > 0) {
 					setLineHighlight({ anchor, rows: rangeRows });
 				}
@@ -878,7 +868,7 @@ export function DiffViewerPanel({
 				setLineHighlight({ anchor: clickedRow, rows: [clickedRow] });
 			}
 		},
-		[groupedByPath, lineHighlight],
+		[allRowsByPath, lineHighlight],
 	);
 
 	/** The key identifying the last row in the highlight — the comment box renders after this row. */
@@ -907,15 +897,20 @@ export function DiffViewerPanel({
 		window.getSelection()?.removeAllRanges();
 	}, []);
 
-	// Dismiss on Escape
+	// Dismiss on Escape — skip if focus is inside the comment box (which has its own Escape handler)
 	useEffect(() => {
 		if (!lineHighlight) {
 			return;
 		}
 		const handleKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				handleDismissHighlight();
+			if (e.key !== "Escape") {
+				return;
 			}
+			const target = e.target as HTMLElement | null;
+			if (target?.closest(".kb-diff-highlight-comment-box")) {
+				return;
+			}
+			handleDismissHighlight();
 		};
 		document.addEventListener("keydown", handleKey);
 		return () => document.removeEventListener("keydown", handleKey);
@@ -1073,8 +1068,6 @@ export function DiffViewerPanel({
 															onDeleteComment={(lineNumber, variant) =>
 																handleDeleteComment(group.path, lineNumber, variant)
 															}
-															highlightedKeys={highlightedKeys}
-															onLineNumberClick={handleLineNumberClick}
 														/>
 													) : (
 														<UnifiedDiff
@@ -1082,9 +1075,6 @@ export function DiffViewerPanel({
 															oldText={entry.oldText}
 															newText={entry.newText}
 															comments={comments}
-															_onAddComment={(lineNumber, lineText, variant) =>
-																handleAddComment(group.path, lineNumber, lineText, variant)
-															}
 															onUpdateComment={(lineNumber, variant, text) =>
 																handleUpdateComment(group.path, lineNumber, variant, text)
 															}

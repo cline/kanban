@@ -788,8 +788,9 @@ body.kb-dependency-link-mode {
 	padding: 4px 6px;
 }
 
-.kb-diff-row-highlighted {
-	background: rgba(0, 132, 255, 0.12) !important;
+.kb-diff-row.kb-diff-row-highlighted,
+.kb-diff-row.kb-diff-row-highlighted:hover {
+	background: rgba(0, 132, 255, 0.12);
 }
 
 .kb-diff-line-number-selectable {
