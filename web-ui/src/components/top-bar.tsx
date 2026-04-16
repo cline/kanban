@@ -421,7 +421,7 @@ export function TopBar({
 							className={cn("shrink-0", MOBILE_TOUCH_TARGET)}
 						/>
 					) : !isMobile && onToggleSidebar && isLeftPanelCollapsed ? (
-						<Tooltip side="bottom" content={`Toggle sidebar (${isMacPlatform ? "⌘" : "Ctrl"}E)`}>
+						<Tooltip side="bottom" content={`Toggle sidebar (${isMacPlatform ? "⌘E" : "Ctrl+E"})`}>
 							<Button
 								variant="ghost"
 								size="sm"
