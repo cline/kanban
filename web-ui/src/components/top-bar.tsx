@@ -24,6 +24,7 @@ import {
 	type RuntimeShortcutPickerIconId,
 } from "@/components/shared/runtime-shortcut-icons";
 import { Button } from "@/components/ui/button";
+import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -280,6 +281,7 @@ function TopBarGitStatusSection({
 
 export function TopBar({
 	onToggleSidebar,
+	isLeftPanelCollapsed,
 	onBack,
 	workspacePath,
 	isWorkspacePathLoading = false,
@@ -315,6 +317,7 @@ export function TopBar({
 	hideProjectDependentActions = false,
 }: {
 	onToggleSidebar?: () => void;
+	isLeftPanelCollapsed?: boolean;
 	onBack?: () => void;
 	workspacePath?: string;
 	isWorkspacePathLoading?: boolean;
@@ -417,6 +420,17 @@ export function TopBar({
 							aria-label="Toggle sidebar"
 							className={cn("shrink-0", MOBILE_TOUCH_TARGET)}
 						/>
+					) : !isMobile && onToggleSidebar && isLeftPanelCollapsed ? (
+						<Tooltip side="bottom" content={`Toggle sidebar (${isMacPlatform ? "⌘" : "Ctrl"}E)`}>
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={<ClineIcon size={16} />}
+								onClick={onToggleSidebar}
+								aria-label="Toggle sidebar"
+								className="shrink-0"
+							/>
+						</Tooltip>
 					) : null}
 					{onBack ? (
 						<div className="flex items-center shrink-0 overflow-visible">
