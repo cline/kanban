@@ -26,7 +26,7 @@ function applyEvent(input: {
 }) {
 	const taskId = input.taskId ?? "task-1";
 	const entry = input.entry ?? createEntry(taskId);
-	const summaries: any[] = [];
+	const summaries: RuntimeTaskSessionSummary[] = [];
 	const messages: ClineTaskMessage[] = [];
 	const pendingTurnCancelTaskIds = input.pendingTurnCancelTaskIds ?? new Set<string>();
 
