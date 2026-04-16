@@ -55,7 +55,7 @@ function applyEvent(input: {
 describe("Reproduction of Tool Call Argument Duplication", () => {
 	it("should NOT append tool argument chunks to assistant message", () => {
 		const entry = createEntry("task-1");
-		const toolArgs = JSON.stringify({ files: [{ path: "/Users/mlapasa/workspaceAI/kanban-main/AppState.kt" }] });
+		const toolArgs = JSON.stringify({ files: [{ path: "/workspace/project/AppState.kt" }] });
 
 		// 1. Simulate the SDK sending the tool arguments as a chunk
 		applyEvent({
