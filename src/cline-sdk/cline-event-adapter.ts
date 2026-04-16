@@ -554,7 +554,7 @@ function isLikelySerializedAgentEventChunk(chunk: string): boolean {
 	}
 	try {
 		const parsed = JSON.parse(trimmed);
-		return Boolean(parsed && typeof parsed === "object" && "type" in parsed);
+		return Boolean(parsed && typeof parsed === "object");
 	} catch {
 		return false;
 	}
