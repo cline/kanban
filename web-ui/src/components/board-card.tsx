@@ -548,6 +548,10 @@ export function BoardCard({
 							if (event.metaKey || event.ctrlKey) {
 								return;
 							}
+							const target = event.target as HTMLElement | null;
+							if (target?.closest("button, a, input, textarea, [contenteditable='true']")) {
+								return;
+							}
 							if (!snapshot.isDragging && onClick) {
 								onClick();
 							}
