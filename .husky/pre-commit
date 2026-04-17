@@ -16,9 +16,11 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
+# Use -f so an over-broad .git/info/exclude entry can't block the re-add;
+# these files were already staged, so forcing is safe.
 for file in $STAGED_FILES; do
 	if [ -f "$file" ]; then
-		git add "$file"
+		git add -f "$file"
 	fi
 done
 
