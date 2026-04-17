@@ -12,6 +12,7 @@ interface UseDetailTaskNavigationInput {
 	isAwaitingWorkspaceSnapshot: boolean;
 	isInitialRuntimeLoad: boolean;
 	isProjectSwitching: boolean;
+	isWorkspaceMetadataPending: boolean;
 	onDetailClosed?: () => void;
 }
 
@@ -28,6 +29,7 @@ export function useDetailTaskNavigation({
 	isAwaitingWorkspaceSnapshot,
 	isInitialRuntimeLoad,
 	isProjectSwitching,
+	isWorkspaceMetadataPending,
 	onDetailClosed,
 }: UseDetailTaskNavigationInput): UseDetailTaskNavigationResult {
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(() => {
@@ -67,7 +69,10 @@ export function useDetailTaskNavigation({
 	}, [closeDetail, currentProjectId]);
 
 	useEffect(() => {
-		if (selectedTaskId && (isInitialRuntimeLoad || isProjectSwitching || isAwaitingWorkspaceSnapshot)) {
+		if (
+			selectedTaskId &&
+			(isInitialRuntimeLoad || isProjectSwitching || isAwaitingWorkspaceSnapshot || isWorkspaceMetadataPending)
+		) {
 			return;
 		}
 		if (selectedTaskId && !selectedCard) {
@@ -78,6 +83,7 @@ export function useDetailTaskNavigation({
 		isAwaitingWorkspaceSnapshot,
 		isInitialRuntimeLoad,
 		isProjectSwitching,
+		isWorkspaceMetadataPending,
 		selectedCard,
 		selectedTaskId,
 	]);

@@ -1,6 +1,6 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { Check, ExternalLink, Pencil, Plus, X } from "lucide-react";
-import { type ReactElement, type ReactNode, useMemo, useState } from "react";
+import { Check, Copy, ExternalLink, Pencil, Plus, X } from "lucide-react";
+import { type ReactElement, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
 	buildClineAgentModelPickerOptions,
@@ -23,6 +23,7 @@ import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-run
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type { RuntimeClineMcpServer, RuntimeClineReasoningEffort } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
+import { useCopyToClipboard } from "@/utils/react-use";
 
 function formatExpiry(value: string): string {
 	const trimmed = value.trim();
@@ -52,7 +53,6 @@ export function ClineSetupSection({
 	mcpController,
 	controlsDisabled,
 	workspaceId = null,
-	showHeading = true,
 	showMcpSettings = true,
 	accountSection = null,
 	onError,
@@ -62,7 +62,6 @@ export function ClineSetupSection({
 	mcpController?: UseRuntimeSettingsClineMcpControllerResult;
 	controlsDisabled: boolean;
 	workspaceId?: string | null;
-	showHeading?: boolean;
 	showMcpSettings?: boolean;
 	accountSection?: ReactNode;
 	onError?: (message: string | null) => void;
@@ -71,6 +70,42 @@ export function ClineSetupSection({
 	const mcpControlsDisabled = controlsDisabled || (mcpController?.isSavingMcpSettings ?? false);
 	const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
 	const [providerDialogMode, setProviderDialogMode] = useState<ClineProviderDialogMode>("add");
+	const [isDeviceCodeCopied, setIsDeviceCodeCopied] = useState(false);
+	const deviceCodeCopiedResetTimerRef = useRef<number | null>(null);
+	const [copiedDeviceCodeState, copyDeviceCode] = useCopyToClipboard();
+
+	useEffect(() => {
+		return () => {
+			if (deviceCodeCopiedResetTimerRef.current !== null) {
+				window.clearTimeout(deviceCodeCopiedResetTimerRef.current);
+				deviceCodeCopiedResetTimerRef.current = null;
+			}
+		};
+	}, []);
+
+	useEffect(() => {
+		setIsDeviceCodeCopied(false);
+	}, [controller.deviceAuthInfo?.userCode]);
+
+	useEffect(() => {
+		if (!copiedDeviceCodeState.value || copiedDeviceCodeState.value !== controller.deviceAuthInfo?.userCode) {
+			return;
+		}
+		if (copiedDeviceCodeState.error) {
+			onError?.("Could not copy code automatically. Please copy it manually.");
+			setIsDeviceCodeCopied(false);
+			return;
+		}
+		onError?.(null);
+		setIsDeviceCodeCopied(true);
+		if (deviceCodeCopiedResetTimerRef.current !== null) {
+			window.clearTimeout(deviceCodeCopiedResetTimerRef.current);
+		}
+		deviceCodeCopiedResetTimerRef.current = window.setTimeout(() => {
+			setIsDeviceCodeCopied(false);
+			deviceCodeCopiedResetTimerRef.current = null;
+		}, 2000);
+	}, [copiedDeviceCodeState, controller.deviceAuthInfo?.userCode, onError]);
 
 	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
 		const items: SearchSelectOption[] = controller.providerCatalog.map((provider) => ({
@@ -223,9 +258,14 @@ export function ClineSetupSection({
 		});
 	};
 
+	const handleCopyDeviceCode = (code: string) => {
+		setIsDeviceCodeCopied(false);
+		onError?.(null);
+		copyDeviceCode(code);
+	};
+
 	return (
 		<>
-			{showHeading ? <h6 className="font-semibold text-text-primary mt-4 mb-2">Cline setup</h6> : null}
 			<div className="mt-2">
 				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">API provider</p>
 				<div className="min-w-0 w-1/2 max-w-full">
@@ -447,6 +487,47 @@ export function ClineSetupSection({
 								Expiry: <span className="text-text-primary">{formatExpiry(controller.oauthExpiresAt)}</span>
 							</p>
 						) : null}
+						{controller.isRunningOauthLogin && controller.deviceAuthInfo ? (
+							<div className="mt-2 rounded-md border border-border bg-surface-2 p-3">
+								<p className="text-text-secondary text-[13px] font-medium mt-0 mb-2">Sign in to Cline</p>
+								<ol className="list-decimal pl-4 text-[12px] text-text-primary m-0">
+									<li>
+										Go to this URL:{" "}
+										<a
+											href={controller.deviceAuthInfo.verificationUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="break-all text-accent underline"
+										>
+											{controller.deviceAuthInfo.verificationUrl}
+										</a>
+									</li>
+									<li className="mt-2">
+										Enter this code:
+										<div className="mt-1 flex items-center gap-2">
+											<p className="text-text-primary text-[18px] font-mono font-bold tracking-wider m-0">
+												{controller.deviceAuthInfo.userCode}
+											</p>
+											<Button
+												variant="ghost"
+												size="sm"
+												icon={isDeviceCodeCopied ? <Check size={14} /> : <Copy size={14} />}
+												onClick={() => {
+													const userCode = controller.deviceAuthInfo?.userCode;
+													if (!userCode) {
+														return;
+													}
+													handleCopyDeviceCode(userCode);
+												}}
+												disabled={controlsDisabled || !controller.deviceAuthInfo}
+											>
+												{isDeviceCodeCopied ? "Copied" : "Copy"}
+											</Button>
+										</div>
+									</li>
+								</ol>
+							</div>
+						) : null}
 						<div className="mt-2">
 							<Button
 								variant="default"
@@ -455,7 +536,9 @@ export function ClineSetupSection({
 								onClick={handleOauthLogin}
 							>
 								{controller.isRunningOauthLogin
-									? "Signing in..."
+									? controller.deviceAuthInfo
+										? "Waiting for confirmation..."
+										: "Signing in..."
 									: controller.oauthConfigured
 										? `Sign in again with ${controller.managedOauthProvider ?? "OAuth"}`
 										: `Sign in with ${controller.managedOauthProvider ?? "OAuth"}`}
@@ -522,10 +605,10 @@ export function ClineSetupSection({
 				) : null}
 			</div>
 
-			{showHeading && mcpController && showMcpSettings ? (
+			{mcpController && showMcpSettings ? (
 				<>
 					<div className="flex items-center justify-between mt-4 mb-2">
-						<h6 className="font-semibold text-text-primary m-0">MCP servers</h6>
+						<h6 className="font-semibold text-[12px] text-text-primary m-0">MCP servers</h6>
 						<Button
 							variant="ghost"
 							size="sm"

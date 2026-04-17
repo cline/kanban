@@ -25,8 +25,8 @@ function FileTreeRow({
 	const isSelected = !isDirectory && node.path === selectedPath;
 	const fileStats = !isDirectory ? diffStatsByPath[node.path] : undefined;
 	const rowClassName = `kb-file-tree-row${isDirectory ? " kb-file-tree-row-directory" : ""}${isSelected ? " kb-file-tree-row-selected" : ""}`;
-	const addedStatClassName = isSelected ? "text-white" : "text-status-green";
-	const removedStatClassName = isSelected ? "text-white" : "text-status-red";
+	const addedStatClassName = isSelected ? "text-accent-fg" : "text-status-green";
+	const removedStatClassName = isSelected ? "text-accent-fg" : "text-status-red";
 
 	return (
 		<div>

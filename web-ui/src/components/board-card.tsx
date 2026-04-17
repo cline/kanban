@@ -2,7 +2,7 @@ import { Draggable } from "@hello-pangea/dnd";
 import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
 import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
-import { AlertCircle, AlertTriangle, Bot, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Bot, GitBranch, Pencil, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -548,6 +548,10 @@ export function BoardCard({
 							if (event.metaKey || event.ctrlKey) {
 								return;
 							}
+							const target = event.target as HTMLElement | null;
+							if (target?.closest("button, a, input, textarea, [contenteditable='true']")) {
+								return;
+							}
 							if (!snapshot.isDragging && onClick) {
 								onClick();
 							}
@@ -595,22 +599,32 @@ export function BoardCard({
 											className="h-7 w-full rounded-md border border-border-focus bg-surface-2 px-2 text-sm font-medium text-text-primary focus:outline-none"
 										/>
 									) : onSaveTitle ? (
-										<button
-											type="button"
-											aria-label="Edit task title"
-											onMouseDown={stopEvent}
-											onClick={(event) => {
-												stopEvent(event);
-												setDraftTitle(card.title);
-												setIsEditingTitle(true);
-											}}
-											className={cn(
-												"kb-line-clamp-1 m-0 w-full cursor-text rounded-sm text-left font-medium text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-												isTrashCard && "line-through text-text-tertiary",
-											)}
-										>
-											{displayTitle}
-										</button>
+										<div className="flex items-center gap-1 min-w-0">
+											<p
+												className={cn(
+													"kb-line-clamp-1 m-0 min-w-0 font-medium text-sm",
+													isTrashCard && "line-through text-text-tertiary",
+												)}
+											>
+												{displayTitle}
+											</p>
+											<button
+												type="button"
+												aria-label="Edit task title"
+												onMouseDown={stopEvent}
+												onClick={(event) => {
+													stopEvent(event);
+													setDraftTitle(card.title);
+													setIsEditingTitle(true);
+												}}
+												className={cn(
+													"shrink-0 cursor-pointer rounded-sm p-0.5 text-text-tertiary hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+													isHovered ? "opacity-100" : "opacity-0",
+												)}
+											>
+												<Pencil size={12} />
+											</button>
+										</div>
 									) : (
 										<p
 											className={cn(

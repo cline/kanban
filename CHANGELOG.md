@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.63]
+
+- Fixed task detail view being lost on page refresh
+- Fixed API key getting reset when modifying Cline agent settings
+- Fixed Kanban agent starting in thinking state instead of idle
+
+## [0.1.62]
+
+- Fixed Cline chats on the home screen not resuming correctly from persisted history, causing conversation context to be lost
+- Fixed Cline thinking indicator hiding prematurely during active requests
+- Reasoning blocks now animate their collapse after finishing streaming
+- Fixed model selector not scrolling to the selected model when opened, and improved visual clarity of the selected model and reasoning effort states
+
+## [0.1.61]
+
+- Added device code authorization for signing into Cline on remote systems
+- Revamped theme system with new theme picker and improved color palettes
+- Fixed duplicate MCP tool registration when using SDK 0.0.34
+- Fixed MCP settings not showing up during Cline setup
+
 ## [0.1.60]
 
 - Choose a different agent per task, or change the model and provider for Cline tasks, when creating tasks from the board

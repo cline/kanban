@@ -21,6 +21,7 @@ import {
 	DEFAULT_INTERNAL_IDCS_SCOPES,
 	DEFAULT_INTERNAL_IDCS_URL,
 	ensureCustomProvidersLoaded,
+	getLocalProviderModels,
 	getValidClineCredentials,
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
@@ -30,6 +31,8 @@ import {
 	loginOpenAICodex,
 	type OcaOAuthProviderOptions,
 	ProviderSettingsManager,
+	completeClineDeviceAuth as sdkCompleteClineDeviceAuth,
+	startClineDeviceAuth as sdkStartClineDeviceAuth,
 	type Tool,
 } from "@clinebot/core/node";
 import type * as Llms from "@clinebot/llms";
@@ -61,13 +64,19 @@ export interface SdkProviderCatalogItem {
 	capabilities?: string[];
 }
 
+export interface SdkProviderModel {
+	id: string;
+	name: string;
+	supportsVision?: boolean;
+	supportsAttachments?: boolean;
+	supportsReasoningEffort?: boolean;
+}
+
 export interface SdkUserRemoteConfigResponse {
 	organizationId: string;
 	value: string;
 	enabled: boolean;
 }
-
-export type SdkProviderModelRecord = Record<string, Llms.ModelInfo>;
 
 export type SdkProviderSettings = Llms.ProviderSettings;
 export type SdkCustomProviderCapability = "streaming" | "tools" | "reasoning" | "vision" | "prompt-cache";
@@ -264,16 +273,51 @@ export async function loginManagedOauthProvider(input: {
 	});
 }
 
+export async function startClineDeviceAuth(): Promise<{
+	deviceCode: string;
+	userCode: string;
+	verificationUri: string;
+	verificationUriComplete?: string;
+	expiresInSeconds: number;
+	pollIntervalSeconds: number;
+}> {
+	return await sdkStartClineDeviceAuth();
+}
+
+export async function completeClineDeviceAuth(input: {
+	deviceCode: string;
+	expiresInSeconds: number;
+	pollIntervalSeconds: number;
+	apiBaseUrl: string;
+}): Promise<ManagedOauthCredentials> {
+	const credentials = await sdkCompleteClineDeviceAuth({
+		deviceCode: input.deviceCode,
+		expiresInSeconds: input.expiresInSeconds,
+		pollIntervalSeconds: input.pollIntervalSeconds,
+		apiBaseUrl: input.apiBaseUrl,
+	});
+	return {
+		access: credentials.access,
+		refresh: credentials.refresh,
+		expires: credentials.expires,
+		accountId: credentials.accountId,
+	};
+}
+
 export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
 	return await ClineCore.Llms.getAllProviders();
 }
 
-export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
-	return await ClineCore.Llms.getModelsForProvider(providerId);
-}
-
-export function supportsSdkModelThinking(modelInfo: Llms.ModelInfo): boolean {
-	return modelInfo.capabilities?.includes("reasoning") === true || modelInfo.thinkingConfig != null;
+export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModel[]> {
+	const config = providerManager.getProviderConfig(providerId);
+	const response = await getLocalProviderModels(providerId, config);
+	return response.models.map((model) => ({
+		id: model.id,
+		name: model.name,
+		supportsVision: model.supportsVision,
+		supportsAttachments: model.supportsAttachments,
+		supportsReasoningEffort: model.supportsReasoning,
+	}));
 }
 
 const providerManager = new ProviderSettingsManager();

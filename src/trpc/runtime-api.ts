@@ -18,6 +18,7 @@ import type { RuntimeCommandRunResponse } from "../core/api-contract";
 import {
 	parseClineAccountSwitchRequest,
 	parseClineAddProviderRequest,
+	parseClineDeviceAuthCompleteRequest,
 	parseClineMcpOAuthRequest,
 	parseClineMcpSettingsSaveRequest,
 	parseClineOauthLoginRequest,
@@ -142,15 +143,21 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		},
 		saveClineProviderSettings: async (_workspaceScope, input) => {
 			const body = parseClineProviderSettingsSaveRequest(input);
-			return clineProviderService.saveProviderSettings(body);
+			const response = clineProviderService.saveProviderSettings(body);
+			deps.bumpClineSessionContextVersion?.();
+			return response;
 		},
 		addClineProvider: async (_workspaceScope, input) => {
 			const body = parseClineAddProviderRequest(input);
-			return await clineProviderService.addCustomProvider(body);
+			const response = await clineProviderService.addCustomProvider(body);
+			deps.bumpClineSessionContextVersion?.();
+			return response;
 		},
 		updateClineProvider: async (_workspaceScope, input) => {
 			const body = parseClineUpdateProviderRequest(input);
-			return await clineProviderService.updateCustomProvider(body);
+			const response = await clineProviderService.updateCustomProvider(body);
+			deps.bumpClineSessionContextVersion?.();
+			return response;
 		},
 		startTaskSession: async (workspaceScope, input) => {
 			try {
@@ -409,7 +416,21 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseTaskChatReloadRequest(input);
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
-				const summary = await clineTaskSessionService.reloadTaskSession(body.taskId);
+				let summary = await clineTaskSessionService.reloadTaskSession(body.taskId);
+				if (!summary && isHomeAgentSessionId(body.taskId)) {
+					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
+					summary = await clineTaskSessionService.startTaskSession({
+						taskId: body.taskId,
+						cwd: workspaceScope.workspacePath,
+						prompt: "",
+						resumeFromPersistence: true,
+						providerId: clineLaunchConfig.providerId,
+						modelId: clineLaunchConfig.modelId,
+						apiKey: clineLaunchConfig.apiKey,
+						baseUrl: clineLaunchConfig.baseUrl,
+						reasoningEffort: clineLaunchConfig.reasoningEffort,
+					});
+				}
 				if (!summary) {
 					return {
 						ok: false,
@@ -534,10 +555,30 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		},
 		runClineProviderOAuthLogin: async (_workspaceScope, input) => {
 			const body = parseClineOauthLoginRequest(input);
-			return await clineProviderService.runOauthLogin({
+			const response = await clineProviderService.runOauthLogin({
 				providerId: body.provider,
 				baseUrl: body.baseUrl,
 			});
+			if (response.ok) {
+				deps.bumpClineSessionContextVersion?.();
+			}
+			return response;
+		},
+		startClineDeviceAuth: async () => {
+			return await clineProviderService.startDeviceAuth();
+		},
+		completeClineDeviceAuth: async (_workspaceScope, input) => {
+			const body = parseClineDeviceAuthCompleteRequest(input);
+			const response = await clineProviderService.completeDeviceAuth({
+				deviceCode: body.deviceCode,
+				expiresInSeconds: body.expiresInSeconds,
+				pollIntervalSeconds: body.pollIntervalSeconds,
+				baseUrl: body.baseUrl,
+			});
+			if (response.ok) {
+				deps.bumpClineSessionContextVersion?.();
+			}
+			return response;
 		},
 		sendTaskChatMessage: async (workspaceScope, input) => {
 			try {
@@ -584,6 +625,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							cwd: workspaceScope.workspacePath,
 							prompt: body.text,
 							images: body.images,
+							resumeFromPersistence: true,
 							providerId: clineLaunchConfig.providerId,
 							modelId: clineLaunchConfig.modelId,
 							mode: requestedMode,

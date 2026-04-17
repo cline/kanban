@@ -22,9 +22,14 @@ const llmsModelMocks = vi.hoisted(() => ({
 	getModelsForProvider: vi.fn(),
 }));
 
+const localProviderMocks = vi.hoisted(() => ({
+	getLocalProviderModels: vi.fn(),
+}));
+
 vi.mock("@clinebot/core/node", () => ({
 	addLocalProvider: vi.fn(),
 	ensureCustomProvidersLoaded: vi.fn(),
+	getLocalProviderModels: localProviderMocks.getLocalProviderModels,
 	getValidClineCredentials: vi.fn(),
 	getValidOcaCredentials: vi.fn(),
 	getValidOpenAICodexCredentials: vi.fn(),
@@ -49,9 +54,25 @@ vi.mock("@clinebot/core/node", () => ({
 		saveProviderSettings = oauthMocks.saveProviderSettings;
 		getProviderSettings = oauthMocks.getProviderSettings;
 		getLastUsedProviderSettings = oauthMocks.getLastUsedProviderSettings;
+		getProviderConfig = vi.fn((providerId: string) => {
+			const settings = oauthMocks.getProviderSettings(providerId);
+			if (!settings) {
+				return undefined;
+			}
+			return {
+				providerId: settings.provider,
+				apiKey: settings.apiKey,
+				modelId: settings.model,
+				baseUrl: settings.baseUrl,
+			};
+		});
 		getFilePath = vi.fn(() => "/tmp/provider-settings.json");
 		read = vi.fn(() => ({ providers: {} }));
 		write = vi.fn();
+	},
+	Llms: {
+		getAllProviders: llmsModelMocks.getAllProviders,
+		getModelsForProvider: llmsModelMocks.getModelsForProvider,
 	},
 	LlmsModels: {
 		CLINE_DEFAULT_MODEL: "anthropic/claude-sonnet-4.6",

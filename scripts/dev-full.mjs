@@ -4,11 +4,38 @@
  * VS Code "Dev (Full Stack)" launch config.
  */
 import { createServer, connect } from "node:net";
-import { spawn } from "node:child_process";
-import treeKill from "tree-kill";
-import open from "open";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
 
 const isWindows = process.platform === "win32";
+
+async function ensureDependenciesInstalled() {
+	const lockIndicator = join(process.cwd(), "node_modules", ".package-lock.json");
+	try {
+		await access(lockIndicator);
+		return;
+	} catch {
+		// node_modules is missing; fall through to install below.
+	}
+	console.warn("node_modules not installed in this worktree. Running npm ci...");
+	for (const args of [["ci"], ["--prefix", "web-ui", "ci"]]) {
+		const result = spawnSync("npm", args, { stdio: "inherit", shell: isWindows });
+		if (result.status !== 0) {
+			process.exit(result.status ?? 1);
+		}
+	}
+}
+
+// Must run before importing any third-party modules so a fresh worktree with
+// an empty node_modules can bootstrap itself using only node: built-ins.
+await ensureDependenciesInstalled();
+
+// Deferred until after ensureDependenciesInstalled so these resolve against
+// the freshly-installed node_modules. Static top-level imports would be
+// resolved before any code runs and fail with ERR_MODULE_NOT_FOUND.
+const { default: treeKill } = await import("tree-kill");
+const { default: open } = await import("open");
 
 function findPort(start, reserved = new Set()) {
 	if (reserved.has(start)) {
@@ -46,6 +73,18 @@ function waitForPort(port, timeout = 15000) {
 
 const runtimePort = await findPort(3484);
 const webUiPort = await findPort(4173, new Set([runtimePort]));
+const requestedDevFullArgs = process.argv.slice(2);
+const withShutdownCleanupFlag = "--with-shutdown-cleanup";
+const requestedRuntimeArgs = requestedDevFullArgs.filter((arg) => arg !== withShutdownCleanupFlag);
+const hasExplicitSkipCleanupArg = requestedRuntimeArgs.some((arg) => arg === "--skip-shutdown-cleanup");
+const shouldDefaultSkipShutdownCleanup = !requestedDevFullArgs.includes(withShutdownCleanupFlag);
+const runtimeCliArgs = [
+	"--port",
+	String(runtimePort),
+	"--no-open",
+	...(shouldDefaultSkipShutdownCleanup && !hasExplicitSkipCleanupArg ? ["--skip-shutdown-cleanup"] : []),
+	...requestedRuntimeArgs,
+];
 
 console.log(`\n  Runtime port: ${runtimePort}`);
 console.log(`  Web UI:       http://127.0.0.1:${webUiPort}\n`);
@@ -57,7 +96,7 @@ const env = {
 };
 
 const tsxBin = isWindows ? "node_modules/.bin/tsx.cmd" : "node_modules/.bin/tsx";
-const runtime = spawn(tsxBin, ["watch", "src/cli.ts", "--port", String(runtimePort), "--no-open"], {
+const runtime = spawn(tsxBin, ["watch", "src/cli.ts", ...runtimeCliArgs], {
 	env,
 	stdio: "inherit",
 });

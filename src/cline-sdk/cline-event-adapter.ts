@@ -340,7 +340,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		const reasoning = typeof agentEvent.reasoning === "string" ? agentEvent.reasoning : null;
 		if (reasoning) {
 			const message =
-				setOrCreateReasoningMessage(entry, taskId, reasoning) ?? createReasoningMessage(entry, taskId, reasoning);
+				setOrCreateReasoningMessage(entry, taskId, reasoning) ??
+				createReasoningMessage(entry, taskId, reasoning, "reasoning_end");
 			input.emitMessage(taskId, message);
 		}
 		entry.activeReasoningMessageId = null;
@@ -377,7 +378,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				source: "cline-sdk",
 			},
 		};
-		if (isUserAttentionTool && entry.summary.state === "running") {
+		if (isUserAttentionTool && (entry.summary.state === "running" || entry.summary.state === "idle")) {
 			summaryPatch.state = "awaiting_review";
 			summaryPatch.reviewReason = "hook";
 		} else if (!isUserAttentionTool && canReturnToRunning(entry.summary.reviewReason)) {

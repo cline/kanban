@@ -1,6 +1,7 @@
 import { normalizeUserInput } from "@clinebot/shared";
+import * as Collapsible from "@radix-ui/react-collapsible";
 import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
-import { type ReactElement, useMemo, useState } from "react";
+import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import {
 	formatToolInputForDisplay,
 	getToolDisplay,
@@ -44,8 +45,8 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 				) : null}
 				<span
 					className={cn(
-						"shrink-0 font-semibold group-hover:text-[#C9D1D9]",
-						expanded ? "text-[#C9D1D9]" : "text-text-secondary",
+						"shrink-0 font-semibold group-hover:text-text-primary",
+						expanded ? "text-text-primary" : "text-text-secondary",
 					)}
 				>
 					{toolDisplay.toolName}
@@ -129,14 +130,49 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 }
 
 function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
+	const isStreaming = message.meta?.hookEventName === "reasoning_delta";
+	const [expanded, setExpanded] = useState(isStreaming);
+	const wasStreamingRef = useRef(isStreaming);
+
+	useEffect(() => {
+		if (wasStreamingRef.current && !isStreaming) {
+			setExpanded(false);
+		}
+		wasStreamingRef.current = isStreaming;
+	}, [isStreaming]);
+
 	return (
-		<div className="w-full">
-			<div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wide text-status-purple">
-				<Brain size={12} />
-				<span>Reasoning</span>
-			</div>
-			<div className="w-full text-sm whitespace-pre-wrap break-words text-text-secondary">{message.content}</div>
-		</div>
+		<Collapsible.Root open={expanded} onOpenChange={setExpanded} className="w-full">
+			<Collapsible.Trigger asChild>
+				<button
+					type="button"
+					className="group flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-0 text-left text-sm"
+				>
+					<Brain size={14} className="shrink-0 text-text-tertiary" />
+					<span
+						className={cn(
+							"shrink-0 font-semibold group-hover:text-text-secondary",
+							expanded ? "text-text-secondary" : "text-text-tertiary",
+						)}
+					>
+						Reasoning
+					</span>
+					<span
+						className={cn(
+							"shrink-0 group-hover:text-text-tertiary",
+							expanded ? "text-text-tertiary" : "text-text-tertiary/60",
+						)}
+					>
+						{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+					</span>
+				</button>
+			</Collapsible.Trigger>
+			<Collapsible.Content className="overflow-hidden data-[state=closed]:animate-[kb-collapsible-up_200ms_ease-out] data-[state=open]:animate-[kb-collapsible-down_200ms_ease-out]">
+				<div className="mt-1 w-full px-1.5 text-sm italic whitespace-pre-wrap break-words text-text-tertiary">
+					{message.content}
+				</div>
+			</Collapsible.Content>
+		</Collapsible.Root>
 	);
 }
 
@@ -151,7 +187,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 		const hasText = message.content.trim().length > 0;
 		const hasImages = Boolean(message.images && message.images.length > 0);
 		return (
-			<div className="ml-auto max-w-[85%] rounded-md bg-accent/20 px-3 py-2 text-sm text-text-primary">
+			<div className="ml-auto max-w-[85%] rounded-md bg-accent/10 border border-accent/20 px-3 py-2 text-sm text-text-primary">
 				{hasText ? (
 					<div className="whitespace-pre-wrap break-words">{normalizeUserInput(message.content)}</div>
 				) : null}

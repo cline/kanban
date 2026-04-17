@@ -21,10 +21,10 @@ import {
 	buildClineSelectedModelButtonText,
 	getClineReasoningEnabledModelIds,
 } from "@/components/detail-panels/cline-model-picker-options";
+import { ClineThinkingIndicator } from "@/components/detail-panels/cline-thinking-indicator";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/components/ui/link";
 import { Spinner } from "@/components/ui/spinner";
-import { ShimmeringText } from "@/components/ui/text-shimmer";
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
@@ -40,21 +40,6 @@ import type { TaskImage } from "@/types";
 
 const BOTTOM_LOCK_THRESHOLD_PX = 24;
 const CLINE_BUY_CREDITS_URL = "https://app.cline.bot/";
-
-const ThinkingShimmer = React.memo(function ThinkingShimmer() {
-	return (
-		<div className="px-1.5">
-			<ShimmeringText
-				text="Thinking..."
-				className="text-sm"
-				duration={2.5}
-				spread={5}
-				repeatDelay={0}
-				startOnView={false}
-			/>
-		</div>
-	);
-});
 
 const ClineCreditLimitNotice = React.memo(function ClineCreditLimitNotice() {
 	return (
@@ -435,7 +420,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 					{messages.map((message) => (
 						<ClineChatMessageItem key={message.id} message={message} />
 					))}
-					{showAgentProgressIndicator ? <ThinkingShimmer /> : null}
+					{showAgentProgressIndicator ? <ClineThinkingIndicator /> : null}
 					{isCreditLimitNoticeVisible ? <ClineCreditLimitNotice /> : null}
 				</div>
 				{panelError ? (

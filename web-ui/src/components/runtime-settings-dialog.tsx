@@ -3,6 +3,7 @@
 // side effects should stay in use-runtime-settings-cline-controller.ts.
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
+import * as RadixSelect from "@radix-ui/react-select";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
@@ -39,7 +40,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
-import { previewThemeId, readStoredThemeId, saveThemeId, THEMES, type ThemeId } from "@/hooks/use-theme";
+import { previewThemeId, readStoredThemeId, saveThemeId, THEME_GROUPS, THEMES, type ThemeId } from "@/hooks/use-theme";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
@@ -363,7 +364,7 @@ export function RuntimeSettingsDialog({
 	onAccountSwitched?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
-	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
+	const { config, isLoading, isSaving, save, refresh } = useRuntimeConfig(open, workspaceId, initialConfig);
 	const { resetLayoutCustomizations } = useLayoutCustomizations();
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
@@ -734,6 +735,11 @@ export function RuntimeSettingsDialog({
 		[workspaceId],
 	);
 
+	const handleClineSetupSaved = useCallback(() => {
+		refresh();
+		onSaved?.();
+	}, [onSaved, refresh]);
+
 	const handleDialogOpenChange = useCallback(
 		(nextOpen: boolean) => {
 			if (!nextOpen) {
@@ -748,6 +754,8 @@ export function RuntimeSettingsDialog({
 		},
 		[draftThemeId, onOpenChange],
 	);
+
+	const currentThemeDef = THEMES.find((t) => t.id === draftThemeId);
 
 	return (
 		<Dialog open={open} onOpenChange={handleDialogOpenChange} contentClassName="!max-w-[780px]">
@@ -818,7 +826,6 @@ export function RuntimeSettingsDialog({
 							</div>
 							<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
 								<ClineSetupSection
-									showHeading={false}
 									controller={clineSettings}
 									mcpController={clineMcpSettings}
 									controlsDisabled={controlsDisabled}
@@ -833,6 +840,7 @@ export function RuntimeSettingsDialog({
 										) : null
 									}
 									onError={setSaveError}
+									onSaved={handleClineSetupSaved}
 								/>
 							</div>
 						</>
@@ -945,32 +953,87 @@ export function RuntimeSettingsDialog({
 						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0 mb-2">
 							Theme
 						</h6>
-						<div className="flex flex-wrap gap-2">
-							{THEMES.map((theme) => (
-								<button
-									key={theme.id}
-									type="button"
-									aria-label={theme.label}
-									title={theme.label}
-									onClick={() => {
-										setDraftThemeId(theme.id);
-										previewThemeId(theme.id);
-									}}
-									className={cn(
-										"w-7 h-7 rounded-full cursor-pointer hover:opacity-80",
-										draftThemeId === theme.id ? "border-2 border-white" : "border-2",
-									)}
-									style={{
-										backgroundColor: theme.accent,
-										borderColor:
-											draftThemeId === theme.id ? "white" : `color-mix(in srgb, ${theme.accent} 50%, black)`,
-									}}
-								/>
-							))}
+						<div className="min-w-0 w-1/2 max-w-full">
+							<RadixSelect.Root
+								value={draftThemeId}
+								onValueChange={(value) => {
+									setDraftThemeId(value as ThemeId);
+									previewThemeId(value as ThemeId);
+								}}
+								onOpenChange={(selectOpen) => {
+									if (!selectOpen) {
+										previewThemeId(draftThemeId);
+									}
+								}}
+							>
+								<RadixSelect.Trigger
+									className="flex h-9 w-full cursor-pointer items-center justify-between rounded-md border border-border-bright bg-surface-2 px-3 text-[13px] text-text-primary outline-none hover:bg-surface-3 hover:border-border-bright focus:border-border-focus focus:outline-none"
+									aria-label="Theme"
+								>
+									<span className="flex items-center gap-2.5">
+										<span className="flex shrink-0 h-5 w-10 rounded overflow-hidden border border-border">
+											<span
+												className="flex-1"
+												style={{ background: currentThemeDef?.surface ?? "#1F2428" }}
+											/>
+											<span
+												className="flex-1"
+												style={{ background: currentThemeDef?.accent ?? "#0084FF" }}
+											/>
+											<span
+												className="flex-1"
+												style={{ background: currentThemeDef?.accent2 ?? "#7C5CFF" }}
+											/>
+										</span>
+										<RadixSelect.Value />
+									</span>
+									<RadixSelect.Icon>
+										<ChevronDown size={14} className="text-text-tertiary" />
+									</RadixSelect.Icon>
+								</RadixSelect.Trigger>
+								<RadixSelect.Portal>
+									<RadixSelect.Content
+										className="z-50 max-h-72 w-(--radix-select-trigger-width) overflow-auto rounded-lg border border-border bg-surface-1 p-1 shadow-xl"
+										position="popper"
+										sideOffset={4}
+										align="start"
+									>
+										<RadixSelect.Viewport>
+											{THEME_GROUPS.map((group) => {
+												const groupThemes = THEMES.filter((t) => t.group === group.key);
+												if (groupThemes.length === 0) return null;
+												return (
+													<RadixSelect.Group key={group.key}>
+														<RadixSelect.Label className="px-2 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
+															{group.label}
+														</RadixSelect.Label>
+														{groupThemes.map((theme) => (
+															<RadixSelect.Item
+																key={theme.id}
+																value={theme.id}
+																className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] text-text-secondary outline-none data-highlighted:bg-surface-3 data-highlighted:text-text-primary data-[state=checked]:text-text-primary"
+																onMouseEnter={() => previewThemeId(theme.id)}
+																onFocus={() => previewThemeId(theme.id)}
+															>
+																<span className="flex shrink-0 h-5 w-10 rounded overflow-hidden border border-border">
+																	<span className="flex-1" style={{ background: theme.surface }} />
+																	<span className="flex-1" style={{ background: theme.accent }} />
+																	<span className="flex-1" style={{ background: theme.accent2 }} />
+																</span>
+																<RadixSelect.ItemText>{theme.label}</RadixSelect.ItemText>
+																<RadixSelect.ItemIndicator className="ml-auto">
+																	<Check size={14} className="text-accent-2" />
+																</RadixSelect.ItemIndicator>
+															</RadixSelect.Item>
+														))}
+													</RadixSelect.Group>
+												);
+											})}
+										</RadixSelect.Viewport>
+									</RadixSelect.Content>
+								</RadixSelect.Portal>
+							</RadixSelect.Root>
 						</div>
-						<p className="text-text-secondary text-[13px] mt-1.5 mb-0">
-							{THEMES.find((t) => t.id === draftThemeId)?.label ?? "Default"} theme
-						</p>
 
 						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary mt-5 mb-2">
 							Layout
@@ -982,8 +1045,6 @@ export function RuntimeSettingsDialog({
 							Reset sidebar, split pane, and terminal resize customizations back to their defaults.
 						</p>
 					</div>
-
-					{/* ---- Project ---- */}
 					<div data-settings-section="project" />
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
 						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">

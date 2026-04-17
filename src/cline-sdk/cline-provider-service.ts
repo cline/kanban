@@ -8,6 +8,8 @@ import type {
 	RuntimeClineAccountOrganizationsResponse,
 	RuntimeClineAccountProfileResponse,
 	RuntimeClineAccountSwitchResponse,
+	RuntimeClineDeviceAuthCompleteResponse,
+	RuntimeClineDeviceAuthStartResponse,
 	RuntimeClineKanbanAccessResponse,
 	RuntimeClineOauthLoginResponse,
 	RuntimeClineProviderCatalogItem,
@@ -21,6 +23,7 @@ import type {
 import { openInBrowser } from "../server/browser";
 import {
 	addSdkCustomProvider,
+	completeClineDeviceAuth as completeSdkDeviceAuth,
 	deleteSdkCustomProvider,
 	fetchSdkClineAccountBalance,
 	fetchSdkClineAccountProfile,
@@ -38,10 +41,9 @@ import {
 	SDK_DEFAULT_MODEL_ID,
 	SDK_DEFAULT_PROVIDER_ID,
 	type SdkCustomProviderCapability,
-	type SdkProviderModelRecord,
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
-	supportsSdkModelThinking,
+	startClineDeviceAuth as startSdkDeviceAuth,
 	switchSdkClineAccount,
 	updateSdkCustomProvider,
 } from "./sdk-provider-boundary";
@@ -215,17 +217,13 @@ function hasOauthRefreshToken(settings: SdkProviderSettings | null): boolean {
 	return (settings?.auth?.refreshToken?.trim() ?? "").length > 0;
 }
 
-function toRuntimeProviderModel(modelId: string, modelInfo: SdkProviderModelRecord[string]): RuntimeClineProviderModel {
-	const capabilities = new Set(modelInfo.capabilities ?? []);
-	const supportsVision = capabilities.has("images");
-	const supportsAttachments = capabilities.has("files") || supportsVision;
-	const supportsReasoningEffort = supportsSdkModelThinking(modelInfo);
+function toRuntimeProviderModel(model: RuntimeClineProviderModel): RuntimeClineProviderModel {
 	return {
-		id: modelId,
-		name: modelInfo.name?.trim() || modelId,
-		supportsVision: supportsVision || undefined,
-		supportsAttachments: supportsAttachments || undefined,
-		supportsReasoningEffort: supportsReasoningEffort || undefined,
+		id: model.id,
+		name: model.name?.trim() || model.id,
+		supportsVision: model.supportsVision || undefined,
+		supportsAttachments: model.supportsAttachments || undefined,
+		supportsReasoningEffort: model.supportsReasoningEffort || undefined,
 	};
 }
 
@@ -791,11 +789,8 @@ export function createClineProviderService() {
 			const providerModels =
 				normalizedProviderId.length > 0
 					? await listSdkProviderModels(normalizedProviderId)
-							.then((sdkModels) =>
-								Object.entries(sdkModels)
-									.map(([modelId, modelInfo]) => toRuntimeProviderModel(modelId, modelInfo))
-									.sort((left, right) => left.name.localeCompare(right.name)),
-							)
+							.then((sdkModels) => sdkModels.map((model) => toRuntimeProviderModel(model)))
+							.then((sdkModels) => sdkModels.sort((left, right) => left.name.localeCompare(right.name)))
 							.catch(() => [])
 					: [];
 
@@ -806,7 +801,7 @@ export function createClineProviderService() {
 				};
 			}
 
-			const configuredModel = getProviderSettingsSummary().modelId?.trim() ?? "";
+			const configuredModel = getSdkProviderSettings(normalizedProviderId)?.model?.trim() ?? "";
 			if (configuredModel.length > 0) {
 				return {
 					providerId: normalizedProviderId || providerId,
@@ -1129,6 +1124,74 @@ export function createClineProviderService() {
 				return {
 					ok: false,
 					provider: input.providerId,
+					error: toErrorMessage(error),
+				};
+			}
+		},
+
+		async startDeviceAuth(): Promise<RuntimeClineDeviceAuthStartResponse> {
+			const result = await startSdkDeviceAuth();
+			return {
+				deviceCode: result.deviceCode,
+				userCode: result.userCode,
+				verificationUrl: result.verificationUri,
+				expiresInSeconds: result.expiresInSeconds,
+				pollIntervalSeconds: result.pollIntervalSeconds,
+			};
+		},
+
+		async completeDeviceAuth(input: {
+			deviceCode: string;
+			expiresInSeconds: number;
+			pollIntervalSeconds: number;
+			baseUrl?: string | null;
+		}): Promise<RuntimeClineDeviceAuthCompleteResponse> {
+			const providerId: ManagedClineOauthProviderId = "cline";
+			try {
+				const existingSettings = getSdkProviderSettings(providerId) ?? {
+					provider: providerId,
+				};
+				const apiBaseUrl = input.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL;
+				const credentials = await completeSdkDeviceAuth({
+					deviceCode: input.deviceCode,
+					expiresInSeconds: input.expiresInSeconds,
+					pollIntervalSeconds: input.pollIntervalSeconds,
+					apiBaseUrl,
+				});
+
+				const nextSettings: SdkProviderSettings = {
+					...existingSettings,
+					provider: providerId,
+					auth: {
+						...(existingSettings.auth ?? {}),
+						accessToken: toProviderApiKey(providerId, credentials.access),
+						refreshToken: credentials.refresh,
+						accountId: credentials.accountId ?? undefined,
+						expiresAt: normalizeEpochMs(credentials.expires),
+					},
+				};
+
+				if (apiBaseUrl !== DEFAULT_CLINE_API_BASE_URL) {
+					nextSettings.baseUrl = apiBaseUrl;
+				} else {
+					delete nextSettings.baseUrl;
+				}
+
+				saveSdkProviderSettings({
+					settings: nextSettings,
+					tokenSource: "oauth",
+					setLastUsed: true,
+				});
+
+				return {
+					ok: true,
+					provider: providerId,
+					settings: toProviderSettingsSummary(nextSettings),
+				};
+			} catch (error) {
+				return {
+					ok: false,
+					provider: providerId,
 					error: toErrorMessage(error),
 				};
 			}

@@ -66,6 +66,7 @@ export interface StartClineTaskSessionRequest {
 	initialMessages?: ClineSdkPersistedMessage[];
 	images?: RuntimeTaskImage[];
 	resumeFromTrash?: boolean;
+	resumeFromPersistence?: boolean;
 	providerId?: string | null;
 	modelId?: string | null;
 	mode?: RuntimeTaskSessionMode;
@@ -267,6 +268,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			};
 		}
 
+		if (isHomeAgentSessionId(input.taskId) && !this.sessionRuntime.canRestartTaskSession(input.taskId)) {
+			throw new Error(`No previous Cline session config is available for task ${input.taskId}.`);
+		}
+
 		const persistedSnapshot = await this.sessionRuntime.readPersistedTaskSession(input.taskId);
 		const restartedSession = await this.sessionRuntime.restartTaskSession({
 			taskId: input.taskId,
@@ -316,6 +321,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		const existing = this.messageRepository.getTaskEntry(request.taskId);
 		if (
 			!request.resumeFromTrash &&
+			!request.resumeFromPersistence &&
 			existing &&
 			(existing.summary.state === "running" || existing.summary.state === "awaiting_review")
 		) {
@@ -326,41 +332,46 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		this.providerIdByTaskId.set(request.taskId, providerId);
 		const modelId = request.modelId?.trim() || SDK_DEFAULT_MODEL_ID;
 		const resolvedMode: RuntimeTaskSessionMode = request.startInPlanMode ? "act" : (request.mode ?? "act");
-		const persistedResumeSnapshot = request.resumeFromTrash
+		const normalizedPrompt = request.prompt.trim();
+		const hasRequestImages = Boolean(request.images && request.images.length > 0);
+		const initialState = request.resumeFromTrash
+			? "awaiting_review"
+			: normalizedPrompt.length > 0 || hasRequestImages
+				? "running"
+				: "idle";
+		const initialReviewReason = request.resumeFromTrash ? "attention" : null;
+		const shouldHydratePersistedHistory = request.resumeFromTrash || request.resumeFromPersistence;
+		const persistedResumeSnapshot = shouldHydratePersistedHistory
 			? await this.sessionRuntime.readPersistedTaskSession(request.taskId).catch(() => null)
 			: null;
 
-		const entry =
-			request.resumeFromTrash && persistedResumeSnapshot
-				? createTaskEntryFromPersistedSession(request.taskId, persistedResumeSnapshot.messages, {
-						state: "awaiting_review",
+		const entry = persistedResumeSnapshot
+			? createTaskEntryFromPersistedSession(request.taskId, persistedResumeSnapshot.messages, {
+					state: initialState,
+					mode: resolvedMode,
+					workspacePath: request.cwd,
+					startedAt: now(),
+					lastOutputAt: now(),
+					reviewReason: initialReviewReason,
+				})
+			: ({
+					summary: {
+						...createDefaultSummary(request.taskId),
+						state: initialState,
 						mode: resolvedMode,
 						workspacePath: request.cwd,
 						startedAt: now(),
 						lastOutputAt: now(),
-						reviewReason: "attention",
-					})
-				: ({
-						summary: {
-							...createDefaultSummary(request.taskId),
-							state: request.resumeFromTrash ? "awaiting_review" : "running",
-							mode: resolvedMode,
-							workspacePath: request.cwd,
-							startedAt: now(),
-							lastOutputAt: now(),
-							reviewReason: request.resumeFromTrash ? "attention" : null,
-						},
-						messages: [],
-						activeAssistantMessageId: null,
-						activeReasoningMessageId: null,
-						toolMessageIdByToolCallId: new Map<string, string>(),
-						toolInputByToolCallId: new Map<string, unknown>(),
-					} satisfies ClineTaskSessionEntry);
+						reviewReason: initialReviewReason,
+					},
+					messages: [],
+					activeAssistantMessageId: null,
+					activeReasoningMessageId: null,
+					toolMessageIdByToolCallId: new Map<string, string>(),
+					toolInputByToolCallId: new Map<string, unknown>(),
+				} satisfies ClineTaskSessionEntry);
 		this.messageRepository.setTaskEntry(request.taskId, entry);
 		this.pendingTurnCancelTaskIds.delete(request.taskId);
-
-		const normalizedPrompt = request.prompt.trim();
-		const hasRequestImages = Boolean(request.images && request.images.length > 0);
 
 		if (!request.resumeFromTrash && (normalizedPrompt.length > 0 || hasRequestImages)) {
 			const message = createMessage(request.taskId, "user", normalizedPrompt, request.images);
@@ -409,7 +420,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					cwd: request.cwd,
 					prompt: runtimePrompt,
 					taskTitle: request.taskTitle,
-					initialMessages: request.resumeFromTrash ? persistedResumeSnapshot?.messages : request.initialMessages,
+					initialMessages: persistedResumeSnapshot?.messages ?? request.initialMessages,
 					images: request.images,
 					providerId,
 					modelId,
@@ -551,6 +562,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		if (normalized.length === 0 && !hasImages) {
 			return null;
 		}
+		if (!this.sessionRuntime.getTaskSessionId(taskId)) {
+			if (isHomeAgentSessionId(taskId) && !this.sessionRuntime.canRestartTaskSession(taskId)) {
+				return null;
+			}
+		}
 		{
 			const message = createMessage(taskId, "user", normalized, images);
 			entry.messages.push(message);
@@ -656,6 +672,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		clearActiveTurnState(entry);
 
 		const effectiveMode: RuntimeTaskSessionMode = entry.summary.mode ?? "act";
+		if (!this.sessionRuntime.getTaskSessionId(taskId)) {
+			if (isHomeAgentSessionId(taskId) && !this.sessionRuntime.canRestartTaskSession(taskId)) {
+				return null;
+			}
+		}
 		try {
 			const { warnings } = await this.dispatchResolvedTaskInput({
 				taskId,
@@ -710,7 +731,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		if (existingEntry && existingEntry.summary.state !== "failed") {
 			return cloneSummary(existingEntry.summary);
 		}
-		const snapshot = await this.sessionRuntime.resumeTaskSession(taskId);
+		const snapshot = await this.sessionRuntime.readPersistedTaskSession(taskId);
 		if (!snapshot) {
 			return existingEntry ? cloneSummary(existingEntry.summary) : null;
 		}

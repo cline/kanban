@@ -28,6 +28,10 @@ describe("getTaskPromptDescription", () => {
 	it("returns empty when prompt equals title", () => {
 		expect(getTaskPromptDescription("Fix bugs", "Fix bugs")).toBe("");
 	});
+
+	it("strips XML wrapper tags from the prompt before comparing with the title", () => {
+		expect(getTaskPromptDescription('<user_input mode="act">Fix the bug</user_input>', "Fix the bug")).toBe("");
+	});
 });
 
 describe("clampTextWithInlineSuffix", () => {
