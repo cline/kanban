@@ -1,6 +1,8 @@
-// PTY-backed runtime for non-Cline task sessions and the workspace shell terminal.
-// It owns process lifecycle, terminal protocol filtering, and summary updates
-// for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
+// Runtime for non-Cline task sessions and the workspace shell terminal.
+// PTY-backed agents still use real terminal processes, while Codex can route
+// through a shared app-server host.
+
+import type { CodexHostNotification, CodexHostService } from "../codex-sdk/global-codex-host-service";
 import type {
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
@@ -8,7 +10,9 @@ import type {
 	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
+	RuntimeTerminalRestoreSnapshot,
 } from "../core/api-contract";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -21,10 +25,12 @@ import {
 	stopWorkspaceTrustTimers,
 	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
 } from "./claude-workspace-trust";
+import { CodexHostSession } from "./codex-host-session";
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
 import { stripAnsi } from "./output-utils";
 import { PtySession } from "./pty-session";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
+import { prepareTaskPromptWithImages } from "./task-image-prompt";
 import {
 	createTerminalProtocolFilterState,
 	disableOscColorQueryIntercept,
@@ -48,8 +54,26 @@ type RestartableSessionRequest =
 	| { kind: "task"; request: StartTaskSessionRequest }
 	| { kind: "shell"; request: StartShellSessionRequest };
 
+interface SessionProcessHandle {
+	pid: number | null;
+	write(data: string | Buffer): void;
+	stop(options?: { interrupted?: boolean }): void;
+	pause(): void;
+	resume(): void;
+	resize(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void;
+	wasInterrupted(): boolean;
+}
+
+interface CodexHostState {
+	threadId: string;
+	activeTurnId: string | null;
+	detachHostListener: (() => void) | null;
+	lastTurnSawAssistantDelta: boolean;
+	autonomousModeEnabled: boolean;
+}
+
 interface ActiveProcessState {
-	session: PtySession;
+	session: SessionProcessHandle;
 	workspaceTrustBuffer: string | null;
 	cols: number;
 	rows: number;
@@ -61,6 +85,7 @@ interface ActiveProcessState {
 	awaitingCodexPromptAfterEnter: boolean;
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
+	codexHost: CodexHostState | null;
 }
 
 interface SessionEntry {
@@ -111,7 +136,9 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		taskId,
 		state: "idle",
 		agentId: null,
+		agentSessionId: null,
 		workspacePath: null,
+		lastKnownWorkspacePath: null,
 		pid: null,
 		startedAt: null,
 		updatedAt: now(),
@@ -123,12 +150,17 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		warningMessage: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
+		terminalRestoreSnapshot: null,
 	};
 }
 
 function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSessionSummary {
 	return {
 		...summary,
+		latestHookActivity: summary.latestHookActivity ? { ...summary.latestHookActivity } : null,
+		latestTurnCheckpoint: summary.latestTurnCheckpoint ? { ...summary.latestTurnCheckpoint } : null,
+		previousTurnCheckpoint: summary.previousTurnCheckpoint ? { ...summary.previousTurnCheckpoint } : null,
+		terminalRestoreSnapshot: summary.terminalRestoreSnapshot ? { ...summary.terminalRestoreSnapshot } : null,
 	};
 }
 
@@ -202,9 +234,313 @@ function hasCodexStartupUiRendered(text: string): boolean {
 	return stripped.includes("openai codex (v");
 }
 
+function getPersistedTerminalRestoreSnapshot(
+	summary: RuntimeTaskSessionSummary,
+): RuntimeTerminalRestoreSnapshot | null {
+	return summary.terminalRestoreSnapshot ?? null;
+}
+
+function getPersistedCodexAgentSessionId(summary: RuntimeTaskSessionSummary): string | null {
+	const value = summary.agentSessionId;
+	return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
 export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
+
+	constructor(private readonly globalCodexHostService?: CodexHostService) {}
+
+	private emitActiveOutput(entry: SessionEntry, chunk: Buffer): void {
+		entry.terminalStateMirror?.applyOutput(chunk);
+		updateSummary(entry, { lastOutputAt: now() });
+		for (const taskListener of entry.listeners.values()) {
+			taskListener.onOutput?.(chunk);
+		}
+	}
+
+	private emitActiveState(entry: SessionEntry): void {
+		const snapshot = cloneSummary(entry.summary);
+		for (const taskListener of entry.listeners.values()) {
+			taskListener.onState?.(snapshot);
+		}
+		this.emitSummary(entry.summary);
+	}
+
+	private async disposeActiveSession(entry: SessionEntry, options?: { releaseCodexThread?: boolean }): Promise<void> {
+		const active = entry.active;
+		if (!active) {
+			return;
+		}
+		stopWorkspaceTrustTimers(active);
+		active.session.stop();
+		active.codexHost?.detachHostListener?.();
+		if (options?.releaseCodexThread && active.codexHost) {
+			this.globalCodexHostService?.releaseThread(active.codexHost.threadId);
+		}
+		const cleanupFn = active.onSessionCleanup;
+		active.onSessionCleanup = null;
+		entry.active = null;
+		if (cleanupFn) {
+			await cleanupFn().catch(() => {
+				// Best effort: cleanup failure is non-critical.
+			});
+		}
+	}
+
+	private async submitCodexTurn(entry: SessionEntry, prompt: string, cwd: string): Promise<void> {
+		const active = entry.active;
+		const codexHost = active?.codexHost;
+		if (!active || !codexHost || !this.globalCodexHostService) {
+			return;
+		}
+		if (codexHost.activeTurnId !== null) {
+			return;
+		}
+		codexHost.lastTurnSawAssistantDelta = false;
+		const { turnId } = await this.globalCodexHostService.startTurn({
+			threadId: codexHost.threadId,
+			prompt,
+			cwd,
+		});
+		codexHost.activeTurnId = turnId;
+		updateSummary(entry, {
+			state: "running",
+			reviewReason: null,
+			warningMessage: null,
+			exitCode: null,
+			pid: this.globalCodexHostService.getPid(),
+			lastKnownWorkspacePath: cwd,
+		});
+		this.emitActiveState(entry);
+	}
+
+	private handleCodexHostNotification(entry: SessionEntry, notification: CodexHostNotification): void {
+		const active = entry.active;
+		const codexHost = active?.codexHost;
+		if (!active || !codexHost) {
+			return;
+		}
+		switch (notification.method) {
+			case "item/agentMessage/delta": {
+				if (codexHost.activeTurnId && notification.turnId !== codexHost.activeTurnId) {
+					return;
+				}
+				codexHost.lastTurnSawAssistantDelta = true;
+				this.emitActiveOutput(entry, Buffer.from(notification.delta, "utf8"));
+				return;
+			}
+			case "turn/started": {
+				if (notification.turnId) {
+					codexHost.activeTurnId = notification.turnId;
+				}
+				return;
+			}
+			case "turn/completed": {
+				if (codexHost.activeTurnId && notification.turnId !== codexHost.activeTurnId) {
+					return;
+				}
+				codexHost.activeTurnId = null;
+				const trailingPrompt =
+					notification.status === "failed"
+						? `\r\n[kanban] ${notification.errorMessage ?? "Codex turn failed."}\r\n› `
+						: notification.status === "interrupted"
+							? "\r\n[kanban] Turn interrupted.\r\n› "
+							: "\r\n[kanban] Turn completed. Type another instruction to continue this task.\r\n› ";
+				this.emitActiveOutput(entry, Buffer.from(trailingPrompt, "utf8"));
+				if (notification.status === "failed") {
+					updateSummary(entry, {
+						state: "awaiting_review",
+						reviewReason: "error",
+						exitCode: 1,
+						pid: this.globalCodexHostService?.getPid() ?? null,
+						warningMessage: notification.errorMessage ?? "Codex turn failed.",
+					});
+				} else {
+					updateSummary(entry, {
+						state: "awaiting_review",
+						reviewReason: "attention",
+						exitCode: notification.status === "interrupted" ? null : 0,
+						pid: this.globalCodexHostService?.getPid() ?? null,
+						warningMessage: null,
+					});
+				}
+				this.emitActiveState(entry);
+				return;
+			}
+			case "host/exited": {
+				void this.disposeActiveSession(entry, {
+					releaseCodexThread: false,
+				}).then(() => {
+					updateSummary(entry, {
+						state: "failed",
+						reviewReason: "error",
+						exitCode: null,
+						pid: null,
+						warningMessage: notification.message,
+					});
+					this.emitActiveState(entry);
+				});
+				return;
+			}
+			default: {
+				return;
+			}
+		}
+	}
+
+	private async startCodexHostTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
+		const entry = this.ensureEntry(request.taskId);
+		entry.restartRequest = null;
+		if (entry.active && isActiveState(entry.summary.state)) {
+			return cloneSummary(entry.summary);
+		}
+
+		await this.disposeActiveSession(entry, {
+			releaseCodexThread: true,
+		});
+		entry.terminalStateMirror?.dispose();
+		entry.terminalStateMirror = null;
+
+		const cols = Number.isFinite(request.cols) && (request.cols ?? 0) > 0 ? Math.floor(request.cols ?? 0) : 120;
+		const rows = Number.isFinite(request.rows) && (request.rows ?? 0) > 0 ? Math.floor(request.rows ?? 0) : 40;
+		const terminalStateMirror = new TerminalStateMirror(cols, rows);
+		const persistedRestoreSnapshot = getPersistedTerminalRestoreSnapshot(entry.summary);
+		if (persistedRestoreSnapshot) {
+			terminalStateMirror.restoreSnapshot(persistedRestoreSnapshot);
+		}
+		const preparedPrompt = await prepareTaskPromptWithImages({
+			prompt: request.prompt,
+			images: request.images,
+		});
+		const effectivePrompt = request.startInPlanMode
+			? preparedPrompt.trim().length > 0
+				? `/plan ${preparedPrompt.trim()}`
+				: "/plan"
+			: preparedPrompt;
+		const codexHostService = this.globalCodexHostService;
+		if (!codexHostService) {
+			throw new Error("Codex host service is unavailable.");
+		}
+		const developerInstructions = resolveHomeAgentAppendSystemPrompt(request.taskId);
+		const persistedThreadId = request.resumeFromTrash ? getPersistedCodexAgentSessionId(entry.summary) : null;
+		const thread = persistedThreadId
+			? await codexHostService.resumeThread({
+					threadId: persistedThreadId,
+					cwd: request.cwd,
+					developerInstructions: developerInstructions ?? undefined,
+					approvalMode: request.autonomousModeEnabled ? "approve" : "deny",
+					autonomousModeEnabled: request.autonomousModeEnabled === true,
+				})
+			: await codexHostService.startThread({
+					cwd: request.cwd,
+					developerInstructions: developerInstructions ?? undefined,
+					approvalMode: request.autonomousModeEnabled ? "approve" : "deny",
+					autonomousModeEnabled: request.autonomousModeEnabled === true,
+				});
+		const session = new CodexHostSession(codexHostService.getPid(), {
+			onEcho: (chunk) => {
+				if (!entry.active?.codexHost || entry.active.codexHost.activeTurnId !== null) {
+					return;
+				}
+				this.emitActiveOutput(entry, chunk);
+			},
+			onSubmitLine: (line) => {
+				void this.submitCodexTurn(entry, line, request.cwd).catch((error) => {
+					const message = error instanceof Error ? error.message : String(error);
+					this.emitActiveOutput(entry, Buffer.from(`\r\n[kanban] ${message}\r\n› `, "utf8"));
+					updateSummary(entry, {
+						state: "awaiting_review",
+						reviewReason: "error",
+						exitCode: 1,
+						warningMessage: message,
+					});
+					this.emitActiveState(entry);
+				});
+			},
+			onInterrupt: () => {
+				const turnId = entry.active?.codexHost?.activeTurnId;
+				if (!turnId || !this.globalCodexHostService) {
+					this.emitActiveOutput(entry, Buffer.from("› ", "utf8"));
+					return;
+				}
+				void this.globalCodexHostService.interruptTurn(thread.threadId, turnId).catch((error) => {
+					const message = error instanceof Error ? error.message : String(error);
+					this.emitActiveOutput(entry, Buffer.from(`[kanban] ${message}\r\n› `, "utf8"));
+				});
+			},
+			canAcceptInput: () => entry.active?.codexHost?.activeTurnId == null,
+		});
+		const active: ActiveProcessState = {
+			session,
+			workspaceTrustBuffer: null,
+			cols,
+			rows,
+			terminalProtocolFilter: createTerminalProtocolFilterState({
+				interceptOscColorQueries: false,
+			}),
+			onSessionCleanup: null,
+			deferredStartupInput: null,
+			detectOutputTransition: null,
+			shouldInspectOutputForTransition: null,
+			awaitingCodexPromptAfterEnter: false,
+			autoConfirmedWorkspaceTrust: false,
+			workspaceTrustConfirmTimer: null,
+			codexHost: {
+				threadId: thread.threadId,
+				activeTurnId: null,
+				detachHostListener: null,
+				lastTurnSawAssistantDelta: false,
+				autonomousModeEnabled: request.autonomousModeEnabled === true,
+			},
+		};
+		if (active.codexHost) {
+			active.codexHost.detachHostListener = codexHostService.subscribe(thread.threadId, (notification) => {
+				this.handleCodexHostNotification(entry, notification);
+			});
+		}
+		entry.active = active;
+		entry.terminalStateMirror = terminalStateMirror;
+
+		updateSummary(entry, {
+			state: request.resumeFromTrash ? "awaiting_review" : "running",
+			agentId: request.agentId,
+			agentSessionId: thread.threadId,
+			workspacePath: thread.cwd,
+			lastKnownWorkspacePath: thread.cwd,
+			pid: this.globalCodexHostService?.getPid() ?? null,
+			startedAt: now(),
+			lastOutputAt: null,
+			reviewReason: request.resumeFromTrash ? "attention" : null,
+			exitCode: null,
+			lastHookAt: null,
+			latestHookActivity: null,
+			warningMessage: null,
+			latestTurnCheckpoint: null,
+			previousTurnCheckpoint: null,
+		});
+		this.emitSummary(entry.summary);
+		if (request.resumeFromTrash) {
+			return cloneSummary(entry.summary);
+		}
+		this.emitActiveOutput(entry, Buffer.from(`› ${effectivePrompt}\r\n\r\n`, "utf8"));
+		try {
+			await this.submitCodexTurn(entry, effectivePrompt, thread.cwd);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.emitActiveOutput(entry, Buffer.from(`[kanban] ${message}\r\n› `, "utf8"));
+			updateSummary(entry, {
+				state: "awaiting_review",
+				reviewReason: "error",
+				exitCode: 1,
+				pid: this.globalCodexHostService?.getPid() ?? null,
+				warningMessage: message,
+			});
+			this.emitActiveState(entry);
+			throw error;
+		}
+		return cloneSummary(entry.summary);
+	}
 
 	private trySendDeferredCodexStartupInput(taskId: string): boolean {
 		const entry = this.entries.get(taskId);
@@ -286,13 +622,29 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 	async getRestoreSnapshot(taskId: string) {
 		const entry = this.entries.get(taskId);
-		if (!entry?.terminalStateMirror) {
+		if (!entry) {
 			return null;
 		}
-		return await entry.terminalStateMirror.getSnapshot();
+		if (entry.terminalStateMirror) {
+			return await entry.terminalStateMirror.getSnapshot();
+		}
+		return getPersistedTerminalRestoreSnapshot(entry.summary);
 	}
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
+		const persistedSummary = this.entries.get(request.taskId)?.summary ?? null;
+		const canResumeCodexHostSession =
+			request.resumeFromTrash && persistedSummary
+				? getPersistedCodexAgentSessionId(persistedSummary) !== null
+				: false;
+		if (
+			request.agentId === "codex" &&
+			this.globalCodexHostService &&
+			(!request.resumeFromTrash || canResumeCodexHostSession)
+		) {
+			return await this.startCodexHostTaskSession(request);
+		}
+
 		const entry = this.ensureEntry(request.taskId);
 		entry.restartRequest = {
 			kind: "task",
@@ -489,7 +841,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			const summary = updateSummary(entry, {
 				state: "failed",
 				agentId: request.agentId,
+				agentSessionId: null,
 				workspacePath: request.cwd,
+				lastKnownWorkspacePath: request.cwd,
 				pid: null,
 				startedAt: null,
 				lastOutputAt: null,
@@ -525,6 +879,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
+			codexHost: null,
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
@@ -533,7 +888,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		updateSummary(entry, {
 			state: request.resumeFromTrash ? "awaiting_review" : "running",
 			agentId: request.agentId,
+			agentSessionId: null,
 			workspacePath: request.cwd,
+			lastKnownWorkspacePath: request.cwd,
 			pid: session.pid,
 			startedAt,
 			lastOutputAt: null,
@@ -648,7 +1005,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			const summary = updateSummary(entry, {
 				state: "failed",
 				agentId: null,
+				agentSessionId: null,
 				workspacePath: request.cwd,
+				lastKnownWorkspacePath: request.cwd,
 				pid: null,
 				startedAt: null,
 				lastOutputAt: null,
@@ -678,6 +1037,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
+			codexHost: null,
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
@@ -685,7 +1045,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		updateSummary(entry, {
 			state: "running",
 			agentId: null,
+			agentSessionId: null,
 			workspacePath: request.cwd,
+			lastKnownWorkspacePath: request.cwd,
 			pid: session.pid,
 			startedAt: now(),
 			lastOutputAt: null,
@@ -918,6 +1280,34 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry?.active) {
 			return entry ? cloneSummary(entry.summary) : null;
 		}
+		if (entry.active.codexHost) {
+			const active = entry.active;
+			const codexHost = active.codexHost;
+			if (!codexHost) {
+				return cloneSummary(entry.summary);
+			}
+			const turnId = codexHost.activeTurnId;
+			codexHost.detachHostListener?.();
+			if (turnId && this.globalCodexHostService) {
+				void this.globalCodexHostService.interruptTurn(codexHost.threadId, turnId).catch(() => {
+					// Best effort: interrupt failures should not block local task teardown.
+				});
+			}
+			this.globalCodexHostService?.releaseThread(codexHost.threadId);
+			entry.active = null;
+			const summary = updateSummary(entry, {
+				state: "interrupted",
+				reviewReason: "interrupted",
+				exitCode: null,
+				pid: null,
+			});
+			for (const taskListener of entry.listeners.values()) {
+				taskListener.onState?.(cloneSummary(summary));
+				taskListener.onExit?.(null);
+			}
+			this.emitSummary(summary);
+			return cloneSummary(summary);
+		}
 		entry.suppressAutoRestartOnExit = true;
 		const cleanupFn = entry.active.onSessionCleanup;
 		entry.active.onSessionCleanup = null;
@@ -935,6 +1325,28 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const activeEntries = Array.from(this.entries.values()).filter((entry) => entry.active != null);
 		for (const entry of activeEntries) {
 			if (!entry.active) {
+				continue;
+			}
+			if (entry.active.codexHost) {
+				const codexHost = entry.active.codexHost;
+				if (!codexHost) {
+					continue;
+				}
+				const turnId = codexHost.activeTurnId;
+				codexHost.detachHostListener?.();
+				if (turnId && this.globalCodexHostService) {
+					void this.globalCodexHostService.interruptTurn(codexHost.threadId, turnId).catch(() => {
+						// Best effort: shutdown cleanup should continue even if Codex interrupt fails.
+					});
+				}
+				this.globalCodexHostService?.releaseThread(codexHost.threadId);
+				entry.active = null;
+				updateSummary(entry, {
+					state: "interrupted",
+					reviewReason: "interrupted",
+					exitCode: null,
+					pid: null,
+				});
 				continue;
 			}
 			stopWorkspaceTrustTimers(entry.active);

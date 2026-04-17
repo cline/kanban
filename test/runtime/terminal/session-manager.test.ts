@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { CodexHostNotification, CodexHostService } from "../../../src/codex-sdk/global-codex-host-service";
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import { buildShellCommandLine } from "../../../src/core/shell";
+import { PtySession } from "../../../src/terminal/pty-session";
 import { TerminalSessionManager } from "../../../src/terminal/session-manager";
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
@@ -9,7 +11,9 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		taskId: "task-1",
 		state: "running",
 		agentId: "claude",
+		agentSessionId: null,
 		workspacePath: "/tmp/worktree",
+		lastKnownWorkspacePath: "/tmp/worktree",
 		pid: 1234,
 		startedAt: Date.now(),
 		updatedAt: Date.now(),
@@ -18,11 +22,224 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		terminalRestoreSnapshot: null,
 		...overrides,
 	};
 }
 
 describe("TerminalSessionManager", () => {
+	it("routes new Codex tasks through the shared host and supports follow-up input", async () => {
+		const threadListeners = new Map<string, (notification: CodexHostNotification) => void>();
+		const startThread = vi.fn(async () => ({
+			threadId: "thread-1",
+			cwd: "/tmp/codex-worktree",
+		}));
+		const startTurn = vi.fn().mockResolvedValueOnce({ turnId: "turn-1" }).mockResolvedValueOnce({ turnId: "turn-2" });
+		const interruptTurn = vi.fn(async () => undefined);
+		const releaseThread = vi.fn();
+		const host: CodexHostService = {
+			getPid: () => 777,
+			start: vi.fn(async () => undefined),
+			dispose: vi.fn(async () => undefined),
+			startThread,
+			resumeThread: vi.fn(async () => ({
+				threadId: "thread-resume-unused",
+				cwd: "/tmp/codex-worktree",
+			})),
+			startTurn,
+			interruptTurn,
+			releaseThread,
+			subscribe: (threadId, listener) => {
+				threadListeners.set(threadId, listener);
+				return () => {
+					threadListeners.delete(threadId);
+				};
+			},
+		};
+		const manager = new TerminalSessionManager(host);
+		const onOutput = vi.fn();
+		manager.attach("task-codex", {
+			onOutput,
+			onState: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		const started = await manager.startTaskSession({
+			taskId: "task-codex",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/codex-worktree",
+			prompt: "say hello",
+			resumeFromTrash: false,
+		});
+
+		expect(startThread).toHaveBeenCalledTimes(1);
+		expect(startTurn).toHaveBeenCalledWith({
+			threadId: "thread-1",
+			prompt: "say hello",
+			cwd: "/tmp/codex-worktree",
+		});
+		expect(started.agentId).toBe("codex");
+		expect(started.pid).toBe(777);
+		expect(onOutput).toHaveBeenCalledWith(Buffer.from("› say hello\r\n\r\n", "utf8"));
+
+		threadListeners.get("thread-1")?.({
+			method: "item/agentMessage/delta",
+			threadId: "thread-1",
+			turnId: "turn-1",
+			delta: "hello",
+		});
+		threadListeners.get("thread-1")?.({
+			method: "turn/completed",
+			threadId: "thread-1",
+			turnId: "turn-1",
+			status: "completed",
+			errorMessage: null,
+		});
+
+		const afterFirstTurn = manager.getSummary("task-codex");
+		expect(afterFirstTurn?.state).toBe("awaiting_review");
+		expect(afterFirstTurn?.reviewReason).toBe("attention");
+
+		manager.writeInput("task-codex", Buffer.from("next\n", "utf8"));
+		await Promise.resolve();
+
+		expect(startTurn).toHaveBeenLastCalledWith({
+			threadId: "thread-1",
+			prompt: "next",
+			cwd: "/tmp/codex-worktree",
+		});
+		expect(manager.getSummary("task-codex")?.state).toBe("running");
+
+		const stopped = manager.stopTaskSession("task-codex");
+		expect(interruptTurn).toHaveBeenCalledWith("thread-1", "turn-2");
+		expect(releaseThread).toHaveBeenCalledWith("thread-1");
+		expect(stopped?.state).toBe("interrupted");
+	});
+
+	it("keeps Codex trash restore on the existing PTY path when no persisted thread id exists", async () => {
+		const startThread = vi.fn(async () => ({
+			threadId: "thread-restore",
+			cwd: "/tmp/codex-worktree",
+		}));
+		const resumeThread = vi.fn(async () => ({
+			threadId: "thread-restore",
+			cwd: "/tmp/codex-worktree",
+		}));
+		const host: CodexHostService = {
+			getPid: () => 777,
+			start: vi.fn(async () => undefined),
+			dispose: vi.fn(async () => undefined),
+			startThread,
+			resumeThread,
+			startTurn: vi.fn(async () => ({ turnId: "turn-1" })),
+			interruptTurn: vi.fn(async () => undefined),
+			releaseThread: vi.fn(),
+			subscribe: () => () => {},
+		};
+		const manager = new TerminalSessionManager(host);
+
+		const startCodexHostTaskSession = vi.spyOn(
+			manager as unknown as { startCodexHostTaskSession: (request: unknown) => Promise<RuntimeTaskSessionSummary> },
+			"startCodexHostTaskSession",
+		);
+		const spawnSpy = vi.spyOn(PtySession, "spawn").mockImplementation(() => {
+			throw new Error("spawn blocked");
+		});
+
+		await expect(
+			manager.startTaskSession({
+				taskId: "task-codex-restore",
+				agentId: "codex",
+				binary: "codex",
+				args: [],
+				cwd: "/tmp/codex-worktree",
+				prompt: "say hello",
+				resumeFromTrash: true,
+			}),
+		).rejects.toThrow('Failed to launch "codex": spawn blocked');
+		expect(startCodexHostTaskSession).not.toHaveBeenCalled();
+		expect(startThread).not.toHaveBeenCalled();
+		expect(resumeThread).not.toHaveBeenCalled();
+		spawnSpy.mockRestore();
+	});
+
+	it("resumes Codex trash restore on the shared host when a persisted thread id exists", async () => {
+		const threadListeners = new Map<string, (notification: CodexHostNotification) => void>();
+		const startThread = vi.fn(async () => ({
+			threadId: "thread-start",
+			cwd: "/tmp/codex-worktree",
+		}));
+		const resumeThread = vi.fn(async () => ({
+			threadId: "thread-persisted",
+			cwd: "/tmp/codex-worktree",
+		}));
+		const startTurn = vi.fn(async () => ({ turnId: "turn-2" }));
+		const host: CodexHostService = {
+			getPid: () => 777,
+			start: vi.fn(async () => undefined),
+			dispose: vi.fn(async () => undefined),
+			startThread,
+			resumeThread,
+			startTurn,
+			interruptTurn: vi.fn(async () => undefined),
+			releaseThread: vi.fn(),
+			subscribe: (threadId, listener) => {
+				threadListeners.set(threadId, listener);
+				return () => {
+					threadListeners.delete(threadId);
+				};
+			},
+		};
+		const manager = new TerminalSessionManager(host);
+		manager.hydrateFromRecord({
+			"task-codex-restore": createSummary({
+				taskId: "task-codex-restore",
+				agentId: "codex",
+				agentSessionId: "thread-persisted",
+				state: "interrupted",
+				terminalRestoreSnapshot: {
+					snapshot: "persisted terminal",
+					cols: 120,
+					rows: 40,
+				},
+			}),
+		});
+
+		const restored = await manager.startTaskSession({
+			taskId: "task-codex-restore",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/codex-worktree",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+
+		expect(resumeThread).toHaveBeenCalledWith({
+			threadId: "thread-persisted",
+			cwd: "/tmp/codex-worktree",
+			developerInstructions: undefined,
+			approvalMode: "deny",
+			autonomousModeEnabled: false,
+		});
+		expect(startThread).not.toHaveBeenCalled();
+		expect(startTurn).not.toHaveBeenCalled();
+		expect(restored.state).toBe("awaiting_review");
+		expect(restored.reviewReason).toBe("attention");
+		expect(restored.agentSessionId).toBe("thread-persisted");
+
+		manager.writeInput("task-codex-restore", Buffer.from("next\n", "utf8"));
+		await Promise.resolve();
+
+		expect(startTurn).toHaveBeenCalledWith({
+			threadId: "thread-persisted",
+			prompt: "next",
+			cwd: "/tmp/codex-worktree",
+		});
+	});
+
 	it("clears trust prompt state when transitioning to review", () => {
 		const manager = new TerminalSessionManager();
 		const entry = {
@@ -233,5 +450,28 @@ describe("TerminalSessionManager", () => {
 			rows: 40,
 		});
 		expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("falls back to the persisted terminal restore snapshot when no live mirror exists", async () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-restore": createSummary({
+				taskId: "task-restore",
+				state: "awaiting_review",
+				terminalRestoreSnapshot: {
+					snapshot: "persisted terminal",
+					cols: 120,
+					rows: 40,
+				},
+			}),
+		});
+
+		const snapshot = await manager.getRestoreSnapshot("task-restore");
+
+		expect(snapshot).toEqual({
+			snapshot: "persisted terminal",
+			cols: 120,
+			rows: 40,
+		});
 	});
 });

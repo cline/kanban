@@ -64,6 +64,14 @@ export class TerminalStateMirror {
 		};
 	}
 
+	restoreSnapshot(snapshot: TerminalRestoreSnapshot): void {
+		this.resize(snapshot.cols, snapshot.rows);
+		if (!snapshot.snapshot) {
+			return;
+		}
+		this.applyOutput(Buffer.from(snapshot.snapshot, "utf8"));
+	}
+
 	dispose(): void {
 		this.terminal.dispose();
 	}

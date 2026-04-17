@@ -389,6 +389,7 @@ async function startServer(): Promise<{
 	*/
 	const [
 		{ resolveProjectInputPath },
+		{ GlobalCodexHostService },
 		{ pickDirectoryPathFromSystemDialog },
 		{ createRuntimeServer },
 		{ createRuntimeStateHub },
@@ -397,6 +398,7 @@ async function startServer(): Promise<{
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
+		import("./codex-sdk/global-codex-host-service.js"),
 		import("./server/directory-picker.js"),
 		import("./server/runtime-server.js"),
 		import("./server/runtime-state-hub.js"),
@@ -405,12 +407,18 @@ async function startServer(): Promise<{
 		import("./server/workspace-registry.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
+	const globalCodexHostService = new GlobalCodexHostService();
+	await globalCodexHostService.start().catch((error) => {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(`[kanban] Could not prewarm Codex app-server. ${message}`);
+	});
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
 		hasGitRepository,
 		pathIsDirectory,
+		globalCodexHostService,
 		onTerminalManagerReady: (workspaceId, manager) => {
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
 		},
@@ -455,6 +463,7 @@ async function startServer(): Promise<{
 
 	const close = async () => {
 		await runtimeServer.close();
+		await globalCodexHostService.dispose();
 	};
 
 	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
@@ -495,7 +504,10 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 	}
 }
 
-async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
+async function runMainCommand(
+	options: CliOptions,
+	shouldAutoOpenBrowser: boolean,
+): Promise<{ startedRuntime: boolean }> {
 	if (options.host) {
 		setKanbanRuntimeHost(options.host);
 		console.log(`Binding to host ${options.host}.`);
@@ -544,7 +556,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			isAddressInUseError(error) &&
 			(await tryOpenExistingServer({ noOpen: options.noOpen, shouldAutoOpenBrowser }))
 		) {
-			return;
+			return { startedRuntime: false };
 		}
 		throw error;
 	}
@@ -612,6 +624,8 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		},
 		suppressImmediateDuplicateSignals: shouldSuppressImmediateDuplicateShutdownSignals(),
 	});
+
+	return { startedRuntime: true };
 }
 
 async function runUpdateCommand(): Promise<void> {
@@ -627,8 +641,12 @@ async function runUpdateCommand(): Promise<void> {
 	throw new Error(result.message);
 }
 
-function createProgram(invocationArgs: string[]): Command {
+function createProgram(invocationArgs: string[]): {
+	program: Command;
+	shouldKeepProcessAlive: () => boolean;
+} {
 	const shouldAutoOpenBrowser = shouldAutoOpenBrowserTabForInvocation(invocationArgs);
+	let shouldKeepProcessAlive = shouldAutoOpenBrowser;
 	const program = new Command();
 	program
 		.name("kanban")
@@ -671,9 +689,10 @@ function createProgram(invocationArgs: string[]): Command {
 	program.action(async (options: RootCommandOptions) => {
 		if (options.update === true) {
 			await runUpdateCommand();
+			shouldKeepProcessAlive = false;
 			return;
 		}
-		await runMainCommand(
+		const result = await runMainCommand(
 			{
 				host: options.host ?? null,
 				port: options.port ?? null,
@@ -686,16 +705,20 @@ function createProgram(invocationArgs: string[]): Command {
 			},
 			shouldAutoOpenBrowser,
 		);
+		shouldKeepProcessAlive = result.startedRuntime;
 	});
 
-	return program;
+	return {
+		program,
+		shouldKeepProcessAlive: () => shouldKeepProcessAlive,
+	};
 }
 
 async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
-	const program = createProgram(argv);
+	const { program, shouldKeepProcessAlive } = createProgram(argv);
 	await program.parseAsync(argv, { from: "user" });
-	if (!shouldAutoOpenBrowserTabForInvocation(argv)) {
+	if (!shouldKeepProcessAlive()) {
 		await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
 		process.exit(process.exitCode ?? 0);
 	}
