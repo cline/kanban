@@ -708,7 +708,7 @@ export function BoardCard({
 													{" "}
 													<button
 														type="button"
-														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent text-accent [font:inherit]"
 														aria-expanded={isDescriptionExpanded}
 														aria-label="Collapse task description"
 														onMouseDown={stopEvent}
@@ -725,7 +725,7 @@ export function BoardCard({
 													{"… "}
 													<button
 														type="button"
-														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent text-accent [font:inherit]"
 														aria-expanded={isDescriptionExpanded}
 														aria-label="Expand task description"
 														onMouseDown={stopEvent}
@@ -795,7 +795,7 @@ export function BoardCard({
 														{" "}
 														<button
 															type="button"
-															className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+															className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent text-accent [font:inherit]"
 															aria-expanded={isSessionPreviewExpanded}
 															aria-label="Collapse task agent preview"
 															onMouseDown={stopEvent}
@@ -812,7 +812,7 @@ export function BoardCard({
 														{"… "}
 														<button
 															type="button"
-															className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+															className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent text-accent [font:inherit]"
 															aria-expanded={isSessionPreviewExpanded}
 															aria-label="Expand task agent preview"
 															onMouseDown={stopEvent}
