@@ -4,8 +4,11 @@ import { useLayoutResetEffect } from "@/resize/layout-customizations";
 import { clampBetween } from "@/resize/resize-persistence";
 import {
 	getResizePreferenceDefaultValue,
+	loadBooleanResizePreference,
 	loadResizePreference,
+	persistBooleanResizePreference,
 	persistResizePreference,
+	type ResizeBooleanPreference,
 	type ResizeNumberPreference,
 } from "@/resize/resize-preferences";
 import { LocalStorageKey } from "@/storage/local-storage-store";
@@ -34,11 +37,18 @@ const EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 	normalize: (value) => clampBetween(value, 0.12, 0.6),
 };
 
+const FILE_TREE_VISIBLE_PREFERENCE: ResizeBooleanPreference = {
+	key: LocalStorageKey.DetailDiffFileTreeVisible,
+	defaultValue: true,
+};
+
 export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolean }): {
 	agentPanelRatio: number;
 	detailDiffFileTreeRatio: number;
+	isFileTreeVisible: boolean;
 	setAgentPanelRatio: (ratio: number) => void;
 	setDetailDiffFileTreeRatio: (ratio: number) => void;
+	setFileTreeVisible: (visible: boolean) => void;
 	setTaskCardsPanelRatio: (ratio: number) => void;
 	taskCardsPanelRatio: number;
 } {
@@ -51,6 +61,9 @@ export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolea
 	);
 	const [expandedDetailDiffFileTreeRatio, setExpandedDetailDiffFileTreeRatioState] = useState(() =>
 		loadResizePreference(EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE),
+	);
+	const [isFileTreeVisible, setIsFileTreeVisibleState] = useState(() =>
+		loadBooleanResizePreference(FILE_TREE_VISIBLE_PREFERENCE),
 	);
 
 	const setTaskCardsPanelRatio = useCallback((ratio: number) => {
@@ -76,6 +89,10 @@ export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolea
 		[isDiffExpanded],
 	);
 
+	const setFileTreeVisible = useCallback((visible: boolean) => {
+		setIsFileTreeVisibleState(persistBooleanResizePreference(FILE_TREE_VISIBLE_PREFERENCE, visible));
+	}, []);
+
 	useLayoutResetEffect(() => {
 		setTaskCardsPanelRatioState(getResizePreferenceDefaultValue(TASK_CARDS_RATIO_PREFERENCE));
 		setAgentPanelRatioState(getResizePreferenceDefaultValue(AGENT_RATIO_PREFERENCE));
@@ -85,6 +102,7 @@ export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolea
 		setExpandedDetailDiffFileTreeRatioState(
 			getResizePreferenceDefaultValue(EXPANDED_DIFF_FILE_TREE_RATIO_PREFERENCE),
 		);
+		setIsFileTreeVisibleState(FILE_TREE_VISIBLE_PREFERENCE.defaultValue);
 	});
 
 	return {
@@ -94,5 +112,7 @@ export function useCardDetailLayout({ isDiffExpanded }: { isDiffExpanded: boolea
 		setAgentPanelRatio,
 		detailDiffFileTreeRatio: isDiffExpanded ? expandedDetailDiffFileTreeRatio : collapsedDetailDiffFileTreeRatio,
 		setDetailDiffFileTreeRatio,
+		isFileTreeVisible,
+		setFileTreeVisible,
 	};
 }
