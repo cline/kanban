@@ -1,4 +1,12 @@
-import { AlertCircle, ChevronDown, ChevronRight, GitCommit, GitCompare } from "lucide-react";
+import {
+	AlertCircle,
+	ChevronDown,
+	ChevronRight,
+	GitCommit,
+	GitCompare,
+	PanelRightClose,
+	PanelRightOpen,
+} from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import {
@@ -8,6 +16,8 @@ import {
 	truncatePathMiddle,
 	type UnifiedDiffRow,
 } from "@/components/shared/diff-renderer";
+import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useGitCommitDiffLayout } from "@/resize/use-git-commit-diff-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
@@ -89,7 +99,8 @@ export function GitCommitDiffPanel({
 	headerContent?: React.ReactNode;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
-	const { fileTreePanelRatio, setFileTreePanelRatio } = useGitCommitDiffLayout();
+	const { fileTreePanelRatio, setFileTreePanelRatio, isFileTreeVisible, setFileTreeVisible } =
+		useGitCommitDiffLayout();
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const sectionElementsRef = useRef<Record<string, HTMLElement | null>>({});
 	const diffLayoutRef = useRef<HTMLDivElement | null>(null);
@@ -322,13 +333,25 @@ export function GitCommitDiffPanel({
 			<div
 				style={{
 					display: "flex",
-					flex: `0 0 ${diffContentPanelPercent}`,
+					flex: isFileTreeVisible ? `0 0 ${diffContentPanelPercent}` : "1 1 0",
 					minWidth: 0,
 					minHeight: 0,
 					flexDirection: "column",
 				}}
 			>
 				{headerContent ? headerContent : null}
+				<div className="flex items-center justify-end border-b border-divider px-2 py-1">
+					<Tooltip content={isFileTreeVisible ? "Hide file tree" : "Show file tree"}>
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={isFileTreeVisible ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+							onClick={() => setFileTreeVisible(!isFileTreeVisible)}
+							className="h-5"
+							aria-label={isFileTreeVisible ? "Hide file tree" : "Show file tree"}
+						/>
+					</Tooltip>
+				</div>
 				<div
 					ref={scrollContainerRef}
 					onScroll={handleDiffScroll}
@@ -433,27 +456,31 @@ export function GitCommitDiffPanel({
 					})}
 				</div>
 			</div>
-			<ResizeHandle
-				orientation="vertical"
-				ariaLabel="Resize git diff panels"
-				onMouseDown={handleDiffSplitSeparatorMouseDown}
-				className="z-10"
-			/>
-			<div
-				style={{
-					display: "flex",
-					flex: `0 0 ${fileTreePanelPercent}`,
-					minWidth: 0,
-					minHeight: 0,
-				}}
-			>
-				<FileTreePanel
-					workspaceFiles={workspaceFilesForTree}
-					selectedPath={selectedPath}
-					onSelectPath={onSelectPath}
-					panelFlex="1 1 0"
-				/>
-			</div>
+			{isFileTreeVisible ? (
+				<>
+					<ResizeHandle
+						orientation="vertical"
+						ariaLabel="Resize git diff panels"
+						onMouseDown={handleDiffSplitSeparatorMouseDown}
+						className="z-10"
+					/>
+					<div
+						style={{
+							display: "flex",
+							flex: `0 0 ${fileTreePanelPercent}`,
+							minWidth: 0,
+							minHeight: 0,
+						}}
+					>
+						<FileTreePanel
+							workspaceFiles={workspaceFilesForTree}
+							selectedPath={selectedPath}
+							onSelectPath={onSelectPath}
+							panelFlex="1 1 0"
+						/>
+					</div>
+				</>
+			) : null}
 		</div>
 	);
 }

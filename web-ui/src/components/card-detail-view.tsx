@@ -1,5 +1,14 @@
 import type { DropResult } from "@hello-pangea/dnd";
-import { Files, GitCompareArrows, Maximize2, MessageSquare, Minimize2, X } from "lucide-react";
+import {
+	Files,
+	GitCompareArrows,
+	Maximize2,
+	MessageSquare,
+	Minimize2,
+	PanelRightClose,
+	PanelRightOpen,
+	X,
+} from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -10,6 +19,7 @@ import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panel
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useIsMobile } from "@/hooks/use-is-mobile";
@@ -267,12 +277,16 @@ function DiffToolbar({
 	isExpanded,
 	onToggleExpand,
 	hideExpand,
+	isFileTreeVisible,
+	onToggleFileTree,
 }: {
 	mode: RuntimeWorkspaceChangesMode;
 	onModeChange: (mode: RuntimeWorkspaceChangesMode) => void;
 	isExpanded: boolean;
 	onToggleExpand: () => void;
 	hideExpand?: boolean;
+	isFileTreeVisible?: boolean;
+	onToggleFileTree?: () => void;
 }): React.ReactElement {
 	return (
 		<div className="flex items-center gap-1 border-b border-divider px-2 py-1">
@@ -295,14 +309,28 @@ function DiffToolbar({
 				</DiffModeButton>
 			</div>
 			{!hideExpand ? (
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-					onClick={onToggleExpand}
-					className="ml-auto h-5"
-					aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
-				/>
+				<div className="ml-auto flex items-center gap-0.5">
+					<Button
+						variant="ghost"
+						size="sm"
+						icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+						onClick={onToggleExpand}
+						className="h-5"
+						aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
+					/>
+					{onToggleFileTree ? (
+						<Tooltip content={isFileTreeVisible ? "Hide file tree" : "Show file tree"}>
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={isFileTreeVisible ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+								onClick={onToggleFileTree}
+								className="h-5"
+								aria-label={isFileTreeVisible ? "Hide file tree" : "Show file tree"}
+							/>
+						</Tooltip>
+					) : null}
+				</div>
 			) : null}
 		</div>
 	);
@@ -447,6 +475,8 @@ export function CardDetailView({
 		setAgentPanelRatio,
 		detailDiffFileTreeRatio,
 		setDetailDiffFileTreeRatio,
+		isFileTreeVisible,
+		setFileTreeVisible,
 	} = useCardDetailLayout({
 		isDiffExpanded,
 	});
@@ -603,6 +633,10 @@ export function CardDetailView({
 		}
 		setIsDiffExpanded((previous) => !previous);
 	}, [bottomTerminalOpen, isDiffExpanded, onBottomTerminalClose]);
+
+	const handleToggleFileTree = useCallback(() => {
+		setFileTreeVisible(!isFileTreeVisible);
+	}, [isFileTreeVisible, setFileTreeVisible]);
 
 	const handleAddDiffComments = useCallback(
 		(formatted: string) => {
@@ -865,6 +899,8 @@ export function CardDetailView({
 										onModeChange={setDiffMode}
 										isExpanded={isDiffExpanded}
 										onToggleExpand={handleToggleDiffExpand}
+										isFileTreeVisible={isFileTreeVisible}
+										onToggleFileTree={handleToggleFileTree}
 									/>
 								) : null}
 								<div className="flex min-h-0 flex-1">
@@ -876,7 +912,9 @@ export function CardDetailView({
 										<div ref={detailDiffRowRef} className="flex min-w-0 flex-1">
 											<div
 												className="flex min-h-0 min-w-0"
-												style={{ flex: `0 0 ${detailDiffContentPanelPercent}` }}
+												style={{
+													flex: isFileTreeVisible ? `0 0 ${detailDiffContentPanelPercent}` : "1 1 0",
+												}}
 											>
 												<DiffViewerPanel
 													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
@@ -897,23 +935,27 @@ export function CardDetailView({
 													onCommentsChange={setDiffComments}
 												/>
 											</div>
-											<ResizeHandle
-												orientation="vertical"
-												ariaLabel="Resize detail diff panels"
-												onMouseDown={handleDetailDiffSeparatorMouseDown}
-												className="z-10"
-											/>
-											<div
-												className="flex min-h-0 min-w-0"
-												style={{ flex: `0 0 ${detailDiffFileTreePanelPercent}` }}
-											>
-												<FileTreePanel
-													workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
-													selectedPath={selectedPath}
-													onSelectPath={setSelectedPath}
-													panelFlex="1 1 0"
-												/>
-											</div>
+											{isFileTreeVisible ? (
+												<>
+													<ResizeHandle
+														orientation="vertical"
+														ariaLabel="Resize detail diff panels"
+														onMouseDown={handleDetailDiffSeparatorMouseDown}
+														className="z-10"
+													/>
+													<div
+														className="flex min-h-0 min-w-0"
+														style={{ flex: `0 0 ${detailDiffFileTreePanelPercent}` }}
+													>
+														<FileTreePanel
+															workspaceFiles={isRuntimeAvailable ? runtimeFiles : null}
+															selectedPath={selectedPath}
+															onSelectPath={setSelectedPath}
+															panelFlex="1 1 0"
+														/>
+													</div>
+												</>
+											) : null}
 										</div>
 									)}
 								</div>

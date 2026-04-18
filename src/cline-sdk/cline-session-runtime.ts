@@ -212,7 +212,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					enableTools: true,
 					enableSpawnAgent: false,
 					enableAgentTeams: false,
-					disableMcpSettingsTools: true,
+					...(hasMcpExtraTools ? { disableMcpSettingsTools: true } : {}),
 					execution: {
 						maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
 					},
