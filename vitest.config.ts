@@ -18,7 +18,19 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: "node",
-		exclude: ["apps/**", "web-ui/**", "third_party/**", "**/node_modules/**", "**/dist/**", ".worktrees/**"],
+		// `packages/**` excluded: those workspaces have their own vitest
+		// configs and runtime shapes (e.g. Electron) and are run explicitly by
+		// CI. New workspaces under `packages/` MUST get matching install/test
+		// steps in .github/workflows/test.yml or they fall out of CI coverage.
+		exclude: [
+			"apps/**",
+			"packages/**",
+			"web-ui/**",
+			"third_party/**",
+			"**/node_modules/**",
+			"**/dist/**",
+			".worktrees/**",
+		],
 		testTimeout: 15_000,
 	},
 });

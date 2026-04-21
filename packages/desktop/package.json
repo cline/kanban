@@ -1,0 +1,16 @@
+{
+	"name": "@kanban/desktop",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Kanban desktop app — Electron shell for the Kanban runtime",
+	"type": "module",
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run --passWithNoTests"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.5",
+		"typescript": "^5.9.3",
+		"vitest": "^4.1.0"
+	}
+}
