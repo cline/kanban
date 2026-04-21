@@ -4,7 +4,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import * as ClineCore from "@clinebot/core/node";
+import * as ClineCore from "@clinebot/core";
 import {
 	addLocalProvider,
 	type ClineAccountBalance,
@@ -34,7 +34,7 @@ import {
 	completeClineDeviceAuth as sdkCompleteClineDeviceAuth,
 	startClineDeviceAuth as sdkStartClineDeviceAuth,
 	type Tool,
-} from "@clinebot/core/node";
+} from "@clinebot/core";
 import type * as Llms from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
@@ -311,7 +311,7 @@ export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]
 export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModel[]> {
 	const config = providerManager.getProviderConfig(providerId);
 	const response = await getLocalProviderModels(providerId, config);
-	return response.models.map((model) => ({
+	return response.models.map((model: Awaited<typeof response>["models"][number]) => ({
 		id: model.id,
 		name: model.name,
 		supportsVision: model.supportsVision,

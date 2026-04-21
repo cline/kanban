@@ -4,29 +4,29 @@
 // SDK package layout.
 
 import {
+	type BasicLogger,
 	buildWorkspaceMetadata,
-	createSessionHost,
+	ClineCore,
+	type ClineCoreStartInput,
 	createUserInstructionConfigWatcher,
 	getClineDefaultSystemPrompt,
 	listAvailableRuntimeCommandsFromWatcher,
 	loadRulesForSystemPromptFromWatcher,
+	resolveClineDataDir,
 	resolveRuntimeSlashCommandFromWatcher,
+	type SessionHistoryRecord,
 	type SessionHost,
-	type StartSessionInput,
 	type ToolApprovalRequest,
 	type ToolApprovalResult,
 	type UserInstructionConfigWatcher,
 } from "@clinebot/core";
 import type * as Llms from "@clinebot/llms";
-import type { BasicLogger } from "@clinebot/shared";
-import { resolveClineDataDir } from "@clinebot/shared/storage";
 import { CLINE_BUILTIN_SLASH_COMMANDS } from "./cline-slash-commands";
 import { getCliTelemetryService } from "./cline-telemetry-service";
 
 export { TelemetryLoggerSink, TelemetryService } from "@clinebot/core";
 
 export type ClineSdkSessionHost = SessionHost;
-export type ClineSdkStartSessionInput = StartSessionInput;
 export type ClineSdkBasicLogger = BasicLogger;
 export interface ClineSdkContentStartTextEvent {
 	type: "content_start";
@@ -157,6 +157,8 @@ export type ClineSdkSessionEvent =
 			payload: {
 				sessionId: string;
 				event: ClineSdkAgentEvent;
+				teamAgentId?: string;
+				teamRole?: "lead" | "teammate";
 			};
 	  }
 	| {
@@ -166,6 +168,28 @@ export type ClineSdkSessionEvent =
 				teamName: string;
 				lifecycle: unknown;
 				summary: unknown;
+			};
+	  }
+	| {
+			type: "pending_prompts";
+			payload: {
+				sessionId: string;
+				prompts: Array<{
+					id: string;
+					prompt: string;
+					delivery: "queue" | "steer";
+					attachmentCount: number;
+				}>;
+			};
+	  }
+	| {
+			type: "pending_prompt_submitted";
+			payload: {
+				sessionId: string;
+				id: string;
+				prompt: string;
+				delivery: "queue" | "steer";
+				attachmentCount: number;
 			};
 	  }
 	| {
@@ -180,7 +204,7 @@ export type ClineSdkSessionEvent =
 			type: "hook";
 			payload: {
 				sessionId: string;
-				hookEventName: "tool_call" | "tool_result" | "agent_end" | "session_shutdown";
+				hookEventName: "tool_call" | "tool_result" | "agent_end" | "agent_error" | "session_shutdown";
 				toolName?: string;
 				toolInputSummary?: string;
 				finalMessage?: string;
@@ -195,7 +219,8 @@ export type ClineSdkSessionEvent =
 			};
 	  };
 
-export type ClineSdkSessionRecord = Awaited<ReturnType<ClineSdkSessionHost["list"]>>[number];
+export type ClineSdkStartSessionInput = ClineCoreStartInput;
+export type ClineSdkSessionRecord = SessionHistoryRecord;
 export type ClineSdkPersistedMessage = Llms.MessageWithMetadata;
 export type ClineSdkUserInstructionWatcher = UserInstructionConfigWatcher;
 export interface ClineSdkSlashCommand {
@@ -207,7 +232,7 @@ export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
 export type ClineSdkToolApprovalResult = ToolApprovalResult;
 
 export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
-	return await createSessionHost({
+	return await ClineCore.create({
 		backendMode: "auto",
 		rpc: { autoStart: true },
 		telemetry: getCliTelemetryService(),
@@ -273,5 +298,11 @@ export async function resolveClineSdkSystemPrompt(input: {
 	// its repo-aware behavior in the same way the official CLI does.
 	const shouldAppendWorkspaceMetadata = input.providerId === "cline";
 	const workspaceMetadata = shouldAppendWorkspaceMetadata ? await buildWorkspaceMetadata(input.cwd) : "";
-	return getClineDefaultSystemPrompt("Kanban", input.cwd, input.providerId, workspaceMetadata, input.rules ?? "");
+	return getClineDefaultSystemPrompt({
+		ide: "Kanban",
+		rootPath: input.cwd,
+		providerId: input.providerId,
+		metadata: workspaceMetadata,
+		rules: input.rules ?? "",
+	});
 }

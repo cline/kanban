@@ -562,7 +562,9 @@ export function createClineProviderService() {
 						accessToken: ensureWorkosPrefix(rawAccessToken),
 					};
 					const me = await fetchProfileDeduped(apiParams);
-					const activeOrg = me.organizations?.find((org) => org.active) ?? null;
+					const activeOrg =
+						me.organizations?.find((org): org is NonNullable<typeof me.organizations>[number] => org.active) ??
+						null;
 					if (activeOrg) {
 						const orgBalance = await fetchSdkOrganizationBalance({
 							...apiParams,
@@ -626,7 +628,7 @@ export function createClineProviderService() {
 					};
 					const me = await fetchProfileDeduped(apiParams);
 					return {
-						organizations: (me.organizations ?? []).map((org) => ({
+						organizations: (me.organizations ?? []).map((org: NonNullable<typeof me.organizations>[number]) => ({
 							organizationId: org.organizationId,
 							name: org.name,
 							active: org.active,

@@ -31,6 +31,14 @@ interface ClineSessionHostBoundary {
 	dispose(reason?: string): Promise<void>;
 	get(sessionId: string): Promise<ClineSdkSessionRecord | undefined>;
 	list(limit?: number): Promise<ClineSdkSessionRecord[]>;
+	update?(
+		sessionId: string,
+		updates: {
+			prompt?: string | null;
+			metadata?: Record<string, unknown> | null;
+			title?: string | null;
+		},
+	): Promise<{ updated: boolean }>;
 	readMessages(sessionId: string): Promise<ClineSdkPersistedMessage[]>;
 	subscribe(listener: (event: unknown) => void): () => void;
 }
@@ -124,15 +132,8 @@ async function persistKanbanTitleToClineSessionMetadata(
 ): Promise<void> {
 	const title = taskTitle?.trim();
 	if (!title) return;
-	const persistence = sessionHost as unknown as {
-		sessionService?: {
-			updateSession?: (input: { sessionId: string; title?: string | null }) => Promise<{ updated: boolean }>;
-		};
-	};
-	const updateSession = persistence.sessionService?.updateSession;
-	if (typeof updateSession !== "function") return;
 	try {
-		await updateSession.call(persistence.sessionService, { sessionId, title });
+		await sessionHost.update?.(sessionId, { title });
 	} catch {
 		// Best-effort only — Kanban board title remains canonical regardless.
 	}
@@ -230,7 +231,9 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 				initialMessages: request.initialMessages,
 				interactive: true,
 				userImages: toSdkUserImages(request.images),
-				userInstructionWatcher: request.userInstructionWatcher,
+				localRuntime: request.userInstructionWatcher
+					? { userInstructionWatcher: request.userInstructionWatcher }
+					: undefined,
 				requestToolApproval: request.requestToolApproval,
 			});
 		} catch (error) {
