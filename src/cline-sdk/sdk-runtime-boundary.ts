@@ -7,15 +7,15 @@ import {
 	type BasicLogger,
 	buildWorkspaceMetadata,
 	ClineCore,
-	type ClineCoreStartInput,
 	createUserInstructionConfigWatcher,
 	getClineDefaultSystemPrompt,
 	listAvailableRuntimeCommandsFromWatcher,
 	loadRulesForSystemPromptFromWatcher,
 	resolveClineDataDir,
 	resolveRuntimeSlashCommandFromWatcher,
-	type SessionHistoryRecord,
 	type SessionHost,
+	type SessionRecord,
+	type StartSessionInput,
 	type ToolApprovalRequest,
 	type ToolApprovalResult,
 	type UserInstructionConfigWatcher,
@@ -219,8 +219,11 @@ export type ClineSdkSessionEvent =
 			};
 	  };
 
-export type ClineSdkStartSessionInput = ClineCoreStartInput;
-export type ClineSdkSessionRecord = SessionHistoryRecord;
+// Upstream SDK (@clinebot/core) renamed these types during the 0.0.35+
+// drift. We re-export under the stable Kanban aliases so downstream code
+// doesn't have to chase SDK rename churn.
+export type ClineSdkStartSessionInput = StartSessionInput;
+export type ClineSdkSessionRecord = SessionRecord;
 export type ClineSdkPersistedMessage = Llms.MessageWithMetadata;
 export type ClineSdkUserInstructionWatcher = UserInstructionConfigWatcher;
 export interface ClineSdkSlashCommand {
@@ -298,11 +301,8 @@ export async function resolveClineSdkSystemPrompt(input: {
 	// its repo-aware behavior in the same way the official CLI does.
 	const shouldAppendWorkspaceMetadata = input.providerId === "cline";
 	const workspaceMetadata = shouldAppendWorkspaceMetadata ? await buildWorkspaceMetadata(input.cwd) : "";
-	return getClineDefaultSystemPrompt({
-		ide: "Kanban",
-		rootPath: input.cwd,
-		providerId: input.providerId,
-		metadata: workspaceMetadata,
-		rules: input.rules ?? "",
-	});
+	// SDK switched from object-param to positional args; signature is
+	// `(ide, cwd, providerId, metadata?, rules?, platform?)`. See
+	// node_modules/@clinebot/core/dist/prompt/default-system.d.ts.
+	return getClineDefaultSystemPrompt("Kanban", input.cwd, input.providerId, workspaceMetadata, input.rules ?? "");
 }

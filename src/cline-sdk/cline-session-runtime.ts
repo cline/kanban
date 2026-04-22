@@ -231,9 +231,9 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 				initialMessages: request.initialMessages,
 				interactive: true,
 				userImages: toSdkUserImages(request.images),
-				localRuntime: request.userInstructionWatcher
-					? { userInstructionWatcher: request.userInstructionWatcher }
-					: undefined,
+				// SDK 0.0.35+ flattened `localRuntime.userInstructionWatcher`
+				// onto the top-level StartSessionInput.
+				userInstructionWatcher: request.userInstructionWatcher,
 				requestToolApproval: request.requestToolApproval,
 			});
 		} catch (error) {
