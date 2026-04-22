@@ -675,7 +675,7 @@ export function BoardCard({
 												{"… "}
 												<button
 													type="button"
-													className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+													className="inline cursor-pointer rounded-sm text-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [font:inherit]"
 													aria-expanded={isDescriptionExpanded}
 													aria-label={
 														isDescriptionExpanded
@@ -698,7 +698,7 @@ export function BoardCard({
 												{" "}
 												<button
 													type="button"
-													className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+													className="inline cursor-pointer rounded-sm text-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [font:inherit]"
 													aria-expanded={isDescriptionExpanded}
 													aria-label="Collapse task description"
 													onMouseDown={stopEvent}
