@@ -626,7 +626,7 @@ export function createClineProviderService() {
 					};
 					const me = await fetchProfileDeduped(apiParams);
 					return {
-						organizations: (me.organizations ?? []).map((org) => ({
+						organizations: (me.organizations ?? []).map((org: NonNullable<typeof me.organizations>[number]) => ({
 							organizationId: org.organizationId,
 							name: org.name,
 							active: org.active,

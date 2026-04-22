@@ -68,7 +68,7 @@ vi.mock("../../../src/workspace/turn-checkpoints.js", () => ({
 	captureTaskTurnCheckpoint: turnCheckpointMocks.captureTaskTurnCheckpoint,
 }));
 
-vi.mock("@clinebot/core/node", () => ({
+vi.mock("@clinebot/core", () => ({
 	addLocalProvider: oauthMocks.addLocalProvider,
 	ensureCustomProvidersLoaded: oauthMocks.ensureCustomProvidersLoaded,
 	getLocalProviderModels: localProviderMocks.getLocalProviderModels,

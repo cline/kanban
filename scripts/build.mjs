@@ -1,19 +1,11 @@
 import * as esbuild from "esbuild";
 
-/** Modules that must stay external (native addons, large runtime deps). */
-const external = [
-	"node-pty",
-	"@sentry/node",
-	"proper-lockfile",
-	"tree-kill",
-	"ws",
-	"open",
-	"@trpc/client",
-	"@trpc/server",
-	"@modelcontextprotocol/sdk",
-	"commander",
-	"zod",
-];
+/**
+ * Runtime externals. `node-pty` is a native addon with a compiled binding
+ * and a spawn-helper binary that must live on disk, so it can't be bundled.
+ * Everything else esbuild can inline.
+ */
+const external = ["node-pty"];
 
 /** Bake OTEL telemetry env vars into the bundle at build time. */
 const define = {

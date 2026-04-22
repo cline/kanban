@@ -39,6 +39,9 @@ jobs:
       - name: Install web-ui dependencies
         run: npm ci --prefix web-ui
 
+      - name: Install packages/desktop dependencies
+        run: npm ci --prefix packages/desktop
+
       - name: Build
         run: npm run build
 
@@ -53,3 +56,9 @@ jobs:
 
       - name: Web UI tests
         run: npm --prefix web-ui run test
+
+      - name: packages/desktop typecheck
+        run: npm --prefix packages/desktop run typecheck
+
+      - name: packages/desktop tests
+        run: npm --prefix packages/desktop test
