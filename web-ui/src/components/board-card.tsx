@@ -466,6 +466,11 @@ export function BoardCard({
 		return parts.length > 0 ? parts.join(" · ") : null;
 	}, [agentOverrideLabel, modelOverrideLabel]);
 
+	const activeDescriptionDisplay = isDescriptionExpanded
+		? descriptionDisplay.expanded
+		: descriptionDisplay.collapsed;
+	const showFullDescription = isDescriptionExpanded && !activeDescriptionDisplay.isTruncated;
+
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
 			{(provided, snapshot) => {
@@ -662,60 +667,50 @@ export function BoardCard({
 											margin: "2px 0 0",
 										}}
 									>
-										{(() => {
-											const activeDisplay = isDescriptionExpanded
-												? descriptionDisplay.expanded
-												: descriptionDisplay.collapsed;
-											const showFull = isDescriptionExpanded && !activeDisplay.isTruncated;
-											return (
-												<>
-													{showFull || !activeDisplay.isTruncated
-														? displayDescription
-														: activeDisplay.text}
-													{activeDisplay.isTruncated ? (
-														<>
-															{"… "}
-															<button
-																type="button"
-																className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-																aria-expanded={isDescriptionExpanded}
-																aria-label={
-																	isDescriptionExpanded
-																		? "Collapse task description"
-																		: "Expand task description"
-																}
-																onMouseDown={stopEvent}
-																onClick={(event) => {
-																	stopEvent(event);
-																	setIsDescriptionExpanded(!isDescriptionExpanded);
-																}}
-															>
-																{isDescriptionExpanded
-																	? DESCRIPTION_COLLAPSE_LABEL
-																	: DESCRIPTION_EXPAND_LABEL}
-															</button>
-														</>
-													) : isDescriptionExpanded && descriptionDisplay.collapsed.isTruncated ? (
-														<>
-															{" "}
-															<button
-																type="button"
-																className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-																aria-expanded={isDescriptionExpanded}
-																aria-label="Collapse task description"
-																onMouseDown={stopEvent}
-																onClick={(event) => {
-																	stopEvent(event);
-																	setIsDescriptionExpanded(false);
-																}}
-															>
-																{DESCRIPTION_COLLAPSE_LABEL}
-															</button>
-														</>
-													) : null}
-												</>
-											);
-										})()}
+										{showFullDescription || !activeDescriptionDisplay.isTruncated
+											? displayDescription
+											: activeDescriptionDisplay.text}
+										{activeDescriptionDisplay.isTruncated ? (
+											<>
+												{"… "}
+												<button
+													type="button"
+													className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+													aria-expanded={isDescriptionExpanded}
+													aria-label={
+														isDescriptionExpanded
+															? "Collapse task description"
+															: "Expand task description"
+													}
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														setIsDescriptionExpanded(!isDescriptionExpanded);
+													}}
+												>
+													{isDescriptionExpanded
+														? DESCRIPTION_COLLAPSE_LABEL
+														: DESCRIPTION_EXPAND_LABEL}
+												</button>
+											</>
+										) : isDescriptionExpanded && descriptionDisplay.collapsed.isTruncated ? (
+											<>
+												{" "}
+												<button
+													type="button"
+													className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+													aria-expanded={isDescriptionExpanded}
+													aria-label="Collapse task description"
+													onMouseDown={stopEvent}
+													onClick={(event) => {
+														stopEvent(event);
+														setIsDescriptionExpanded(false);
+													}}
+												>
+													{DESCRIPTION_COLLAPSE_LABEL}
+												</button>
+											</>
+										) : null}
 									</p>
 								</div>
 							) : null}
