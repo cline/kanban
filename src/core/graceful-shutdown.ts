@@ -47,7 +47,7 @@ it lands inside the duplicate window. In practice that is much less harmful than
 the old behavior, where a single Ctrl+C under `npx` or `cline --kanban` could be
 misread as a double interrupt and force exit immediately.
 */
-const DEFAULT_HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"] as const;
+const DEFAULT_HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 const DEFAULT_DUPLICATE_SIGNAL_WINDOW_MS = 750;
 const TRANSIENT_CLI_CACHE_PATH_MARKERS = [
 	"/.npm/_npx/",
@@ -74,6 +74,7 @@ interface GracefulShutdownOptions {
 	onTimeout?: (delayMs: number) => void;
 	process: GracefulShutdownProcess;
 	exit: (code: number) => void;
+	reraiseSignal?: (signal: HandledShutdownSignal) => void;
 	suppressImmediateDuplicateSignals?: boolean;
 	duplicateSignalWindowMs?: number;
 	now?: () => number;
@@ -85,8 +86,6 @@ export function getExitCodeForSignal(signal: HandledShutdownSignal | null): numb
 			return 129;
 		case "SIGINT":
 			return 130;
-		case "SIGQUIT":
-			return 131;
 		case "SIGTERM":
 			return 143;
 		default:
@@ -151,6 +150,10 @@ export function installGracefulShutdownHandlers(options: GracefulShutdownOptions
 		if (timeoutId !== null) {
 			clearTimeout(timeoutId);
 			timeoutId = null;
+		}
+		if (shutdownSignal && options.reraiseSignal) {
+			options.reraiseSignal(shutdownSignal);
+			return;
 		}
 		options.exit(code);
 	};
