@@ -49,6 +49,7 @@ const DESCRIPTION_EXPANDED_MAX_LINES = 10;
 const DESCRIPTION_EXPAND_LABEL = "See more";
 const DESCRIPTION_COLLAPSE_LABEL = "Less";
 const DESCRIPTION_COLLAPSE_SUFFIX = `… ${DESCRIPTION_EXPAND_LABEL}`;
+const DESCRIPTION_EXPANDED_SUFFIX = `… ${DESCRIPTION_COLLAPSE_LABEL}`;
 
 function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: string | null | undefined): string | null {
 	if (!workspacePath) {
@@ -389,7 +390,7 @@ export function BoardCard({
 			expanded: clampTextWithInlineSuffix(displayDescription, {
 				maxWidthPx: descriptionWidth,
 				maxLines: DESCRIPTION_EXPANDED_MAX_LINES,
-				suffix: DESCRIPTION_COLLAPSE_SUFFIX,
+				suffix: DESCRIPTION_EXPANDED_SUFFIX,
 				measureText: measure,
 			}),
 		};
@@ -469,7 +470,6 @@ export function BoardCard({
 	const activeDescriptionDisplay = isDescriptionExpanded
 		? descriptionDisplay.expanded
 		: descriptionDisplay.collapsed;
-	const showFullDescription = isDescriptionExpanded && !activeDescriptionDisplay.isTruncated;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -667,9 +667,9 @@ export function BoardCard({
 											margin: "2px 0 0",
 										}}
 									>
-										{showFullDescription || !activeDescriptionDisplay.isTruncated
-											? displayDescription
-											: activeDescriptionDisplay.text}
+										{activeDescriptionDisplay.isTruncated
+											? activeDescriptionDisplay.text
+											: displayDescription}
 										{activeDescriptionDisplay.isTruncated ? (
 											<>
 												{"… "}
