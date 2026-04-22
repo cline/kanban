@@ -45,6 +45,7 @@ const SESSION_ACTIVITY_COLOR = {
 } as const;
 
 const DESCRIPTION_COLLAPSE_LINES = 3;
+const DESCRIPTION_EXPANDED_MAX_LINES = 10;
 const DESCRIPTION_EXPAND_LABEL = "See more";
 const DESCRIPTION_COLLAPSE_LABEL = "Less";
 const DESCRIPTION_COLLAPSE_SUFFIX = `… ${DESCRIPTION_EXPAND_LABEL}`;
@@ -367,22 +368,31 @@ export function BoardCard({
 	const descriptionDisplay = useMemo(() => {
 		if (!displayDescription) {
 			return {
-				text: "",
-				isTruncated: false,
+				collapsed: { text: "", isTruncated: false },
+				expanded: { text: "", isTruncated: false },
 			};
 		}
 		if (descriptionWidth <= 0) {
 			return {
-				text: displayDescription,
-				isTruncated: false,
+				collapsed: { text: displayDescription, isTruncated: false },
+				expanded: { text: displayDescription, isTruncated: false },
 			};
 		}
-		return clampTextWithInlineSuffix(displayDescription, {
-			maxWidthPx: descriptionWidth,
-			maxLines: DESCRIPTION_COLLAPSE_LINES,
-			suffix: DESCRIPTION_COLLAPSE_SUFFIX,
-			measureText: (value) => measureTextWidth(value, descriptionFont),
-		});
+		const measure = (value: string) => measureTextWidth(value, descriptionFont);
+		return {
+			collapsed: clampTextWithInlineSuffix(displayDescription, {
+				maxWidthPx: descriptionWidth,
+				maxLines: DESCRIPTION_COLLAPSE_LINES,
+				suffix: DESCRIPTION_COLLAPSE_SUFFIX,
+				measureText: measure,
+			}),
+			expanded: clampTextWithInlineSuffix(displayDescription, {
+				maxWidthPx: descriptionWidth,
+				maxLines: DESCRIPTION_EXPANDED_MAX_LINES,
+				suffix: DESCRIPTION_COLLAPSE_SUFFIX,
+				measureText: measure,
+			}),
+		};
 	}, [descriptionFont, descriptionWidth, displayDescription]);
 
 	const isCreditLimit = isCardCreditLimitError(sessionSummary);
@@ -652,46 +662,60 @@ export function BoardCard({
 											margin: "2px 0 0",
 										}}
 									>
-										{isDescriptionExpanded || !descriptionDisplay.isTruncated
-											? displayDescription
-											: descriptionDisplay.text}
-										{descriptionDisplay.isTruncated ? (
-											isDescriptionExpanded ? (
+										{(() => {
+											const activeDisplay = isDescriptionExpanded
+												? descriptionDisplay.expanded
+												: descriptionDisplay.collapsed;
+											const showFull = isDescriptionExpanded && !activeDisplay.isTruncated;
+											return (
 												<>
-													{" "}
-													<button
-														type="button"
-														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-														aria-expanded={isDescriptionExpanded}
-														aria-label="Collapse task description"
-														onMouseDown={stopEvent}
-														onClick={(event) => {
-															stopEvent(event);
-															setIsDescriptionExpanded(false);
-														}}
-													>
-														{DESCRIPTION_COLLAPSE_LABEL}
-													</button>
+													{showFull || !activeDisplay.isTruncated
+														? displayDescription
+														: activeDisplay.text}
+													{activeDisplay.isTruncated ? (
+														<>
+															{"… "}
+															<button
+																type="button"
+																className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+																aria-expanded={isDescriptionExpanded}
+																aria-label={
+																	isDescriptionExpanded
+																		? "Collapse task description"
+																		: "Expand task description"
+																}
+																onMouseDown={stopEvent}
+																onClick={(event) => {
+																	stopEvent(event);
+																	setIsDescriptionExpanded(!isDescriptionExpanded);
+																}}
+															>
+																{isDescriptionExpanded
+																	? DESCRIPTION_COLLAPSE_LABEL
+																	: DESCRIPTION_EXPAND_LABEL}
+															</button>
+														</>
+													) : isDescriptionExpanded && descriptionDisplay.collapsed.isTruncated ? (
+														<>
+															{" "}
+															<button
+																type="button"
+																className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
+																aria-expanded={isDescriptionExpanded}
+																aria-label="Collapse task description"
+																onMouseDown={stopEvent}
+																onClick={(event) => {
+																	stopEvent(event);
+																	setIsDescriptionExpanded(false);
+																}}
+															>
+																{DESCRIPTION_COLLAPSE_LABEL}
+															</button>
+														</>
+													) : null}
 												</>
-											) : (
-												<>
-													{"… "}
-													<button
-														type="button"
-														className="inline cursor-pointer rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [color:inherit] [font:inherit]"
-														aria-expanded={isDescriptionExpanded}
-														aria-label="Expand task description"
-														onMouseDown={stopEvent}
-														onClick={(event) => {
-															stopEvent(event);
-															setIsDescriptionExpanded(true);
-														}}
-													>
-														{DESCRIPTION_EXPAND_LABEL}
-													</button>
-												</>
-											)
-										) : null}
+											);
+										})()}
 									</p>
 								</div>
 							) : null}
