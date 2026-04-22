@@ -8,6 +8,7 @@ import {
 	buildWorkspaceMetadata,
 	ClineCore,
 	type ClineCoreStartInput,
+	type CoreSessionEvent,
 	createUserInstructionConfigWatcher,
 	getClineDefaultSystemPrompt,
 	listAvailableRuntimeCommandsFromWatcher,
@@ -20,7 +21,7 @@ import {
 	type ToolApprovalResult,
 	type UserInstructionConfigWatcher,
 } from "@clinebot/core";
-import type * as Llms from "@clinebot/llms";
+import type { MessageWithMetadata } from "@clinebot/shared";
 import { CLINE_BUILTIN_SLASH_COMMANDS } from "./cline-slash-commands";
 import { getCliTelemetryService } from "./cline-telemetry-service";
 
@@ -142,86 +143,11 @@ export type ClineSdkAgentEvent =
 	| ClineSdkDoneEvent
 	| ClineSdkErrorEvent;
 
-export type ClineSdkSessionEvent =
-	| {
-			type: "chunk";
-			payload: {
-				sessionId: string;
-				stream: "stdout" | "stderr" | "agent";
-				chunk: string;
-				ts: number;
-			};
-	  }
-	| {
-			type: "agent_event";
-			payload: {
-				sessionId: string;
-				event: ClineSdkAgentEvent;
-				teamAgentId?: string;
-				teamRole?: "lead" | "teammate";
-			};
-	  }
-	| {
-			type: "team_progress";
-			payload: {
-				sessionId: string;
-				teamName: string;
-				lifecycle: unknown;
-				summary: unknown;
-			};
-	  }
-	| {
-			type: "pending_prompts";
-			payload: {
-				sessionId: string;
-				prompts: Array<{
-					id: string;
-					prompt: string;
-					delivery: "queue" | "steer";
-					attachmentCount: number;
-				}>;
-			};
-	  }
-	| {
-			type: "pending_prompt_submitted";
-			payload: {
-				sessionId: string;
-				id: string;
-				prompt: string;
-				delivery: "queue" | "steer";
-				attachmentCount: number;
-			};
-	  }
-	| {
-			type: "ended";
-			payload: {
-				sessionId: string;
-				reason: string;
-				ts: number;
-			};
-	  }
-	| {
-			type: "hook";
-			payload: {
-				sessionId: string;
-				hookEventName: "tool_call" | "tool_result" | "agent_end" | "agent_error" | "session_shutdown";
-				toolName?: string;
-				toolInputSummary?: string;
-				finalMessage?: string;
-				notificationType?: string | null;
-			};
-	  }
-	| {
-			type: "status";
-			payload: {
-				sessionId: string;
-				status: string;
-			};
-	  };
+export type ClineSdkSessionEvent = CoreSessionEvent;
 
 export type ClineSdkStartSessionInput = ClineCoreStartInput;
 export type ClineSdkSessionRecord = SessionHistoryRecord;
-export type ClineSdkPersistedMessage = Llms.MessageWithMetadata;
+export type ClineSdkPersistedMessage = MessageWithMetadata;
 export type ClineSdkUserInstructionWatcher = UserInstructionConfigWatcher;
 export interface ClineSdkSlashCommand {
 	name: string;
@@ -234,7 +160,6 @@ export type ClineSdkToolApprovalResult = ToolApprovalResult;
 export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
 	return await ClineCore.create({
 		backendMode: "auto",
-		rpc: { autoStart: true },
 		telemetry: getCliTelemetryService(),
 	});
 }

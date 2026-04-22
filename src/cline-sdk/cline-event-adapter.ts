@@ -88,7 +88,7 @@ function readChunkEvent(event: unknown): ClineSdkChunkEvent | null {
 	if (payload.stream !== "stdout" && payload.stream !== "stderr" && payload.stream !== "agent") {
 		return null;
 	}
-	return { type: "chunk", payload: payload as ClineSdkChunkEvent["payload"] };
+	return { type: "chunk", payload: payload as unknown as ClineSdkChunkEvent["payload"] };
 }
 
 function readHookEvent(event: unknown): ClineSdkHookEvent | null {
@@ -100,7 +100,7 @@ function readHookEvent(event: unknown): ClineSdkHookEvent | null {
 	if (!payload || typeof payload.sessionId !== "string") {
 		return null;
 	}
-	return { type: "hook", payload: payload as ClineSdkHookEvent["payload"] };
+	return { type: "hook", payload: payload as unknown as ClineSdkHookEvent["payload"] };
 }
 
 function readEndedEvent(event: unknown): ClineSdkEndedEvent | null {
@@ -112,7 +112,7 @@ function readEndedEvent(event: unknown): ClineSdkEndedEvent | null {
 	if (!payload || typeof payload.sessionId !== "string" || typeof payload.reason !== "string") {
 		return null;
 	}
-	return { type: "ended", payload: payload as ClineSdkEndedEvent["payload"] };
+	return { type: "ended", payload: payload as unknown as ClineSdkEndedEvent["payload"] };
 }
 
 function readStatusEvent(event: unknown): ClineSdkStatusEvent | null {
