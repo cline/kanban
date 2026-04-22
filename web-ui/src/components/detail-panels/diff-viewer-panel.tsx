@@ -1083,7 +1083,7 @@ export function DiffViewerPanel({
 																handleDeleteComment(group.path, lineNumber, variant)
 															}
 															highlightedKeys={highlightedKeys}
-															onLineNumberClick={handleLineNumberClick}
+															onLineNumberClick={onSendToTerminal ? handleLineNumberClick : undefined}
 															lastHighlightedRowKey={lastHighlightedRowKey}
 															highlightRange={highlightRange}
 															onSendHighlightComment={
