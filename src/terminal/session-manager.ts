@@ -711,20 +711,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 			return cloneSummary(entry.summary);
 		}
 
-		// Preserve agentId so the server can route to the correct agent type
-		// (Cline SDK vs terminal PTY) when a task is restored from trash.
 		const summary = updateSummary(entry, {
-			state: "idle",
-			workspacePath: null,
+			state: "interrupted",
+			reviewReason: "interrupted",
 			pid: null,
-			startedAt: null,
-			lastOutputAt: null,
-			reviewReason: null,
 			exitCode: null,
-			lastHookAt: null,
-			latestHookActivity: null,
-			latestTurnCheckpoint: null,
-			previousTurnCheckpoint: null,
 		});
 
 		for (const listener of entry.listeners.values()) {

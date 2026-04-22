@@ -69,7 +69,7 @@ describe("TerminalSessionManager", () => {
 		expect(typeof updated?.lastHookAt).toBe("number");
 	});
 
-	it("resets stale running sessions without active processes", () => {
+	it("normalizes stale running sessions without active processes to interrupted", () => {
 		const manager = new TerminalSessionManager();
 		manager.hydrateFromRecord({
 			"task-1": createSummary({ state: "running" }),
@@ -77,11 +77,24 @@ describe("TerminalSessionManager", () => {
 
 		const recovered = manager.recoverStaleSession("task-1");
 
-		expect(recovered?.state).toBe("idle");
+		expect(recovered?.state).toBe("interrupted");
 		expect(recovered?.pid).toBeNull();
 		expect(recovered?.agentId).toBe("claude");
-		expect(recovered?.workspacePath).toBeNull();
-		expect(recovered?.reviewReason).toBeNull();
+		expect(recovered?.workspacePath).toBe("/tmp/worktree");
+		expect(recovered?.reviewReason).toBe("interrupted");
+	});
+
+	it("normalizes stale awaiting-review sessions without active processes to interrupted", () => {
+		const manager = new TerminalSessionManager();
+		manager.hydrateFromRecord({
+			"task-1": createSummary({ state: "awaiting_review", reviewReason: "hook" }),
+		});
+
+		const recovered = manager.recoverStaleSession("task-1");
+
+		expect(recovered?.state).toBe("interrupted");
+		expect(recovered?.reviewReason).toBe("interrupted");
+		expect(recovered?.workspacePath).toBe("/tmp/worktree");
 	});
 
 	it("tracks only the latest two turn checkpoints", () => {

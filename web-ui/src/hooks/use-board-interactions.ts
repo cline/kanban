@@ -21,7 +21,6 @@ import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
-import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
 import {
 	getBrowserNotificationPermission,
 	hasPromptedForBrowserNotificationPermission,
@@ -287,9 +286,10 @@ export function useBoardInteractions({
 			task: BoardCard,
 			taskId: string,
 			fromColumnId: BoardColumnId,
-			options?: { optimisticMove?: boolean },
+			options?: { optimisticMove?: boolean; keepCardInPlace?: boolean },
 		): Promise<boolean> => {
 			const optimisticMove = options?.optimisticMove ?? true;
+			const keepCardInPlace = options?.keepCardInPlace ?? false;
 			const ensured = await ensureTaskWorkspace(task);
 			if (!ensured.ok) {
 				notifyError(ensured.message ?? "Could not set up task workspace.");
@@ -346,6 +346,9 @@ export function useBoardInteractions({
 				return false;
 			}
 			if (!optimisticMove) {
+				if (keepCardInPlace) {
+					return true;
+				}
 				setBoard((currentBoard) => {
 					const currentColumnId = getTaskColumnId(currentBoard, taskId);
 					if (currentColumnId !== fromColumnId) {
@@ -358,6 +361,54 @@ export function useBoardInteractions({
 			return true;
 		},
 		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, setBoard, startTaskSession],
+	);
+
+	const resumeInterruptedTaskInPlace = useCallback(
+		async (task: BoardCard, taskId: string): Promise<boolean> => {
+			const session = sessions[taskId];
+			if (session?.agentId === "cline") {
+				notifyError("Interrupted Cline sessions are out of scope for this recovery feature.");
+				return false;
+			}
+			const ensured = await ensureTaskWorkspace(task);
+			if (!ensured.ok) {
+				notifyError(ensured.message ?? "Could not set up task workspace.");
+				return false;
+			}
+			if (ensured.response?.warning) {
+				showAppToast({
+					intent: "warning",
+					icon: "warning-sign",
+					message: ensured.response.warning,
+					timeout: 7000,
+				});
+			}
+			if (selectedTaskId === taskId) {
+				if (ensured.response) {
+					setTaskWorkspaceInfo({
+						taskId,
+						path: ensured.response.path,
+						exists: true,
+						baseRef: ensured.response.baseRef,
+						branch: null,
+						isDetached: true,
+						headCommit: ensured.response.baseCommit,
+					});
+				}
+				const infoAfterEnsure = await fetchTaskWorkspaceInfo(task);
+				if (infoAfterEnsure) {
+					setTaskWorkspaceInfo(infoAfterEnsure);
+				}
+			}
+			const resumeTask = session?.agentId ? { ...task, agentId: session.agentId } : task;
+			const resumed = await startTaskSession(resumeTask);
+			if (!resumed.ok) {
+				notifyError(resumed.message ?? "Could not resume task session.");
+				return false;
+			}
+			return true;
+		},
+		[ensureTaskWorkspace, fetchTaskWorkspaceInfo, selectedTaskId, sessions, startTaskSession],
 	);
 
 	const startBacklogTaskImmediately = useCallback(
@@ -433,7 +484,6 @@ export function useBoardInteractions({
 		setBoard((currentBoard) => {
 			let nextBoard = currentBoard;
 			const previousSessions = previousSessionsRef.current;
-			const blockedInterruptedTaskIds = new Set<string>();
 			for (const summary of Object.values(sessions)) {
 				const previous = previousSessions[summary.taskId];
 				if (previous && previous.updatedAt > summary.updatedAt) {
@@ -462,49 +512,12 @@ export function useBoardInteractions({
 					if (moved.moved) {
 						nextBoard = moved.board;
 					}
-					continue;
-				}
-				if (
-					summary.state === "interrupted" &&
-					previous?.state !== "interrupted" &&
-					columnId &&
-					columnId !== "trash"
-				) {
-					const nextTaskId = getNextDetailTaskIdAfterTrashMove(nextBoard, summary.taskId);
-					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "trash", {
-						skipTrashWorkflow: true,
-					});
-					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
-						if (programmaticMoveAttempt === "blocked") {
-							blockedInterruptedTaskIds.add(summary.taskId);
-						}
-						setSelectedTaskId((currentSelectedTaskId) =>
-							currentSelectedTaskId === summary.taskId ? nextTaskId : currentSelectedTaskId,
-						);
-						continue;
-					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash", { insertAtTop: true });
-					if (moved.moved) {
-						setSelectedTaskId((currentSelectedTaskId) =>
-							currentSelectedTaskId === summary.taskId ? nextTaskId : currentSelectedTaskId,
-						);
-						nextBoard = moved.board;
-					}
 				}
 			}
-			const nextPreviousSessions = { ...sessions };
-			for (const taskId of blockedInterruptedTaskIds) {
-				const previousSession = previousSessions[taskId];
-				if (previousSession) {
-					nextPreviousSessions[taskId] = previousSession;
-					continue;
-				}
-				delete nextPreviousSessions[taskId];
-			}
-			previousSessionsRef.current = nextPreviousSessions;
+			previousSessionsRef.current = { ...sessions };
 			return nextBoard;
 		});
-	}, [programmaticCardMoveCycle, sessions, setBoard, setSelectedTaskId, tryProgrammaticCardMove]);
+	}, [programmaticCardMoveCycle, sessions, setBoard, tryProgrammaticCardMove]);
 
 	const { confirmMoveTaskToTrash, handleCreateDependency, handleDeleteDependency, requestMoveTaskToTrash } =
 		useLinkedBacklogTaskActions({
@@ -671,13 +684,27 @@ export function useBoardInteractions({
 	const handleStartTask = useCallback(
 		(taskId: string) => {
 			const selection = findCardSelection(board, taskId);
-			if (!selection || selection.column.id !== "backlog") {
+			if (!selection || selection.column.id === "trash") {
 				return;
 			}
-			maybeRequestNotificationPermissionForTaskStart();
-			void startBacklogTaskWithAnimation(selection.card);
+			const session = sessions[taskId];
+			if (selection.column.id === "backlog") {
+				maybeRequestNotificationPermissionForTaskStart();
+				void startBacklogTaskWithAnimation(selection.card);
+				return;
+			}
+			if (session?.state === "interrupted") {
+				maybeRequestNotificationPermissionForTaskStart();
+				void resumeInterruptedTaskInPlace(selection.card, taskId);
+			}
 		},
-		[board, maybeRequestNotificationPermissionForTaskStart, startBacklogTaskWithAnimation],
+		[
+			board,
+			maybeRequestNotificationPermissionForTaskStart,
+			resumeInterruptedTaskInPlace,
+			sessions,
+			startBacklogTaskWithAnimation,
+		],
 	);
 
 	const handleStartAllBacklogTasks = useCallback(

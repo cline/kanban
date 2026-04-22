@@ -90,6 +90,7 @@ function HookHarness({
 	setBoard,
 	ensureTaskWorkspace,
 	startTaskSession,
+	initialSessions = {},
 	selectedCard = null,
 	setSelectedTaskIdOverride,
 	onSnapshot,
@@ -98,11 +99,12 @@ function HookHarness({
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
+	initialSessions?: Record<string, RuntimeTaskSessionSummary>;
 	selectedCard?: { card: BoardCard; column: { id: "backlog" | "in_progress" | "review" | "trash" } } | null;
 	setSelectedTaskIdOverride?: Dispatch<SetStateAction<string | null>>;
 	onSnapshot?: (snapshot: HookSnapshot) => void;
 }): null {
-	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
+	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>(initialSessions);
 	const [, setSelectedTaskId] = useState<string | null>(null);
 	const [, setIsClearTrashDialogOpen] = useState(false);
 	const [, setIsGitHistoryOpen] = useState(false);
@@ -423,6 +425,103 @@ describe("useBoardInteractions", () => {
 		expect(setBoard).toHaveBeenCalled();
 		expect(startTaskSession).toHaveBeenCalledWith(board.columns[0]!.cards[0]!);
 		boardElement.remove();
+	});
+
+	it("resumes interrupted tasks in place without moving them to trash", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+		const interruptedTask = createTask("task-interrupted", "Interrupted task", 3);
+		let currentBoard: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [interruptedTask] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Trash", cards: [] },
+			],
+			dependencies: [],
+		};
+		const initialSessions: Record<string, RuntimeTaskSessionSummary> = {
+			[interruptedTask.id]: {
+				taskId: interruptedTask.id,
+				state: "interrupted",
+				agentId: "claude",
+				workspacePath: "/tmp/task-interrupted",
+				pid: null,
+				startedAt: 1,
+				updatedAt: 2,
+				lastOutputAt: 2,
+				reviewReason: "interrupted",
+				exitCode: null,
+				lastHookAt: null,
+				latestHookActivity: null,
+				latestTurnCheckpoint: null,
+				previousTurnCheckpoint: null,
+			},
+		};
+		const setBoard = vi.fn<Dispatch<SetStateAction<BoardData>>>((nextBoard) => {
+			if (typeof nextBoard === "function") {
+				currentBoard = nextBoard(currentBoard);
+				return;
+			}
+			currentBoard = nextBoard;
+		});
+		const ensureTaskWorkspace = vi.fn(async () => ({
+			ok: true as const,
+			response: {
+				ok: true as const,
+				path: "/tmp/task-interrupted",
+				baseRef: "main",
+				baseCommit: "abc123",
+			},
+		}));
+		const startTaskSession = vi.fn(async () => ({ ok: true as const }));
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={currentBoard}
+					setBoard={setBoard}
+					ensureTaskWorkspace={ensureTaskWorkspace}
+					startTaskSession={startTaskSession}
+					initialSessions={initialSessions}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleStartTask(interruptedTask.id);
+			for (let i = 0; i < 5; i++) {
+				await Promise.resolve();
+			}
+		});
+
+		expect(ensureTaskWorkspace).toHaveBeenCalledWith(interruptedTask);
+		expect(startTaskSession).toHaveBeenCalledWith({ ...interruptedTask, agentId: "claude" });
+		expect(currentBoard.columns.find((column) => column.id === "in_progress")?.cards).toContain(interruptedTask);
+		expect(currentBoard.columns.find((column) => column.id === "trash")?.cards).toHaveLength(0);
 	});
 
 	it("shows a warning toast when restoring a trashed task with a saved patch warning", async () => {

@@ -1,6 +1,6 @@
 import "@xterm/xterm/css/xterm.css";
 
-import { Command, Maximize2, MessageSquare, Minimize2, X } from "lucide-react";
+import { Command, Maximize2, MessageSquare, Minimize2, RotateCcw, X } from "lucide-react";
 import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
@@ -26,6 +26,7 @@ export interface AgentTerminalPanelProps {
 	terminalEnabled?: boolean;
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
+	onResume?: () => void;
 	onCommit?: () => void;
 	onOpenPr?: () => void;
 	isCommitLoading?: boolean;
@@ -83,7 +84,10 @@ function getStateTagStyle(summary: RuntimeTaskSessionSummary | null): StatusTagS
 	if (summary.state === "awaiting_review") {
 		return "warning";
 	}
-	if (summary.state === "interrupted" || summary.state === "failed") {
+	if (summary.state === "interrupted") {
+		return "warning";
+	}
+	if (summary.state === "failed") {
 		return "danger";
 	}
 	return "neutral";
@@ -146,6 +150,7 @@ function AgentTerminalPanelLayout({
 	taskId,
 	summary,
 	onSummary: _onSummary,
+	onResume,
 	onCommit,
 	onOpenPr,
 	isCommitLoading = false,
@@ -314,24 +319,36 @@ function AgentTerminalPanelLayout({
 					{lastError}
 				</div>
 			) : null}
-			{showMoveToTrash && onMoveToTrash ? (
+			{(summary?.state === "interrupted" && onResume) || (showMoveToTrash && onMoveToTrash) ? (
 				<div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 12px" }}>
-					<AgentTerminalReviewActions
-						taskId={taskId}
-						taskColumnId={taskColumnId}
-						onCommit={onCommit}
-						onOpenPr={onOpenPr}
-						isCommitLoading={isCommitLoading}
-						isOpenPrLoading={isOpenPrLoading}
-					/>
-					{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
-						<Button variant="default" fill onClick={onCancelAutomaticAction}>
-							{cancelAutomaticActionLabel}
+					{summary?.state === "interrupted" && onResume ? (
+						<Button variant="primary" fill onClick={onResume}>
+							<span className="inline-flex items-center gap-2">
+								<RotateCcw size={14} />
+								Resume
+							</span>
 						</Button>
 					) : null}
-					<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
-						{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
-					</Button>
+					{showMoveToTrash && onMoveToTrash ? (
+						<>
+							<AgentTerminalReviewActions
+								taskId={taskId}
+								taskColumnId={taskColumnId}
+								onCommit={onCommit}
+								onOpenPr={onOpenPr}
+								isCommitLoading={isCommitLoading}
+								isOpenPrLoading={isOpenPrLoading}
+							/>
+							{cancelAutomaticActionLabel && onCancelAutomaticAction ? (
+								<Button variant="default" fill onClick={onCancelAutomaticAction}>
+									{cancelAutomaticActionLabel}
+								</Button>
+							) : null}
+							<Button variant="danger" fill disabled={isMoveToTrashLoading} onClick={onMoveToTrash}>
+								{isMoveToTrashLoading ? <Spinner size={14} /> : "Move Card To Trash"}
+							</Button>
+						</>
+					) : null}
 				</div>
 			) : null}
 		</div>

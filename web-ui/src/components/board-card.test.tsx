@@ -265,6 +265,61 @@ describe("BoardCard", () => {
 		expect(container.textContent).toContain("~/.cline/worktrees/trash-task-1/kanban");
 	});
 
+	it("shows interrupted session state distinctly from failed sessions", async () => {
+		await act(async () => {
+			root.render(
+				<>
+					<BoardCard
+						card={createCard({ id: "task-interrupted" })}
+						index={0}
+						columnId="in_progress"
+						sessionSummary={createSummary("interrupted", {
+							agentId: "codex",
+							reviewReason: "interrupted",
+						})}
+					/>
+					<BoardCard
+						card={createCard({ id: "task-failed" })}
+						index={1}
+						columnId="in_progress"
+						sessionSummary={createSummary("failed")}
+					/>
+				</>,
+			);
+		});
+
+		expect(container.textContent).toContain("Interrupted");
+		expect(container.textContent).toContain("Task failed to start");
+	});
+
+	it("shows a resume button for interrupted cards outside trash", async () => {
+		const onStart = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard({ id: "task-interrupted" })}
+					index={0}
+					columnId="review"
+					onStart={onStart}
+					sessionSummary={createSummary("interrupted", {
+						agentId: "codex",
+						reviewReason: "interrupted",
+					})}
+				/>,
+			);
+		});
+
+		const resumeButton = container.querySelector('button[aria-label="Resume task"]');
+		expect(resumeButton).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			(resumeButton as HTMLButtonElement).click();
+		});
+
+		expect(onStart).toHaveBeenCalledWith("task-interrupted");
+	});
+
 	it("shows formatted agent override details with model name and reasoning effort", async () => {
 		mockWorkspaceSnapshot = {
 			taskId: "task-1",

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core
 import { shutdownRuntimeServer } from "../../src/server/shutdown-coordinator";
 import { loadWorkspaceState, saveWorkspaceState } from "../../src/state/workspace-state";
 import type { TerminalSessionManager } from "../../src/terminal/session-manager";
+import { getTaskWorkspaceInfo } from "../../src/workspace/task-worktree";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
@@ -95,7 +96,7 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 }
 
 describe.sequential("shutdown coordinator integration", () => {
-	it("moves all in-progress and review cards to trash for every indexed project on shutdown", async () => {
+	it("marks in-progress and review cards interrupted in place on shutdown", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-shutdown-scope-");
 			try {
@@ -131,6 +132,21 @@ describe.sequential("shutdown coordinator integration", () => {
 					expectedRevision: indexedInitial.revision,
 				});
 
+				const managedWorktree = await getTaskWorkspaceInfo({
+					cwd: managedProjectPath,
+					taskId: "managed-running",
+					baseRef: "HEAD",
+				});
+				mkdirSync(managedWorktree.path, { recursive: true });
+				expect(existsSync(managedWorktree.path)).toBe(true);
+				const indexedWorktree = await getTaskWorkspaceInfo({
+					cwd: indexedProjectPath,
+					taskId: "indexed-awaiting-review",
+					baseRef: "HEAD",
+				});
+				mkdirSync(indexedWorktree.path, { recursive: true });
+				expect(existsSync(indexedWorktree.path)).toBe(true);
+
 				let didCloseRuntimeServer = false;
 				const managedTerminalManager = {
 					markInterruptedAndStopAll: () => [createSession("managed-running", "running")],
@@ -164,21 +180,31 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(didCloseRuntimeServer).toBe(true);
 
 				const managedAfter = await loadWorkspaceState(managedProjectPath);
+				const managedInProgress =
+					managedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
+				const managedReview = managedAfter.board.columns.find((column) => column.id === "review")?.cards ?? [];
 				const managedTrash = managedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-				expect(managedTrash.map((card) => card.id).sort()).toEqual(
-					["managed-idle", "managed-missing-session", "managed-running"].sort(),
+				expect(managedInProgress.map((card) => card.id).sort()).toEqual(
+					["managed-missing-session", "managed-running"].sort(),
 				);
+				expect(managedReview.map((card) => card.id)).toEqual(["managed-idle"]);
+				expect(managedTrash).toEqual([]);
 				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
 				expect(managedAfter.sessions["managed-idle"]?.state).toBe("interrupted");
-				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
+				expect(managedAfter.sessions["managed-missing-session"]?.state).toBe("interrupted");
+				expect(existsSync(managedWorktree.path)).toBe(true);
 
 				const indexedAfter = await loadWorkspaceState(indexedProjectPath);
+				const indexedInProgress =
+					indexedAfter.board.columns.find((column) => column.id === "in_progress")?.cards ?? [];
+				const indexedReview = indexedAfter.board.columns.find((column) => column.id === "review")?.cards ?? [];
 				const indexedTrash = indexedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-				expect(indexedTrash.map((card) => card.id).sort()).toEqual(
-					["indexed-awaiting-review", "indexed-missing-session"].sort(),
-				);
+				expect(indexedInProgress.map((card) => card.id).sort()).toEqual(["indexed-missing-session"].sort());
+				expect(indexedReview.map((card) => card.id).sort()).toEqual(["indexed-awaiting-review"].sort());
+				expect(indexedTrash).toEqual([]);
 				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("interrupted");
-				expect(indexedAfter.sessions["indexed-missing-session"]).toBeUndefined();
+				expect(indexedAfter.sessions["indexed-missing-session"]?.state).toBe("interrupted");
+				expect(existsSync(indexedWorktree.path)).toBe(true);
 			} finally {
 				cleanup();
 			}

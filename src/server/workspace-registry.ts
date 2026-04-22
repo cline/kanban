@@ -157,11 +157,6 @@ function applyLiveSessionStateToProjectTaskCounts(
 		if (summary.state === "awaiting_review" && columnId === "in_progress") {
 			next.in_progress = Math.max(0, next.in_progress - 1);
 			next.review += 1;
-			continue;
-		}
-		if (summary.state === "interrupted" && columnId !== "trash") {
-			next[columnId] = Math.max(0, next[columnId] - 1);
-			next.trash += 1;
 		}
 	}
 	return next;
@@ -238,6 +233,9 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 			try {
 				const existingWorkspace = await loadWorkspaceState(repoPath);
 				manager.hydrateFromRecord(existingWorkspace.sessions);
+				for (const taskId of Object.keys(existingWorkspace.sessions)) {
+					manager.recoverStaleSession(taskId);
+				}
 			} catch {
 				// Workspace state will be created on demand.
 			}

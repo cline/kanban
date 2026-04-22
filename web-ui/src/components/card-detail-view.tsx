@@ -709,6 +709,7 @@ export function CardDetailView({
 			terminalEnabled={isTaskTerminalEnabled}
 			summary={sessionSummary}
 			onSummary={onSessionSummary}
+			onResume={onStartTask ? () => onStartTask(selection.card.id) : undefined}
 			onCommit={onAgentCommitTask ? () => onAgentCommitTask(selection.card.id) : undefined}
 			onOpenPr={onAgentOpenPrTask ? () => onAgentOpenPrTask(selection.card.id) : undefined}
 			isCommitLoading={agentCommitTaskLoadingById?.[selection.card.id] ?? false}

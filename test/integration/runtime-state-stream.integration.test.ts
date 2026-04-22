@@ -1133,7 +1133,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 	}, 45_000);
 
-	it("moves stale completed review cards to trash on shutdown", async () => {
+	it("preserves interrupted review cards in place across shutdown and restart", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-exit-review-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-stale-exit-review-");
 
@@ -1229,10 +1229,20 @@ describe.sequential("runtime state stream integration", () => {
 
 			const reviewCards = finalState.payload.board.columns.find((column) => column.id === "review")?.cards ?? [];
 			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-			expect(reviewCards.some((card) => card.id === taskId)).toBe(false);
-			expect(trashCards.some((card) => card.id === taskId)).toBe(true);
+			expect(reviewCards.some((card) => card.id === taskId)).toBe(true);
+			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
 			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
 			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
+			const projectsResponse = await requestJson<RuntimeProjectsResponse>({
+				baseUrl: `http://127.0.0.1:${secondPort}`,
+				procedure: "projects.list",
+				type: "query",
+				workspaceId,
+			});
+			expect(projectsResponse.status).toBe(200);
+			const project = projectsResponse.payload.projects.find((entry) => entry.id === workspaceId) ?? null;
+			expect(project?.taskCounts.review).toBe(1);
+			expect(project?.taskCounts.trash).toBe(0);
 			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "workspace.getTaskContext",
@@ -1244,7 +1254,7 @@ describe.sequential("runtime state stream integration", () => {
 				},
 			});
 			expect(workspaceInfo.status).toBe(200);
-			expect(workspaceInfo.payload.exists).toBe(false);
+			expect(workspaceInfo.payload.exists).toBe(true);
 		} finally {
 			await secondServer.stop();
 			cleanupProject();
@@ -1252,7 +1262,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 	}, 45_000);
 
-	it("skips stale session shutdown cleanup when --skip-shutdown-cleanup is enabled", async () => {
+	it("still normalizes stale review sessions on restart when --skip-shutdown-cleanup is enabled", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-skip-cleanup-flag-");
 		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-skip-cleanup-flag-");
 
@@ -1352,8 +1362,8 @@ describe.sequential("runtime state stream integration", () => {
 			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
 			expect(reviewCards.some((card) => card.id === taskId)).toBe(true);
 			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
-			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
-			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("hook");
+			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
+			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
 
 			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,

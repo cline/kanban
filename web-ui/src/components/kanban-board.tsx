@@ -386,7 +386,7 @@ export function KanbanBoard({
 						column={column}
 						taskSessions={taskSessions}
 						onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
-						onStartTask={column.id === "backlog" ? onStartTask : undefined}
+						onStartTask={onStartTask}
 						onStartAllTasks={column.id === "backlog" ? onStartAllTasks : undefined}
 						onClearTrash={column.id === "trash" ? onClearTrash : undefined}
 						editingTaskId={column.id === "backlog" ? editingTaskId : null}

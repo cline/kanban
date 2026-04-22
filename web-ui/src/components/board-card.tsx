@@ -200,6 +200,9 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		const failedText = finalMessage ?? activityText ?? "Task failed to start";
 		return { dotColor: SESSION_ACTIVITY_COLOR.error, text: failedText };
 	}
+	if (summary.state === "interrupted") {
+		return { dotColor: SESSION_ACTIVITY_COLOR.warning, text: "Interrupted" };
+	}
 	if (summary.state === "awaiting_review") {
 		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Waiting for review" };
 	}
@@ -437,10 +440,13 @@ export function BoardCard({
 		if (isCreditLimit) {
 			return <AlertTriangle size={12} className="text-status-orange" />;
 		}
+		if (sessionSummary?.state === "failed") {
+			return <AlertCircle size={12} className="text-status-red" />;
+		}
+		if (sessionSummary?.state === "interrupted") {
+			return <AlertTriangle size={12} className="text-status-orange" />;
+		}
 		if (columnId === "in_progress") {
-			if (sessionSummary?.state === "failed") {
-				return <AlertCircle size={12} className="text-status-red" />;
-			}
 			return <Spinner size={12} />;
 		}
 		return null;
@@ -636,7 +642,21 @@ export function BoardCard({
 										</p>
 									)}
 								</div>
-								{columnId === "backlog" ? (
+								{sessionSummary?.state === "interrupted" &&
+								sessionSummary.agentId !== "cline" &&
+								columnId !== "trash" ? (
+									<Button
+										icon={<RotateCcw size={14} />}
+										variant="ghost"
+										size="sm"
+										aria-label="Resume task"
+										onMouseDown={stopEvent}
+										onClick={(event) => {
+											stopEvent(event);
+											onStart?.(card.id);
+										}}
+									/>
+								) : columnId === "backlog" ? (
 									<Button
 										icon={<Play size={14} />}
 										variant="ghost"
