@@ -30,15 +30,15 @@ import {
 	loginOcaOAuth,
 	loginOpenAICodex,
 	type OcaOAuthProviderOptions,
+	type ProviderSettings,
 	ProviderSettingsManager,
 	completeClineDeviceAuth as sdkCompleteClineDeviceAuth,
 	startClineDeviceAuth as sdkStartClineDeviceAuth,
 	type Tool,
 } from "@clinebot/core";
-import type * as Llms from "@clinebot/llms";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
-export type SdkReasoningEffort = NonNullable<NonNullable<Llms.ProviderSettings["reasoning"]>["effort"]>;
+export type SdkReasoningEffort = NonNullable<NonNullable<ProviderSettings["reasoning"]>["effort"]>;
 export const SDK_DEFAULT_PROVIDER_ID = "cline";
 export const SDK_DEFAULT_MODEL_ID = "anthropic/claude-sonnet-4.6";
 
@@ -78,7 +78,7 @@ export interface SdkUserRemoteConfigResponse {
 	enabled: boolean;
 }
 
-export type SdkProviderSettings = Llms.ProviderSettings;
+export type SdkProviderSettings = ProviderSettings;
 export type SdkCustomProviderCapability = "streaming" | "tools" | "reasoning" | "vision" | "prompt-cache";
 
 export interface SaveSdkProviderSettingsInput {

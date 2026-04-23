@@ -544,7 +544,7 @@ body.kb-dependency-link-mode {
 	padding: 1px 2px 1px 0;
 	line-height: 1.6;
 	font-size: 12px;
-	cursor: pointer;
+	cursor: default;
 }
 
 .kb-diff-row:hover {
@@ -571,6 +571,7 @@ body.kb-dependency-link-mode {
 	display: none;
 	align-items: center;
 	justify-content: center;
+	cursor: pointer;
 }
 
 .kb-diff-row:hover .kb-diff-comment-gutter {
@@ -785,6 +786,31 @@ body.kb-dependency-link-mode {
 
 .kb-diff-inline-comment {
 	padding: 4px 6px;
+}
+
+.kb-diff-row.kb-diff-row-highlighted,
+.kb-diff-row.kb-diff-row-highlighted:hover {
+	background: rgba(0, 132, 255, 0.12);
+}
+
+.kb-diff-line-number-selectable {
+	cursor: pointer;
+}
+
+.kb-diff-highlight-comment-box {
+	margin: 4px 6px;
+	padding: 8px;
+	border: 1px solid var(--color-border-bright);
+	border-radius: var(--radius-md);
+	background: var(--color-surface-1);
+}
+
+.kb-diff-highlight-comment-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	padding-top: 6px;
 }
 
 .kb-diff-comments-footer {

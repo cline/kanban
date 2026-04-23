@@ -14,7 +14,6 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "@clinebot/shared": "^0.0.34",
     "@hello-pangea/dnd": "^18.0.1",
     "@posthog/react": "^1.8.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",

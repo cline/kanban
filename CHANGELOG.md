@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.64]
+
+- Multi-line diff comments: Shift+click to select a range of lines, click the line number to open the comment box, and comments now include file path, line number, and column context
+- File tree panel in diff views can now be toggled open or closed
+- Task title editing now requires clicking the pencil icon that appears on card hover, preventing accidental edits when clicking the card
+
 ## [0.1.63]
 
 - Fixed task detail view being lost on page refresh

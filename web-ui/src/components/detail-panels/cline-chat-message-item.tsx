@@ -1,4 +1,3 @@
-import { normalizeUserInput } from "@clinebot/shared";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
@@ -188,9 +187,7 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 		const hasImages = Boolean(message.images && message.images.length > 0);
 		return (
 			<div className="ml-auto max-w-[85%] rounded-md bg-accent/10 border border-accent/20 px-3 py-2 text-sm text-text-primary">
-				{hasText ? (
-					<div className="whitespace-pre-wrap break-words">{normalizeUserInput(message.content)}</div>
-				) : null}
+				{hasText ? <div className="whitespace-pre-wrap break-words">{message.content}</div> : null}
 				{hasImages ? (
 					<TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} />
 				) : null}
