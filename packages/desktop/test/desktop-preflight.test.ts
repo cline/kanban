@@ -62,6 +62,8 @@ describe("runDesktopPreflight", () => {
 		expect(result.failures).toHaveLength(1);
 		expect(result.failures[0].code).toBe("PRELOAD_MISSING");
 		expect(result.failures[0].message).toContain("nonexistent-preload.js");
+		expect(result.failures[0].details?.path).toContain("nonexistent-preload.js");
+		expect(result.failures[0].details?.isPackaged).toBe(false);
 		expect(result.resources.preloadExists).toBe(false);
 		expect(result.resources.cliShimExists).toBe(true);
 	});
