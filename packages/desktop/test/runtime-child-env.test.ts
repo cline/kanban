@@ -80,11 +80,11 @@ describe("buildFilteredEnv", () => {
 		expect(env.HOME).toBe("/Users/testuser");
 	});
 
-	it("does not include arbitrary env variables", () => {
-		process.env.MY_SECRET_VAR = "secret";
+	it("forwards all env variables by default", () => {
+		process.env.MY_CUSTOM_VAR = "custom-value";
 		const env = buildFilteredEnv();
-		expect(env.MY_SECRET_VAR).toBeUndefined();
-		delete process.env.MY_SECRET_VAR;
+		expect(env.MY_CUSTOM_VAR).toBe("custom-value");
+		delete process.env.MY_CUSTOM_VAR;
 	});
 
 	it("forwards KANBAN_ prefixed env variables", () => {
@@ -141,14 +141,14 @@ describe("buildFilteredEnv", () => {
 		expect(env.HOMEPATH).toBe("\\Users\\test");
 	});
 
-	it("omits ELECTRON_RUN_AS_NODE and other arbitrary keys", () => {
+	it("forwards ELECTRON_RUN_AS_NODE and all other env vars", () => {
 		process.env.ELECTRON_RUN_AS_NODE = "1";
-		process.env.SECRET_KEY = "should-not-appear";
+		process.env.CUSTOM_VAR = "custom-value";
 		const env = buildFilteredEnv();
-		expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
-		expect(env.SECRET_KEY).toBeUndefined();
+		expect(env.ELECTRON_RUN_AS_NODE).toBe("1");
+		expect(env.CUSTOM_VAR).toBe("custom-value");
 		delete process.env.ELECTRON_RUN_AS_NODE;
-		delete process.env.SECRET_KEY;
+		delete process.env.CUSTOM_VAR;
 	});
 
 	it("omits keys that are not set in process.env", () => {
