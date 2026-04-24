@@ -79,7 +79,7 @@ export function UpdateAvailableDialog({
 					<div className="flex items-start gap-2 text-text-primary">
 						<CheckCircle2 size={16} className="mt-0.5 shrink-0 text-status-green" />
 						<p>
-							{phase.result.latestVersion ? (
+							{phase.result.status === "updated" && phase.result.latestVersion ? (
 								<>
 									Updated to <span className="font-semibold">Kanban {phase.result.latestVersion}</span>.
 									Restart Kanban to use the new version.

@@ -495,6 +495,72 @@ describe("getPendingUpdateNotification", () => {
 		});
 	});
 
+	it("uses pnpm dlx as the install command for pnpm-dlx transient installs", async () => {
+		await runAutoUpdateCheck({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: [
+				"node",
+				"/Users/saoud/Library/Caches/pnpm/dlx/82fa34f6d8482ef2103aa281bbfd9bc42aeec4c8b99d8b1d6bc4653f9d4d179d/19cd9b46385-11271/node_modules/.pnpm/kanban@1.0.0/node_modules/kanban/dist/cli.js",
+			],
+			cwd: "/Users/saoud/projects/work",
+			env: {},
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			spawnUpdate: () => {},
+		});
+
+		expect(getPendingUpdateNotification()).toEqual({
+			currentVersion: "1.0.0",
+			latestVersion: "1.1.0",
+			updateTiming: "shutdown",
+			installCommand: "pnpm dlx kanban",
+		});
+	});
+
+	it("uses yarn dlx as the install command for yarn-dlx transient installs", async () => {
+		await runAutoUpdateCheck({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: [
+				"node",
+				"/private/var/folders/v5/vpxh_439455fv8f_y_55m8q00000gn/T/xfs-bf17b212/dlx-39615/.yarn/cache/kanban-npm-1.0.0-abcdef1234.zip/node_modules/kanban/dist/cli.js",
+			],
+			cwd: "/Users/saoud/projects/work",
+			env: {},
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			spawnUpdate: () => {},
+		});
+
+		expect(getPendingUpdateNotification()).toEqual({
+			currentVersion: "1.0.0",
+			latestVersion: "1.1.0",
+			updateTiming: "shutdown",
+			installCommand: "yarn dlx kanban",
+		});
+	});
+
+	it("uses bunx as the install command for bunx transient installs", async () => {
+		await runAutoUpdateCheck({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: ["node", "/private/tmp/bunx-501-kanban@1.0.0/node_modules/kanban/dist/cli.js"],
+			cwd: "/Users/saoud/projects/work",
+			env: {},
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			spawnUpdate: () => {},
+		});
+
+		expect(getPendingUpdateNotification()).toEqual({
+			currentVersion: "1.0.0",
+			latestVersion: "1.1.0",
+			updateTiming: "shutdown",
+			installCommand: "bunx kanban",
+		});
+	});
+
 	it("leaves the pending notification null when the current version is already latest", async () => {
 		await runAutoUpdateCheck({
 			currentVersion: "1.1.0",

@@ -95,15 +95,19 @@ function buildUserFacingInstallCommand(
 	packageManager: UpdatePackageManager,
 	packageName: string,
 	npmTag: string,
+	updateTiming: "startup" | "shutdown",
 ): string {
 	const packageSpec = `${packageName}@${npmTag}`;
+	// `updateTiming === "shutdown"` is the marker for transient (dlx / npx / bunx) runs:
+	// the user did not perform a global install, so steering them toward `... add -g`
+	// would change their workflow. The right command is just to re-run the same launcher.
 	switch (packageManager) {
 		case UpdatePackageManager.PNPM:
-			return `pnpm add -g ${packageSpec}`;
+			return updateTiming === "shutdown" ? `pnpm dlx ${packageName}` : `pnpm add -g ${packageSpec}`;
 		case UpdatePackageManager.YARN:
-			return `yarn global add ${packageSpec}`;
+			return updateTiming === "shutdown" ? `yarn dlx ${packageName}` : `yarn global add ${packageSpec}`;
 		case UpdatePackageManager.BUN:
-			return `bun add -g ${packageSpec}`;
+			return updateTiming === "shutdown" ? `bunx ${packageName}` : `bun add -g ${packageSpec}`;
 		case UpdatePackageManager.NPX:
 			return `npx ${packageName}`;
 		case UpdatePackageManager.NPM:
@@ -761,7 +765,12 @@ export async function runAutoUpdateCheck(options: UpdateStartupOptions): Promise
 			currentVersion: options.currentVersion,
 			latestVersion,
 			updateTiming: installation.updateTiming,
-			installCommand: buildUserFacingInstallCommand(installation.packageManager, packageName, installation.npmTag),
+			installCommand: buildUserFacingInstallCommand(
+				installation.packageManager,
+				packageName,
+				installation.npmTag,
+				installation.updateTiming,
+			),
 		};
 
 		if (installation.updateTiming === "shutdown") {
