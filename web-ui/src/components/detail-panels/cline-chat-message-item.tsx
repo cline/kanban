@@ -9,8 +9,8 @@ import {
 } from "@/components/detail-panels/cline-chat-message-utils";
 import { ClineMarkdownContent } from "@/components/detail-panels/cline-markdown-content";
 import { TaskImageStrip } from "@/components/task-image-strip";
+import { BrailleSpinner } from "@/components/ui/braille-spinner";
 import { cn } from "@/components/ui/cn";
-import { Spinner } from "@/components/ui/spinner";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 
 function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
@@ -38,7 +38,7 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 				)}
 			>
 				{isRunning ? (
-					<Spinner size={14} className="shrink-0" />
+					<BrailleSpinner className="shrink-0 text-sm text-text-secondary" />
 				) : hasError ? (
 					<XCircle size={14} className="shrink-0 text-status-red" />
 				) : null}
@@ -73,41 +73,42 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 			</button>
 
 			{expanded ? (
-				<div className="mt-1 space-y-1.5 pr-1.5 pl-[24px] pb-1">
-					{/* Full tool input (e.g. complete run_commands commands) */}
-					{fullInput ? (
-						<div>
-							<div className="mb-0.5 text-xs text-text-tertiary">Command</div>
-							<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
-								{fullInput}
-							</pre>
-						</div>
-					) : null}
-
+				<div className="mt-5 space-y-5 pr-1.5 pl-4 pb-2">
 					{/* Parsed ToolOperationResult output */}
 					{toolOutput ? (
-						toolOutput.results.map((result, i) => (
-							<div key={i}>
-								{toolOutput.results.length > 1 ? (
-									<div className="mb-0.5 truncate text-xs text-text-tertiary">{result.query}</div>
-								) : null}
-								{result.error ? (
-									<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
-										{result.error}
+						<div className="relative border-l border-dashed border-text-tertiary/40 pl-3">
+							{/* Full tool input (e.g. complete run_commands commands) */}
+							{fullInput ? (
+								<div className="relative pb-6">
+									<div className="mb-3 text-xs text-text-tertiary">Command</div>
+									<pre className="max-h-60 overflow-auto rounded border border-border bg-surface-0 px-2 py-1 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+										{fullInput}
 									</pre>
-								) : null}
-								{result.content ? (
-									<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
-										{result.content}
-									</pre>
-								) : null}
-							</div>
-						))
+								</div>
+							) : null}
+							{toolOutput.results.map((result, i) => (
+								<div key={i} className="relative pb-6 last:pb-0">
+									{toolOutput.results.length > 1 ? (
+										<div className="mb-3 truncate text-xs text-text-tertiary">{result.query}</div>
+									) : null}
+									{result.error ? (
+										<pre className="max-h-60 overflow-auto rounded border border-status-red/20 bg-status-red/5 px-2 py-1 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
+											{result.error}
+										</pre>
+									) : null}
+									{result.content ? (
+										<pre className="max-h-60 overflow-auto rounded border border-border bg-surface-0 px-2 py-1 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+											{result.content}
+										</pre>
+									) : null}
+								</div>
+							))}
+						</div>
 					) : parsed.output ? (
 						/* Fallback for non-ToolOperationResult output (skills, ask_question, MCP tools) */
-						<div>
-							<div className="mb-0.5 text-xs text-text-tertiary">Output</div>
-							<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+						<div className="relative border-l border-dashed border-text-tertiary/40 pl-3">
+							<div className="mb-1.5 text-xs text-text-tertiary">Output</div>
+							<pre className="max-h-60 overflow-auto rounded border border-border bg-surface-0 px-2 py-1 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
 								{parsed.output}
 							</pre>
 						</div>
@@ -116,8 +117,8 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 					{/* Tool-level error (SDK crash/timeout, separate from per-result errors) */}
 					{parsed.error ? (
 						<div>
-							<div className="mb-0.5 text-xs text-status-red">Error</div>
-							<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
+							<div className="mb-1.5 text-xs text-status-red">Error</div>
+							<pre className="max-h-60 overflow-auto rounded border border-status-red/20 bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
 								{parsed.error}
 							</pre>
 						</div>

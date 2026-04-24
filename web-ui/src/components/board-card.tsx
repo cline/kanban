@@ -11,6 +11,7 @@ import {
 	formatClineSelectedModelButtonText,
 	resolveClineModelDisplayName,
 } from "@/components/detail-panels/cline-model-picker-options";
+import { BrailleSpinner } from "@/components/ui/braille-spinner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -764,15 +765,21 @@ export function BoardCard({
 										color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
 									}}
 								>
-									<span
-										className="inline-block shrink-0 rounded-full"
-										style={{
-											width: 6,
-											height: 6,
-											backgroundColor: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : sessionActivity.dotColor,
-											marginTop: 4,
-										}}
-									/>
+									{!isTrashCard && sessionActivity.text === "Thinking..." ? (
+										<BrailleSpinner className="shrink-0 text-[10px] text-text-primary" />
+									) : (
+										<span
+											className="inline-block shrink-0 rounded-full"
+											style={{
+												width: 6,
+												height: 6,
+												backgroundColor: isTrashCard
+													? SESSION_ACTIVITY_COLOR.muted
+													: sessionActivity.dotColor,
+												marginTop: 4,
+											}}
+										/>
+									)}
 									<div ref={sessionPreviewContainerRef} className="min-w-0 flex-1">
 										<p
 											ref={sessionPreviewRef}

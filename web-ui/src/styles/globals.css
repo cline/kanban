@@ -1126,8 +1126,32 @@ body.kb-dependency-link-mode {
 	margin-top: 0 !important;
 }
 
+/* Base spacing between sibling elements */
 .kb-markdown > * + * {
-	margin-top: 0.5em;
+	margin-top: 0.75em;
+}
+
+/* Headings get extra top spacing to separate sections */
+.kb-markdown > * + h1,
+.kb-markdown > * + h2 {
+	margin-top: 1.5em;
+}
+
+.kb-markdown > * + h3 {
+	margin-top: 1.25em;
+}
+
+/* Tables and lists breathe a bit more */
+.kb-markdown > * + div:has(> table),
+.kb-markdown > * + ul,
+.kb-markdown > * + ol {
+	margin-top: 0.75em;
+}
+
+/* HR separators get generous space */
+.kb-markdown > * + hr {
+	margin-top: 1.5em;
+	margin-bottom: 1.5em;
 }
 
 /* -- Mobile: prevent Safari auto-zoom on input focus -- */

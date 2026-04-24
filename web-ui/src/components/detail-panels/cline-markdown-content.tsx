@@ -97,7 +97,7 @@ const markdownComponents: Components = {
 		<ol className={cn("list-decimal pl-5 leading-snug text-sm text-text-primary", className)} {...props} />
 	),
 	li: ({ className, ...props }) => (
-		<li className={cn("leading-snug text-sm text-text-primary", className)} {...props} />
+		<li className={cn("leading-snug text-sm text-text-primary [&+&]:mt-[0.3em]", className)} {...props} />
 	),
 	a: ({ className, ...props }) => (
 		<a className={cn("text-accent-2 underline", className)} target="_blank" rel="noreferrer" {...props} />
@@ -108,7 +108,19 @@ const markdownComponents: Components = {
 			{...props}
 		/>
 	),
-	hr: ({ className, ...props }) => <hr className={cn("border-border", className)} {...props} />,
+	table: ({ className, ...props }) => (
+		<div className="my-1 overflow-x-auto">
+			<table className={cn("w-full border-collapse text-sm text-text-primary", className)} {...props} />
+		</div>
+	),
+	thead: ({ className, ...props }) => <thead className={cn("border-b border-border-bright", className)} {...props} />,
+	th: ({ className, ...props }) => (
+		<th className={cn("px-3 py-1.5 text-left text-xs font-semibold text-text-secondary", className)} {...props} />
+	),
+	td: ({ className, ...props }) => (
+		<td className={cn("border-t border-border px-3 py-1.5 text-sm", className)} {...props} />
+	),
+	hr: ({ className, ...props }) => <hr className={cn("border-transparent", className)} {...props} />,
 	code: ({ className, children, ...props }) => {
 		const code = toCodeString(children);
 		const isInline = !className || !className.includes("language-");
