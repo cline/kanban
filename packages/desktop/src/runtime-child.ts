@@ -214,9 +214,12 @@ export class RuntimeChildManager extends EventEmitter<RuntimeChildManagerEvents>
 
 		const env = buildFilteredEnv();
 		env.KANBAN_DESKTOP = "1";
-		// `buildFilteredEnv()` does not forward NODE_OPTIONS (not in the
-		// allowlist), so we just set ours — no existing-value merge needed.
-		env.NODE_OPTIONS = `--max-old-space-size=${this.opts.maxOldSpaceMb}`;
+		// Merge our V8 heap limit with any existing NODE_OPTIONS from parent.
+		const existingNodeOptions = env.NODE_OPTIONS?.trim() || "";
+		const ourOptions = `--max-old-space-size=${this.opts.maxOldSpaceMb}`;
+		env.NODE_OPTIONS = existingNodeOptions
+			? `${existingNodeOptions} ${ourOptions}`
+			: ourOptions;
 
 		const args = ["--no-open", "--port", String(config.port), "--host", config.host];
 
