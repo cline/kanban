@@ -215,10 +215,10 @@ export class RuntimeChildManager extends EventEmitter<RuntimeChildManagerEvents>
 		const env = buildFilteredEnv();
 		env.KANBAN_DESKTOP = "1";
 		// Merge our V8 heap limit with any existing NODE_OPTIONS from parent.
-		// Strip any existing --max-old-space-size to avoid duplicates.
+		// Strip both hyphen and underscore variants to avoid duplicates.
 		const existingNodeOptions = env.NODE_OPTIONS?.trim() || "";
 		const cleanedOptions = existingNodeOptions
-			.replace(/--max-old-space-size=\d+/g, "")
+			.replace(/--max[-_]old[-_]space[-_]size=\d+/g, "")
 			.trim();
 		const ourOptions = `--max-old-space-size=${this.opts.maxOldSpaceMb}`;
 		env.NODE_OPTIONS = cleanedOptions
