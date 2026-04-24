@@ -395,7 +395,7 @@ async function startServer(): Promise<{
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
-		{ getPendingUpdateNotification },
+		{ clearPendingUpdateNotification, getPendingUpdateNotification },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -476,6 +476,16 @@ async function startServer(): Promise<{
 			const result = await runOnDemandUpdate({
 				currentVersion: KANBAN_VERSION,
 			});
+			if (
+				result.status === "updated" ||
+				result.status === "already_up_to_date" ||
+				result.status === "cache_refreshed"
+			) {
+				// The pending notification is a one-shot signal recorded at startup.
+				// Clearing it here prevents the modal from reappearing on page reload
+				// after the user has already applied the update.
+				clearPendingUpdateNotification();
+			}
 			return {
 				status: result.status,
 				currentVersion: result.currentVersion,

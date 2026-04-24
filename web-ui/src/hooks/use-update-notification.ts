@@ -44,6 +44,10 @@ export function useUpdateNotification(): UseUpdateNotificationResult {
 					return;
 				}
 				if (!status.updateAvailable || !status.latestVersion || !status.installCommand) {
+					// Self-correct if a previous poll surfaced an update that has since
+					// been cleared (e.g. the user applied the update and the runtime
+					// cleared the pending notification).
+					setAvailableUpdate(null);
 					return;
 				}
 				setAvailableUpdate({
