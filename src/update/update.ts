@@ -72,6 +72,47 @@ interface PendingShutdownAutoUpdate {
 	latestVersion: string;
 }
 
+export interface PendingUpdateNotification {
+	currentVersion: string;
+	latestVersion: string;
+	/**
+	 * "startup": a global-install update was spawned in the background. The running process still
+	 *   runs the old version, so the user needs to restart to pick up the new version.
+	 * "shutdown": a transient (npx/pnpm dlx/yarn dlx/bunx) cache refresh is scheduled for shutdown.
+	 *   The next launch will use the new version.
+	 */
+	updateTiming: "startup" | "shutdown";
+	/**
+	 * User-facing command the user can copy-paste to apply the update. For global installs this is
+	 * the install command (e.g. `npm install -g kanban@latest`). For transient runs (npx, pnpm dlx,
+	 * yarn dlx, bunx) it's just the rerun command (e.g. `npx kanban`) since the auto-update has
+	 * already cleared the relevant cache on shutdown.
+	 */
+	installCommand: string;
+}
+
+function buildUserFacingInstallCommand(
+	packageManager: UpdatePackageManager,
+	packageName: string,
+	npmTag: string,
+): string {
+	const packageSpec = `${packageName}@${npmTag}`;
+	switch (packageManager) {
+		case UpdatePackageManager.PNPM:
+			return `pnpm add -g ${packageSpec}`;
+		case UpdatePackageManager.YARN:
+			return `yarn global add ${packageSpec}`;
+		case UpdatePackageManager.BUN:
+			return `bun add -g ${packageSpec}`;
+		case UpdatePackageManager.NPX:
+			return `npx ${packageName}`;
+		case UpdatePackageManager.NPM:
+		case UpdatePackageManager.LOCAL:
+		case UpdatePackageManager.UNKNOWN:
+			return `npm install -g ${packageSpec}`;
+	}
+}
+
 const DELETE_DIRECTORY_AFTER_DELAY_SCRIPT = `
 const { rmSync } = require("node:fs");
 
@@ -88,6 +129,15 @@ setTimeout(() => {
 `.trim();
 
 let pendingShutdownAutoUpdate: PendingShutdownAutoUpdate | null = null;
+let pendingUpdateNotification: PendingUpdateNotification | null = null;
+
+export function getPendingUpdateNotification(): PendingUpdateNotification | null {
+	return pendingUpdateNotification;
+}
+
+export function clearPendingUpdateNotification(): void {
+	pendingUpdateNotification = null;
+}
 
 function toPosixLowerPath(path: string): string {
 	return path.replaceAll("\\", "/").toLowerCase();
@@ -706,6 +756,13 @@ export async function runAutoUpdateCheck(options: UpdateStartupOptions): Promise
 		if (!latestVersion || compareVersions(options.currentVersion, latestVersion) >= 0) {
 			return;
 		}
+
+		pendingUpdateNotification = {
+			currentVersion: options.currentVersion,
+			latestVersion,
+			updateTiming: installation.updateTiming,
+			installCommand: buildUserFacingInstallCommand(installation.packageManager, packageName, installation.npmTag),
+		};
 
 		if (installation.updateTiming === "shutdown") {
 			scheduleShutdownUpdate({

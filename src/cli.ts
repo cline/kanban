@@ -395,6 +395,7 @@ async function startServer(): Promise<{
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+		{ getPendingUpdateNotification },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -403,6 +404,7 @@ async function startServer(): Promise<{
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
 		import("./server/workspace-registry.js"),
+		import("./update/update.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
@@ -451,6 +453,36 @@ async function startServer(): Promise<{
 		disposeWorkspace: disposeTrackedWorkspace,
 		collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog,
+		getUpdateStatus: () => {
+			const notification = getPendingUpdateNotification();
+			if (!notification) {
+				return {
+					currentVersion: KANBAN_VERSION,
+					latestVersion: null,
+					updateAvailable: false,
+					updateTiming: null,
+					installCommand: null,
+				};
+			}
+			return {
+				currentVersion: notification.currentVersion,
+				latestVersion: notification.latestVersion,
+				updateAvailable: true,
+				updateTiming: notification.updateTiming,
+				installCommand: notification.installCommand,
+			};
+		},
+		runUpdateNow: async () => {
+			const result = await runOnDemandUpdate({
+				currentVersion: KANBAN_VERSION,
+			});
+			return {
+				status: result.status,
+				currentVersion: result.currentVersion,
+				latestVersion: result.latestVersion,
+				message: result.message,
+			};
+		},
 	});
 
 	const close = async () => {

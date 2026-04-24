@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+	clearPendingUpdateNotification,
 	compareVersions,
 	detectAutoUpdateInstallation,
+	getPendingUpdateNotification,
 	resolveUpdateCommandForPlatform,
 	runAutoUpdateCheck,
 	runOnDemandUpdate,
@@ -24,6 +26,7 @@ afterEach(() => {
 		spawnUpdate: () => {},
 		log: () => {},
 	});
+	clearPendingUpdateNotification();
 });
 
 describe("compareVersions", () => {
@@ -444,5 +447,66 @@ describe("runAutoUpdateCheck", () => {
 		});
 
 		expect(fetchCalled).toBe(false);
+	});
+});
+
+describe("getPendingUpdateNotification", () => {
+	it("returns null when no update check has detected a new version", () => {
+		expect(getPendingUpdateNotification()).toBeNull();
+	});
+
+	it("records a pending notification for startup-timing global installs", async () => {
+		await runAutoUpdateCheck({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
+			cwd: "/Users/saoud/projects/work",
+			env: {},
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			spawnUpdate: () => {},
+		});
+
+		expect(getPendingUpdateNotification()).toEqual({
+			currentVersion: "1.0.0",
+			latestVersion: "1.1.0",
+			updateTiming: "startup",
+			installCommand: "npm install -g kanban@latest",
+		});
+	});
+
+	it("records a pending notification for shutdown-timing transient installs", async () => {
+		await runAutoUpdateCheck({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: ["node", "/Users/saoud/.npm/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js"],
+			cwd: "/Users/saoud/projects/work",
+			env: {},
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			spawnUpdate: () => {},
+		});
+
+		expect(getPendingUpdateNotification()).toEqual({
+			currentVersion: "1.0.0",
+			latestVersion: "1.1.0",
+			updateTiming: "shutdown",
+			installCommand: "npx kanban",
+		});
+	});
+
+	it("leaves the pending notification null when the current version is already latest", async () => {
+		await runAutoUpdateCheck({
+			currentVersion: "1.1.0",
+			packageName: "kanban",
+			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
+			cwd: "/Users/saoud/projects/work",
+			env: {},
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => "1.1.0",
+			spawnUpdate: () => {},
+		});
+
+		expect(getPendingUpdateNotification()).toBeNull();
 	});
 });

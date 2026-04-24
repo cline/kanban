@@ -895,6 +895,30 @@ export const runtimeDebugResetAllStateResponseSchema = z.object({
 });
 export type RuntimeDebugResetAllStateResponse = z.infer<typeof runtimeDebugResetAllStateResponseSchema>;
 
+export const runtimeUpdateStatusResponseSchema = z.object({
+	currentVersion: z.string(),
+	latestVersion: z.string().nullable(),
+	updateAvailable: z.boolean(),
+	updateTiming: z.enum(["startup", "shutdown"]).nullable(),
+	installCommand: z.string().nullable(),
+});
+export type RuntimeUpdateStatusResponse = z.infer<typeof runtimeUpdateStatusResponseSchema>;
+
+export const runtimeRunUpdateResponseSchema = z.object({
+	status: z.enum([
+		"updated",
+		"already_up_to_date",
+		"cache_refreshed",
+		"unsupported_installation",
+		"check_failed",
+		"update_failed",
+	]),
+	currentVersion: z.string(),
+	latestVersion: z.string().nullable(),
+	message: z.string(),
+});
+export type RuntimeRunUpdateResponse = z.infer<typeof runtimeRunUpdateResponseSchema>;
+
 export const runtimeAgentDefinitionSchema = z.object({
 	id: runtimeAgentIdSchema,
 	label: z.string(),

@@ -10,7 +10,12 @@ import {
 	createInMemoryClineTaskSessionService,
 } from "../cline-sdk/cline-task-session-service";
 import { createClineWatcherRegistry } from "../cline-sdk/cline-watcher-registry";
-import type { RuntimeCommandRunResponse, RuntimeWorkspaceStateResponse } from "../core/api-contract";
+import type {
+	RuntimeCommandRunResponse,
+	RuntimeRunUpdateResponse,
+	RuntimeUpdateStatusResponse,
+	RuntimeWorkspaceStateResponse,
+} from "../core/api-contract";
 import {
 	buildKanbanRuntimeUrl,
 	getKanbanRuntimeHost,
@@ -66,6 +71,8 @@ export interface CreateRuntimeServerDependencies {
 	) => DisposeTrackedWorkspaceResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
 	pickDirectoryPathFromSystemDialog: () => string | null;
+	getUpdateStatus?: () => RuntimeUpdateStatusResponse;
+	runUpdateNow?: () => Promise<RuntimeRunUpdateResponse>;
 }
 
 export interface RuntimeServer {
@@ -199,6 +206,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				broadcastTaskChatCleared: deps.runtimeStateHub.broadcastTaskChatCleared,
 				bumpClineSessionContextVersion: deps.runtimeStateHub.bumpClineSessionContextVersion,
 				prepareForStateReset,
+				getUpdateStatus: deps.getUpdateStatus,
+				runUpdateNow: deps.runUpdateNow,
 			}),
 			workspaceApi: createWorkspaceApi({
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,

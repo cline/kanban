@@ -29,6 +29,8 @@ import type {
 	RuntimeDebugResetAllStateResponse,
 	RuntimeFeaturebaseTokenResponse,
 	RuntimeProjectShortcut,
+	RuntimeRunUpdateResponse,
+	RuntimeUpdateStatusResponse,
 } from "@/runtime/types";
 
 export async function fetchRuntimeConfig(workspaceId: string | null): Promise<RuntimeConfigResponse> {
@@ -238,4 +240,14 @@ export async function switchClineAccount(
 ): Promise<RuntimeClineAccountSwitchResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.switchClineAccount.mutate({ organizationId });
+}
+
+export async function fetchRuntimeUpdateStatus(workspaceId: string | null): Promise<RuntimeUpdateStatusResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.getUpdateStatus.query();
+}
+
+export async function runRuntimeUpdateNow(workspaceId: string | null): Promise<RuntimeRunUpdateResponse> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	return await trpcClient.runtime.runUpdateNow.mutate();
 }

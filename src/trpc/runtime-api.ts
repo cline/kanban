@@ -14,7 +14,11 @@ import { isClineClearSlashCommand } from "../cline-sdk/cline-slash-commands";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
-import type { RuntimeCommandRunResponse } from "../core/api-contract";
+import type {
+	RuntimeCommandRunResponse,
+	RuntimeRunUpdateResponse,
+	RuntimeUpdateStatusResponse,
+} from "../core/api-contract";
 import {
 	parseClineAccountSwitchRequest,
 	parseClineAddProviderRequest,
@@ -61,6 +65,8 @@ export interface CreateRuntimeApiDependencies {
 	broadcastTaskChatCleared?: (workspaceId: string, taskId: string) => void;
 	bumpClineSessionContextVersion?: () => void;
 	prepareForStateReset?: () => Promise<void>;
+	getUpdateStatus?: () => RuntimeUpdateStatusResponse;
+	runUpdateNow?: () => Promise<RuntimeRunUpdateResponse>;
 }
 
 async function resolveExistingTaskCwdOrEnsure(options: {
@@ -720,6 +726,29 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			}
 			openInBrowser(filePath);
 			return { ok: true };
+		},
+		getUpdateStatus: async () => {
+			if (!deps.getUpdateStatus) {
+				return {
+					currentVersion: "",
+					latestVersion: null,
+					updateAvailable: false,
+					updateTiming: null,
+					installCommand: null,
+				};
+			}
+			return deps.getUpdateStatus();
+		},
+		runUpdateNow: async () => {
+			if (!deps.runUpdateNow) {
+				return {
+					status: "unsupported_installation" as const,
+					currentVersion: "",
+					latestVersion: null,
+					message: "On-demand updates are not available in this runtime.",
+				};
+			}
+			return await deps.runUpdateNow();
 		},
 	};
 }
