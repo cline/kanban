@@ -47,7 +47,6 @@ describe("runDesktopPreflight", () => {
 		expect(result.resources).toEqual({
 			preloadExists: true,
 			cliShimExists: true,
-			nodePtyLoadable: null,
 		});
 	});
 
@@ -101,68 +100,6 @@ describe("runDesktopPreflight", () => {
 
 		expect(result.resources.preloadExists).toBe(false);
 		expect(result.resources.cliShimExists).toBe(false);
-	});
-
-	it("sets nodePtyLoadable to null when checkNodePty is omitted", () => {
-		const result = runDesktopPreflight({
-			preloadPath,
-			cliShimPath,
-			isPackaged: false,
-		});
-
-		expect(result.resources.nodePtyLoadable).toBeNull();
-	});
-
-	it("sets nodePtyLoadable to null when checkNodePty is false", () => {
-		const result = runDesktopPreflight({
-			preloadPath,
-			cliShimPath,
-			isPackaged: false,
-			checkNodePty: false,
-		});
-
-		expect(result.resources.nodePtyLoadable).toBeNull();
-	});
-
-	it("checks node-pty when checkNodePty is true", () => {
-		const result = runDesktopPreflight({
-			preloadPath,
-			cliShimPath,
-			isPackaged: false,
-			checkNodePty: true,
-		});
-
-		// node-pty may or may not be loadable in test env,
-		// but the field must be a boolean (not null).
-		expect(typeof result.resources.nodePtyLoadable).toBe("boolean");
-	});
-
-	it("classifies missing node-pty as a warning, not a hard failure", () => {
-		const result = runDesktopPreflight({
-			preloadPath,
-			cliShimPath,
-			isPackaged: false,
-			checkNodePty: true,
-		});
-
-		// Whichever way node-pty resolves in this test env, we never want
-		// it to appear in `failures[]`: terminal support is optional and
-		// should degrade gracefully rather than block boot. The
-		// `failures` / `warnings` type split now encodes this invariant at
-		// compile time (`NODE_PTY_UNAVAILABLE` is a warning-only code), so
-		// a runtime `.some(...)` assertion against `failures` would be dead
-		// code. We keep the downstream warnings[] assertion instead.
-
-		if (result.resources.nodePtyLoadable === false) {
-			// When node-pty is unavailable it belongs in warnings[] and
-			// preflight should still report ok: true (no hard failures).
-			expect(
-				result.warnings.some((w) => w.code === "NODE_PTY_UNAVAILABLE"),
-			).toBe(true);
-			expect(result.ok).toBe(true);
-		} else {
-			expect(result.warnings).toHaveLength(0);
-		}
 	});
 
 	it("includes details with checked paths in failure objects", () => {

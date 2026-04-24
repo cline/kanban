@@ -4,37 +4,18 @@
  *
  * Run this early in the app.whenReady() boot path so that a missing preload
  * script or CLI shim fails deterministically with an actionable message
- * rather than an opaque late-boot crash. An additional soft probe verifies
- * that the bundled `node-pty` native binding loads against Electron's ABI;
- * a failure there is a warning (terminal feature degradation), not a boot
- * blocker.
+ * rather than an opaque late-boot crash.
  */
 
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
-
-// `module: "ESNext"` in tsconfig.base.json means this file is emitted as ESM,
-// so `require` is not a global. Bind a CJS `require` to this module's URL so
-// the node-pty probe below can force-load the native binding.
-const require = createRequire(import.meta.url);
 
 /** Codes for hard failures — the app cannot boot correctly until they're fixed. */
 export type DesktopPreflightFailureCode = "PRELOAD_MISSING" | "CLI_SHIM_MISSING";
 
-/** Codes for soft failures — the app boots but some features are degraded. */
-export type DesktopPreflightWarningCode = "NODE_PTY_UNAVAILABLE";
-
-interface DesktopPreflightIssueBase {
+export interface DesktopPreflightFailure {
+	code: DesktopPreflightFailureCode;
 	message: string;
 	details?: Record<string, string | boolean | null>;
-}
-
-export interface DesktopPreflightFailure extends DesktopPreflightIssueBase {
-	code: DesktopPreflightFailureCode;
-}
-
-export interface DesktopPreflightWarning extends DesktopPreflightIssueBase {
-	code: DesktopPreflightWarningCode;
 }
 
 export interface DesktopPreflightOptions {
@@ -49,25 +30,16 @@ export interface DesktopPreflightOptions {
 	 */
 	cliShimPath: string;
 	isPackaged: boolean;
-	/** When true, attempt to verify that node-pty can be loaded. Defaults to false. */
-	checkNodePty?: boolean;
 }
 
 export interface DesktopPreflightResult {
-	/**
-	 * `true` iff there are no `failures` (warnings do not affect `ok`).
-	 * Callers that want to surface warnings separately should iterate
-	 * `warnings` explicitly.
-	 */
+	/** `true` if there are no failures. */
 	ok: boolean;
 	/** Hard failures — the app cannot boot correctly without fixing these. */
 	failures: DesktopPreflightFailure[];
-	/** Soft failures — the app will boot but some features may be degraded. */
-	warnings: DesktopPreflightWarning[];
 	resources: {
 		preloadExists: boolean;
 		cliShimExists: boolean;
-		nodePtyLoadable: boolean | null;
 	};
 }
 
@@ -75,7 +47,6 @@ export function runDesktopPreflight(
 	opts: DesktopPreflightOptions,
 ): DesktopPreflightResult {
 	const failures: DesktopPreflightFailure[] = [];
-	const warnings: DesktopPreflightWarning[] = [];
 
 	// 1. Preload script
 	const preloadExists = existsSync(opts.preloadPath);
@@ -97,35 +68,12 @@ export function runDesktopPreflight(
 		});
 	}
 
-	// 3. node-pty (optional, warning only). Actually `require()` the module
-	//    rather than `require.resolve()` — we specifically want to verify
-	//    the native binding loads against the current Electron ABI, not just
-	//    that the package exists on disk.
-	let nodePtyLoadable: boolean | null = null;
-	if (opts.checkNodePty) {
-		try {
-			require("node-pty");
-			nodePtyLoadable = true;
-		} catch (err) {
-			nodePtyLoadable = false;
-			warnings.push({
-				code: "NODE_PTY_UNAVAILABLE",
-				message: "node-pty could not be loaded. Terminal features may be unavailable.",
-				details: {
-					error: err instanceof Error ? err.message : String(err),
-				},
-			});
-		}
-	}
-
 	return {
 		ok: failures.length === 0,
 		failures,
-		warnings,
 		resources: {
 			preloadExists,
 			cliShimExists,
-			nodePtyLoadable,
 		},
 	};
 }
