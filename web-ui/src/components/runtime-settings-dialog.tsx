@@ -46,6 +46,7 @@ import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
 	RuntimeClineMcpServerAuthStatus,
+	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 	RuntimeProjectShortcut,
 } from "@/runtime/types";

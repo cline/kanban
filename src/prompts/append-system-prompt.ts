@@ -32,6 +32,7 @@ const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"kiro",
 	"gemini",
 	"opencode",
+  "qwen",
 ];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
