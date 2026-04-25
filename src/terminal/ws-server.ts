@@ -439,6 +439,18 @@ export function createTerminalWebSocketBridge({
 			try {
 				const summary = terminalManager.writeInput(taskId, rawDataToBuffer(rawMessage));
 				if (!summary) {
+					const recoveredSummary = terminalManager.recoverStaleSession(taskId);
+					const requiresResume =
+						!terminalManager.hasActiveSession(taskId) && recoveredSummary?.state === "awaiting_review";
+					if (requiresResume) {
+						ws.send(
+							Buffer.from(
+								"\r\n[kanban] Review session is restored but not running. Use Resume to reconnect before sending input.\r\n",
+								"utf8",
+							),
+						);
+						return;
+					}
 					ws.close(1011, "Task session is not running.");
 				}
 			} catch (error) {
@@ -464,7 +476,7 @@ export function createTerminalWebSocketBridge({
 		const clientId = (context as TerminalWebSocketConnectionContext).clientId;
 		const terminalManager = (context as TerminalWebSocketConnectionContext).terminalManager;
 		const connectionKey = buildConnectionKey(workspaceId, taskId);
-		terminalManager.recoverStaleSession(taskId);
+		const recoveredSummary = terminalManager.recoverStaleSession(taskId);
 		const streamState = getOrCreateTerminalStreamState(connectionKey);
 		const viewerState = getOrCreateViewerState(streamState, clientId);
 		const previousControlSocket = viewerState.controlSocket;
@@ -491,6 +503,8 @@ export function createTerminalWebSocketBridge({
 			previousControlSocket.close(1000, "Replaced by newer terminal control connection.");
 		}
 
+		const requiresResume = !terminalManager.hasActiveSession(taskId) && recoveredSummary?.state === "awaiting_review";
+
 		void terminalManager
 			.getRestoreSnapshot(taskId)
 			.then((snapshot) => {
@@ -499,6 +513,7 @@ export function createTerminalWebSocketBridge({
 					snapshot: snapshot?.snapshot ?? "",
 					cols: snapshot?.cols ?? null,
 					rows: snapshot?.rows ?? null,
+					requiresResume,
 				});
 			})
 			.catch(() => {
@@ -507,6 +522,7 @@ export function createTerminalWebSocketBridge({
 					snapshot: "",
 					cols: null,
 					rows: null,
+					requiresResume,
 				});
 			});
 

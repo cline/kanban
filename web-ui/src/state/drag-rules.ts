@@ -39,6 +39,14 @@ export function isAllowedCrossColumnCardMove(
 	if (fromColumnId === "trash" && toColumnId === "review") {
 		return true;
 	}
+	if (fromColumnId === "trash" && toColumnId === "in_progress") {
+		return isMatchingProgrammaticCardMove(
+			options?.taskId,
+			fromColumnId,
+			toColumnId,
+			options?.programmaticCardMoveInFlight,
+		);
+	}
 	if (
 		(fromColumnId === "in_progress" && toColumnId === "review") ||
 		(fromColumnId === "review" && toColumnId === "in_progress")

@@ -57,4 +57,33 @@ describe("drag rules", () => {
 	it("allows manual trash to review drops", () => {
 		expect(isCardDropDisabled("review", "trash")).toBe(false);
 	});
+
+	it("keeps manual trash to in-progress drops disabled", () => {
+		expect(isCardDropDisabled("in_progress", "trash")).toBe(true);
+	});
+
+	it("allows the matching programmatic trash to in-progress drop", () => {
+		const move: ProgrammaticCardMoveInFlight = {
+			taskId: "task-1",
+			fromColumnId: "trash",
+			toColumnId: "in_progress",
+			insertAtTop: true,
+		};
+
+		expect(
+			isCardDropDisabled("in_progress", "trash", {
+				activeDragTaskId: "task-1",
+				programmaticCardMoveInFlight: move,
+			}),
+		).toBe(false);
+		expect(
+			isCardDropDisabled("in_progress", "trash", {
+				activeDragTaskId: "task-1",
+				programmaticCardMoveInFlight: {
+					...move,
+					toColumnId: "review",
+				},
+			}),
+		).toBe(true);
+	});
 });

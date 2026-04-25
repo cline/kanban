@@ -271,6 +271,34 @@ export const runtimeTaskTurnCheckpointSchema = z.object({
 });
 export type RuntimeTaskTurnCheckpoint = z.infer<typeof runtimeTaskTurnCheckpointSchema>;
 
+export const runtimeTaskPersistedReviewFileSchema = z.object({
+	path: z.string(),
+	previousPath: z.string().optional(),
+	status: runtimeWorkspaceFileStatusSchema,
+	additions: z.number().int().nonnegative(),
+	deletions: z.number().int().nonnegative(),
+});
+export type RuntimeTaskPersistedReviewFile = z.infer<typeof runtimeTaskPersistedReviewFileSchema>;
+
+export const runtimeTaskPersistedReviewWorkspaceDiffSchema = z.object({
+	mode: runtimeWorkspaceChangesModeSchema,
+	generatedAt: z.number(),
+	changedFiles: z.number().int().nonnegative(),
+	additions: z.number().int().nonnegative(),
+	deletions: z.number().int().nonnegative(),
+	files: z.array(runtimeTaskPersistedReviewFileSchema).default([]),
+});
+export type RuntimeTaskPersistedReviewWorkspaceDiff = z.infer<typeof runtimeTaskPersistedReviewWorkspaceDiffSchema>;
+
+export const runtimeTaskPersistedReviewContextSchema = z.object({
+	capturedAt: z.number(),
+	terminalSnapshot: z.string().nullable().default(null),
+	terminalCols: z.number().int().positive().nullable().default(null),
+	terminalRows: z.number().int().positive().nullable().default(null),
+	workspaceDiff: runtimeTaskPersistedReviewWorkspaceDiffSchema.nullable().default(null),
+});
+export type RuntimeTaskPersistedReviewContext = z.infer<typeof runtimeTaskPersistedReviewContextSchema>;
+
 export const runtimeTaskSessionSummarySchema = z.object({
 	taskId: z.string(),
 	state: runtimeTaskSessionStateSchema,
@@ -288,6 +316,7 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	warningMessage: z.string().nullable().optional(),
 	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
+	persistedReviewContext: runtimeTaskPersistedReviewContextSchema.nullable().optional(),
 });
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 
@@ -1145,6 +1174,7 @@ export const runtimeTerminalWsRestoreMessageSchema = z.object({
 	snapshot: z.string(),
 	cols: z.number().int().positive().nullable().optional(),
 	rows: z.number().int().positive().nullable().optional(),
+	requiresResume: z.boolean().optional(),
 });
 export type RuntimeTerminalWsRestoreMessage = z.infer<typeof runtimeTerminalWsRestoreMessageSchema>;
 

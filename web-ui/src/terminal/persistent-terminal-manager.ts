@@ -35,6 +35,7 @@ interface PersistentTerminalAppearance {
 interface PersistentTerminalSubscriber {
 	onConnectionReady?: (taskId: string) => void;
 	onLastError?: (message: string | null) => void;
+	onResumeRequiredChange?: (required: boolean) => void;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onOutputText?: (text: string) => void;
 }
@@ -152,6 +153,7 @@ class PersistentTerminal {
 	private appearance: PersistentTerminalAppearance;
 	private latestSummary: RuntimeTaskSessionSummary | null = null;
 	private lastError: string | null = null;
+	private resumeRequired = false;
 	private resizeObserver: ResizeObserver | null = null;
 	private resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	private visibleContainer: HTMLDivElement | null = null;
@@ -241,8 +243,18 @@ class PersistentTerminal {
 
 	private notifySummary(summary: RuntimeTaskSessionSummary): void {
 		this.latestSummary = summary;
+		if (summary.state !== "awaiting_review" && this.resumeRequired) {
+			this.resumeRequired = false;
+			this.notifyResumeRequired();
+		}
 		for (const subscriber of this.subscribers) {
 			subscriber.onSummary?.(summary);
+		}
+	}
+
+	private notifyResumeRequired(): void {
+		for (const subscriber of this.subscribers) {
+			subscriber.onResumeRequiredChange?.(this.resumeRequired);
 		}
 	}
 
@@ -421,6 +433,11 @@ class PersistentTerminal {
 
 			if (payload.type === "restore") {
 				this.restoreCompleted = false;
+				const nextResumeRequired = payload.requiresResume === true;
+				if (this.resumeRequired !== nextResumeRequired) {
+					this.resumeRequired = nextResumeRequired;
+					this.notifyResumeRequired();
+				}
 				void this.applyRestore(payload.snapshot, payload.cols, payload.rows)
 					.then(() => {
 						if (this.disposed || this.controlSocket !== controlSocket) {
@@ -508,6 +525,7 @@ class PersistentTerminal {
 	subscribe(subscriber: PersistentTerminalSubscriber): () => void {
 		this.subscribers.add(subscriber);
 		subscriber.onLastError?.(this.lastError);
+		subscriber.onResumeRequiredChange?.(this.resumeRequired);
 		if (this.latestSummary) {
 			subscriber.onSummary?.(this.latestSummary);
 		}

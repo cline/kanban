@@ -22,6 +22,7 @@ interface UsePersistentTerminalSessionInput {
 export interface UsePersistentTerminalSessionResult {
 	containerRef: MutableRefObject<HTMLDivElement | null>;
 	lastError: string | null;
+	resumeRequired: boolean;
 	isStopping: boolean;
 	clearTerminal: () => void;
 	stopTerminal: () => Promise<void>;
@@ -56,6 +57,7 @@ export function usePersistentTerminalSession({
 		sessionStartedAt: number | null;
 	} | null>(null);
 	const [lastError, setLastError] = useState<string | null>(null);
+	const [resumeRequired, setResumeRequired] = useState(false);
 	const [isStopping, setIsStopping] = useState(false);
 	callbackRef.current = {
 		onSummary,
@@ -72,6 +74,7 @@ export function usePersistentTerminalSession({
 			terminalRef.current = null;
 			previousSessionRef.current = null;
 			setLastError(null);
+			setResumeRequired(false);
 			setIsStopping(false);
 			return;
 		}
@@ -85,6 +88,7 @@ export function usePersistentTerminalSession({
 			terminalRef.current = null;
 			previousSessionRef.current = null;
 			setLastError("No project selected.");
+			setResumeRequired(false);
 			return;
 		}
 		const container = containerRef.current;
@@ -119,6 +123,7 @@ export function usePersistentTerminalSession({
 				callbackRef.current.onConnectionReady?.(connectedTaskId);
 			},
 			onLastError: setLastError,
+			onResumeRequiredChange: setResumeRequired,
 			onSummary: (summary) => {
 				callbackRef.current.onSummary?.(summary);
 			},
@@ -186,6 +191,7 @@ export function usePersistentTerminalSession({
 	return {
 		containerRef,
 		lastError,
+		resumeRequired,
 		isStopping,
 		clearTerminal,
 		stopTerminal,

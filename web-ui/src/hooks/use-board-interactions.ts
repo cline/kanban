@@ -45,6 +45,12 @@ interface PendingProgrammaticStartMoveCompletion {
 	timeoutId: number;
 }
 
+function getRestoreTargetColumnId(
+	summary: RuntimeTaskSessionSummary | undefined,
+): Extract<BoardColumnId, "in_progress" | "review"> {
+	return summary?.state === "running" ? "in_progress" : "review";
+}
+
 interface UseBoardInteractionsInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
@@ -84,6 +90,7 @@ export interface UseBoardInteractionsResult {
 	handleMoveToTrash: () => void;
 	handleMoveReviewCardToTrash: (taskId: string) => void;
 	handleRestoreTaskFromTrash: (taskId: string) => void;
+	handleResumeReviewTask: (taskId: string) => void;
 	handleCancelAutomaticTaskAction: (taskId: string) => void;
 	handleOpenClearTrash: () => void;
 	handleConfirmClearTrash: () => void;
@@ -621,8 +628,15 @@ export function useBoardInteractions({
 			}
 
 			if (moveEvent.fromColumnId === "trash" && moveEvent.toColumnId === "review") {
-				setBoard(applied.board);
-				const movedSelection = findCardSelection(applied.board, moveEvent.taskId);
+				const restoreTargetColumnId = getRestoreTargetColumnId(sessions[moveEvent.taskId]);
+				const restoredBoard =
+					restoreTargetColumnId === "review"
+						? applied.board
+						: moveTaskToColumn(applied.board, moveEvent.taskId, restoreTargetColumnId, {
+								insertAtTop: true,
+							}).board;
+				setBoard(restoredBoard);
+				const movedSelection = findCardSelection(restoredBoard, moveEvent.taskId);
 				if (!movedSelection) {
 					return;
 				}
@@ -663,6 +677,7 @@ export function useBoardInteractions({
 			resumeTaskFromTrash,
 			resolvePendingProgrammaticStartMove,
 			resolvePendingProgrammaticTrashMove,
+			sessions,
 			setBoard,
 			setSelectedTaskId,
 		],
@@ -773,7 +788,8 @@ export function useBoardInteractions({
 
 	const handleRestoreTaskFromTrash = useCallback(
 		(taskId: string) => {
-			const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, "trash", "review");
+			const restoreTargetColumnId = getRestoreTargetColumnId(sessions[taskId]);
+			const programmaticMoveAttempt = tryProgrammaticCardMove(taskId, "trash", restoreTargetColumnId);
 			if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 				return;
 			}
@@ -783,7 +799,7 @@ export function useBoardInteractions({
 				return;
 			}
 
-			const moved = moveTaskToColumn(board, taskId, "review", { insertAtTop: true });
+			const moved = moveTaskToColumn(board, taskId, restoreTargetColumnId, { insertAtTop: true });
 			if (!moved.moved) {
 				return;
 			}
@@ -794,7 +810,18 @@ export function useBoardInteractions({
 			}
 			void resumeTaskFromTrash(movedSelection.card, taskId, { optimisticMoveApplied: true });
 		},
-		[board, resumeTaskFromTrash, setBoard, tryProgrammaticCardMove],
+		[board, resumeTaskFromTrash, sessions, setBoard, tryProgrammaticCardMove],
+	);
+
+	const handleResumeReviewTask = useCallback(
+		(taskId: string) => {
+			const selection = findCardSelection(board, taskId);
+			if (!selection || selection.column.id !== "review") {
+				return;
+			}
+			void resumeTaskFromTrash(selection.card, taskId);
+		},
+		[board, resumeTaskFromTrash],
 	);
 
 	const handleCancelAutomaticTaskAction = useCallback(
@@ -894,6 +921,7 @@ export function useBoardInteractions({
 		handleMoveToTrash,
 		handleMoveReviewCardToTrash,
 		handleRestoreTaskFromTrash,
+		handleResumeReviewTask,
 		handleCancelAutomaticTaskAction,
 		handleOpenClearTrash,
 		handleConfirmClearTrash,

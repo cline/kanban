@@ -4,13 +4,15 @@ import type {
 	RuntimeBoardData,
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
+	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
+import { getTaskColumnId, moveTaskToColumn } from "../core/task-board-mutations";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceBoardById,
 	loadWorkspaceContext,
-	loadWorkspaceState,
+	mutateWorkspaceState,
 	type RuntimeWorkspaceIndexEntry,
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
@@ -167,6 +169,81 @@ function applyLiveSessionStateToProjectTaskCounts(
 	return next;
 }
 
+function createPersistedReviewSummary(
+	taskId: string,
+	agentId: RuntimeTaskSessionSummary["agentId"] = null,
+): RuntimeTaskSessionSummary {
+	return {
+		taskId,
+		state: "awaiting_review",
+		agentId,
+		workspacePath: null,
+		pid: null,
+		startedAt: null,
+		updatedAt: Date.now(),
+		lastOutputAt: null,
+		reviewReason: "hook",
+		exitCode: null,
+		lastHookAt: null,
+		latestHookActivity: null,
+		warningMessage: null,
+		latestTurnCheckpoint: null,
+		previousTurnCheckpoint: null,
+		persistedReviewContext: null,
+	};
+}
+
+function reconcilePersistedReviewState(
+	board: RuntimeBoardData,
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+): { board: RuntimeBoardData; sessions: Record<string, RuntimeTaskSessionSummary>; changed: boolean } {
+	let nextBoard = board;
+	let nextSessions = sessions;
+	let changed = false;
+
+	const reviewColumn = board.columns.find((column) => column.id === "review");
+	for (const card of reviewColumn?.cards ?? []) {
+		const existing = nextSessions[card.id];
+		if (existing?.state === "awaiting_review") {
+			continue;
+		}
+		if (nextSessions === sessions) {
+			nextSessions = { ...sessions };
+		}
+		nextSessions[card.id] = existing
+			? {
+					...existing,
+					state: "awaiting_review",
+					reviewReason: existing.reviewReason ?? "hook",
+					pid: null,
+				}
+			: createPersistedReviewSummary(card.id, card.agentId ?? null);
+		changed = true;
+	}
+
+	for (const summary of Object.values(nextSessions)) {
+		if (summary.state !== "awaiting_review") {
+			continue;
+		}
+		const columnId = getTaskColumnId(nextBoard, summary.taskId);
+		if (columnId !== "in_progress") {
+			continue;
+		}
+		const moved = moveTaskToColumn(nextBoard, summary.taskId, "review");
+		if (!moved.moved) {
+			continue;
+		}
+		nextBoard = moved.board;
+		changed = true;
+	}
+
+	return {
+		board: nextBoard,
+		sessions: nextSessions,
+		changed,
+	};
+}
+
 function toProjectSummary(project: {
 	workspaceId: string;
 	repoPath: string;
@@ -205,6 +282,26 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 	const terminalManagersByWorkspaceId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
 
+	const loadAndRepairWorkspaceState = async (workspacePath: string): Promise<RuntimeWorkspaceStateResponse> => {
+		const mutation = await mutateWorkspaceState(workspacePath, (state) => {
+			const repaired = reconcilePersistedReviewState(state.board, state.sessions);
+			if (!repaired.changed) {
+				return {
+					board: state.board,
+					sessions: state.sessions,
+					value: null,
+					save: false,
+				};
+			}
+			return {
+				board: repaired.board,
+				sessions: repaired.sessions,
+				value: null,
+			};
+		});
+		return mutation.state;
+	};
+
 	const rememberWorkspace = (workspaceId: string, repoPath: string): void => {
 		workspacePathsById.set(workspaceId, repoPath);
 	};
@@ -236,7 +333,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		const loading = (async () => {
 			const manager = new TerminalSessionManager();
 			try {
-				const existingWorkspace = await loadWorkspaceState(repoPath);
+				const existingWorkspace = await loadAndRepairWorkspaceState(repoPath);
 				manager.hydrateFromRecord(existingWorkspace.sessions);
 			} catch {
 				// Workspace state will be created on demand.
@@ -293,7 +390,10 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		_repoPath: string,
 	): Promise<RuntimeProjectTaskCounts> => {
 		try {
-			const board = await loadWorkspaceBoardById(workspaceId);
+			const workspacePath = workspacePathsById.get(workspaceId);
+			const board = workspacePath
+				? (await loadAndRepairWorkspaceState(workspacePath)).board
+				: await loadWorkspaceBoardById(workspaceId);
 			const persistedCounts = countTasksByColumn(board);
 			const terminalManager = getTerminalManagerForWorkspace(workspaceId);
 			if (!terminalManager) {
@@ -316,7 +416,7 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		workspaceId: string,
 		workspacePath: string,
 	): Promise<RuntimeWorkspaceStateResponse> => {
-		const response = await loadWorkspaceState(workspacePath);
+		const response = await loadAndRepairWorkspaceState(workspacePath);
 		const terminalManager = await ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
 		for (const summary of terminalManager.listSummaries()) {
 			response.sessions[summary.taskId] = summary;

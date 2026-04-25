@@ -17,6 +17,7 @@ interface AgentTerminalSessionControls {
 	containerRef: MutableRefObject<HTMLDivElement | null>;
 	isStopping: boolean;
 	lastError: string | null;
+	resumeRequired: boolean;
 	stopTerminal: () => Promise<void>;
 }
 
@@ -50,6 +51,7 @@ export interface AgentTerminalPanelProps {
 	onSendAgentCommand?: () => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
+	onResumePersistedReviewSession?: () => void;
 }
 
 function describeState(summary: RuntimeTaskSessionSummary | null): string {
@@ -170,9 +172,10 @@ function AgentTerminalPanelLayout({
 	onSendAgentCommand,
 	isExpanded = false,
 	onToggleExpand,
+	onResumePersistedReviewSession,
 	sessionControls,
 }: AgentTerminalPanelProps & { sessionControls: AgentTerminalSessionControls }): ReactElement {
-	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
+	const { containerRef, lastError, resumeRequired, isStopping, clearTerminal, stopTerminal } = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
 	const statusTagStyle = useMemo(() => getStateTagStyle(summary), [summary]);
@@ -300,6 +303,16 @@ function AgentTerminalPanelLayout({
 							aria-label="Close terminal"
 						/>
 					</div>
+				</div>
+			) : null}
+			{resumeRequired && summary?.state === "awaiting_review" && onResumePersistedReviewSession ? (
+				<div className="flex items-center justify-between gap-3 border-t border-status-orange/30 bg-status-orange/10 px-3 py-2">
+					<p className="text-[12px] text-text-secondary">
+						This review snapshot was restored after restart. Resume to reconnect a live terminal.
+					</p>
+					<Button variant="primary" size="sm" onClick={onResumePersistedReviewSession}>
+						Resume
+					</Button>
 				</div>
 			) : null}
 			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: "3px 1.5px 3px 3px" }}>

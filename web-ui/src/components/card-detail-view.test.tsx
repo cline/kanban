@@ -15,7 +15,13 @@ const {
 	mockClineAppendToDraft,
 	mockClineSendText,
 } = vi.hoisted(() => ({
-	mockAgentTerminalPanel: vi.fn((_props: { panelBackgroundColor?: string; terminalBackgroundColor?: string }) => null),
+	mockAgentTerminalPanel: vi.fn(
+		(_props: {
+			panelBackgroundColor?: string;
+			terminalBackgroundColor?: string;
+			onResumePersistedReviewSession?: () => void;
+		}) => null,
+	),
 	mockClineAgentChatPanel: vi.fn((..._args: unknown[]) => null),
 	mockDiffViewerPanel: vi.fn((..._args: unknown[]) => null),
 	mockClineAppendToDraft: vi.fn(),
@@ -552,6 +558,55 @@ describe("CardDetailView", () => {
 			panelBackgroundColor: "var(--color-surface-0)",
 			terminalBackgroundColor: TERMINAL_THEME_COLORS.surfacePrimary,
 		});
+	});
+
+	it("passes a persisted-review resume handler to the terminal panel", async () => {
+		const onResumeReviewTask = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="claude"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "awaiting_review",
+						agentId: "claude",
+						workspacePath: null,
+						pid: null,
+						startedAt: null,
+						updatedAt: Date.now(),
+						lastOutputAt: null,
+						reviewReason: "hook",
+						exitCode: null,
+						lastHookAt: null,
+						latestHookActivity: null,
+						warningMessage: null,
+					}}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					onResumeReviewTask={onResumeReviewTask}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const lastCall = mockAgentTerminalPanel.mock.calls.at(-1);
+		expect(lastCall?.[0]).toMatchObject({
+			onResumePersistedReviewSession: expect.any(Function),
+		});
+
+		const resumeHandler = lastCall?.[0]?.onResumePersistedReviewSession as (() => void) | undefined;
+		expect(resumeHandler).toBeTypeOf("function");
+		resumeHandler?.();
+		expect(onResumeReviewTask).toHaveBeenCalledWith("task-1");
 	});
 
 	it("queues Add diff comments into the cline composer without sending them", async () => {
