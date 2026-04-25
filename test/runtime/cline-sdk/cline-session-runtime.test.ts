@@ -113,6 +113,13 @@ describe("InMemoryClineSessionRuntime", () => {
 						}),
 					]),
 				}),
+				localRuntime: expect.objectContaining({
+					modelCatalogDefaults: {
+						loadLatestOnInit: true,
+						loadPrivateOnAuth: true,
+						failOnError: false,
+					},
+				}),
 			}),
 		);
 	});

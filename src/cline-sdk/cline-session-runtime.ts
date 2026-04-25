@@ -22,6 +22,12 @@ import {
 } from "./sdk-runtime-boundary";
 
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;
+const CLINE_MODEL_CATALOG_DEFAULTS = {
+	loadLatestOnInit: true,
+	loadPrivateOnAuth: true,
+	failOnError: false,
+} as const;
+
 interface ClineSessionHostBoundary {
 	start(input: ClineSdkStartSessionInput): Promise<{ sessionId: string; result?: unknown }>;
 	send(input: Parameters<ClineSdkSessionHost["send"]>[0]): Promise<unknown>;
@@ -231,9 +237,10 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 				initialMessages: request.initialMessages,
 				interactive: true,
 				userImages: toSdkUserImages(request.images),
-				localRuntime: request.userInstructionWatcher
-					? { userInstructionWatcher: request.userInstructionWatcher }
-					: undefined,
+				localRuntime: {
+					modelCatalogDefaults: CLINE_MODEL_CATALOG_DEFAULTS,
+					...(request.userInstructionWatcher ? { userInstructionWatcher: request.userInstructionWatcher } : {}),
+				},
 				requestToolApproval: request.requestToolApproval,
 			});
 		} catch (error) {
