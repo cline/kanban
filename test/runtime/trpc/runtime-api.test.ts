@@ -1894,7 +1894,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("adds refreshed live catalog models to provider model responses", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1963,7 +1963,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("loads Cline provider models from the SDK catalog key mapping", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
