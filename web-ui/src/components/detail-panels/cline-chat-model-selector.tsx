@@ -22,6 +22,7 @@ const MATCHED_TEXT_STYLE = {
 export function ClineChatModelSelector({
 	modelOptions,
 	recommendedModelIds = [],
+	freeModelIds = [],
 	pinSelectedModelToTop = true,
 	selectedModelId,
 	selectedModelButtonText,
@@ -39,6 +40,7 @@ export function ClineChatModelSelector({
 }: {
 	modelOptions: readonly SearchSelectOption[];
 	recommendedModelIds?: readonly string[];
+	freeModelIds?: readonly string[];
 	pinSelectedModelToTop?: boolean;
 	selectedModelId: string;
 	selectedModelButtonText: string;
@@ -65,6 +67,15 @@ export function ClineChatModelSelector({
 	const recommendedModelIdSet = useMemo(
 		() => new Set(recommendedModelIds.map((value) => value.trim()).filter((value) => value.length > 0)),
 		[recommendedModelIds],
+	);
+	const freeModelIdSet = useMemo(
+		() =>
+			new Set(
+				freeModelIds
+					.map((value) => value.trim())
+					.filter((value) => value.length > 0 && !recommendedModelIdSet.has(value)),
+			),
+		[freeModelIds, recommendedModelIdSet],
 	);
 	const reasoningEnabledModelIdSet = useMemo(
 		() => new Set(reasoningEnabledModelIds.map((value) => value.trim()).filter((value) => value.length > 0)),
@@ -107,15 +118,18 @@ export function ClineChatModelSelector({
 	);
 	const filteredModelOptions = useMemo(() => {
 		if (!query.trim()) {
-			if (recommendedModelIdSet.size === 0) {
+			if (recommendedModelIdSet.size === 0 && freeModelIdSet.size === 0) {
 				return orderedOptions;
 			}
 			const recommendedItems = orderedOptions.filter((item) => recommendedModelIdSet.has(item.value));
-			const otherItems = orderedOptions.filter((item) => !recommendedModelIdSet.has(item.value));
-			return [...recommendedItems, ...otherItems];
+			const freeItems = orderedOptions.filter((item) => freeModelIdSet.has(item.value));
+			const otherItems = orderedOptions.filter(
+				(item) => !recommendedModelIdSet.has(item.value) && !freeModelIdSet.has(item.value),
+			);
+			return [...recommendedItems, ...freeItems, ...otherItems];
 		}
 		return fuzzyMatches.map((entry) => entry.item);
-	}, [fuzzyMatches, orderedOptions, query, recommendedModelIdSet]);
+	}, [freeModelIdSet, fuzzyMatches, orderedOptions, query, recommendedModelIdSet]);
 	const filteredItemIndexByValue = useMemo(
 		() => new Map(filteredModelOptions.map((item, index) => [item.value, index] as const)),
 		[filteredModelOptions],
@@ -124,14 +138,21 @@ export function ClineChatModelSelector({
 		() => filteredModelOptions.findIndex((option) => option.value === selectedModelId),
 		[filteredModelOptions, selectedModelId],
 	);
-	const showRecommendedSection = query.trim().length === 0 && recommendedModelIdSet.size > 0;
+	const showFeaturedSections = query.trim().length === 0 && (recommendedModelIdSet.size > 0 || freeModelIdSet.size > 0);
 	const recommendedItems = useMemo(
 		() => filteredModelOptions.filter((item) => recommendedModelIdSet.has(item.value)),
 		[filteredModelOptions, recommendedModelIdSet],
 	);
+	const freeItems = useMemo(
+		() => filteredModelOptions.filter((item) => freeModelIdSet.has(item.value)),
+		[filteredModelOptions, freeModelIdSet],
+	);
 	const otherItems = useMemo(
-		() => filteredModelOptions.filter((item) => !recommendedModelIdSet.has(item.value)),
-		[filteredModelOptions, recommendedModelIdSet],
+		() =>
+			filteredModelOptions.filter(
+				(item) => !recommendedModelIdSet.has(item.value) && !freeModelIdSet.has(item.value),
+			),
+		[filteredModelOptions, freeModelIdSet, recommendedModelIdSet],
 	);
 
 	const handleOpenChange = useCallback(
@@ -355,15 +376,23 @@ export function ClineChatModelSelector({
 									<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">No matching models</div>
 								) : (
 									<>
-										{showRecommendedSection && recommendedItems.length > 0 ? (
+										{showFeaturedSections && recommendedItems.length > 0 ? (
 											<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
 												Recommended models
 											</div>
 										) : null}
-										{(showRecommendedSection ? recommendedItems : filteredModelOptions).map((option) =>
+										{(showFeaturedSections ? recommendedItems : filteredModelOptions).map((option) =>
 											renderModelOptionButton(option),
 										)}
-										{showRecommendedSection && recommendedItems.length > 0 && otherItems.length > 0 ? (
+										{showFeaturedSections && freeItems.length > 0 ? (
+											<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
+												Free models
+											</div>
+										) : null}
+										{showFeaturedSections ? freeItems.map((option) => renderModelOptionButton(option)) : null}
+										{showFeaturedSections &&
+										(recommendedItems.length > 0 || freeItems.length > 0) &&
+										otherItems.length > 0 ? (
 											<>
 												<div className="my-1 border-t border-border" />
 												<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
@@ -371,7 +400,7 @@ export function ClineChatModelSelector({
 												</div>
 											</>
 										) : null}
-										{showRecommendedSection && otherItems.length > 0
+										{showFeaturedSections && otherItems.length > 0
 											? otherItems.map((option) => renderModelOptionButton(option))
 											: null}
 									</>

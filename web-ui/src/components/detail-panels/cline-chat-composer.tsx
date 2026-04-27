@@ -56,6 +56,7 @@ export function ClineChatComposer({
 	onCancel,
 	modelOptions,
 	recommendedModelIds = [],
+	freeModelIds = [],
 	pinSelectedModelToTop = true,
 	selectedModelId,
 	selectedModelButtonText,
@@ -86,6 +87,7 @@ export function ClineChatComposer({
 	onCancel: () => void;
 	modelOptions: readonly SearchSelectOption[];
 	recommendedModelIds?: readonly string[];
+	freeModelIds?: readonly string[];
 	pinSelectedModelToTop?: boolean;
 	selectedModelId: string;
 	selectedModelButtonText: string;
@@ -496,6 +498,7 @@ export function ClineChatComposer({
 					<ClineChatModelSelector
 						modelOptions={modelOptions}
 						recommendedModelIds={recommendedModelIds}
+						freeModelIds={freeModelIds}
 						pinSelectedModelToTop={pinSelectedModelToTop}
 						selectedModelId={selectedModelId}
 						selectedModelButtonText={selectedModelButtonText}

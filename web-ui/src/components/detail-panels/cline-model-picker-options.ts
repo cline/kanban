@@ -3,16 +3,6 @@ import type { RuntimeClineProviderModel, RuntimeClineReasoningEffort } from "@/r
 
 const CLINE_PROVIDER_ID = "cline";
 
-export const CLINE_RECOMMENDED_MODEL_IDS = [
-	"anthropic/claude-opus-4.6",
-	"anthropic/claude-sonnet-4.6",
-	"openai/gpt-5.3-codex",
-	"openai/gpt-5.4",
-	"google/gemini-3.1-pro-preview",
-	"google/gemini-3.1-flash-lite-preview",
-	"xiaomi/mimo-v2-pro",
-] as const;
-
 const CLINE_MODEL_NAME_BY_ID: Record<string, string> = {
 	"anthropic/claude-opus-4.6": "Claude Opus 4.6",
 	"anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
@@ -34,6 +24,7 @@ export const CLINE_REASONING_EFFORT_OPTIONS: SearchSelectOption[] = [
 export interface BuildClineAgentModelPickerOptionsResult {
 	options: SearchSelectOption[];
 	recommendedModelIds: string[];
+	freeModelIds: string[];
 	shouldPinSelectedModelToTop: boolean;
 }
 
@@ -49,21 +40,48 @@ export function buildClineAgentModelPickerOptions(
 		return {
 			options: defaultOptions,
 			recommendedModelIds: [],
+			freeModelIds: [],
 			shouldPinSelectedModelToTop: true,
 		};
 	}
 
 	const optionsById = new Map(defaultOptions.map((option) => [option.value, option] as const));
-	const recommendedOptions = CLINE_RECOMMENDED_MODEL_IDS.map((modelId) => optionsById.get(modelId)).filter(
-		(option): option is SearchSelectOption => option !== undefined,
-	);
+	const recommendedOptions = providerModels
+		.filter((model) => typeof model.recommendedRank === "number")
+		.sort((left, right) => {
+			const leftRank = left.recommendedRank ?? Number.MAX_SAFE_INTEGER;
+			const rightRank = right.recommendedRank ?? Number.MAX_SAFE_INTEGER;
+			if (leftRank !== rightRank) {
+				return leftRank - rightRank;
+			}
+			return left.name.localeCompare(right.name);
+		})
+		.map((model) => optionsById.get(model.id))
+		.filter((option): option is SearchSelectOption => option !== undefined);
 	const recommendedModelIds = recommendedOptions.map((option) => option.value);
 	const recommendedModelIdSet = new Set(recommendedModelIds);
-	const nonRecommendedOptions = defaultOptions.filter((option) => !recommendedModelIdSet.has(option.value));
+	const freeOptions = providerModels
+		.filter((model) => typeof model.freeRank === "number" && !recommendedModelIdSet.has(model.id))
+		.sort((left, right) => {
+			const leftRank = left.freeRank ?? Number.MAX_SAFE_INTEGER;
+			const rightRank = right.freeRank ?? Number.MAX_SAFE_INTEGER;
+			if (leftRank !== rightRank) {
+				return leftRank - rightRank;
+			}
+			return left.name.localeCompare(right.name);
+		})
+		.map((model) => optionsById.get(model.id))
+		.filter((option): option is SearchSelectOption => option !== undefined);
+	const freeModelIds = freeOptions.map((option) => option.value);
+	const freeModelIdSet = new Set(freeModelIds);
+	const nonFeaturedOptions = defaultOptions.filter(
+		(option) => !recommendedModelIdSet.has(option.value) && !freeModelIdSet.has(option.value),
+	);
 
 	return {
-		options: [...recommendedOptions, ...nonRecommendedOptions],
+		options: [...recommendedOptions, ...freeOptions, ...nonFeaturedOptions],
 		recommendedModelIds,
+		freeModelIds,
 		shouldPinSelectedModelToTop: false,
 	};
 }

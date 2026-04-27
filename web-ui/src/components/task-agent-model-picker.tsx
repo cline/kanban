@@ -324,6 +324,7 @@ export function TaskAgentModelPicker({
 			return {
 				options: defaultOption ? [defaultOption, ...explicitOptions] : explicitOptions,
 				recommendedModelIds: [] as string[],
+				freeModelIds: [] as string[],
 				shouldPinSelectedModelToTop: true,
 			};
 		}
@@ -339,6 +340,7 @@ export function TaskAgentModelPicker({
 		return {
 			options: defaultOption ? [defaultOption, ...orderedExplicit, ...remainingExplicit] : orderedExplicit,
 			recommendedModelIds: orderedOptions.recommendedModelIds,
+			freeModelIds: orderedOptions.freeModelIds,
 			shouldPinSelectedModelToTop: orderedOptions.shouldPinSelectedModelToTop,
 		};
 	}, [clineModelOptions, effectiveProviderId, providerModels]);
@@ -546,6 +548,7 @@ export function TaskAgentModelPicker({
 										<ClineChatModelSelector
 											modelOptions={modelPickerOptions.options}
 											recommendedModelIds={modelPickerOptions.recommendedModelIds}
+											freeModelIds={modelPickerOptions.freeModelIds}
 											pinSelectedModelToTop={modelPickerOptions.shouldPinSelectedModelToTop}
 											selectedModelId={clineModelId ?? ""}
 											selectedModelButtonText={selectedModelButtonText}

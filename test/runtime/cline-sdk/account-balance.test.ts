@@ -1,3 +1,5 @@
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const clineAccountMocks = vi.hoisted(() => ({
@@ -97,6 +99,11 @@ vi.mock("../../../src/server/browser.js", () => ({
 }));
 
 import { createClineProviderService } from "../../../src/cline-sdk/cline-provider-service";
+import { resetClineProviderModelsCacheForTests } from "../../../src/cline-sdk/cline-provider-models";
+import { resetClineRecommendedModelsCacheForTests } from "../../../src/cline-sdk/cline-recommended-models";
+
+const CLINE_PROVIDER_MODELS_CACHE_PATH = join("/tmp", "cline-provider-models.json");
+const CLINE_RECOMMENDED_MODELS_CACHE_PATH = join("/tmp", "cline-recommended-models.json");
 
 function setSelectedProviderSettings(
 	settings: {
@@ -213,6 +220,143 @@ describe("getClineAccountBalance", () => {
 		expect(result.balance).toBeNull();
 		expect(result.activeAccountLabel).toBeNull();
 		expect(result.activeOrganizationId).toBeNull();
+	});
+});
+
+describe("getProviderModels", () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		resetClineProviderModelsCacheForTests();
+		resetClineRecommendedModelsCacheForTests();
+		vi.unstubAllGlobals();
+		await rm(CLINE_PROVIDER_MODELS_CACHE_PATH, { force: true });
+		await rm(CLINE_RECOMMENDED_MODELS_CACHE_PATH, { force: true });
+	});
+
+	it("merges missing featured models back into the cline model list", async () => {
+		setSelectedProviderSettings({
+			provider: "cline",
+			baseUrl: "https://api.cline.bot",
+		});
+		const fetchMock = vi.fn(async (input: string) => {
+			if (input.endsWith("/api/v1/ai/cline/models")) {
+				return {
+					ok: true,
+					json: async () => ({
+						data: [
+							{ id: "anthropic/claude-opus-4.7", name: "Claude Opus 4.7", supported_parameters: ["reasoning"] },
+							{ id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
+						],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					recommended: [{ id: "anthropic/claude-sonnet-4.6" }, { id: "anthropic/claude-opus-4.7" }],
+					free: [{ id: "bytedance/seed-2-0-pro" }],
+				}),
+			};
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const service = createClineProviderService();
+		const result = await service.getProviderModels("cline");
+
+		expect(fetchMock).toHaveBeenCalledWith("https://api.cline.bot/api/v1/ai/cline/recommended-models");
+		expect(fetchMock).toHaveBeenCalledWith("https://api.cline.bot/api/v1/ai/cline/models");
+		expect(localProviderMocks.getLocalProviderModels).not.toHaveBeenCalled();
+		expect(result.models).toEqual([
+			{
+				id: "bytedance/seed-2-0-pro",
+				name: "bytedance/seed-2-0-pro",
+				freeRank: 0,
+			},
+			{
+				id: "anthropic/claude-opus-4.7",
+				name: "Claude Opus 4.7",
+				supportsReasoningEffort: true,
+				recommendedRank: 1,
+			},
+			{
+				id: "anthropic/claude-sonnet-4.6",
+				name: "Claude Sonnet 4.6",
+				recommendedRank: 0,
+			},
+		]);
+	});
+
+	it("does not duplicate a configured model when featured backfill already added it", async () => {
+		setSelectedProviderSettings({
+			provider: "cline",
+			baseUrl: "https://api.cline.bot",
+			model: "bytedance/seed-2-0-pro",
+		});
+		const fetchMock = vi.fn(async (input: string) => {
+			if (input.endsWith("/api/v1/ai/cline/models")) {
+				return {
+					ok: true,
+					json: async () => ({
+						data: [{ id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6" }],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					recommended: [{ id: "anthropic/claude-sonnet-4.6" }],
+					free: [{ id: "bytedance/seed-2-0-pro", name: "seed-2-0-pro" }],
+				}),
+			};
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const service = createClineProviderService();
+		const result = await service.getProviderModels("cline");
+
+		expect(result.models.filter((model) => model.id === "bytedance/seed-2-0-pro")).toEqual([
+			{
+				id: "bytedance/seed-2-0-pro",
+				name: "seed-2-0-pro",
+				freeRank: 0,
+			},
+		]);
+	});
+
+	it("falls back to the bundled recommended model IDs when the endpoint fails", async () => {
+		setSelectedProviderSettings({
+			provider: "cline",
+			baseUrl: "https://api.cline.bot",
+		});
+		localProviderMocks.getLocalProviderModels.mockResolvedValue({
+			providerId: "cline",
+			models: [
+				{ id: "google/gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview" },
+				{ id: "openai/gpt-5.3-codex", name: "GPT-5.3 Codex" },
+				{ id: "openai/gpt-5.2", name: "GPT-5.2" },
+			],
+		});
+		vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unavailable")));
+
+		const service = createClineProviderService();
+		const result = await service.getProviderModels("cline");
+
+		expect(result.models).toEqual([
+			{
+				id: "google/gemini-3.1-pro-preview",
+				name: "Gemini 3.1 Pro Preview",
+				recommendedRank: 0,
+			},
+			{
+				id: "openai/gpt-5.2",
+				name: "GPT-5.2",
+			},
+			{
+				id: "openai/gpt-5.3-codex",
+				name: "GPT-5.3 Codex",
+				recommendedRank: 3,
+			},
+		]);
 	});
 });
 

@@ -445,6 +445,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						onCancel={handleCancelTurn}
 						modelOptions={modelOptions}
 						recommendedModelIds={modelPickerOptions.recommendedModelIds}
+						freeModelIds={modelPickerOptions.freeModelIds}
 						pinSelectedModelToTop={modelPickerOptions.shouldPinSelectedModelToTop}
 						selectedModelId={clineSettings.modelId}
 						selectedModelButtonText={selectedModelButtonText}

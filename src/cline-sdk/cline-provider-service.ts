@@ -21,6 +21,8 @@ import type {
 	RuntimeClineReasoningEffort,
 } from "../core/api-contract";
 import { openInBrowser } from "../server/browser";
+import { fetchClineProviderModels } from "./cline-provider-models";
+import { fetchClineRecommendedModels, type ClineRecommendedModelsData } from "./cline-recommended-models";
 import {
 	addSdkCustomProvider,
 	completeClineDeviceAuth as completeSdkDeviceAuth,
@@ -224,7 +226,42 @@ function toRuntimeProviderModel(model: RuntimeClineProviderModel): RuntimeClineP
 		supportsVision: model.supportsVision || undefined,
 		supportsAttachments: model.supportsAttachments || undefined,
 		supportsReasoningEffort: model.supportsReasoningEffort || undefined,
+		recommendedRank: typeof model.recommendedRank === "number" ? model.recommendedRank : undefined,
+		freeRank: typeof model.freeRank === "number" ? model.freeRank : undefined,
 	};
+}
+
+function resolveClineApiBaseUrl(): string {
+	return getSdkProviderSettings("cline")?.baseUrl?.trim() || DEFAULT_CLINE_API_BASE_URL;
+}
+
+function createModelRankMap(models: readonly { id: string }[]): Map<string, number> {
+	return new Map(models.map((model, index) => [model.id, index] as const));
+}
+
+function createFeaturedModelFallbacks(
+	featuredModels: ClineRecommendedModelsData,
+	existingModels: readonly { id: string }[],
+): RuntimeClineProviderModel[] {
+	const existingModelIds = new Set(existingModels.map((model) => model.id));
+	const featuredEntries = [...featuredModels.recommended, ...featuredModels.free];
+
+	return featuredEntries
+		.filter((model) => !existingModelIds.has(model.id))
+		.map((model) => ({
+			id: model.id,
+			name: model.name?.trim() || model.id,
+		}));
+}
+
+function dedupeProviderModelsById<T extends { id: string }>(models: readonly T[]): T[] {
+	const dedupedModels = new Map<string, T>();
+	for (const model of models) {
+		if (!dedupedModels.has(model.id)) {
+			dedupedModels.set(model.id, model);
+		}
+	}
+	return [...dedupedModels.values()];
 }
 
 function createEmptyProviderSettingsSummary(): RuntimeClineProviderSettings {
@@ -786,13 +823,53 @@ export function createClineProviderService() {
 
 		async getProviderModels(providerId: string): Promise<RuntimeClineProviderModelsResponse> {
 			const normalizedProviderId = providerId.trim().toLowerCase();
-			const providerModels =
+			const clineApiBaseUrl = resolveClineApiBaseUrl();
+			const featuredModelsResult =
+				normalizedProviderId === "cline"
+					? await fetchClineRecommendedModels(clineApiBaseUrl)
+					: { data: { recommended: [], free: [] }, source: "fallback" as const };
+			const featuredModels: ClineRecommendedModelsData = featuredModelsResult.data;
+			const recommendedModelRanks = createModelRankMap(featuredModels.recommended);
+			const freeModelRanks = createModelRankMap(featuredModels.free);
+			const configuredModel = getSdkProviderSettings(normalizedProviderId)?.model?.trim() ?? "";
+			const rawProviderModels =
 				normalizedProviderId.length > 0
-					? await listSdkProviderModels(normalizedProviderId)
-							.then((sdkModels) => sdkModels.map((model) => toRuntimeProviderModel(model)))
-							.then((sdkModels) => sdkModels.sort((left, right) => left.name.localeCompare(right.name)))
-							.catch(() => [])
+					? normalizedProviderId === "cline"
+						? await fetchClineProviderModels(clineApiBaseUrl)
+								.then((models) =>
+									models.length > 0
+										? models
+										: listSdkProviderModels(normalizedProviderId).catch(() => []),
+								)
+								.catch(() => listSdkProviderModels(normalizedProviderId).catch(() => []))
+						: await listSdkProviderModels(normalizedProviderId).catch(() => [])
 					: [];
+			const featuredModelFallbacks =
+				normalizedProviderId === "cline" && featuredModelsResult.source !== "fallback"
+					? createFeaturedModelFallbacks(featuredModels, rawProviderModels)
+					: [];
+			const resolvedProviderModels = dedupeProviderModelsById(rawProviderModels.concat(featuredModelFallbacks));
+			const providerModels = resolvedProviderModels
+				.map((model) =>
+					toRuntimeProviderModel({
+						...model,
+						recommendedRank: recommendedModelRanks.get(model.id),
+						freeRank: freeModelRanks.get(model.id),
+					}),
+				)
+				.concat(
+					configuredModel.length > 0 && !resolvedProviderModels.some((model) => model.id === configuredModel)
+						? [
+								toRuntimeProviderModel({
+									id: configuredModel,
+									name: configuredModel,
+									recommendedRank: recommendedModelRanks.get(configuredModel),
+									freeRank: freeModelRanks.get(configuredModel),
+								}),
+							]
+						: [],
+				)
+				.sort((left, right) => left.name.localeCompare(right.name));
 
 			if (providerModels.length > 0) {
 				return {
@@ -801,11 +878,17 @@ export function createClineProviderService() {
 				};
 			}
 
-			const configuredModel = getSdkProviderSettings(normalizedProviderId)?.model?.trim() ?? "";
 			if (configuredModel.length > 0) {
 				return {
 					providerId: normalizedProviderId || providerId,
-					models: [{ id: configuredModel, name: configuredModel }],
+					models: [
+						toRuntimeProviderModel({
+							id: configuredModel,
+							name: configuredModel,
+							recommendedRank: recommendedModelRanks.get(configuredModel),
+							freeRank: freeModelRanks.get(configuredModel),
+						}),
+					],
 				};
 			}
 

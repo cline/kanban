@@ -575,6 +575,7 @@ export function ClineSetupSection({
 							showSelectedIndicator
 							pinSelectedToTop={modelPickerOptions.shouldPinSelectedModelToTop}
 							recommendedOptionValues={modelPickerOptions.recommendedModelIds}
+							freeOptionValues={modelPickerOptions.freeModelIds}
 							recommendedHeading="Recommended models"
 						/>
 					</div>

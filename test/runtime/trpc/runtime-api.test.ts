@@ -1842,16 +1842,18 @@ describe("createRuntimeApi startTaskSession", () => {
 				baseUrl: "https://openrouter.ai/api/v1",
 			}),
 		);
-		expect(response).toEqual({
-			providerId: "openrouter",
-			models: [
-				{
-					id: "openrouter/free",
-					name: "OpenRouter Free",
-					supportsReasoningEffort: true,
-				},
-			],
-		});
+		expect(response.providerId).toBe("openrouter");
+		expect(response.models).toEqual([
+			expect.objectContaining({
+				id: "openrouter/free",
+				name: "OpenRouter Free",
+				supportsReasoningEffort: true,
+			}),
+			expect.objectContaining({
+				id: "openrouter/auto",
+				name: "openrouter/auto",
+			}),
+		]);
 	});
 
 	it("falls back to the queried provider's saved model when provider model loading fails", async () => {

@@ -322,8 +322,12 @@ export async function listSdkProviderModels(providerId: string): Promise<SdkProv
 
 const providerManager = new ProviderSettingsManager();
 
+export function getSdkProviderSettingsDirectory(): string {
+	return dirname(providerManager.getFilePath());
+}
+
 function resolveModelsPath(): string {
-	return join(dirname(providerManager.getFilePath()), "models.json");
+	return join(getSdkProviderSettingsDirectory(), "models.json");
 }
 
 async function readModelsRegistry(): Promise<LocalModelsFile> {

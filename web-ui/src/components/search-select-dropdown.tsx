@@ -37,7 +37,9 @@ export function SearchSelectDropdown({
 	showSelectedIndicator = false,
 	pinSelectedToTop = true,
 	recommendedOptionValues = [],
+	freeOptionValues = [],
 	recommendedHeading = "Recommended models",
+	freeHeading = "Free models",
 	matchTargetWidth = true,
 	collisionPadding = 8,
 	dropdownStyle,
@@ -63,7 +65,9 @@ export function SearchSelectDropdown({
 	showSelectedIndicator?: boolean;
 	pinSelectedToTop?: boolean;
 	recommendedOptionValues?: readonly string[];
+	freeOptionValues?: readonly string[];
 	recommendedHeading?: string;
+	freeHeading?: string;
 	matchTargetWidth?: boolean;
 	collisionPadding?: number;
 	dropdownStyle?: CSSProperties;
@@ -104,6 +108,15 @@ export function SearchSelectDropdown({
 		() => new Set(recommendedOptionValues.map((value) => value.trim()).filter((value) => value.length > 0)),
 		[recommendedOptionValues],
 	);
+	const freeOptionValueSet = useMemo(
+		() =>
+			new Set(
+				freeOptionValues
+					.map((value) => value.trim())
+					.filter((value) => value.length > 0 && !recommendedOptionValueSet.has(value)),
+			),
+		[freeOptionValues, recommendedOptionValueSet],
+	);
 	const fuzzyMatches = useMemo(() => {
 		if (!query.trim()) {
 			return [] as ReturnType<Fzf<SearchSelectOption[]>["find"]>;
@@ -119,24 +132,34 @@ export function SearchSelectDropdown({
 	);
 	const filteredItems = useMemo(() => {
 		if (!query.trim()) {
-			if (recommendedOptionValueSet.size === 0) {
+			if (recommendedOptionValueSet.size === 0 && freeOptionValueSet.size === 0) {
 				return orderedOptions;
 			}
 			const recommendedItems = orderedOptions.filter((item) => recommendedOptionValueSet.has(item.value));
-			const otherItems = orderedOptions.filter((item) => !recommendedOptionValueSet.has(item.value));
-			return [...recommendedItems, ...otherItems];
+			const freeItems = orderedOptions.filter((item) => freeOptionValueSet.has(item.value));
+			const otherItems = orderedOptions.filter(
+				(item) => !recommendedOptionValueSet.has(item.value) && !freeOptionValueSet.has(item.value),
+			);
+			return [...recommendedItems, ...freeItems, ...otherItems];
 		}
 		return fuzzyMatches.map((entry) => entry.item);
-	}, [fuzzyMatches, orderedOptions, query, recommendedOptionValueSet]);
+	}, [freeOptionValueSet, fuzzyMatches, orderedOptions, query, recommendedOptionValueSet]);
 	const isSearching = query.trim().length > 0;
-	const showRecommendedSection = !isSearching && recommendedOptionValueSet.size > 0;
+	const showFeaturedSections = !isSearching && (recommendedOptionValueSet.size > 0 || freeOptionValueSet.size > 0);
 	const recommendedItems = useMemo(
 		() => filteredItems.filter((item) => recommendedOptionValueSet.has(item.value)),
 		[filteredItems, recommendedOptionValueSet],
 	);
+	const freeItems = useMemo(
+		() => filteredItems.filter((item) => freeOptionValueSet.has(item.value)),
+		[filteredItems, freeOptionValueSet],
+	);
 	const otherItems = useMemo(
-		() => filteredItems.filter((item) => !recommendedOptionValueSet.has(item.value)),
-		[filteredItems, recommendedOptionValueSet],
+		() =>
+			filteredItems.filter(
+				(item) => !recommendedOptionValueSet.has(item.value) && !freeOptionValueSet.has(item.value),
+			),
+		[filteredItems, freeOptionValueSet, recommendedOptionValueSet],
 	);
 	const filteredItemIndexByValue = useMemo(
 		() => new Map(filteredItems.map((item, index) => [item.value, index] as const)),
@@ -327,14 +350,18 @@ export function SearchSelectDropdown({
 							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{noResultsText}</div>
 						) : (
 							<>
-								{showRecommendedSection && recommendedItems.length > 0 ? (
+								{showFeaturedSections && recommendedItems.length > 0 ? (
 									<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
 										{recommendedHeading}
 									</div>
 								) : null}
-								{(showRecommendedSection ? recommendedItems : filteredItems).map((option) =>
-									renderOptionButton(option),
-								)}
+								{(showFeaturedSections ? recommendedItems : filteredItems).map((option) => renderOptionButton(option))}
+								{showFeaturedSections && freeItems.length > 0 ? (
+									<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
+										{freeHeading}
+									</div>
+								) : null}
+								{showFeaturedSections ? freeItems.map((option) => renderOptionButton(option)) : null}
 								{footerAction ? (
 									<div className="border-t border-border p-1">
 										<button
@@ -349,7 +376,7 @@ export function SearchSelectDropdown({
 										</button>
 									</div>
 								) : null}
-								{showRecommendedSection && recommendedItems.length > 0 && otherItems.length > 0 ? (
+								{showFeaturedSections && (recommendedItems.length > 0 || freeItems.length > 0) && otherItems.length > 0 ? (
 									<>
 										<div className="my-1 border-t border-border" />
 										<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
@@ -357,7 +384,7 @@ export function SearchSelectDropdown({
 										</div>
 									</>
 								) : null}
-								{showRecommendedSection && otherItems.length > 0
+								{showFeaturedSections && otherItems.length > 0
 									? otherItems.map((option) => renderOptionButton(option))
 									: null}
 							</>

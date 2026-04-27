@@ -70,8 +70,10 @@ describe("ClineChatModelSelector", () => {
 					modelOptions={[
 						{ value: "openai/gpt-5.4", label: "GPT-5.4" },
 						{ value: "anthropic/claude-sonnet-4.6", label: "Claude Sonnet 4.6" },
+						{ value: "arcee-ai/trinity-large-preview:free", label: "Trinity Large Preview" },
 					]}
 					recommendedModelIds={["openai/gpt-5.4"]}
+					freeModelIds={["arcee-ai/trinity-large-preview:free"]}
 					selectedModelId="openai/gpt-5.4"
 					selectedModelButtonText="GPT-5.4 (High)"
 					onSelectModel={() => {}}
@@ -110,6 +112,7 @@ describe("ClineChatModelSelector", () => {
 		expect(document.body.textContent).toContain("Model ID");
 		expect(document.body.textContent).toContain("Reasoning effort");
 		expect(document.body.textContent).toContain("Recommended models");
+		expect(document.body.textContent).toContain("Free models");
 		expect(document.body.textContent).toContain("Default");
 		expect(hasClass(selectedModelButton, "cursor-pointer")).toBe(true);
 		expect(hasClass(selectedReasoningButton, "bg-accent")).toBe(true);
