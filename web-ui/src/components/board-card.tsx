@@ -467,9 +467,7 @@ export function BoardCard({
 		return parts.length > 0 ? parts.join(" · ") : null;
 	}, [agentOverrideLabel, modelOverrideLabel]);
 
-	const activeDescriptionDisplay = isDescriptionExpanded
-		? descriptionDisplay.expanded
-		: descriptionDisplay.collapsed;
+	const activeDescriptionDisplay = isDescriptionExpanded ? descriptionDisplay.expanded : descriptionDisplay.collapsed;
 
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
@@ -688,9 +686,7 @@ export function BoardCard({
 														setIsDescriptionExpanded(!isDescriptionExpanded);
 													}}
 												>
-													{isDescriptionExpanded
-														? DESCRIPTION_COLLAPSE_LABEL
-														: DESCRIPTION_EXPAND_LABEL}
+													{isDescriptionExpanded ? DESCRIPTION_COLLAPSE_LABEL : DESCRIPTION_EXPAND_LABEL}
 												</button>
 											</>
 										) : isDescriptionExpanded && descriptionDisplay.collapsed.isTruncated ? (

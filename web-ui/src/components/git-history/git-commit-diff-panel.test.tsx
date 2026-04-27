@@ -2,7 +2,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitCommitDiffPanel, type GitCommitDiffSource } from "@/components/git-history/git-commit-diff-panel";
-import { TooltipProvider } from "@/components/ui/tooltip";
 
 vi.mock("@/resize/layout-customizations", () => ({
 	useLayoutResetEffect: () => {},
@@ -73,16 +72,14 @@ describe("GitCommitDiffPanel", () => {
 
 		await act(async () => {
 			root.render(
-				<TooltipProvider>
-					<GitCommitDiffPanel
-						diffSource={diffSource}
-						isLoading={false}
-						errorMessage={null}
-						selectedPath={null}
-						onSelectPath={() => {}}
-						headerContent={<div style={{ height: 28 }}>Header</div>}
-					/>
-				</TooltipProvider>,
+				<GitCommitDiffPanel
+					diffSource={diffSource}
+					isLoading={false}
+					errorMessage={null}
+					selectedPath={null}
+					onSelectPath={() => {}}
+					headerContent={<div style={{ height: 28 }}>Header</div>}
+				/>,
 			);
 		});
 
@@ -123,16 +120,14 @@ describe("GitCommitDiffPanel", () => {
 
 		await act(async () => {
 			root.render(
-				<TooltipProvider>
-					<GitCommitDiffPanel
-						diffSource={diffSource}
-						isLoading={false}
-						errorMessage={null}
-						selectedPath="src/b.ts"
-						onSelectPath={() => {}}
-						headerContent={<div style={{ height: 28 }}>Header</div>}
-					/>
-				</TooltipProvider>,
+				<GitCommitDiffPanel
+					diffSource={diffSource}
+					isLoading={false}
+					errorMessage={null}
+					selectedPath="src/b.ts"
+					onSelectPath={() => {}}
+					headerContent={<div style={{ height: 28 }}>Header</div>}
+				/>,
 			);
 		});
 
@@ -155,15 +150,13 @@ describe("GitCommitDiffPanel", () => {
 
 		await act(async () => {
 			root.render(
-				<TooltipProvider>
-					<GitCommitDiffPanel
-						diffSource={diffSource}
-						isLoading={false}
-						errorMessage={null}
-						selectedPath={null}
-						onSelectPath={() => {}}
-					/>
-				</TooltipProvider>,
+				<GitCommitDiffPanel
+					diffSource={diffSource}
+					isLoading={false}
+					errorMessage={null}
+					selectedPath={null}
+					onSelectPath={() => {}}
+				/>,
 			);
 		});
 

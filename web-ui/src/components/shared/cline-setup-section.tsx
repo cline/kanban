@@ -1,5 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { Check, Copy, ExternalLink, Pencil, Plus, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Pencil, Plus, RefreshCw, X } from "lucide-react";
 import { type ReactElement, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/components/shared/cline-add-provider-dialog";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Tooltip } from "@/components/ui/tooltip";
 import type {
 	AddClineProviderInput,
 	UpdateClineProviderInput,
@@ -262,6 +263,17 @@ export function ClineSetupSection({
 		setIsDeviceCodeCopied(false);
 		onError?.(null);
 		copyDeviceCode(code);
+	};
+
+	const handleRefreshProviderModels = () => {
+		void (async () => {
+			onError?.(null);
+			const result = await controller.refreshProviderModels();
+			if (!result.ok) {
+				onError?.(result.message ?? "Failed to refresh Cline models.");
+				return;
+			}
+		})();
 	};
 
 	return (
@@ -556,7 +568,30 @@ export function ClineSetupSection({
 					style={{ gridTemplateColumns: controller.selectedModelSupportsReasoningEffort ? "1fr 1fr" : "1fr" }}
 				>
 					<div className="min-w-0">
-						<p className="text-text-secondary text-[12px] mt-0 mb-1">Model ID</p>
+						<div className="mb-1 flex items-center justify-between gap-2">
+							<p className="text-text-secondary text-[12px] m-0">Model ID</p>
+							{shouldShowBaseUrlField ? (
+								<Tooltip side="bottom" content="Save settings and refresh models">
+									<Button
+										variant="ghost"
+										size="sm"
+										icon={
+											<RefreshCw
+												size={14}
+												className={controller.isLoadingProviderModels ? "animate-spin" : undefined}
+											/>
+										}
+										aria-label="Save settings and refresh models"
+										disabled={
+											controlsDisabled ||
+											controller.isLoadingProviderModels ||
+											controller.providerId.trim().length === 0
+										}
+										onClick={handleRefreshProviderModels}
+									/>
+								</Tooltip>
+							) : null}
+						</div>
 						<SearchSelectDropdown
 							options={clineModelOptions}
 							selectedValue={controller.modelId}

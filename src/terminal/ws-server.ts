@@ -7,6 +7,7 @@ import { WebSocketServer } from "ws";
 import type { RuntimeTerminalWsServerMessage } from "../core/api-contract";
 import { parseTerminalWsClientMessage } from "../core/api-validation";
 import { getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
+import { handleSocketUpgrade } from "../server/middleware";
 import type { TerminalSessionService } from "./terminal-session-service";
 
 interface TerminalWebSocketConnectionContext {
@@ -383,6 +384,9 @@ export function createTerminalWebSocketBridge({
 			const isIoRequest = isTerminalIoWebSocketPath(pathname);
 			const isControlRequest = isTerminalControlWebSocketPath(pathname);
 			if (!isIoRequest && !isControlRequest) {
+				return;
+			}
+			if (handleSocketUpgrade(request, socket).end) {
 				return;
 			}
 			// ── Passcode gate for terminal WebSocket upgrades ─────────────────

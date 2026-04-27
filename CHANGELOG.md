@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.65]
+
+- Model catalog now auto-refreshes on startup so newly available models appear immediately
+- Fixed task cards resizing and causing layout shifts on the board
+- Fixed initial Cline message not being sent after starting a new session
+- Added runtime child process manager for the desktop app
+
 ## [0.1.64]
 
 - Multi-line diff comments: Shift+click to select a range of lines, click the line number to open the comment box, and comments now include file path, line number, and column context

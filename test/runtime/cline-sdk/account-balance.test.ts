@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const clineAccountMocks = vi.hoisted(() => ({
 	fetchMe: vi.fn(),
@@ -37,6 +37,7 @@ vi.mock("@clinebot/core", () => ({
 	loginOcaOAuth: vi.fn(),
 	loginOpenAICodex: vi.fn(),
 	resolveDefaultMcpSettingsPath: vi.fn(),
+	resolveClineDataDir: vi.fn(() => "/tmp/cline"),
 	loadMcpSettingsFile: vi.fn(),
 	ClineAccountService: class {
 		constructor(options: { apiBaseUrl: string; getAuthToken: () => Promise<string | undefined | null> }) {
@@ -104,6 +105,8 @@ function setSelectedProviderSettings(
 		model?: string;
 		baseUrl?: string;
 		apiKey?: string;
+		headers?: Record<string, string>;
+		timeout?: number;
 		auth?: {
 			accessToken?: string;
 			refreshToken?: string;
@@ -117,6 +120,112 @@ function setSelectedProviderSettings(
 		settings && settings.provider === providerId ? settings : undefined,
 	);
 }
+
+describe("getProviderModels", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		setSelectedProviderSettings({
+			provider: "litellm",
+			model: "gpt-5.4",
+			baseUrl: "http://127.0.0.1:4000/v1",
+		});
+		localProviderMocks.getLocalProviderModels.mockResolvedValue({
+			providerId: "litellm",
+			models: [{ id: "gpt-5.4", name: "gpt-5.4" }],
+		});
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("loads keyless LiteLLM model aliases from the saved Base URL models endpoint", async () => {
+		const fetchMock = vi.fn<typeof fetch>(async () => {
+			return new Response(
+				JSON.stringify({
+					data: [{ id: "litellm-test-alpha" }, { id: "litellm-test-beta" }, { id: "litellm-test-gamma" }],
+				}),
+				{ status: 200 },
+			);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await createClineProviderService().getProviderModels("litellm");
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"http://127.0.0.1:4000/v1/models",
+			expect.objectContaining({
+				method: "GET",
+				headers: {},
+				signal: expect.any(AbortSignal),
+			}),
+		);
+		expect(result.models.map((model) => model.id)).toEqual([
+			"gpt-5.4",
+			"litellm-test-alpha",
+			"litellm-test-beta",
+			"litellm-test-gamma",
+		]);
+	});
+
+	it("uses LiteLLM model_name values from the model info endpoint", async () => {
+		const fetchMock = vi.fn<typeof fetch>(async (input) => {
+			const url = input.toString();
+			if (url.endsWith("/models")) {
+				return new Response(JSON.stringify({ data: [] }), { status: 200 });
+			}
+			return new Response(JSON.stringify({ data: [{ id: "internal-id", model_name: "litellm-test-alias" }] }), {
+				status: 200,
+			});
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await createClineProviderService().getProviderModels("litellm");
+
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			2,
+			"http://127.0.0.1:4000/v1/model/info",
+			expect.objectContaining({
+				method: "GET",
+				headers: {},
+				signal: expect.any(AbortSignal),
+			}),
+		);
+		expect(result.models.map((model) => model.id)).toEqual(["gpt-5.4", "litellm-test-alias"]);
+	});
+
+	it("passes configured LiteLLM headers and a bounded timeout signal to model list requests", async () => {
+		setSelectedProviderSettings({
+			provider: "litellm",
+			model: "gpt-5.4",
+			baseUrl: "http://127.0.0.1:4000/v1",
+			apiKey: "sk-test",
+			headers: { "X-Proxy-Token": "proxy-token" },
+			timeout: 30_000,
+		});
+		const fetchMock = vi.fn<typeof fetch>(async () => {
+			return new Response(JSON.stringify({ data: [{ id: "litellm-test-alpha" }] }), { status: 200 });
+		});
+		const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+		vi.stubGlobal("fetch", fetchMock);
+
+		await createClineProviderService().getProviderModels("litellm");
+
+		expect(timeoutSpy).toHaveBeenCalledWith(2_500);
+		expect(fetchMock).toHaveBeenCalledWith(
+			"http://127.0.0.1:4000/v1/models",
+			expect.objectContaining({
+				method: "GET",
+				headers: {
+					Authorization: "Bearer sk-test",
+					"X-Proxy-Token": "proxy-token",
+				},
+				signal: expect.any(AbortSignal),
+			}),
+		);
+		timeoutSpy.mockRestore();
+	});
+});
 
 describe("getClineAccountBalance", () => {
 	beforeEach(() => {
