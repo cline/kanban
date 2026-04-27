@@ -94,12 +94,15 @@ describe("evaluateCors", () => {
 });
 
 describe("evaluateHost", () => {
-	it("allows requests with no Host header", () => {
-		expect(evaluateHost({ hostHeader: undefined, allowedHosts: ALLOWED_HOSTS })).toEqual({ kind: "allow" });
+	it("rejects requests with no Host header", () => {
+		expect(evaluateHost({ hostHeader: undefined, allowedHosts: ALLOWED_HOSTS })).toEqual({
+			kind: "reject",
+			host: null,
+		});
 	});
 
-	it("allows requests with an empty Host header", () => {
-		expect(evaluateHost({ hostHeader: "", allowedHosts: ALLOWED_HOSTS })).toEqual({ kind: "allow" });
+	it("rejects requests with an empty Host header", () => {
+		expect(evaluateHost({ hostHeader: "", allowedHosts: ALLOWED_HOSTS })).toEqual({ kind: "reject", host: null });
 	});
 
 	it("allows requests whose Host is in the allowlist", () => {
@@ -156,11 +159,11 @@ describe("handleSocketUpgrade", () => {
 		expect(socket.destroyed).toBe(true);
 	});
 
-	it("passes through upgrades with a missing Host header (non-browser clients)", () => {
+	it("rejects upgrades with a missing Host header", () => {
 		const socket = new PassThrough();
 		const request = makeFakeRequest({});
 		const result = handleSocketUpgrade(request, socket);
-		expect(result).toEqual({ end: false });
-		expect(socket.destroyed).toBe(false);
+		expect(result).toEqual({ end: true });
+		expect(socket.destroyed).toBe(true);
 	});
 });

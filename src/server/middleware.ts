@@ -50,7 +50,7 @@ export type HostDecision = { kind: "allow" } | { kind: "reject"; host: string | 
 
 export function evaluateHost(input: HostGateInput): HostDecision {
 	if (!input.hostHeader) {
-		return { kind: "allow" };
+		return { kind: "reject", host: null };
 	}
 
 	if (!input.allowedHosts.has(input.hostHeader.toLowerCase())) {
