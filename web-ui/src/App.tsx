@@ -29,7 +29,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { UpdateAvailableDialog } from "@/components/update-available-dialog";
+import { UpdateNotificationController } from "@/components/update-notification-controller";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallback";
@@ -54,7 +54,6 @@ import { useTaskEditor } from "@/hooks/use-task-editor";
 import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
-import { useUpdateNotification } from "@/hooks/use-update-notification";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
@@ -81,7 +80,6 @@ import { useTerminalThemeColors } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 
 export default function App(): ReactElement {
-	const { availableUpdate, dismiss: dismissUpdateNotification } = useUpdateNotification();
 	const terminalThemeColors = useTerminalThemeColors();
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
@@ -1166,15 +1164,7 @@ export default function App(): ReactElement {
 					initialGitInitPath={pendingNativeGitInitPath}
 				/>
 
-				{availableUpdate ? (
-					<UpdateAvailableDialog
-						open
-						currentVersion={availableUpdate.currentVersion}
-						latestVersion={availableUpdate.latestVersion}
-						installCommand={availableUpdate.installCommand}
-						onClose={dismissUpdateNotification}
-					/>
-				) : null}
+				<UpdateNotificationController />
 
 				<AlertDialog
 					open={gitActionError !== null}
