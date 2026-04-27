@@ -71,8 +71,8 @@ export interface CreateRuntimeServerDependencies {
 	) => DisposeTrackedWorkspaceResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
 	pickDirectoryPathFromSystemDialog: () => string | null;
-	getUpdateStatus?: () => RuntimeUpdateStatusResponse;
-	runUpdateNow?: () => Promise<RuntimeRunUpdateResponse>;
+	getUpdateStatus: () => RuntimeUpdateStatusResponse;
+	runUpdateNow: () => Promise<RuntimeRunUpdateResponse>;
 }
 
 export interface RuntimeServer {
