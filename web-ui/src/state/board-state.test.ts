@@ -47,6 +47,7 @@ function requireTaskId(taskId: string | undefined, taskPrompt: string): string {
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 });
 
@@ -63,6 +64,20 @@ describe("board dependency state", () => {
 		expect(backlogCards).toHaveLength(1);
 		expect(backlogCards[0]?.id).toHaveLength(5);
 	});
+
+	it("uses random entropy when randomUUID is unavailable", () => {
+		vi.stubGlobal("crypto", { randomUUID: undefined });
+		vi.spyOn(Math, "random").mockReturnValue(0.123456789);
+
+		const board = addTaskToColumn(createInitialBoardData(), "backlog", {
+			prompt: "Task A",
+			baseRef: "main",
+		});
+		const backlogCards = board.columns.find((column) => column.id === "backlog")?.cards ?? [];
+
+		expect(backlogCards[0]?.id).toBe("4fzzz");
+	});
+
 	it("prevents duplicate links in either direction", () => {
 		const fixture = createBacklogBoard(["Task A", "Task B", "Task C"]);
 		const taskA = requireTaskId(fixture.taskIdByPrompt["Task A"], "Task A");

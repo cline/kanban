@@ -40,6 +40,7 @@ import { createProjectsApi } from "../trpc/projects-api";
 import { createRuntimeApi } from "../trpc/runtime-api";
 import { createWorkspaceApi } from "../trpc/workspace-api";
 import { getWebUiDir, normalizeRequestPath, readAsset } from "./assets";
+import { handleHttpRequest, handleSocketUpgrade } from "./middleware";
 import type { RuntimeStateHub } from "./runtime-state-hub";
 import type { WorkspaceRegistry } from "./workspace-registry";
 
@@ -268,6 +269,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const tlsConfig = getKanbanRuntimeTls();
 	const requestHandler = async (req: IncomingMessage, res: import("node:http").ServerResponse) => {
 		try {
+			if (handleHttpRequest(req, res).end) {
+				return;
+			}
+
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
 
@@ -409,6 +414,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		? createHttpsServer({ key: tlsConfig.key, cert: tlsConfig.cert }, requestHandler)
 		: createServer(requestHandler);
 	server.on("upgrade", (request, socket, head) => {
+		if (handleSocketUpgrade(request, socket).end) {
+			return;
+		}
+
 		let requestUrl: URL;
 		try {
 			requestUrl = new URL(request.url ?? "/", getKanbanRuntimeOrigin());
