@@ -70,13 +70,11 @@ export function UpdateAvailableDialog({
 		}
 	};
 
-	const allowClose = phase.kind !== "running";
-
 	return (
 		<Dialog
 			open={open}
 			onOpenChange={(next) => {
-				if (!next && allowClose) {
+				if (!next) {
 					onClose();
 				}
 			}}
@@ -133,7 +131,7 @@ export function UpdateAvailableDialog({
 					</Button>
 				) : (
 					<>
-						<Button variant="default" onClick={onClose} disabled={!allowClose}>
+						<Button variant="default" onClick={onClose}>
 							Later
 						</Button>
 						<Button
