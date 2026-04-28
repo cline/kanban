@@ -1,0 +1,16 @@
+#!/bin/bash
+# Dev-mode CLI shim. Resolves the repo-root `dist/cli.js` so `npm run dev`
+# spawns in-tree sources instead of the packaged app.asar layout.
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DESKTOP_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+REPO_ROOT="$(dirname "$(dirname "$DESKTOP_ROOT")")"
+CLI_ENTRY="$REPO_ROOT/dist/cli.js"
+
+if [ ! -f "$CLI_ENTRY" ]; then
+  echo "error: Kanban CLI not found at $CLI_ENTRY" >&2
+  echo "hint: Run 'npm run build' at the repo root first" >&2
+  exit 1
+fi
+
+exec node "$CLI_ENTRY" "$@"

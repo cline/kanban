@@ -1,0 +1,13 @@
+#!/bin/bash
+# Kanban CLI shim — bundled with the desktop app.
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RESOURCES_DIR="$(dirname "$SCRIPT_DIR")"
+CLI_ENTRY="$RESOURCES_DIR/app.asar.unpacked/cli/cli.js"
+
+if [ ! -f "$CLI_ENTRY" ]; then
+  echo "error: Kanban CLI not found at $CLI_ENTRY" >&2
+  exit 1
+fi
+
+exec node "$CLI_ENTRY" "$@"
