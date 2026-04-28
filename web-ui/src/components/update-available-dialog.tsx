@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowUpCircle, Check, CheckCircle2, Copy } from "lucide-react";
 import { useState } from "react";
 
+import { showAppToast } from "@/components/app-toaster";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -43,7 +44,14 @@ export function UpdateAvailableDialog({
 				setCopied(false);
 			}, 1500);
 		} catch {
-			// Clipboard write can fail on some browsers/permissions; the user can still select the text.
+			showAppToast(
+				{
+					intent: "warning",
+					message: "Could not copy the update command. Select it and copy manually.",
+					timeout: 4000,
+				},
+				"update-command-copy-failed",
+			);
 		}
 	};
 
