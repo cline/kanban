@@ -96,7 +96,7 @@ function buildUserFacingInstallCommand(
 	packageName: string,
 	npmTag: string,
 	updateTiming: "startup" | "shutdown",
-): string {
+): string | null {
 	const packageSpec = `${packageName}@${npmTag}`;
 	// `updateTiming === "shutdown"` is the marker for transient (dlx / npx / bunx) runs:
 	// the user did not perform a global install, so steering them toward `... add -g`
@@ -112,8 +112,9 @@ function buildUserFacingInstallCommand(
 			return `npx ${packageName}`;
 		case UpdatePackageManager.NPM:
 		case UpdatePackageManager.LOCAL:
-		case UpdatePackageManager.UNKNOWN:
 			return `npm install -g ${packageSpec}`;
+		case UpdatePackageManager.UNKNOWN:
+			return null;
 	}
 }
 
@@ -761,16 +762,21 @@ export async function runAutoUpdateCheck(options: UpdateStartupOptions): Promise
 			return;
 		}
 
+		const installCommand = buildUserFacingInstallCommand(
+			installation.packageManager,
+			packageName,
+			installation.npmTag,
+			installation.updateTiming,
+		);
+		if (!installCommand) {
+			return;
+		}
+
 		pendingUpdateNotification = {
 			currentVersion: options.currentVersion,
 			latestVersion,
 			updateTiming: installation.updateTiming,
-			installCommand: buildUserFacingInstallCommand(
-				installation.packageManager,
-				packageName,
-				installation.npmTag,
-				installation.updateTiming,
-			),
+			installCommand,
 		};
 
 		if (installation.updateTiming === "shutdown") {

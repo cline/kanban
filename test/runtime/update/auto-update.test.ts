@@ -575,4 +575,27 @@ describe("getPendingUpdateNotification", () => {
 
 		expect(getPendingUpdateNotification()).toBeNull();
 	});
+
+	it("leaves the pending notification null for unknown installations", async () => {
+		let fetchCalled = false;
+
+		await runAutoUpdateCheck({
+			currentVersion: "1.0.0",
+			packageName: "kanban",
+			argv: ["node", "/Users/saoud/.npm/_npx/node_modules/kanban/dist/cli.js"],
+			cwd: "/Users/saoud/projects/work",
+			env: {},
+			resolveRealPath: (path) => path,
+			fetchLatestVersion: async () => {
+				fetchCalled = true;
+				return "1.1.0";
+			},
+			spawnUpdate: () => {
+				throw new Error("unknown installation should not update");
+			},
+		});
+
+		expect(fetchCalled).toBe(false);
+		expect(getPendingUpdateNotification()).toBeNull();
+	});
 });
