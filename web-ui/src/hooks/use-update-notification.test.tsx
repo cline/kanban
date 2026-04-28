@@ -2,6 +2,15 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeUpdateStatusResponse } from "@/runtime/types";
+import { useUpdateNotification } from "./use-update-notification";
+
+const runtimeConfigQueryMocks = vi.hoisted(() => ({
+	fetchRuntimeUpdateStatus: vi.fn<(workspaceId: string | null) => Promise<RuntimeUpdateStatusResponse>>(),
+}));
+
+vi.mock("@/runtime/runtime-config-query", () => ({
+	fetchRuntimeUpdateStatus: runtimeConfigQueryMocks.fetchRuntimeUpdateStatus,
+}));
 
 interface AvailableUpdate {
 	currentVersion: string;
@@ -12,16 +21,6 @@ interface AvailableUpdate {
 interface UseUpdateNotificationResult {
 	availableUpdate: AvailableUpdate | null;
 	dismiss: () => void;
-}
-
-async function importHookModule() {
-	const fetchRuntimeUpdateStatusMock = vi.fn<(workspaceId: string | null) => Promise<RuntimeUpdateStatusResponse>>();
-	vi.resetModules();
-	vi.doMock("@/runtime/runtime-config-query", () => ({
-		fetchRuntimeUpdateStatus: fetchRuntimeUpdateStatusMock,
-	}));
-	const module = await import("@/hooks/use-update-notification");
-	return { module, fetchRuntimeUpdateStatusMock };
 }
 
 const upToDateStatus: RuntimeUpdateStatusResponse = {
@@ -46,6 +45,7 @@ describe("useUpdateNotification", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		runtimeConfigQueryMocks.fetchRuntimeUpdateStatus.mockReset();
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
@@ -61,7 +61,6 @@ describe("useUpdateNotification", () => {
 		container.remove();
 		vi.useRealTimers();
 		vi.restoreAllMocks();
-		vi.resetModules();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 			return;
@@ -70,13 +69,11 @@ describe("useUpdateNotification", () => {
 			previousActEnvironment;
 	});
 
-	async function renderHook(
-		module: Awaited<ReturnType<typeof importHookModule>>["module"],
-	): Promise<{ getState: () => UseUpdateNotificationResult }> {
+	async function renderHook(): Promise<{ getState: () => UseUpdateNotificationResult }> {
 		let hookResult: UseUpdateNotificationResult | null = null;
 
 		function HookHarness(): null {
-			hookResult = module.useUpdateNotification();
+			hookResult = useUpdateNotification();
 			return null;
 		}
 
@@ -97,10 +94,9 @@ describe("useUpdateNotification", () => {
 	}
 
 	it("surfaces an available update from the runtime", async () => {
-		const { module, fetchRuntimeUpdateStatusMock } = await importHookModule();
-		fetchRuntimeUpdateStatusMock.mockResolvedValue(updateAvailableStatus);
+		runtimeConfigQueryMocks.fetchRuntimeUpdateStatus.mockResolvedValue(updateAvailableStatus);
 
-		const { getState } = await renderHook(module);
+		const { getState } = await renderHook();
 
 		expect(getState().availableUpdate).toEqual({
 			currentVersion: "0.1.0",
@@ -110,20 +106,20 @@ describe("useUpdateNotification", () => {
 	});
 
 	it("returns null when the runtime is up to date", async () => {
-		const { module, fetchRuntimeUpdateStatusMock } = await importHookModule();
-		fetchRuntimeUpdateStatusMock.mockResolvedValue(upToDateStatus);
+		runtimeConfigQueryMocks.fetchRuntimeUpdateStatus.mockResolvedValue(upToDateStatus);
 
-		const { getState } = await renderHook(module);
+		const { getState } = await renderHook();
 
 		expect(getState().availableUpdate).toBeNull();
 	});
 
 	it("self-corrects to null when a later poll reports the runtime is up to date", async () => {
 		vi.useFakeTimers();
-		const { module, fetchRuntimeUpdateStatusMock } = await importHookModule();
-		fetchRuntimeUpdateStatusMock.mockResolvedValueOnce(updateAvailableStatus).mockResolvedValueOnce(upToDateStatus);
+		runtimeConfigQueryMocks.fetchRuntimeUpdateStatus
+			.mockResolvedValueOnce(updateAvailableStatus)
+			.mockResolvedValueOnce(upToDateStatus);
 
-		const { getState } = await renderHook(module);
+		const { getState } = await renderHook();
 
 		expect(getState().availableUpdate).not.toBeNull();
 
@@ -136,10 +132,9 @@ describe("useUpdateNotification", () => {
 	});
 
 	it("dismiss() clears the available update for the session and stops further polling effects", async () => {
-		const { module, fetchRuntimeUpdateStatusMock } = await importHookModule();
-		fetchRuntimeUpdateStatusMock.mockResolvedValue(updateAvailableStatus);
+		runtimeConfigQueryMocks.fetchRuntimeUpdateStatus.mockResolvedValue(updateAvailableStatus);
 
-		const { getState } = await renderHook(module);
+		const { getState } = await renderHook();
 		expect(getState().availableUpdate).not.toBeNull();
 
 		await act(async () => {
@@ -150,10 +145,9 @@ describe("useUpdateNotification", () => {
 	});
 
 	it("does not throw when the runtime query rejects", async () => {
-		const { module, fetchRuntimeUpdateStatusMock } = await importHookModule();
-		fetchRuntimeUpdateStatusMock.mockRejectedValue(new Error("offline"));
+		runtimeConfigQueryMocks.fetchRuntimeUpdateStatus.mockRejectedValue(new Error("offline"));
 
-		const { getState } = await renderHook(module);
+		const { getState } = await renderHook();
 
 		expect(getState().availableUpdate).toBeNull();
 	});
