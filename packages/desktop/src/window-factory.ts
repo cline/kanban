@@ -43,7 +43,6 @@ export class WindowFactory {
 			preloadPath: this.opts.preloadPath,
 			isPackaged: this.opts.isPackaged,
 			backgroundColor: this.opts.backgroundColor,
-			runtimeUrl: this.opts.orchestrator.getUrl() ?? undefined,
 			hideOnCloseForMac: true,
 			isQuitting: this.opts.isQuitting,
 			onWindowClosed: this.opts.onMenuDirty,
