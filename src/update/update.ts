@@ -75,19 +75,7 @@ interface PendingShutdownAutoUpdate {
 export interface PendingUpdateNotification {
 	currentVersion: string;
 	latestVersion: string;
-	/**
-	 * "startup": a global-install update was spawned in the background. The running process still
-	 *   runs the old version, so the user needs to restart to pick up the new version.
-	 * "shutdown": a transient (npx/pnpm dlx/yarn dlx/bunx) cache refresh is scheduled for shutdown.
-	 *   The next launch will use the new version.
-	 */
 	updateTiming: "startup" | "shutdown";
-	/**
-	 * User-facing command the user can copy-paste to apply the update. For global installs this is
-	 * the install command (e.g. `npm install -g kanban@latest`). For transient runs (npx, pnpm dlx,
-	 * yarn dlx, bunx) it's just the rerun command (e.g. `npx kanban`) since the auto-update has
-	 * already cleared the relevant cache on shutdown.
-	 */
 	installCommand: string;
 }
 
