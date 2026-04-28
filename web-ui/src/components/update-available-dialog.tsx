@@ -40,7 +40,7 @@ export function UpdateAvailableDialog({
 		try {
 			await navigator.clipboard.writeText(installCommand);
 			setCopied(true);
-			window.setTimeout(() => {
+			setTimeout(() => {
 				setCopied(false);
 			}, 1500);
 		} catch {

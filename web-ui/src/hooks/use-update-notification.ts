@@ -65,17 +65,17 @@ export function useUpdateNotification(): UseUpdateNotificationResult {
 		// The server's pending-update state is populated asynchronously after
 		// startup, so give it a couple of retries shortly after mount before
 		// falling back to the slow poll interval.
-		const earlyRetry = window.setTimeout(() => {
+		const earlyRetry = setTimeout(() => {
 			void checkOnce();
 		}, 10_000);
-		const interval = window.setInterval(() => {
+		const interval = setInterval(() => {
 			void checkOnce();
 		}, UPDATE_POLL_INTERVAL_MS);
 
 		return () => {
 			cancelled = true;
-			window.clearTimeout(earlyRetry);
-			window.clearInterval(interval);
+			clearTimeout(earlyRetry);
+			clearInterval(interval);
 		};
 	}, []);
 
