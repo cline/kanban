@@ -176,4 +176,3 @@ export function saveAllWindowStates(userDataPath: string, states: PersistedWindo
 		);
 	}
 }
-
