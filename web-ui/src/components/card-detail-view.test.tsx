@@ -110,7 +110,7 @@ function createSelection(): CardSelection {
 		},
 		{
 			id: "trash",
-			title: "Trash",
+			title: "Done",
 			cards: [],
 		},
 	];

@@ -45,7 +45,8 @@ export function useReviewAutoActions({
 	const requestMoveTaskToTrashRef = useRef(requestMoveTaskToTrash);
 	const awaitingCleanActionByTaskIdRef = useRef<Record<string, TaskGitAction>>({});
 	const timerByTaskIdRef = useRef<Record<string, number>>({});
-	const scheduledActionByTaskIdRef = useRef<Record<string, TaskAutoReviewMode>>({});
+	type ScheduledAutoReviewAction = TaskAutoReviewMode | "move_to_done_after_git_action";
+	const scheduledActionByTaskIdRef = useRef<Record<string, ScheduledAutoReviewAction>>({});
 	const moveToTrashInFlightTaskIdsRef = useRef<Set<string>>(new Set());
 
 	useEffect(() => {
@@ -79,22 +80,25 @@ export function useReviewAutoActions({
 		moveToTrashInFlightTaskIdsRef.current.clear();
 	}, []);
 
-	const scheduleAutoReviewAction = useCallback((taskId: string, action: TaskAutoReviewMode, execute: () => void) => {
-		const existingTimer = timerByTaskIdRef.current[taskId];
-		const existingAction = scheduledActionByTaskIdRef.current[taskId];
-		if (typeof existingTimer === "number" && existingAction === action) {
-			return;
-		}
-		if (typeof existingTimer === "number") {
-			window.clearTimeout(existingTimer);
-		}
-		scheduledActionByTaskIdRef.current[taskId] = action;
-		timerByTaskIdRef.current[taskId] = window.setTimeout(() => {
-			delete timerByTaskIdRef.current[taskId];
-			delete scheduledActionByTaskIdRef.current[taskId];
-			execute();
-		}, AUTO_REVIEW_ACTION_DELAY_MS);
-	}, []);
+	const scheduleAutoReviewAction = useCallback(
+		(taskId: string, action: ScheduledAutoReviewAction, execute: () => void) => {
+			const existingTimer = timerByTaskIdRef.current[taskId];
+			const existingAction = scheduledActionByTaskIdRef.current[taskId];
+			if (typeof existingTimer === "number" && existingAction === action) {
+				return;
+			}
+			if (typeof existingTimer === "number") {
+				window.clearTimeout(existingTimer);
+			}
+			scheduledActionByTaskIdRef.current[taskId] = action;
+			timerByTaskIdRef.current[taskId] = window.setTimeout(() => {
+				delete timerByTaskIdRef.current[taskId];
+				delete scheduledActionByTaskIdRef.current[taskId];
+				execute();
+			}, AUTO_REVIEW_ACTION_DELAY_MS);
+		},
+		[],
+	);
 
 	useEffect(() => {
 		return () => {
@@ -158,38 +162,10 @@ export function useReviewAutoActions({
 							? loadingState?.prSource !== null && loadingState?.prSource !== undefined
 							: false;
 
-				if (autoReviewMode === "move_to_trash") {
-					if (moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)) {
-						continue;
-					}
-					scheduleAutoReviewAction(reviewTask.id, "move_to_trash", () => {
-						const latestSelection = findCardSelection(boardRef.current, reviewTask.id);
-						if (!latestSelection || latestSelection.column.id !== "review") {
-							return;
-						}
-						if (!isTaskAutoReviewEnabled(latestSelection.card)) {
-							return;
-						}
-						if (resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode) !== "move_to_trash") {
-							return;
-						}
-						delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
-						moveToTrashInFlightTaskIdsRef.current.add(reviewTask.id);
-						void requestMoveTaskToTrashRef
-							.current(reviewTask.id, "review", {
-								skipWorkingChangeWarning: true,
-							})
-							.finally(() => {
-								moveToTrashInFlightTaskIdsRef.current.delete(reviewTask.id);
-							});
-					});
-					continue;
-				}
-
 				// Commit/PR automation mental model:
-				// - A task is only "armed" for auto-trash after we actually see working changes in review and trigger commit/pr.
+				// - A task is only "armed" for auto-done after we actually see working changes in review and trigger commit/pr.
 				// - Review entries with zero changes (common during start-in-plan-mode planning loops) are intentionally ignored.
-				// - Once armed, a later review state with zero changes is treated as commit/pr success, then we auto-move to trash.
+				// - Once armed, a later review state with zero changes is treated as commit/pr success, then we auto-move to done.
 				const changedFiles = getTaskWorkspaceSnapshot(reviewTask.id)?.changedFiles;
 				const awaitingAction = awaitingCleanActionByTaskIdRef.current[reviewTask.id] ?? null;
 				if (awaitingAction) {
@@ -198,7 +174,7 @@ export function useReviewAutoActions({
 						!isGitActionInFlight &&
 						!moveToTrashInFlightTaskIdsRef.current.has(reviewTask.id)
 					) {
-						scheduleAutoReviewAction(reviewTask.id, "move_to_trash", () => {
+						scheduleAutoReviewAction(reviewTask.id, "move_to_done_after_git_action", () => {
 							const latestSelection = findCardSelection(boardRef.current, reviewTask.id);
 							if (!latestSelection || latestSelection.column.id !== "review") {
 								return;

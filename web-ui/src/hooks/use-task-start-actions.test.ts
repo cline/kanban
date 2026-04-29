@@ -32,7 +32,7 @@ describe("getStartableBacklogTaskIds", () => {
 				{ id: "backlog", title: "Backlog", cards: backlogCards },
 				{ id: "in_progress", title: "In Progress", cards: inProgressCards },
 				{ id: "review", title: "Review", cards: [] },
-				{ id: "trash", title: "Trash", cards: [] },
+				{ id: "trash", title: "Done", cards: [] },
 			],
 			dependencies,
 		};

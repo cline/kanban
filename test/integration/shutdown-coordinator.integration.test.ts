@@ -71,7 +71,7 @@ function createBoard(taskIds: { inProgress?: string[]; review?: string[] }): Run
 				title: "Review",
 				cards: (taskIds.review ?? []).map((taskId) => createCard(taskId)),
 			},
-			{ id: "trash", title: "Trash", cards: [] },
+			{ id: "trash", title: "Done", cards: [] },
 		],
 		dependencies: [],
 	};

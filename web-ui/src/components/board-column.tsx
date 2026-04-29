@@ -127,8 +127,8 @@ export function BoardColumn({
 							className="text-status-red hover:text-status-red"
 							onClick={onClearTrash}
 							disabled={column.cards.length === 0}
-							aria-label="Clear trash"
-							title={column.cards.length > 0 ? "Clear trash permanently" : "Trash is empty"}
+							aria-label="Clear done"
+							title={column.cards.length > 0 ? "Clear done items permanently" : "Done is empty"}
 						/>
 					) : null}
 				</div>
