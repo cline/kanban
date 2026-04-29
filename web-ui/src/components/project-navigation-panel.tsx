@@ -731,7 +731,7 @@ function ProjectRow({
 			id: "trash",
 			title: "Done",
 			shortLabel: "D",
-			toneClassName: "bg-status-green/20 text-status-green",
+			toneClassName: "bg-status-red/20 text-status-red",
 			count: project.taskCounts.trash,
 		},
 	].filter((item) => item.count > 0);
