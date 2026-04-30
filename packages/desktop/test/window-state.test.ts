@@ -587,5 +587,3 @@ describe("loadAllWindowStates respects MAX_RESTORED_WINDOWS", () => {
 		expect(loadAllWindowStates(tmpDir).length).toBe(5);
 	});
 });
-
-

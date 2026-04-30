@@ -173,4 +173,3 @@ describe("extractProtocolUrlFromArgv", () => {
 		expect(extractProtocolUrlFromArgv(argv)).toBeNull();
 	});
 });
-

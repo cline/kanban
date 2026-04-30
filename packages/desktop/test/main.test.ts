@@ -172,4 +172,3 @@ describe("OAuth relay dialog focus is late-bound", () => {
 		expect(slice).not.toMatch(/getMainWindow:\s*\(\)\s*=>\s*focusedWindow\b/);
 	});
 });
-

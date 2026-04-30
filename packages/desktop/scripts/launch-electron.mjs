@@ -95,4 +95,3 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
 		}
 	});
 }
-
