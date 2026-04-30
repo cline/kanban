@@ -78,6 +78,7 @@ export function getAllowedHostHeaders(): ReadonlySet<string> {
 	if (isDev) {
 		// Vite's default dev server host:port
 		allowed.add("localhost:4173");
+		allowed.add("127.0.0.1:4173");
 	}
 	return allowed;
 }
