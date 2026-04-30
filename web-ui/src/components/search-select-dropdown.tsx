@@ -1,6 +1,6 @@
 import * as RadixPopover from "@radix-ui/react-popover";
 import { Fzf } from "fzf";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode, WheelEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -17,6 +17,8 @@ const MATCHED_TEXT_STYLE = {
 	color: "var(--color-text-primary)",
 	fontWeight: 600,
 } as const;
+
+const DEFAULT_CUSTOM_VALUE_LABEL = (query: string) => `Use "${query}" as custom ID`;
 
 export function SearchSelectDropdown({
 	options,
@@ -44,6 +46,8 @@ export function SearchSelectDropdown({
 	menuStyle,
 	onPopoverOpenChange,
 	footerAction,
+	allowCustomValue = false,
+	customValueLabel,
 }: {
 	options: readonly SearchSelectOption[];
 	selectedValue?: string | null;
@@ -73,6 +77,8 @@ export function SearchSelectDropdown({
 		label: string;
 		onClick: () => void;
 	};
+	allowCustomValue?: boolean;
+	customValueLabel?: (query: string) => string;
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -118,7 +124,8 @@ export function SearchSelectDropdown({
 		[fuzzyMatches],
 	);
 	const filteredItems = useMemo(() => {
-		if (!query.trim()) {
+		const trimmedQuery = query.trim();
+		if (!trimmedQuery) {
 			if (recommendedOptionValueSet.size === 0) {
 				return orderedOptions;
 			}
@@ -126,8 +133,13 @@ export function SearchSelectDropdown({
 			const otherItems = orderedOptions.filter((item) => !recommendedOptionValueSet.has(item.value));
 			return [...recommendedItems, ...otherItems];
 		}
-		return fuzzyMatches.map((entry) => entry.item);
-	}, [fuzzyMatches, orderedOptions, query, recommendedOptionValueSet]);
+		const fuzzyResult = fuzzyMatches.map((entry) => entry.item);
+		if (fuzzyResult.length === 0 && allowCustomValue) {
+			const label = (customValueLabel ?? DEFAULT_CUSTOM_VALUE_LABEL)(trimmedQuery);
+			return [{ value: trimmedQuery, label }];
+		}
+		return fuzzyResult;
+	}, [fuzzyMatches, orderedOptions, query, recommendedOptionValueSet, allowCustomValue, customValueLabel]);
 	const isSearching = query.trim().length > 0;
 	const showRecommendedSection = !isSearching && recommendedOptionValueSet.size > 0;
 	const recommendedItems = useMemo(
@@ -257,6 +269,7 @@ export function SearchSelectDropdown({
 		const match = fuzzyMatchesByValue.get(option.value);
 		const isSelected = showSelectedIndicator && option.value === selectedValue;
 		const isActive = optionIndex === activeOptionIndex;
+		const isCustomValue = isSearching && match == null;
 		return (
 			<button
 				type="button"
@@ -265,10 +278,12 @@ export function SearchSelectDropdown({
 					optionRefs.current[optionIndex] = node;
 				}}
 				className={cn(
-					"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] rounded-md text-left",
+					"flex w-full items-center gap-2 px-2.5 py-1.5 rounded-md text-left",
+					isCustomValue ? "text-[12px]" : "text-[13px]",
 					isActive
 						? "bg-surface-3 text-text-primary"
 						: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
+					isCustomValue ? "italic" : "",
 				)}
 				onMouseEnter={() => setActiveOptionIndex(optionIndex)}
 				onClick={() => {
@@ -276,8 +291,11 @@ export function SearchSelectDropdown({
 					handleOpenChange(false);
 				}}
 			>
+				{isCustomValue ? <Plus size={14} className="shrink-0" /> : null}
 				<span className="flex-1 break-all">
-					{renderFuzzyHighlightedText(option.label, match?.positions, MATCHED_TEXT_STYLE)}
+					{isCustomValue
+						? option.label
+						: renderFuzzyHighlightedText(option.label, match?.positions, MATCHED_TEXT_STYLE)}
 				</span>
 				{isSelected ? <Check size={14} className="shrink-0 text-text-secondary" /> : null}
 			</button>

@@ -602,7 +602,8 @@ export function ClineSetupSection({
 							buttonText={
 								controller.isLoadingProviderModels
 									? "Loading models..."
-									: clineModelOptions.find((option) => option.value === controller.modelId)?.label
+									: (clineModelOptions.find((option) => option.value === controller.modelId)?.label ??
+										controller.modelId.trim())
 							}
 							emptyText="Select model"
 							noResultsText="No matching models"
@@ -611,6 +612,7 @@ export function ClineSetupSection({
 							pinSelectedToTop={modelPickerOptions.shouldPinSelectedModelToTop}
 							recommendedOptionValues={modelPickerOptions.recommendedModelIds}
 							recommendedHeading="Recommended models"
+							allowCustomValue
 						/>
 					</div>
 					{controller.selectedModelSupportsReasoningEffort ? (
