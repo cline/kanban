@@ -28,6 +28,7 @@ const oauthMocks = vi.hoisted(() => ({
 	loginOcaOAuth: vi.fn(),
 	loginOpenAICodex: vi.fn(),
 	resolveDefaultMcpSettingsPath: vi.fn(),
+	resolveClineDataDir: vi.fn(() => "/tmp/cline"),
 	loadMcpSettingsFile: vi.fn(),
 	saveProviderSettings: vi.fn(),
 	getProviderSettings: vi.fn(),
@@ -37,6 +38,8 @@ const oauthMocks = vi.hoisted(() => ({
 const llmsModelMocks = vi.hoisted(() => ({
 	getAllProviders: vi.fn(),
 	getModelsForProvider: vi.fn(),
+	resolveProviderConfig: vi.fn(),
+	resolveProviderModelCatalogKeys: vi.fn(),
 }));
 
 const localProviderMocks = vi.hoisted(() => ({
@@ -79,7 +82,9 @@ vi.mock("@clinebot/core", () => ({
 	loginOcaOAuth: oauthMocks.loginOcaOAuth,
 	loginOpenAICodex: oauthMocks.loginOpenAICodex,
 	resolveDefaultMcpSettingsPath: oauthMocks.resolveDefaultMcpSettingsPath,
+	resolveClineDataDir: oauthMocks.resolveClineDataDir,
 	loadMcpSettingsFile: oauthMocks.loadMcpSettingsFile,
+	resolveProviderConfig: llmsModelMocks.resolveProviderConfig,
 	ClineAccountService: class {
 		constructor(options: { apiBaseUrl: string; getAuthToken: () => Promise<string | undefined | null> }) {
 			clineAccountMocks.constructedOptions.push(options);
@@ -109,6 +114,7 @@ vi.mock("@clinebot/core", () => ({
 	Llms: {
 		getAllProviders: llmsModelMocks.getAllProviders,
 		getModelsForProvider: llmsModelMocks.getModelsForProvider,
+		resolveProviderModelCatalogKeys: llmsModelMocks.resolveProviderModelCatalogKeys,
 	},
 	LlmsModels: {
 		CLINE_DEFAULT_MODEL: "anthropic/claude-sonnet-4.6",
@@ -121,7 +127,34 @@ vi.mock("../../../src/server/browser.js", () => ({
 	openInBrowser: browserMocks.openInBrowser,
 }));
 
-import { createRuntimeApi } from "../../../src/trpc/runtime-api";
+import type { RuntimeTrpcContext } from "../../../src/trpc/app-router";
+import { type CreateRuntimeApiDependencies, createRuntimeApi } from "../../../src/trpc/runtime-api";
+
+function createTestRuntimeApi(
+	deps: Omit<CreateRuntimeApiDependencies, "getUpdateStatus" | "runUpdateNow"> &
+		Partial<Pick<CreateRuntimeApiDependencies, "getUpdateStatus" | "runUpdateNow">>,
+): RuntimeTrpcContext["runtimeApi"] {
+	return createRuntimeApi({
+		...deps,
+		getUpdateStatus:
+			deps.getUpdateStatus ??
+			vi.fn(() => ({
+				currentVersion: "0.1.0",
+				latestVersion: null,
+				updateAvailable: false,
+				updateTiming: null,
+				installCommand: null,
+			})),
+		runUpdateNow:
+			deps.runUpdateNow ??
+			vi.fn(async () => ({
+				status: "unsupported_installation" as const,
+				currentVersion: "0.1.0",
+				latestVersion: null,
+				message: "On-demand updates are not available in this test runtime.",
+			})),
+	});
+}
 
 function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return {
@@ -250,6 +283,8 @@ describe("createRuntimeApi startTaskSession", () => {
 		localProviderMocks.getLocalProviderModels.mockReset();
 		llmsModelMocks.getAllProviders.mockReset();
 		llmsModelMocks.getModelsForProvider.mockReset();
+		llmsModelMocks.resolveProviderConfig.mockReset();
+		llmsModelMocks.resolveProviderModelCatalogKeys.mockReset();
 		browserMocks.openInBrowser.mockReset();
 
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
@@ -310,6 +345,10 @@ describe("createRuntimeApi startTaskSession", () => {
 		oauthMocks.ensureCustomProvidersLoaded.mockResolvedValue(undefined);
 		llmsModelMocks.getAllProviders.mockResolvedValue([]);
 		llmsModelMocks.getModelsForProvider.mockResolvedValue({});
+		llmsModelMocks.resolveProviderConfig.mockResolvedValue(undefined);
+		llmsModelMocks.resolveProviderModelCatalogKeys.mockImplementation((providerId: string) =>
+			providerId === "cline" ? ["openrouter", "cline"] : [providerId],
+		);
 		oauthMocks.resolveDefaultMcpSettingsPath.mockReturnValue(mcpSettingsPath);
 		oauthMocks.loadMcpSettingsFile.mockReturnValue({
 			mcpServers: {},
@@ -382,7 +421,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			applyTurnCheckpoint: vi.fn(),
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -429,7 +468,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			applyTurnCheckpoint: vi.fn(),
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -482,7 +521,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -555,7 +594,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -614,7 +653,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -672,7 +711,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		const getScopedClineTaskSessionService = vi.fn(async () => clineTaskSessionService as never);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -730,7 +769,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			applyTurnCheckpoint: vi.fn(),
 		};
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -788,7 +827,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -847,7 +886,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -900,7 +939,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -949,7 +988,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.startTaskSession.mockResolvedValue(createSummary({ agentId: "cline", pid: null }));
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -991,7 +1030,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			applyTurnCheckpoint: vi.fn(),
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1039,7 +1078,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			applyTurnCheckpoint: vi.fn(),
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -1113,7 +1152,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			},
 		});
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -1177,7 +1216,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			},
 		});
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -1247,7 +1286,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			},
 		});
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				const runtimeConfigState = createRuntimeConfigState();
@@ -1294,7 +1333,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(summary);
 		clineTaskSessionService.stopTaskSession.mockResolvedValue(summary);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1338,7 +1377,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		clineTaskSessionService.loadTaskSessionMessages.mockResolvedValue([latestMessage]);
 		clineTaskSessionService.getSummary.mockReturnValue(summary);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1391,7 +1430,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		clineTaskSessionService.clearTaskSession.mockResolvedValue(summary);
 		const broadcastTaskChatCleared = vi.fn();
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1424,7 +1463,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(summary);
 		clineTaskSessionService.listMessages.mockReturnValue([]);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1470,7 +1509,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		clineTaskSessionService.getSummary.mockReturnValue(null);
 		clineTaskSessionService.loadTaskSessionMessages.mockResolvedValue([persistedMessage]);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1495,7 +1534,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		clineTaskSessionService.reloadTaskSession.mockResolvedValue(summary);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1530,7 +1569,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			reasoning: {},
 		});
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1575,7 +1614,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		clineTaskSessionService.rebindPersistedTaskSession.mockResolvedValue(summary);
 		clineTaskSessionService.listMessages.mockReturnValue([latestMessage]);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1634,7 +1673,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		clineTaskSessionService.startTaskSession.mockResolvedValue(summary);
 		clineTaskSessionService.listMessages.mockReturnValue([latestMessage]);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => runtimeConfigState),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1690,7 +1729,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			},
 		});
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1739,7 +1778,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(null);
 		clineTaskSessionService.startTaskSession.mockResolvedValue(summary);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => runtimeConfigState),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1770,7 +1809,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		};
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => {
 				return createRuntimeConfigState();
@@ -1802,7 +1841,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("loads provider models through the SDK local-provider resolver with saved config", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1854,8 +1893,130 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 	});
 
+	it("adds refreshed live catalog models to provider model responses", async () => {
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "deepseek",
+			model: "deepseek-chat",
+			apiKey: "deepseek-key",
+			baseUrl: "https://api.deepseek.com/v1",
+		});
+		localProviderMocks.getLocalProviderModels.mockResolvedValue({
+			providerId: "deepseek",
+			models: [
+				{
+					id: "deepseek-chat",
+					name: "DeepSeek Chat",
+				},
+			],
+		});
+		llmsModelMocks.resolveProviderConfig.mockResolvedValue({
+			knownModels: {
+				"deepseek-v4-pro": {
+					id: "deepseek-v4-pro",
+					name: "DeepSeek V4 Pro",
+					capabilities: ["tools", "reasoning"],
+				},
+			},
+		});
+
+		const response = await api.getClineProviderModels(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ providerId: "deepseek" },
+		);
+
+		expect(llmsModelMocks.resolveProviderModelCatalogKeys).toHaveBeenCalledWith("deepseek");
+		expect(llmsModelMocks.resolveProviderConfig).toHaveBeenCalledWith(
+			"deepseek",
+			expect.objectContaining({
+				loadLatestOnInit: true,
+				loadPrivateOnAuth: true,
+				failOnError: false,
+			}),
+			expect.objectContaining({
+				providerId: "deepseek",
+				modelId: "deepseek-chat",
+				apiKey: "deepseek-key",
+			}),
+		);
+		expect(response.models).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "deepseek-v4-pro",
+					name: "DeepSeek V4 Pro",
+					supportsReasoningEffort: true,
+				}),
+				expect.objectContaining({
+					id: "deepseek-chat",
+					name: "DeepSeek Chat",
+				}),
+			]),
+		);
+	});
+
+	it("loads Cline provider models from the SDK catalog key mapping", async () => {
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		setSelectedProviderSettings({
+			provider: "cline",
+			model: "anthropic/claude-sonnet-4.6",
+		});
+		localProviderMocks.getLocalProviderModels.mockResolvedValue({
+			providerId: "cline",
+			models: [
+				{
+					id: "anthropic/claude-sonnet-4.6",
+					name: "Claude Sonnet 4.6",
+				},
+			],
+		});
+		llmsModelMocks.resolveProviderConfig.mockImplementation((providerId: string) =>
+			providerId === "openrouter"
+				? Promise.resolve({
+						knownModels: {
+							"deepseek/deepseek-v4-flash": {
+								id: "deepseek/deepseek-v4-flash",
+								name: "DeepSeek V4 Flash",
+								capabilities: ["tools", "reasoning"],
+							},
+						},
+					})
+				: Promise.resolve(undefined),
+		);
+
+		const response = await api.getClineProviderModels(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ providerId: "cline" },
+		);
+
+		expect(llmsModelMocks.resolveProviderModelCatalogKeys).toHaveBeenCalledWith("cline");
+		expect(llmsModelMocks.resolveProviderConfig).toHaveBeenCalledWith(
+			"openrouter",
+			expect.objectContaining({
+				loadLatestOnInit: true,
+			}),
+			undefined,
+		);
+		expect(response.models.some((model) => model.id === "deepseek/deepseek-v4-flash")).toBe(true);
+	});
+
 	it("falls back to the queried provider's saved model when provider model loading fails", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1906,7 +2067,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("adds a custom OpenAI-compatible provider through the SDK-backed flow", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -1991,7 +2152,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("returns cline account profile for cline OAuth users", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2028,7 +2189,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("refreshes cline OAuth credentials and retries profile lookup when direct profile fetch fails", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2071,7 +2232,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("blocks kanban when remote config explicitly disables it", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2111,7 +2272,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("allows kanban when remote config fetch fails", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2158,7 +2319,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	});
 
 	it("allows kanban by default for non-cline providers", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2188,7 +2349,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
 		const bumpClineSessionContextVersion = vi.fn();
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2240,7 +2401,7 @@ describe("createRuntimeApi startTaskSession", () => {
 
 	it("bumps cline session context when provider settings are saved", async () => {
 		const bumpClineSessionContextVersion = vi.fn();
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2287,7 +2448,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			),
 		);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2315,7 +2476,7 @@ describe("createRuntimeApi startTaskSession", () => {
 
 	it("saves Cline MCP settings", async () => {
 		const bumpClineSessionContextVersion = vi.fn();
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2395,7 +2556,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			),
 		);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2446,7 +2607,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			),
 		);
 
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2488,7 +2649,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				expect(existsSync(path)).toBe(true);
 			}
 		});
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2531,7 +2692,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			mkdirSync(path, { recursive: true });
 			writeFileSync(join(path, "marker.txt"), "present");
 		}
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2571,7 +2732,7 @@ describe("createRuntimeApi getFeaturebaseToken", () => {
 	});
 
 	it("returns JWT from SDK method", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2602,7 +2763,7 @@ describe("createRuntimeApi getFeaturebaseToken", () => {
 	});
 
 	it("throws when no provider settings configured", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2622,7 +2783,7 @@ describe("createRuntimeApi getFeaturebaseToken", () => {
 	});
 
 	it("throws when provider is not cline", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2648,7 +2809,7 @@ describe("createRuntimeApi getFeaturebaseToken", () => {
 	});
 
 	it("retries after OAuth refresh when first attempt fails", async () => {
-		const api = createRuntimeApi({
+		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
 			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
 			setActiveRuntimeConfig: vi.fn(),
@@ -2691,5 +2852,63 @@ describe("createRuntimeApi getFeaturebaseToken", () => {
 		expect(response).toEqual({ featurebaseJwt: "refreshed-jwt-456" });
 		expect(clineAccountMocks.fetchFeaturebaseToken).toHaveBeenCalledTimes(2);
 		expect(oauthMocks.getValidClineCredentials).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("createRuntimeApi update handlers", () => {
+	it("delegates update status to the required dependency", async () => {
+		const getUpdateStatus = vi.fn(() => ({
+			currentVersion: "0.1.0",
+			latestVersion: "0.2.0",
+			updateAvailable: true,
+			updateTiming: "startup" as const,
+			installCommand: "npm install -g kanban@latest",
+		}));
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+			getUpdateStatus,
+		});
+
+		await expect(api.getUpdateStatus(null)).resolves.toEqual({
+			currentVersion: "0.1.0",
+			latestVersion: "0.2.0",
+			updateAvailable: true,
+			updateTiming: "startup",
+			installCommand: "npm install -g kanban@latest",
+		});
+		expect(getUpdateStatus).toHaveBeenCalledTimes(1);
+	});
+
+	it("delegates update execution to the required dependency", async () => {
+		const runUpdateNow = vi.fn(async () => ({
+			status: "updated" as const,
+			currentVersion: "0.1.0",
+			latestVersion: "0.2.0",
+			message: "Updated Kanban to 0.2.0.",
+		}));
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => ({}) as never),
+			getScopedClineTaskSessionService: vi.fn(async () => createClineTaskSessionServiceMock() as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+			runUpdateNow,
+		});
+
+		await expect(api.runUpdateNow(null)).resolves.toEqual({
+			status: "updated",
+			currentVersion: "0.1.0",
+			latestVersion: "0.2.0",
+			message: "Updated Kanban to 0.2.0.",
+		});
+		expect(runUpdateNow).toHaveBeenCalledTimes(1);
 	});
 });

@@ -29,6 +29,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { UpdateNotificationController } from "@/components/update-notification-controller";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
 import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallback";
@@ -1162,6 +1163,8 @@ export default function App(): ReactElement {
 					currentProjectId={currentProjectId}
 					initialGitInitPath={pendingNativeGitInitPath}
 				/>
+
+				<UpdateNotificationController />
 
 				<AlertDialog
 					open={gitActionError !== null}

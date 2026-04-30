@@ -10,6 +10,7 @@ import {
 } from "./cline-mcp-runtime-service";
 import { createKanbanClineLogger } from "./cline-runtime-logger";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
+import { CLINE_MODEL_CATALOG_DEFAULTS } from "./sdk-provider-boundary";
 import {
 	type ClineSdkPersistedMessage,
 	type ClineSdkSessionHost,
@@ -21,12 +22,9 @@ import {
 	createClineSdkSessionHost,
 } from "./sdk-runtime-boundary";
 
+export { CLINE_MODEL_CATALOG_DEFAULTS } from "./sdk-provider-boundary";
+
 const DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES = 6;
-const CLINE_MODEL_CATALOG_DEFAULTS = {
-	loadLatestOnInit: true,
-	loadPrivateOnAuth: true,
-	failOnError: false,
-} as const;
 
 interface ClineSessionHostBoundary {
 	start(input: ClineSdkStartSessionInput): Promise<{ sessionId: string; result?: unknown }>;
@@ -201,8 +199,11 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		const hasMcpExtraTools = Boolean(mcpToolBundle && mcpToolBundle.tools.length > 0);
 
 		const sessionHost = await this.ensureSessionHost();
+		const userImages = toSdkUserImages(request.images);
+		const shouldSendInitialTurn = request.prompt.trim().length > 0 || Boolean(userImages?.length);
 		let startResult: Awaited<ReturnType<ClineSessionHostBoundary["start"]>>;
 		try {
+			// Hub-backed SDK hosts create the interactive session in start; the first turn runs through send.
 			startResult = await sessionHost.start({
 				config: {
 					sessionId: requestedSessionId,
@@ -233,10 +234,8 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					}),
 					...(hasMcpExtraTools ? { extraTools: mcpToolBundle?.tools ?? [] } : {}),
 				},
-				prompt: request.prompt,
 				initialMessages: request.initialMessages,
 				interactive: true,
-				userImages: toSdkUserImages(request.images),
 				localRuntime: {
 					modelCatalogDefaults: CLINE_MODEL_CATALOG_DEFAULTS,
 					...(request.userInstructionWatcher ? { userInstructionWatcher: request.userInstructionWatcher } : {}),
@@ -254,11 +253,26 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			this.taskIdBySessionId.delete(requestedSessionId);
 		}
 
+		let result: unknown = startResult.result ?? null;
+		if (shouldSendInitialTurn) {
+			try {
+				result = await sessionHost.send({
+					sessionId: startResult.sessionId,
+					prompt: request.prompt,
+					userImages,
+				});
+			} catch (error) {
+				this.clearTaskSessionBinding(request.taskId, startResult.sessionId);
+				await this.releaseTaskMcpToolBundle(request.taskId);
+				throw error;
+			}
+		}
+
 		await persistKanbanTitleToClineSessionMetadata(sessionHost, startResult.sessionId, request.taskTitle);
 
 		return {
 			sessionId: startResult.sessionId,
-			result: startResult.result ?? null,
+			result,
 			...(startWarnings.length > 0 ? { warnings: startWarnings } : {}),
 		};
 	}

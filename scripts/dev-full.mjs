@@ -90,6 +90,7 @@ console.log(`\n  Runtime port: ${runtimePort}`);
 console.log(`  Web UI:       http://127.0.0.1:${webUiPort}\n`);
 
 const env = {
+	NODE_ENV: "development",
 	...process.env,
 	KANBAN_RUNTIME_PORT: String(runtimePort),
 	KANBAN_WEB_UI_PORT: String(webUiPort),

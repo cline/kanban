@@ -1,7 +1,7 @@
 // Owns the Cline-specific settings state machine inside the settings dialog.
 // It loads provider data, drives model selection, saves settings, and runs
 // OAuth login flows so the dialog component can stay presentation-focused.
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import {
 	addClineProvider,
@@ -136,6 +136,7 @@ export interface UseRuntimeSettingsClineControllerResult {
 	selectedModelSupportsReasoningEffort: boolean;
 	hasUnsavedChanges: boolean;
 	saveProviderSettings: (overrides?: SaveProviderSettingsOverrides) => Promise<SaveResult>;
+	refreshProviderModels: () => Promise<SaveResult>;
 	addCustomProvider: (input: AddClineProviderInput) => Promise<SaveResult>;
 	updateCustomProvider: (input: UpdateClineProviderInput) => Promise<SaveResult>;
 	runOauthLogin: () => Promise<SaveResult>;
@@ -221,6 +222,7 @@ export function useRuntimeSettingsClineController(
 	const [providerModels, setProviderModels] = useState<RuntimeClineProviderModel[]>([]);
 	const [isLoadingProviderCatalog, setIsLoadingProviderCatalog] = useState(false);
 	const [isLoadingProviderModels, setIsLoadingProviderModels] = useState(false);
+	const providerModelsRequestIdRef = useRef(0);
 	const [isRunningOauthLogin, setIsRunningOauthLogin] = useState(false);
 	const [deviceAuthInfo, setDeviceAuthInfo] = useState<{
 		userCode: string;
@@ -442,41 +444,52 @@ export function useRuntimeSettingsClineController(
 		setBaseUrl(normalizeBaseUrlForProvider(providerId, defaultBaseUrl));
 	}, [baseUrl, open, providerCatalog, providerId, selectedAgentId]);
 
+	const nextProviderModelsRequestId = useCallback((): number => {
+		providerModelsRequestIdRef.current += 1;
+		return providerModelsRequestIdRef.current;
+	}, []);
+
+	const loadProviderModelsForProvider = useCallback(
+		async (nextProviderId: string, requestId = nextProviderModelsRequestId()): Promise<void> => {
+			setIsLoadingProviderModels(true);
+			try {
+				const nextModels = await fetchClineProviderModels(workspaceId, nextProviderId);
+				if (providerModelsRequestIdRef.current === requestId) {
+					setProviderModels(nextModels);
+				}
+			} catch (error) {
+				if (providerModelsRequestIdRef.current === requestId) {
+					setProviderModels([]);
+				}
+				throw error;
+			} finally {
+				if (providerModelsRequestIdRef.current === requestId) {
+					setIsLoadingProviderModels(false);
+				}
+			}
+		},
+		[nextProviderModelsRequestId, workspaceId],
+	);
+
 	useEffect(() => {
 		if (!open || selectedAgentId !== "cline") {
+			nextProviderModelsRequestId();
 			setProviderModels([]);
 			setIsLoadingProviderModels(false);
 			return;
 		}
 		const trimmedProviderId = providerId.trim();
 		if (trimmedProviderId.length === 0) {
+			nextProviderModelsRequestId();
 			setProviderModels([]);
 			setIsLoadingProviderModels(false);
 			return;
 		}
-		let cancelled = false;
-		setIsLoadingProviderModels(true);
-		void fetchClineProviderModels(workspaceId, trimmedProviderId)
-			.then((nextModels) => {
-				if (cancelled) {
-					return;
-				}
-				setProviderModels(nextModels);
-			})
-			.catch(() => {
-				if (!cancelled) {
-					setProviderModels([]);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setIsLoadingProviderModels(false);
-				}
-			});
+		void loadProviderModelsForProvider(trimmedProviderId).catch(() => {});
 		return () => {
-			cancelled = true;
+			nextProviderModelsRequestId();
 		};
-	}, [open, providerId, selectedAgentId, workspaceId]);
+	}, [loadProviderModelsForProvider, nextProviderModelsRequestId, open, providerId, selectedAgentId]);
 
 	const saveProviderSettingsDraft = useCallback(
 		async (overrides?: SaveProviderSettingsOverrides): Promise<SaveResult> => {
@@ -581,6 +594,48 @@ export function useRuntimeSettingsClineController(
 		],
 	);
 
+	const refreshProviderModels = useCallback(async (): Promise<SaveResult> => {
+		const trimmedProviderId = providerId.trim();
+		if (trimmedProviderId.length === 0) {
+			return {
+				ok: false,
+				message: "Choose a Cline provider before refreshing models.",
+			};
+		}
+
+		setIsLoadingProviderModels(true);
+		const requestId = nextProviderModelsRequestId();
+		try {
+			const saveResult = await saveProviderSettingsDraft({
+				providerId: trimmedProviderId,
+				modelId: modelId.trim() || null,
+				baseUrl: baseUrl.trim() || null,
+			});
+			if (!saveResult.ok) {
+				return saveResult;
+			}
+
+			await loadProviderModelsForProvider(trimmedProviderId, requestId);
+			return { ok: true };
+		} catch (error) {
+			return {
+				ok: false,
+				message: error instanceof Error ? error.message : String(error),
+			};
+		} finally {
+			if (providerModelsRequestIdRef.current === requestId) {
+				setIsLoadingProviderModels(false);
+			}
+		}
+	}, [
+		baseUrl,
+		loadProviderModelsForProvider,
+		modelId,
+		nextProviderModelsRequestId,
+		providerId,
+		saveProviderSettingsDraft,
+	]);
+
 	const addCustomProvider = useCallback(
 		async (input: AddClineProviderInput): Promise<SaveResult> => {
 			try {
@@ -600,12 +655,7 @@ export function useRuntimeSettingsClineController(
 					setIsLoadingProviderCatalog(false);
 				}
 
-				setIsLoadingProviderModels(true);
-				try {
-					setProviderModels(await fetchClineProviderModels(workspaceId, nextProviderId));
-				} finally {
-					setIsLoadingProviderModels(false);
-				}
+				await loadProviderModelsForProvider(nextProviderId);
 
 				return { ok: true };
 			} catch (error) {
@@ -615,7 +665,7 @@ export function useRuntimeSettingsClineController(
 				};
 			}
 		},
-		[workspaceId],
+		[loadProviderModelsForProvider, workspaceId],
 	);
 
 	const runOauthLogin = useCallback(async (): Promise<SaveResult> => {
@@ -690,12 +740,7 @@ export function useRuntimeSettingsClineController(
 					setIsLoadingProviderCatalog(false);
 				}
 
-				setIsLoadingProviderModels(true);
-				try {
-					setProviderModels(await fetchClineProviderModels(workspaceId, nextProviderId));
-				} finally {
-					setIsLoadingProviderModels(false);
-				}
+				await loadProviderModelsForProvider(nextProviderId);
 
 				return { ok: true };
 			} catch (error) {
@@ -705,7 +750,7 @@ export function useRuntimeSettingsClineController(
 				};
 			}
 		},
-		[baseUrl, modelId, workspaceId],
+		[baseUrl, loadProviderModelsForProvider, modelId, workspaceId],
 	);
 
 	return {
@@ -756,6 +801,7 @@ export function useRuntimeSettingsClineController(
 		selectedModelSupportsReasoningEffort,
 		hasUnsavedChanges,
 		saveProviderSettings: saveProviderSettingsDraft,
+		refreshProviderModels,
 		addCustomProvider,
 		updateCustomProvider,
 		runOauthLogin,

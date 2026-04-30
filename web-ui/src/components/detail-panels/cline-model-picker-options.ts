@@ -4,23 +4,17 @@ import type { RuntimeClineProviderModel, RuntimeClineReasoningEffort } from "@/r
 const CLINE_PROVIDER_ID = "cline";
 
 export const CLINE_RECOMMENDED_MODEL_IDS = [
-	"anthropic/claude-opus-4.6",
 	"anthropic/claude-sonnet-4.6",
-	"openai/gpt-5.3-codex",
-	"openai/gpt-5.4",
-	"google/gemini-3.1-pro-preview",
-	"google/gemini-3.1-flash-lite-preview",
-	"xiaomi/mimo-v2-pro",
+	"anthropic/claude-opus-4.7",
+	"openai/gpt-5.5",
+	"deepseek/deepseek-v4-pro",
 ] as const;
 
 const CLINE_MODEL_NAME_BY_ID: Record<string, string> = {
-	"anthropic/claude-opus-4.6": "Claude Opus 4.6",
 	"anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
-	"openai/gpt-5.3-codex": "GPT-5.3 Codex",
-	"openai/gpt-5.4": "GPT-5.4",
-	"google/gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
-	"google/gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite Preview",
-	"xiaomi/mimo-v2-pro": "Mimo v2 Pro",
+	"anthropic/claude-opus-4.7": "Claude Opus 4.7",
+	"openai/gpt-5.5": "GPT-5.5",
+	"deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
 };
 
 export const CLINE_REASONING_EFFORT_OPTIONS: SearchSelectOption[] = [

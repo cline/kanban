@@ -14,7 +14,11 @@ import { isClineClearSlashCommand } from "../cline-sdk/cline-slash-commands";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
-import type { RuntimeCommandRunResponse } from "../core/api-contract";
+import type {
+	RuntimeCommandRunResponse,
+	RuntimeRunUpdateResponse,
+	RuntimeUpdateStatusResponse,
+} from "../core/api-contract";
 import {
 	parseClineAccountSwitchRequest,
 	parseClineAddProviderRequest,
@@ -61,6 +65,8 @@ export interface CreateRuntimeApiDependencies {
 	broadcastTaskChatCleared?: (workspaceId: string, taskId: string) => void;
 	bumpClineSessionContextVersion?: () => void;
 	prepareForStateReset?: () => Promise<void>;
+	getUpdateStatus: () => RuntimeUpdateStatusResponse;
+	runUpdateNow: () => Promise<RuntimeRunUpdateResponse>;
 }
 
 async function resolveExistingTaskCwdOrEnsure(options: {
@@ -720,6 +726,12 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			}
 			openInBrowser(filePath);
 			return { ok: true };
+		},
+		getUpdateStatus: async () => {
+			return deps.getUpdateStatus();
+		},
+		runUpdateNow: async () => {
+			return await deps.runUpdateNow();
 		},
 	};
 }

@@ -283,7 +283,7 @@ describe("BoardCard", () => {
 					card={createCard({
 						agentId: "cline",
 						clineSettings: {
-							modelId: "openai/gpt-5.4",
+							modelId: "openai/gpt-5.5",
 							reasoningEffort: "low",
 						},
 					})}
@@ -294,8 +294,8 @@ describe("BoardCard", () => {
 		});
 
 		expect(container.textContent).toContain("Cline");
-		expect(container.textContent).toContain("GPT-5.4 (Low)");
-		expect(container.textContent).not.toContain("openai/gpt-5.4");
+		expect(container.textContent).toContain("GPT-5.5 (Low)");
+		expect(container.textContent).not.toContain("openai/gpt-5.5");
 	});
 
 	it("shows the task-level indicator for reasoning-only overrides", async () => {
@@ -309,12 +309,12 @@ describe("BoardCard", () => {
 					})}
 					index={0}
 					columnId="backlog"
-					defaultClineModelId="openai/gpt-5.4"
+					defaultClineModelId="openai/gpt-5.5"
 				/>,
 			);
 		});
 
-		expect(container.textContent).toContain("GPT-5.4 (Low)");
+		expect(container.textContent).toContain("GPT-5.5 (Low)");
 	});
 
 	it("shows a fallback indicator for reasoning-only overrides without a resolved default model", async () => {
@@ -345,13 +345,13 @@ describe("BoardCard", () => {
 					})}
 					index={0}
 					columnId="backlog"
-					defaultClineModelId="openai/gpt-5.4"
+					defaultClineModelId="openai/gpt-5.5"
 				/>,
 			);
 		});
 
-		expect(container.textContent).toContain("GPT-5.4 (Default)");
-		expect(container.textContent).not.toContain("GPT-5.4 (High)");
+		expect(container.textContent).toContain("GPT-5.5 (Default)");
+		expect(container.textContent).not.toContain("GPT-5.5 (High)");
 	});
 
 	it("does not mislabel provider-only overrides as the global default model", async () => {
@@ -365,13 +365,13 @@ describe("BoardCard", () => {
 					})}
 					index={0}
 					columnId="backlog"
-					defaultClineModelId="openai/gpt-5.4"
+					defaultClineModelId="openai/gpt-5.5"
 				/>,
 			);
 		});
 
 		expect(container.textContent).toContain("Provider: groq");
-		expect(container.textContent).not.toContain("GPT-5.4");
+		expect(container.textContent).not.toContain("GPT-5.5");
 	});
 
 	it("does not show inherited global reasoning for explicit model overrides using default effort", async () => {
@@ -381,7 +381,7 @@ describe("BoardCard", () => {
 					card={createCard({
 						agentId: "cline",
 						clineSettings: {
-							modelId: "openai/gpt-5.4",
+							modelId: "openai/gpt-5.5",
 						},
 					})}
 					index={0}
@@ -390,8 +390,8 @@ describe("BoardCard", () => {
 			);
 		});
 
-		expect(container.textContent).toContain("GPT-5.4");
-		expect(container.textContent).not.toContain("GPT-5.4 (High)");
+		expect(container.textContent).toContain("GPT-5.5");
+		expect(container.textContent).not.toContain("GPT-5.5 (High)");
 	});
 
 	it("shows tool input details in the session preview text", async () => {

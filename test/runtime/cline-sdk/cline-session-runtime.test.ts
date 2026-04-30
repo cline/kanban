@@ -377,6 +377,14 @@ describe("InMemoryClineSessionRuntime", () => {
 
 		expect(startResult.sessionId).toBe("resolved-session-1");
 		expect(runtime.getTaskSessionId("task-1")).toBe("resolved-session-1");
+		const startInput = fakeHost.start.mock.calls[0]?.[0];
+		expect(startInput).not.toHaveProperty("prompt");
+		expect(startInput).not.toHaveProperty("userImages");
+		expect(fakeHost.send).toHaveBeenNthCalledWith(1, {
+			sessionId: "resolved-session-1",
+			prompt: "Investigate startup",
+			userImages: ["data:image/png;base64,abc123"],
+		});
 
 		await runtime.sendTaskSessionInput("task-1", "Continue", undefined, [
 			{
@@ -385,7 +393,7 @@ describe("InMemoryClineSessionRuntime", () => {
 				mimeType: "image/jpeg",
 			},
 		]);
-		expect(fakeHost.send).toHaveBeenCalledWith({
+		expect(fakeHost.send).toHaveBeenNthCalledWith(2, {
 			sessionId: "resolved-session-1",
 			prompt: "Continue",
 			userImages: ["data:image/jpeg;base64,def456"],
@@ -416,7 +424,6 @@ describe("InMemoryClineSessionRuntime", () => {
 		expect(requestedSessionId).not.toBe("resolved-session-1");
 		expect(fakeHost.start).toHaveBeenCalledWith(
 			expect.objectContaining({
-				userImages: ["data:image/png;base64,abc123"],
 				config: expect.objectContaining({
 					logger: expect.objectContaining({
 						debug: expect.any(Function),

@@ -61,6 +61,7 @@ import type {
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectsResponse,
+	RuntimeRunUpdateResponse,
 	RuntimeShellSessionStartRequest,
 	RuntimeShellSessionStartResponse,
 	RuntimeSlashCommandsResponse,
@@ -82,6 +83,7 @@ import type {
 	RuntimeTaskSessionStopResponse,
 	RuntimeTaskWorkspaceInfoRequest,
 	RuntimeTaskWorkspaceInfoResponse,
+	RuntimeUpdateStatusResponse,
 	RuntimeWorkspaceChangesRequest,
 	RuntimeWorkspaceChangesResponse,
 	RuntimeWorkspaceFileSearchRequest,
@@ -150,6 +152,7 @@ import {
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
 	runtimeProjectsResponseSchema,
+	runtimeRunUpdateResponseSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeShellSessionStartResponseSchema,
 	runtimeSlashCommandsResponseSchema,
@@ -171,6 +174,7 @@ import {
 	runtimeTaskSessionStopResponseSchema,
 	runtimeTaskWorkspaceInfoRequestSchema,
 	runtimeTaskWorkspaceInfoResponseSchema,
+	runtimeUpdateStatusResponseSchema,
 	runtimeWorkspaceChangesRequestSchema,
 	runtimeWorkspaceChangesResponseSchema,
 	runtimeWorkspaceFileSearchRequestSchema,
@@ -290,6 +294,8 @@ export interface RuntimeTrpcContext {
 		) => Promise<RuntimeCommandRunResponse>;
 		resetAllState: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeDebugResetAllStateResponse>;
 		openFile: (input: RuntimeOpenFileRequest) => Promise<RuntimeOpenFileResponse>;
+		getUpdateStatus: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeUpdateStatusResponse>;
+		runUpdateNow: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeRunUpdateResponse>;
 	};
 	workspaceApi: {
 		loadGitSummary: (
@@ -586,6 +592,12 @@ export const runtimeAppRouter = t.router({
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.openFile(input);
 			}),
+		getUpdateStatus: t.procedure.output(runtimeUpdateStatusResponseSchema).query(async ({ ctx }) => {
+			return await ctx.runtimeApi.getUpdateStatus(ctx.workspaceScope);
+		}),
+		runUpdateNow: t.procedure.output(runtimeRunUpdateResponseSchema).mutation(async ({ ctx }) => {
+			return await ctx.runtimeApi.runUpdateNow(ctx.workspaceScope);
+		}),
 	}),
 	workspace: t.router({
 		getGitSummary: workspaceProcedure
