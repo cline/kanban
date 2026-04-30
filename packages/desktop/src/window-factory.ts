@@ -43,7 +43,6 @@ export class WindowFactory {
 			preloadPath: this.opts.preloadPath,
 			isPackaged: this.opts.isPackaged,
 			backgroundColor: this.opts.backgroundColor,
-			runtimeUrl: this.opts.orchestrator.getUrl() ?? undefined,
 			hideOnCloseForMac: true,
 			isQuitting: this.opts.isQuitting,
 			onWindowClosed: this.opts.onMenuDirty,
@@ -131,6 +130,13 @@ export class WindowFactory {
 			console.error(`[desktop] Renderer process gone: reason=${details.reason}`);
 			if (window.isDestroyed()) return;
 
+			// Capture the URL the renderer was on *synchronously*, before the
+			// async health probe. Without this, recovery loads the bare runtime
+			// URL and silently drops whichever project/path the user was on.
+			// `did-fail-load` already preserves the URL (it's passed in as
+			// `validatedURL`); this brings the crash path to parity.
+			const lastUrl = window.webContents.getURL();
+
 			const origin =
 				this.opts.orchestrator.getUrl() ??
 				this.opts.orchestrator.defaultOrigin();
@@ -138,7 +144,8 @@ export class WindowFactory {
 				if (window.isDestroyed()) return;
 				const runtimeUrl = this.opts.orchestrator.getUrl();
 				if (healthy && runtimeUrl) {
-					window.loadURL(runtimeUrl).catch((err: unknown) => {
+					const target = pickRecoveryUrl(lastUrl, runtimeUrl);
+					window.loadURL(target).catch((err: unknown) => {
 						console.warn(
 							"[desktop] Renderer-recovery loadURL failed:",
 							err instanceof Error ? err.message : err,
@@ -150,6 +157,32 @@ export class WindowFactory {
 			});
 		});
 	}
+}
+
+/**
+ * Choose the URL to reload after a renderer crash, preferring the route the
+ * renderer was on so the user lands back in the same place. Falls back to the
+ * bare runtime URL if `lastUrl` is missing, unparseable, not http(s), or on a
+ * different origin than the current runtime (e.g. the runtime restarted on a
+ * new port, or the renderer was already on a `file://` disconnected screen).
+ *
+ * Exported only for tests — internal helper.
+ */
+export function pickRecoveryUrl(lastUrl: string, runtimeUrl: string): string {
+	if (!lastUrl) return runtimeUrl;
+	let last: URL;
+	let rt: URL;
+	try {
+		last = new URL(lastUrl);
+		rt = new URL(runtimeUrl);
+	} catch {
+		return runtimeUrl;
+	}
+	if (last.protocol !== "http:" && last.protocol !== "https:") {
+		return runtimeUrl;
+	}
+	if (last.origin !== rt.origin) return runtimeUrl;
+	return lastUrl;
 }
 
 /**

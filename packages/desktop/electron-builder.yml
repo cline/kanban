@@ -16,6 +16,7 @@ files:
   - package.json
   - cli/**/*
   - "!cli/**/*.map"
+  - "!dist/**/*.map"
 
 # Narrow filter — explicitly excludes `kanban-dev*` (dev-only shims) and
 # any stray files in build/bin from accidentally shipping.

@@ -22,7 +22,6 @@ export interface CreateWindowOptions {
 	preloadPath: string;
 	isPackaged: boolean;
 	backgroundColor?: string;
-	runtimeUrl?: string | null;
 	onWindowClosed?: (windowId: number) => void;
 	onWindowFocused?: (windowId: number) => void;
 	hideOnCloseForMac?: boolean;
