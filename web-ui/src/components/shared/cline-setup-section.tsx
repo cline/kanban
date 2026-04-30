@@ -603,7 +603,8 @@ export function ClineSetupSection({
 								controller.isLoadingProviderModels
 									? "Loading models..."
 									: (clineModelOptions.find((option) => option.value === controller.modelId)?.label ??
-										controller.modelId.trim())
+											controller.modelId.trim()) ||
+										undefined
 							}
 							emptyText="Select model"
 							noResultsText="No matching models"
