@@ -23,7 +23,7 @@
 	"devDependencies": {
 		"@electron/notarize": "^3.0.0",
 		"@types/node": "^22.10.5",
-		"electron": "^33.4.0",
+		"electron": "^39.8.5",
 		"electron-builder": "^25.1.8",
 		"esbuild": "^0.27.0",
 		"shx": "^0.4.0",
