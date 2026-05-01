@@ -131,10 +131,10 @@ export class WindowRegistry {
 						);
 					});
 				} else {
-
 					// Non-http(s) schemes (`javascript:`, `file:`, custom protocols)
 					// are intentionally rejected. Log so unexpected drops are
 					// traceable instead of vanishing into a `deny`.
+
 					console.debug(
 						`[desktop] Refusing window.open for non-http(s) URL: ${url}`,
 					);

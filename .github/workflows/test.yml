@@ -33,11 +33,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
-      # node-pty's postinstall (electron-builder install-app-deps) shells out
-      # to node-gyp, which still imports `distutils`. Python 3.12 removed it,
-      # and the macOS-latest runner ships 3.12+ by default. Pin a 3.11 toolchain
-      # for the rebuild step. No-op on linux runners (their bundled python is
-      # already 3.10/3.11) but cheap to run unconditionally.
+      # macOS node-gyp/electron rebuilds can fail with Python 3.12/distutils; pin 3.11.
       - name: Setup Python (for node-gyp on macOS)
         if: matrix.os == 'macos-latest'
         uses: actions/setup-python@v5

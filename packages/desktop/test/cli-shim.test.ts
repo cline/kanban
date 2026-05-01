@@ -131,15 +131,8 @@ describe("CLI shim (packaging level)", () => {
 		});
 	});
 
-	// ── Shell-shim edge cases (bash-only) ────────────────────────────────
-	// These are the classic failure modes for bundled CLI shims:
-	//   * exit code not propagated → CI green but tool silently failed
-	//   * spaces in the install path → `exec node $CLI_ENTRY` breaks
-	//   * args with spaces / special chars lost by the shim's forwarding
-	// The `exec node "$CLI_ENTRY" "$@"` + `$(cd "$(dirname "$0")" && pwd)`
-	// pattern in build/bin/kanban is correct for all three, but history
-	// has shown these regress silently whenever the shim is touched, so
-	// we exercise them end-to-end.
+	// Shell-shim edge cases (bash-only). Regression coverage for exit-code
+	// propagation, paths with spaces, and arg forwarding with special chars.
 	describe("shim shell semantics (macOS/Linux)", () => {
 		/**
 		 * Build an isolated fake Resources/ layout with a custom CLI body

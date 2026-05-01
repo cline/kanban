@@ -1,7 +1,7 @@
 export const KANBAN_PROTOCOL = "kanban";
 export const OAUTH_CALLBACK_PATH = "/oauth/callback";
 
-export interface ParsedProtocolUrl {
+interface ParsedProtocolUrl {
 	raw: string;
 	pathname: string;
 	searchParams: URLSearchParams;

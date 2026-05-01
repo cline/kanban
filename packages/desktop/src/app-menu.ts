@@ -21,7 +21,8 @@ function openExternalSafe(url: string): void {
 }
 
 
-export interface AppMenuOptions {
+interface AppMenuOptions {
+
 	registry: WindowRegistry;
 	orchestrator: RuntimeOrchestrator;
 	onNewWindow: (options: { initialPath: string | null }) => void;

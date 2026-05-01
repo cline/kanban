@@ -842,12 +842,12 @@ describe("RuntimeOrchestrator post-crash recovery probe", () => {
 	});
 
 	it("dispose() during attached-mode connect() health check skips setUrl and doesn't spawn", async () => {
-		// Reviewer-flagged race: connect() awaits checkHealth(); the
-		// continuation (setUrl on success or startOwnRuntime on failure)
-		// must not run if a teardown landed during the await. Without the
-		// `terminated` flag, this scenario would leave a disposed
-		// orchestrator pointing at the attached origin with the attached
-		// probe ticking in the background.
+		// Regression: connect() awaits checkHealth(); the continuation
+		// (setUrl on success or startOwnRuntime on failure) must not run
+		// if a teardown landed during the await — otherwise a disposed
+		// orchestrator ends up pointing at the attached origin with the
+		// attached probe ticking in the background.
+
 		const pendingResolvers: Array<(r: Response) => void> = [];
 		const fetchImpl = vi.fn(
 			() =>
@@ -973,13 +973,14 @@ describe("RuntimeOrchestrator post-crash recovery probe", () => {
 
 	it("dispose() during connect()'s startOwnRuntime() does not leak an orphan child", async () => {
 
-		// Reviewer-flagged race: connect() falls through to
-		// startOwnRuntime() when checkHealth fails; if dispose() runs while
-		// manager.start() is suspended, the spawn must either be skipped
-		// (if dispose lands before start begins) or the just-spawned child
-		// must be cleaned up directly (if start completes after dispose
-		// began). Without this, a slow startup + user quit leaves an orphan
-		// runtime process running with no orchestrator owner.
+		// Regression: connect() falls through to startOwnRuntime() when
+		// checkHealth fails; if dispose() runs while manager.start() is
+		// suspended, the spawn must either be skipped (if dispose lands
+		// before start begins) or the just-spawned child must be cleaned
+		// up directly (if start completes after dispose began). Without
+		// this, a slow startup + user quit leaves an orphan runtime
+		// process running with no orchestrator owner.
+
 		const fetchImpl = vi.fn(
 			async () => Promise.reject(new Error("ECONNREFUSED")),
 		) as unknown as typeof fetch;
@@ -1043,12 +1044,12 @@ describe("RuntimeOrchestrator post-crash recovery probe", () => {
 	});
 
 	it("shutdown() during restart() drains restartPromise and prevents post-teardown spawn", async () => {
-		// Reviewer-flagged race: shutdown() previously didn't await
-		// restartPromise, so restart()'s continuation could call
-		// startOwnRuntime() *after* shutdown ran teardown. With the drain
-		// + `terminated` flag, the restart IIFE bails post-await without
-		// spawning a new child, and shutdown's own teardown finds no
-		// dangling manager.
+		// Regression: shutdown() previously didn't await restartPromise,
+		// so restart()'s continuation could call startOwnRuntime() *after*
+		// shutdown ran teardown. With the drain + `terminated` flag, the
+		// restart IIFE bails post-await without spawning a new child, and
+		// shutdown's own teardown finds no dangling manager.
+
 		const fetchImpl = vi.fn(
 			async () => okResponse(),
 		) as unknown as typeof fetch;
@@ -1421,13 +1422,12 @@ describe("RuntimeOrchestrator dispose() vs late crash events", () => {
 	});
 
 	// -----------------------------------------------------------------
-	// CLI shim path: cache + upfront validation
-	//
-	// Reviewer P2: `resolveCliShimPath` was called on every `createManager()`
-	// without upfront validation, so a missing shim surfaced as an opaque
-	// ENOENT from `child_process.spawn`. The fix caches the resolved path
-	// and validates it on first use with an actionable error message.
+	// CLI shim path: cache + upfront validation. The resolved path is
+	// cached after first lookup and validated up front so a missing shim
+	// surfaces with an actionable error instead of an opaque ENOENT from
+	// `child_process.spawn`.
 	// -----------------------------------------------------------------
+
 
 	it("resolveCliShimPath is called once and cached across multiple child spawns", async () => {
 		const fetchImpl = vi.fn(async () => ({ ok: false }) as Response);
@@ -1490,28 +1490,14 @@ describe("RuntimeOrchestrator dispose() vs late crash events", () => {
 	});
 
 	// -----------------------------------------------------------------
-	// setUrl: emit `url-changed` only on actual URL transitions
-	//
-	// Reviewer P2: `setUrl` previously emitted `url-changed` on either
-	// URL or ownership change. The reviewer correctly noted that no
-	// public-API path actually produces a same-URL/different-owns
-	// transition today — every ownership flip is bracketed by a setUrl
-	// to null — so the bug is currently unreachable. This makes a
-	// classic mutation-killing test impossible at the public-API level
-	// (toggling the OR vs single guard produces identical observable
-	// behavior across every reachable lifecycle).
-	//
-	// The test below is therefore a *contract-documenting* test, not a
-	// strict mutation-killer: it locks in the expected emission count
-	// across `connect → restart → shutdown` so any future code path
-	// that introduces a hot-handover (e.g. owned → attached at the same
-	// origin without an intermediate null) will fire `url-changed` and
-	// break this count, forcing the author to consciously decide
-	// whether the renderer reload is wanted. The structural source
-	// inspection — `if (urlChanged)` not `if (urlChanged || ownsChanged)`
-	// — is the actual mutation guard, asserted directly via the source
-	// shape elsewhere in this file's review history.
+	// setUrl: emit `url-changed` only on actual URL transitions.
+	// Contract-documenting test: locks the expected emission count
+	// across connect → restart → shutdown so any future hot-handover
+	// path (owned → attached at the same origin without an intermediate
+	// null) will fire `url-changed` and break this count, forcing a
+	// conscious decision about whether the renderer reload is wanted.
 	// -----------------------------------------------------------------
+
 
 	// handleCrash must arm recovery BEFORE setUrl(null)'s synchronous
 	// emit, so a re-entrant restart() from a url-changed listener can
