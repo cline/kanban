@@ -18,7 +18,7 @@ import {
 	updateTask,
 } from "@/state/board-state";
 import { clearTaskWorkspaceInfo, setTaskWorkspaceInfo } from "@/stores/workspace-metadata-store";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
+import { type SendTerminalInputOptions, sendTuiInputWithSubmit } from "@/terminal/terminal-input";
 import type { BoardCard, BoardColumnId, BoardData } from "@/types";
 import { resolveTaskAutoReviewMode } from "@/types";
 import { getNextDetailTaskIdAfterTrashMove } from "@/utils/detail-view-task-order";
@@ -235,25 +235,12 @@ export function useBoardInteractions({
 
 	const handleSendReviewComments = useCallback(
 		async (taskId: string, text: string) => {
-			const typed = await sendTaskSessionInput(taskId, text, { appendNewline: false, mode: "paste" });
-			if (!typed.ok) {
+			const sent = await sendTuiInputWithSubmit(sendTaskSessionInput, taskId, text);
+			if (!sent.ok) {
 				showAppToast({
 					intent: "danger",
 					icon: "warning-sign",
-					message: typed.message ?? "Could not send review comments to the task session.",
-					timeout: 7000,
-				});
-				return;
-			}
-			await new Promise<void>((resolve) => {
-				setTimeout(resolve, 200);
-			});
-			const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
-			if (!submitted.ok) {
-				showAppToast({
-					intent: "danger",
-					icon: "warning-sign",
-					message: submitted.message ?? "Could not submit review comments to the task session.",
+					message: sent.message ?? "Could not send review comments to the task session.",
 					timeout: 7000,
 				});
 			}

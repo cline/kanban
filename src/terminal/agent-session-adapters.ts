@@ -1,6 +1,7 @@
-import { access, readFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { access, mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type {
@@ -14,6 +15,7 @@ import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
+import { getGitStdout } from "../workspace/git-utils";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
 	getOpenCodeAuthPathCandidates,
@@ -91,7 +93,7 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 	};
 }
 
-function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
+function buildHookCommandParts(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string[] {
 	const parts = buildHooksCommandParts(["ingest", "--event", event]);
 	if (metadata?.source) {
 		parts.push("--source", metadata.source);
@@ -105,7 +107,11 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 	if (metadata?.notificationType) {
 		parts.push("--notification-type", metadata.notificationType);
 	}
-	return parts.map(quoteShellArg).join(" ");
+	return parts;
+}
+
+function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
+	return buildHookCommandParts(event, metadata).map(quoteShellArg).join(" ");
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
@@ -1452,6 +1458,300 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+async function addToWorktreeGitExclude(worktreePath: string, pattern: string): Promise<void> {
+	try {
+		// Use git itself to resolve the correct info/exclude path, which correctly
+		// handles linked worktrees by following the commondir pointer.
+		const excludePathOutput = await getGitStdout(["rev-parse", "--git-path", "info/exclude"], worktreePath);
+		if (!excludePathOutput) {
+			return;
+		}
+		const excludePath = isAbsolute(excludePathOutput) ? excludePathOutput : join(worktreePath, excludePathOutput);
+		await mkdir(join(excludePath, ".."), { recursive: true });
+		let existing = "";
+		try {
+			existing = await readFile(excludePath, "utf8");
+		} catch {
+			// file doesn't exist yet
+		}
+		if (!existing.split("\n").some((line) => line.trim() === pattern)) {
+			const separator = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
+			await writeFile(excludePath, `${existing}${separator}${pattern}\n`, "utf8");
+		}
+	} catch {
+		// best-effort
+	}
+}
+
+async function addCopilotTrustedFolder(folderPath: string): Promise<void> {
+	try {
+		const copilotHome = process.env.COPILOT_HOME ?? join(homedir(), ".copilot");
+		const configPath = join(copilotHome, "config.json");
+		let config: Record<string, unknown> = {};
+		try {
+			const content = await readFile(configPath, "utf8");
+			config = JSON.parse(content) as Record<string, unknown>;
+		} catch {
+			// config doesn't exist yet, start fresh
+		}
+		const trusted = Array.isArray(config.trusted_folders) ? [...(config.trusted_folders as string[])] : [];
+		const normalizedPath = folderPath.replace(/\/+$/u, "");
+		if (!trusted.includes(normalizedPath)) {
+			trusted.push(normalizedPath);
+			config.trusted_folders = trusted;
+			await mkdir(copilotHome, { recursive: true });
+			await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+		}
+	} catch {
+		// best-effort
+	}
+}
+
+/**
+ * Find the most recent Copilot CLI session ID for a given working directory.
+ * Scans `~/.copilot/session-state/` workspace manifests to match by cwd.
+ */
+async function findCopilotSessionIdForCwd(cwd: string): Promise<string | null> {
+	try {
+		const copilotHome = process.env.COPILOT_HOME ?? join(homedir(), ".copilot");
+		const sessionStateDir = join(copilotHome, "session-state");
+		const entries = await readdir(sessionStateDir);
+		const normalizedCwd = cwd.replace(/\/+$/u, "");
+		const results = await Promise.all(
+			entries.map(async (entry) => {
+				try {
+					const content = await readFile(join(sessionStateDir, entry, "workspace.yaml"), "utf8");
+					const cwdMatch = content.match(/^cwd:\s*(.+)$/mu);
+					if (cwdMatch?.[1]?.replace(/\/+$/u, "") !== normalizedCwd) {
+						return null;
+					}
+					const updatedMatch = content.match(/^updated_at:\s*(.+)$/mu);
+					return { id: entry, updated: updatedMatch?.[1] ?? "" };
+				} catch {
+					return null;
+				}
+			}),
+		);
+		let bestId: string | null = null;
+		let bestUpdated = "";
+		for (const result of results) {
+			if (result && result.updated > bestUpdated) {
+				bestUpdated = result.updated;
+				bestId = result.id;
+			}
+		}
+		return bestId;
+	} catch {
+		return null;
+	}
+}
+
+function buildCopilotHookEntry(
+	event: RuntimeHookEvent,
+	metadata?: HookCommandMetadata,
+): { type: "command"; bash: string; powershell: string } {
+	const parts = buildHookCommandParts(event, metadata);
+	return {
+		type: "command",
+		bash: parts.map(quoteShellArg).join(" "),
+		powershell: parts.map(powerShellQuote).join(" "),
+	};
+}
+
+// Copilot CLI shows an "(Esc to cancel" status bar while the agent is
+// actively working.  Track its presence: when it appears the agent is
+// busy (In Progress), when it disappears for long enough the agent is
+// idle (Review).  Uses a real timer so the transition fires even if the
+// TUI stops producing output chunks when idle.
+const COPILOT_IDLE_TIMEOUT_MS = 3_000;
+
+interface CopilotDetector {
+	detect: AgentOutputTransitionDetector;
+	dispose: () => void;
+}
+
+function createCopilotTaskCompleteDetector(onIdleTimeout: () => void): CopilotDetector {
+	let idleTimer: ReturnType<typeof setTimeout> | null = null;
+	let statusBarWasActive = false;
+
+	function clearIdleTimer(): void {
+		if (idleTimer !== null) {
+			clearTimeout(idleTimer);
+			idleTimer = null;
+		}
+	}
+
+	function startIdleTimer(): void {
+		if (idleTimer !== null) {
+			return;
+		}
+		idleTimer = setTimeout(() => {
+			idleTimer = null;
+			onIdleTimeout();
+		}, COPILOT_IDLE_TIMEOUT_MS);
+	}
+
+	const detect: AgentOutputTransitionDetector = (data, summary) => {
+		if (summary.state !== "running" && summary.state !== "awaiting_review") {
+			clearIdleTimer();
+			return null;
+		}
+		// Only strip ANSI on the tail — the full output can be large and
+		// stripAnsi iterates character-by-character.  The active status bar
+		// is always at the bottom of the TUI (end of output).
+		const tail = stripAnsi(data.slice(-200));
+		const isWorking = tail.includes("(Esc to cancel");
+		const isAskingUser = tail.includes("Enter to confirm") || tail.includes("Enter to submit");
+
+		if (isWorking && !isAskingUser) {
+			clearIdleTimer();
+			statusBarWasActive = true;
+			if (summary.state === "awaiting_review") {
+				return { type: "hook.to_in_progress" };
+			}
+			return null;
+		}
+
+		// Agent is asking a question — move to review immediately.
+		if (isAskingUser && summary.state === "running") {
+			clearIdleTimer();
+			return { type: "hook.to_review" };
+		}
+
+		// Status bar gone — start idle timer if we previously saw it active.
+		if (statusBarWasActive && summary.state === "running") {
+			startIdleTimer();
+		}
+		return null;
+	};
+
+	return { detect, dispose: clearIdleTimer };
+}
+
+function shouldInspectCopilotOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
+	return summary.state === "running" || summary.state === "awaiting_review";
+}
+
+const copilotAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled) {
+			// Autonomous mode uses --allow-all (superset of --allow-all-tools + --allow-all-paths)
+			// but NOT --autopilot, so the agent still pauses for user questions.
+			if (!hasCliOption(args, "--allow-all")) {
+				args.push("--allow-all");
+			}
+		} else {
+			// Always allow tool and file access — without these Copilot prompts for
+			// permission on every tool call, making it unusable in an automated context.
+			if (!hasCliOption(args, "--allow-all") && !hasCliOption(args, "--allow-all-tools")) {
+				args.push("--allow-all-tools");
+			}
+			if (!hasCliOption(args, "--allow-all") && !hasCliOption(args, "--allow-all-paths")) {
+				args.push("--allow-all-paths");
+			}
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume")) {
+			// --continue resumes the most recent global session, not the
+			// task-specific one.  Look up the session ID by worktree path.
+			const sessionId = await findCopilotSessionIdForCwd(input.cwd);
+			if (sessionId) {
+				args.push(`--resume=${sessionId}`);
+			}
+		}
+
+		if (!hasCliOption(args, "--add-dir")) {
+			args.push("--add-dir", input.cwd);
+		}
+
+		const hooks = resolveHookContext(input);
+		const hooksFilePath: string | null = hooks ? join(input.cwd, ".github", "hooks", "kanban.json") : null;
+		// Pre-trust the worktree path so Copilot doesn't show a folder trust dialog on launch.
+		// Run in parallel with hooks setup since they're independent.
+		const trustPromise = addCopilotTrustedFolder(input.cwd);
+		if (hooks && hooksFilePath) {
+			const hooksConfig = {
+				version: 1,
+				hooks: {
+					agentStop: [buildCopilotHookEntry("to_review", { source: "copilot" })],
+					subagentStop: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					preToolUse: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					permissionRequest: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					postToolUse: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					postToolUseFailure: [buildCopilotHookEntry("activity", { source: "copilot" })],
+					userPromptSubmitted: [buildCopilotHookEntry("to_in_progress", { source: "copilot" })],
+					notification: [buildCopilotHookEntry("activity", { source: "copilot" })],
+				},
+			};
+			await Promise.all([ensureTextFile(hooksFilePath, JSON.stringify(hooksConfig, null, 2)), trustPromise]);
+			await addToWorktreeGitExclude(input.cwd, ".github/hooks/kanban.json");
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		} else {
+			await trustPromise;
+		}
+
+		// Skip the prompt when resuming — --interactive conflicts with --resume
+		// and causes Copilot to treat the prompt as a new instruction and exit.
+		const isResuming = hasCliOption(args, "--resume");
+		const trimmed = input.prompt.trim();
+		const effectivePrompt = isResuming
+			? ""
+			: input.startInPlanMode
+				? trimmed
+					? `/plan ${trimmed}`
+					: "/plan"
+				: input.prompt;
+		const withPromptLaunch = effectivePrompt.trim()
+			? withPrompt(args, effectivePrompt, "flag", "--interactive")
+			: { args, env: {} };
+
+		const copilotDetector = createCopilotTaskCompleteDetector(() => {
+			// Fire the idle transition via the existing hooks ingest pipeline
+			// so no core session manager changes are needed.
+			const parts = buildHookCommandParts("to_review", { source: "copilot" });
+			const [cmd, ...cmdArgs] = parts;
+			if (cmd) {
+				const child = spawn(cmd, cmdArgs, {
+					stdio: "ignore",
+					detached: true,
+					env: { ...process.env, ...env },
+				});
+				child.unref();
+			}
+		});
+
+		const launch: PreparedAgentLaunch = {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+			detectOutputTransition: copilotDetector.detect,
+			shouldInspectOutputForTransition: shouldInspectCopilotOutputForTransition,
+			cleanup: async () => {
+				copilotDetector.dispose();
+				if (hooksFilePath) {
+					try {
+						await unlink(hooksFilePath);
+					} catch {
+						// best-effort cleanup
+					}
+				}
+			},
+		};
+		return launch;
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1460,6 +1760,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,
+	copilot: copilotAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {

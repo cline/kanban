@@ -368,10 +368,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 					entry.terminalStateMirror?.applyOutput(filteredChunk);
 
-					const needsDecodedOutput =
-						entry.active.workspaceTrustBuffer !== null ||
-						(entry.active.detectOutputTransition !== null &&
-							(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true));
+					const shouldInspect =
+						entry.active.detectOutputTransition !== null &&
+						(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true);
+					const needsDecodedOutput = entry.active.workspaceTrustBuffer !== null || shouldInspect;
 					const data = needsDecodedOutput ? filteredChunk.toString("utf8") : "";
 
 					if (entry.active.workspaceTrustBuffer !== null) {

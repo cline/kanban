@@ -16,7 +16,7 @@ import {
 	useTaskWorkspaceSnapshotValue,
 	useTaskWorkspaceStateVersionValue,
 } from "@/stores/workspace-metadata-store";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
+import { type SendTerminalInputOptions, sendTuiInputWithSubmit } from "@/terminal/terminal-input";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
 
 type TaskGitActionSource = "card" | "agent";
@@ -299,25 +299,12 @@ export function useGitActions({
 					}
 					return true;
 				}
-				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
-				if (!typed.ok) {
+				const sent = await sendTuiInputWithSubmit(sendTaskSessionInput, taskId, prompt);
+				if (!sent.ok) {
 					showAppToast({
 						intent: "danger",
 						icon: "warning-sign",
-						message: typed.message ?? "Could not send instructions to the task session.",
-						timeout: 7000,
-					});
-					return false;
-				}
-				await new Promise<void>((resolve) => {
-					window.setTimeout(resolve, 200);
-				});
-				const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
-				if (!submitted.ok) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: submitted.message ?? "Could not submit instructions to the task session.",
+						message: sent.message ?? "Could not send instructions to the task session.",
 						timeout: 7000,
 					});
 					return false;

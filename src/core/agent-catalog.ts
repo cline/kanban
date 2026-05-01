@@ -35,6 +35,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://github.com/cline/cline",
 	},
 	{
+		id: "copilot",
+		label: "GitHub Copilot CLI",
+		binary: "copilot",
+		baseArgs: ["--allow-all-tools", "--allow-all-paths"],
+		autonomousArgs: ["--allow-all"],
+		installUrl: "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference",
+	},
+	{
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
@@ -74,6 +82,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"cline",
 	"claude",
 	"codex",
+	"copilot",
 	"droid",
 	"kiro",
 	// "opencode",
