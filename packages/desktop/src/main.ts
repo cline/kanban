@@ -255,7 +255,15 @@ function wireAppLifecycle(): void {
 				"Kanban Startup Error",
 				`Failed to start runtime:\n\n${msg}`,
 			);
+			// The startup-error windows have been created (above) but never
+			// got a `url-changed` event, so they're still on Electron's
+			// blank `about:blank`. Match the crash-time behavior: load the
+			// disconnected screen so users have a visible in-window
+			// fallback after dismissing the dialog instead of being stuck
+			// staring at a blank shell.
+			windowFactory.showDisconnectedScreen();
 		}
+
 	});
 
 	app.on("window-all-closed", () => {
@@ -268,22 +276,31 @@ function wireAppLifecycle(): void {
 
 		registry.saveAllStates(app.getPath("userData"));
 
-		if (orchestrator.isOwned()) {
-			event.preventDefault();
-			try {
-				await orchestrator.shutdown();
-			} catch (err) {
-				console.error(
-					"[desktop] Runtime shutdown error during quit:",
-					err instanceof Error ? err.message : err,
-				);
-			} finally {
-				app.quit();
-			}
-		} else {
+		// Unconditional shutdown — must NOT gate on `isOwned()`.
+		// `isOwned()` is false during `await manager.start()` (it flips
+		// post-await on `setUrl(url, true)`), so a quit mid-spawn would
+		// otherwise skip preventDefault, fall through to will-quit, and
+		// orphan the child (will-quit's `dispose()` is fire-and-forget).
+		// `shutdown()` handles every state: drains connect/restart, sets
+		// `terminated`, and lets `startOwnRuntime`'s orphan-cleanup branch
+		// kill any post-teardown spawn.
+		event.preventDefault();
+		try {
+			await orchestrator.shutdown();
+		} catch (err) {
+			console.error(
+				"[desktop] Runtime shutdown error during quit:",
+				err instanceof Error ? err.message : err,
+			);
+		} finally {
+			// Belt-and-suspenders: shutdown() releases this internally,
+			// but a throw before that point would leave it pinned.
 			orchestrator.stopAppNapPrevention();
+			app.quit();
 		}
+
 	});
+
 
 	// `will-quit` fires during process teardown and Electron does not await
 	// promises returned from its handlers. Treat this as best-effort cleanup

@@ -69,6 +69,29 @@ describe("before-quit shutdown safety", () => {
 		expect(quitIdx).toBeGreaterThan(shutdownIdx);
 	});
 
+	it("before-quit calls preventDefault + shutdown unconditionally (no isOwned() gate)", () => {
+		// Regression: a `if (orchestrator.isOwned())` gate around
+		// preventDefault would let a mid-spawn quit fall through to
+		// will-quit and orphan the child — `isOwned()` is false during
+		// `await manager.start()`. Behavioral coverage lives in
+		// runtime-orchestrator.test.ts ("shutdown() during connect()'s
+		// startOwnRuntime() does not leak an orphan child").
+		const handler = extractBlock(
+			mainSrc,
+			'app.on("before-quit"',
+			"before-quit handler",
+		);
+
+		expect(handler).not.toMatch(/if\s*\(\s*orchestrator\.isOwned\s*\(\s*\)/);
+
+		const preventIdx = handler.indexOf("event.preventDefault()");
+		const awaitIdx = handler.indexOf("await orchestrator.shutdown()");
+		expect(preventIdx).toBeGreaterThan(-1);
+		expect(awaitIdx).toBeGreaterThan(preventIdx);
+	});
+
+
+
 	it("orchestrator.shutdown() catches and logs manager.shutdown errors", () => {
 		const shutdownBody = extractBlock(
 			orchestratorSrc,

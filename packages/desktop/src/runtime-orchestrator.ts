@@ -29,6 +29,21 @@ const DEFAULT_RECOVERY_PROBE_INTERVAL_MS = 2_000;
 const DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS = 5_000;
 const POWER_SAVE_BLOCKER_INACTIVE = -1;
 
+/**
+ * String literal embedded in `web-ui/index.html`'s `<head>` as
+ * `<meta name="x-kanban-runtime" content="1" />`. The orchestrator's
+ * health probe greps the response body for this marker before treating a
+ * 200 from the runtime port as a real Kanban runtime, so an unrelated
+ * local service that happens to be listening on our port can't trick the
+ * Electron shell into attaching to it (and exposing `window.desktop` IPC).
+ *
+ * Exported for test parity — the orchestrator unit tests build mock
+ * runtime responses that include the marker so attach-mode codepaths
+ * still resolve as healthy.
+ */
+export const KANBAN_RUNTIME_MARKER = 'name="x-kanban-runtime"';
+
+
 export class RuntimeOrchestrator extends EventEmitter<RuntimeOrchestratorEventMap> {
 	private manager: RuntimeChildManager | null = null;
 	private url: string | null = null;
@@ -100,13 +115,22 @@ export class RuntimeOrchestrator extends EventEmitter<RuntimeOrchestratorEventMa
 			const res = await fetchFn(`${origin}/`, {
 				signal: controller.signal,
 			});
-			return res.ok;
+			if (!res.ok) return false;
+			// `res.ok` alone isn't sufficient: any local process listening on
+			// our port and returning 2xx would otherwise count as "kanban
+			// runtime found", and the Electron shell would attach to it and
+			// expose the `window.desktop` IPC bridge to that origin. Read
+			// the body and require the Kanban-specific marker emitted by
+			// `web-ui/index.html` so we only attach to a real runtime.
+			const body = await res.text();
+			return body.includes(KANBAN_RUNTIME_MARKER);
 		} catch {
 			return false;
 		} finally {
 			clearTimeout(timer);
 		}
 	}
+
 
 	async connect(): Promise<void> {
 		if (this.terminated) return;

@@ -5,7 +5,7 @@
  * was skipped.
  */
 
-import { cpSync, existsSync, rmSync } from "node:fs";
+import { cpSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,5 +38,18 @@ if (!existsSync(webUiIndex)) {
 
 rmSync(stageDir, { recursive: true, force: true });
 cpSync(distDir, stageDir, { recursive: true });
+
+// The CLI bundle is ESM (esbuild emits `import` statements). Inside the
+// packaged app, this file lives at `app.asar.unpacked/cli/cli.js`. Node's
+// nearest-package.json walk-up from `app.asar.unpacked/cli/` doesn't see
+// the desktop package.json inside the sibling `app.asar` archive, so
+// without a local package.json Node defaults to CJS and chokes on the
+// `import` statement at module top. Drop a minimal package.json next to
+// the staged cli.js so Node treats it as ESM regardless of what lives
+// further up the tree.
+writeFileSync(
+	resolve(stageDir, "package.json"),
+	`${JSON.stringify({ type: "module" }, null, 2)}\n`,
+);
 
 console.log(`[stage:cli] Staged ${distDir} → ${stageDir}`);

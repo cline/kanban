@@ -209,7 +209,77 @@ describe("CLI shim (packaging level)", () => {
 			}
 		});
 
+		it("prefers the bundled Electron binary over system node when present", () => {
+			// Regression test for the launch-failure mode where users
+			// without a system `node` on PATH (the common case for non-
+			// developers on macOS / GUI-launched Linux apps) couldn't run
+			// `kanban` from a packaged build because `exec node` ENOENT'd.
+			// The shim now prefers `ELECTRON_RUN_AS_NODE=1` against the
+			// bundled Electron binary, so this only requires the user to
+			// have launched the .app at least once. We verify the shim
+			// actually invokes the binary rather than falling through to
+			// system node.
+			if (process.platform === "win32") return;
+
+			const resourcesDirName = `kanban-shim-electron-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+			const appRoot = path.join(tmpdir(), resourcesDirName);
+			const resourcesDir = path.join(appRoot, "Resources");
+			const binDir = path.join(resourcesDir, "bin");
+			const cliDir = path.join(resourcesDir, "app.asar.unpacked", "cli");
+			// macOS layout: APP_ROOT/MacOS/Kanban is the Electron exec.
+			// On Linux the shim looks for APP_ROOT/kanban — mirror both so
+			// this test runs on either OS without a platform branch.
+			const macOsDir = path.join(appRoot, "MacOS");
+			mkdirSync(binDir, { recursive: true });
+			mkdirSync(cliDir, { recursive: true });
+			mkdirSync(macOsDir, { recursive: true });
+
+			writeFileSync(
+				path.join(cliDir, "cli.js"),
+				`process.stdout.write("FROM_ELECTRON:" + (process.env.ELECTRON_RUN_AS_NODE ?? "<unset>") + ":" + JSON.stringify(process.argv.slice(2)));`,
+				"utf-8",
+			);
+
+			// Stub Electron binary: a shell script that exec's real node
+			// against the script path, but only when ELECTRON_RUN_AS_NODE=1
+			// is set (matching real Electron's behavior). This lets us
+			// verify the shim set the env var AND chose this binary over
+			// system node.
+			const electronStub = `#!/bin/bash
+if [ "$ELECTRON_RUN_AS_NODE" != "1" ]; then
+  echo "ELECTRON_RUN_AS_NODE not set" >&2
+  exit 99
+fi
+exec node "$@"
+`;
+			const electronBinMac = path.join(macOsDir, "Kanban");
+			const electronBinLinux = path.join(appRoot, "kanban");
+			writeFileSync(electronBinMac, electronStub, { mode: 0o755 });
+			writeFileSync(electronBinLinux, electronStub, { mode: 0o755 });
+
+			const realShimContent = readFileSync(
+				path.join(BUILD_BIN_DIR, "kanban"),
+				"utf-8",
+			);
+			const shimPath = path.join(binDir, "kanban");
+			writeFileSync(shimPath, realShimContent, { mode: 0o755 });
+
+			try {
+				const output = execFileSync(shimPath, ["--version"], {
+					encoding: "utf-8",
+					timeout: 5_000,
+				}).trim();
+				// Marker proves: (1) the bundled Electron stub ran, not
+				// system node directly; (2) ELECTRON_RUN_AS_NODE was "1"
+				// in the child env; (3) args were forwarded.
+				expect(output).toBe(`FROM_ELECTRON:1:["--version"]`);
+			} finally {
+				rmSync(appRoot, { recursive: true, force: true });
+			}
+		});
+
 		it("forwards args containing spaces, quotes, and flag-value pairs intact", () => {
+
 			if (process.platform === "win32") return;
 
 			const { resourcesDir, shimPath } = buildFakeLayout({
