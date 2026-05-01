@@ -28,7 +28,7 @@ export function evaluateCors(input: CorsGateInput): CorsDecision {
 		return { kind: "allow", origin: null };
 	}
 
-	const isDevServer = isDev && origin === "http://localhost:4173";
+	const isDevServer = isDev && (origin === "http://localhost:4173" || origin === "http://127.0.0.1:4173");
 
 	if (origin !== input.allowedOrigin && !isDevServer) {
 		return { kind: "reject", origin };
@@ -78,6 +78,7 @@ export function getAllowedHostHeaders(): ReadonlySet<string> {
 	if (isDev) {
 		// Vite's default dev server host:port
 		allowed.add("localhost:4173");
+		allowed.add("127.0.0.1:4173");
 	}
 	return allowed;
 }
