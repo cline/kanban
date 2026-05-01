@@ -81,7 +81,7 @@ afterEach(() => {
 });
 
 describe("prepareAgentLaunch hook strategies", () => {
-	it("routes codex through hooks codex-wrapper command", async () => {
+	it("configures Codex hooks without legacy notify", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-1",
@@ -97,11 +97,15 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
 
 		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
-		expect(launchCommand).toContain("hooks");
-		expect(launchCommand).toContain("codex-wrapper");
-		expect(launchCommand).toContain("--real-binary");
 		expect(launchCommand).toContain("codex");
-		expect(launchCommand).toContain("--");
+		expect(launchCommand).toContain("codex-hook");
+		expect(launchCommand).toContain("hooks.UserPromptSubmit");
+		expect(launchCommand).toContain("hooks.Stop");
+		expect(launchCommand).toContain("hooks.PermissionRequest");
+		expect(launchCommand).toContain("features.codex_hooks=true");
+		expect(launchCommand).toContain("timeout=5");
+		expect(launchCommand).not.toContain("codex-wrapper");
+		expect(launchCommand).not.toContain("notify=");
 
 		const wrapperPath = join(homedir(), ".cline", "kanban", "hooks", "codex", "codex-wrapper.mjs");
 		expect(existsSync(wrapperPath)).toBe(false);
