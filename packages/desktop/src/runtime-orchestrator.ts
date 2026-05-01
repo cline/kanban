@@ -30,18 +30,31 @@ const DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS = 5_000;
 const POWER_SAVE_BLOCKER_INACTIVE = -1;
 
 /**
- * String literal embedded in `web-ui/index.html`'s `<head>` as
- * `<meta name="x-kanban-runtime" content="1" />`. The orchestrator's
- * health probe greps the response body for this marker before treating a
- * 200 from the runtime port as a real Kanban runtime, so an unrelated
- * local service that happens to be listening on our port can't trick the
- * Electron shell into attaching to it (and exposing `window.desktop` IPC).
+ * String literal embedded in `web-ui/index.html`'s `<head>`. The
+ * orchestrator's health probe greps the response body for this title
+ * before treating a 200 from the runtime port as a real Kanban runtime,
+ * so an unrelated local service that happens to be listening on our port
+ * can't trick the Electron shell into attaching to it (and exposing
+ * `window.desktop` IPC).
+ *
+ * The title is a natural product requirement (browser tab label) so
+ * every Kanban CLI in history serves it — including older globally-linked
+ * installs the user may not have re-linked since upgrading the desktop
+ * app. Picking the title over a bespoke meta marker keeps the contract
+ * implicit-but-stable instead of explicit-but-fragile: there is no
+ * second place to keep in sync, and a future refactor that drops the
+ * title is unlikely (it would also break the browser tab UX).
+ *
+ * The collision risk is acceptable: a foreign service would have to be
+ * listening on the configured runtime port AND return 200 AND embed
+ * exactly this title, which is effectively unique to Kanban in practice.
  *
  * Exported for test parity — the orchestrator unit tests build mock
- * runtime responses that include the marker so attach-mode codepaths
+ * runtime responses that include the title so attach-mode codepaths
  * still resolve as healthy.
  */
-export const KANBAN_RUNTIME_MARKER = 'name="x-kanban-runtime"';
+export const KANBAN_RUNTIME_TITLE = "<title>Kanban</title>";
+
 
 
 export class RuntimeOrchestrator extends EventEmitter<RuntimeOrchestratorEventMap> {
@@ -120,10 +133,15 @@ export class RuntimeOrchestrator extends EventEmitter<RuntimeOrchestratorEventMa
 			// our port and returning 2xx would otherwise count as "kanban
 			// runtime found", and the Electron shell would attach to it and
 			// expose the `window.desktop` IPC bridge to that origin. Read
-			// the body and require the Kanban-specific marker emitted by
-			// `web-ui/index.html` so we only attach to a real runtime.
+			// the body and require the Kanban-specific title element to
+			// confirm the responder is in fact a Kanban runtime. See the
+			// docstring on `KANBAN_RUNTIME_TITLE` for the rationale on
+			// using the title (a natural product requirement) over a
+			// bespoke marker (which we'd have to keep in sync between
+			// producer and consumer).
 			const body = await res.text();
-			return body.includes(KANBAN_RUNTIME_MARKER);
+			return body.includes(KANBAN_RUNTIME_TITLE);
+
 		} catch {
 			return false;
 		} finally {

@@ -29,16 +29,18 @@ vi.mock("../src/runtime-child.js", () => ({
 }));
 
 // Healthy mock-runtime response. RuntimeOrchestrator.checkHealth now reads
-// the response body and requires the Kanban-specific marker emitted by
-// web-ui/index.html, so a bare `okResponse()` would fail the marker grep
-// even though it would pass the legacy `res.ok` check. Mirrored from the
-// real index.html so attach-mode tests still resolve as healthy.
+// the response body and requires the Kanban-specific `<title>Kanban</title>`
+// element emitted by web-ui/index.html, so a bare `okResponse()` would fail
+// the title grep even though it would pass the legacy `res.ok` check.
+// Mirrored from the real index.html so attach-mode tests still resolve as
+// healthy.
 function okResponse(): Response {
 	return {
 		ok: true,
-		text: async () => `<meta name="x-kanban-runtime" content="1" />`,
+		text: async () => `<title>Kanban</title>`,
 	} as unknown as Response;
 }
+
 
 
 const { RuntimeOrchestrator } = await import("../src/runtime-orchestrator.js");
@@ -1715,20 +1717,25 @@ describe("RuntimeOrchestrator dispose() vs late crash events", () => {
 });
 
 // ---------------------------------------------------------------------
-// Health-probe marker verification
+// Health-probe runtime-identification
 //
 // `checkHealth` must do more than `res.ok`: any local service on the
 // runtime port that returns 2xx (a stale dev server, a misconfigured
 // reverse proxy, an unrelated developer tool) would otherwise count as
 // "kanban runtime found", and the Electron shell would attach to it and
 // expose `window.desktop` IPC to the foreign origin. The fix requires
-// the response body to contain the marker emitted by web-ui/index.html.
+// the response body to contain `<title>Kanban</title>` — which every
+// Kanban runtime in history serves as part of the browser-tab UX, so
+// the contract is implicit-but-stable rather than requiring a bespoke
+// marker that producer (web-ui) and consumer (desktop) have to keep in
+// sync. See the docstring on `KANBAN_RUNTIME_TITLE` in
+// `runtime-orchestrator.ts` for the rationale.
 //
 // These tests deliberately use raw fetch mocks (not `okResponse()`) so
-// the marker requirement is exercised directly rather than through the
+// the title requirement is exercised directly rather than through the
 // shared healthy-response helper.
 // ---------------------------------------------------------------------
-describe("RuntimeOrchestrator health-probe runtime-marker verification", () => {
+describe("RuntimeOrchestrator health-probe runtime identification", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		childManagers.length = 0;
@@ -1737,8 +1744,10 @@ describe("RuntimeOrchestrator health-probe runtime-marker verification", () => {
 		vi.useRealTimers();
 	});
 
-	it("rejects a 200 response that does not contain the kanban runtime marker", async () => {
+	it("rejects a 200 response that does not contain <title>Kanban</title>", async () => {
 		// Simulate a foreign service: returns 200 with an arbitrary body.
+		// `connect()` should *not* attach — it should fall through to
+		// startOwnRuntime() and spawn its own child.
 		const fetchImpl = vi.fn(async () => ({
 			ok: true,
 			text: async () => "<html><body>some other local service</body></html>",
@@ -1754,8 +1763,6 @@ describe("RuntimeOrchestrator health-probe runtime-marker verification", () => {
 			recoveryProbeIntervalMs: 0,
 		});
 
-		// `connect()` should *not* attach to the foreign service. It should
-		// fall through to startOwnRuntime() and spawn its own child.
 		await orchestrator.connect();
 		expect(orchestrator.isOwned()).toBe(true);
 		expect(childManagers.length).toBe(1);
@@ -1763,12 +1770,16 @@ describe("RuntimeOrchestrator health-probe runtime-marker verification", () => {
 		await orchestrator.shutdown();
 	});
 
-	it("attaches to a 200 response that contains the kanban runtime marker", async () => {
+	it("attaches to a 200 response that contains <title>Kanban</title>", async () => {
+		// Covers the common case AND the back-compat case (older globally-
+		// linked CLIs that predate any of this branch's changes still serve
+		// `<title>Kanban</title>` because it's a product requirement —
+		// browser tab labels — not something this branch added).
 		const fetchImpl = vi.fn(async () => ({
 			ok: true,
 			text: async () => `<!doctype html><html><head>
-				<meta name="x-kanban-runtime" content="1" />
-			</head></html>`,
+				<title>Kanban</title>
+			</head><body></body></html>`,
 		})) as unknown as typeof fetch;
 
 		const orchestrator = new RuntimeOrchestrator({
@@ -1790,13 +1801,13 @@ describe("RuntimeOrchestrator health-probe runtime-marker verification", () => {
 		await orchestrator.shutdown();
 	});
 
-	it("checkHealth() public method returns false for marker-less 200", async () => {
-		// Direct API surface check — guards against the marker grep being
+	it("checkHealth() public method returns false for title-less 200", async () => {
+		// Direct API-surface check — guards against the title grep being
 		// regressed into a no-op (e.g. someone removing the .text() read
 		// during a refactor).
 		const fetchImpl = vi.fn(async () => ({
 			ok: true,
-			text: async () => "no marker here",
+			text: async () => "<html><title>not us</title></html>",
 		})) as unknown as typeof fetch;
 
 		const orchestrator = new RuntimeOrchestrator({
@@ -1814,4 +1825,6 @@ describe("RuntimeOrchestrator health-probe runtime-marker verification", () => {
 		await orchestrator.dispose();
 	});
 });
+
+
 
