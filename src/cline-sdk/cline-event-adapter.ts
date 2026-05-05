@@ -259,6 +259,10 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 	}
 
 	if (agentEvent?.type === "run-failed") {
+		if (input.pendingTurnCancelTaskIds.has(taskId)) {
+			emitTurnCanceled(input);
+			return;
+		}
 		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
 		const retainedToolActivity = getRetainedClineToolActivity(entry);
 		clearActiveTurnState(entry);

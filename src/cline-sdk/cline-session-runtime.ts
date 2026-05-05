@@ -225,6 +225,12 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 						maxConsecutiveMistakes: DEFAULT_CLINE_MAX_CONSECUTIVE_MISTAKES,
 					},
 					systemPrompt: request.systemPrompt,
+				},
+				initialMessages: request.initialMessages,
+				interactive: true,
+				localRuntime: {
+					modelCatalogDefaults: CLINE_MODEL_CATALOG_DEFAULTS,
+					...(request.userInstructionService ? { userInstructionService: request.userInstructionService } : {}),
 					logger: createKanbanClineLogger({
 						runtime: "kanban",
 						taskId: request.taskId,
@@ -233,12 +239,6 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 						modelId: request.modelId,
 					}),
 					...(hasMcpExtraTools ? { extraTools: mcpToolBundle?.tools ?? [] } : {}),
-				},
-				initialMessages: request.initialMessages,
-				interactive: true,
-				localRuntime: {
-					modelCatalogDefaults: CLINE_MODEL_CATALOG_DEFAULTS,
-					...(request.userInstructionService ? { userInstructionService: request.userInstructionService } : {}),
 				},
 				...(request.requestToolApproval
 					? { capabilities: { requestToolApproval: request.requestToolApproval } }

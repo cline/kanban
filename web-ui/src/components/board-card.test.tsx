@@ -447,7 +447,7 @@ describe("BoardCard", () => {
 							toolName: "Read",
 							toolInputSummary: null,
 							finalMessage: null,
-							hookEventName: "PostToolUse",
+							hookEventName: "tool_result",
 							notificationType: null,
 							source: "claude",
 						},

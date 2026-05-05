@@ -398,6 +398,33 @@ describe("applyClineSessionEvent", () => {
 		expect(result.summaries.at(-1)?.latestHookActivity?.hookEventName).toBe("turn_canceled");
 	});
 
+	it("converts run-failed events with pending cancel state back to idle", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+		const pendingTurnCancelTaskIds = new Set<string>(["task-1"]);
+
+		const result = applyEvent({
+			entry,
+			pendingTurnCancelTaskIds,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "run-failed",
+						snapshot: runtimeSnapshot(),
+						error: new Error("This operation was aborted"),
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("idle");
+		expect(result.entry.summary.reviewReason).toBeNull();
+		expect(result.pendingTurnCancelTaskIds.has("task-1")).toBe(false);
+		expect(result.summaries.at(-1)?.latestHookActivity?.hookEventName).toBe("turn_canceled");
+	});
+
 	it("moves completed done events into awaiting review with the final message attached", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";
