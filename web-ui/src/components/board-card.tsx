@@ -620,7 +620,7 @@ export function BoardCard({
 										variant="ghost"
 										size="sm"
 										disabled={isMoveToTrashLoading}
-										aria-label="Move task to trash"
+										aria-label="Move task to done"
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
@@ -642,7 +642,7 @@ export function BoardCard({
 											icon={<RotateCcw size={12} />}
 											variant="ghost"
 											size="sm"
-											aria-label="Restore task from trash"
+											aria-label="Restore task from done"
 											onMouseDown={stopEvent}
 											onClick={(event) => {
 												stopEvent(event);

@@ -35,7 +35,7 @@ const BOARD_COLUMNS: Array<{ id: RuntimeBoardColumnId; title: string }> = [
 	{ id: "backlog", title: "Backlog" },
 	{ id: "in_progress", title: "In Progress" },
 	{ id: "review", title: "Review" },
-	{ id: "trash", title: "Trash" },
+	{ id: "trash", title: "Done" },
 ];
 
 interface WorkspaceIndexEntry {

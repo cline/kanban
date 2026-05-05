@@ -59,11 +59,11 @@ describe("renderAppendSystemPrompt", () => {
 		const rendered = renderAppendSystemPrompt("kanban");
 		expect(rendered).toContain("Kanban sidebar agent");
 		expect(rendered).toContain("kanban task create");
-		expect(rendered).toContain("kanban task trash");
+		expect(rendered).toContain("kanban task done");
 		expect(rendered).toContain("kanban task delete");
-		expect(rendered).toContain("--column backlog|in_progress|review|trash");
+		expect(rendered).toContain("--column backlog|in_progress|review|done");
 		expect(rendered).toContain("Provide exactly one of");
-		expect(rendered).toContain("task delete --column trash");
+		expect(rendered).toContain("task delete --column done");
 		expect(rendered).toContain("kanban task link");
 		expect(rendered).toContain("If a task command fails because the runtime is unavailable");
 		expect(rendered).toContain("If the user asks for GitHub work");

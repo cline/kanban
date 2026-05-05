@@ -2,7 +2,7 @@ import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from ".
 import { updateTaskDependencies } from "../core/task-board-mutations";
 import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
-import { deleteTaskWorktree } from "../workspace/task-worktree";
+import { deleteTaskWorktree, removeTaskWorktreeSetupLock } from "../workspace/task-worktree";
 import type { WorkspaceRegistry } from "./workspace-registry";
 import { collectProjectWorktreeTaskIdsForRemoval } from "./workspace-registry";
 
@@ -119,6 +119,22 @@ async function cleanupInterruptedTaskWorktrees(
 	}
 }
 
+async function cleanupTaskWorktreeSetupLocks(
+	repoPaths: Iterable<string>,
+	warn: (message: string) => void,
+): Promise<void> {
+	await Promise.all(
+		Array.from(new Set(repoPaths)).map(async (repoPath) => {
+			try {
+				await removeTaskWorktreeSetupLock(repoPath);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				warn(`Could not remove task worktree setup lock for ${repoPath} during shutdown cleanup. ${message}`);
+			}
+		}),
+	);
+}
+
 function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
 	if (summary.state === "running") {
 		return true;
@@ -219,4 +235,9 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 	);
 
 	await deps.closeRuntimeServer();
+
+	await cleanupTaskWorktreeSetupLocks(
+		[...managedWorkspacePaths, ...indexedWorkspaces.map((workspace) => workspace.repoPath)],
+		deps.warn,
+	);
 }

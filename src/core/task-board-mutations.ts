@@ -37,7 +37,7 @@ export interface RuntimeUpdateTaskInput {
 }
 
 function normalizeTaskAutoReviewMode(value: RuntimeTaskAutoReviewMode | null | undefined): RuntimeTaskAutoReviewMode {
-	if (value === "pr" || value === "move_to_trash") {
+	if (value === "pr") {
 		return value;
 	}
 	return "commit";

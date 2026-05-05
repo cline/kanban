@@ -70,7 +70,7 @@ export function useLinkedBacklogTaskActions({
 						: result.reason === "duplicate"
 							? "Link already exists."
 							: result.reason === "trash_task"
-								? "Links cannot include trashed tasks."
+								? "Links cannot include done tasks."
 								: result.reason === "non_backlog"
 									? "Links must include at least one Backlog task."
 									: "Could not create link.";

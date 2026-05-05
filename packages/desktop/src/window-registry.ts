@@ -120,11 +120,21 @@ export class WindowRegistry {
 			try {
 				const parsed = new URL(url);
 				if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-					shell.openExternal(url);
+					// `shell.openExternal` returns a Promise; an unhandled
+					// rejection from a malformed URL or a denied OS-level
+					// open would otherwise surface as an opaque process
+					// warning. Log and move on.
+					shell.openExternal(url).catch((err: unknown) => {
+						console.warn(
+							"[desktop] shell.openExternal failed:",
+							err instanceof Error ? err.message : err,
+						);
+					});
 				} else {
 					// Non-http(s) schemes (`javascript:`, `file:`, custom protocols)
 					// are intentionally rejected. Log so unexpected drops are
 					// traceable instead of vanishing into a `deny`.
+
 					console.debug(
 						`[desktop] Refusing window.open for non-http(s) URL: ${url}`,
 					);

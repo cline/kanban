@@ -38,7 +38,7 @@ function createBoard(title: string): RuntimeBoardData {
 			},
 			{ id: "in_progress", title: "In Progress", cards: [] },
 			{ id: "review", title: "Review", cards: [] },
-			{ id: "trash", title: "Trash", cards: [] },
+			{ id: "trash", title: "Done", cards: [] },
 		],
 		dependencies: [],
 	};
@@ -291,7 +291,7 @@ describe.sequential("workspace-state integration", () => {
 								},
 								{ id: "in_progress", title: "In Progress", cards: [] },
 								{ id: "review", title: "Review", cards: [] },
-								{ id: "trash", title: "Trash", cards: [] },
+								{ id: "trash", title: "Done", cards: [] },
 							],
 						},
 						null,

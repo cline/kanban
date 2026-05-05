@@ -1,5 +1,14 @@
 #!/bin/bash
 # Kanban CLI shim — bundled with the desktop app.
+#
+# Prefers the bundled Electron binary (via ELECTRON_RUN_AS_NODE=1) so we
+# don't depend on the user having a system `node` on PATH. GUI-launched
+# apps on macOS/Linux inherit minimal PATHs that frequently omit nvm,
+# Homebrew, and npm-global, so a vanilla user without Node installed
+# would otherwise hit ENOENT here. Falls back to system `node` if the
+# local Electron binary isn't found (which can happen when this shim is
+# invoked outside the packaged-app layout — e.g. dev symlink, manual
+# unpack, or a packaging-layout regression).
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESOURCES_DIR="$(dirname "$SCRIPT_DIR")"
@@ -10,4 +19,22 @@ if [ ! -f "$CLI_ENTRY" ]; then
   exit 1
 fi
 
+# Locate the bundled Electron binary relative to RESOURCES_DIR.
+#   macOS:  Kanban.app/Contents/Resources/.. → Kanban.app/Contents
+#           electron exec = Kanban.app/Contents/MacOS/Kanban
+#   Linux:  kanban/resources/..              → kanban/
+#           electron exec = kanban/kanban
+APP_ROOT="$(dirname "$RESOURCES_DIR")"
+if [ "$(uname)" = "Darwin" ]; then
+  ELECTRON_BIN="$APP_ROOT/MacOS/Kanban"
+else
+  ELECTRON_BIN="$APP_ROOT/kanban"
+fi
+
+if [ -x "$ELECTRON_BIN" ]; then
+  exec env ELECTRON_RUN_AS_NODE=1 "$ELECTRON_BIN" "$CLI_ENTRY" "$@"
+fi
+
+# Fallback: system node. Kept so the shim still works when invoked from
+# a non-packaged-app layout (developer symlink, manual unpack, etc.).
 exec node "$CLI_ENTRY" "$@"

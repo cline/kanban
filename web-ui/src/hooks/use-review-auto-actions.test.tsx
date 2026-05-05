@@ -28,7 +28,7 @@ function createBoard(autoReviewEnabled: boolean): BoardData {
 					},
 				],
 			},
-			{ id: "trash", title: "Trash", cards: [] },
+			{ id: "trash", title: "Done", cards: [] },
 		],
 		dependencies: [],
 	};

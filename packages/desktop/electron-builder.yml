@@ -1,0 +1,62 @@
+appId: com.cline.kanban
+productName: Kanban
+copyright: Copyright © 2025 Cline
+
+directories:
+  output: out
+  buildResources: build
+
+afterSign: ./scripts/notarize.cjs
+
+# `cli/**` is staged locally by the `stage:cli` npm script (electron-builder
+# rejects files outside the package root). The asarUnpack glob below matches
+# against this staged path, so rebasing with `from/to` would break unpacking.
+files:
+  - dist/**/*
+  - package.json
+  - cli/**/*
+  - "!cli/**/*.map"
+  - "!dist/**/*.map"
+
+# Narrow filter — explicitly excludes `kanban-dev*` (dev-only shims) and
+# any stray files in build/bin from accidentally shipping.
+extraResources:
+  - from: build/bin
+    to: bin
+    filter:
+      - "kanban"
+      - "kanban.cmd"
+
+protocols:
+  - name: Kanban
+    schemes:
+      - kanban
+
+asar: true
+
+# node-pty's spawn-helper + any native addons need a real filesystem path.
+# `patch-node-pty.mjs` fixes up the helper-path resolution to match.
+asarUnpack:
+  - "cli/**"
+  - "node_modules/node-pty/**"
+  - "**/*.node"
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSAppSleepDisabled: true
+    NSSupportsAutomaticTermination: false
+    NSSupportsSuddenTermination: false
+
+dmg:
+  artifactName: "${productName}-${version}-${arch}.${ext}"

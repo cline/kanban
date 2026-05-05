@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.67]
+
+- "New version available" notification with one-click update from the web UI
+- Renamed the "Trash" column to "Done" and added CLI command aliases
+- Allow entering a custom model ID when no matching models are found in the model selector
+- Use Codex hooks for task state transitions
+- Fixed stale worktree setup locks not being cleaned up on shutdown
+- Fixed task ID generation to avoid timestamp-derived fallback IDs
+- Added scaffolding for an Electron desktop app (not yet available)
+
 ## [0.1.66]
 
 - Added a refresh button for LiteLLM and custom provider model lists, so you can re-fetch available models without leaving settings

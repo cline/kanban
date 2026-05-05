@@ -531,6 +531,29 @@ function mapGeminiHookEvent(eventName: string): RuntimeHookEvent | null {
 	return null;
 }
 
+async function runCodexHookSubcommand(
+	event: RuntimeHookEvent,
+	options: HookCommandMetadataOptionValues,
+	payloadArg: string | undefined,
+): Promise<void> {
+	let payload = "";
+	try {
+		payload = await readStdinText();
+	} catch {
+		payload = "";
+	}
+
+	process.stdout.write("{}\n");
+
+	try {
+		const parsedArgs = parseHooksIngestArgs(event, options, payloadArg, payload);
+		const codexEnrichedArgs = await enrichCodexReviewMetadata(parsedArgs, process.cwd());
+		await ingestHookEvent(codexEnrichedArgs);
+	} catch {
+		// Best effort only.
+	}
+}
+
 async function runGeminiHookSubcommand(): Promise<void> {
 	let payload = "";
 	try {
@@ -569,31 +592,7 @@ async function runGeminiHookSubcommand(): Promise<void> {
 }
 
 export function buildCodexWrapperChildArgs(agentArgs: string[]): string[] {
-	const childArgs = [...agentArgs];
-	const hasNotifyOverride = childArgs.some((arg, index) => {
-		if (arg === "-c" || arg === "--config") {
-			const next = childArgs[index + 1];
-			return typeof next === "string" && next.startsWith("notify=");
-		}
-		return arg.startsWith("-cnotify=") || arg.startsWith("--config=notify=");
-	});
-	if (hasNotifyOverride) {
-		return childArgs;
-	}
-	// Session log formats can change across Codex versions. Always wire legacy notify
-	// so task completion still transitions to review when watcher parsing misses events.
-	const reviewNotifyCommandParts = buildKanbanCommandParts([
-		"hooks",
-		"notify",
-		"--event",
-		"to_review",
-		"--source",
-		"codex",
-	]);
-	const notifyConfig = `notify=${JSON.stringify(reviewNotifyCommandParts)}`;
-	childArgs.unshift(notifyConfig);
-	childArgs.unshift("-c");
-	return childArgs;
+	return [...agentArgs];
 }
 
 export function buildCodexWrapperSpawn(
@@ -786,6 +785,26 @@ export function registerHooksCommand(program: Command): void {
 		.action(async () => {
 			await runGeminiHookSubcommand();
 		});
+
+	hooks
+		.command("codex-hook [payload]")
+		.description("Codex hook entrypoint.")
+		.requiredOption("--event <event>", "Event: to_review | to_in_progress | activity.", parseHookEvent)
+		.option("--source <source>", "Hook source.")
+		.option("--activity-text <text>", "Activity summary text.")
+		.option("--tool-name <name>", "Tool name.")
+		.option("--final-message <message>", "Final message.")
+		.option("--hook-event-name <name>", "Original hook event name.")
+		.option("--notification-type <type>", "Notification type.")
+		.option("--metadata-base64 <base64>", "Base64-encoded JSON metadata payload.")
+		.action(
+			async (
+				payload: string | undefined,
+				options: HookCommandMetadataOptionValues & { event: RuntimeHookEvent },
+			) => {
+				await runCodexHookSubcommand(options.event, options, payload);
+			},
+		);
 
 	hooks
 		.command("codex-wrapper [agentArgs...]")
