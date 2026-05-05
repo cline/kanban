@@ -18,7 +18,7 @@ import {
 	type ClineSdkStartSessionInput,
 	type ClineSdkToolApprovalRequest,
 	type ClineSdkToolApprovalResult,
-	type ClineSdkUserInstructionWatcher,
+	type ClineSdkUserInstructionService,
 	createClineSdkSessionHost,
 } from "./sdk-runtime-boundary";
 
@@ -79,7 +79,7 @@ export interface StartClineSessionRuntimeRequest {
 	baseUrl?: string | null;
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
 	systemPrompt: string;
-	userInstructionWatcher?: ClineSdkUserInstructionWatcher;
+	userInstructionService?: ClineSdkUserInstructionService;
 	requestToolApproval?: (request: ClineSdkToolApprovalRequest) => Promise<ClineSdkToolApprovalResult>;
 }
 
@@ -178,7 +178,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			reasoningEffort: request.reasoningEffort,
 			systemPrompt: request.systemPrompt,
 			taskTitle: request.taskTitle,
-			userInstructionWatcher: request.userInstructionWatcher,
+			userInstructionService: request.userInstructionService,
 			requestToolApproval: request.requestToolApproval,
 		});
 		this.bindTaskSession(request.taskId, requestedSessionId);
@@ -238,9 +238,11 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 				interactive: true,
 				localRuntime: {
 					modelCatalogDefaults: CLINE_MODEL_CATALOG_DEFAULTS,
-					...(request.userInstructionWatcher ? { userInstructionWatcher: request.userInstructionWatcher } : {}),
+					...(request.userInstructionService ? { userInstructionService: request.userInstructionService } : {}),
 				},
-				requestToolApproval: request.requestToolApproval,
+				...(request.requestToolApproval
+					? { capabilities: { requestToolApproval: request.requestToolApproval } }
+					: {}),
 			});
 		} catch (error) {
 			this.clearTaskSessionBinding(request.taskId, requestedSessionId);

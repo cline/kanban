@@ -53,6 +53,22 @@ function applyEvent(input: {
 	};
 }
 
+function runtimeSnapshot(iteration = 1) {
+	return {
+		agentId: "agent-1",
+		status: "running",
+		iteration,
+		messages: [],
+		pendingToolCalls: [],
+		usage: {
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+		},
+	};
+}
+
 describe("applyClineSessionEvent", () => {
 	it("streams assistant text deltas into the active assistant message", () => {
 		const entry = createEntry("task-1");
@@ -92,6 +108,117 @@ describe("applyClineSessionEvent", () => {
 		expect(secondPass.summaries.at(-1)?.state).toBe("running");
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.hookEventName).toBe("assistant_delta");
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.finalMessage).toBe("world");
+	});
+
+	it("handles runtime-native assistant, tool, and finished agent events", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "assistant-text-delta",
+						snapshot: runtimeSnapshot(),
+						iteration: 1,
+						text: "Hello",
+						accumulatedText: "Hello",
+					},
+				},
+			},
+		});
+
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "tool-started",
+						snapshot: runtimeSnapshot(),
+						iteration: 1,
+						toolCall: {
+							type: "tool-call",
+							toolCallId: "tool-1",
+							toolName: "Read",
+							input: { file_path: "src/index.ts" },
+						},
+					},
+				},
+			},
+		});
+
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "tool-finished",
+						snapshot: runtimeSnapshot(),
+						iteration: 1,
+						toolCall: {
+							type: "tool-call",
+							toolCallId: "tool-1",
+							toolName: "Read",
+							input: { file_path: "src/index.ts" },
+						},
+						message: {
+							id: "msg-tool-1",
+							role: "tool",
+							content: [
+								{
+									type: "tool-result",
+									toolCallId: "tool-1",
+									toolName: "Read",
+									output: { ok: true },
+								},
+							],
+							createdAt: 1,
+						},
+					},
+				},
+			},
+		});
+
+		const finished = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "run-finished",
+						snapshot: runtimeSnapshot(),
+						result: {
+							agentId: "agent-1",
+							runId: "run-1",
+							status: "completed",
+							iterations: 1,
+							outputText: "Done.",
+							messages: [],
+							usage: {
+								inputTokens: 0,
+								outputTokens: 0,
+								cacheReadTokens: 0,
+								cacheWriteTokens: 0,
+							},
+						},
+					},
+				},
+			},
+		});
+
+		expect(entry.messages.map((message) => message.role)).toEqual(["assistant", "tool"]);
+		expect(entry.messages[0]?.content).toBe("Done.");
+		expect(entry.messages[1]?.meta?.hookEventName).toBe("tool_call_end");
+		expect(finished.entry.summary.state).toBe("awaiting_review");
+		expect(finished.entry.summary.latestHookActivity?.finalMessage).toBe("Done.");
 	});
 
 	it("keeps the full streamed assistant message in summary metadata", () => {
