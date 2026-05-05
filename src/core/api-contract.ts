@@ -74,11 +74,19 @@ export type RuntimeSlashCommandsResponse = z.infer<typeof runtimeSlashCommandsRe
 export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "kiro", "cline"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
-export const runtimeBoardColumnIdSchema = z.enum(["backlog", "in_progress", "review", "trash"]);
-export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;
+const runtimeBoardColumnIdEnum = z.enum(["backlog", "in_progress", "review", "trash"]);
+export const runtimeBoardColumnIdSchema = z.preprocess(
+	(val) => (val === "done" ? "trash" : val),
+	runtimeBoardColumnIdEnum,
+);
+export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdEnum>;
 
-export const runtimeTaskAutoReviewModeSchema = z.enum(["commit", "pr", "move_to_trash"]);
-export type RuntimeTaskAutoReviewMode = z.infer<typeof runtimeTaskAutoReviewModeSchema>;
+const runtimeTaskAutoReviewModeEnum = z.enum(["commit", "pr"]);
+export const runtimeTaskAutoReviewModeSchema = z.preprocess(
+	(val) => (val === "move_to_trash" || val === "move_to_done" ? "commit" : val),
+	runtimeTaskAutoReviewModeEnum,
+);
+export type RuntimeTaskAutoReviewMode = z.infer<typeof runtimeTaskAutoReviewModeEnum>;
 
 export const runtimeClineReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
 export type RuntimeClineReasoningEffort = z.infer<typeof runtimeClineReasoningEffortSchema>;

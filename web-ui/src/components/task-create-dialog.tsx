@@ -35,7 +35,6 @@ import { useRawLocalStorageValue } from "@/utils/react-use";
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
 	{ value: "pr", label: "Make PR" },
-	{ value: "move_to_trash", label: "Move to Trash" },
 ];
 
 type TaskCreateStartAction = "start" | "start_and_open";

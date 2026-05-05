@@ -4,14 +4,33 @@
 	"private": true,
 	"description": "Kanban desktop app — Electron shell for the Kanban runtime",
 	"type": "module",
+	"main": "dist/main.js",
 	"scripts": {
+		"clean": "shx rm -rf dist out cli",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
-		"test": "vitest run --passWithNoTests"
+		"stage:cli": "node scripts/stage-cli.mjs",
+		"build:ts": "tsc -p tsconfig.build.json && esbuild src/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload.js && shx cp src/disconnected.html dist/disconnected.html",
+		"build": "npm run stage:cli && npm run build:ts && electron-builder --config electron-builder.yml",
+		"build:mac:dmg": "npm run stage:cli && npm run build:ts && electron-builder --mac dmg --config electron-builder.yml",
+		"build:mac:arm64": "npm run stage:cli && npm run build:ts && electron-builder --mac dmg --arm64 --config electron-builder.yml",
+		"build:mac:x64": "npm run stage:cli && npm run build:ts && electron-builder --mac dmg --x64 --config electron-builder.yml",
+		"dev": "tsc -p tsconfig.build.json && node scripts/launch-electron.mjs",
+		"start": "electron .",
+		"postinstall": "electron-builder install-app-deps && node scripts/patch-node-pty.mjs",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest"
 	},
 	"devDependencies": {
+		"@electron/notarize": "^3.0.0",
 		"@types/node": "^22.10.5",
 		"electron": "^33.4.0",
+		"electron-builder": "^25.1.8",
+		"esbuild": "^0.27.0",
+		"shx": "^0.4.0",
 		"typescript": "^5.9.3",
 		"vitest": "^4.1.0"
+	},
+	"dependencies": {
+		"node-pty": "^1.2.0-beta.11"
 	}
 }

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -52,7 +52,7 @@ vi.mock("../../src/workspace/task-worktree-path.js", () => ({
 	normalizeTaskIdForWorktreePath: taskWorktreePathMocks.normalizeTaskIdForWorktreePath,
 }));
 
-import { ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree";
+import { ensureTaskWorktreeIfDoesntExist, removeTaskWorktreeSetupLock } from "../../src/workspace/task-worktree";
 
 type ExecFileOptions = {
 	cwd?: string;
@@ -271,6 +271,21 @@ describe.sequential("task-worktree serialization", () => {
 				lockfileName: "kanban-task-worktree-setup.lock",
 			});
 			expect(maxConcurrentSubmoduleUpdates).toBe(1);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("removes the task worktree setup lock from the repository git directory", async () => {
+		const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-lock-cleanup-");
+		try {
+			const repoPath = join(sandboxRoot, "repo");
+			const lockPath = join(repoPath, ".git", "kanban-task-worktree-setup.lock");
+			mkdirSync(lockPath, { recursive: true });
+
+			await expect(removeTaskWorktreeSetupLock(repoPath)).resolves.toBe(true);
+			expect(existsSync(lockPath)).toBe(false);
+			await expect(removeTaskWorktreeSetupLock(repoPath)).resolves.toBe(false);
 		} finally {
 			cleanup();
 		}

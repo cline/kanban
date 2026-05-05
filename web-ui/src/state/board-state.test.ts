@@ -573,7 +573,7 @@ describe("board dependency state", () => {
 		board = addTaskToColumn(board, "review", {
 			prompt: "Task A",
 			autoReviewEnabled: true,
-			autoReviewMode: "move_to_trash",
+			autoReviewMode: "commit",
 			baseRef: "main",
 		});
 		const task = board.columns.find((column) => column.id === "review")?.cards[0];
@@ -645,7 +645,7 @@ describe("board dependency state", () => {
 		board = addTaskToColumn(board, "review", {
 			prompt: "Task with model",
 			autoReviewEnabled: true,
-			autoReviewMode: "move_to_trash",
+			autoReviewMode: "commit",
 			agentId: "codex",
 			clineSettings: {
 				providerId: "my-provider",

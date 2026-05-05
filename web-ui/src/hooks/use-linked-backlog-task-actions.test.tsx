@@ -42,7 +42,7 @@ function createBoard(dependencies: BoardDependency[] = []): BoardData {
 				title: "Review",
 				cards: [createTask("task-2", "Review task", 2)],
 			},
-			{ id: "trash", title: "Trash", cards: [] },
+			{ id: "trash", title: "Done", cards: [] },
 		],
 		dependencies,
 	};

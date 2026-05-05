@@ -14,6 +14,7 @@ import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
+import { configureCodexHooks, hasCodexConfigOverride } from "./codex-hook-config";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
 	getOpenCodeAuthPathCandidates,
@@ -120,24 +121,6 @@ function hasCliOption(args: string[], optionName: string): boolean {
 	for (let i = 0; i < args.length; i += 1) {
 		const arg = args[i];
 		if (arg === optionName || arg.startsWith(`${optionName}=`)) {
-			return true;
-		}
-	}
-	return false;
-}
-
-function hasCodexConfigOverride(args: string[], key: string): boolean {
-	for (let i = 0; i < args.length; i += 1) {
-		const arg = args[i];
-		if (arg === "-c" || arg === "--config") {
-			const next = args[i + 1];
-			if (typeof next === "string" && next.startsWith(`${key}=`)) {
-				return true;
-			}
-			i += 1;
-			continue;
-		}
-		if (arg.startsWith(`-c${key}=`) || arg.startsWith(`--config=${key}=`)) {
 			return true;
 		}
 	}
@@ -752,7 +735,7 @@ const codexAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const codexArgs = [...input.args];
 		const env: Record<string, string | undefined> = {};
-		let binary = input.binary;
+		const binary = input.binary;
 		let deferredStartupInput: string | undefined;
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 
@@ -779,6 +762,7 @@ const codexAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
+			configureCodexHooks(codexArgs);
 			Object.assign(
 				env,
 				createHookRuntimeEnv({
@@ -797,18 +781,9 @@ const codexAdapter: AgentSessionAdapter = {
 		}
 
 		if (hooks) {
-			const wrapperParts = buildHooksCommandParts([
-				"codex-wrapper",
-				"--real-binary",
-				input.binary ?? "codex",
-				"--",
-				...codexArgs,
-			]);
-			binary = wrapperParts[0];
-			const args = wrapperParts.slice(1);
 			return {
 				binary,
-				args,
+				args: codexArgs,
 				env,
 				deferredStartupInput,
 				detectOutputTransition: codexPromptDetector,

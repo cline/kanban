@@ -188,7 +188,7 @@ describe("KanbanBoard", () => {
 					],
 				},
 				{ id: "review", title: "Review", cards: [] },
-				{ id: "trash", title: "Trash", cards: [] },
+				{ id: "trash", title: "Done", cards: [] },
 			],
 			dependencies: [],
 		};

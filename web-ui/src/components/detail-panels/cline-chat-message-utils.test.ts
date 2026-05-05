@@ -190,21 +190,21 @@ describe("kanban command display", () => {
 		expect(display.inputSummary).toBe("abc123 \u2192 def987");
 	});
 
-	it("shows Trashing task with short task ID", () => {
+	it("shows Moving task to done with short task ID", () => {
 		const display = getToolDisplay(
 			"run_commands",
 			JSON.stringify({ commands: ["kanban task trash --task-id abc12345-6789"] }),
 		);
-		expect(display.toolName).toBe("Trashing task");
+		expect(display.toolName).toBe("Moving task to done");
 		expect(display.inputSummary).toBe("abc123");
 	});
 
-	it("shows Trashing task with column target", () => {
+	it("shows Moving task to done with column target", () => {
 		const display = getToolDisplay(
 			"run_commands",
 			JSON.stringify({ commands: ["kanban task trash --column in_progress"] }),
 		);
-		expect(display.toolName).toBe("Trashing task");
+		expect(display.toolName).toBe("Moving task to done");
 		expect(display.inputSummary).toBe("in_progress");
 	});
 

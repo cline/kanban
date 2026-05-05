@@ -63,20 +63,23 @@ function parseListColumn(value: string | undefined): ListTaskColumn | undefined 
 	if (value === undefined) {
 		return undefined;
 	}
+	if (value === "done") {
+		return "trash";
+	}
 	if (value === "backlog" || value === "in_progress" || value === "review" || value === "trash") {
 		return value;
 	}
-	throw new Error(`Invalid column "${value}". Expected one of: ${LIST_TASK_COLUMNS.join(", ")}.`);
+	throw new Error(`Invalid column "${value}". Expected one of: ${LIST_TASK_COLUMNS.join(", ")}, done.`);
 }
 
-function parseAutoReviewMode(value: string | undefined): "commit" | "pr" | "move_to_trash" | undefined {
+function parseAutoReviewMode(value: string | undefined): "commit" | "pr" | undefined {
 	if (value === undefined) {
 		return undefined;
 	}
-	if (value === "commit" || value === "pr" || value === "move_to_trash") {
+	if (value === "commit" || value === "pr") {
 		return value;
 	}
-	throw new Error(`Invalid auto review mode "${value}". Expected: commit, pr, move_to_trash.`);
+	throw new Error(`Invalid auto review mode "${value}". Expected: commit, pr.`);
 }
 
 const VALID_AGENT_IDS = runtimeAgentIdSchema.options;
@@ -389,7 +392,7 @@ function getLinkFailureMessage(reason: RuntimeAddTaskDependencyResult["reason"])
 		return "These tasks are already linked.";
 	}
 	if (reason === "trash_task") {
-		return "Links cannot include trashed tasks.";
+		return "Links cannot include done tasks.";
 	}
 	if (reason === "non_backlog") {
 		return "Links require at least one backlog task.";
@@ -477,7 +480,7 @@ async function createTask(input: {
 	baseRef?: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
-	autoReviewMode?: "commit" | "pr" | "move_to_trash";
+	autoReviewMode?: "commit" | "pr";
 	agentId?: RuntimeAgentId;
 	clineSettings?: RuntimeTaskClineSettings;
 }): Promise<JsonRecord> {
@@ -537,7 +540,7 @@ async function updateTaskCommand(input: {
 	baseRef?: string;
 	startInPlanMode?: boolean;
 	autoReviewEnabled?: boolean;
-	autoReviewMode?: "commit" | "pr" | "move_to_trash";
+	autoReviewMode?: "commit" | "pr";
 	agentId?: RuntimeAgentId | null;
 	clineProviderId?: string | null;
 	clineModelId?: string | null;
@@ -805,7 +808,7 @@ async function trashTaskById(input: {
 
 		const trashed = trashTaskAndGetReadyLinkedTaskIds(latestState.board, input.taskId);
 		if (!trashed.moved || !trashed.task) {
-			throw new Error(`Task "${input.taskId}" could not be moved to trash.`);
+			throw new Error(`Task "${input.taskId}" could not be moved to done.`);
 		}
 
 		const nextState: RuntimeWorkspaceStateResponse = {
@@ -873,7 +876,7 @@ async function trashTask(input: {
 	column?: ListTaskColumn;
 	projectPath?: string;
 }): Promise<JsonRecord> {
-	const target = resolveTaskCommandTarget(input, "task trash");
+	const target = resolveTaskCommandTarget(input, "task done");
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
@@ -889,7 +892,7 @@ async function trashTask(input: {
 		if (trashed.alreadyInTrash) {
 			return {
 				ok: true,
-				message: `Task "${target.taskId}" is already in trash.`,
+				message: `Task "${target.taskId}" is already done.`,
 				task: trashed.task,
 				workspacePath: workspaceRepoPath,
 				readyTaskIds: [],
@@ -1096,7 +1099,11 @@ export function registerTaskCommand(program: Command): void {
 		.command("list")
 		.description("List Kanban tasks for a workspace.")
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
-		.option("--column <column>", "Filter column: backlog | in_progress | review | trash.", parseListColumn)
+		.option(
+			"--column <column>",
+			"Filter column: backlog | in_progress | review | done. trash is also accepted.",
+			parseListColumn,
+		)
 		.action(async (options: { projectPath?: string; column?: ListTaskColumn }) => {
 			await runTaskCommand(
 				async () =>
@@ -1117,7 +1124,7 @@ export function registerTaskCommand(program: Command): void {
 		.option("--base-ref <branch>", "Task base branch/ref.")
 		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
 		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
-		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr | move_to_trash.", parseAutoReviewMode)
+		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
 		.option("--agent-id <id>", "Agent override: cline | claude | codex | droid | gemini | opencode | default.")
 		.option(
 			"--cline-provider <id>",
@@ -1139,7 +1146,7 @@ export function registerTaskCommand(program: Command): void {
 				baseRef?: string;
 				startInPlanMode?: unknown;
 				autoReviewEnabled?: unknown;
-				autoReviewMode?: "commit" | "pr" | "move_to_trash";
+				autoReviewMode?: "commit" | "pr";
 				agentId?: string;
 				clineProvider?: string;
 				clineModel?: string;
@@ -1177,7 +1184,7 @@ export function registerTaskCommand(program: Command): void {
 		.option("--base-ref <branch>", "Replacement base branch/ref.")
 		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
 		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
-		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr | move_to_trash.", parseAutoReviewMode)
+		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
 		.option(
 			"--agent-id <id>",
 			'Agent override: cline | claude | codex | droid | gemini | opencode. Use "default" to clear.',
@@ -1200,7 +1207,7 @@ export function registerTaskCommand(program: Command): void {
 				baseRef?: string;
 				startInPlanMode?: unknown;
 				autoReviewEnabled?: unknown;
-				autoReviewMode?: "commit" | "pr" | "move_to_trash";
+				autoReviewMode?: "commit" | "pr";
 				agentId?: string;
 				clineProvider?: string;
 				clineModel?: string;
@@ -1229,9 +1236,14 @@ export function registerTaskCommand(program: Command): void {
 
 	task
 		.command("trash")
-		.description("Move a task or an entire column to trash and clean up task workspaces.")
+		.alias("done")
+		.description("Move a task or an entire column to done and clean up task workspaces.")
 		.option("--task-id <id>", "Task ID.")
-		.option("--column <column>", "Column to bulk-trash: backlog | in_progress | review | trash.", parseListColumn)
+		.option(
+			"--column <column>",
+			"Column to move to done: backlog | in_progress | review | done. trash is also accepted.",
+			parseListColumn,
+		)
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
 		.action(async (options: { taskId?: string; column?: ListTaskColumn; projectPath?: string }) => {
 			await runTaskCommand(
@@ -1249,7 +1261,11 @@ export function registerTaskCommand(program: Command): void {
 		.command("delete")
 		.description("Permanently delete a task or every task in a column.")
 		.option("--task-id <id>", "Task ID to permanently delete.")
-		.option("--column <column>", "Column to bulk-delete: backlog | in_progress | review | trash.", parseListColumn)
+		.option(
+			"--column <column>",
+			"Column to bulk-delete: backlog | in_progress | review | done. trash is also accepted.",
+			parseListColumn,
+		)
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
 		.action(async (options: { taskId?: string; column?: ListTaskColumn; projectPath?: string }) => {
 			await runTaskCommand(
@@ -1280,7 +1296,7 @@ export function registerTaskCommand(program: Command): void {
 				"  Once only one linked task remains in backlog, Kanban reorients the saved link",
 				"  so the backlog task is the waiting dependent task and the other task is the",
 				"  prerequisite.",
-				"  When the prerequisite finishes review and moves to trash, the waiting backlog",
+				"  When the prerequisite finishes review and moves to done, the waiting backlog",
 				"  task becomes ready to start.",
 				"",
 			].join("\n"),
