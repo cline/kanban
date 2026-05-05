@@ -66,6 +66,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		autonomousArgs: ["--yolo"],
 		installUrl: "https://github.com/google-gemini/gemini-cli",
 	},
+	{
+		id: "kimchi-code",
+		label: "Kimchi",
+		binary: "kimchi-code",
+		baseArgs: [],
+		autonomousArgs: ["--yolo"],
+		installUrl: "https://github.com/castai/kimchi",
+	},
 ];
 
 // Temporarily keep launch support scoped to the core agent set.
@@ -78,6 +86,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"kiro",
 	// "opencode",
 	// "gemini",
+	"kimchi-code",
 ];
 
 const RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET = new Set<RuntimeAgentId>(RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS);
