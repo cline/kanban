@@ -247,6 +247,33 @@ describe("applyClineSessionEvent", () => {
 		expect(latestHookActivity?.activityText).toContain("…");
 	});
 
+	it("shows full assistant text received only at content_end", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "content_end",
+						contentType: "text",
+						text: "Here is the complete response.",
+					},
+				},
+			},
+		});
+
+		expect(result.messages).toHaveLength(1);
+		expect(result.messages[0]?.role).toBe("assistant");
+		expect(result.messages[0]?.content).toBe("Here is the complete response.");
+		expect(result.entry.summary.latestHookActivity?.hookEventName).toBe("assistant_delta");
+		expect(result.entry.summary.latestHookActivity?.activityText).toBe("Here is the complete response.");
+		expect(result.entry.summary.latestHookActivity?.finalMessage).toBe("Here is the complete response.");
+	});
+
 	it("transitions into and back out of awaiting review around user-attention tools", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "running";

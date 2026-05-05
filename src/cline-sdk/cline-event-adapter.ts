@@ -162,6 +162,26 @@ function extractAgentErrorMessage(error: unknown): string | null {
 	return null;
 }
 
+function emitAssistantTextSummary(input: ApplyClineSessionEventInput, text: string | null): void {
+	const fullPreviewText = normalizePreviewText(text);
+	const previewText = toPreviewText(fullPreviewText);
+	const retainedToolActivity = getRetainedClineToolActivity(input.entry);
+	emitSummary(input, {
+		state: "running",
+		lastOutputAt: now(),
+		lastHookAt: now(),
+		latestHookActivity: {
+			activityText: previewText ?? "Agent active",
+			toolName: retainedToolActivity.toolName,
+			toolInputSummary: retainedToolActivity.toolInputSummary,
+			finalMessage: fullPreviewText,
+			hookEventName: "assistant_delta",
+			notificationType: null,
+			source: "cline-sdk",
+		},
+	});
+}
+
 function readMessagePartText(message: unknown, partType: "text" | "reasoning"): string | null {
 	const messageRecord = asRecord(message);
 	const content = messageRecord?.content;
@@ -296,23 +316,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		} else if (typeof text === "string" && text.length > 0) {
 			input.emitMessage(taskId, appendAssistantChunk(entry, taskId, text));
 		}
-		const fullPreviewText = normalizePreviewText(accumulated ?? text);
-		const previewText = toPreviewText(fullPreviewText);
-		const retainedToolActivity = getRetainedClineToolActivity(entry);
-		emitSummary(input, {
-			state: "running",
-			lastOutputAt: now(),
-			lastHookAt: now(),
-			latestHookActivity: {
-				activityText: previewText ?? "Agent active",
-				toolName: retainedToolActivity.toolName,
-				toolInputSummary: retainedToolActivity.toolInputSummary,
-				finalMessage: fullPreviewText,
-				hookEventName: "assistant_delta",
-				notificationType: null,
-				source: "cline-sdk",
-			},
-		});
+		emitAssistantTextSummary(input, accumulated ?? text);
 		return;
 	}
 
@@ -327,23 +331,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		} else if (typeof text === "string" && text.length > 0) {
 			input.emitMessage(taskId, appendAssistantChunk(entry, taskId, text));
 		}
-		const fullPreviewText = normalizePreviewText(accumulated ?? text);
-		const previewText = toPreviewText(fullPreviewText);
-		const retainedToolActivity = getRetainedClineToolActivity(entry);
-		emitSummary(input, {
-			state: "running",
-			lastOutputAt: now(),
-			lastHookAt: now(),
-			latestHookActivity: {
-				activityText: previewText ?? "Agent active",
-				toolName: retainedToolActivity.toolName,
-				toolInputSummary: retainedToolActivity.toolInputSummary,
-				finalMessage: fullPreviewText,
-				hookEventName: "assistant_delta",
-				notificationType: null,
-				source: "cline-sdk",
-			},
-		});
+		emitAssistantTextSummary(input, accumulated ?? text);
 		return;
 	}
 
@@ -493,9 +481,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 				setOrCreateAssistantMessage(entry, taskId, text) ?? createAssistantMessage(entry, taskId, text);
 			input.emitMessage(taskId, message);
 			entry.activeAssistantMessageId = null;
-			emitSummary(input, {
-				lastOutputAt: now(),
-			});
+			emitAssistantTextSummary(input, text);
 			return;
 		}
 
@@ -702,11 +688,13 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			const message =
 				setOrCreateAssistantMessage(entry, taskId, text) ?? createAssistantMessage(entry, taskId, text);
 			input.emitMessage(taskId, message);
+			emitAssistantTextSummary(input, text);
+		} else {
+			emitSummary(input, {
+				lastOutputAt: now(),
+			});
 		}
 		entry.activeAssistantMessageId = null;
-		emitSummary(input, {
-			lastOutputAt: now(),
-		});
 		return;
 	}
 

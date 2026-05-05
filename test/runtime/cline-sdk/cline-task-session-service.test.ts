@@ -1243,6 +1243,33 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(assistantMessages).toEqual(["Hello world"]);
 	});
 
+	it("shows assistant text when the SDK only emits the full response at content_end", async () => {
+		const { service, runtime } = createTrackedService();
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "",
+		});
+
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
+
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_end",
+			contentType: "text",
+			text: "Here is the complete response.",
+		});
+
+		const assistantMessages = service
+			.listMessages("task-1")
+			.filter((message) => message.role === "assistant")
+			.map((message) => message.content);
+		const summary = service.getSummary("task-1");
+
+		expect(assistantMessages).toEqual(["Here is the complete response."]);
+		expect(summary?.latestHookActivity?.activityText).toBe("Here is the complete response.");
+		expect(summary?.latestHookActivity?.finalMessage).toBe("Here is the complete response.");
+	});
+
 	it("streams reasoning and tool lifecycle messages with stable ids", async () => {
 		const { service, runtime } = createTrackedService();
 		await service.startTaskSession({
