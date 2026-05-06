@@ -33,8 +33,9 @@ jobs:
 
       - name: Resolve tag
         id: resolve_tag
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ inputs.tag }}"
           if [ -z "$TAG" ]; then
             echo "Error: tag input is required"
             exit 1
