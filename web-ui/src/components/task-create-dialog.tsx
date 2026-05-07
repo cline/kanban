@@ -3,6 +3,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as RadixSwitch from "@radix-ui/react-switch";
 
 import {
+	AlertTriangle,
 	ArrowBigUp,
 	ArrowLeft,
 	Check,
@@ -201,6 +202,20 @@ export function TaskCreateDialog({
 	const effectivePrimaryStartAction =
 		onCreateStartAndOpen || primaryStartAction === "start" ? primaryStartAction : DEFAULT_PRIMARY_START_ACTION;
 	const secondaryStartAction = effectivePrimaryStartAction === "start" ? "start_and_open" : "start";
+
+	const effectiveAgentIdForImages = agentId ?? defaultAgentId ?? null;
+	const effectiveModelIdForImages = clineSettings?.modelId ?? effectiveDefaultModelId ?? "";
+	const selectedClineModel = useMemo(
+		() =>
+			effectiveModelIdForImages
+				? providerModels.find((model) => model.id === effectiveModelIdForImages) ?? null
+				: null,
+		[effectiveModelIdForImages, providerModels],
+	);
+	const imagesBlockedByModel =
+		images.length > 0 &&
+		effectiveAgentIdForImages === "cline" &&
+		selectedClineModel?.supportsVision === false;
 
 	// Reset state when dialog closes
 	useEffect(() => {
@@ -598,6 +613,15 @@ export function TaskCreateDialog({
 				</div>
 			</DialogBody>
 			<DialogFooter>
+				{imagesBlockedByModel ? (
+					<div className="mb-2 flex items-start gap-1.5 text-xs text-status-orange">
+						<AlertTriangle size={14} className="mt-0.5 shrink-0" />
+						<p className="m-0 min-w-0">
+							The selected Cline model does not support image input. Switch to a vision-capable model in Override
+							Agent Settings or remove the images to continue.
+						</p>
+					</div>
+				) : null}
 				<label
 					htmlFor={createMoreId}
 					className="mr-auto flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
@@ -614,7 +638,7 @@ export function TaskCreateDialog({
 				</label>
 				{mode === "single" ? (
 					<>
-						<Button size="sm" onClick={handleCreateSingle} disabled={!prompt.trim() || !branchRef}>
+						<Button size="sm" onClick={handleCreateSingle} disabled={!prompt.trim() || !branchRef || imagesBlockedByModel}>
 							<span className="inline-flex items-center">
 								Create
 								<ButtonShortcut />
@@ -627,7 +651,7 @@ export function TaskCreateDialog({
 										variant="primary"
 										size="sm"
 										onClick={() => handleRunSingleStartAction(primaryStartAction)}
-										disabled={!prompt.trim() || !branchRef}
+										disabled={!prompt.trim() || !branchRef || imagesBlockedByModel}
 										className={onCreateStartAndOpen ? "rounded-r-none" : undefined}
 									>
 										<span className="inline-flex items-center">
@@ -640,7 +664,7 @@ export function TaskCreateDialog({
 											<Button
 												variant="primary"
 												size="sm"
-												disabled={!prompt.trim() || !branchRef}
+												disabled={!prompt.trim() || !branchRef || imagesBlockedByModel}
 												className="rounded-l-none border-l border-white/20 px-1"
 												aria-label="More start options"
 											>
