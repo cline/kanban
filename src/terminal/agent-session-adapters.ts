@@ -1288,11 +1288,11 @@ const kimchiCodeAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const extensionPath = join(getHookAgentDirectory("kimchi-code"), "kanban-extension.mjs");
+			const extensionPath = join(getHookAgentDirectory("kimchi"), "kanban-extension.mjs");
 			const extensionContent = buildKimchiCodeExtensionContent(
-				buildHookCommandParts("to_review", { source: "kimchi-code" }),
-				buildHookCommandParts("to_in_progress", { source: "kimchi-code" }),
-				buildHookCommandParts("activity", { source: "kimchi-code" }),
+				buildHookCommandParts("to_review", { source: "kimchi" }),
+				buildHookCommandParts("to_in_progress", { source: "kimchi" }),
+				buildHookCommandParts("activity", { source: "kimchi" }),
 			);
 			await ensureTextFile(extensionPath, extensionContent);
 			args.push("--extension", extensionPath);
@@ -1305,7 +1305,7 @@ const kimchiCodeAdapter: AgentSessionAdapter = {
 			);
 		}
 
-		// startInPlanMode is silently ignored for kimchi-code (no built-in plan mode).
+		// startInPlanMode is silently ignored for kimchi (no built-in plan mode).
 
 		const trimmed = input.prompt.trim();
 		if (trimmed) {
@@ -1577,7 +1577,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	codex: codexAdapter,
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
-	"kimchi-code": kimchiCodeAdapter,
+	kimchi: kimchiCodeAdapter,
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,

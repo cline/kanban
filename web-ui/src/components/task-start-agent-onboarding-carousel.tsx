@@ -83,7 +83,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 ];
 
-const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro", "kimchi-code"];
+const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro", "kimchi"];
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
 	kind: "agent-selection",
 	title: "",
@@ -305,7 +305,7 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	if (agentId === "kiro") {
 		return "Amazon's coding agent with access to the latest frontier models.";
 	}
-	if (agentId === "kimchi-code") {
+	if (agentId === "kimchi") {
 		return "Cast AI's coding harness — runs against multiple LLM providers, with classifier-guarded autonomy and a read-only plan mode.";
 	}
 	return "Install from the official docs.";
@@ -324,7 +324,7 @@ function getInstallLinkLabel(agentId: RuntimeAgentId): string {
 	if (agentId === "kiro") {
 		return "Learn more";
 	}
-	if (agentId === "kimchi-code") {
+	if (agentId === "kimchi") {
 		return "Learn more";
 	}
 	return "Install guide";

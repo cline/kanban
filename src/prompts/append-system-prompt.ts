@@ -32,7 +32,7 @@ const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"kiro",
 	"gemini",
 	"opencode",
-	"kimchi-code",
+	"kimchi",
 ];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
@@ -63,8 +63,8 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 			return "- If Linear MCP is not available in the current agent (Gemini CLI), suggest running: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
 		case "opencode":
 			return "- If Linear MCP is not available in the current agent (OpenCode), suggest running `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
-		case "kimchi-code":
-			return "- If Linear MCP is not available in the current agent (Kimchi Code), explain that kimchi-code does not currently support MCP servers (no `mcp` subcommand; `~/.config/kimchi/harness/settings.json` is user-prefs only). Suggest passing Linear context via `kimchi-code --append-system-prompt @ticket.md` until upstream adds MCP support.";
+		case "kimchi":
+			return "- If Linear MCP is not available in the current agent (Kimchi Code), explain that kimchi does not currently support MCP servers (no `mcp` subcommand; `~/.config/kimchi/harness/settings.json` is user-prefs only). Suggest passing Linear context via `kimchi --append-system-prompt @ticket.md` until upstream adds MCP support.";
 		case "droid":
 			return "- If Linear MCP is not available in the current agent (Droid), suggest running: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
 		case "kiro":

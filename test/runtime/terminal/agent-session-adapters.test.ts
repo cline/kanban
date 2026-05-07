@@ -303,8 +303,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-kimchi",
-			agentId: "kimchi-code",
-			binary: "kimchi-code",
+			agentId: "kimchi",
+			binary: "kimchi",
 			args: [],
 			cwd: "/tmp",
 			prompt: "hello world",
@@ -318,7 +318,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const extensionIndex = launch.args.indexOf("--extension");
 		expect(extensionIndex).toBeGreaterThan(-1);
 		const extensionPath = launch.args[extensionIndex + 1];
-		expect(extensionPath).toBe(join(homedir(), ".cline", "kanban", "hooks", "kimchi-code", "kanban-extension.mjs"));
+		expect(extensionPath).toBe(join(homedir(), ".cline", "kanban", "hooks", "kimchi", "kanban-extension.mjs"));
 		expect(existsSync(extensionPath ?? "")).toBe(true);
 
 		const extensionContent = readFileSync(extensionPath as string, "utf8");
@@ -358,8 +358,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-kimchi-tools",
-			agentId: "kimchi-code",
-			binary: "kimchi-code",
+			agentId: "kimchi",
+			binary: "kimchi",
 			args: ["--tools", "read,bash"],
 			cwd: "/tmp",
 			prompt: "",
@@ -375,8 +375,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-kimchi-resume",
-			agentId: "kimchi-code",
-			binary: "kimchi-code",
+			agentId: "kimchi",
+			binary: "kimchi",
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
@@ -389,8 +389,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-kimchi-yolo",
-			agentId: "kimchi-code",
-			binary: "kimchi-code",
+			agentId: "kimchi",
+			binary: "kimchi",
 			args: [],
 			autonomousModeEnabled: true,
 			cwd: "/tmp",
@@ -403,8 +403,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-kimchi-no-yolo",
-			agentId: "kimchi-code",
-			binary: "kimchi-code",
+			agentId: "kimchi",
+			binary: "kimchi",
 			args: [],
 			autonomousModeEnabled: false,
 			cwd: "/tmp",
@@ -417,8 +417,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		const planLaunch = await prepareAgentLaunch({
 			taskId: "task-kimchi-plan",
-			agentId: "kimchi-code",
-			binary: "kimchi-code",
+			agentId: "kimchi",
+			binary: "kimchi",
 			args: ["--plan"],
 			autonomousModeEnabled: true,
 			cwd: "/tmp",
@@ -429,8 +429,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		const autoLaunch = await prepareAgentLaunch({
 			taskId: "task-kimchi-auto-mode",
-			agentId: "kimchi-code",
-			binary: "kimchi-code",
+			agentId: "kimchi",
+			binary: "kimchi",
 			args: ["--auto"],
 			autonomousModeEnabled: true,
 			cwd: "/tmp",

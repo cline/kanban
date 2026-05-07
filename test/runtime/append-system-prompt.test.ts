@@ -134,8 +134,8 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		expect(prompt).not.toContain("--scope user");
 	});
 
-	it("explains that kimchi-code has no MCP support and points at --append-system-prompt", () => {
-		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:kimchi-code", {
+	it("explains that kimchi has no MCP support and points at --append-system-prompt", () => {
+		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:kimchi", {
 			currentVersion: "0.1.10",
 			cwd: "/Users/example/repo",
 			execPath: "/usr/local/bin/node",
@@ -143,9 +143,9 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 			argv: ["node", "/Users/example/repo/dist/cli.js"],
 			resolveRealPath: (path) => path,
 		});
-		expect(prompt).toContain("Current home agent: `kimchi-code`");
+		expect(prompt).toContain("Current home agent: `kimchi`");
 		expect(prompt).toContain("does not currently support MCP servers");
-		expect(prompt).toContain("kimchi-code --append-system-prompt @ticket.md");
-		expect(prompt).not.toContain("kimchi-code mcp add");
+		expect(prompt).toContain("kimchi --append-system-prompt @ticket.md");
+		expect(prompt).not.toContain("kimchi mcp add");
 	});
 });

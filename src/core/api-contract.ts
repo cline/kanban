@@ -79,7 +79,7 @@ export const runtimeAgentIdSchema = z.enum([
 	"droid",
 	"kiro",
 	"cline",
-	"kimchi-code",
+	"kimchi",
 ]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
