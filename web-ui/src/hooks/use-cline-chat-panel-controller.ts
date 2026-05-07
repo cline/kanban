@@ -1,7 +1,7 @@
 // Builds the view model for the native Cline chat panel.
 // Keep panel-specific UI state here so the panel component can stay mostly
 // declarative and shared across detail and sidebar surfaces.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import { type ClineChatMessage, useClineChatSession } from "@/hooks/use-cline-chat-session";
@@ -47,74 +47,6 @@ interface UseClineChatPanelControllerResult {
 	handleCancelTurn: () => void;
 }
 
-const ASSISTANT_PREVIEW_MESSAGE_SUFFIX = "__assistant_preview__";
-
-function getStreamingAssistantText(summary: RuntimeTaskSessionSummary | null): string | null {
-	const activity = summary?.latestHookActivity;
-	if (activity?.source !== "cline-sdk" || activity.hookEventName !== "assistant_delta") {
-		return null;
-	}
-	const text = activity.finalMessage?.trim();
-	return text && text.length > 0 ? text : null;
-}
-
-function mergeStreamingAssistantPreview(
-	messages: ClineChatMessage[],
-	taskId: string,
-	summary: RuntimeTaskSessionSummary | null,
-): ClineChatMessage[] {
-	const streamingText = getStreamingAssistantText(summary);
-	if (!streamingText) {
-		return messages;
-	}
-
-	let lastUserIndex = -1;
-	let latestAssistantIndexAfterUser = -1;
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index];
-		if (!message) {
-			continue;
-		}
-		if (lastUserIndex < 0 && message.role === "user") {
-			lastUserIndex = index;
-		}
-		if (message.role === "assistant") {
-			latestAssistantIndexAfterUser = index;
-		}
-		if (lastUserIndex >= 0) {
-			break;
-		}
-	}
-	if (latestAssistantIndexAfterUser >= 0 && latestAssistantIndexAfterUser <= lastUserIndex) {
-		latestAssistantIndexAfterUser = -1;
-	}
-	if (latestAssistantIndexAfterUser >= 0) {
-		const latestAssistant = messages[latestAssistantIndexAfterUser];
-		if (!latestAssistant || latestAssistant.content === streamingText) {
-			return messages;
-		}
-		if (!streamingText.startsWith(latestAssistant.content.trimStart())) {
-			return messages;
-		}
-		const nextMessages = [...messages];
-		nextMessages[latestAssistantIndexAfterUser] = {
-			...latestAssistant,
-			content: streamingText,
-		};
-		return nextMessages;
-	}
-
-	return [
-		...messages,
-		{
-			id: `${taskId}-${ASSISTANT_PREVIEW_MESSAGE_SUFFIX}`,
-			role: "assistant",
-			content: streamingText,
-			createdAt: summary?.lastOutputAt ?? summary?.updatedAt ?? 0,
-		},
-	];
-}
-
 export function useClineChatPanelController({
 	taskId,
 	summary,
@@ -141,10 +73,6 @@ export function useClineChatPanelController({
 		incomingMessages,
 		incomingMessage,
 	});
-	const displayMessages = useMemo(
-		() => mergeStreamingAssistantPreview(messages, taskId, summary),
-		[messages, summary, taskId],
-	);
 	const canSend = Boolean(onSendMessage) && !isSending && !isCanceling;
 	const canCancel = Boolean(onCancelTurn) && summary?.state === "running" && !isCanceling;
 	const showReviewActions =
@@ -189,7 +117,7 @@ export function useClineChatPanelController({
 	return {
 		draft,
 		setDraft,
-		messages: displayMessages,
+		messages,
 		error,
 		isSending,
 		isCanceling,

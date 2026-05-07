@@ -60,14 +60,6 @@ function createHookActivity(hookEventName: string): RuntimeTaskHookActivity {
 	};
 }
 
-function createAssistantDeltaActivity(finalMessage: string): RuntimeTaskHookActivity {
-	return {
-		...createHookActivity("assistant_delta"),
-		activityText: finalMessage,
-		finalMessage,
-	};
-}
-
 function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
 	if (!snapshot) {
 		throw new Error("Expected hook snapshot.");
@@ -343,68 +335,6 @@ describe("useClineChatPanelController", () => {
 		});
 
 		expect(requireSnapshot(latestSnapshot).showAgentProgressIndicator).toBe(true);
-	});
-
-	it("uses the live summary assistant text as a streaming preview when chat messages lag", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					summary={createSummary("running", {
-						latestHookActivity: createAssistantDeltaActivity("Streaming response"),
-					})}
-					incomingMessage={{
-						id: "user-1",
-						role: "user",
-						content: "Hello",
-						createdAt: 1,
-					}}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await Promise.resolve();
-		});
-
-		expect(requireSnapshot(latestSnapshot).messageIds).toEqual(["user-1", "task-1-__assistant_preview__"]);
-		expect(requireSnapshot(latestSnapshot).lastMessageContent).toBe("Streaming response");
-	});
-
-	it("updates the visible assistant message from summary while streamed chat messages catch up", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					summary={createSummary("running", {
-						latestHookActivity: createAssistantDeltaActivity("Hello world"),
-					})}
-					incomingMessages={[
-						{
-							id: "user-1",
-							role: "user",
-							content: "Hello",
-							createdAt: 1,
-						},
-						{
-							id: "assistant-1",
-							role: "assistant",
-							content: "Hello",
-							createdAt: 2,
-						},
-					]}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await Promise.resolve();
-		});
-
-		expect(requireSnapshot(latestSnapshot).messageIds).toEqual(["user-1", "assistant-1"]);
-		expect(requireSnapshot(latestSnapshot).lastMessageContent).toBe("Hello world");
 	});
 
 	it("keeps the thinking indicator visible when assistant chunks arrive through incomingMessages only", async () => {
