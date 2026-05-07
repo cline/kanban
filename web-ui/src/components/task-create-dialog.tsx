@@ -203,19 +203,17 @@ export function TaskCreateDialog({
 		onCreateStartAndOpen || primaryStartAction === "start" ? primaryStartAction : DEFAULT_PRIMARY_START_ACTION;
 	const secondaryStartAction = effectivePrimaryStartAction === "start" ? "start_and_open" : "start";
 
-	const effectiveAgentIdForImages = agentId ?? defaultAgentId ?? null;
+	const effectiveAgentIdForImages = (agentId || defaultAgentId) ?? null;
 	const effectiveModelIdForImages = clineSettings?.modelId ?? effectiveDefaultModelId ?? "";
 	const selectedClineModel = useMemo(
 		() =>
 			effectiveModelIdForImages
-				? providerModels.find((model) => model.id === effectiveModelIdForImages) ?? null
+				? (providerModels.find((model) => model.id === effectiveModelIdForImages) ?? null)
 				: null,
 		[effectiveModelIdForImages, providerModels],
 	);
 	const imagesBlockedByModel =
-		images.length > 0 &&
-		effectiveAgentIdForImages === "cline" &&
-		selectedClineModel?.supportsVision === false;
+		images.length > 0 && effectiveAgentIdForImages === "cline" && selectedClineModel?.supportsVision === false;
 
 	// Reset state when dialog closes
 	useEffect(() => {
@@ -638,7 +636,11 @@ export function TaskCreateDialog({
 				</label>
 				{mode === "single" ? (
 					<>
-						<Button size="sm" onClick={handleCreateSingle} disabled={!prompt.trim() || !branchRef || imagesBlockedByModel}>
+						<Button
+							size="sm"
+							onClick={handleCreateSingle}
+							disabled={!prompt.trim() || !branchRef || imagesBlockedByModel}
+						>
 							<span className="inline-flex items-center">
 								Create
 								<ButtonShortcut />
