@@ -92,7 +92,7 @@ function resolveHookContext(input: AgentAdapterLaunchInput): HookContext | null 
 	};
 }
 
-function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
+function buildHookCommandParts(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string[] {
 	const parts = buildHooksCommandParts(["ingest", "--event", event]);
 	if (metadata?.source) {
 		parts.push("--source", metadata.source);
@@ -106,7 +106,11 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 	if (metadata?.notificationType) {
 		parts.push("--notification-type", metadata.notificationType);
 	}
-	return parts.map(quoteShellArg).join(" ");
+	return parts;
+}
+
+function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadata): string {
+	return buildHookCommandParts(event, metadata).map(quoteShellArg).join(" ");
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
@@ -561,6 +565,75 @@ function buildOpenCodePluginContent(
     },
   };
 };
+`;
+}
+
+function buildKimchiCodeExtensionContent(
+	reviewParts: readonly string[],
+	toInProgressParts: readonly string[],
+	activityParts: readonly string[],
+): string {
+	const reviewLiteral = JSON.stringify(reviewParts);
+	const toInProgressLiteral = JSON.stringify(toInProgressParts);
+	const activityLiteral = JSON.stringify(activityParts);
+
+	return `export default function (pi) {
+  if (globalThis.__kanbanKimchiExtV1) return;
+  globalThis.__kanbanKimchiExtV1 = true;
+  if (!process?.env?.KANBAN_HOOK_TASK_ID) return;
+
+  const REVIEW = ${reviewLiteral};
+  const IN_PROGRESS = ${toInProgressLiteral};
+  const ACTIVITY = ${activityLiteral};
+
+  let agentEnded = false;
+
+  const exec = (argv) => new Promise((resolve) => {
+    const { spawn } = require("node:child_process");
+    if (!Array.isArray(argv) || argv.length === 0) { resolve(); return; }
+    const child = spawn(argv[0], argv.slice(1), { shell: false, stdio: "ignore", windowsHide: true });
+    child.on("error", () => resolve());
+    child.on("exit", () => resolve());
+  });
+
+  const encodePayload = (payload) => {
+    if (!payload || typeof payload !== "object") return "";
+    try { return Buffer.from(JSON.stringify(payload), "utf8").toString("base64"); }
+    catch { return ""; }
+  };
+
+  const notify = async (kind, payload = {}) => {
+    const base = kind === "review" ? REVIEW : kind === "in_progress" ? IN_PROGRESS : ACTIVITY;
+    const argv = base.slice();
+    const encoded = encodePayload(payload);
+    if (encoded) { argv.push("--metadata-base64", encoded); }
+    try { await exec(argv); } catch {}
+  };
+
+  const toolNameOf = (e) => (typeof e?.tool === "string" ? e.tool : typeof e?.toolName === "string" ? e.toolName : undefined);
+  const errorOf = (e) => {
+    if (!e || e.error == null) return undefined;
+    try { return typeof e.error === "string" ? e.error : (e.error?.message ?? JSON.stringify(e.error)); }
+    catch { return String(e.error); }
+  };
+
+  pi.on?.("agent_start",          (e) => notify("in_progress", { hook_event_name: "agent_start" }));
+  pi.on?.("tool_execution_start", (e) => notify("activity",    { hook_event_name: "tool_execution_start", tool_name: toolNameOf(e) }));
+  pi.on?.("tool_execution_end",   (e) => {
+    const error = errorOf(e);
+    notify("activity", { hook_event_name: "tool_execution_end", tool_name: toolNameOf(e), ...(error ? { error } : {}) });
+  });
+  pi.on?.("agent_end",            (e) => {
+    const reason = typeof e?.reason === "string" ? e.reason : "stop";
+    const failed = reason === "error" || reason === "cancelled" || reason === "interrupted";
+    notify("review", { hook_event_name: "agent_end", reason, ...(failed ? { error: true } : {}) });
+    agentEnded = true;
+  });
+  pi.on?.("session_shutdown", (e) => {
+    if (agentEnded) return;
+    notify("review", { hook_event_name: "session_shutdown", reason: "shutdown" });
+  });
+}
 `;
 }
 
@@ -1174,6 +1247,78 @@ const opencodeAdapter: AgentSessionAdapter = {
 	},
 };
 
+function hasKimchiCodeToolsArg(args: readonly string[]): boolean {
+	for (const arg of args) {
+		if (arg === "--tools" || arg === "--no-tools") return true;
+		if (arg.startsWith("--tools=")) return true;
+	}
+	return false;
+}
+
+const kimchiCodeAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+
+		if (!hasKimchiCodeToolsArg(args)) {
+			args.push("--tools", "read,bash,edit,write,grep,find,ls");
+		}
+
+		if (
+			input.autonomousModeEnabled &&
+			!hasCliOption(args, "--yolo") &&
+			!hasCliOption(args, "--auto") &&
+			!hasCliOption(args, "--plan")
+		) {
+			args.push("--yolo");
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--continue") && !hasCliOption(args, "--resume")) {
+			args.push("--continue");
+		}
+
+		if (
+			appendedSystemPrompt &&
+			!hasCliOption(args, "--append-system-prompt") &&
+			!hasCliOption(args, "--system-prompt")
+		) {
+			args.push("--append-system-prompt", appendedSystemPrompt);
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			const extensionPath = join(getHookAgentDirectory("kimchi-code"), "kanban-extension.mjs");
+			const extensionContent = buildKimchiCodeExtensionContent(
+				buildHookCommandParts("to_review", { source: "kimchi-code" }),
+				buildHookCommandParts("to_in_progress", { source: "kimchi-code" }),
+				buildHookCommandParts("activity", { source: "kimchi-code" }),
+			);
+			await ensureTextFile(extensionPath, extensionContent);
+			args.push("--extension", extensionPath);
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		// startInPlanMode is silently ignored for kimchi-code (no built-in plan mode).
+
+		const trimmed = input.prompt.trim();
+		if (trimmed) {
+			args.push(trimmed);
+		}
+
+		return {
+			args,
+			env,
+		};
+	},
+};
+
 const droidAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -1432,6 +1577,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	codex: codexAdapter,
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
+	"kimchi-code": kimchiCodeAdapter,
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,

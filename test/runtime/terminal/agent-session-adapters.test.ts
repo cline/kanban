@@ -299,6 +299,147 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args[modelIndex + 1]).toBe("openai/gpt-4o");
 	});
 
+	it("writes Kimchi Code extension and applies default --tools and --extension args", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-kimchi",
+			agentId: "kimchi-code",
+			binary: "kimchi-code",
+			args: [],
+			cwd: "/tmp",
+			prompt: "hello world",
+			workspaceId: "workspace-1",
+		});
+
+		const toolsIndex = launch.args.indexOf("--tools");
+		expect(toolsIndex).toBeGreaterThan(-1);
+		expect(launch.args[toolsIndex + 1]).toBe("read,bash,edit,write,grep,find,ls");
+
+		const extensionIndex = launch.args.indexOf("--extension");
+		expect(extensionIndex).toBeGreaterThan(-1);
+		const extensionPath = launch.args[extensionIndex + 1];
+		expect(extensionPath).toBe(join(homedir(), ".cline", "kanban", "hooks", "kimchi-code", "kanban-extension.mjs"));
+		expect(existsSync(extensionPath ?? "")).toBe(true);
+
+		const extensionContent = readFileSync(extensionPath as string, "utf8");
+		expect(extensionContent).toContain("export default function (pi)");
+		expect(extensionContent).toContain("agent_start");
+		expect(extensionContent).toContain("agent_end");
+		expect(extensionContent).toContain("tool_execution_start");
+		expect(extensionContent).toContain("tool_execution_end");
+		// message_update fires per streaming chunk (~43x per turn per spike findings) and would flood
+		// the activity hook; tool_execution_* events already cover meaningful work.
+		expect(extensionContent).not.toContain("message_update");
+		expect(extensionContent).toContain('"--metadata-base64"');
+		expect(extensionContent).not.toContain("shell: true");
+		expect(extensionContent).toContain("shell: false");
+		expect(extensionContent).toContain("argv.slice(1)");
+		// agent_end forwards the reason field and flags failures
+		expect(extensionContent).toContain("e?.reason");
+		expect(extensionContent).toContain('reason === "error"');
+		expect(extensionContent).toContain('reason === "cancelled"');
+		expect(extensionContent).toContain('reason === "interrupted"');
+		// session_shutdown is wired as a backstop so abrupt termination still
+		// flips the task to review when agent_end never fires
+		expect(extensionContent).toContain("session_shutdown");
+		expect(extensionContent).toContain("let agentEnded = false");
+		expect(extensionContent).toContain("agentEnded = true");
+		expect(extensionContent).toContain("if (agentEnded) return");
+		// tool_execution_end forwards error metadata when present
+		expect(extensionContent).toContain("const errorOf");
+		// tool name is read from either tool or toolName
+		expect(extensionContent).toContain("e?.tool");
+		expect(extensionContent).toContain("e?.toolName");
+
+		expect(launch.args[launch.args.length - 1]).toBe("hello world");
+	});
+
+	it("respects user-supplied --tools override for Kimchi Code", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-kimchi-tools",
+			agentId: "kimchi-code",
+			binary: "kimchi-code",
+			args: ["--tools", "read,bash"],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const occurrences = launch.args.filter((arg) => arg === "--tools").length;
+		expect(occurrences).toBe(1);
+		const idx = launch.args.indexOf("--tools");
+		expect(launch.args[idx + 1]).toBe("read,bash");
+	});
+
+	it("adds --continue for Kimchi Code when resuming from trash", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-kimchi-resume",
+			agentId: "kimchi-code",
+			binary: "kimchi-code",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(launch.args).toContain("--continue");
+	});
+
+	it("injects --yolo for Kimchi Code in autonomous mode", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-kimchi-yolo",
+			agentId: "kimchi-code",
+			binary: "kimchi-code",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(launch.args).toContain("--yolo");
+	});
+
+	it("omits --yolo for Kimchi Code when autonomous mode is off", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-kimchi-no-yolo",
+			agentId: "kimchi-code",
+			binary: "kimchi-code",
+			args: [],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(launch.args).not.toContain("--yolo");
+	});
+
+	it("does not override an explicit --plan or --auto for Kimchi Code", async () => {
+		setupTempHome();
+		const planLaunch = await prepareAgentLaunch({
+			taskId: "task-kimchi-plan",
+			agentId: "kimchi-code",
+			binary: "kimchi-code",
+			args: ["--plan"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(planLaunch.args).toContain("--plan");
+		expect(planLaunch.args).not.toContain("--yolo");
+
+		const autoLaunch = await prepareAgentLaunch({
+			taskId: "task-kimchi-auto-mode",
+			agentId: "kimchi-code",
+			binary: "kimchi-code",
+			args: ["--auto"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(autoLaunch.args).toContain("--auto");
+		expect(autoLaunch.args).not.toContain("--yolo");
+	});
+
 	it("writes Droid settings with hook transitions and runtime autonomy mode", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

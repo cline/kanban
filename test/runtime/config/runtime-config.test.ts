@@ -76,6 +76,8 @@ describe.sequential("runtime-config auto agent selection", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "droid"])).toBe("claude");
 		expect(pickBestInstalledAgentIdFromDetected(["cline"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected([])).toBeNull();
+		expect(pickBestInstalledAgentIdFromDetected(["kimchi-code", "gemini"])).toBe("kimchi-code");
+		expect(pickBestInstalledAgentIdFromDetected(["kiro-cli", "kimchi-code"])).toBe("kiro");
 	});
 
 	it("auto-selects and persists when unset", async () => {
@@ -232,6 +234,47 @@ describe.sequential("runtime-config auto agent selection", () => {
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
 				const state = await loadRuntimeConfig(tempProject);
 				expect(state.selectedAgentId).toBe("cline");
+			});
+		} finally {
+			cleanupBin();
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("preserves a persisted kimchi-code selection through load/save round-trip", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-kimchi-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-kimchi-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-kimchi-");
+
+		try {
+			writeFakeCommand(tempBin, "kimchi-code");
+
+			const runtimeConfigDir = join(tempHome, ".cline", "kanban");
+			mkdirSync(runtimeConfigDir, { recursive: true });
+			writeFileSync(
+				join(runtimeConfigDir, "config.json"),
+				JSON.stringify(
+					{
+						selectedAgentId: "kimchi-code",
+					},
+					null,
+					2,
+				),
+				"utf8",
+			);
+
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
+				const state = await loadRuntimeConfig(tempProject);
+				expect(state.selectedAgentId).toBe("kimchi-code");
+
+				const persisted = JSON.parse(readFileSync(join(tempHome, ".cline", "kanban", "config.json"), "utf8")) as {
+					selectedAgentId?: string;
+				};
+				expect(persisted.selectedAgentId).toBe("kimchi-code");
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.selectedAgentId).toBe("kimchi-code");
 			});
 		} finally {
 			cleanupBin();
