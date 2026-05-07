@@ -833,12 +833,18 @@ export function createClineProviderService() {
 							id: provider.id,
 							name: provider.name,
 							oauthSupported: (provider.capabilities ?? []).includes("oauth"),
+							custom: provider.custom,
+							client: provider.client,
 							enabled:
 								selectedProviderId.length > 0 ? selectedProviderId === provider.id : provider.id === "cline",
 							defaultModelId: provider.defaultModelId ?? null,
 							baseUrl: provider.baseUrl?.trim() || null,
 							supportsBaseUrl: (provider.baseUrl?.trim().length ?? 0) > 0,
 							env: provider.env,
+							capabilities: provider.capabilities,
+							modelsSourceUrl: provider.modelsSourceUrl?.trim() || null,
+							headers: provider.headers,
+							timeoutMs: provider.timeoutMs,
 						}))
 						.sort((left, right) => {
 							if (left.id === "cline") {

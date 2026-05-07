@@ -22,9 +22,21 @@ import type {
 } from "@/hooks/use-runtime-settings-cline-controller";
 import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
-import type { RuntimeClineMcpServer, RuntimeClineReasoningEffort } from "@/runtime/types";
+import type {
+	RuntimeClineMcpServer,
+	RuntimeClineProviderCapability,
+	RuntimeClineReasoningEffort,
+} from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { useCopyToClipboard } from "@/utils/react-use";
+
+const EDITABLE_PROVIDER_CAPABILITIES = new Set<RuntimeClineProviderCapability>([
+	"streaming",
+	"tools",
+	"reasoning",
+	"vision",
+	"prompt-cache",
+]);
 
 function formatExpiry(value: string): string {
 	const trimmed = value.trim();
@@ -47,6 +59,18 @@ function formatExpiry(value: string): string {
 	}
 
 	return trimmed;
+}
+
+function normalizeProviderCapabilities(
+	values: readonly string[] | undefined,
+): RuntimeClineProviderCapability[] | undefined {
+	if (values === undefined) {
+		return undefined;
+	}
+	const capabilities = values?.filter((value): value is RuntimeClineProviderCapability =>
+		EDITABLE_PROVIDER_CAPABILITIES.has(value as RuntimeClineProviderCapability),
+	);
+	return capabilities ?? [];
 }
 
 export function ClineSetupSection({
@@ -151,7 +175,10 @@ export function ClineSetupSection({
 		() => clineProviderOptions.find((option) => option.value === controller.providerId) ?? null,
 		[clineProviderOptions, controller.providerId],
 	);
-	const canEditSelectedProvider = controller.providerId.trim().length > 0 && !controller.isOauthProviderSelected;
+	const canEditSelectedProvider =
+		controller.providerId.trim().length > 0 &&
+		!controller.isOauthProviderSelected &&
+		(selectedProvider?.custom === true || selectedProvider?.client === "openai-compatible");
 	const selectedProviderEditInitialValues = useMemo((): ClineProviderDialogInitialValues | null => {
 		if (!canEditSelectedProvider) {
 			return null;
@@ -165,8 +192,12 @@ export function ClineSetupSection({
 			providerId: selectedProvider?.id ?? fallbackProviderId,
 			name: selectedProvider?.name ?? fallbackProviderName,
 			baseUrl: controller.baseUrl.trim() || selectedProvider?.baseUrl?.trim() || "",
+			modelsSourceUrl: selectedProvider?.modelsSourceUrl?.trim() || "",
 			models: normalizedModelIds,
 			defaultModelId: controller.modelId.trim() || selectedProvider?.defaultModelId?.trim() || "",
+			timeoutMs: selectedProvider?.timeoutMs ?? null,
+			headers: selectedProvider?.headers,
+			capabilities: normalizeProviderCapabilities(selectedProvider?.capabilities),
 		};
 	}, [
 		canEditSelectedProvider,

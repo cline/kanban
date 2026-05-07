@@ -200,4 +200,28 @@ describe("ClineAddProviderDialog", () => {
 			}),
 		);
 	});
+
+	it("does not replace explicit empty edit capabilities with add-mode defaults", async () => {
+		await act(async () => {
+			root.render(
+				<ClineAddProviderDialog
+					open={true}
+					onOpenChange={() => {}}
+					existingProviderIds={["litellm"]}
+					mode="edit"
+					initialValues={{
+						providerId: "litellm",
+						name: "LiteLLM",
+						baseUrl: "http://localhost:4000/v1",
+						models: ["gpt-5.4"],
+						capabilities: [],
+					}}
+					onSubmit={async () => ({ ok: true })}
+				/>,
+			);
+		});
+
+		expect(findButtonByText(document.body, "streaming")?.getAttribute("aria-pressed")).toBe("false");
+		expect(findButtonByText(document.body, "tools")?.getAttribute("aria-pressed")).toBe("false");
+	});
 });

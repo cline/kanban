@@ -74,7 +74,7 @@ function createInitialFormState(initialValues?: ClineProviderDialogInitialValues
 		defaultModelId: initialValues?.defaultModelId?.trim() || initialModels[0] || "",
 		timeoutMs: initialValues?.timeoutMs ? String(initialValues.timeoutMs) : "",
 		headers: initialHeaders,
-		capabilities: initialValues?.capabilities?.length ? initialValues.capabilities : ["streaming", "tools"],
+		capabilities: initialValues?.capabilities !== undefined ? initialValues.capabilities : ["streaming", "tools"],
 	};
 }
 
