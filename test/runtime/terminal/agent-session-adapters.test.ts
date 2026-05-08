@@ -606,6 +606,36 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(clineLaunch.args).toContain("--continue");
 	});
 
+	it("places Codex hook config before the resume subcommand", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-resume-hooks",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+			workspaceId: "workspace-1",
+		});
+
+		const resumeIndex = launch.args.indexOf("resume");
+		expect(resumeIndex).toBeGreaterThan(0);
+		for (const key of [
+			"features.hooks",
+			"hooks.state",
+			"hooks.UserPromptSubmit",
+			"hooks.Stop",
+			"hooks.PermissionRequest",
+			"hooks.PreToolUse",
+			"hooks.PostToolUse",
+		]) {
+			const configIndex = launch.args.findIndex((arg) => arg.startsWith(`${key}=`));
+			expect(configIndex).toBeGreaterThan(-1);
+			expect(configIndex).toBeLessThan(resumeIndex);
+		}
+	});
+
 	it("applies autonomous mode flags in adapters for non-droid CLIs", async () => {
 		setupTempHome();
 

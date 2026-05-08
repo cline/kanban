@@ -44,15 +44,16 @@ export function hasCodexConfigOverride(args: string[], key: string): boolean {
 	return false;
 }
 
-function addCodexConfigOverride(args: string[], key: string, value: string): void {
+function findCodexConfigOverrideInsertIndex(args: string[]): number {
+	const subcommandIndex = args.findIndex((arg) => arg === "resume" || arg === "fork");
+	return subcommandIndex === -1 ? args.length : subcommandIndex;
+}
+
+function addCodexConfigOverrideBeforeSubcommand(args: string[], key: string, value: string): void {
 	if (hasCodexConfigOverride(args, key)) {
 		return;
 	}
-	args.push("-c", `${key}=${value}`);
-}
-
-function prependCodexConfigOverride(args: string[], key: string, value: string): void {
-	args.unshift("-c", `${key}=${value}`);
+	args.splice(findCodexConfigOverrideInsertIndex(args), 0, "-c", `${key}=${value}`);
 }
 
 function buildCodexHookCommand(event: RuntimeHookEvent): string {
@@ -168,21 +169,25 @@ export function configureCodexHooks(args: string[]): void {
 		),
 	);
 
-	addCodexConfigOverride(args, "features.hooks", "true");
-	prependCodexConfigOverride(args, "hooks.state", trustStateConfigValue);
-	addCodexConfigOverride(args, "hooks.UserPromptSubmit", buildCodexHookConfigValue(inProgressHook.command));
-	addCodexConfigOverride(args, "hooks.Stop", buildCodexHookConfigValue(reviewHook.command));
-	addCodexConfigOverride(
+	addCodexConfigOverrideBeforeSubcommand(args, "features.hooks", "true");
+	addCodexConfigOverrideBeforeSubcommand(args, "hooks.state", trustStateConfigValue);
+	addCodexConfigOverrideBeforeSubcommand(
+		args,
+		"hooks.UserPromptSubmit",
+		buildCodexHookConfigValue(inProgressHook.command),
+	);
+	addCodexConfigOverrideBeforeSubcommand(args, "hooks.Stop", buildCodexHookConfigValue(reviewHook.command));
+	addCodexConfigOverrideBeforeSubcommand(
 		args,
 		"hooks.PermissionRequest",
 		buildCodexHookConfigValue(permissionRequestHook.command, permissionRequestHook.matcher),
 	);
-	addCodexConfigOverride(
+	addCodexConfigOverrideBeforeSubcommand(
 		args,
 		"hooks.PreToolUse",
 		buildCodexHookConfigValue(preToolUseActivityHook.command, preToolUseActivityHook.matcher),
 	);
-	addCodexConfigOverride(
+	addCodexConfigOverrideBeforeSubcommand(
 		args,
 		"hooks.PostToolUse",
 		buildCodexHookConfigValue(postToolUseActivityHook.command, postToolUseActivityHook.matcher),
