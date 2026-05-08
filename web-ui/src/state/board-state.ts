@@ -628,25 +628,25 @@ export function applyTaskDetailClineSettingsChange(
 		return { board, updated: false };
 	}
 
-	const hasExplicitTaskAgentSettings =
-		selection.card.agentId === "cline" || selection.card.clineSettings !== undefined;
-	if (!hasExplicitTaskAgentSettings) {
-		return { board, updated: false };
-	}
-
 	const nextTaskProviderId = change.providerId.trim() || defaults.providerId?.trim() || "";
 	const nextTaskModelId = change.modelId.trim() || defaults.modelId?.trim() || "";
 	if (!nextTaskProviderId || !nextTaskModelId) {
 		return { board, updated: false };
 	}
 
-	return applyTaskDetailClineSettingsSelection(board, taskId, {
+	return updateTask(board, taskId, {
+		prompt: selection.card.prompt,
+		startInPlanMode: selection.card.startInPlanMode,
+		autoReviewEnabled: selection.card.autoReviewEnabled,
+		autoReviewMode: selection.card.autoReviewMode,
+		images: selection.card.images,
 		agentId: "cline",
 		clineSettings: {
 			providerId: nextTaskProviderId,
 			modelId: nextTaskModelId,
 			...(change.reasoningEffort ? { reasoningEffort: change.reasoningEffort } : {}),
 		},
+		baseRef: selection.card.baseRef,
 	});
 }
 

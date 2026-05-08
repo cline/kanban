@@ -214,6 +214,18 @@ function getInitialTaskModelId(
 	return effectiveProviderSettings.modelId ?? "";
 }
 
+function getComparableModelId(
+	providers: RuntimeClineProviderCatalogItem[],
+	providerId: string,
+	modelId: string | null | undefined,
+): string {
+	const normalizedModelId = modelId?.trim() ?? "";
+	if (normalizedModelId.length > 0) {
+		return normalizedModelId;
+	}
+	return getDefaultModelIdForProvider(providers, providerId);
+}
+
 function getResetModelId(
 	configProviderSettings: RuntimeClineProviderSettings,
 	taskClineSettings?: RuntimeTaskClineSettings,
@@ -280,6 +292,8 @@ export function useRuntimeSettingsClineController(
 	const initialReasoningEffort = hasTaskClineSettingsOverride
 		? (taskClineSettings?.reasoningEffort ?? "")
 		: (effectiveProviderSettings?.reasoningEffort ?? "");
+	const comparableInitialModelId = getComparableModelId(providerCatalog, initialProviderId, initialModelId);
+	const comparableCurrentModelId = getComparableModelId(providerCatalog, providerId, modelId);
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	const managedOauthProvider = toManagedClineOauthProvider(normalizedProviderId);
 	const isOauthProviderSelected = managedOauthProvider !== null;
@@ -316,7 +330,7 @@ export function useRuntimeSettingsClineController(
 		if (providerId.trim() !== initialProviderId.trim()) {
 			return true;
 		}
-		if (modelId.trim() !== initialModelId.trim()) {
+		if (comparableCurrentModelId !== comparableInitialModelId) {
 			return true;
 		}
 		if (baseUrl.trim() !== initialBaseUrl.trim()) {
@@ -351,11 +365,11 @@ export function useRuntimeSettingsClineController(
 		config,
 		gcpProjectId,
 		gcpRegion,
+		comparableCurrentModelId,
+		comparableInitialModelId,
 		initialBaseUrl,
-		initialModelId,
 		initialProviderId,
 		initialReasoningEffort,
-		modelId,
 		providerId,
 		region,
 		reasoningEffort,

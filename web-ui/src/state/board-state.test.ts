@@ -704,6 +704,41 @@ describe("board dependency state", () => {
 		expect(unchangedTask?.clineSettings).toBeUndefined();
 	});
 
+	it("materializes task model overrides for inherited tasks when saving chat picker changes", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task inheriting workspace Cline settings",
+			baseRef: "main",
+		});
+		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(task).toBeDefined();
+		if (!task) {
+			throw new Error("Expected backlog task to exist");
+		}
+
+		const result = applyTaskDetailClineSettingsChange(
+			board,
+			task.id,
+			{
+				providerId: "anthropic",
+				modelId: "anthropic/claude-opus-4.6",
+				reasoningEffort: "",
+			},
+			{
+				providerId: "anthropic",
+				modelId: "anthropic/claude-sonnet-4.6",
+			},
+		);
+
+		expect(result.updated).toBe(true);
+		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
+		expect(updatedTask?.agentId).toBe("cline");
+		expect(updatedTask?.clineSettings).toEqual({
+			providerId: "anthropic",
+			modelId: "anthropic/claude-opus-4.6",
+		});
+	});
+
 	it("updates task model overrides when the task already has explicit task-level settings", () => {
 		let board = createInitialBoardData();
 		board = addTaskToColumn(board, "backlog", {
