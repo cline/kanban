@@ -35,8 +35,8 @@ import {
 	resolveProviderConfig,
 	completeClineDeviceAuth as sdkCompleteClineDeviceAuth,
 	startClineDeviceAuth as sdkStartClineDeviceAuth,
-	type Tool,
 } from "@clinebot/core";
+import type { AgentTool } from "@clinebot/shared";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<ProviderSettings["reasoning"]>["effort"]>;
@@ -136,7 +136,7 @@ type LocalModelsFile = {
 	>;
 };
 
-export type SdkMcpTool = Tool;
+export type SdkMcpTool = AgentTool;
 
 export interface SdkMcpServerRegistration {
 	name: string;

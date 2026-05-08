@@ -107,11 +107,6 @@ describe("InMemoryClineSessionRuntime", () => {
 			expect.objectContaining({
 				config: expect.objectContaining({
 					disableMcpSettingsTools: true,
-					extraTools: expect.arrayContaining([
-						expect.objectContaining({
-							name: "mock__echo",
-						}),
-					]),
 				}),
 				localRuntime: expect.objectContaining({
 					modelCatalogDefaults: {
@@ -119,6 +114,11 @@ describe("InMemoryClineSessionRuntime", () => {
 						loadPrivateOnAuth: true,
 						failOnError: false,
 					},
+					extraTools: expect.arrayContaining([
+						expect.objectContaining({
+							name: "mock__echo",
+						}),
+					]),
 				}),
 			}),
 		);
@@ -424,7 +424,7 @@ describe("InMemoryClineSessionRuntime", () => {
 		expect(requestedSessionId).not.toBe("resolved-session-1");
 		expect(fakeHost.start).toHaveBeenCalledWith(
 			expect.objectContaining({
-				config: expect.objectContaining({
+				localRuntime: expect.objectContaining({
 					logger: expect.objectContaining({
 						debug: expect.any(Function),
 						log: expect.any(Function),

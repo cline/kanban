@@ -143,7 +143,7 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 					apiKey: request.apiKey,
 					baseUrl: request.baseUrl,
 					systemPrompt: request.systemPrompt,
-					userInstructionWatcher: request.userInstructionWatcher,
+					userInstructionService: request.userInstructionService,
 					requestToolApproval: request.requestToolApproval,
 				});
 				bindTaskSession(request.taskId, requestedSessionId);
@@ -300,15 +300,28 @@ function createFakeRuntimeSetup(): FakeRuntimeSetupController {
 		reason: "approved in test",
 	}));
 	const disposeMock = vi.fn(async () => {});
-	const refreshAllMock = vi.fn(async () => {});
-	const getSnapshotMock = vi.fn((_type: string) => new Map());
+	const refreshTypeMock = vi.fn(async () => {});
+	const listRecordsMock = vi.fn(() => []);
+	const listRuntimeCommandsMock = vi.fn(() => []);
+	const resolveRuntimeSlashCommandMock = vi.fn((prompt: string) => prompt);
+	const hasConfiguredSkillsMock = vi.fn(() => false);
+	const createExtensionMock = vi.fn(() => ({
+		name: "test-user-instructions",
+		manifest: { capabilities: ["rules"] },
+	}));
 
 	return {
 		setup: {
-			watcher: {
-				refreshAll: refreshAllMock,
-				getSnapshot: getSnapshotMock,
-			} as unknown as ClineRuntimeSetup["watcher"],
+			userInstructionService: {
+				start: vi.fn(async () => {}),
+				stop: vi.fn(() => {}),
+				refreshType: refreshTypeMock,
+				listRecords: listRecordsMock,
+				listRuntimeCommands: listRuntimeCommandsMock,
+				resolveRuntimeSlashCommand: resolveRuntimeSlashCommandMock,
+				hasConfiguredSkills: hasConfiguredSkillsMock,
+				createExtension: createExtensionMock,
+			} as unknown as ClineRuntimeSetup["userInstructionService"],
 			resolvePrompt: resolvePromptMock,
 			loadRules: loadRulesMock,
 			requestToolApproval: requestToolApprovalMock,
@@ -1021,7 +1034,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
 				prompt: "resolved:/fix issue",
-				userInstructionWatcher: runtimeSetup.setup.watcher,
+				userInstructionService: runtimeSetup.setup.userInstructionService,
 				requestToolApproval: runtimeSetup.setup.requestToolApproval,
 				systemPrompt: expect.stringContaining("Workspace rule"),
 			}),
@@ -1228,6 +1241,33 @@ describe("InMemoryClineTaskSessionService", () => {
 			.map((message) => message.content);
 
 		expect(assistantMessages).toEqual(["Hello world"]);
+	});
+
+	it("shows assistant text when the SDK only emits the full response at content_end", async () => {
+		const { service, runtime } = createTrackedService();
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "",
+		});
+
+		const sessionId = await waitForTaskSessionId(runtime, "task-1");
+
+		runtime.emitAgentEvent(sessionId, {
+			type: "content_end",
+			contentType: "text",
+			text: "Here is the complete response.",
+		});
+
+		const assistantMessages = service
+			.listMessages("task-1")
+			.filter((message) => message.role === "assistant")
+			.map((message) => message.content);
+		const summary = service.getSummary("task-1");
+
+		expect(assistantMessages).toEqual(["Here is the complete response."]);
+		expect(summary?.latestHookActivity?.activityText).toBe("Here is the complete response.");
+		expect(summary?.latestHookActivity?.finalMessage).toBe("Here is the complete response.");
 	});
 
 	it("streams reasoning and tool lifecycle messages with stable ids", async () => {

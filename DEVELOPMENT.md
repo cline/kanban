@@ -201,6 +201,10 @@ How it works end to end:
 
 Current agent mappings:
 
+These are external agent/file-hook names where the agent config requires them.
+They are distinct from Cline SDK plugin runtime hooks such as `beforeRun`,
+`beforeTool`, `afterTool`, and `afterRun`.
+
 - Claude
   - `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure` emit `to_in_progress`
   - `Stop`, `PermissionRequest`, and `Notification` with `permission_prompt` emit `to_review`
