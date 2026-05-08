@@ -9,6 +9,7 @@ import {
 	parseProtocolUrl,
 	registerProtocol,
 } from "./protocol-handler.js";
+import { createRuntimeAutoUpdate } from "./runtime-auto-update.js";
 import { RuntimeOrchestrator } from "./runtime-orchestrator.js";
 import { WindowFactory } from "./window-factory.js";
 import { WindowRegistry } from "./window-registry.js";
@@ -34,11 +35,21 @@ let isQuitting = false;
 
 const registry = new WindowRegistry();
 
+const autoUpdate = createRuntimeAutoUpdate({
+	isPackaged: app.isPackaged,
+	userData: app.getPath("userData"),
+	resourcesPath: process.resourcesPath,
+	shellVersion: app.getVersion(),
+	broadcast: broadcastToAllRenderers,
+});
+
 const orchestrator = new RuntimeOrchestrator({
 	host: DEFAULT_HOST,
 	port: DEFAULT_PORT,
 	healthTimeoutMs: HEALTH_TIMEOUT_MS,
 	resolveCliShimPath,
+	resolveCliEntryOverride: autoUpdate?.resolveCliEntryOverride,
+	onCliEntryOverrideFailed: autoUpdate?.onCliEntryOverrideFailed,
 });
 
 const windowFactory = new WindowFactory({
@@ -82,6 +93,27 @@ orchestrator.on("url-changed", (url) => {
 	menu.rebuild();
 });
 orchestrator.on("crashed", () => windowFactory.showDisconnectedScreen());
+
+/**
+ * Fan an IPC notification out to every renderer. Update banners are
+ * global facts and should appear regardless of focused window. Uses
+ * `BrowserWindow.getAllWindows()` (not the registry) so transient
+ * windows like the OAuth popup are also covered. Best-effort: a
+ * destroyed-but-not-reaped window can throw synchronously.
+ */
+function broadcastToAllRenderers(channel: string, ...args: unknown[]): void {
+	for (const win of BrowserWindow.getAllWindows()) {
+		if (win.isDestroyed()) continue;
+		try {
+			win.webContents.send(channel, ...args);
+		} catch (err) {
+			console.warn(
+				`[desktop] IPC broadcast on ${channel} failed for one window:`,
+				err instanceof Error ? err.message : err,
+			);
+		}
+	}
+}
 
 function handleProtocolUrl(raw: string): void {
 	const parsed = parseProtocolUrl(raw);
@@ -264,6 +296,8 @@ function wireAppLifecycle(): void {
 			windowFactory.showDisconnectedScreen();
 		}
 
+		// Background runtime-update checks. Packaged-only.
+		autoUpdate?.scheduleChecks();
 	});
 
 	app.on("window-all-closed", () => {
@@ -286,6 +320,11 @@ function wireAppLifecycle(): void {
 		// kill any post-teardown spawn.
 		event.preventDefault();
 		try {
+			// Stop the update timers before shutdown so a check can't
+			// fire mid-teardown. Any extract already past pacote.extract
+			// finishes cleanly and writes the pointer; an earlier-stage
+			// one gets dropped — its `<v>.partial/` is swept next boot.
+			autoUpdate?.stop();
 			await orchestrator.shutdown();
 		} catch (err) {
 			console.error(

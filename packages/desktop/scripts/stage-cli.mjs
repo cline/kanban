@@ -5,7 +5,7 @@
  * was skipped.
  */
 
-import { cpSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,9 @@ const distDir = resolve(repoRoot, "dist");
 const webUiIndex = resolve(distDir, "web-ui/index.html");
 const cliEntry = resolve(distDir, "cli.js");
 const stageDir = resolve(desktopRoot, "cli");
+const runtimeVersion = JSON.parse(
+	readFileSync(resolve(repoRoot, "package.json"), "utf8"),
+).version;
 
 function fail(message) {
 	console.error(`\n[stage:cli] ERROR: ${message}\n`);
@@ -47,9 +50,12 @@ cpSync(distDir, stageDir, { recursive: true });
 // `import` statement at module top. Drop a minimal package.json next to
 // the staged cli.js so Node treats it as ESM regardless of what lives
 // further up the tree.
+// Embed the runtime's version next to the staged cli.js so the desktop
+// shell can read the actual bundled-runtime version at boot (separate
+// from `app.getVersion()`, which returns the Electron shell version).
 writeFileSync(
 	resolve(stageDir, "package.json"),
-	`${JSON.stringify({ type: "module" }, null, 2)}\n`,
+	`${JSON.stringify({ type: "module", version: runtimeVersion }, null, 2)}\n`,
 );
 
-console.log(`[stage:cli] Staged ${distDir} → ${stageDir}`);
+console.log(`[stage:cli] Staged ${distDir} → ${stageDir} (runtime ${runtimeVersion})`);
