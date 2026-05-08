@@ -240,6 +240,50 @@ describe("RuntimeChildManager", () => {
 			expect(options.env.NODE_OPTIONS).not.toContain("4096");
 		});
 
+		// `cliEntryOverride` is forwarded to the child env as
+		// `KANBAN_CLI_OVERRIDE` for the shim to pick up.
+		it("forwards cliEntryOverride to the child env as KANBAN_CLI_OVERRIDE", async () => {
+			const spawnSpy = createSpawnFn(mockChild);
+			manager = new RuntimeChildManager({
+				cliPath: CLI_PATH,
+				spawnFn: spawnSpy,
+				cliEntryOverride: "/some/abs/path/cli.js",
+			});
+			await manager.start(TEST_CONFIG);
+
+			const spawnCall = (spawnSpy as ReturnType<typeof vi.fn>).mock.calls[0];
+			const options = spawnCall[2] as { env: NodeJS.ProcessEnv };
+			expect(options.env.KANBAN_CLI_OVERRIDE).toBe("/some/abs/path/cli.js");
+		});
+
+		it("does not set KANBAN_CLI_OVERRIDE when override is omitted", async () => {
+			const spawnSpy = createSpawnFn(mockChild);
+			manager = new RuntimeChildManager({
+				cliPath: CLI_PATH,
+				spawnFn: spawnSpy,
+			});
+			await manager.start(TEST_CONFIG);
+
+			const spawnCall = (spawnSpy as ReturnType<typeof vi.fn>).mock.calls[0];
+			const options = spawnCall[2] as { env: NodeJS.ProcessEnv };
+			expect(options.env.KANBAN_CLI_OVERRIDE).toBeUndefined();
+		});
+
+		it("treats an empty string cliEntryOverride as 'no override'", async () => {
+			// Optional-chained callers can surface "" instead of undefined.
+			const spawnSpy = createSpawnFn(mockChild);
+			manager = new RuntimeChildManager({
+				cliPath: CLI_PATH,
+				spawnFn: spawnSpy,
+				cliEntryOverride: "",
+			});
+			await manager.start(TEST_CONFIG);
+
+			const spawnCall = (spawnSpy as ReturnType<typeof vi.fn>).mock.calls[0];
+			const options = spawnCall[2] as { env: NodeJS.ProcessEnv };
+			expect(options.env.KANBAN_CLI_OVERRIDE).toBeUndefined();
+		});
+
 		// Platform-aware spawn options — pinned because regressing either
 		// one breaks a specific failure mode:
 		//   - POSIX `detached: true`  : required so treeKill(-pid) walks PTYs

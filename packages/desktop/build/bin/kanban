@@ -14,6 +14,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESOURCES_DIR="$(dirname "$SCRIPT_DIR")"
 CLI_ENTRY="$RESOURCES_DIR/app.asar.unpacked/cli/cli.js"
 
+# Runtime-update override. The desktop orchestrator pre-validates the
+# path; we fail loudly on a missing file rather than silently falling
+# back, so the parent's rollback bookkeeping stays in sync with what
+# actually ran.
+if [ -n "$KANBAN_CLI_OVERRIDE" ]; then
+  if [ ! -f "$KANBAN_CLI_OVERRIDE" ]; then
+    echo "error: KANBAN_CLI_OVERRIDE points to missing file: $KANBAN_CLI_OVERRIDE" >&2
+    exit 1
+  fi
+  CLI_ENTRY="$KANBAN_CLI_OVERRIDE"
+fi
+
 if [ ! -f "$CLI_ENTRY" ]; then
   echo "error: Kanban CLI not found at $CLI_ENTRY" >&2
   exit 1
