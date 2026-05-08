@@ -198,6 +198,36 @@ function getDefaultModelIdForProvider(providers: RuntimeClineProviderCatalogItem
 	);
 }
 
+function getInitialTaskModelId(
+	providerCatalog: RuntimeClineProviderCatalogItem[],
+	effectiveProviderSettings: RuntimeClineProviderSettings,
+	taskClineSettings?: RuntimeTaskClineSettings,
+): string {
+	const taskModelId = taskClineSettings?.modelId?.trim();
+	if (taskModelId) {
+		return taskModelId;
+	}
+	const taskProviderId = taskClineSettings?.providerId?.trim();
+	if (taskProviderId) {
+		return getDefaultModelIdForProvider(providerCatalog, taskProviderId);
+	}
+	return effectiveProviderSettings.modelId ?? "";
+}
+
+function getResetModelId(
+	configProviderSettings: RuntimeClineProviderSettings,
+	taskClineSettings?: RuntimeTaskClineSettings,
+): string {
+	const taskModelId = taskClineSettings?.modelId?.trim();
+	if (taskModelId) {
+		return taskModelId;
+	}
+	if (taskClineSettings?.providerId?.trim()) {
+		return "";
+	}
+	return configProviderSettings.modelId ?? "";
+}
+
 export function useRuntimeSettingsClineController(
 	options: UseRuntimeSettingsClineControllerOptions,
 ): UseRuntimeSettingsClineControllerResult {
@@ -237,7 +267,11 @@ export function useRuntimeSettingsClineController(
 		effectiveProviderSettings?.providerId ||
 		effectiveProviderSettings?.oauthProvider ||
 		"";
-	const initialModelId = taskClineSettings?.modelId || effectiveProviderSettings?.modelId || "";
+	const initialModelId = getInitialTaskModelId(
+		providerCatalog,
+		effectiveProviderSettings ?? getRuntimeClineProviderSettings(null),
+		taskClineSettings,
+	);
 	const initialBaseUrl = resolveBaseUrlForProvider(
 		providerCatalog,
 		initialProviderId,
@@ -335,7 +369,7 @@ export function useRuntimeSettingsClineController(
 			taskClineSettings?.providerId ||
 			(configProviderSettings.providerId ?? configProviderSettings.oauthProvider ?? "");
 		setProviderId(nextProviderId);
-		setModelId(taskClineSettings?.modelId || (configProviderSettings.modelId ?? ""));
+		setModelId(getResetModelId(configProviderSettings, taskClineSettings));
 		setApiKey("");
 		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, configProviderSettings.baseUrl));
 		setRegion("");

@@ -829,6 +829,79 @@ describe("board dependency state", () => {
 		});
 	});
 
+	it("keeps task-level provider and model changes isolated across tasks", () => {
+		let board = createInitialBoardData();
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task using Anthropic",
+			agentId: "cline",
+			clineSettings: {
+				providerId: "anthropic",
+				modelId: "anthropic/claude-sonnet-4.6",
+			},
+			baseRef: "main",
+		});
+		board = addTaskToColumn(board, "backlog", {
+			prompt: "Task using Groq",
+			agentId: "cline",
+			clineSettings: {
+				providerId: "groq",
+				modelId: "groq/llama-3.3-70b-versatile",
+			},
+			baseRef: "main",
+		});
+
+		const [anthropicTask, groqTask] = board.columns.find((column) => column.id === "backlog")?.cards ?? [];
+		expect(anthropicTask).toBeDefined();
+		expect(groqTask).toBeDefined();
+		if (!anthropicTask || !groqTask) {
+			throw new Error("Expected both backlog tasks to exist");
+		}
+
+		const anthropicUpdate = applyTaskDetailClineSettingsChange(
+			board,
+			anthropicTask.id,
+			{
+				providerId: "anthropic",
+				modelId: "anthropic/claude-opus-4.7",
+				reasoningEffort: "",
+			},
+			{
+				providerId: "anthropic",
+				modelId: "anthropic/claude-sonnet-4.6",
+			},
+		);
+		expect(anthropicUpdate.updated).toBe(true);
+
+		const groqUpdate = applyTaskDetailClineSettingsChange(
+			anthropicUpdate.board,
+			groqTask.id,
+			{
+				providerId: "groq",
+				modelId: "groq/llama-4-maverick",
+				reasoningEffort: "medium",
+			},
+			{
+				providerId: "anthropic",
+				modelId: "anthropic/claude-sonnet-4.6",
+			},
+		);
+		expect(groqUpdate.updated).toBe(true);
+
+		const updatedBacklogTasks = groqUpdate.board.columns.find((column) => column.id === "backlog")?.cards ?? [];
+		const updatedAnthropicTask = updatedBacklogTasks.find((task) => task.id === anthropicTask.id);
+		const updatedGroqTask = updatedBacklogTasks.find((task) => task.id === groqTask.id);
+
+		expect(updatedAnthropicTask?.clineSettings).toEqual({
+			providerId: "anthropic",
+			modelId: "anthropic/claude-opus-4.7",
+		});
+		expect(updatedGroqTask?.clineSettings).toEqual({
+			providerId: "groq",
+			modelId: "groq/llama-4-maverick",
+			reasoningEffort: "medium",
+		});
+	});
+
 	it("keeps tasks pinned to cline when the global selected agent is different", () => {
 		let board = createInitialBoardData();
 		board = addTaskToColumn(board, "backlog", {
