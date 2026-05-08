@@ -23,6 +23,7 @@
 	"devDependencies": {
 		"@electron/notarize": "^3.0.0",
 		"@types/node": "^22.10.5",
+		"@types/pacote": "^11.1.8",
 		"@types/semver": "^7.5.8",
 		"electron": "^41.5.0",
 		"electron-builder": "^26.8.1",
@@ -33,6 +34,7 @@
 	},
 	"dependencies": {
 		"node-pty": "^1.2.0-beta.11",
+		"pacote": "^21.5.0",
 		"semver": "^7.6.3"
 	}
 }
