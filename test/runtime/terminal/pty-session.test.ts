@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,6 +87,7 @@ describe("PtySession", () => {
 	it("launches through cmd shell on Windows", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATH = "";
 		const ptyProcess = createMockPtyProcess();
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 
@@ -111,6 +112,7 @@ describe("PtySession", () => {
 	it("does not over-quote bare executables on Windows", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATH = "";
 		const ptyProcess = createMockPtyProcess();
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 
@@ -162,6 +164,7 @@ describe("PtySession", () => {
 	it("preserves full prompt text on Windows", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATH = "";
 		const ptyProcess = createMockPtyProcess();
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 
@@ -182,6 +185,40 @@ describe("PtySession", () => {
 		expect(cmdArgs).toContain("file\\nwith^");
 		expect(cmdArgs).toContain("more^");
 		expect(cmdArgs).toContain("context");
+	});
+
+	it("launches npm .cmd shims through their target executable on Windows", () => {
+		setPlatform("win32");
+		const windowsBinDir = mkdtempSync(join(tmpdir(), "kanban-win-shim-"));
+		const target = join(windowsBinDir, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
+		mkdirSync(join(windowsBinDir, "node_modules", "@anthropic-ai", "claude-code", "bin"), { recursive: true });
+		writeFileSync(
+			join(windowsBinDir, "claude.cmd"),
+			'@ECHO off\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe" %*',
+		);
+		writeFileSync(target, "");
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		try {
+			PtySession.spawn({
+				binary: "claude",
+				args: ["--append-system-prompt", "x".repeat(9000)],
+				cwd: "C:/repo",
+				env: {
+					PATH: windowsBinDir,
+					PATHEXT: ".com;.exe;.bat;.cmd",
+				},
+				cols: 120,
+				rows: 40,
+			});
+		} finally {
+			rmSync(windowsBinDir, { recursive: true, force: true });
+		}
+
+		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
+		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe(target);
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual(["--append-system-prompt", "x".repeat(9000)]);
 	});
 
 	it("does not use cmd shell outside Windows", () => {
