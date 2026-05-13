@@ -9,6 +9,7 @@ import {
 	getKanbanRuntimePort,
 	getRuntimeFetch,
 	isKanbanRuntimeHttps,
+	isKanbanWildcardHost,
 	parseRuntimePort,
 	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
@@ -103,5 +104,27 @@ describe("runtime-endpoint", () => {
 			ca: "test-cert",
 		});
 		expect(await getRuntimeFetch()).not.toBe(globalThis.fetch);
+	});
+});
+
+describe("isKanbanWildcardHost", () => {
+	it("returns true for 0.0.0.0", () => {
+		setKanbanRuntimeHost("0.0.0.0");
+		expect(isKanbanWildcardHost()).toBe(true);
+	});
+
+	it("returns true for ::", () => {
+		setKanbanRuntimeHost("::");
+		expect(isKanbanWildcardHost()).toBe(true);
+	});
+
+	it("returns false for 127.0.0.1", () => {
+		setKanbanRuntimeHost("127.0.0.1");
+		expect(isKanbanWildcardHost()).toBe(false);
+	});
+
+	it("returns false for 192.168.1.100", () => {
+		setKanbanRuntimeHost("192.168.1.100");
+		expect(isKanbanWildcardHost()).toBe(false);
 	});
 });
