@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
+import type { RuntimeTaskHookActivity, RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 import type { TerminalSessionManager } from "../../../src/terminal/session-manager";
 import { createHooksApi } from "../../../src/trpc/hooks-api";
 
@@ -20,6 +20,30 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		latestHookActivity: null,
 		...overrides,
 	};
+}
+
+function createHookActivity(overrides: Partial<RuntimeTaskHookActivity> = {}): RuntimeTaskHookActivity {
+	return {
+		activityText: null,
+		toolName: null,
+		toolInputSummary: null,
+		finalMessage: null,
+		hookEventName: null,
+		notificationType: null,
+		source: null,
+		...overrides,
+	};
+}
+
+function createAwaitingReviewSummary(
+	reviewReason: RuntimeTaskSessionSummary["reviewReason"],
+	hookEventName: string | null,
+): RuntimeTaskSessionSummary {
+	return createSummary({
+		state: "awaiting_review",
+		reviewReason,
+		latestHookActivity: hookEventName !== null ? createHookActivity({ hookEventName }) : null,
+	});
 }
 
 describe("createHooksApi", () => {
@@ -143,6 +167,91 @@ describe("createHooksApi", () => {
 		expect(deleteTaskTurnCheckpointRef).toHaveBeenCalledWith({
 			cwd: "/tmp/worktree",
 			ref: "refs/kanban/checkpoints/task-1/turn/1",
+		});
+	});
+
+	describe("to_in_progress guard for hook-triggered reviews", () => {
+		function makeManager(summary: RuntimeTaskSessionSummary) {
+			return {
+				getSummary: vi.fn(() => summary),
+				transitionToReview: vi.fn(),
+				transitionToRunning: vi.fn(() => summary),
+				applyHookActivity: vi.fn(),
+			} as unknown as TerminalSessionManager;
+		}
+
+		async function ingestToInProgress(summary: RuntimeTaskSessionSummary) {
+			const manager = makeManager(summary);
+			const api = createHooksApi({
+				getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+				ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+				broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+				broadcastTaskReadyForReview: vi.fn(),
+			});
+
+			const response = await api.ingest({
+				taskId: "task-1",
+				workspaceId: "workspace-1",
+				event: "to_in_progress",
+			});
+
+			return { response, manager };
+		}
+
+		it("blocks to_in_progress when reviewReason=hook and latestHookActivity.hookEventName=TaskComplete", async () => {
+			const summary = createAwaitingReviewSummary("hook", "TaskComplete");
+			const { response, manager } = await ingestToInProgress(summary);
+			expect(response).toEqual({ ok: true });
+			expect(manager.transitionToRunning).not.toHaveBeenCalled();
+		});
+
+		it("blocks to_in_progress when reviewReason=hook and latestHookActivity.hookEventName=stop", async () => {
+			const summary = createAwaitingReviewSummary("hook", "stop");
+			const { response, manager } = await ingestToInProgress(summary);
+			expect(response).toEqual({ ok: true });
+			expect(manager.transitionToRunning).not.toHaveBeenCalled();
+		});
+
+		it("blocks to_in_progress when reviewReason=hook and latestHookActivity.hookEventName=afteragent", async () => {
+			const summary = createAwaitingReviewSummary("hook", "afteragent");
+			const { response, manager } = await ingestToInProgress(summary);
+			expect(response).toEqual({ ok: true });
+			expect(manager.transitionToRunning).not.toHaveBeenCalled();
+		});
+
+		it("blocks to_in_progress when reviewReason=hook and latestHookActivity.hookEventName=subagentstop", async () => {
+			const summary = createAwaitingReviewSummary("hook", "subagentstop");
+			const { response, manager } = await ingestToInProgress(summary);
+			expect(response).toEqual({ ok: true });
+			expect(manager.transitionToRunning).not.toHaveBeenCalled();
+		});
+
+		it("allows to_in_progress when reviewReason=hook and latestHookActivity.hookEventName=PreToolUse (ask_followup_question)", async () => {
+			const summary = createAwaitingReviewSummary("hook", "PreToolUse");
+			const { response, manager } = await ingestToInProgress(summary);
+			expect(response).toEqual({ ok: true });
+			expect(manager.transitionToRunning).toHaveBeenCalled();
+		});
+
+		it("allows to_in_progress when reviewReason=hook and latestHookActivity=null (backward compat)", async () => {
+			const summary = createAwaitingReviewSummary("hook", null);
+			const { response, manager } = await ingestToInProgress(summary);
+			expect(response).toEqual({ ok: true });
+			expect(manager.transitionToRunning).toHaveBeenCalled();
+		});
+
+		it("allows to_in_progress when reviewReason=attention (user returned)", async () => {
+			const summary = createAwaitingReviewSummary("attention", null);
+			const { response, manager } = await ingestToInProgress(summary);
+			expect(response).toEqual({ ok: true });
+			expect(manager.transitionToRunning).toHaveBeenCalled();
+		});
+
+		it("allows to_in_progress when reviewReason=error (error recovery)", async () => {
+			const summary = createAwaitingReviewSummary("error", null);
+			const { response, manager } = await ingestToInProgress(summary);
+			expect(response).toEqual({ ok: true });
+			expect(manager.transitionToRunning).toHaveBeenCalled();
 		});
 	});
 });

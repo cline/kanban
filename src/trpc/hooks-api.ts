@@ -23,6 +23,8 @@ export interface CreateHooksApiDependencies {
 	deleteTaskTurnCheckpointRef?: (input: { cwd: string; ref: string }) => Promise<void>;
 }
 
+const COMPLETION_HOOK_EVENT_NAMES = new Set(["TaskComplete", "stop", "subagentstop", "afteragent"]);
+
 function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event: RuntimeHookEvent): boolean {
 	if (event === "activity") {
 		return false;
@@ -30,10 +32,27 @@ function canTransitionTaskForHookEvent(summary: RuntimeTaskSessionSummary, event
 	if (event === "to_review") {
 		return summary.state === "running";
 	}
-	return (
-		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
-	);
+	if (summary.state !== "awaiting_review") {
+		return false;
+	}
+
+	// attention/error reviews can always return to running.
+	if (summary.reviewReason === "attention" || summary.reviewReason === "error") {
+		return true;
+	}
+
+	// Hook-triggered reviews: disallow to_in_progress when the hook that
+	// triggered review was a completion event (TaskComplete, stop, etc.).
+	// This prevents auto-commit PreToolUse from flipping completed tasks back to in_progress.
+	if (summary.reviewReason === "hook") {
+		const hookEventName = summary.latestHookActivity?.hookEventName ?? null;
+		if (hookEventName && COMPLETION_HOOK_EVENT_NAMES.has(hookEventName)) {
+			return false;
+		}
+		return true;
+	}
+
+	return false;
 }
 
 export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcContext["hooksApi"] {
