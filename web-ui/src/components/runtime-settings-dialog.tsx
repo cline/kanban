@@ -110,6 +110,8 @@ const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 	{ id: "project", label: "Project", icon: <FolderOpen size={16} /> },
 ];
 
+const SETTINGS_SCROLL_BOTTOM_TOLERANCE_PX = 2;
+
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
 }
@@ -611,7 +613,7 @@ export function RuntimeSettingsDialog({
 			}
 		}
 
-		if (maxScrollTop > 0 && body.scrollTop >= maxScrollTop - 2) {
+		if (maxScrollTop > 0 && body.scrollTop >= maxScrollTop - SETTINGS_SCROLL_BOTTOM_TOLERANCE_PX) {
 			const lastHeading = headings.item(headings.length - 1);
 			const id = lastHeading?.getAttribute("data-settings-section");
 			if (id) current = id as SettingsNavId;
