@@ -30,6 +30,8 @@ const CONTEXT_OVERFLOW_ERROR_PATTERNS = [
 	/reduce.*length.*messages.*completion/i,
 	/tokens?\s*>\s*[\d,]+\s*(maximum|limit)/i,
 	/input tokens?.*(exceed|exceeds).*(limit|maximum|context)/i,
+	/available context size/i,
+	/exceeds?\s*the available context size/i,
 ];
 const CONTEXT_COMPACTION_PREVIEW_CHARS = 300;
 
