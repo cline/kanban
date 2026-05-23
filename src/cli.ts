@@ -395,6 +395,7 @@ async function startServer(): Promise<{
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
+		{ clearPendingUpdateNotification, getPendingUpdateNotification },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
@@ -403,6 +404,7 @@ async function startServer(): Promise<{
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
 		import("./server/workspace-registry.js"),
+		import("./update/update.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	const workspaceRegistry = await createWorkspaceRegistry({
@@ -451,6 +453,46 @@ async function startServer(): Promise<{
 		disposeWorkspace: disposeTrackedWorkspace,
 		collectProjectWorktreeTaskIdsForRemoval,
 		pickDirectoryPathFromSystemDialog,
+		getUpdateStatus: () => {
+			const notification = getPendingUpdateNotification();
+			if (!notification) {
+				return {
+					currentVersion: KANBAN_VERSION,
+					latestVersion: null,
+					updateAvailable: false,
+					updateTiming: null,
+					installCommand: null,
+				};
+			}
+			return {
+				currentVersion: notification.currentVersion,
+				latestVersion: notification.latestVersion,
+				updateAvailable: true,
+				updateTiming: notification.updateTiming,
+				installCommand: notification.installCommand,
+			};
+		},
+		runUpdateNow: async () => {
+			const result = await runOnDemandUpdate({
+				currentVersion: KANBAN_VERSION,
+			});
+			if (
+				result.status === "updated" ||
+				result.status === "already_up_to_date" ||
+				result.status === "cache_refreshed"
+			) {
+				// The pending notification is a one-shot signal recorded at startup.
+				// Clearing it here prevents the modal from reappearing on page reload
+				// after the user has already applied the update.
+				clearPendingUpdateNotification();
+			}
+			return {
+				status: result.status,
+				currentVersion: result.currentVersion,
+				latestVersion: result.latestVersion,
+				message: result.message,
+			};
+		},
 	});
 
 	const close = async () => {
@@ -586,6 +628,9 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		exit: (code) => {
 			process.exit(code);
 		},
+		reraiseSignal: (signal) => {
+			process.kill(process.pid, signal);
+		},
 		onShutdown: async () => {
 			shutdownIndicator.start();
 			try {
@@ -637,7 +682,7 @@ function createProgram(invocationArgs: string[]): Command {
 		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
-		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
+		.option("--skip-shutdown-cleanup", "Do not move sessions to done or delete task worktrees on shutdown.")
 		.option("--https", "Enable HTTPS. Requires both --cert and --key.")
 		.option("--cert <path>", "Path to a TLS certificate PEM file (implies HTTPS).")
 		.option("--key <path>", "Path to a TLS private key PEM file (implies HTTPS).")

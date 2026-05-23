@@ -16,8 +16,15 @@ export function normalizePromptForDisplay(prompt: string): string {
 	return prompt.replaceAll(/\s+/g, " ").trim();
 }
 
+function stripOuterXmlTag(text: string): string {
+	return text
+		.replace(/^<[^>]+>/u, "")
+		.replace(/<\/[^>]+>$/u, "")
+		.trim();
+}
+
 export function getTaskPromptDescription(prompt: string, title: string): string {
-	const normalizedPrompt = normalizePromptForDisplay(prompt);
+	const normalizedPrompt = stripOuterXmlTag(normalizePromptForDisplay(prompt));
 	const normalizedTitle = normalizePromptForDisplay(title);
 	if (!normalizedPrompt) {
 		return "";

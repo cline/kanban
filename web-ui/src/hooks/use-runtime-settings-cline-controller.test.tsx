@@ -3,7 +3,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
-import type { RuntimeClineReasoningEffort, RuntimeConfigResponse, RuntimeTaskClineSettings } from "@/runtime/types";
+import type {
+	RuntimeClineProviderModel,
+	RuntimeClineReasoningEffort,
+	RuntimeConfigResponse,
+	RuntimeTaskClineSettings,
+} from "@/runtime/types";
 
 const fetchClineProviderCatalogMock = vi.hoisted(() => vi.fn());
 const fetchClineProviderModelsMock = vi.hoisted(() => vi.fn());
@@ -49,7 +54,10 @@ interface HookSnapshot {
 	setApiKey: (value: string) => void;
 	setBaseUrl: (value: string) => void;
 	setReasoningEffort: (value: string) => void;
-	saveProviderSettings: () => Promise<{ ok: boolean; message?: string }>;
+	saveProviderSettings: (
+		overrides?: Parameters<ReturnType<typeof useRuntimeSettingsClineController>["saveProviderSettings"]>[0],
+	) => Promise<{ ok: boolean; message?: string }>;
+	refreshProviderModels: () => Promise<{ ok: boolean; message?: string }>;
 	addCustomProvider: (
 		input: Parameters<ReturnType<typeof useRuntimeSettingsClineController>["addCustomProvider"]>[0],
 	) => Promise<{ ok: boolean; message?: string }>;
@@ -117,6 +125,20 @@ async function flushAsyncWork(): Promise<void> {
 	await Promise.resolve();
 }
 
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T) => void;
+	reject: (reason?: unknown) => void;
+} {
+	let resolve: (value: T) => void = () => {};
+	let reject: (reason?: unknown) => void = () => {};
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, resolve, reject };
+}
+
 function HookHarness({
 	open,
 	workspaceId,
@@ -171,6 +193,7 @@ function HookHarness({
 				state.setReasoningEffort(value as RuntimeClineReasoningEffort | "");
 			},
 			saveProviderSettings: state.saveProviderSettings,
+			refreshProviderModels: state.refreshProviderModels,
 			addCustomProvider: state.addCustomProvider,
 			runOauthLogin: state.runOauthLogin,
 		});
@@ -693,6 +716,224 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).apiKey).toBe("");
 		expect(requireSnapshot(latestSnapshot).apiKeyConfigured).toBe(true);
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("does not clear a saved manual api key when saving model-only overrides", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "openrouter",
+			oauthProvider: null,
+			modelId: "openrouter/auto",
+			baseUrl: "https://openrouter.ai/api/v1",
+			apiKeyConfigured: true,
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		saveClineProviderSettingsMock.mockResolvedValue({
+			providerId: "openrouter",
+			modelId: "openrouter/free",
+			baseUrl: "https://openrouter.ai/api/v1",
+			reasoningEffort: null,
+			apiKeyConfigured: true,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			expect(await requireSnapshot(latestSnapshot).saveProviderSettings({ modelId: "openrouter/free" })).toEqual({
+				ok: true,
+			});
+		});
+
+		expect(saveClineProviderSettingsMock).toHaveBeenCalledWith("workspace-1", {
+			providerId: "openrouter",
+			modelId: "openrouter/free",
+			baseUrl: "https://openrouter.ai/api/v1",
+			reasoningEffort: null,
+		});
+	});
+
+	it("saves base URL provider settings before refreshing models", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "litellm",
+			oauthProvider: null,
+			modelId: "gpt-5.4",
+			baseUrl: null,
+			apiKeyConfigured: false,
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "litellm",
+				name: "LiteLLM",
+				oauthSupported: false,
+				enabled: true,
+				defaultModelId: "gpt-5.4",
+				baseUrl: "http://localhost:4000/v1",
+				supportsBaseUrl: true,
+			},
+		]);
+		fetchClineProviderModelsMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+			{
+				id: "private-proxy-model",
+				name: "private-proxy-model",
+				supportsReasoningEffort: true,
+			},
+		]);
+		saveClineProviderSettingsMock.mockResolvedValue({
+			providerId: "litellm",
+			modelId: "gpt-5.4",
+			baseUrl: "http://127.0.0.1:4010/v1",
+			reasoningEffort: null,
+			apiKeyConfigured: true,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("http://localhost:4000/v1");
+		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual([]);
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setBaseUrl("http://127.0.0.1:4010/v1");
+			requireSnapshot(latestSnapshot).setApiKey("test-key-catalog");
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(true);
+
+		await act(async () => {
+			expect(await requireSnapshot(latestSnapshot).refreshProviderModels()).toEqual({ ok: true });
+			await flushAsyncWork();
+		});
+
+		expect(saveClineProviderSettingsMock).toHaveBeenCalledWith("workspace-1", {
+			providerId: "litellm",
+			modelId: "gpt-5.4",
+			apiKey: "test-key-catalog",
+			baseUrl: "http://127.0.0.1:4010/v1",
+			reasoningEffort: null,
+		});
+		expect(fetchClineProviderModelsMock).toHaveBeenLastCalledWith("workspace-1", "litellm");
+		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["private-proxy-model"]);
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("keeps refreshed provider models when the initial model load resolves later", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "litellm",
+			oauthProvider: null,
+			modelId: "gpt-5.4",
+			baseUrl: "http://localhost:4000/v1",
+			apiKeyConfigured: false,
+		});
+		const initialModels = createDeferred<RuntimeClineProviderModel[]>();
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "litellm",
+				name: "LiteLLM",
+				oauthSupported: false,
+				enabled: true,
+				defaultModelId: "gpt-5.4",
+				baseUrl: "http://localhost:4000/v1",
+				supportsBaseUrl: true,
+			},
+		]);
+		fetchClineProviderModelsMock.mockReturnValueOnce(initialModels.promise).mockResolvedValueOnce([
+			{
+				id: "fresh-proxy-model",
+				name: "fresh-proxy-model",
+			},
+		]);
+		saveClineProviderSettingsMock.mockResolvedValue({
+			providerId: "litellm",
+			modelId: "gpt-5.4",
+			baseUrl: "http://127.0.0.1:4010/v1",
+			reasoningEffort: null,
+			apiKeyConfigured: false,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setBaseUrl("http://127.0.0.1:4010/v1");
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			expect(await requireSnapshot(latestSnapshot).refreshProviderModels()).toEqual({ ok: true });
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["fresh-proxy-model"]);
+
+		await act(async () => {
+			initialModels.resolve([
+				{
+					id: "stale-proxy-model",
+					name: "stale-proxy-model",
+				},
+			]);
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["fresh-proxy-model"]);
 	});
 
 	it("adds a custom provider and refreshes catalog and models", async () => {

@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.1.68]
+
+- Codex hooks are now pre-trusted, eliminating permission prompts when Kanban manages Codex sessions
+- Fixed signal handling to properly re-raise signals and ignore SIGQUIT for cleaner process cleanup
+- Updated Cline SDK from 0.0.36 to 0.0.38, which includes: new OpenAI ChatGPT Subscription and v0 providers, Ollama no longer requires an API key, file-based and event-driven automation, auto-compaction for provider requests, per-turn usage metrics on assistant messages, normalized provider usage costs, web fetch enabled by default in act mode, various message handling and abort fixes
+
+## [0.1.67]
+
+- "New version available" notification with one-click update from the web UI
+- Renamed the "Trash" column to "Done" and added CLI command aliases
+- Allow entering a custom model ID when no matching models are found in the model selector
+- Use Codex hooks for task state transitions
+- Fixed stale worktree setup locks not being cleaned up on shutdown
+- Fixed task ID generation to avoid timestamp-derived fallback IDs
+- Added scaffolding for an Electron desktop app (not yet available)
+
+## [0.1.66]
+
+- Added a refresh button for LiteLLM and custom provider model lists, so you can re-fetch available models without leaving settings
+- Enforced origin and host validation on the Kanban websocket service to prevent unauthorized connections
+
+## [0.1.65]
+
+- Model catalog now auto-refreshes on startup so newly available models appear immediately
+- Fixed task cards resizing and causing layout shifts on the board
+- Fixed initial Cline message not being sent after starting a new session
+- Added runtime child process manager for the desktop app
+
+## [0.1.64]
+
+- Multi-line diff comments: Shift+click to select a range of lines, click the line number to open the comment box, and comments now include file path, line number, and column context
+- File tree panel in diff views can now be toggled open or closed
+- Task title editing now requires clicking the pencil icon that appears on card hover, preventing accidental edits when clicking the card
+
+## [0.1.63]
+
+- Fixed task detail view being lost on page refresh
+- Fixed API key getting reset when modifying Cline agent settings
+- Fixed Kanban agent starting in thinking state instead of idle
+
 ## [0.1.62]
 
 - Fixed Cline chats on the home screen not resuming correctly from persisted history, causing conversation context to be lost

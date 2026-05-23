@@ -7,6 +7,7 @@ import type { RawData } from "ws";
 import { WebSocket } from "ws";
 
 import type { RuntimeTaskSessionSummary, RuntimeTerminalWsServerMessage } from "../../../src/core/api-contract";
+import { getKanbanRuntimePort, setKanbanRuntimePort } from "../../../src/core/runtime-endpoint";
 import type { TerminalSessionListener, TerminalSessionService } from "../../../src/terminal/terminal-session-service";
 import type { TerminalRestoreSnapshot } from "../../../src/terminal/terminal-state-mirror";
 import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal/ws-server";
@@ -243,8 +244,10 @@ describe("createTerminalWebSocketBridge – passcode gate", () => {
 	let bridge: TerminalWebSocketBridge;
 	let terminalManager: FakeTerminalManager;
 	let runtimeUrl: string;
+	let originalRuntimePort: number;
 
 	beforeEach(async () => {
+		originalRuntimePort = getKanbanRuntimePort();
 		terminalManager = new FakeTerminalManager();
 		server = createServer((_request, response) => {
 			response.writeHead(404);
@@ -264,10 +267,14 @@ describe("createTerminalWebSocketBridge – passcode gate", () => {
 		if (!address) {
 			throw new Error("Expected websocket server address.");
 		}
+		// Align the runtime endpoint config with the test server so the
+		// middleware Host/Origin allowlist accepts our random port.
+		setKanbanRuntimePort(address.port);
 		runtimeUrl = `ws://127.0.0.1:${address.port}`;
 	});
 
 	afterEach(async () => {
+		setKanbanRuntimePort(originalRuntimePort);
 		await bridge.close();
 		await new Promise<void>((resolve, reject) => {
 			server.close((error) => {
@@ -327,6 +334,7 @@ describe("createTerminalWebSocketBridge – passcode gate", () => {
 		if (!freshAddress) {
 			throw new Error("Expected fresh server address.");
 		}
+		setKanbanRuntimePort(freshAddress.port);
 		const freshUrl = `ws://127.0.0.1:${freshAddress.port}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}`;
 
 		try {
@@ -346,8 +354,10 @@ describe("createTerminalWebSocketBridge", () => {
 	let bridge: TerminalWebSocketBridge;
 	let terminalManager: FakeTerminalManager;
 	let runtimeUrl: string;
+	let originalRuntimePort: number;
 
 	beforeEach(async () => {
+		originalRuntimePort = getKanbanRuntimePort();
 		terminalManager = new FakeTerminalManager();
 		server = createServer((_request, response) => {
 			response.writeHead(404);
@@ -365,10 +375,12 @@ describe("createTerminalWebSocketBridge", () => {
 		if (!address) {
 			throw new Error("Expected websocket server address.");
 		}
+		setKanbanRuntimePort(address.port);
 		runtimeUrl = `ws://127.0.0.1:${address.port}`;
 	});
 
 	afterEach(async () => {
+		setKanbanRuntimePort(originalRuntimePort);
 		await bridge.close();
 		await new Promise<void>((resolve, reject) => {
 			server.close((error) => {

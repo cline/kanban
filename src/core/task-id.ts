@@ -11,5 +11,7 @@ export function createUniqueTaskId(existingIds: Set<string>, randomUuid: () => s
 			return candidate;
 		}
 	}
-	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`.slice(0, TASK_ID_LENGTH);
+	return Math.random()
+		.toString(36)
+		.slice(2, 2 + TASK_ID_LENGTH);
 }

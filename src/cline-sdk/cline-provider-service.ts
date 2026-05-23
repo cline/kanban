@@ -21,6 +21,7 @@ import type {
 	RuntimeClineReasoningEffort,
 } from "../core/api-contract";
 import { openInBrowser } from "../server/browser";
+import { createKanbanClineLogger } from "./cline-runtime-logger";
 import {
 	addSdkCustomProvider,
 	completeClineDeviceAuth as completeSdkDeviceAuth,
@@ -41,11 +42,9 @@ import {
 	SDK_DEFAULT_MODEL_ID,
 	SDK_DEFAULT_PROVIDER_ID,
 	type SdkCustomProviderCapability,
-	type SdkProviderModelRecord,
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
 	startClineDeviceAuth as startSdkDeviceAuth,
-	supportsSdkModelThinking,
 	switchSdkClineAccount,
 	updateSdkCustomProvider,
 } from "./sdk-provider-boundary";
@@ -60,8 +59,16 @@ const MANAGED_PROVIDER_ENV_KEYS: Record<ManagedClineOauthProviderId, readonly st
 const CLINE_REMOTE_CONFIG_SCHEMA = z.object({
 	kanbanEnabled: z.boolean().optional(),
 });
+const LITELLM_MODELS_RESPONSE_SCHEMA = z.object({
+	data: z.array(z.object({ id: z.string().optional(), model_name: z.string().optional() }).passthrough()).optional(),
+});
+const LITELLM_MODEL_LIST_PATHNAMES = ["/models", "/model/info"] as const;
+const LITELLM_MODEL_LIST_TIMEOUT_MS = 2_500;
+const LOGGER = createKanbanClineLogger({ component: "cline-provider-service" });
 
 type ClineRemoteConfig = z.infer<typeof CLINE_REMOTE_CONFIG_SCHEMA>;
+type LiteLlmModelListPathname = (typeof LITELLM_MODEL_LIST_PATHNAMES)[number];
+type LiteLlmModelListItem = NonNullable<z.infer<typeof LITELLM_MODELS_RESPONSE_SCHEMA>["data"]>[number];
 type SdkReasoningEffort = NonNullable<NonNullable<SdkProviderSettings["reasoning"]>["effort"]>;
 
 export interface ResolvedClineLaunchConfig {
@@ -219,18 +226,91 @@ function hasOauthRefreshToken(settings: SdkProviderSettings | null): boolean {
 	return (settings?.auth?.refreshToken?.trim() ?? "").length > 0;
 }
 
-function toRuntimeProviderModel(modelId: string, modelInfo: SdkProviderModelRecord[string]): RuntimeClineProviderModel {
-	const capabilities = new Set(modelInfo.capabilities ?? []);
-	const supportsVision = capabilities.has("images");
-	const supportsAttachments = capabilities.has("files") || supportsVision;
-	const supportsReasoningEffort = supportsSdkModelThinking(modelInfo);
+function toRuntimeProviderModel(model: RuntimeClineProviderModel): RuntimeClineProviderModel {
 	return {
-		id: modelId,
-		name: modelInfo.name?.trim() || modelId,
-		supportsVision: supportsVision || undefined,
-		supportsAttachments: supportsAttachments || undefined,
-		supportsReasoningEffort: supportsReasoningEffort || undefined,
+		id: model.id,
+		name: model.name?.trim() || model.id,
+		supportsVision: model.supportsVision || undefined,
+		supportsAttachments: model.supportsAttachments || undefined,
+		supportsReasoningEffort: model.supportsReasoningEffort || undefined,
 	};
+}
+
+function logLiteLlmModelListWarning(message: string, metadata?: Record<string, unknown>): void {
+	LOGGER.log(message, {
+		severity: "warn",
+		providerId: "litellm",
+		...(metadata ?? {}),
+	});
+}
+
+function hasAuthorizationHeader(headers: Record<string, string>): boolean {
+	return Object.keys(headers).some((key) => key.toLowerCase() === "authorization");
+}
+
+function resolveLiteLlmModelListHeaders(settings: SdkProviderSettings): Record<string, string> {
+	const headers = { ...(settings.headers ?? {}) };
+	const apiKey = resolveVisibleApiKey(settings);
+	if (apiKey && !hasAuthorizationHeader(headers)) {
+		headers.Authorization = `Bearer ${apiKey}`;
+	}
+	return headers;
+}
+
+function resolveLiteLlmModelListItemId(item: LiteLlmModelListItem, pathname: LiteLlmModelListPathname): string {
+	const modelId = pathname === "/model/info" ? (item.model_name ?? item.id) : item.id;
+	return modelId?.trim() ?? "";
+}
+
+async function fetchLiteLlmBaseUrlModels(settings: SdkProviderSettings | null): Promise<RuntimeClineProviderModel[]> {
+	const baseUrl = settings?.baseUrl?.trim() ?? "";
+	if (!settings || (settings.provider?.trim().toLowerCase() ?? "") !== "litellm" || !baseUrl) {
+		return [];
+	}
+
+	const headers = resolveLiteLlmModelListHeaders(settings);
+	const timeoutMs =
+		typeof settings.timeout === "number" && settings.timeout > 0
+			? Math.min(settings.timeout, LITELLM_MODEL_LIST_TIMEOUT_MS)
+			: LITELLM_MODEL_LIST_TIMEOUT_MS;
+	const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+	for (const pathname of LITELLM_MODEL_LIST_PATHNAMES) {
+		const url = `${normalizedBaseUrl}${pathname}`;
+		try {
+			const response = await globalThis.fetch(url, {
+				method: "GET",
+				headers,
+				signal: AbortSignal.timeout(timeoutMs),
+			});
+			if (!response.ok) {
+				logLiteLlmModelListWarning("LiteLLM model list request returned an unsuccessful response.", {
+					url,
+					status: response.status,
+				});
+				continue;
+			}
+
+			const parsed = LITELLM_MODELS_RESPONSE_SCHEMA.safeParse((await response.json()) as unknown);
+			if (!parsed.success) {
+				logLiteLlmModelListWarning("LiteLLM model list request returned an unexpected response.", { url });
+				continue;
+			}
+
+			const modelIds =
+				parsed.data.data
+					?.map((item) => resolveLiteLlmModelListItemId(item, pathname))
+					.filter((modelId) => modelId.length > 0) ?? [];
+			if (modelIds.length > 0) {
+				return [...new Set(modelIds)].map((id) => ({ id, name: id }));
+			}
+		} catch (error) {
+			logLiteLlmModelListWarning("LiteLLM model list request failed.", {
+				url,
+				errorMessage: toErrorMessage(error),
+			});
+		}
+	}
+	return [];
 }
 
 function createEmptyProviderSettingsSummary(): RuntimeClineProviderSettings {
@@ -632,7 +712,7 @@ export function createClineProviderService() {
 					};
 					const me = await fetchProfileDeduped(apiParams);
 					return {
-						organizations: (me.organizations ?? []).map((org) => ({
+						organizations: (me.organizations ?? []).map((org: NonNullable<typeof me.organizations>[number]) => ({
 							organizationId: org.organizationId,
 							name: org.name,
 							active: org.active,
@@ -792,16 +872,21 @@ export function createClineProviderService() {
 
 		async getProviderModels(providerId: string): Promise<RuntimeClineProviderModelsResponse> {
 			const normalizedProviderId = providerId.trim().toLowerCase();
-			const providerModels =
+			let providerModels =
 				normalizedProviderId.length > 0
 					? await listSdkProviderModels(normalizedProviderId)
-							.then((sdkModels) =>
-								Object.entries(sdkModels)
-									.map(([modelId, modelInfo]) => toRuntimeProviderModel(modelId, modelInfo))
-									.sort((left, right) => left.name.localeCompare(right.name)),
-							)
+							.then((sdkModels) => sdkModels.map((model) => toRuntimeProviderModel(model)))
+							.then((sdkModels) => sdkModels.sort((left, right) => left.name.localeCompare(right.name)))
 							.catch(() => [])
 					: [];
+			if (normalizedProviderId === "litellm") {
+				const liteLlmModels = await fetchLiteLlmBaseUrlModels(getSdkProviderSettings(normalizedProviderId));
+				const existingModelIds = new Set(providerModels.map((model) => model.id));
+				providerModels = [
+					...providerModels,
+					...liteLlmModels.filter((model) => !existingModelIds.has(model.id)),
+				].sort((left, right) => left.name.localeCompare(right.name));
+			}
 
 			if (providerModels.length > 0) {
 				return {
@@ -810,7 +895,7 @@ export function createClineProviderService() {
 				};
 			}
 
-			const configuredModel = getProviderSettingsSummary().modelId?.trim() ?? "";
+			const configuredModel = getSdkProviderSettings(normalizedProviderId)?.model?.trim() ?? "";
 			if (configuredModel.length > 0) {
 				return {
 					providerId: normalizedProviderId || providerId,

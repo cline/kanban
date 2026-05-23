@@ -75,6 +75,9 @@ vi.mock("@radix-ui/react-select", () => ({
 }));
 
 const resetLayoutCustomizationsMock = vi.hoisted(() => vi.fn());
+const clineSetupSectionOnSavedRef = vi.hoisted(() => ({
+	onSaved: null as null | (() => void),
+}));
 
 vi.mock("@runtime-agent-catalog", () => ({
 	getRuntimeAgentCatalogEntry: vi.fn((agentId: string) => ({
@@ -93,7 +96,10 @@ vi.mock("@runtime-shortcuts", () => ({
 }));
 
 vi.mock("@/components/shared/cline-setup-section", () => ({
-	ClineSetupSection: () => null,
+	ClineSetupSection: ({ onSaved }: { onSaved?: () => void }) => {
+		clineSetupSectionOnSavedRef.onSaved = onSaved ?? null;
+		return null;
+	},
 }));
 
 vi.mock("@/hooks/use-runtime-settings-cline-controller", () => ({
@@ -135,6 +141,7 @@ vi.mock("@/runtime/use-runtime-config", () => ({
 		config: initialConfig ?? null,
 		isLoading: false,
 		isSaving: false,
+		refresh: vi.fn(),
 		save: vi.fn(async () => true),
 	}),
 }));
@@ -210,6 +217,7 @@ describe("RuntimeSettingsDialog", () => {
 
 	beforeEach(() => {
 		resetLayoutCustomizationsMock.mockReset();
+		clineSetupSectionOnSavedRef.onSaved = null;
 		window.localStorage.clear();
 		document.documentElement.removeAttribute("data-theme");
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -356,5 +364,28 @@ describe("RuntimeSettingsDialog", () => {
 		expect(handleOpenChange).toHaveBeenCalledWith(false);
 		expect(window.localStorage.getItem("kanban.theme")).toBe("graphite");
 		expect(document.documentElement.getAttribute("data-theme")).toBe("graphite");
+	});
+
+	it("forwards cline setup saves to the dialog onSaved callback", async () => {
+		const handleSaved = vi.fn();
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={() => {}}
+					onSaved={handleSaved}
+				/>,
+			);
+		});
+
+		expect(clineSetupSectionOnSavedRef.onSaved).toBeTypeOf("function");
+
+		await act(async () => {
+			clineSetupSectionOnSavedRef.onSaved?.();
+		});
+
+		expect(handleSaved).toHaveBeenCalledTimes(1);
 	});
 });

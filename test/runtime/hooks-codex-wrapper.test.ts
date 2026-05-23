@@ -3,17 +3,13 @@ import { describe, expect, it } from "vitest";
 import { buildCodexWrapperChildArgs, buildCodexWrapperSpawn } from "../../src/commands/hooks";
 
 describe("buildCodexWrapperChildArgs", () => {
-	it("injects notify config", () => {
+	it("does not inject legacy notify config", () => {
 		const args = buildCodexWrapperChildArgs(["exec", "fix the bug"]);
 
-		expect(args[0]).toBe("-c");
-		expect(args[1]).toContain("notify=");
-		expect(args[1]).toContain("hooks");
-		expect(args[1]).toContain("to_review");
-		expect(args.slice(2)).toEqual(["exec", "fix the bug"]);
+		expect(args).toEqual(["exec", "fix the bug"]);
 	});
 
-	it("does not override an explicit notify config", () => {
+	it("preserves an explicit notify config without adding another one", () => {
 		expect(buildCodexWrapperChildArgs(["-c", 'notify=["echo","custom"]', "exec", "fix the bug"])).toEqual([
 			"-c",
 			'notify=["echo","custom"]',
@@ -35,14 +31,12 @@ describe("buildCodexWrapperChildArgs", () => {
 		expect(launch.args[3]).toContain("exec");
 	});
 
-	it("does not wrap cmd itself on Windows and still applies notify fallback args", () => {
+	it("does not wrap cmd itself on Windows", () => {
 		const launch = buildCodexWrapperSpawn("cmd.exe", ["/c", "echo hi"], "win32", {
 			ComSpec: "C:\\Windows\\System32\\cmd.exe",
 		});
 
 		expect(launch.binary).toBe("cmd.exe");
-		expect(launch.args[0]).toBe("-c");
-		expect(launch.args[1]).toContain("notify=");
-		expect(launch.args.slice(2)).toEqual(["/c", "echo hi"]);
+		expect(launch.args).toEqual(["/c", "echo hi"]);
 	});
 });

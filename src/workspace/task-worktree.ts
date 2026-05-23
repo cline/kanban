@@ -104,6 +104,13 @@ async function getTaskWorktreeSetupLock(repoPath: string): Promise<LockRequest> 
 	};
 }
 
+export async function removeTaskWorktreeSetupLock(repoPath: string): Promise<boolean> {
+	const lockPath = join(repoPath, ".git", KANBAN_TASK_WORKTREE_SETUP_LOCKFILE_NAME);
+	const existed = await pathExists(lockPath);
+	await rm(lockPath, { force: true, recursive: true });
+	return existed;
+}
+
 async function withTaskWorktreeSetupLock<T>(repoPath: string, operation: () => Promise<T>): Promise<T> {
 	return await lockedFileSystem.withLock(await getTaskWorktreeSetupLock(repoPath), operation);
 }

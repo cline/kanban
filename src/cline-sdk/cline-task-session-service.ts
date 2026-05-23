@@ -268,6 +268,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			};
 		}
 
+		if (isHomeAgentSessionId(input.taskId) && !this.sessionRuntime.canRestartTaskSession(input.taskId)) {
+			throw new Error(`No previous Cline session config is available for task ${input.taskId}.`);
+		}
+
 		const persistedSnapshot = await this.sessionRuntime.readPersistedTaskSession(input.taskId);
 		const restartedSession = await this.sessionRuntime.restartTaskSession({
 			taskId: input.taskId,
@@ -328,6 +332,14 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		this.providerIdByTaskId.set(request.taskId, providerId);
 		const modelId = request.modelId?.trim() || SDK_DEFAULT_MODEL_ID;
 		const resolvedMode: RuntimeTaskSessionMode = request.startInPlanMode ? "act" : (request.mode ?? "act");
+		const normalizedPrompt = request.prompt.trim();
+		const hasRequestImages = Boolean(request.images && request.images.length > 0);
+		const initialState = request.resumeFromTrash
+			? "awaiting_review"
+			: normalizedPrompt.length > 0 || hasRequestImages
+				? "running"
+				: "idle";
+		const initialReviewReason = request.resumeFromTrash ? "attention" : null;
 		const shouldHydratePersistedHistory = request.resumeFromTrash || request.resumeFromPersistence;
 		const persistedResumeSnapshot = shouldHydratePersistedHistory
 			? await this.sessionRuntime.readPersistedTaskSession(request.taskId).catch(() => null)
@@ -335,22 +347,22 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 		const entry = persistedResumeSnapshot
 			? createTaskEntryFromPersistedSession(request.taskId, persistedResumeSnapshot.messages, {
-					state: request.resumeFromTrash ? "awaiting_review" : "running",
+					state: initialState,
 					mode: resolvedMode,
 					workspacePath: request.cwd,
 					startedAt: now(),
 					lastOutputAt: now(),
-					reviewReason: request.resumeFromTrash ? "attention" : null,
+					reviewReason: initialReviewReason,
 				})
 			: ({
 					summary: {
 						...createDefaultSummary(request.taskId),
-						state: request.resumeFromTrash ? "awaiting_review" : "running",
+						state: initialState,
 						mode: resolvedMode,
 						workspacePath: request.cwd,
 						startedAt: now(),
 						lastOutputAt: now(),
-						reviewReason: request.resumeFromTrash ? "attention" : null,
+						reviewReason: initialReviewReason,
 					},
 					messages: [],
 					activeAssistantMessageId: null,
@@ -360,9 +372,6 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				} satisfies ClineTaskSessionEntry);
 		this.messageRepository.setTaskEntry(request.taskId, entry);
 		this.pendingTurnCancelTaskIds.delete(request.taskId);
-
-		const normalizedPrompt = request.prompt.trim();
-		const hasRequestImages = Boolean(request.images && request.images.length > 0);
 
 		if (!request.resumeFromTrash && (normalizedPrompt.length > 0 || hasRequestImages)) {
 			const message = createMessage(request.taskId, "user", normalizedPrompt, request.images);
@@ -420,7 +429,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					baseUrl: request.baseUrl,
 					reasoningEffort: request.reasoningEffort,
 					systemPrompt,
-					userInstructionWatcher: runtimeSetup.watcher,
+					userInstructionService: runtimeSetup.userInstructionService,
 					requestToolApproval: runtimeSetup.requestToolApproval,
 				});
 				const warningMessage = formatStartWarnings(startResult.warnings);
@@ -553,6 +562,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		if (normalized.length === 0 && !hasImages) {
 			return null;
 		}
+		if (!this.sessionRuntime.getTaskSessionId(taskId)) {
+			if (isHomeAgentSessionId(taskId) && !this.sessionRuntime.canRestartTaskSession(taskId)) {
+				return null;
+			}
+		}
 		{
 			const message = createMessage(taskId, "user", normalized, images);
 			entry.messages.push(message);
@@ -658,6 +672,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		clearActiveTurnState(entry);
 
 		const effectiveMode: RuntimeTaskSessionMode = entry.summary.mode ?? "act";
+		if (!this.sessionRuntime.getTaskSessionId(taskId)) {
+			if (isHomeAgentSessionId(taskId) && !this.sessionRuntime.canRestartTaskSession(taskId)) {
+				return null;
+			}
+		}
 		try {
 			const { warnings } = await this.dispatchResolvedTaskInput({
 				taskId,
@@ -754,8 +773,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 	async listSlashCommands(workspacePath: string): Promise<ClineSdkSlashCommand[]> {
 		const runtimeSetup = await this.ensureRuntimeSetup(workspacePath);
-		await runtimeSetup.watcher.refreshAll();
-		return listClineSdkWorkflowSlashCommands(runtimeSetup.watcher);
+		await Promise.all([
+			runtimeSetup.userInstructionService.refreshType("skill"),
+			runtimeSetup.userInstructionService.refreshType("workflow"),
+		]);
+		return listClineSdkWorkflowSlashCommands(runtimeSetup.userInstructionService);
 	}
 
 	async loadTaskSessionMessages(taskId: string): Promise<ClineTaskMessage[]> {

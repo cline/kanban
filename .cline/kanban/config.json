@@ -4,6 +4,11 @@
       "label": "Run",
       "command": "npm run dogfood",
       "icon": "play"
+    },
+    {
+      "label": "Dev (full stack)",
+      "command": "node scripts/dev-full.mjs",
+      "icon": "play"
     }
   ]
 }

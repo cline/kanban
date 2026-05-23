@@ -27,7 +27,7 @@ function createBoard(tasks: BoardCard[] = []): BoardData {
 			{ id: "backlog", title: "Backlog", cards: tasks },
 			{ id: "in_progress", title: "In Progress", cards: [] },
 			{ id: "review", title: "Review", cards: [] },
-			{ id: "trash", title: "Trash", cards: [] },
+			{ id: "trash", title: "Done", cards: [] },
 		],
 		dependencies: [],
 	};
@@ -215,7 +215,7 @@ describe("useTaskEditor", () => {
 		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.prompt).toBe("Updated prompt");
 	});
 
-	it("disables start in plan mode when move to trash auto review is selected while editing", async () => {
+	it("does not disable start in plan mode when auto review is enabled while editing", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 		const initialBoard = createBoard([
 			createTask("task-1", "Initial prompt", 1, {
@@ -246,11 +246,10 @@ describe("useTaskEditor", () => {
 
 		await act(async () => {
 			latestSnapshot?.setEditTaskAutoReviewEnabled(true);
-			latestSnapshot?.setEditTaskAutoReviewMode("move_to_trash");
+			latestSnapshot?.setEditTaskAutoReviewMode("commit");
 		});
 
-		expect(requireSnapshot(latestSnapshot).isEditTaskStartInPlanModeDisabled).toBe(true);
-		expect(requireSnapshot(latestSnapshot).editTaskStartInPlanMode).toBe(false);
+		expect(requireSnapshot(latestSnapshot).isEditTaskStartInPlanModeDisabled).toBe(false);
 	});
 
 	it("queues the saved task id when saving and starting an edited task", async () => {

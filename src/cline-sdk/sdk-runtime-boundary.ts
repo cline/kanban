@@ -4,200 +4,39 @@
 // SDK package layout.
 
 import {
+	type AgentEvent,
+	type BasicLogger,
 	buildWorkspaceMetadata,
-	createSessionHost,
-	createUserInstructionConfigWatcher,
+	ClineCore,
+	type ClineCoreStartInput,
+	type CoreSessionEvent,
+	createUserInstructionConfigService,
+	formatRulesForSystemPrompt,
 	getClineDefaultSystemPrompt,
-	listAvailableRuntimeCommandsFromWatcher,
-	loadRulesForSystemPromptFromWatcher,
-	resolveRuntimeSlashCommandFromWatcher,
-	type SessionHost,
-	type StartSessionInput,
+	isRuleEnabled,
+	type MessageWithMetadata,
+	type RuleConfig,
+	resolveClineDataDir,
+	type SessionHistoryRecord,
 	type ToolApprovalRequest,
 	type ToolApprovalResult,
-	type UserInstructionConfigWatcher,
+	type UserInstructionConfigService,
 } from "@clinebot/core";
-import type * as Llms from "@clinebot/llms";
-import type { BasicLogger } from "@clinebot/shared";
-import { resolveClineDataDir } from "@clinebot/shared/storage";
 import { CLINE_BUILTIN_SLASH_COMMANDS } from "./cline-slash-commands";
 import { getCliTelemetryService } from "./cline-telemetry-service";
 
 export { TelemetryLoggerSink, TelemetryService } from "@clinebot/core";
 
-export type ClineSdkSessionHost = SessionHost;
-export type ClineSdkStartSessionInput = StartSessionInput;
+export type ClineSdkSessionHost = ClineCore;
 export type ClineSdkBasicLogger = BasicLogger;
-export interface ClineSdkContentStartTextEvent {
-	type: "content_start";
-	contentType: "text";
-	text?: string;
-	accumulated?: string;
-}
+export type ClineSdkAgentEvent = AgentEvent;
 
-export interface ClineSdkContentStartReasoningEvent {
-	type: "content_start";
-	contentType: "reasoning";
-	reasoning?: string;
-	redacted?: boolean;
-}
+export type ClineSdkSessionEvent = CoreSessionEvent;
 
-export interface ClineSdkContentStartToolEvent {
-	type: "content_start";
-	contentType: "tool";
-	toolName?: string;
-	toolCallId?: string;
-	input?: unknown;
-}
-
-export interface ClineSdkContentEndTextEvent {
-	type: "content_end";
-	contentType: "text";
-	text?: string;
-}
-
-export interface ClineSdkContentEndReasoningEvent {
-	type: "content_end";
-	contentType: "reasoning";
-	reasoning?: string;
-}
-
-export interface ClineSdkContentEndToolEvent {
-	type: "content_end";
-	contentType: "tool";
-	toolName?: string;
-	toolCallId?: string;
-	output?: unknown;
-	error?: string;
-	durationMs?: number;
-}
-
-export interface ClineSdkIterationStartEvent {
-	type: "iteration_start";
-	iteration: number;
-}
-
-export interface ClineSdkIterationEndEvent {
-	type: "iteration_end";
-	iteration: number;
-	hadToolCalls: boolean;
-	toolCallCount: number;
-}
-
-export interface ClineSdkUsageEvent {
-	type: "usage";
-	inputTokens: number;
-	outputTokens: number;
-	cacheReadTokens?: number;
-	cacheWriteTokens?: number;
-	cost?: number;
-	totalInputTokens: number;
-	totalOutputTokens: number;
-	totalCost?: number;
-}
-
-export interface ClineSdkNoticeEvent {
-	type: "notice";
-	noticeType: "recovery";
-	message: string;
-	displayRole?: "system" | "status";
-	reason?: "api_error" | "invalid_tool_call" | "tool_execution_failed";
-	metadata?: Record<string, unknown>;
-}
-
-export interface ClineSdkDoneEvent {
-	type: "done";
-	reason: "completed" | "aborted" | "error";
-	text: string;
-	iterations: number;
-	usage?: {
-		inputTokens: number;
-		outputTokens: number;
-		cacheReadTokens?: number;
-		cacheWriteTokens?: number;
-		cost?: number;
-	};
-}
-
-export interface ClineSdkErrorEvent {
-	type: "error";
-	error: Error;
-	recoverable: boolean;
-	iteration: number;
-	/** Fallback message field — used for credit-limit detection when `error` does not contain parseable text. */
-	message?: string;
-}
-
-export type ClineSdkAgentEvent =
-	| ClineSdkContentStartTextEvent
-	| ClineSdkContentStartReasoningEvent
-	| ClineSdkContentStartToolEvent
-	| ClineSdkContentEndTextEvent
-	| ClineSdkContentEndReasoningEvent
-	| ClineSdkContentEndToolEvent
-	| ClineSdkIterationStartEvent
-	| ClineSdkIterationEndEvent
-	| ClineSdkUsageEvent
-	| ClineSdkNoticeEvent
-	| ClineSdkDoneEvent
-	| ClineSdkErrorEvent;
-
-export type ClineSdkSessionEvent =
-	| {
-			type: "chunk";
-			payload: {
-				sessionId: string;
-				stream: "stdout" | "stderr" | "agent";
-				chunk: string;
-				ts: number;
-			};
-	  }
-	| {
-			type: "agent_event";
-			payload: {
-				sessionId: string;
-				event: ClineSdkAgentEvent;
-			};
-	  }
-	| {
-			type: "team_progress";
-			payload: {
-				sessionId: string;
-				teamName: string;
-				lifecycle: unknown;
-				summary: unknown;
-			};
-	  }
-	| {
-			type: "ended";
-			payload: {
-				sessionId: string;
-				reason: string;
-				ts: number;
-			};
-	  }
-	| {
-			type: "hook";
-			payload: {
-				sessionId: string;
-				hookEventName: "tool_call" | "tool_result" | "agent_end" | "session_shutdown";
-				toolName?: string;
-				toolInputSummary?: string;
-				finalMessage?: string;
-				notificationType?: string | null;
-			};
-	  }
-	| {
-			type: "status";
-			payload: {
-				sessionId: string;
-				status: string;
-			};
-	  };
-
-export type ClineSdkSessionRecord = Awaited<ReturnType<ClineSdkSessionHost["list"]>>[number];
-export type ClineSdkPersistedMessage = Llms.MessageWithMetadata;
-export type ClineSdkUserInstructionWatcher = UserInstructionConfigWatcher;
+export type ClineSdkStartSessionInput = ClineCoreStartInput;
+export type ClineSdkSessionRecord = SessionHistoryRecord;
+export type ClineSdkPersistedMessage = MessageWithMetadata;
+export type ClineSdkUserInstructionService = UserInstructionConfigService;
 export interface ClineSdkSlashCommand {
 	name: string;
 	instructions: string;
@@ -207,9 +46,8 @@ export type ClineSdkToolApprovalRequest = ToolApprovalRequest;
 export type ClineSdkToolApprovalResult = ToolApprovalResult;
 
 export async function createClineSdkSessionHost(): Promise<ClineSdkSessionHost> {
-	return await createSessionHost({
+	return await ClineCore.create({
 		backendMode: "auto",
-		rpc: { autoStart: true },
 		telemetry: getCliTelemetryService(),
 	});
 }
@@ -221,28 +59,28 @@ export async function buildClineSdkWorkspaceMetadata(cwd: string): Promise<strin
 	return await buildWorkspaceMetadata(cwd);
 }
 
-export function createClineSdkUserInstructionWatcher(workspacePath: string): ClineSdkUserInstructionWatcher {
-	return createUserInstructionConfigWatcher({
+export function createClineSdkUserInstructionService(workspacePath: string): ClineSdkUserInstructionService {
+	return createUserInstructionConfigService({
 		skills: { workspacePath },
 		rules: { workspacePath },
 		workflows: { workspacePath },
 	});
 }
 
-export function listClineSdkWorkflowSlashCommands(watcher?: ClineSdkUserInstructionWatcher): ClineSdkSlashCommand[] {
+export function listClineSdkWorkflowSlashCommands(service?: ClineSdkUserInstructionService): ClineSdkSlashCommand[] {
 	const builtIns: ClineSdkSlashCommand[] = CLINE_BUILTIN_SLASH_COMMANDS.map((command) => ({
 		name: command.name,
 		instructions: "",
 		description: command.description,
 	}));
-	if (!watcher) {
+	if (!service) {
 		return builtIns;
 	}
 	const byName = new Map<string, ClineSdkSlashCommand>();
 	for (const command of builtIns) {
 		byName.set(command.name, command);
 	}
-	for (const command of listAvailableRuntimeCommandsFromWatcher(watcher)) {
+	for (const command of service.listRuntimeCommands()) {
 		if (byName.has(command.name)) {
 			continue;
 		}
@@ -255,12 +93,17 @@ export function listClineSdkWorkflowSlashCommands(watcher?: ClineSdkUserInstruct
 	return [...byName.values()];
 }
 
-export function resolveClineSdkWorkflowSlashCommand(prompt: string, watcher: ClineSdkUserInstructionWatcher): string {
-	return resolveRuntimeSlashCommandFromWatcher(prompt, watcher);
+export function resolveClineSdkWorkflowSlashCommand(prompt: string, service: ClineSdkUserInstructionService): string {
+	return service.resolveRuntimeSlashCommand(prompt);
 }
 
-export function loadClineSdkRulesForSystemPrompt(watcher: ClineSdkUserInstructionWatcher): string {
-	return loadRulesForSystemPromptFromWatcher(watcher);
+export function loadClineSdkRulesForSystemPrompt(service: ClineSdkUserInstructionService): string {
+	const rules = service
+		.listRecords<RuleConfig>("rule")
+		.map((record) => record.item)
+		.filter(isRuleEnabled)
+		.sort((left, right) => left.name.localeCompare(right.name));
+	return formatRulesForSystemPrompt(rules);
 }
 
 export async function resolveClineSdkSystemPrompt(input: {
@@ -273,5 +116,11 @@ export async function resolveClineSdkSystemPrompt(input: {
 	// its repo-aware behavior in the same way the official CLI does.
 	const shouldAppendWorkspaceMetadata = input.providerId === "cline";
 	const workspaceMetadata = shouldAppendWorkspaceMetadata ? await buildWorkspaceMetadata(input.cwd) : "";
-	return getClineDefaultSystemPrompt("Kanban", input.cwd, input.providerId, workspaceMetadata, input.rules ?? "");
+	return getClineDefaultSystemPrompt({
+		ide: "Kanban",
+		rootPath: input.cwd,
+		providerId: input.providerId,
+		metadata: workspaceMetadata,
+		rules: input.rules ?? "",
+	});
 }

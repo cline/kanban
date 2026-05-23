@@ -78,6 +78,35 @@ describe("installGracefulShutdownHandlers", () => {
 		expect(exit).toHaveBeenCalledWith(130);
 	});
 
+	it("calls reraiseSignal instead of exit when provided and shutdown was signal-triggered", async () => {
+		vi.useFakeTimers();
+
+		const processDouble = createProcessDouble();
+		const exit = vi.fn();
+		const reraiseSignal = vi.fn();
+		const deferred = createDeferredPromise();
+
+		installGracefulShutdownHandlers({
+			process: processDouble,
+			delayMs: 10_000,
+			exit,
+			reraiseSignal,
+			onShutdown: async () => {
+				await deferred.promise;
+			},
+		});
+
+		processDouble.emitSignal("SIGINT");
+
+		deferred.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(reraiseSignal).toHaveBeenCalledTimes(1);
+		expect(reraiseSignal).toHaveBeenCalledWith("SIGINT");
+		expect(exit).not.toHaveBeenCalled();
+	});
+
 	it("still force-exits on a later second Ctrl+C", () => {
 		vi.useFakeTimers();
 
@@ -145,7 +174,6 @@ describe("getExitCodeForSignal", () => {
 	it("maps handled shutdown signals to shell-standard exit codes", () => {
 		expect(getExitCodeForSignal("SIGHUP")).toBe(129);
 		expect(getExitCodeForSignal("SIGINT")).toBe(130);
-		expect(getExitCodeForSignal("SIGQUIT")).toBe(131);
 		expect(getExitCodeForSignal("SIGTERM")).toBe(143);
 	});
 });

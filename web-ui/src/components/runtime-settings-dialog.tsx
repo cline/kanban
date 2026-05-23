@@ -364,7 +364,7 @@ export function RuntimeSettingsDialog({
 	onAccountSwitched?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
-	const { config, isLoading, isSaving, save } = useRuntimeConfig(open, workspaceId, initialConfig);
+	const { config, isLoading, isSaving, save, refresh } = useRuntimeConfig(open, workspaceId, initialConfig);
 	const { resetLayoutCustomizations } = useLayoutCustomizations();
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
@@ -735,6 +735,11 @@ export function RuntimeSettingsDialog({
 		[workspaceId],
 	);
 
+	const handleClineSetupSaved = useCallback(() => {
+		refresh();
+		onSaved?.();
+	}, [onSaved, refresh]);
+
 	const handleDialogOpenChange = useCallback(
 		(nextOpen: boolean) => {
 			if (!nextOpen) {
@@ -835,6 +840,7 @@ export function RuntimeSettingsDialog({
 										) : null
 									}
 									onError={setSaveError}
+									onSaved={handleClineSetupSaved}
 								/>
 							</div>
 						</>

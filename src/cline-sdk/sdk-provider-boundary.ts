@@ -4,7 +4,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import * as ClineCore from "@clinebot/core/node";
+import * as ClineCore from "@clinebot/core";
 import {
 	addLocalProvider,
 	type ClineAccountBalance,
@@ -21,6 +21,7 @@ import {
 	DEFAULT_INTERNAL_IDCS_SCOPES,
 	DEFAULT_INTERNAL_IDCS_URL,
 	ensureCustomProvidersLoaded,
+	getLocalProviderModels,
 	getValidClineCredentials,
 	getValidOcaCredentials,
 	getValidOpenAICodexCredentials,
@@ -29,17 +30,23 @@ import {
 	loginOcaOAuth,
 	loginOpenAICodex,
 	type OcaOAuthProviderOptions,
+	type ProviderSettings,
 	ProviderSettingsManager,
+	resolveProviderConfig,
 	completeClineDeviceAuth as sdkCompleteClineDeviceAuth,
 	startClineDeviceAuth as sdkStartClineDeviceAuth,
-	type Tool,
-} from "@clinebot/core/node";
-import type * as Llms from "@clinebot/llms";
+} from "@clinebot/core";
+import type { AgentTool } from "@clinebot/shared";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
-export type SdkReasoningEffort = NonNullable<NonNullable<Llms.ProviderSettings["reasoning"]>["effort"]>;
+export type SdkReasoningEffort = NonNullable<NonNullable<ProviderSettings["reasoning"]>["effort"]>;
 export const SDK_DEFAULT_PROVIDER_ID = "cline";
 export const SDK_DEFAULT_MODEL_ID = "anthropic/claude-sonnet-4.6";
+export const CLINE_MODEL_CATALOG_DEFAULTS = {
+	loadLatestOnInit: true,
+	loadPrivateOnAuth: true,
+	failOnError: false,
+} as const;
 
 export interface ManagedOauthCredentials {
 	access: string;
@@ -63,15 +70,21 @@ export interface SdkProviderCatalogItem {
 	capabilities?: string[];
 }
 
+export interface SdkProviderModel {
+	id: string;
+	name: string;
+	supportsVision?: boolean;
+	supportsAttachments?: boolean;
+	supportsReasoningEffort?: boolean;
+}
+
 export interface SdkUserRemoteConfigResponse {
 	organizationId: string;
 	value: string;
 	enabled: boolean;
 }
 
-export type SdkProviderModelRecord = Record<string, Llms.ModelInfo>;
-
-export type SdkProviderSettings = Llms.ProviderSettings;
+export type SdkProviderSettings = ProviderSettings;
 export type SdkCustomProviderCapability = "streaming" | "tools" | "reasoning" | "vision" | "prompt-cache";
 
 export interface SaveSdkProviderSettingsInput {
@@ -123,7 +136,7 @@ type LocalModelsFile = {
 	>;
 };
 
-export type SdkMcpTool = Tool;
+export type SdkMcpTool = AgentTool;
 
 export interface SdkMcpServerRegistration {
 	name: string;
@@ -187,6 +200,10 @@ export interface SdkMcpManager {
 }
 
 export type SdkCreateMcpToolsOptions = CreateMcpToolsOptions;
+type SdkLocalProviderModel = Awaited<ReturnType<typeof getLocalProviderModels>>["models"][number];
+type SdkResolvedProviderConfig = Awaited<ReturnType<typeof resolveProviderConfig>>;
+type SdkResolvedProviderModel = NonNullable<NonNullable<SdkResolvedProviderConfig>["knownModels"]>[string];
+type SdkProviderConfig = ReturnType<ProviderSettingsManager["getProviderConfig"]>;
 
 function buildOcaOauthConfig(baseUrl: string | null | undefined): OcaOAuthProviderOptions | undefined {
 	const normalizedBaseUrl = baseUrl?.trim() ?? "";
@@ -301,12 +318,69 @@ export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]
 	return await ClineCore.Llms.getAllProviders();
 }
 
-export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModelRecord> {
-	return await ClineCore.Llms.getModelsForProvider(providerId);
+function toSdkProviderModel(model: SdkLocalProviderModel): SdkProviderModel {
+	return {
+		id: model.id,
+		name: model.name,
+		supportsVision: model.supportsVision,
+		supportsAttachments: model.supportsAttachments,
+		supportsReasoningEffort: model.supportsReasoning,
+	};
 }
 
-export function supportsSdkModelThinking(modelInfo: Llms.ModelInfo): boolean {
-	return modelInfo.capabilities?.includes("reasoning") === true || modelInfo.thinkingConfig != null;
+function toSdkProviderModelFromCatalog(modelId: string, model: SdkResolvedProviderModel): SdkProviderModel {
+	const capabilities = model.capabilities ?? [];
+	return {
+		id: modelId,
+		name: model.name?.trim() || modelId,
+		supportsVision: capabilities.includes("images") || undefined,
+		supportsAttachments: capabilities.includes("files") || undefined,
+		supportsReasoningEffort: capabilities.includes("reasoning") || model.thinkingConfig !== undefined || undefined,
+	};
+}
+
+function mergeSdkProviderModels(models: SdkProviderModel[]): SdkProviderModel[] {
+	const modelById = new Map<string, SdkProviderModel>();
+	for (const model of models) {
+		modelById.set(model.id, model);
+	}
+	return [...modelById.values()];
+}
+
+// Temporary compatibility path for @clinebot/core 0.0.36. Once the SDK makes
+// getLocalProviderModels honor loadLatestOnInit and applies live catalog lookups
+// through resolveProviderModelCatalogKeys, replace this with a single SDK call
+// using CLINE_MODEL_CATALOG_DEFAULTS.
+async function listRefreshedCatalogProviderModels(
+	providerId: string,
+	config: SdkProviderConfig,
+): Promise<SdkProviderModel[]> {
+	const catalogProviderIds = ClineCore.Llms.resolveProviderModelCatalogKeys(providerId);
+	const resolvedCatalogs = await Promise.all(
+		catalogProviderIds.map((catalogProviderId) =>
+			resolveProviderConfig(
+				catalogProviderId,
+				CLINE_MODEL_CATALOG_DEFAULTS,
+				catalogProviderId === providerId ? config : undefined,
+			).catch(() => undefined),
+		),
+	);
+	return resolvedCatalogs.flatMap((resolvedCatalog) =>
+		Object.entries(resolvedCatalog?.knownModels ?? {}).map(([modelId, model]) =>
+			toSdkProviderModelFromCatalog(modelId, model),
+		),
+	);
+}
+
+export async function listSdkProviderModels(providerId: string): Promise<SdkProviderModel[]> {
+	const config = providerManager.getProviderConfig(providerId);
+	const [localModels, refreshedModels] = await Promise.all([
+		getLocalProviderModels(providerId, config)
+			.then((response) => response.models.map(toSdkProviderModel))
+			.catch(() => []),
+		listRefreshedCatalogProviderModels(providerId, config).catch(() => []),
+	]);
+	return mergeSdkProviderModels([...localModels, ...refreshedModels]);
 }
 
 const providerManager = new ProviderSettingsManager();

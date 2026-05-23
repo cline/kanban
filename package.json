@@ -1,6 +1,6 @@
 {
   "name": "kanban",
-  "version": "0.1.62",
+  "version": "0.1.68",
   "description": "A kanban foundation for coding agents",
   "publishConfig": {
     "access": "public",
@@ -46,12 +46,12 @@
   },
   "scripts": {
     "clean": "shx rm -rf dist coverage",
-    "install:all": "npm install && npm --prefix web-ui install",
+    "install:all": "npm install && npm --prefix web-ui install && npm --prefix packages/desktop install",
     "build": "npm run clean && npm run web:build && node scripts/build.mjs && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && node scripts/upload-sentry-sourcemaps.mjs && shx chmod +x dist/cli.js",
     "dogfood": "node scripts/dogfood.mjs",
     "link": "npm run build && npm link",
     "unlink": "npm unlink -g kanban",
-    "dev": "tsx watch src/cli.ts",
+    "dev": "NODE_ENV=development tsx watch src/cli.ts",
     "dev:full": "node scripts/dev-full.mjs",
     "web:dev": "npm --prefix web-ui run dev",
     "web:build": "npm --prefix web-ui run build",
@@ -91,10 +91,8 @@
     "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.9"
   },
   "dependencies": {
-    "@clinebot/agents": "^0.0.34",
-    "@clinebot/core": "^0.0.34",
-    "@clinebot/llms": "^0.0.34",
-    "@clinebot/shared": "^0.0.34",
+    "@clinebot/core": "^0.0.38",
+    "@clinebot/shared": "^0.0.38",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",
@@ -109,5 +107,8 @@
     "tree-kill": "^1.2.2",
     "ws": "^8.18.0",
     "zod": "^4.3.6"
+  },
+  "overrides": {
+    "protobufjs": "7.5.8"
   }
 }

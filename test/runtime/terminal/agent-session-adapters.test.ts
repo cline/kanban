@@ -81,7 +81,7 @@ afterEach(() => {
 });
 
 describe("prepareAgentLaunch hook strategies", () => {
-	it("routes codex through hooks codex-wrapper command", async () => {
+	it("configures Codex hooks without legacy notify", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-1",
@@ -97,11 +97,24 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
 
 		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
-		expect(launchCommand).toContain("hooks");
-		expect(launchCommand).toContain("codex-wrapper");
-		expect(launchCommand).toContain("--real-binary");
 		expect(launchCommand).toContain("codex");
-		expect(launchCommand).toContain("--");
+		expect(launchCommand).toContain("codex-hook");
+		expect(launchCommand).toContain("hooks.UserPromptSubmit");
+		expect(launchCommand).toContain("hooks.Stop");
+		expect(launchCommand).toContain("hooks.PermissionRequest");
+		expect(getCodexConfigOverrideValues(launch.args, "features.hooks")).toEqual(["true"]);
+		expect(getCodexConfigOverrideValues(launch.args, "features.codex_hooks")).toEqual([]);
+		const hookTrustState = getCodexConfigOverrideValues(launch.args, "hooks.state");
+		expect(hookTrustState).toHaveLength(1);
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:user_prompt_submit:0:0"');
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:stop:0:0"');
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:permission_request:0:0"');
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:pre_tool_use:0:0"');
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:post_tool_use:0:0"');
+		expect(hookTrustState[0]).toContain('trusted_hash="sha256:');
+		expect(launchCommand).toContain("timeout=5");
+		expect(launchCommand).not.toContain("codex-wrapper");
+		expect(launchCommand).not.toContain("notify=");
 
 		const wrapperPath = join(homedir(), ".cline", "kanban", "hooks", "codex", "codex-wrapper.mjs");
 		expect(existsSync(wrapperPath)).toBe(false);
@@ -591,6 +604,36 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeFromTrash: true,
 		});
 		expect(clineLaunch.args).toContain("--continue");
+	});
+
+	it("places Codex hook config before the resume subcommand", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-resume-hooks",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+			workspaceId: "workspace-1",
+		});
+
+		const resumeIndex = launch.args.indexOf("resume");
+		expect(resumeIndex).toBeGreaterThan(0);
+		for (const key of [
+			"features.hooks",
+			"hooks.state",
+			"hooks.UserPromptSubmit",
+			"hooks.Stop",
+			"hooks.PermissionRequest",
+			"hooks.PreToolUse",
+			"hooks.PostToolUse",
+		]) {
+			const configIndex = launch.args.findIndex((arg) => arg.startsWith(`${key}=`));
+			expect(configIndex).toBeGreaterThan(-1);
+			expect(configIndex).toBeLessThan(resumeIndex);
+		}
 	});
 
 	it("applies autonomous mode flags in adapters for non-droid CLIs", async () => {

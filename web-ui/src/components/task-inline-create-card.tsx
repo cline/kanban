@@ -21,7 +21,6 @@ export type TaskBranchOption = BranchSelectOption;
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
 	{ value: "pr", label: "Make PR" },
-	{ value: "move_to_trash", label: "Move to Trash" },
 ];
 const AUTO_REVIEW_MODE_SELECT_WIDTH_CH = 16;
 const COMPACT_ACTIONS_WIDTH_THRESHOLD_PX = 280;

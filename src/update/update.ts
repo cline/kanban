@@ -72,6 +72,40 @@ interface PendingShutdownAutoUpdate {
 	latestVersion: string;
 }
 
+export interface PendingUpdateNotification {
+	currentVersion: string;
+	latestVersion: string;
+	updateTiming: "startup" | "shutdown";
+	installCommand: string;
+}
+
+function buildUserFacingInstallCommand(
+	packageManager: UpdatePackageManager,
+	packageName: string,
+	npmTag: string,
+	updateTiming: "startup" | "shutdown",
+): string | null {
+	const packageSpec = `${packageName}@${npmTag}`;
+	// `updateTiming === "shutdown"` is the marker for transient (dlx / npx / bunx) runs:
+	// the user did not perform a global install, so steering them toward `... add -g`
+	// would change their workflow. The right command is just to re-run the same launcher.
+	switch (packageManager) {
+		case UpdatePackageManager.PNPM:
+			return updateTiming === "shutdown" ? `pnpm dlx ${packageName}` : `pnpm add -g ${packageSpec}`;
+		case UpdatePackageManager.YARN:
+			return updateTiming === "shutdown" ? `yarn dlx ${packageName}` : `yarn global add ${packageSpec}`;
+		case UpdatePackageManager.BUN:
+			return updateTiming === "shutdown" ? `bunx ${packageName}` : `bun add -g ${packageSpec}`;
+		case UpdatePackageManager.NPX:
+			return `npx ${packageName}`;
+		case UpdatePackageManager.NPM:
+		case UpdatePackageManager.LOCAL:
+			return `npm install -g ${packageSpec}`;
+		case UpdatePackageManager.UNKNOWN:
+			return null;
+	}
+}
+
 const DELETE_DIRECTORY_AFTER_DELAY_SCRIPT = `
 const { rmSync } = require("node:fs");
 
@@ -88,6 +122,15 @@ setTimeout(() => {
 `.trim();
 
 let pendingShutdownAutoUpdate: PendingShutdownAutoUpdate | null = null;
+let pendingUpdateNotification: PendingUpdateNotification | null = null;
+
+export function getPendingUpdateNotification(): PendingUpdateNotification | null {
+	return pendingUpdateNotification;
+}
+
+export function clearPendingUpdateNotification(): void {
+	pendingUpdateNotification = null;
+}
 
 function toPosixLowerPath(path: string): string {
 	return path.replaceAll("\\", "/").toLowerCase();
@@ -706,6 +749,23 @@ export async function runAutoUpdateCheck(options: UpdateStartupOptions): Promise
 		if (!latestVersion || compareVersions(options.currentVersion, latestVersion) >= 0) {
 			return;
 		}
+
+		const installCommand = buildUserFacingInstallCommand(
+			installation.packageManager,
+			packageName,
+			installation.npmTag,
+			installation.updateTiming,
+		);
+		if (!installCommand) {
+			return;
+		}
+
+		pendingUpdateNotification = {
+			currentVersion: options.currentVersion,
+			latestVersion,
+			updateTiming: installation.updateTiming,
+			installCommand,
+		};
 
 		if (installation.updateTiming === "shutdown") {
 			scheduleShutdownUpdate({

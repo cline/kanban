@@ -6,7 +6,6 @@ describe("getTaskAutoReviewActionLabel", () => {
 	it("returns the expected label for each auto review mode", () => {
 		expect(getTaskAutoReviewActionLabel("commit")).toBe("commit");
 		expect(getTaskAutoReviewActionLabel("pr")).toBe("PR");
-		expect(getTaskAutoReviewActionLabel("move_to_trash")).toBe("move to trash");
 	});
 
 	it("falls back to commit when the mode is missing", () => {
@@ -16,6 +15,5 @@ describe("getTaskAutoReviewActionLabel", () => {
 	it("returns the expected cancel button label for each auto review mode", () => {
 		expect(getTaskAutoReviewCancelButtonLabel("commit")).toBe("Cancel Auto-commit");
 		expect(getTaskAutoReviewCancelButtonLabel("pr")).toBe("Cancel Auto-PR");
-		expect(getTaskAutoReviewCancelButtonLabel("move_to_trash")).toBe("Cancel Auto-trash");
 	});
 });

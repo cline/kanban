@@ -1,11 +1,6 @@
 import * as os from "node:os";
+import { type BasicLogger, createClineTelemetryServiceConfig, type ITelemetryService } from "@clinebot/core";
 import { createConfiguredTelemetryService } from "@clinebot/core/telemetry";
-import {
-	type BasicLogger,
-	createClineTelemetryServiceConfig,
-	createClineTelemetryServiceMetadata,
-	type ITelemetryService,
-} from "@clinebot/shared";
 import packageJson from "../../package.json" with { type: "json" };
 
 const appVersion = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
@@ -19,17 +14,17 @@ let telemetrySingleton:
 
 export function getCliTelemetryService(logger?: BasicLogger): ITelemetryService {
 	if (!telemetrySingleton) {
-		const metadata = createClineTelemetryServiceMetadata({
-			extension_version: appVersion,
-			cline_type: "kanban",
-			platform: "kanban",
-			platform_version: process.version,
-			os_type: os.platform(),
-			os_version: os.version(),
-		});
-
 		const { telemetry } = createConfiguredTelemetryService({
-			...createClineTelemetryServiceConfig({ metadata }),
+			...createClineTelemetryServiceConfig({
+				metadata: {
+					extension_version: appVersion,
+					cline_type: "kanban",
+					platform: "kanban",
+					platform_version: process.version,
+					os_type: os.platform(),
+					os_version: os.version(),
+				},
+			}),
 			logger,
 		});
 
