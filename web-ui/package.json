@@ -62,5 +62,8 @@
     "typescript": "^5.9.2",
     "vite": "^6.4.2",
     "vitest": "^4.1.0"
+  },
+  "overrides": {
+    "protobufjs": "7.5.8"
   }
 }
