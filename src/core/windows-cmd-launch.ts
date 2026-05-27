@@ -6,6 +6,8 @@ const WINDOWS_CMD_EXTENSIONS = new Set([".cmd", ".bat"]);
 const WINDOWS_DIRECT_EXTENSIONS = new Set([".exe", ".com"]);
 const DEFAULT_WINDOWS_PATHEXT = [".COM", ".EXE", ".BAT", ".CMD"];
 const WINDOWS_BATCH_INDIRECT_NODE_PATTERN = /"%_prog%"\s+"([^"]+\.(?:c?js|mjs))"\s+%\*/i;
+// Match a quoted or bare `node(.exe)` command token, not an exact fixed path,
+// because Yarn/pnpm-style shims can invoke either a bundled node.exe or PATH node.
 const WINDOWS_BATCH_DIRECT_NODE_PATTERN =
 	/(?:"([^"]*node(?:\.exe)?)"|\b(node(?:\.exe)?)\b)\s+"([^"]+\.(?:c?js|mjs))"\s+%\*/i;
 const WINDOWS_BATCH_DIRECT_EXECUTABLE_PATTERN = /"([^"]+\.(?:exe|com))"\s+%\*/i;
@@ -225,8 +227,12 @@ export function resolveWindowsBatchShimLaunch(
 
 	const directExecutableMatch = shimContent.match(WINDOWS_BATCH_DIRECT_EXECUTABLE_PATTERN);
 	if (directExecutableMatch) {
+		const executablePath = resolveWindowsBatchShimPath(directExecutableMatch[1], resolvedBinaryPath);
+		if (!canAccessPath(executablePath)) {
+			return null;
+		}
 		return {
-			binary: resolveWindowsBatchShimPath(directExecutableMatch[1], resolvedBinaryPath),
+			binary: executablePath,
 			args: [...args],
 		};
 	}

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -140,6 +140,8 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		const shimPath = createWindowsBinary(tempDirectory, "claude.cmd");
 		const executablePath = join(tempDirectory, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
 		writeFileSync(shimPath, `"${tempDirectory}\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n`);
+		mkdirSync(join(tempDirectory, "node_modules", "@anthropic-ai", "claude-code", "bin"), { recursive: true });
+		writeFileSync(executablePath, "");
 
 		const resolved = resolveWindowsBatchShimLaunch("claude", ["--append-system-prompt", "prompt"], "win32", {
 			PATH: tempDirectory,
@@ -149,6 +151,32 @@ describe("shouldUseWindowsCmdLaunch", () => {
 		expect(resolved).toEqual({
 			binary: executablePath,
 			args: ["--append-system-prompt", "prompt"],
+		});
+	});
+
+	it("falls back when a batch shim points to a missing executable", () => {
+		const tempDirectory = mkdtempSync(join(tmpdir(), "kanban-win-launch-"));
+		tempDirectories.push(tempDirectory);
+		const shimPath = createWindowsBinary(tempDirectory, "claude.cmd");
+		writeFileSync(shimPath, `"${tempDirectory}\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n`);
+
+		expect(
+			resolveWindowsBatchShimLaunch("claude", ["--append-system-prompt", "prompt"], "win32", {
+				PATH: tempDirectory,
+				PATHEXT: ".com;.exe;.bat;.cmd",
+			}),
+		).toBeNull();
+
+		expect(
+			resolveWindowsSpawnLaunch("claude", ["--append-system-prompt", "prompt"], "win32", {
+				PATH: tempDirectory,
+				PATHEXT: ".com;.exe;.bat;.cmd",
+				ComSpec: "C:\\Windows\\System32\\cmd.exe",
+			}),
+		).toEqual({
+			binary: "C:\\Windows\\System32\\cmd.exe",
+			args: ["--append-system-prompt", "prompt"],
+			useCmdShell: true,
 		});
 	});
 
