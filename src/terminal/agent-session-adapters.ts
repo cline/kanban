@@ -16,6 +16,8 @@ import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-pro
 import { getRuntimeHomePath } from "../state/workspace-state";
 import { configureCodexHooks, hasCodexConfigOverride } from "./codex-hook-config";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
+import { ensureKimiKanbanAgentFile, getKimiKanbanAgentFilePath } from "./kimi-agent-config";
+import { ensureKimiKanbanConfig, getKimiKanbanConfigPath } from "./kimi-config";
 import {
 	getOpenCodeAuthPathCandidates,
 	getOpenCodeConfigPathCandidates,
@@ -125,6 +127,10 @@ function hasCliOption(args: string[], optionName: string): boolean {
 		}
 	}
 	return false;
+}
+
+function hasAnyCliOption(args: string[], optionNames: readonly string[]): boolean {
+	return optionNames.some((optionName) => hasCliOption(args, optionName));
 }
 
 function getClineHookScriptPath(
@@ -1370,6 +1376,62 @@ const kiroAdapter: AgentSessionAdapter = {
 	},
 };
 
+const kimiAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+
+		if (!hasAnyCliOption(args, ["--continue", "-C", "--session", "-S", "--resume", "-r"]) && input.resumeFromTrash) {
+			args.push("--continue");
+		}
+
+		if (
+			input.autonomousModeEnabled &&
+			!input.resumeFromTrash &&
+			!hasAnyCliOption(args, ["--yolo", "-y", "--yes", "--auto-approve", "--afk"])
+		) {
+			args.push("--yolo");
+		}
+
+		if (input.startInPlanMode && !hasCliOption(args, "--plan")) {
+			args.push("--plan");
+		}
+
+		if (appendedSystemPrompt && !hasAnyCliOption(args, ["--agent", "--agent-file"])) {
+			const agentFilePath = await ensureKimiKanbanAgentFile({
+				additionalSystemPrompt: appendedSystemPrompt,
+				agentFilePath: getKimiKanbanAgentFilePath(getRuntimeHomePath()),
+			});
+			args.push("--agent-file", agentFilePath);
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks && !hasAnyCliOption(args, ["--config", "--config-file"])) {
+			const configPath = await ensureKimiKanbanConfig({
+				buildHookCommand: (event, metadata) => buildHookCommand(event, metadata),
+				configPath: getKimiKanbanConfigPath(getRuntimeHomePath()),
+				env: input.env,
+			});
+			args.push("--config-file", configPath);
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		const trimmedPrompt = input.prompt.trim();
+		return {
+			args,
+			env,
+			deferredStartupInput: trimmedPrompt ? toBracketedPasteSubmission(trimmedPrompt) : undefined,
+		};
+	},
+};
+
 const clineAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -1434,6 +1496,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
 	kiro: kiroAdapter,
+	kimi: kimiAdapter,
 	cline: clineAdapter,
 };
 

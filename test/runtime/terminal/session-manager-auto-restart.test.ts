@@ -195,4 +195,44 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(session.write).toHaveBeenCalledWith(deferredStartupInput);
 		expect(session.write).toHaveBeenCalledTimes(1);
 	});
+
+	it("sends deferred Kimi startup input on first terminal output", async () => {
+		const deferredStartupInput = "\u001b[200~Implement Kimi support\u001b[201~\r";
+		prepareAgentLaunchMock.mockResolvedValue({
+			binary: "kimi",
+			args: [],
+			env: {},
+			deferredStartupInput,
+		});
+
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager();
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "kimi",
+			binary: "kimi",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Implement Kimi support",
+		});
+
+		const session = spawnedSessions[0];
+		expect(session).toBeDefined();
+		if (!session) {
+			return;
+		}
+
+		session.triggerData("Kimi Code\n");
+		expect(session.write).toHaveBeenCalledWith(deferredStartupInput);
+		expect(session.write).toHaveBeenCalledTimes(1);
+
+		session.triggerData("More output\n");
+		expect(session.write).toHaveBeenCalledTimes(1);
+	});
 });
