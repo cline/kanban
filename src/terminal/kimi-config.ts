@@ -107,8 +107,46 @@ function countTomlArrayBracketDelta(line: string): number {
 	return delta;
 }
 
+function findTomlCommentStartIndex(line: string): number {
+	let quote: '"' | "'" | null = null;
+	let isEscaped = false;
+	for (let index = 0; index < line.length; index += 1) {
+		const char = line[index] ?? "";
+		if (quote) {
+			if (quote === '"' && char === "\\" && !isEscaped) {
+				isEscaped = true;
+				continue;
+			}
+			if (char === quote && !isEscaped) {
+				quote = null;
+			}
+			isEscaped = false;
+			continue;
+		}
+		if (char === "#") {
+			return index;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+		}
+	}
+	return -1;
+}
+
+function isTomlTableHeaderLine(line: string): boolean {
+	return /^\s*\[\[?\s*(?:"|'|[A-Za-z0-9_-])/.test(line);
+}
+
 function findFirstTomlTableLineIndex(lines: readonly string[]): number {
-	return lines.findIndex((line) => /^\s*\[/.test(line));
+	let bracketDepth = 0;
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		if (bracketDepth <= 0 && isTomlTableHeaderLine(line)) {
+			return index;
+		}
+		bracketDepth += countTomlArrayBracketDelta(line);
+	}
+	return -1;
 }
 
 function extractTomlArrayBody(block: string): string {
@@ -163,11 +201,15 @@ function ensureTomlArrayBodyTrailingComma(lines: string[]): string[] {
 		return lines;
 	}
 	const lastLine = lines[lastValueIndex] ?? "";
-	if (lastLine.trimEnd().endsWith(",")) {
+	const commentStartIndex = findTomlCommentStartIndex(lastLine);
+	const valuePart = commentStartIndex < 0 ? lastLine : lastLine.slice(0, commentStartIndex);
+	const commentPart = commentStartIndex < 0 ? "" : lastLine.slice(commentStartIndex);
+	const trimmedValuePart = valuePart.trimEnd();
+	if (trimmedValuePart.endsWith(",")) {
 		return lines;
 	}
 	const nextLines = [...lines];
-	nextLines[lastValueIndex] = `${lastLine},`;
+	nextLines[lastValueIndex] = `${trimmedValuePart},${valuePart.slice(trimmedValuePart.length)}${commentPart}`;
 	return nextLines;
 }
 

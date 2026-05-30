@@ -75,6 +75,33 @@ describe("buildKimiKanbanConfigContent", () => {
 		expect(countOccurrences(config, /^hooks = \[/gm)).toBe(1);
 	});
 
+	it("adds a separator comma before a trailing comment on the last user hook", () => {
+		const config = buildKimiKanbanConfigContent(
+			[
+				"hooks = [",
+				'  { event = "Stop", command = "echo done", timeout = 5 } # stop hook',
+				"]",
+				"",
+				"[models]",
+			].join("\n"),
+			buildCommand,
+		);
+
+		expect(config).toContain('{ event = "Stop", command = "echo done", timeout = 5 }, # stop hook');
+		expect(config).not.toContain("# stop hook,");
+		expect(config).toContain('event = "UserPromptSubmit"');
+	});
+
+	it("does not treat indented inline array entries as TOML table headers", () => {
+		const config = buildKimiKanbanConfigContent(
+			["allowed_values = [", '  ["inner", "value"]', "]", "", "[models]"].join("\n"),
+			buildCommand,
+		);
+
+		expect(config).toContain(["allowed_values = [", '  ["inner", "value"]', "]", "hooks = ["].join("\n"));
+		expect(config.indexOf("hooks = [")).toBeLessThan(config.indexOf("[models]"));
+	});
+
 	it("replaces an existing Kanban-managed hook region", () => {
 		const config = buildKimiKanbanConfigContent(
 			[
