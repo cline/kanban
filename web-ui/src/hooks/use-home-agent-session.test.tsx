@@ -9,6 +9,9 @@ const startTaskSessionMutateMock = vi.hoisted(() => vi.fn());
 const stopTaskSessionMutateMock = vi.hoisted(() => vi.fn());
 const reloadTaskChatSessionMutateMock = vi.hoisted(() => vi.fn());
 const notifyErrorMock = vi.hoisted(() => vi.fn());
+const clearTerminalGeometryMock = vi.hoisted(() => vi.fn());
+const getTerminalGeometryMock = vi.hoisted(() => vi.fn());
+const prepareWaitForTerminalGeometryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: (workspaceId: string | null) => ({
@@ -28,6 +31,12 @@ vi.mock("@/runtime/trpc-client", () => ({
 
 vi.mock("@/runtime/task-session-geometry", () => ({
 	estimateTaskSessionGeometry: () => ({ cols: 120, rows: 24 }),
+}));
+
+vi.mock("@/terminal/terminal-geometry-registry", () => ({
+	clearTerminalGeometry: clearTerminalGeometryMock,
+	getTerminalGeometry: getTerminalGeometryMock,
+	prepareWaitForTerminalGeometry: prepareWaitForTerminalGeometryMock,
 }));
 
 vi.mock("@/components/app-toaster", () => ({
@@ -162,16 +171,20 @@ function requireTaskId(taskId: string | null): string {
 }
 
 function HookHarness({
+	canStartTerminalSession = true,
 	config,
 	clineSessionContextVersion = 0,
 	currentProjectId,
+	homeSidebarWidth = 432,
 	onSnapshot,
 	workspaceGit = DEFAULT_WORKSPACE_GIT,
 	seedSessionSummary = false,
 }: {
+	canStartTerminalSession?: boolean;
 	config: RuntimeConfigResponse | null;
 	clineSessionContextVersion?: number;
 	currentProjectId: string | null;
+	homeSidebarWidth?: number;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	workspaceGit?: RuntimeGitRepositoryInfo | null;
 	seedSessionSummary?: boolean;
@@ -184,7 +197,9 @@ function HookHarness({
 		}));
 	}, []);
 	const result = useHomeAgentSession({
+		canStartTerminalSession,
 		currentProjectId,
+		homeSidebarWidth,
 		runtimeProjectConfig: config,
 		workspaceGit,
 		clineSessionContextVersion,
@@ -229,6 +244,11 @@ describe("useHomeAgentSession", () => {
 			summary: createSummary(taskId, "cline"),
 		}));
 		notifyErrorMock.mockReset();
+		clearTerminalGeometryMock.mockReset();
+		getTerminalGeometryMock.mockReset();
+		getTerminalGeometryMock.mockReturnValue(null);
+		prepareWaitForTerminalGeometryMock.mockReset();
+		prepareWaitForTerminalGeometryMock.mockReturnValue(async () => undefined);
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -306,6 +326,83 @@ describe("useHomeAgentSession", () => {
 			taskId: initialTaskId,
 		});
 		expect(rotatedSnapshot.sessionKeys).toEqual([rotatedSnapshot.taskId]);
+	});
+
+	it("starts home terminal sessions with reported terminal geometry when available", async () => {
+		getTerminalGeometryMock.mockReturnValue({ cols: 72, rows: 31 });
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					config={createRuntimeConfig()}
+					currentProjectId="workspace-1"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await createFlushPromises();
+		});
+
+		const snapshot = requireSnapshot(latestSnapshot);
+		expect(snapshot.taskId).toBe("__home_agent__:workspace-1:codex");
+		expect(clearTerminalGeometryMock).toHaveBeenCalledWith(snapshot.taskId);
+		expect(prepareWaitForTerminalGeometryMock).toHaveBeenCalledWith(snapshot.taskId);
+		expect(startTaskSessionMutateMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				taskId: snapshot.taskId,
+				cols: 72,
+				rows: 31,
+			}),
+		);
+	});
+
+	it("waits for the home agent panel to be visible before starting terminal sessions", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					canStartTerminalSession={false}
+					config={createRuntimeConfig()}
+					currentProjectId="workspace-1"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await createFlushPromises();
+		});
+
+		const hiddenSnapshot = requireSnapshot(latestSnapshot);
+		expect(hiddenSnapshot.panelMode).toBe("terminal");
+		expect(hiddenSnapshot.taskId).toBe("__home_agent__:workspace-1:codex");
+		expect(startTaskSessionMutateMock).not.toHaveBeenCalled();
+
+		getTerminalGeometryMock.mockReturnValue({ cols: 58, rows: 28 });
+		await act(async () => {
+			root.render(
+				<HookHarness
+					canStartTerminalSession
+					config={createRuntimeConfig()}
+					currentProjectId="workspace-1"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await createFlushPromises();
+		});
+
+		expect(startTaskSessionMutateMock).toHaveBeenCalledTimes(1);
+		expect(startTaskSessionMutateMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				taskId: hiddenSnapshot.taskId,
+				cols: 58,
+				rows: 28,
+			}),
+		);
 	});
 
 	it("does not restart the home terminal session on a no-op rerender", async () => {
