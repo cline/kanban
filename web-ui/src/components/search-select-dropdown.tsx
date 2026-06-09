@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { useI18n } from "@/i18n/i18n-context";
 
 export interface SearchSelectOption {
 	value: string;
@@ -33,13 +34,13 @@ export function SearchSelectDropdown({
 	buttonClassName,
 	buttonStyle,
 	iconSize,
-	placeholder = "Search...",
-	emptyText = "No options available",
-	noResultsText = "No matching results",
+	placeholder,
+	emptyText,
+	noResultsText,
 	showSelectedIndicator = false,
 	pinSelectedToTop = true,
 	recommendedOptionValues = [],
-	recommendedHeading = "Recommended models",
+	recommendedHeading,
 	matchTargetWidth = true,
 	collisionPadding = 8,
 	dropdownStyle,
@@ -80,6 +81,7 @@ export function SearchSelectDropdown({
 	allowCustomValue?: boolean;
 	customValueLabel?: (query: string) => string;
 }): ReactElement {
+	const { t } = useI18n();
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [activeOptionIndex, setActiveOptionIndex] = useState(0);
@@ -154,7 +156,11 @@ export function SearchSelectDropdown({
 		() => new Map(filteredItems.map((item, index) => [item.value, index] as const)),
 		[filteredItems],
 	);
-	const resolvedButtonText = buttonText ?? selectedOption?.label ?? emptyText;
+	const resolvedEmptyText = emptyText ?? t("search.noOptions");
+	const resolvedNoResultsText = noResultsText ?? t("search.noResults");
+	const resolvedPlaceholder = placeholder ?? t("search.placeholder");
+	const resolvedRecommendedHeading = recommendedHeading ?? t("search.recommendedModels");
+	const resolvedButtonText = buttonText ?? selectedOption?.label ?? resolvedEmptyText;
 
 	const handleOpenChange = useCallback(
 		(nextOpen: boolean) => {
@@ -334,7 +340,7 @@ export function SearchSelectDropdown({
 						<input
 							ref={inputRef}
 							className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-							placeholder={placeholder}
+							placeholder={resolvedPlaceholder}
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
 							onKeyDown={handleSearchInputKeyDown}
@@ -342,12 +348,12 @@ export function SearchSelectDropdown({
 					</div>
 					<div ref={menuRef} className="max-h-[250px] overflow-y-auto overscroll-contain p-1" style={menuStyle}>
 						{filteredItems.length === 0 ? (
-							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{noResultsText}</div>
+							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{resolvedNoResultsText}</div>
 						) : (
 							<>
 								{showRecommendedSection && recommendedItems.length > 0 ? (
 									<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
-										{recommendedHeading}
+										{resolvedRecommendedHeading}
 									</div>
 								) : null}
 								{(showRecommendedSection ? recommendedItems : filteredItems).map((option) =>
@@ -371,7 +377,7 @@ export function SearchSelectDropdown({
 									<>
 										<div className="my-1 border-t border-border" />
 										<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
-											All models
+											{t("search.allModels")}
 										</div>
 									</>
 								) : null}

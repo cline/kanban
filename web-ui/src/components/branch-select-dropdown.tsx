@@ -2,6 +2,7 @@ import { GitBranch } from "lucide-react";
 import type { CSSProperties, ReactElement } from "react";
 
 import { SearchSelectDropdown, type SearchSelectOption } from "@/components/search-select-dropdown";
+import { useI18n } from "@/i18n/i18n-context";
 
 export type BranchSelectOption = SearchSelectOption;
 
@@ -17,8 +18,8 @@ export function BranchSelectDropdown({
 	buttonClassName,
 	buttonStyle,
 	iconSize,
-	emptyText = "No branches detected",
-	noResultsText = "No matching branches",
+	emptyText,
+	noResultsText,
 	showSelectedIndicator = false,
 	matchTargetWidth = true,
 	dropdownStyle,
@@ -44,6 +45,7 @@ export function BranchSelectDropdown({
 	menuStyle?: CSSProperties;
 	onPopoverOpenChange?: (isOpen: boolean) => void;
 }): ReactElement {
+	const { t } = useI18n();
 	const resolvedIconSize = typeof iconSize === "number" ? iconSize : 14;
 
 	return (
@@ -60,8 +62,8 @@ export function BranchSelectDropdown({
 			buttonClassName={buttonClassName}
 			buttonStyle={buttonStyle}
 			iconSize={iconSize}
-			emptyText={emptyText}
-			noResultsText={noResultsText}
+			emptyText={emptyText ?? t("task.noBranches")}
+			noResultsText={noResultsText ?? t("task.noMatchingBranches")}
 			showSelectedIndicator={showSelectedIndicator}
 			matchTargetWidth={matchTargetWidth}
 			dropdownStyle={dropdownStyle}

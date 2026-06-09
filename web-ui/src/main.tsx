@@ -6,6 +6,7 @@ import { AppErrorBoundary } from "@/components/app-error-boundary";
 import { PasscodeGateProvider } from "@/components/passcode-gate";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { isThemeId } from "@/hooks/use-theme";
+import { I18nProvider } from "@/i18n/i18n-context";
 import { TelemetryProvider } from "@/telemetry/posthog-provider";
 import { initializeSentry } from "@/telemetry/sentry";
 import "@/styles/globals.css";
@@ -31,22 +32,24 @@ ReactDOM.createRoot(root).render(
 	<PasscodeGateProvider>
 		<TelemetryProvider>
 			<AppErrorBoundary>
-				<TooltipProvider>
-					<App />
-					<Toaster
-						theme="dark"
-						position="bottom-right"
-						toastOptions={{
-							style: {
-								background: "var(--color-surface-1)",
-								border: "1px solid var(--color-border)",
-								color: "var(--color-text-primary)",
-								fontSize: "13px",
-								whiteSpace: "pre-line",
-							},
-						}}
-					/>
-				</TooltipProvider>
+				<I18nProvider>
+					<TooltipProvider>
+						<App />
+						<Toaster
+							theme="dark"
+							position="bottom-right"
+							toastOptions={{
+								style: {
+									background: "var(--color-surface-1)",
+									border: "1px solid var(--color-border)",
+									color: "var(--color-text-primary)",
+									fontSize: "13px",
+									whiteSpace: "pre-line",
+								},
+							}}
+						/>
+					</TooltipProvider>
+				</I18nProvider>
 			</AppErrorBoundary>
 		</TelemetryProvider>
 	</PasscodeGateProvider>,

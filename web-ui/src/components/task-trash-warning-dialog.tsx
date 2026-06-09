@@ -11,6 +11,8 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/i18n/i18n-context";
+import type { TranslationKey, TranslationValues } from "@/i18n/translations";
 import type { RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 
@@ -20,23 +22,19 @@ export interface TaskTrashWarningViewModel {
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null;
 }
 
-function getTrashWarningGuidance(workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null): string[] {
+type Translate = (key: TranslationKey, values?: TranslationValues) => string;
+
+function getTrashWarningGuidance(t: Translate, workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null): string[] {
 	if (!workspaceInfo) {
-		return ["Save your changes before marking this task as done."];
+		return [t("task.guidance.saveChanges")];
 	}
 
 	if (workspaceInfo.isDetached) {
-		return [
-			"Create a branch inside this worktree, commit, then open a PR from that branch.",
-			"Or commit and cherry-pick the commit onto your target branch (for example main).",
-		];
+		return [t("task.guidance.detachedBranch"), t("task.guidance.detachedCherryPick")];
 	}
 
 	const branch = workspaceInfo.branch ?? workspaceInfo.baseRef;
-	return [
-		`Commit your changes in the worktree branch (${branch}), then open a PR or cherry-pick as needed.`,
-		"After preserving the work, you can safely move this task to Done.",
-	];
+	return [t("task.guidance.branch", { branch }), t("task.guidance.afterPreserving")];
 }
 
 export function TaskTrashWarningDialog({
@@ -50,7 +48,9 @@ export function TaskTrashWarningDialog({
 	onCancel: () => void;
 	onConfirm: () => void;
 }): ReactElement {
-	const guidance = getTrashWarningGuidance(warning?.workspaceInfo ?? null);
+	const { t } = useI18n();
+	const guidance = getTrashWarningGuidance(t, warning?.workspaceInfo ?? null);
+	const fileLabel = t((warning?.fileCount ?? 0) === 1 ? "common.file" : "common.files");
 
 	return (
 		<AlertDialog
@@ -60,15 +60,19 @@ export function TaskTrashWarningDialog({
 			}}
 		>
 			<AlertDialogHeader>
-				<AlertDialogTitle>Unsaved task changes detected</AlertDialogTitle>
+				<AlertDialogTitle>{t("task.unsavedChangesTitle")}</AlertDialogTitle>
 			</AlertDialogHeader>
 			<AlertDialogBody>
 				<AlertDialogDescription>
 					{warning
-						? `${warning.taskTitle} has ${warning.fileCount} changed file(s).`
-						: "This task has uncommitted changes."}
+						? t("task.changedFiles", {
+								title: warning.taskTitle,
+								count: warning.fileCount,
+								fileLabel,
+							})
+						: t("task.uncommittedChanges")}
 				</AlertDialogDescription>
-				<p>Moving to Done will delete this task worktree. Preserve your work first, then move the task to done.</p>
+				<p>{t("task.moveToDoneWarning")}</p>
 				{warning?.workspaceInfo?.path ? (
 					<pre className="overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
 						{formatPathForDisplay(warning.workspaceInfo.path)}
@@ -83,12 +87,12 @@ export function TaskTrashWarningDialog({
 			<AlertDialogFooter>
 				<AlertDialogCancel asChild>
 					<Button variant="default" onClick={onCancel}>
-						Cancel
+						{t("common.cancel")}
 					</Button>
 				</AlertDialogCancel>
 				<AlertDialogAction asChild>
 					<Button variant="danger" onClick={onConfirm}>
-						Move to Done Anyway
+						{t("task.moveToDoneAnyway")}
 					</Button>
 				</AlertDialogAction>
 			</AlertDialogFooter>

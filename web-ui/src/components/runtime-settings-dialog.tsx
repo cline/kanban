@@ -41,6 +41,8 @@ import { TASK_GIT_BASE_REF_PROMPT_VARIABLE, type TaskGitAction } from "@/git-act
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import { useRuntimeSettingsClineMcpController } from "@/hooks/use-runtime-settings-cline-mcp-controller";
 import { previewThemeId, readStoredThemeId, saveThemeId, THEME_GROUPS, THEMES, type ThemeId } from "@/hooks/use-theme";
+import { useI18n } from "@/i18n/i18n-context";
+import type { TranslationKey } from "@/i18n/translations";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type {
@@ -85,9 +87,9 @@ function normalizeTemplateForComparison(value: string): string {
 	return value.replaceAll("\r\n", "\n").trim();
 }
 
-const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }> = [
-	{ value: "commit", label: "Commit" },
-	{ value: "pr", label: "Make PR" },
+const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; labelKey: TranslationKey }> = [
+	{ value: "commit", labelKey: "settings.gitPrompts.commit" },
+	{ value: "pr", labelKey: "settings.gitPrompts.makePr" },
 ];
 
 export type RuntimeSettingsSection = "shortcuts";
@@ -98,16 +100,16 @@ type SettingsNavId = "general" | "cline" | "git-prompts" | "notifications" | "ap
 
 const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 	id: SettingsNavId;
-	label: string;
+	labelKey: TranslationKey;
 	icon: React.ReactNode;
 	clineOnly?: boolean;
 }> = [
-	{ id: "general", label: "General", icon: <SlidersHorizontal size={16} /> },
-	{ id: "cline", label: "Cline", icon: <Bot size={16} />, clineOnly: true },
-	{ id: "git-prompts", label: "Git Prompts", icon: <GitCommit size={16} /> },
-	{ id: "notifications", label: "Notifications", icon: <Bell size={16} /> },
-	{ id: "appearance", label: "Appearance", icon: <Palette size={16} /> },
-	{ id: "project", label: "Project", icon: <FolderOpen size={16} /> },
+	{ id: "general", labelKey: "settings.nav.general", icon: <SlidersHorizontal size={16} /> },
+	{ id: "cline", labelKey: "settings.nav.cline", icon: <Bot size={16} />, clineOnly: true },
+	{ id: "git-prompts", labelKey: "settings.nav.gitPrompts", icon: <GitCommit size={16} /> },
+	{ id: "notifications", labelKey: "settings.nav.notifications", icon: <Bell size={16} /> },
+	{ id: "appearance", labelKey: "settings.nav.appearance", icon: <Palette size={16} /> },
+	{ id: "project", labelKey: "settings.nav.project", icon: <FolderOpen size={16} /> },
 ];
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
@@ -119,11 +121,20 @@ function ShortcutIconComponent({ icon, size = 14 }: { icon: string | undefined; 
 	return <Component size={size} />;
 }
 
-function formatNotificationPermissionStatus(permission: BrowserNotificationPermission): string {
+function formatNotificationPermissionStatus(
+	permission: BrowserNotificationPermission,
+	t: (key: TranslationKey) => string,
+): string {
 	if (permission === "default") {
-		return "not requested yet";
+		return t("settings.notifications.permission.notRequested");
 	}
-	return permission;
+	if (permission === "granted") {
+		return t("settings.notifications.permission.granted");
+	}
+	if (permission === "denied") {
+		return t("settings.notifications.permission.denied");
+	}
+	return t("settings.notifications.permission.unsupported");
 }
 
 function getNextShortcutLabel(shortcuts: RuntimeProjectShortcut[], baseLabel: string): string {
@@ -153,6 +164,7 @@ function AgentRow({
 	onSelect: () => void;
 	disabled: boolean;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const installUrl = getRuntimeAgentCatalogEntry(agent.id)?.installUrl;
 	const isNativeCline = agent.id === "cline";
 	const isInstalled = agent.installed === true;
@@ -189,11 +201,11 @@ function AgentRow({
 						<span className="text-[13px] text-text-primary">{agent.label}</span>
 						{!isNativeCline && isInstalled ? (
 							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-green/10 text-status-green">
-								Installed
+								{t("common.installed")}
 							</span>
 						) : isInstallStatusPending ? (
 							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-3 text-text-secondary">
-								Checking...
+								{t("common.checking")}
 							</span>
 						) : null}
 					</div>
@@ -210,11 +222,11 @@ function AgentRow({
 					onClick={(event: React.MouseEvent) => event.stopPropagation()}
 					className="inline-flex items-center justify-center rounded-md font-medium duration-150 cursor-default select-none h-7 px-2 text-xs bg-surface-2 border border-border text-text-primary hover:bg-surface-3 hover:border-border-bright"
 				>
-					Install
+					{t("common.install")}
 				</a>
 			) : !isNativeCline && agent.installed === false ? (
 				<Button size="sm" disabled>
-					Install
+					{t("common.install")}
 				</Button>
 			) : null}
 		</div>
@@ -319,10 +331,11 @@ function SettingsNav({
 	activeId,
 	onSelect,
 }: {
-	items: ReadonlyArray<{ id: SettingsNavId; label: string; icon: React.ReactNode }>;
+	items: ReadonlyArray<{ id: SettingsNavId; labelKey: TranslationKey; icon: React.ReactNode }>;
 	activeId: SettingsNavId;
 	onSelect: (id: SettingsNavId) => void;
 }): React.ReactElement {
+	const { t } = useI18n();
 	return (
 		<nav className="hidden md:flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-border bg-surface-1 p-3 overflow-y-auto">
 			{items.map((item) => (
@@ -338,7 +351,7 @@ function SettingsNav({
 					)}
 				>
 					<span className="shrink-0 opacity-80">{item.icon}</span>
-					<span>{item.label}</span>
+					<span>{t(item.labelKey)}</span>
 				</button>
 			))}
 		</nav>
@@ -364,6 +377,7 @@ export function RuntimeSettingsDialog({
 	onAccountSwitched?: () => void;
 	initialSection?: RuntimeSettingsSection | null;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const { config, isLoading, isSaving, save, refresh } = useRuntimeConfig(open, workspaceId, initialConfig);
 	const { resetLayoutCustomizations } = useLayoutCustomizations();
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
@@ -400,7 +414,9 @@ export function RuntimeSettingsDialog({
 	const isSelectedPromptAtDefault =
 		selectedPromptVariant === "commit" ? isCommitPromptAtDefault : isOpenPrPromptAtDefault;
 	const selectedPromptPlaceholder =
-		selectedPromptVariant === "commit" ? "Commit prompt template" : "PR prompt template";
+		selectedPromptVariant === "commit"
+			? t("settings.gitPrompts.commitPlaceholder")
+			: t("settings.gitPrompts.prPlaceholder");
 	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
@@ -665,12 +681,12 @@ export function RuntimeSettingsDialog({
 	const handleSave = async () => {
 		setSaveError(null);
 		if (!config) {
-			setSaveError("Runtime settings are still loading. Try again in a moment.");
+			setSaveError(t("settings.error.runtimeLoading"));
 			return;
 		}
 		const selectedAgent = displayedAgents.find((agent) => agent.id === selectedAgentId);
 		if (!selectedAgent || selectedAgent.installed !== true) {
-			setSaveError("Selected agent is not installed. Install it first or choose an installed agent.");
+			setSaveError(t("settings.error.agentNotInstalled"));
 			return;
 		}
 		const shouldRequestNotificationPermission =
@@ -682,18 +698,18 @@ export function RuntimeSettingsDialog({
 			setNotificationPermission(nextPermission);
 		}
 		if (selectedAgentId === "cline" && clineSettings.providerId.trim().length === 0) {
-			setSaveError("Choose a Cline provider before saving.");
+			setSaveError(t("settings.error.chooseClineProvider"));
 			return;
 		}
 		if (selectedAgentId === "cline") {
 			const clineProviderSaveResult = await clineSettings.saveProviderSettings();
 			if (!clineProviderSaveResult.ok) {
-				setSaveError(clineProviderSaveResult.message ?? "Could not save Cline provider settings.");
+				setSaveError(clineProviderSaveResult.message ?? t("settings.error.saveClineProvider"));
 				return;
 			}
 			const clineMcpSaveResult = await clineMcpSettings.saveMcpSettings();
 			if (!clineMcpSaveResult.ok) {
-				setSaveError(clineMcpSaveResult.message ?? "Could not save Cline MCP settings.");
+				setSaveError(clineMcpSaveResult.message ?? t("settings.error.saveClineMcp"));
 				return;
 			}
 		}
@@ -706,7 +722,7 @@ export function RuntimeSettingsDialog({
 			openPrPromptTemplate,
 		});
 		if (!saved) {
-			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
+			setSaveError(t("settings.error.saveRuntime"));
 			return;
 		}
 		if (draftThemeId !== initialThemeId) {
@@ -729,10 +745,10 @@ export function RuntimeSettingsDialog({
 			setSaveError(null);
 			void openFileOnHost(workspaceId, filePath).catch((error) => {
 				const message = error instanceof Error ? error.message : String(error);
-				setSaveError(`Could not open file on host: ${message}`);
+				setSaveError(t("settings.error.openFile", { message }));
 			});
 		},
-		[workspaceId],
+		[t, workspaceId],
 	);
 
 	const handleClineSetupSaved = useCallback(() => {
@@ -759,7 +775,7 @@ export function RuntimeSettingsDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={handleDialogOpenChange} contentClassName="!max-w-[780px]">
-			<DialogHeader title="Settings" icon={<Settings size={16} />} />
+			<DialogHeader title={t("settings.title")} icon={<Settings size={16} />} />
 			<div className="flex h-[min(480px,60vh)]">
 				<SettingsNav items={navItems} activeId={activeSection} onSelect={handleNavSelect} />
 				<div
@@ -772,12 +788,12 @@ export function RuntimeSettingsDialog({
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
 						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
 							<SlidersHorizontal size={16} className="text-text-secondary" />
-							General
+							{t("settings.nav.general")}
 						</h2>
 					</div>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
 						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0 mb-1">
-							Agent
+							{t("settings.agent")}
 						</h6>
 						{displayedAgents.map((agent) => (
 							<AgentRow
@@ -788,16 +804,14 @@ export function RuntimeSettingsDialog({
 								disabled={controlsDisabled}
 							/>
 						))}
-						{config === null ? (
-							<p className="text-text-secondary py-2">Checking which CLIs are installed for this project...</p>
-						) : null}
+						{config === null ? <p className="text-text-secondary py-2">{t("settings.checkingClis")}</p> : null}
 						<label
 							htmlFor={bypassPermissionsCheckboxId}
 							className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
 						>
 							<RadixCheckbox.Root
 								id={bypassPermissionsCheckboxId}
-								aria-label="Enable bypass permissions flag"
+								aria-label={t("settings.enableBypassPermissions")}
 								checked={agentAutonomousModeEnabled}
 								disabled={controlsDisabled}
 								onCheckedChange={(checked) => setAgentAutonomousModeEnabled(checked === true)}
@@ -807,10 +821,10 @@ export function RuntimeSettingsDialog({
 									<Check size={12} className="text-white" />
 								</RadixCheckbox.Indicator>
 							</RadixCheckbox.Root>
-							<span>Enable bypass permissions flag</span>
+							<span>{t("settings.enableBypassPermissions")}</span>
 						</label>
 						<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-							Allows agents to use tools without stopping for permission. Use at your own risk.
+							{t("settings.bypassPermissionsHelp")}
 						</p>
 					</div>
 
@@ -821,7 +835,7 @@ export function RuntimeSettingsDialog({
 							<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
 								<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
 									<Bot size={16} className="text-text-secondary" />
-									Cline
+									{t("settings.nav.cline")}
 								</h2>
 							</div>
 							<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
@@ -851,13 +865,11 @@ export function RuntimeSettingsDialog({
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
 						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
 							<GitCommit size={16} className="text-text-secondary" />
-							Git Prompts
+							{t("settings.nav.gitPrompts")}
 						</h2>
 					</div>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
-						<p className="text-text-secondary text-[13px] mt-0 mb-2">
-							Modify the prompts sent to the agent when using Commit or Make PR on tasks in Review.
-						</p>
+						<p className="text-text-secondary text-[13px] mt-0 mb-2">{t("settings.gitPrompts.description")}</p>
 						<div className="flex items-center justify-between gap-2 mb-2">
 							<NativeSelect
 								value={selectedPromptVariant}
@@ -867,7 +879,7 @@ export function RuntimeSettingsDialog({
 							>
 								{GIT_PROMPT_VARIANT_OPTIONS.map((option) => (
 									<option key={option.value} value={option.value}>
-										{option.label}
+										{t(option.labelKey)}
 									</option>
 								))}
 							</NativeSelect>
@@ -877,7 +889,7 @@ export function RuntimeSettingsDialog({
 								onClick={handleResetSelectedPrompt}
 								disabled={controlsDisabled || isSelectedPromptAtDefault}
 							>
-								Reset
+								{t("common.reset")}
 							</Button>
 						</div>
 						<textarea
@@ -889,21 +901,25 @@ export function RuntimeSettingsDialog({
 							className="w-full rounded-md border border-border bg-surface-2 p-3 text-[13px] text-text-primary font-mono placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none disabled:opacity-40"
 						/>
 						<p className="text-text-secondary text-[13px] mt-2 mb-0">
-							Use{" "}
+							{t("settings.gitPrompts.use")}{" "}
 							<InlineUtilityButton
 								text={
 									copiedVariableToken === TASK_GIT_BASE_REF_PROMPT_VARIABLE.token
-										? "Copied!"
+										? t("common.copied")
 										: TASK_GIT_BASE_REF_PROMPT_VARIABLE.token
 								}
 								monospace
-								widthCh={Math.max(TASK_GIT_BASE_REF_PROMPT_VARIABLE.token.length, "Copied!".length) + 2}
+								widthCh={
+									Math.max(TASK_GIT_BASE_REF_PROMPT_VARIABLE.token.length, t("common.copied").length) + 2
+								}
 								onClick={() => {
 									handleCopyVariableToken(TASK_GIT_BASE_REF_PROMPT_VARIABLE.token);
 								}}
 								disabled={controlsDisabled}
 							/>{" "}
-							to reference {TASK_GIT_BASE_REF_PROMPT_VARIABLE.description}
+							{t("settings.gitPrompts.toReference", {
+								description: t("settings.gitPrompts.baseRefDescription"),
+							})}
 						</p>
 					</div>
 
@@ -912,7 +928,7 @@ export function RuntimeSettingsDialog({
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
 						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
 							<Bell size={16} className="text-text-secondary" />
-							Notifications
+							{t("settings.nav.notifications")}
 						</h2>
 					</div>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
@@ -925,15 +941,17 @@ export function RuntimeSettingsDialog({
 							>
 								<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
 							</RadixSwitch.Root>
-							<span className="text-[13px] text-text-primary">Notify when a task is ready for review</span>
+							<span className="text-[13px] text-text-primary">{t("settings.notifications.notifyReview")}</span>
 						</div>
 						<div className="flex items-center gap-2 mt-2">
 							<p className="text-text-secondary text-[13px] m-0">
-								Browser permission: {formatNotificationPermissionStatus(notificationPermission)}
+								{t("settings.notifications.browserPermission", {
+									permission: formatNotificationPermissionStatus(notificationPermission, t),
+								})}
 							</p>
 							{notificationPermission !== "granted" && notificationPermission !== "unsupported" ? (
 								<InlineUtilityButton
-									text="Request permission"
+									text={t("settings.notifications.requestPermission")}
 									onClick={handleRequestPermission}
 									disabled={controlsDisabled}
 								/>
@@ -946,12 +964,12 @@ export function RuntimeSettingsDialog({
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
 						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
 							<Palette size={16} className="text-text-secondary" />
-							Appearance
+							{t("settings.nav.appearance")}
 						</h2>
 					</div>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
 						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0 mb-2">
-							Theme
+							{t("settings.appearance.theme")}
 						</h6>
 						<div className="min-w-0 w-1/2 max-w-full">
 							<RadixSelect.Root
@@ -968,7 +986,7 @@ export function RuntimeSettingsDialog({
 							>
 								<RadixSelect.Trigger
 									className="flex h-9 w-full cursor-pointer items-center justify-between rounded-md border border-border-bright bg-surface-2 px-3 text-[13px] text-text-primary outline-none hover:bg-surface-3 hover:border-border-bright focus:border-border-focus focus:outline-none"
-									aria-label="Theme"
+									aria-label={t("settings.appearance.theme")}
 								>
 									<span className="flex items-center gap-2.5">
 										<span className="flex shrink-0 h-5 w-10 rounded overflow-hidden border border-border">
@@ -1005,7 +1023,11 @@ export function RuntimeSettingsDialog({
 												return (
 													<RadixSelect.Group key={group.key}>
 														<RadixSelect.Label className="px-2 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-															{group.label}
+															{group.key === "dark"
+																? t("settings.themeGroup.dark")
+																: group.key === "light"
+																	? t("settings.themeGroup.light")
+																	: t("settings.themeGroup.highContrast")}
 														</RadixSelect.Label>
 														{groupThemes.map((theme) => (
 															<RadixSelect.Item
@@ -1036,20 +1058,20 @@ export function RuntimeSettingsDialog({
 						</div>
 
 						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary mt-5 mb-2">
-							Layout
+							{t("settings.appearance.layout")}
 						</h6>
 						<Button size="sm" onClick={resetLayoutCustomizations}>
-							Reset layout
+							{t("settings.appearance.resetLayout")}
 						</Button>
 						<p className="text-text-secondary text-[13px] mt-2 mb-0">
-							Reset sidebar, split pane, and terminal resize customizations back to their defaults.
+							{t("settings.appearance.resetLayoutHelp")}
 						</p>
 					</div>
 					<div data-settings-section="project" />
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
 						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
 							<FolderOpen size={16} className="text-text-secondary" />
-							Project
+							{t("settings.nav.project")}
 						</h2>
 					</div>
 					<p
@@ -1072,7 +1094,7 @@ export function RuntimeSettingsDialog({
 								ref={shortcutsSectionRef}
 								className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0"
 							>
-								Script shortcuts
+								{t("settings.project.scriptShortcuts")}
 							</h6>
 							<Button
 								variant="ghost"
@@ -1080,7 +1102,10 @@ export function RuntimeSettingsDialog({
 								icon={<Plus size={14} />}
 								onClick={() => {
 									setShortcuts((current) => {
-										const nextLabel = getNextShortcutLabel(current, "Run");
+										const nextLabel = getNextShortcutLabel(
+											current,
+											t("settings.project.defaultShortcutLabel"),
+										);
 										setPendingShortcutScrollIndex(current.length);
 										return [
 											...current,
@@ -1094,7 +1119,7 @@ export function RuntimeSettingsDialog({
 								}}
 								disabled={controlsDisabled}
 							>
-								Add
+								{t("common.add")}
 							</Button>
 						</div>
 
@@ -1128,7 +1153,7 @@ export function RuntimeSettingsDialog({
 											),
 										)
 									}
-									placeholder="Label"
+									placeholder={t("settings.project.labelPlaceholder")}
 									className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 								/>
 								<input
@@ -1140,14 +1165,16 @@ export function RuntimeSettingsDialog({
 											),
 										)
 									}
-									placeholder="Command"
+									placeholder={t("settings.project.commandPlaceholder")}
 									className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 								/>
 								<Button
 									variant="ghost"
 									size="sm"
 									icon={<X size={14} />}
-									aria-label={`Remove shortcut ${shortcut.label}`}
+									aria-label={t("settings.project.removeShortcut", {
+										label: shortcut.label || String(shortcutIndex + 1),
+									})}
 									onClick={() =>
 										setShortcuts((current) => current.filter((_, itemIndex) => itemIndex !== shortcutIndex))
 									}
@@ -1155,7 +1182,7 @@ export function RuntimeSettingsDialog({
 							</div>
 						))}
 						{shortcuts.length === 0 ? (
-							<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
+							<p className="text-text-secondary text-[13px]">{t("settings.project.noShortcuts")}</p>
 						) : null}
 					</div>
 
@@ -1174,17 +1201,17 @@ export function RuntimeSettingsDialog({
 					icon={<ExternalLink size={14} />}
 					onClick={() => window.open("https://docs.cline.bot/kanban/overview", "_blank")}
 				>
-					Read the docs
+					{t("settings.readDocs")}
 				</Button>
 				<Button onClick={() => handleDialogOpenChange(false)} disabled={controlsDisabled}>
-					Cancel
+					{t("common.cancel")}
 				</Button>
 				<Button
 					variant="primary"
 					onClick={() => void handleSave()}
 					disabled={controlsDisabled || !hasUnsavedChanges}
 				>
-					Save
+					{t("common.save")}
 				</Button>
 			</DialogFooter>
 		</Dialog>

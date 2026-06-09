@@ -15,10 +15,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useI18n } from "@/i18n/i18n-context";
+import type { TranslationKey, TranslationValues } from "@/i18n/translations";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
-import { getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { useMeasure } from "@/utils/react-use";
 import {
@@ -46,10 +47,8 @@ const SESSION_ACTIVITY_COLOR = {
 
 const DESCRIPTION_COLLAPSE_LINES = 3;
 const DESCRIPTION_EXPANDED_MAX_LINES = 10;
-const DESCRIPTION_EXPAND_LABEL = "See more";
-const DESCRIPTION_COLLAPSE_LABEL = "Less";
-const DESCRIPTION_COLLAPSE_SUFFIX = `… ${DESCRIPTION_EXPAND_LABEL}`;
-const DESCRIPTION_EXPANDED_SUFFIX = `… ${DESCRIPTION_COLLAPSE_LABEL}`;
+
+type Translate = (key: TranslationKey, values?: TranslationValues) => string;
 
 function reconstructTaskWorktreeDisplayPath(taskId: string, workspacePath: string | null | undefined): string | null {
 	if (!workspacePath) {
@@ -141,12 +140,15 @@ function isCardCreditLimitError(summary: RuntimeTaskSessionSummary | undefined):
 	return summary.latestHookActivity?.notificationType === "credit_limit";
 }
 
-function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {
+function getCardSessionActivity(
+	summary: RuntimeTaskSessionSummary | undefined,
+	t: Translate,
+): CardSessionActivity | null {
 	if (!summary) {
 		return null;
 	}
 	if (isCardCreditLimitError(summary)) {
-		return { dotColor: SESSION_ACTIVITY_COLOR.warning, text: "Out of credits" };
+		return { dotColor: SESSION_ACTIVITY_COLOR.warning, text: t("task.outOfCredits") };
 	}
 	const hookActivity = summary.latestHookActivity;
 	const activityText = hookActivity?.activityText?.trim();
@@ -193,19 +195,19 @@ function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined):
 		} else if (text.startsWith("Failed ")) {
 			dotColor = SESSION_ACTIVITY_COLOR.error;
 		} else if (text === "Agent active" || text === "Working on task" || text.startsWith("Resumed")) {
-			return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
+			return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: t("task.thinking") };
 		}
 		return { dotColor, text };
 	}
 	if (summary.state === "failed") {
-		const failedText = finalMessage ?? activityText ?? "Task failed to start";
+		const failedText = finalMessage ?? activityText ?? t("task.failedToStart");
 		return { dotColor: SESSION_ACTIVITY_COLOR.error, text: failedText };
 	}
 	if (summary.state === "awaiting_review") {
-		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: "Waiting for review" };
+		return { dotColor: SESSION_ACTIVITY_COLOR.success, text: t("task.waitingForReview") };
 	}
 	if (summary.state === "running") {
-		return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: "Thinking..." };
+		return { dotColor: SESSION_ACTIVITY_COLOR.thinking, text: t("task.thinking") };
 	}
 	return null;
 }
@@ -259,6 +261,7 @@ export function BoardCard({
 	workspacePath?: string | null;
 	defaultClineModelId?: string | null;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [draftTitle, setDraftTitle] = useState(card.title);
@@ -273,7 +276,7 @@ export function BoardCard({
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
 	const descriptionWidth = descriptionRect.width > 0 ? descriptionRect.width : descriptionWidthFallback;
-	const rawSessionActivity = useMemo(() => getCardSessionActivity(sessionSummary), [sessionSummary]);
+	const rawSessionActivity = useMemo(() => getCardSessionActivity(sessionSummary, t), [sessionSummary, t]);
 	const lastSessionActivityRef = useRef<CardSessionActivity | null>(null);
 	const lastSessionActivityCardIdRef = useRef<string | null>(null);
 	if (lastSessionActivityCardIdRef.current !== card.id) {
@@ -292,6 +295,10 @@ export function BoardCard({
 		() => getTaskPromptDescription(card.prompt, displayTitle),
 		[card.prompt, displayTitle],
 	);
+	const descriptionExpandLabel = t("task.seeMore");
+	const descriptionCollapseLabel = t("task.less");
+	const descriptionCollapseSuffix = `… ${descriptionExpandLabel}`;
+	const descriptionExpandedSuffix = `… ${descriptionCollapseLabel}`;
 
 	useLayoutEffect(() => {
 		if (descriptionRect.width > 0 || !displayDescription) {
@@ -384,17 +391,17 @@ export function BoardCard({
 			collapsed: clampTextWithInlineSuffix(displayDescription, {
 				maxWidthPx: descriptionWidth,
 				maxLines: DESCRIPTION_COLLAPSE_LINES,
-				suffix: DESCRIPTION_COLLAPSE_SUFFIX,
+				suffix: descriptionCollapseSuffix,
 				measureText: measure,
 			}),
 			expanded: clampTextWithInlineSuffix(displayDescription, {
 				maxWidthPx: descriptionWidth,
 				maxLines: DESCRIPTION_EXPANDED_MAX_LINES,
-				suffix: DESCRIPTION_EXPANDED_SUFFIX,
+				suffix: descriptionExpandedSuffix,
 				measureText: measure,
 			}),
 		};
-	}, [descriptionFont, descriptionWidth, displayDescription]);
+	}, [descriptionCollapseSuffix, descriptionExpandedSuffix, descriptionFont, descriptionWidth, displayDescription]);
 
 	const isCreditLimit = isCardCreditLimitError(sessionSummary);
 	const renderStatusMarker = () => {
@@ -421,7 +428,9 @@ export function BoardCard({
 		? reviewWorkspaceSnapshot.changedFiles == null
 			? null
 			: {
-					filesLabel: `${reviewWorkspaceSnapshot.changedFiles} ${reviewWorkspaceSnapshot.changedFiles === 1 ? "file" : "files"}`,
+					filesLabel: `${reviewWorkspaceSnapshot.changedFiles} ${t(
+						reviewWorkspaceSnapshot.changedFiles === 1 ? "common.file" : "common.files",
+					)}`,
 					additions: reviewWorkspaceSnapshot.additions ?? 0,
 					deletions: reviewWorkspaceSnapshot.deletions ?? 0,
 				}
@@ -429,7 +438,11 @@ export function BoardCard({
 	const showReviewGitActions = columnId === "review" && (reviewWorkspaceSnapshot?.changedFiles ?? 0) > 0;
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const cancelAutomaticActionLabel =
-		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
+		!isTrashCard && card.autoReviewEnabled
+			? card.autoReviewMode === "pr"
+				? t("task.cancelAutoPr")
+				: t("task.cancelAutoCommit")
+			: null;
 	const agentOverrideLabel = useMemo(
 		() => (card.agentId ? (getRuntimeAgentCatalogEntry(card.agentId)?.label ?? card.agentId) : null),
 		[card.agentId],
@@ -441,15 +454,15 @@ export function BoardCard({
 		const explicitReasoningLabel = card.clineSettings.reasoningEffort
 			? formatClineReasoningEffortLabel(card.clineSettings.reasoningEffort)
 			: !card.clineSettings.providerId && !card.clineSettings.modelId
-				? "Default"
+				? t("common.default")
 				: null;
 		if (card.clineSettings.providerId && !card.clineSettings.modelId) {
-			const providerLabel = `Provider: ${card.clineSettings.providerId}`;
+			const providerLabel = `${t("task.provider")}: ${card.clineSettings.providerId}`;
 			return explicitReasoningLabel ? `${providerLabel} (${explicitReasoningLabel})` : providerLabel;
 		}
 		const effectiveModelId = card.clineSettings.modelId ?? defaultClineModelId;
 		if (!effectiveModelId) {
-			return explicitReasoningLabel ? `Default model (${explicitReasoningLabel})` : null;
+			return explicitReasoningLabel ? `${t("task.defaultModel")} (${explicitReasoningLabel})` : null;
 		}
 		const modelName = resolveClineModelDisplayName(effectiveModelId);
 		if (explicitReasoningLabel) {
@@ -461,7 +474,7 @@ export function BoardCard({
 			reasoningEffort: inheritedReasoningEffort,
 			showReasoningEffort: Boolean(inheritedReasoningEffort),
 		});
-	}, [card.clineSettings, defaultClineModelId]);
+	}, [card.clineSettings, defaultClineModelId, t]);
 	const taskAgentSettingsLabel = useMemo(() => {
 		const parts = [agentOverrideLabel, modelOverrideLabel].filter((value): value is string => Boolean(value));
 		return parts.length > 0 ? parts.join(" · ") : null;
@@ -576,7 +589,7 @@ export function BoardCard({
 											</p>
 											<button
 												type="button"
-												aria-label="Edit task title"
+												aria-label={t("task.editTitle")}
 												onMouseDown={stopEvent}
 												onClick={(event) => {
 													stopEvent(event);
@@ -607,7 +620,7 @@ export function BoardCard({
 										icon={<Play size={14} />}
 										variant="ghost"
 										size="sm"
-										aria-label="Start task"
+										aria-label={t("task.startTask")}
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
@@ -620,7 +633,7 @@ export function BoardCard({
 										variant="ghost"
 										size="sm"
 										disabled={isMoveToTrashLoading}
-										aria-label="Move task to done"
+										aria-label={t("task.moveToDone")}
 										onMouseDown={stopEvent}
 										onClick={(event) => {
 											stopEvent(event);
@@ -632,9 +645,9 @@ export function BoardCard({
 										side="bottom"
 										content={
 											<>
-												Restore session
+												{t("task.restoreSession")}
 												<br />
-												in new worktree
+												{t("task.restoreInNewWorktree")}
 											</>
 										}
 									>
@@ -642,7 +655,7 @@ export function BoardCard({
 											icon={<RotateCcw size={12} />}
 											variant="ghost"
 											size="sm"
-											aria-label="Restore task from done"
+											aria-label={t("task.restoreFromDone")}
 											onMouseDown={stopEvent}
 											onClick={(event) => {
 												stopEvent(event);
@@ -677,8 +690,8 @@ export function BoardCard({
 													aria-expanded={isDescriptionExpanded}
 													aria-label={
 														isDescriptionExpanded
-															? "Collapse task description"
-															: "Expand task description"
+															? t("task.collapseDescription")
+															: t("task.expandDescription")
 													}
 													onMouseDown={stopEvent}
 													onClick={(event) => {
@@ -686,7 +699,7 @@ export function BoardCard({
 														setIsDescriptionExpanded(!isDescriptionExpanded);
 													}}
 												>
-													{isDescriptionExpanded ? DESCRIPTION_COLLAPSE_LABEL : DESCRIPTION_EXPAND_LABEL}
+													{isDescriptionExpanded ? descriptionCollapseLabel : descriptionExpandLabel}
 												</button>
 											</>
 										) : isDescriptionExpanded && descriptionDisplay.collapsed.isTruncated ? (
@@ -696,14 +709,14 @@ export function BoardCard({
 													type="button"
 													className="inline cursor-pointer rounded-sm text-text-tertiary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [font:inherit]"
 													aria-expanded={isDescriptionExpanded}
-													aria-label="Collapse task description"
+													aria-label={t("task.collapseDescription")}
 													onMouseDown={stopEvent}
 													onClick={(event) => {
 														stopEvent(event);
 														setIsDescriptionExpanded(false);
 													}}
 												>
-													{DESCRIPTION_COLLAPSE_LABEL}
+													{descriptionCollapseLabel}
 												</button>
 											</>
 										) : null}
@@ -811,7 +824,7 @@ export function BoardCard({
 											onCommit?.(card.id);
 										}}
 									>
-										Commit
+										{t("task.commit")}
 									</Button>
 									<Button
 										variant="primary"
@@ -825,7 +838,7 @@ export function BoardCard({
 											onOpenPr?.(card.id);
 										}}
 									>
-										Open PR
+										{t("task.openPr")}
 									</Button>
 								</div>
 							) : null}

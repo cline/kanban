@@ -13,6 +13,7 @@ import { cn } from "@/components/ui/cn";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useI18n } from "@/i18n/i18n-context";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
@@ -29,7 +30,7 @@ import type {
 import { useRuntimeWorkspaceChanges } from "@/runtime/use-runtime-workspace-changes";
 import { useTaskWorkspaceStateVersionValue } from "@/stores/workspace-metadata-store";
 import { useTerminalThemeColors } from "@/terminal/theme-colors";
-import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
+import type { BoardCard, CardSelection } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 
 // We still poll the open detail diff because line content can change without changing
@@ -148,6 +149,7 @@ function BottomTerminalSection({
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
 }): React.ReactElement {
+	const { t } = useI18n();
 	return (
 		<ResizableBottomPane
 			minHeight={200}
@@ -165,7 +167,7 @@ function BottomTerminalSection({
 					showSessionToolbar={false}
 					autoFocus
 					onClose={onClose}
-					minimalHeaderTitle="Terminal"
+					minimalHeaderTitle={t("detail.terminal")}
 					minimalHeaderSubtitle={subtitle}
 					panelBackgroundColor="var(--color-surface-1)"
 					terminalBackgroundColor={terminalThemeColors.surfaceRaised}
@@ -196,12 +198,6 @@ function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactEl
 
 type MobileTab = "chat" | "diff" | "files";
 
-const MOBILE_TABS: { id: MobileTab; label: string; icon: React.ReactElement }[] = [
-	{ id: "chat", label: "Chat", icon: <MessageSquare size={14} /> },
-	{ id: "diff", label: "Diff", icon: <GitCompareArrows size={14} /> },
-	{ id: "files", label: "Files", icon: <Files size={14} /> },
-];
-
 function MobileDetailTabBar({
 	activeTab,
 	onTabChange,
@@ -209,7 +205,12 @@ function MobileDetailTabBar({
 	activeTab: MobileTab;
 	onTabChange: (tab: MobileTab) => void;
 }): React.ReactElement {
-	const tabs = MOBILE_TABS;
+	const { t } = useI18n();
+	const tabs: { id: MobileTab; label: string; icon: React.ReactElement }[] = [
+		{ id: "chat", label: t("detail.chat"), icon: <MessageSquare size={14} /> },
+		{ id: "diff", label: t("detail.diff"), icon: <GitCompareArrows size={14} /> },
+		{ id: "files", label: t("detail.files"), icon: <Files size={14} /> },
+	];
 	return (
 		<div className="flex items-center border-b border-border" style={{ minHeight: 36 }}>
 			{tabs.map((tab) => (
@@ -274,6 +275,7 @@ function DiffToolbar({
 	onToggleExpand: () => void;
 	hideExpand?: boolean;
 }): React.ReactElement {
+	const { t } = useI18n();
 	return (
 		<div className="flex items-center gap-1 border-b border-divider px-2 py-1">
 			{isExpanded ? (
@@ -283,15 +285,15 @@ function DiffToolbar({
 					icon={<X size={14} />}
 					onClick={onToggleExpand}
 					className="h-5"
-					aria-label="Collapse expanded diff view"
+					aria-label={t("detail.collapseExpandedDiff")}
 				/>
 			) : null}
 			<div className="inline-flex items-center gap-0.5 rounded-md p-0.5">
 				<DiffModeButton active={mode === "working_copy"} onClick={() => onModeChange("working_copy")}>
-					All Changes
+					{t("detail.allChanges")}
 				</DiffModeButton>
 				<DiffModeButton active={mode === "last_turn"} onClick={() => onModeChange("last_turn")}>
-					Last Turn
+					{t("detail.lastTurn")}
 				</DiffModeButton>
 			</div>
 			{!hideExpand ? (
@@ -301,7 +303,7 @@ function DiffToolbar({
 					icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
 					onClick={onToggleExpand}
 					className="ml-auto h-5"
-					aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
+					aria-label={isExpanded ? t("detail.collapseSplitDiff") : t("detail.expandSplitDiff")}
 				/>
 			) : null}
 		</div>
@@ -433,6 +435,7 @@ export function CardDetailView({
 		reasoningEffort: RuntimeClineReasoningEffort | "";
 	}) => void;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const isMobile = useIsMobile();
 	const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
 	const terminalThemeColors = useTerminalThemeColors();
@@ -502,7 +505,7 @@ export function CardDetailView({
 	const isWorkspaceChangesPending = isRuntimeAvailable && workspaceChanges === null;
 	const hasNoWorkspaceFileChanges =
 		isRuntimeAvailable && workspaceChanges !== null && runtimeFiles !== null && runtimeFiles.length === 0;
-	const emptyDiffTitle = diffMode === "last_turn" ? "No changes since last turn" : "No working changes";
+	const emptyDiffTitle = diffMode === "last_turn" ? t("detail.noChangesSinceLastTurn") : t("detail.noWorkingChanges");
 	const taskCardsPanelPercent = `${(taskCardsPanelRatio * 100).toFixed(1)}%`;
 	const detailContentPanelPercent = `${((1 - taskCardsPanelRatio) * 100).toFixed(1)}%`;
 	const agentPanelPercent = `${(agentPanelRatio * 100).toFixed(1)}%`;
@@ -664,7 +667,9 @@ export function CardDetailView({
 			}
 			cancelAutomaticActionLabel={
 				selection.card.autoReviewEnabled === true
-					? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
+					? selection.card.autoReviewMode === "pr"
+						? t("task.cancelAutoPr")
+						: t("task.cancelAutoCommit")
 					: null
 			}
 		/>
@@ -691,7 +696,9 @@ export function CardDetailView({
 			}
 			cancelAutomaticActionLabel={
 				selection.card.autoReviewEnabled === true
-					? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
+					? selection.card.autoReviewMode === "pr"
+						? t("task.cancelAutoPr")
+						: t("task.cancelAutoCommit")
 					: null
 			}
 			panelBackgroundColor="var(--color-surface-0)"
@@ -826,7 +833,7 @@ export function CardDetailView({
 					</div>
 					<ResizeHandle
 						orientation="vertical"
-						ariaLabel="Resize task cards and detail panels"
+						ariaLabel={t("detail.resizeTaskCardsDetail")}
 						onMouseDown={handleSeparatorMouseDown}
 						className="z-10"
 					/>
@@ -850,7 +857,7 @@ export function CardDetailView({
 							{!isDiffExpanded ? (
 								<ResizeHandle
 									orientation="vertical"
-									ariaLabel="Resize agent and diff panels"
+									ariaLabel={t("detail.resizeAgentDiff")}
 									onMouseDown={handleAgentDiffSeparatorMouseDown}
 									className="z-10"
 								/>
@@ -899,7 +906,7 @@ export function CardDetailView({
 											</div>
 											<ResizeHandle
 												orientation="vertical"
-												ariaLabel="Resize detail diff panels"
+												ariaLabel={t("detail.resizeDetailDiff")}
 												onMouseDown={handleDetailDiffSeparatorMouseDown}
 												className="z-10"
 											/>

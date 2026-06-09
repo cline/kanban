@@ -6,9 +6,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardCard } from "@/components/board-card";
 import { Button } from "@/components/ui/button";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
+import { useI18n } from "@/i18n/i18n-context";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardColumnId, isCardDropDisabled } from "@/state/drag-rules";
 import type { BoardCard as BoardCardModel, BoardColumn, BoardColumnId, CardSelection } from "@/types";
+import { getBoardColumnTitleKey } from "@/utils/board-column-title";
 
 function ColumnSection({
 	column,
@@ -59,12 +61,14 @@ function ColumnSection({
 	workspacePath?: string | null;
 	defaultClineModelId?: string | null;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const [open, setOpen] = useState(defaultOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null);
+	const columnTitle = t(getBoardColumnTitleKey(column.id));
 
 	useEffect(() => {
 		if (!column.cards.some((card) => card.id === selectedCardId)) {
@@ -109,7 +113,7 @@ function ColumnSection({
 					)}
 					<span style={{ display: "flex", alignItems: "center", gap: 8 }}>
 						<ColumnIndicator columnId={column.id} />
-						<span style={{ fontWeight: 600, fontSize: 13 }}>{column.title}</span>
+						<span style={{ fontWeight: 600, fontSize: 13 }}>{columnTitle}</span>
 						<span className="text-text-secondary" style={{ fontSize: 11 }}>
 							{column.cards.length}
 						</span>
@@ -122,8 +126,8 @@ function ColumnSection({
 						size="sm"
 						onClick={onStartAllTasks}
 						disabled={column.cards.length === 0}
-						aria-label="Start all backlog tasks"
-						title={column.cards.length > 0 ? "Start all backlog tasks" : "Backlog is empty"}
+						aria-label={t("board.startAllBacklogTasks")}
+						title={column.cards.length > 0 ? t("board.startAllBacklogTasks") : t("board.backlogEmpty")}
 						style={{ marginRight: 4 }}
 					/>
 				) : null}
@@ -135,8 +139,8 @@ function ColumnSection({
 						className="text-status-red hover:text-status-red"
 						onClick={onClearTrash}
 						disabled={column.cards.length === 0}
-						aria-label="Clear done"
-						title={column.cards.length > 0 ? "Clear done items permanently" : "Done is empty"}
+						aria-label={t("board.clearDone")}
+						title={column.cards.length > 0 ? t("board.clearDoneItems") : t("board.doneEmpty")}
 						style={{ marginRight: 4 }}
 					/>
 				) : null}
@@ -157,13 +161,13 @@ function ColumnSection({
 								{canCreate ? (
 									<Button
 										icon={<span style={{ fontSize: 16, lineHeight: 1 }}>+</span>}
-										aria-label="Create task"
+										aria-label={t("board.createTask")}
 										fill
 										onClick={onCreateTask}
 										style={{ marginBottom: 8 }}
 									>
 										<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-											<span>Create task</span>
+											<span>{t("board.createTask")}</span>
 											<span aria-hidden className="text-text-secondary">
 												(c)
 											</span>
@@ -216,7 +220,9 @@ function ColumnSection({
 								})()}
 								{provided.placeholder}
 								{column.cards.length === 0 ? (
-									<div className="flex items-center justify-center py-4 text-text-tertiary text-xs">Empty</div>
+									<div className="flex items-center justify-center py-4 text-text-tertiary text-xs">
+										{t("common.empty")}
+									</div>
 								) : null}
 							</div>
 						);

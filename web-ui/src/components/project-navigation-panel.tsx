@@ -20,6 +20,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useI18n } from "@/i18n/i18n-context";
 import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
 import {
 	LocalStorageKey,
@@ -84,6 +85,7 @@ export function ProjectNavigationPanel({
 	isCollapsed: boolean;
 	setSidebarCollapsed: (collapsed: boolean, persist?: boolean) => void;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 	const shouldShowFeaturebaseFeedback = canShowFeaturebaseFeedbackButton({
 		selectedAgentId,
@@ -217,7 +219,7 @@ export function ProjectNavigationPanel({
 					<div
 						role="separator"
 						aria-orientation="vertical"
-						aria-label="Resize sidebar"
+						aria-label={t("sidebar.resize")}
 						onMouseDown={startDrag}
 						className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
 					/>
@@ -250,7 +252,7 @@ export function ProjectNavigationPanel({
 				})}
 				<button
 					type="button"
-					title="Add project"
+					title={t("project.add")}
 					onClick={onAddProject}
 					disabled={removingProjectId !== null}
 					className={cn(
@@ -291,7 +293,7 @@ export function ProjectNavigationPanel({
 				<div
 					role="separator"
 					aria-orientation="vertical"
-					aria-label="Resize sidebar"
+					aria-label={t("sidebar.resize")}
 					onMouseDown={startDrag}
 					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10"
 				/>
@@ -308,7 +310,7 @@ export function ProjectNavigationPanel({
 							size="sm"
 							icon={<Plus size={16} className="rotate-45" />}
 							onClick={() => setCollapsed(true)}
-							aria-label="Close sidebar"
+							aria-label={t("sidebar.close")}
 							className="min-w-[44px] min-h-[44px] -mr-2"
 						/>
 					) : null}
@@ -325,7 +327,7 @@ export function ProjectNavigationPanel({
 									: "text-text-secondary hover:text-text-primary border border-transparent",
 							)}
 						>
-							Projects
+							{t("sidebar.projects")}
 						</button>
 						<button
 							type="button"
@@ -339,7 +341,7 @@ export function ProjectNavigationPanel({
 								!canShowAgentSection ? "cursor-not-allowed opacity-50" : null,
 							)}
 						>
-							Kanban Agent
+							{t("sidebar.agent")}
 						</button>
 					</div>
 				</div>
@@ -390,7 +392,7 @@ export function ProjectNavigationPanel({
 								disabled={removingProjectId !== null}
 							>
 								<Plus size={14} className="shrink-0" />
-								<span className="text-sm">Add Project</span>
+								<span className="text-sm">{t("project.add")}</span>
 							</button>
 						) : null}
 					</div>
@@ -406,7 +408,7 @@ export function ProjectNavigationPanel({
 					<div className="flex flex-1 min-h-0 overflow-hidden bg-surface-1 px-2 pb-2 pt-1">
 						{agentSectionContent ?? (
 							<div className="flex w-full items-center justify-center rounded-md border border-border bg-surface-2 px-3 text-center text-sm text-text-secondary">
-								Select a project to use the agent.
+								{t("sidebar.selectProjectForAgent")}
 							</div>
 						)}
 					</div>
@@ -421,17 +423,16 @@ export function ProjectNavigationPanel({
 				}}
 			>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Remove Project</AlertDialogTitle>
+					<AlertDialogTitle>{t("project.remove.title")}</AlertDialogTitle>
 				</AlertDialogHeader>
 				<AlertDialogBody>
 					<AlertDialogDescription asChild>
 						<div className="flex flex-col gap-3">
-							<p>{pendingProjectRemoval ? pendingProjectRemoval.name : "This project"}</p>
+							<p>{pendingProjectRemoval ? pendingProjectRemoval.name : t("project.remove.thisProject")}</p>
 							<p className="text-text-primary">
-								This will delete all project tasks ({pendingProjectTaskCount}), remove task
-								workspaces/worktrees, and stop any running processes for this project.
+								{t("project.remove.description", { count: pendingProjectTaskCount })}
 							</p>
-							<p className="text-text-primary">This action cannot be undone.</p>
+							<p className="text-text-primary">{t("project.remove.irreversible")}</p>
 						</div>
 					</AlertDialogDescription>
 				</AlertDialogBody>
@@ -446,7 +447,7 @@ export function ProjectNavigationPanel({
 								}
 							}}
 						>
-							Cancel
+							{t("common.cancel")}
 						</Button>
 					</AlertDialogCancel>
 					<AlertDialogAction asChild>
@@ -466,10 +467,10 @@ export function ProjectNavigationPanel({
 							{isProjectRemovalPending ? (
 								<>
 									<Spinner size={14} />
-									Removing...
+									{t("project.remove.removing")}
 								</>
 							) : (
-								"Remove Project"
+								t("project.remove.confirm")
 							)}
 						</Button>
 					</AlertDialogAction>
@@ -479,16 +480,16 @@ export function ProjectNavigationPanel({
 	);
 }
 
-const TERMINAL_AGENT_HINTS: readonly { label: string; hint: string }[] = [
-	{ label: "Create tasks", hint: "Ask your agent to add tasks, link them, and start working" },
-	{ label: "Break down work", hint: "Ask to decompose a complex feature into linked subtasks" },
-	{ label: "Import issues", hint: "Pull issues into task cards via GitHub CLI or Linear MCP" },
-];
-
 function TerminalAgentHints(): React.ReactElement {
+	const { t } = useI18n();
 	const [isDismissed, setIsDismissed] = useState(
 		() => readLocalStorageItem(LocalStorageKey.AgentTipsDismissed) === "true",
 	);
+	const terminalAgentHints: readonly { label: string; hint: string }[] = [
+		{ label: t("sidebar.tip.createTasks.label"), hint: t("sidebar.tip.createTasks.hint") },
+		{ label: t("sidebar.tip.breakDown.label"), hint: t("sidebar.tip.breakDown.hint") },
+		{ label: t("sidebar.tip.importIssues.label"), hint: t("sidebar.tip.importIssues.hint") },
+	];
 
 	const dismiss = useCallback(() => {
 		setIsDismissed(true);
@@ -509,7 +510,7 @@ function TerminalAgentHints(): React.ReactElement {
 					className="flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[11px] text-text-tertiary hover:text-text-secondary"
 				>
 					<Lightbulb size={11} />
-					Show tips
+					{t("sidebar.showTips")}
 				</button>
 			</div>
 		);
@@ -519,19 +520,19 @@ function TerminalAgentHints(): React.ReactElement {
 			<div className="flex items-center justify-between mb-1.5">
 				<span className="text-[11px] font-medium text-status-gold flex items-center gap-1">
 					<Lightbulb size={11} />
-					Tips
+					{t("sidebar.tips")}
 				</span>
 				<button
 					type="button"
 					onClick={dismiss}
-					aria-label="Dismiss tips"
+					aria-label={t("sidebar.dismissTips")}
 					className="cursor-pointer border-none bg-transparent p-0 text-text-tertiary hover:text-text-secondary"
 				>
 					<X size={12} />
 				</button>
 			</div>
 			<ul className="m-0 list-none space-y-1 pl-0">
-				{TERMINAL_AGENT_HINTS.map((item) => (
+				{terminalAgentHints.map((item) => (
 					<li key={item.label} className="flex items-start gap-1.5 text-[11px] text-text-primary">
 						<span className="mt-[5px] block h-1 w-1 shrink-0 rounded-full bg-text-tertiary" />
 						<span>
@@ -551,6 +552,7 @@ function ProjectSupportFooter({
 	shouldShowFeaturebaseFeedback: boolean;
 	featurebaseFeedbackState?: FeaturebaseFeedbackState;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const isOpening = featurebaseFeedbackState?.authState === "loading";
 
 	const handleAction = () => {
@@ -561,16 +563,18 @@ function ProjectSupportFooter({
 		}
 	};
 
-	const actionLabel = shouldShowFeaturebaseFeedback ? (isOpening ? "Opening..." : "Send feedback") : "Report issue";
+	const actionLabel = shouldShowFeaturebaseFeedback
+		? isOpening
+			? t("common.opening")
+			: t("sidebar.sendFeedback")
+		: t("sidebar.reportIssue");
 
 	return (
 		<div style={{ padding: "4px 12px 12px" }}>
 			<div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
 				<Info size={14} className="mt-px shrink-0 text-text-tertiary" />
 				<div className="flex flex-col gap-1.5">
-					<p className="m-0 text-xs text-text-secondary">
-						Kanban is in beta. Help us improve by sharing your experience.
-					</p>
+					<p className="m-0 text-xs text-text-secondary">{t("sidebar.beta")}</p>
 					<button
 						type="button"
 						className="m-0 flex cursor-pointer items-center gap-1 self-start border-none bg-transparent p-0 text-xs font-semibold text-text-secondary hover:text-text-primary active:text-text-tertiary disabled:cursor-default disabled:opacity-50"
@@ -588,22 +592,6 @@ function ProjectSupportFooter({
 const MOD = isMacPlatform ? "⌘" : modifierKeyLabel;
 const ALT = isMacPlatform ? "⌥" : "Alt";
 
-const ESSENTIAL_SHORTCUTS = [
-	{ keys: ["C"], label: "New task" },
-	{ keys: [MOD, "B"], label: "Start backlog tasks" },
-	{ keys: [MOD, "Shift", "S"], label: "Settings" },
-	{ keys: ["Click", MOD], label: "Hold to link tasks" },
-	{ keys: [MOD, "G"], label: "Toggle git view" },
-	{ keys: [MOD, "J"], label: "Toggle terminal" },
-];
-
-const MORE_SHORTCUTS = [
-	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
-	{ keys: [ALT, "Shift", "Enter"], label: "Start and open task" },
-	{ keys: [MOD, "M"], label: "Expand terminal" },
-	{ keys: ["Esc"], label: "Close / back" },
-];
-
 function ShortcutHint({ keys, label }: { keys: string[]; label: string }): React.ReactElement {
 	return (
 		<div className="flex justify-between items-center py-px">
@@ -618,20 +606,35 @@ function ShortcutHint({ keys, label }: { keys: string[]; label: string }): React
 }
 
 function ShortcutsCard(): React.ReactElement {
+	const { t } = useI18n();
 	const [expanded, setExpanded] = useState(false);
+	const essentialShortcuts = [
+		{ keys: ["C"], label: t("shortcut.newTask") },
+		{ keys: [MOD, "B"], label: t("shortcut.startBacklogTasks") },
+		{ keys: [MOD, "Shift", "S"], label: t("shortcut.settings") },
+		{ keys: ["Click", MOD], label: t("shortcut.holdToLinkTasks") },
+		{ keys: [MOD, "G"], label: t("shortcut.toggleGitView") },
+		{ keys: [MOD, "J"], label: t("shortcut.toggleTerminal") },
+	];
+	const moreShortcuts = [
+		{ keys: [MOD, "Shift", "A"], label: t("shortcut.togglePlanAct") },
+		{ keys: [ALT, "Shift", "Enter"], label: t("shortcut.startAndOpenTask") },
+		{ keys: [MOD, "M"], label: t("shortcut.expandTerminal") },
+		{ keys: ["Esc"], label: t("shortcut.closeBack") },
+	];
 
 	return (
 		<div style={{ padding: "8px 12px" }}>
 			<div style={{ padding: "0 8px" }}>
 				<div className="flex flex-col gap-0.5">
-					{ESSENTIAL_SHORTCUTS.map((s) => (
+					{essentialShortcuts.map((s) => (
 						<ShortcutHint key={s.label} keys={s.keys} label={s.label} />
 					))}
 				</div>
 				<Collapsible.Root open={expanded} onOpenChange={setExpanded}>
 					<Collapsible.Content>
 						<div className="flex flex-col gap-0.5">
-							{MORE_SHORTCUTS.map((s) => (
+							{moreShortcuts.map((s) => (
 								<ShortcutHint key={s.label} keys={s.keys} label={s.label} />
 							))}
 						</div>
@@ -642,7 +645,7 @@ function ShortcutsCard(): React.ReactElement {
 							className="flex items-center gap-1 mt-1.5 text-xs text-text-tertiary hover:text-text-secondary cursor-pointer bg-transparent border-none p-0"
 						>
 							{expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-							{expanded ? "Less" : "All shortcuts"}
+							{expanded ? t("shortcut.less") : t("shortcut.all")}
 						</button>
 					</Collapsible.Trigger>
 				</Collapsible.Root>
@@ -701,6 +704,7 @@ function ProjectRow({
 	onSelect: (id: string) => void;
 	onRemove: (id: string) => void;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const displayPath = formatPathForDisplay(project.path);
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
@@ -708,29 +712,29 @@ function ProjectRow({
 	const taskCountBadges: TaskCountBadge[] = [
 		{
 			id: "backlog",
-			title: "Backlog",
-			shortLabel: "B",
+			title: t("board.column.backlog"),
+			shortLabel: t("board.column.backlog.short"),
 			toneClassName: "bg-text-primary/15 text-text-primary",
 			count: project.taskCounts.backlog,
 		},
 		{
 			id: "in_progress",
-			title: "In Progress",
-			shortLabel: "IP",
+			title: t("board.column.inProgress"),
+			shortLabel: t("board.column.inProgress.short"),
 			toneClassName: "bg-accent/20 text-accent",
 			count: project.taskCounts.in_progress,
 		},
 		{
 			id: "review",
-			title: "Review",
-			shortLabel: "R",
+			title: t("board.column.review"),
+			shortLabel: t("board.column.review.short"),
 			toneClassName: "bg-accent-2/20 text-accent-2",
 			count: project.taskCounts.review,
 		},
 		{
 			id: "trash",
-			title: "Done",
-			shortLabel: "D",
+			title: t("board.column.done"),
+			shortLabel: t("board.column.done.short"),
 			toneClassName: "bg-status-red/20 text-status-red",
 			count: project.taskCounts.trash,
 		},
@@ -807,7 +811,7 @@ function ProjectRow({
 							onClick={(e) => {
 								e.stopPropagation();
 							}}
-							aria-label="Project actions"
+							aria-label={t("project.actions")}
 						/>
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Portal>
@@ -822,7 +826,7 @@ function ProjectRow({
 								className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-status-red cursor-pointer outline-none data-[highlighted]:bg-surface-3"
 								onSelect={() => onRemove(project.id)}
 							>
-								Delete
+								{t("common.delete")}
 							</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					</DropdownMenu.Portal>

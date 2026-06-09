@@ -6,6 +6,7 @@ import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
 import type { AddClineProviderInput, UpdateClineProviderInput } from "@/hooks/use-runtime-settings-cline-controller";
+import { useI18n } from "@/i18n/i18n-context";
 import type { RuntimeClineProviderCapability } from "@/runtime/types";
 
 const CAPABILITY_OPTIONS: readonly RuntimeClineProviderCapability[] = [
@@ -101,6 +102,7 @@ export function ClineAddProviderDialog({
 	initialValues?: ClineProviderDialogInitialValues | null;
 	onSubmit: (input: AddClineProviderInput | UpdateClineProviderInput) => Promise<SaveResult>;
 }): ReactElement {
+	const { t } = useI18n();
 	const initialForm = useMemo(() => createInitialFormState(initialValues), [initialValues]);
 	const [form, setForm] = useState<FormState>(() => initialForm);
 	const [modelInput, setModelInput] = useState("");
@@ -299,7 +301,7 @@ export function ClineAddProviderDialog({
 		const result = await onSubmit(payload);
 		setIsSaving(false);
 		if (!result.ok) {
-			setError(result.message ?? (mode === "edit" ? "Failed to update provider." : "Failed to add provider."));
+			setError(result.message ?? (mode === "edit" ? t("cline.error.updateProvider") : t("cline.error.addProvider")));
 			return;
 		}
 		onOpenChange(false);
@@ -307,12 +309,12 @@ export function ClineAddProviderDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange} contentClassName="max-w-3xl">
-			<DialogHeader title={mode === "edit" ? "Edit OpenAI-compatible provider" : "Add OpenAI-compatible provider"} />
+			<DialogHeader title={mode === "edit" ? t("providerDialog.editTitle") : t("providerDialog.addTitle")} />
 			<DialogBody className="space-y-4">
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
 					<div className="grid gap-3 md:grid-cols-2">
 						<div className="min-w-0">
-							<p className="mb-1 text-[12px] text-text-secondary">Provider ID</p>
+							<p className="mb-1 text-[12px] text-text-secondary">{t("providerDialog.providerId")}</p>
 							<input
 								value={form.providerId}
 								onChange={(event) => setForm((current) => ({ ...current, providerId: event.target.value }))}
@@ -321,16 +323,14 @@ export function ClineAddProviderDialog({
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 							<p className="mt-1 text-[12px] text-text-tertiary">
-								{mode === "edit"
-									? "Provider ID is fixed for existing providers."
-									: "Used as the saved provider key."}
+								{mode === "edit" ? t("providerDialog.providerIdFixed") : t("providerDialog.providerIdHelp")}
 							</p>
 							{duplicateProviderId ? (
-								<p className="mt-1 text-[12px] text-status-red">This provider ID already exists.</p>
+								<p className="mt-1 text-[12px] text-status-red">{t("providerDialog.providerIdExists")}</p>
 							) : null}
 						</div>
 						<div className="min-w-0">
-							<p className="mb-1 text-[12px] text-text-secondary">Provider name</p>
+							<p className="mb-1 text-[12px] text-text-secondary">{t("providerDialog.providerName")}</p>
 							<input
 								value={form.name}
 								onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
@@ -342,7 +342,7 @@ export function ClineAddProviderDialog({
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-1 text-[12px] text-text-secondary">Base URL</p>
+					<p className="mb-1 text-[12px] text-text-secondary">{t("providerDialog.baseUrl")}</p>
 					<input
 						value={form.baseUrl}
 						onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))}
@@ -352,13 +352,13 @@ export function ClineAddProviderDialog({
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-1 text-[12px] text-text-secondary">API key</p>
+					<p className="mb-1 text-[12px] text-text-secondary">{t("providerDialog.apiKey")}</p>
 					<div className="relative">
 						<input
 							type={showApiKey ? "text" : "password"}
 							value={form.apiKey}
 							onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
-							placeholder="Optional"
+							placeholder={t("common.optional")}
 							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 pr-9 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 						/>
 						<Button
@@ -366,27 +366,25 @@ export function ClineAddProviderDialog({
 							size="sm"
 							icon={showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
 							className="absolute right-1 top-1/2 -translate-y-1/2"
-							aria-label={showApiKey ? "Hide API key" : "Show API key"}
+							aria-label={showApiKey ? t("providerDialog.hideApiKey") : t("providerDialog.showApiKey")}
 							onClick={() => setShowApiKey((current) => !current)}
 						/>
 					</div>
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-1 text-[12px] text-text-secondary">Model source URL</p>
+					<p className="mb-1 text-[12px] text-text-secondary">{t("providerDialog.modelSourceUrl")}</p>
 					<input
 						value={form.modelsSourceUrl}
 						onChange={(event) => setForm((current) => ({ ...current, modelsSourceUrl: event.target.value }))}
 						placeholder="https://api.example.com/v1/models"
 						className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 					/>
-					<p className="mt-1 text-[12px] text-text-tertiary">
-						Optional. If set, the SDK can fetch models from a compatible `/models` endpoint.
-					</p>
+					<p className="mt-1 text-[12px] text-text-tertiary">{t("providerDialog.modelSourceHelp")}</p>
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-1 text-[12px] text-text-secondary">Models</p>
+					<p className="mb-1 text-[12px] text-text-secondary">{t("providerDialog.models")}</p>
 					<div className="flex min-h-10 flex-wrap gap-1 rounded-md border border-border bg-surface-2 px-2 py-1.5">
 						{form.models.map((model) => (
 							<span
@@ -398,7 +396,7 @@ export function ClineAddProviderDialog({
 									type="button"
 									className="text-text-secondary hover:text-text-primary"
 									onClick={() => removeModel(model)}
-									aria-label={`Remove ${model}`}
+									aria-label={t("providerDialog.removeModel", { model })}
 								>
 									<X size={12} />
 								</button>
@@ -414,16 +412,16 @@ export function ClineAddProviderDialog({
 									setModelInput("");
 								}
 							}}
-							placeholder={form.models.length === 0 ? "Type a model ID and press Enter" : ""}
+							placeholder={form.models.length === 0 ? t("providerDialog.modelInputPlaceholder") : ""}
 							className="min-w-40 flex-1 bg-transparent text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none"
 						/>
 					</div>
-					<p className="mt-1 text-[12px] text-text-tertiary">Add at least one model or set a model source URL.</p>
+					<p className="mt-1 text-[12px] text-text-tertiary">{t("providerDialog.modelsRequirement")}</p>
 				</section>
 
 				{draftModels.length > 1 ? (
 					<section className="rounded-lg border border-border bg-surface-1 p-3">
-						<p className="mb-1 text-[12px] text-text-secondary">Default model</p>
+						<p className="mb-1 text-[12px] text-text-secondary">{t("providerDialog.defaultModel")}</p>
 						<NativeSelect
 							fill
 							value={form.defaultModelId}
@@ -439,7 +437,7 @@ export function ClineAddProviderDialog({
 				) : null}
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-2 text-[12px] text-text-secondary">Capabilities</p>
+					<p className="mb-2 text-[12px] text-text-secondary">{t("providerDialog.capabilities")}</p>
 					<div className="flex flex-wrap gap-2">
 						{CAPABILITY_OPTIONS.map((capability) => {
 							const selected = form.capabilities.includes(capability);
@@ -461,10 +459,12 @@ export function ClineAddProviderDialog({
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<h3 className="mb-3 text-[12px] font-medium text-text-primary">Advanced settings</h3>
+					<h3 className="mb-3 text-[12px] font-medium text-text-primary">
+						{t("providerDialog.advancedSettings")}
+					</h3>
 					<div className="space-y-3">
 						<div className="min-w-0">
-							<p className="mb-1 text-[12px] text-text-secondary">Timeout (ms)</p>
+							<p className="mb-1 text-[12px] text-text-secondary">{t("providerDialog.timeoutMs")}</p>
 							<input
 								value={form.timeoutMs}
 								onChange={(event) => setForm((current) => ({ ...current, timeoutMs: event.target.value }))}
@@ -475,7 +475,7 @@ export function ClineAddProviderDialog({
 						</div>
 						<div className="min-w-0">
 							<div className="mb-1 flex items-center justify-between">
-								<p className="text-[12px] text-text-secondary">Custom headers</p>
+								<p className="text-[12px] text-text-secondary">{t("providerDialog.customHeaders")}</p>
 								<Button
 									variant="ghost"
 									size="sm"
@@ -487,7 +487,7 @@ export function ClineAddProviderDialog({
 										}))
 									}
 								>
-									Add
+									{t("common.add")}
 								</Button>
 							</div>
 							<div className="space-y-2">
@@ -503,7 +503,7 @@ export function ClineAddProviderDialog({
 													),
 												}))
 											}
-											placeholder="Header name"
+											placeholder={t("providerDialog.headerName")}
 											className="h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 										/>
 										<input
@@ -516,14 +516,14 @@ export function ClineAddProviderDialog({
 													),
 												}))
 											}
-											placeholder="Header value"
+											placeholder={t("providerDialog.headerValue")}
 											className="h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 										/>
 										<Button
 											variant="ghost"
 											size="sm"
 											icon={<Trash2 size={14} />}
-											aria-label="Remove header"
+											aria-label={t("providerDialog.removeHeader")}
 											onClick={() =>
 												setForm((current) => ({
 													...current,
@@ -542,16 +542,16 @@ export function ClineAddProviderDialog({
 			</DialogBody>
 			<DialogFooter>
 				<Button variant="ghost" size="md" onClick={() => onOpenChange(false)}>
-					Cancel
+					{t("common.cancel")}
 				</Button>
 				<Button variant="primary" size="md" disabled={!canSubmit || isSaving} onClick={() => void handleSubmit()}>
 					{isSaving
 						? mode === "edit"
-							? "Updating..."
-							: "Adding..."
+							? t("providerDialog.updating")
+							: t("providerDialog.adding")
 						: mode === "edit"
-							? "Update provider"
-							: "Add provider"}
+							? t("providerDialog.updateProvider")
+							: t("providerDialog.addProvider")}
 				</Button>
 			</DialogFooter>
 		</Dialog>

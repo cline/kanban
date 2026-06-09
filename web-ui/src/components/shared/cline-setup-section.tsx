@@ -21,6 +21,7 @@ import type {
 	UseRuntimeSettingsClineControllerResult,
 } from "@/hooks/use-runtime-settings-cline-controller";
 import type { UseRuntimeSettingsClineMcpControllerResult } from "@/hooks/use-runtime-settings-cline-mcp-controller";
+import { useI18n } from "@/i18n/i18n-context";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
 import type { RuntimeClineMcpServer, RuntimeClineReasoningEffort } from "@/runtime/types";
 import { formatPathForDisplay } from "@/utils/path-display";
@@ -68,6 +69,7 @@ export function ClineSetupSection({
 	onError?: (message: string | null) => void;
 	onSaved?: () => void;
 }): ReactElement {
+	const { t } = useI18n();
 	const mcpControlsDisabled = controlsDisabled || (mcpController?.isSavingMcpSettings ?? false);
 	const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
 	const [providerDialogMode, setProviderDialogMode] = useState<ClineProviderDialogMode>("add");
@@ -93,7 +95,7 @@ export function ClineSetupSection({
 			return;
 		}
 		if (copiedDeviceCodeState.error) {
-			onError?.("Could not copy code automatically. Please copy it manually.");
+			onError?.(t("cline.error.copyCode"));
 			setIsDeviceCodeCopied(false);
 			return;
 		}
@@ -106,7 +108,7 @@ export function ClineSetupSection({
 			setIsDeviceCodeCopied(false);
 			deviceCodeCopiedResetTimerRef.current = null;
 		}, 2000);
-	}, [copiedDeviceCodeState, controller.deviceAuthInfo?.userCode, onError]);
+	}, [copiedDeviceCodeState, controller.deviceAuthInfo?.userCode, onError, t]);
 
 	const clineProviderOptions = useMemo((): SearchSelectOption[] => {
 		const items: SearchSelectOption[] = controller.providerCatalog.map((provider) => ({
@@ -130,6 +132,23 @@ export function ClineSetupSection({
 		[controller.providerId, controller.providerModels],
 	);
 	const clineModelOptions = modelPickerOptions.options;
+	const reasoningEffortOptions = useMemo(
+		() =>
+			CLINE_REASONING_EFFORT_OPTIONS.map((option) => ({
+				...option,
+				label:
+					option.value === ""
+						? t("cline.reasoning.default")
+						: option.value === "low"
+							? t("cline.reasoning.low")
+							: option.value === "medium"
+								? t("cline.reasoning.medium")
+								: option.value === "high"
+									? t("cline.reasoning.high")
+									: t("cline.reasoning.xhigh"),
+			})),
+		[t],
+	);
 	const selectedProvider = useMemo(
 		() =>
 			controller.providerCatalog.find(
@@ -137,7 +156,7 @@ export function ClineSetupSection({
 			) ?? null,
 		[controller.normalizedProviderId, controller.providerCatalog],
 	);
-	const apiKeyPlaceholder = controller.apiKeyConfigured ? "Saved" : "Enter API key";
+	const apiKeyPlaceholder = controller.apiKeyConfigured ? t("cline.apiKeySaved") : t("cline.apiKeyPlaceholder");
 	const providerEnvHint = (selectedProvider?.env ?? [])
 		.map((value) => value.trim())
 		.filter((value) => value.length > 0)
@@ -214,7 +233,7 @@ export function ClineSetupSection({
 			onError?.(null);
 			const result = await controller.runOauthLogin();
 			if (!result.ok) {
-				onError?.(result.message ?? "OAuth login failed.");
+				onError?.(result.message ?? t("cline.error.oauthLogin"));
 				return;
 			}
 			onSaved?.();
@@ -229,7 +248,7 @@ export function ClineSetupSection({
 			onError?.(null);
 			const result = await mcpController.runMcpServerOauth(serverName);
 			if (!result.ok) {
-				onError?.(result.message ?? `Failed to authorize MCP server "${serverName}".`);
+				onError?.(result.message ?? t("cline.error.authorizeMcp", { serverName }));
 				return;
 			}
 			onSaved?.();
@@ -244,7 +263,7 @@ export function ClineSetupSection({
 			onError?.(null);
 			const result = await mcpController.linearMcpPreset.setup();
 			if (!result.ok) {
-				onError?.(result.message ?? "Failed to set up Linear MCP.");
+				onError?.(result.message ?? t("cline.error.setupLinear"));
 				return;
 			}
 			onSaved?.();
@@ -255,7 +274,7 @@ export function ClineSetupSection({
 		onError?.(null);
 		void openFileOnHost(workspaceId, filePath).catch((error) => {
 			const message = error instanceof Error ? error.message : String(error);
-			onError?.(`Could not open file on host: ${message}`);
+			onError?.(t("settings.error.openFile", { message }));
 		});
 	};
 
@@ -270,7 +289,7 @@ export function ClineSetupSection({
 			onError?.(null);
 			const result = await controller.refreshProviderModels();
 			if (!result.ok) {
-				onError?.(result.message ?? "Failed to refresh Cline models.");
+				onError?.(result.message ?? t("cline.error.refreshModels"));
 				return;
 			}
 		})();
@@ -279,7 +298,7 @@ export function ClineSetupSection({
 	return (
 		<>
 			<div className="mt-2">
-				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">API provider</p>
+				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">{t("cline.apiProvider")}</p>
 				<div className="min-w-0 w-1/2 max-w-full">
 					<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
 						<div className="min-w-0">
@@ -306,15 +325,15 @@ export function ClineSetupSection({
 								size="sm"
 								buttonText={
 									controller.isLoadingProviderCatalog
-										? "Loading providers..."
+										? t("cline.loadingProviders")
 										: clineProviderOptions.find((option) => option.value === controller.providerId)?.label
 								}
-								emptyText="Select provider"
-								noResultsText="No matching providers"
-								placeholder="Search providers..."
+								emptyText={t("cline.selectProvider")}
+								noResultsText={t("cline.noMatchingProviders")}
+								placeholder={t("cline.searchProviders")}
 								showSelectedIndicator
 								footerAction={{
-									label: "+ New Provider",
+									label: t("cline.newProvider"),
 									onClick: () => {
 										onError?.(null);
 										setProviderDialogMode("add");
@@ -336,13 +355,13 @@ export function ClineSetupSection({
 									setIsAddProviderDialogOpen(true);
 								}}
 							>
-								Edit
+								{t("common.edit")}
 							</Button>
 						)}
 					</div>
 				</div>
 				{controller.isLoadingProviderCatalog ? (
-					<p className="text-text-secondary text-[12px] mt-1 mb-0">Fetching Cline providers...</p>
+					<p className="text-text-secondary text-[12px] mt-1 mb-0">{t("cline.fetchingProviders")}</p>
 				) : null}
 				<div
 					className="grid gap-2 mt-3"
@@ -350,7 +369,7 @@ export function ClineSetupSection({
 				>
 					{controller.isOauthProviderSelected ? null : (
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.apiKey")}</p>
 							<input
 								type="password"
 								value={controller.apiKey}
@@ -360,13 +379,15 @@ export function ClineSetupSection({
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 							{providerEnvHint ? (
-								<p className="text-text-tertiary text-[11px] mt-1 mb-0 break-all">Or use {providerEnvHint}</p>
+								<p className="text-text-tertiary text-[11px] mt-1 mb-0 break-all">
+									{t("cline.providerEnvHint", { env: providerEnvHint })}
+								</p>
 							) : null}
 						</div>
 					)}
 					{shouldShowBaseUrlField ? (
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.baseUrl")}</p>
 							<input
 								value={controller.baseUrl}
 								onChange={(event) => controller.setBaseUrl(event.target.value)}
@@ -380,7 +401,7 @@ export function ClineSetupSection({
 				{isBedrockProvider ? (
 					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS region</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.awsRegion")}</p>
 							<input
 								value={controller.awsRegion}
 								onChange={(event) => controller.setAwsRegion(event.target.value)}
@@ -390,7 +411,7 @@ export function ClineSetupSection({
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">Auth mode</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.authMode")}</p>
 							<NativeSelect
 								fill
 								value={controller.awsAuthentication}
@@ -399,14 +420,14 @@ export function ClineSetupSection({
 								}
 								disabled={controlsDisabled}
 							>
-								<option value="">Auto</option>
+								<option value="">{t("cline.authMode.auto")}</option>
 								<option value="iam">IAM</option>
-								<option value="api-key">Access keys</option>
-								<option value="profile">Profile</option>
+								<option value="api-key">{t("cline.authMode.accessKeys")}</option>
+								<option value="profile">{t("cline.authMode.profile")}</option>
 							</NativeSelect>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS profile</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.awsProfile")}</p>
 							<input
 								value={controller.awsProfile}
 								onChange={(event) => controller.setAwsProfile(event.target.value)}
@@ -416,7 +437,7 @@ export function ClineSetupSection({
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">Bedrock endpoint</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.bedrockEndpoint")}</p>
 							<input
 								value={controller.awsEndpoint}
 								onChange={(event) => controller.setAwsEndpoint(event.target.value)}
@@ -426,7 +447,7 @@ export function ClineSetupSection({
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS access key</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.awsAccessKey")}</p>
 							<input
 								type="password"
 								value={controller.awsAccessKey}
@@ -437,7 +458,7 @@ export function ClineSetupSection({
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS secret key</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.awsSecretKey")}</p>
 							<input
 								type="password"
 								value={controller.awsSecretKey}
@@ -448,12 +469,12 @@ export function ClineSetupSection({
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS session token</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.awsSessionToken")}</p>
 							<input
 								type="password"
 								value={controller.awsSessionToken}
 								onChange={(event) => controller.setAwsSessionToken(event.target.value)}
-								placeholder="Optional"
+								placeholder={t("common.optional")}
 								disabled={controlsDisabled}
 								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
@@ -463,7 +484,7 @@ export function ClineSetupSection({
 				{isVertexProvider ? (
 					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP project ID</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.gcpProjectId")}</p>
 							<input
 								value={controller.gcpProjectId}
 								onChange={(event) => controller.setGcpProjectId(event.target.value)}
@@ -473,7 +494,7 @@ export function ClineSetupSection({
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP region</p>
+							<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.gcpRegion")}</p>
 							<input
 								value={controller.gcpRegion}
 								onChange={(event) => controller.setGcpRegion(event.target.value)}
@@ -487,24 +508,29 @@ export function ClineSetupSection({
 				{controller.isOauthProviderSelected ? (
 					<>
 						<p className="text-text-secondary text-[12px] mt-1 mb-0">
-							Status: {controller.oauthConfigured ? "Signed in" : "Not signed in"}
+							{t("cline.status", {
+								status: controller.oauthConfigured ? t("cline.signedIn") : t("cline.notSignedIn"),
+							})}
 						</p>
 						{controller.oauthAccountId ? (
 							<p className="text-text-secondary text-[12px] mt-1 mb-0">
-								Account ID: <span className="text-text-primary">{controller.oauthAccountId}</span>
+								{t("cline.accountId")} <span className="text-text-primary">{controller.oauthAccountId}</span>
 							</p>
 						) : null}
 						{controller.oauthExpiresAt ? (
 							<p className="text-text-secondary text-[12px] mt-1 mb-0">
-								Expiry: <span className="text-text-primary">{formatExpiry(controller.oauthExpiresAt)}</span>
+								{t("cline.expiry")}{" "}
+								<span className="text-text-primary">{formatExpiry(controller.oauthExpiresAt)}</span>
 							</p>
 						) : null}
 						{controller.isRunningOauthLogin && controller.deviceAuthInfo ? (
 							<div className="mt-2 rounded-md border border-border bg-surface-2 p-3">
-								<p className="text-text-secondary text-[13px] font-medium mt-0 mb-2">Sign in to Cline</p>
+								<p className="text-text-secondary text-[13px] font-medium mt-0 mb-2">
+									{t("cline.signInTitle")}
+								</p>
 								<ol className="list-decimal pl-4 text-[12px] text-text-primary m-0">
 									<li>
-										Go to this URL:{" "}
+										{t("cline.goToUrl")}{" "}
 										<a
 											href={controller.deviceAuthInfo.verificationUrl}
 											target="_blank"
@@ -515,7 +541,7 @@ export function ClineSetupSection({
 										</a>
 									</li>
 									<li className="mt-2">
-										Enter this code:
+										{t("cline.enterCode")}
 										<div className="mt-1 flex items-center gap-2">
 											<p className="text-text-primary text-[18px] font-mono font-bold tracking-wider m-0">
 												{controller.deviceAuthInfo.userCode}
@@ -533,7 +559,7 @@ export function ClineSetupSection({
 												}}
 												disabled={controlsDisabled || !controller.deviceAuthInfo}
 											>
-												{isDeviceCodeCopied ? "Copied" : "Copy"}
+												{isDeviceCodeCopied ? t("common.copied") : t("common.copy")}
 											</Button>
 										</div>
 									</li>
@@ -549,11 +575,11 @@ export function ClineSetupSection({
 							>
 								{controller.isRunningOauthLogin
 									? controller.deviceAuthInfo
-										? "Waiting for confirmation..."
-										: "Signing in..."
+										? t("cline.waitingConfirmation")
+										: t("cline.signingIn")
 									: controller.oauthConfigured
-										? `Sign in again with ${controller.managedOauthProvider ?? "OAuth"}`
-										: `Sign in with ${controller.managedOauthProvider ?? "OAuth"}`}
+										? t("cline.signInAgainWith", { provider: controller.managedOauthProvider ?? "OAuth" })
+										: t("cline.signInWith", { provider: controller.managedOauthProvider ?? "OAuth" })}
 							</Button>
 						</div>
 					</>
@@ -562,16 +588,16 @@ export function ClineSetupSection({
 			{accountSection ? <div className="mt-4">{accountSection}</div> : null}
 
 			<div className="mt-4">
-				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">Model</p>
+				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">{t("cline.model")}</p>
 				<div
 					className="grid gap-2"
 					style={{ gridTemplateColumns: controller.selectedModelSupportsReasoningEffort ? "1fr 1fr" : "1fr" }}
 				>
 					<div className="min-w-0">
 						<div className="mb-1 flex items-center justify-between gap-2 h-7">
-							<p className="text-text-secondary text-[12px] m-0">Model ID</p>
+							<p className="text-text-secondary text-[12px] m-0">{t("cline.modelId")}</p>
 							{shouldShowBaseUrlField ? (
-								<Tooltip side="bottom" content="Save settings and refresh models">
+								<Tooltip side="bottom" content={t("cline.saveAndRefreshModels")}>
 									<Button
 										variant="ghost"
 										size="sm"
@@ -581,7 +607,7 @@ export function ClineSetupSection({
 												className={controller.isLoadingProviderModels ? "animate-spin" : undefined}
 											/>
 										}
-										aria-label="Save settings and refresh models"
+										aria-label={t("cline.saveAndRefreshModels")}
 										disabled={
 											controlsDisabled ||
 											controller.isLoadingProviderModels ||
@@ -601,54 +627,53 @@ export function ClineSetupSection({
 							size="sm"
 							buttonText={
 								controller.isLoadingProviderModels
-									? "Loading models..."
+									? t("cline.loadingModels")
 									: (clineModelOptions.find((option) => option.value === controller.modelId)?.label ??
 											controller.modelId.trim()) ||
 										undefined
 							}
-							emptyText="Select model"
-							noResultsText="No matching models"
-							placeholder="Search models..."
+							emptyText={t("cline.selectModel")}
+							noResultsText={t("cline.noMatchingModels")}
+							placeholder={t("cline.searchModels")}
 							showSelectedIndicator
 							pinSelectedToTop={modelPickerOptions.shouldPinSelectedModelToTop}
 							recommendedOptionValues={modelPickerOptions.recommendedModelIds}
-							recommendedHeading="Recommended models"
+							recommendedHeading={t("search.recommendedModels")}
 							allowCustomValue
 						/>
 					</div>
 					{controller.selectedModelSupportsReasoningEffort ? (
 						<div className="min-w-0">
 							<div className="mb-1 flex items-center h-7">
-								<p className="text-text-secondary text-[12px] m-0">Reasoning effort</p>
+								<p className="text-text-secondary text-[12px] m-0">{t("cline.reasoningEffort")}</p>
 							</div>
 							<SearchSelectDropdown
-								options={CLINE_REASONING_EFFORT_OPTIONS}
+								options={reasoningEffortOptions}
 								selectedValue={controller.reasoningEffort}
 								onSelect={(value) => controller.setReasoningEffort(value as RuntimeClineReasoningEffort | "")}
 								disabled={controlsDisabled}
 								fill
 								size="sm"
 								buttonText={
-									CLINE_REASONING_EFFORT_OPTIONS.find((option) => option.value === controller.reasoningEffort)
-										?.label
+									reasoningEffortOptions.find((option) => option.value === controller.reasoningEffort)?.label
 								}
-								emptyText="Default"
-								noResultsText="No matching reasoning levels"
-								placeholder="Search reasoning levels..."
+								emptyText={t("cline.reasoning.default")}
+								noResultsText={t("cline.noMatchingReasoning")}
+								placeholder={t("cline.searchReasoning")}
 								showSelectedIndicator
 							/>
 						</div>
 					) : null}
 				</div>
 				{controller.isLoadingProviderModels ? (
-					<p className="text-text-secondary text-[12px] mt-1 mb-0">Fetching Cline models...</p>
+					<p className="text-text-secondary text-[12px] mt-1 mb-0">{t("cline.fetchingModels")}</p>
 				) : null}
 			</div>
 
 			{mcpController && showMcpSettings ? (
 				<>
 					<div className="flex items-center justify-between mt-4 mb-2">
-						<h6 className="font-semibold text-[12px] text-text-primary m-0">MCP servers</h6>
+						<h6 className="font-semibold text-[12px] text-text-primary m-0">{t("cline.mcpServers")}</h6>
 						<Button
 							variant="ghost"
 							size="sm"
@@ -656,12 +681,10 @@ export function ClineSetupSection({
 							disabled={mcpControlsDisabled || mcpController.isLoadingMcpSettings}
 							onClick={handleAddMcpServer}
 						>
-							Add
+							{t("common.add")}
 						</Button>
 					</div>
-					<p className="text-text-secondary text-[12px] mt-0 mb-2">
-						Configure Cline MCP servers for tool integrations.
-					</p>
+					<p className="text-text-secondary text-[12px] mt-0 mb-2">{t("cline.mcpDescription")}</p>
 					{mcpController.mcpSettingsPath ? (
 						<p
 							className="text-text-secondary font-mono text-xs mt-0 mb-2 break-all"
@@ -679,9 +702,7 @@ export function ClineSetupSection({
 							<div className="flex items-center justify-between gap-3">
 								<div className="min-w-0">
 									<p className="text-text-primary text-[13px] font-medium mt-0 mb-0.5">Linear</p>
-									<p className="text-text-secondary text-[12px] mt-0 mb-0">
-										Connect Linear for project management tools.
-									</p>
+									<p className="text-text-secondary text-[12px] mt-0 mb-0">{t("cline.linearDescription")}</p>
 								</div>
 								<Button
 									variant="primary"
@@ -695,21 +716,21 @@ export function ClineSetupSection({
 									className="shrink-0"
 								>
 									{mcpController.linearMcpPreset.isSettingUp
-										? "Setting up..."
+										? t("cline.settingUp")
 										: mcpController.linearMcpPreset.status === "configured"
-											? "Connect Linear"
-											: "Set up Linear"}
+											? t("cline.connectLinear")
+											: t("cline.setupLinear")}
 								</Button>
 							</div>
 						</div>
 					) : null}
 
 					{mcpController.isLoadingMcpSettings ? (
-						<p className="text-text-secondary text-[12px] mt-1 mb-0">Loading MCP settings...</p>
+						<p className="text-text-secondary text-[12px] mt-1 mb-0">{t("cline.loadingMcpSettings")}</p>
 					) : null}
 
 					{!mcpController.isLoadingMcpSettings && mcpController.mcpServers.length === 0 ? (
-						<p className="text-text-secondary text-[12px] mt-1 mb-0">No MCP servers configured.</p>
+						<p className="text-text-secondary text-[12px] mt-1 mb-0">{t("cline.noMcpServers")}</p>
 					) : null}
 
 					{mcpController.mcpServers.map((server, serverIndex) => {
@@ -723,7 +744,7 @@ export function ClineSetupSection({
 								<div className="rounded-md border border-border p-2 flex-1 min-w-0">
 									<div className="grid gap-2" style={{ gridTemplateColumns: "1.2fr 1fr" }}>
 										<div className="min-w-0">
-											<p className="text-text-secondary text-[12px] mt-0 mb-1">Server name</p>
+											<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.serverName")}</p>
 											<input
 												value={server.name}
 												onChange={(event) => {
@@ -738,7 +759,7 @@ export function ClineSetupSection({
 											/>
 										</div>
 										<div className="min-w-0">
-											<p className="text-text-secondary text-[12px] mt-0 mb-1">Transport</p>
+											<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.transport")}</p>
 											<NativeSelect
 												fill
 												value={server.type}
@@ -773,7 +794,7 @@ export function ClineSetupSection({
 									{server.type === "stdio" ? (
 										<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 											<div className="min-w-0">
-												<p className="text-text-secondary text-[12px] mt-0 mb-1">Command</p>
+												<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.command")}</p>
 												<input
 													value={server.command}
 													onChange={(event) => {
@@ -787,13 +808,13 @@ export function ClineSetupSection({
 															};
 														});
 													}}
-													placeholder="Command"
+													placeholder={t("cline.command")}
 													disabled={mcpControlsDisabled}
 													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 												/>
 											</div>
 											<div className="min-w-0">
-												<p className="text-text-secondary text-[12px] mt-0 mb-1">Arguments</p>
+												<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.arguments")}</p>
 												<input
 													value={(server.args ?? []).join(" ")}
 													onChange={(event) => {
@@ -810,13 +831,15 @@ export function ClineSetupSection({
 															};
 														});
 													}}
-													placeholder="Args"
+													placeholder={t("cline.argsPlaceholder")}
 													disabled={mcpControlsDisabled}
 													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 												/>
 											</div>
 											<div className="min-w-0" style={{ gridColumn: "1 / -1" }}>
-												<p className="text-text-secondary text-[12px] mt-0 mb-1">Working directory</p>
+												<p className="text-text-secondary text-[12px] mt-0 mb-1">
+													{t("cline.workingDirectory")}
+												</p>
 												<input
 													value={server.cwd ?? ""}
 													onChange={(event) => {
@@ -830,7 +853,7 @@ export function ClineSetupSection({
 															};
 														});
 													}}
-													placeholder="Working directory (optional)"
+													placeholder={t("cline.workingDirectoryOptional")}
 													disabled={mcpControlsDisabled}
 													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 												/>
@@ -862,9 +885,9 @@ export function ClineSetupSection({
 									{oauthSupported ? (
 										<div className="mt-2">
 											<p className="text-text-secondary text-[12px] mt-0 mb-1">
-												OAuth:{" "}
+												{t("cline.oauth")}{" "}
 												<span className="text-text-primary">
-													{oauthConfigured ? "Connected" : "Not connected"}
+													{oauthConfigured ? t("cline.connected") : t("cline.notConnected")}
 												</span>
 											</p>
 											{authStatus?.lastError ? (
@@ -879,10 +902,10 @@ export function ClineSetupSection({
 												}}
 											>
 												{isAuthenticating
-													? "Connecting OAuth..."
+													? t("cline.connectingOauth")
 													: oauthConfigured
-														? "Reconnect OAuth"
-														: "Connect OAuth"}
+														? t("cline.reconnectOauth")
+														: t("cline.connectOauth")}
 											</Button>
 										</div>
 									) : null}
@@ -907,14 +930,14 @@ export function ClineSetupSection({
 												<Check size={12} className="text-white" />
 											</RadixCheckbox.Indicator>
 										</RadixCheckbox.Root>
-										<span>Disabled</span>
+										<span>{t("cline.disabled")}</span>
 									</label>
 								</div>
 								<Button
 									variant="ghost"
 									size="sm"
 									icon={<X size={14} />}
-									aria-label={`Remove MCP server ${server.name || serverIndex + 1}`}
+									aria-label={t("cline.removeMcpServer", { name: server.name || String(serverIndex + 1) })}
 									disabled={mcpControlsDisabled}
 									onClick={() => removeMcpServer(serverIndex)}
 								/>
@@ -938,7 +961,9 @@ export function ClineSetupSection({
 					if (!result.ok) {
 						onError?.(
 							result.message ??
-								(providerDialogMode === "edit" ? "Failed to update provider." : "Failed to add provider."),
+								(providerDialogMode === "edit"
+									? t("cline.error.updateProvider")
+									: t("cline.error.addProvider")),
 						);
 						return result;
 					}

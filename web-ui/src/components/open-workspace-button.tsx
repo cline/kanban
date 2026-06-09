@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
+import { useI18n } from "@/i18n/i18n-context";
 import type { OpenTargetId, OpenTargetOption } from "@/utils/open-targets";
 
 function OpenTargetIcon({ option }: { option: OpenTargetOption }): React.ReactElement {
@@ -40,6 +41,7 @@ export function OpenWorkspaceButton({
 	onOpen: () => void;
 	onSelectOption: (optionId: OpenTargetId) => void;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 	const selectedOption = options.find((option) => option.id === selectedOptionId) ?? options[0];
 	if (!selectedOption) {
@@ -55,10 +57,10 @@ export function OpenWorkspaceButton({
 				icon={loading ? <Spinner size={12} /> : <OpenTargetIcon option={selectedOption} />}
 				disabled={disabled}
 				onClick={onOpen}
-				aria-label={`Open in ${selectedOption.label}`}
+				aria-label={t("openWorkspace.openIn", { target: selectedOption.label })}
 				className="text-xs rounded-r-none kb-navbar-btn"
 			>
-				Open
+				{t("openWorkspace.open")}
 			</Button>
 			<RadixPopover.Root open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
 				<RadixPopover.Trigger asChild>
@@ -67,7 +69,7 @@ export function OpenWorkspaceButton({
 						variant="default"
 						icon={<ChevronDown size={12} />}
 						disabled={disabled}
-						aria-label="Select open target"
+						aria-label={t("openWorkspace.selectTarget")}
 						className="rounded-l-none border-l-0 kb-navbar-btn"
 						style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}
 					/>
