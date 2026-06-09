@@ -53,6 +53,22 @@ function applyEvent(input: {
 	};
 }
 
+function runtimeSnapshot(iteration = 1) {
+	return {
+		agentId: "agent-1",
+		status: "running",
+		iteration,
+		messages: [],
+		pendingToolCalls: [],
+		usage: {
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+		},
+	};
+}
+
 describe("applyClineSessionEvent", () => {
 	it("streams assistant text deltas into the active assistant message", () => {
 		const entry = createEntry("task-1");
@@ -94,6 +110,117 @@ describe("applyClineSessionEvent", () => {
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.finalMessage).toBe("world");
 	});
 
+	it("handles runtime-native assistant, tool, and finished agent events", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "assistant-text-delta",
+						snapshot: runtimeSnapshot(),
+						iteration: 1,
+						text: "Hello",
+						accumulatedText: "Hello",
+					},
+				},
+			},
+		});
+
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "tool-started",
+						snapshot: runtimeSnapshot(),
+						iteration: 1,
+						toolCall: {
+							type: "tool-call",
+							toolCallId: "tool-1",
+							toolName: "Read",
+							input: { file_path: "src/index.ts" },
+						},
+					},
+				},
+			},
+		});
+
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "tool-finished",
+						snapshot: runtimeSnapshot(),
+						iteration: 1,
+						toolCall: {
+							type: "tool-call",
+							toolCallId: "tool-1",
+							toolName: "Read",
+							input: { file_path: "src/index.ts" },
+						},
+						message: {
+							id: "msg-tool-1",
+							role: "tool",
+							content: [
+								{
+									type: "tool-result",
+									toolCallId: "tool-1",
+									toolName: "Read",
+									output: { ok: true },
+								},
+							],
+							createdAt: 1,
+						},
+					},
+				},
+			},
+		});
+
+		const finished = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "run-finished",
+						snapshot: runtimeSnapshot(),
+						result: {
+							agentId: "agent-1",
+							runId: "run-1",
+							status: "completed",
+							iterations: 1,
+							outputText: "Done.",
+							messages: [],
+							usage: {
+								inputTokens: 0,
+								outputTokens: 0,
+								cacheReadTokens: 0,
+								cacheWriteTokens: 0,
+							},
+						},
+					},
+				},
+			},
+		});
+
+		expect(entry.messages.map((message) => message.role)).toEqual(["assistant", "tool"]);
+		expect(entry.messages[0]?.content).toBe("Done.");
+		expect(entry.messages[1]?.meta?.hookEventName).toBe("tool_call_end");
+		expect(finished.entry.summary.state).toBe("awaiting_review");
+		expect(finished.entry.summary.latestHookActivity?.finalMessage).toBe("Done.");
+	});
+
 	it("keeps the full streamed assistant message in summary metadata", () => {
 		const entry = createEntry("task-1");
 		const longText = `${"Detailed handoff sentence ".repeat(12)}tail`;
@@ -118,6 +245,33 @@ describe("applyClineSessionEvent", () => {
 		expect(latestHookActivity?.finalMessage).toBe(longText.trim());
 		expect(latestHookActivity?.activityText?.length ?? 0).toBeLessThan(latestHookActivity?.finalMessage?.length ?? 0);
 		expect(latestHookActivity?.activityText).toContain("…");
+	});
+
+	it("shows full assistant text received only at content_end", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "content_end",
+						contentType: "text",
+						text: "Here is the complete response.",
+					},
+				},
+			},
+		});
+
+		expect(result.messages).toHaveLength(1);
+		expect(result.messages[0]?.role).toBe("assistant");
+		expect(result.messages[0]?.content).toBe("Here is the complete response.");
+		expect(result.entry.summary.latestHookActivity?.hookEventName).toBe("assistant_delta");
+		expect(result.entry.summary.latestHookActivity?.activityText).toBe("Here is the complete response.");
+		expect(result.entry.summary.latestHookActivity?.finalMessage).toBe("Here is the complete response.");
 	});
 
 	it("transitions into and back out of awaiting review around user-attention tools", () => {
@@ -260,6 +414,33 @@ describe("applyClineSessionEvent", () => {
 					event: {
 						type: "done",
 						reason: "aborted",
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("idle");
+		expect(result.entry.summary.reviewReason).toBeNull();
+		expect(result.pendingTurnCancelTaskIds.has("task-1")).toBe(false);
+		expect(result.summaries.at(-1)?.latestHookActivity?.hookEventName).toBe("turn_canceled");
+	});
+
+	it("converts run-failed events with pending cancel state back to idle", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+		const pendingTurnCancelTaskIds = new Set<string>(["task-1"]);
+
+		const result = applyEvent({
+			entry,
+			pendingTurnCancelTaskIds,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "run-failed",
+						snapshot: runtimeSnapshot(),
+						error: new Error("This operation was aborted"),
 					},
 				},
 			},

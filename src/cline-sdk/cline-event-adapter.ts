@@ -55,12 +55,13 @@ type ClineSdkChunkEvent = Extract<ClineSdkSessionEvent, { type: "chunk" }>;
 type ClineSdkHookEvent = Extract<ClineSdkSessionEvent, { type: "hook" }>;
 type ClineSdkEndedEvent = Extract<ClineSdkSessionEvent, { type: "ended" }>;
 type ClineSdkStatusEvent = Extract<ClineSdkSessionEvent, { type: "status" }>;
+type RawClineSdkAgentEvent = ClineSdkAgentEvent | (Record<string, unknown> & { type: string });
 
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
-function readAgentEvent(event: unknown): ClineSdkAgentEvent | null {
+function readAgentEvent(event: unknown): RawClineSdkAgentEvent | null {
 	const record = asRecord(event);
 	if (!record || record.type !== "agent_event") {
 		return null;
@@ -73,7 +74,7 @@ function readAgentEvent(event: unknown): ClineSdkAgentEvent | null {
 	if (!agentEvent || typeof agentEvent.type !== "string") {
 		return null;
 	}
-	return agentEvent as unknown as ClineSdkAgentEvent;
+	return agentEvent as unknown as RawClineSdkAgentEvent;
 }
 
 function readChunkEvent(event: unknown): ClineSdkChunkEvent | null {
@@ -161,6 +162,62 @@ function extractAgentErrorMessage(error: unknown): string | null {
 	return null;
 }
 
+function emitAssistantTextSummary(input: ApplyClineSessionEventInput, text: string | null): void {
+	const fullPreviewText = normalizePreviewText(text);
+	const previewText = toPreviewText(fullPreviewText);
+	const retainedToolActivity = getRetainedClineToolActivity(input.entry);
+	emitSummary(input, {
+		state: "running",
+		lastOutputAt: now(),
+		lastHookAt: now(),
+		latestHookActivity: {
+			activityText: previewText ?? "Agent active",
+			toolName: retainedToolActivity.toolName,
+			toolInputSummary: retainedToolActivity.toolInputSummary,
+			finalMessage: fullPreviewText,
+			hookEventName: "assistant_delta",
+			notificationType: null,
+			source: "cline-sdk",
+		},
+	});
+}
+
+function readMessagePartText(message: unknown, partType: "text" | "reasoning"): string | null {
+	const messageRecord = asRecord(message);
+	const content = messageRecord?.content;
+	if (!Array.isArray(content)) {
+		return null;
+	}
+	const text = content
+		.map((part) => {
+			const partRecord = asRecord(part);
+			if (!partRecord || partRecord.type !== partType || typeof partRecord.text !== "string") {
+				return "";
+			}
+			return partRecord.text;
+		})
+		.join("");
+	return text.length > 0 ? text : null;
+}
+
+function readToolResult(message: unknown): { output: unknown; error: string | null } {
+	const messageRecord = asRecord(message);
+	const content = messageRecord?.content;
+	if (!Array.isArray(content)) {
+		return { output: undefined, error: null };
+	}
+	const result = content.map((part) => asRecord(part)).find((part) => part?.type === "tool-result");
+	if (!result) {
+		return { output: undefined, error: null };
+	}
+	const isError = result.isError === true;
+	const output = result.output;
+	return {
+		output,
+		error: isError ? (extractAgentErrorMessage(output) ?? "Tool execution failed") : null,
+	};
+}
+
 export function extractClineSessionId(event: unknown): string | null {
 	const record = asRecord(event);
 	if (!record) {
@@ -181,7 +238,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 
 	if (agentEvent?.type === "error") {
 		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
-		const rawMessage = typeof agentEvent.message === "string" ? agentEvent.message.trim() || null : null;
+		const eventRecord = asRecord(agentEvent);
+		const rawMessage = typeof eventRecord?.message === "string" ? eventRecord.message.trim() || null : null;
 		const creditLimitSource = errorMessage ?? rawMessage;
 		const sdkRecoverable = typeof agentEvent.recoverable === "boolean" ? agentEvent.recoverable : false;
 		const creditLimitError = input.isClineProvider && isCreditLimitError(creditLimitSource);
@@ -220,6 +278,48 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
+	if (agentEvent?.type === "run-failed") {
+		if (input.pendingTurnCancelTaskIds.has(taskId)) {
+			emitTurnCanceled(input);
+			return;
+		}
+		const errorMessage = "error" in agentEvent ? extractAgentErrorMessage(agentEvent.error) : null;
+		const retainedToolActivity = getRetainedClineToolActivity(entry);
+		clearActiveTurnState(entry);
+		emitSummary(input, {
+			state: "awaiting_review",
+			reviewReason: "error",
+			warningMessage: errorMessage ?? "Unknown agent error",
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText: `Agent error: ${errorMessage ?? "Unknown agent error"}`,
+				toolName: retainedToolActivity.toolName,
+				toolInputSummary: retainedToolActivity.toolInputSummary,
+				finalMessage: errorMessage ?? "Unknown agent error",
+				hookEventName: "agent_error",
+				notificationType: input.isClineProvider && isCreditLimitError(errorMessage) ? "credit_limit" : null,
+				source: "cline-sdk",
+			},
+		});
+		return;
+	}
+
+	if (agentEvent?.type === "assistant-text-delta") {
+		const accumulated = typeof agentEvent.accumulatedText === "string" ? agentEvent.accumulatedText : null;
+		const text = typeof agentEvent.text === "string" ? agentEvent.text : null;
+		if (typeof accumulated === "string") {
+			const message =
+				setOrCreateAssistantMessage(entry, taskId, accumulated) ??
+				createAssistantMessage(entry, taskId, accumulated);
+			input.emitMessage(taskId, message);
+		} else if (typeof text === "string" && text.length > 0) {
+			input.emitMessage(taskId, appendAssistantChunk(entry, taskId, text));
+		}
+		emitAssistantTextSummary(input, accumulated ?? text);
+		return;
+	}
+
 	if (agentEvent?.type === "content_start" && agentEvent.contentType === "text") {
 		const accumulated = typeof agentEvent.accumulated === "string" ? agentEvent.accumulated : null;
 		const text = typeof agentEvent.text === "string" ? agentEvent.text : null;
@@ -231,36 +331,24 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		} else if (typeof text === "string" && text.length > 0) {
 			input.emitMessage(taskId, appendAssistantChunk(entry, taskId, text));
 		}
-		const fullPreviewText = normalizePreviewText(accumulated ?? text);
-		const previewText = toPreviewText(fullPreviewText);
-		const retainedToolActivity = getRetainedClineToolActivity(entry);
-		emitSummary(input, {
-			state: "running",
-			lastOutputAt: now(),
-			lastHookAt: now(),
-			latestHookActivity: {
-				activityText: previewText ?? "Agent active",
-				toolName: retainedToolActivity.toolName,
-				toolInputSummary: retainedToolActivity.toolInputSummary,
-				finalMessage: fullPreviewText,
-				hookEventName: "assistant_delta",
-				notificationType: null,
-				source: "cline-sdk",
-			},
-		});
+		emitAssistantTextSummary(input, accumulated ?? text);
 		return;
 	}
 
 	if (agentEvent?.type === "notice") {
 		const message = typeof agentEvent.message === "string" ? agentEvent.message.trim() : "";
 		const noticeReason: string | null = typeof agentEvent.reason === "string" ? agentEvent.reason : null;
-		if (input.isClineProvider && isCreditLimitError(message) && noticeReason === "recovery") {
+		const noticeType = typeof agentEvent.noticeType === "string" ? agentEvent.noticeType : null;
+		if (
+			input.isClineProvider &&
+			isCreditLimitError(message) &&
+			(noticeType === "recovery" || noticeReason === "recovery")
+		) {
 			return;
 		}
 		if (message) {
 			const displayRole = typeof agentEvent.displayRole === "string" ? agentEvent.displayRole : "system";
 			const reason = typeof agentEvent.reason === "string" ? agentEvent.reason : null;
-			const noticeType = typeof agentEvent.noticeType === "string" ? agentEvent.noticeType : null;
 			const normalizedRole = displayRole === "status" ? "status" : "system";
 			const noticeMessage = createMessage(taskId, normalizedRole, message);
 			noticeMessage.meta = {
@@ -272,6 +360,56 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			entry.messages.push(noticeMessage);
 			input.emitMessage(taskId, noticeMessage);
 		}
+		return;
+	}
+
+	if (agentEvent?.type === "run-finished") {
+		const result = asRecord(agentEvent.result);
+		const finalText = typeof result?.outputText === "string" ? result.outputText.trim() : "";
+		if (finalText) {
+			const message = setOrCreateAssistantMessage(entry, taskId, finalText);
+			if (message) {
+				input.emitMessage(taskId, message);
+			} else if (!latestAssistantMessageMatches(entry, finalText)) {
+				const assistantMessage = createMessage(taskId, "assistant", finalText);
+				entry.messages.push(assistantMessage);
+				input.emitMessage(taskId, assistantMessage);
+			}
+		}
+
+		const status = typeof result?.status === "string" ? result.status : "completed";
+		if (status === "aborted" && input.pendingTurnCancelTaskIds.has(taskId)) {
+			emitTurnCanceled(input);
+			return;
+		}
+
+		const previousHookActivity = entry.summary.latestHookActivity;
+		const summaryPatch: Partial<RuntimeTaskSessionSummary> = {
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText: finalText ? `Final: ${finalText}` : (previousHookActivity?.activityText ?? null),
+				toolName: previousHookActivity?.toolName ?? null,
+				toolInputSummary: previousHookActivity?.toolInputSummary ?? null,
+				finalMessage: finalText || (previousHookActivity?.finalMessage ?? null),
+				hookEventName: "agent_end",
+				notificationType: previousHookActivity?.notificationType ?? null,
+				source: "cline-sdk",
+			},
+		};
+		if (status === "aborted") {
+			summaryPatch.state = "interrupted";
+			summaryPatch.reviewReason = "interrupted";
+		} else if (status === "failed") {
+			summaryPatch.state = "awaiting_review";
+			summaryPatch.reviewReason = "error";
+		} else {
+			summaryPatch.state = "awaiting_review";
+			summaryPatch.reviewReason = "hook";
+		}
+
+		clearActiveTurnState(entry);
+		emitSummary(input, summaryPatch);
 		return;
 	}
 
@@ -324,6 +462,43 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
+	if (agentEvent?.type === "assistant-reasoning-delta") {
+		const reasoning = typeof agentEvent.text === "string" ? agentEvent.text : null;
+		if (reasoning && reasoning.length > 0) {
+			input.emitMessage(taskId, appendReasoningChunk(entry, taskId, reasoning));
+			emitSummary(input, {
+				state: "running",
+				lastOutputAt: now(),
+			});
+		}
+		return;
+	}
+
+	if (agentEvent?.type === "assistant-message") {
+		const text = readMessagePartText(agentEvent.message, "text");
+		if (text) {
+			const message =
+				setOrCreateAssistantMessage(entry, taskId, text) ?? createAssistantMessage(entry, taskId, text);
+			input.emitMessage(taskId, message);
+			entry.activeAssistantMessageId = null;
+			emitAssistantTextSummary(input, text);
+			return;
+		}
+
+		const reasoning = readMessagePartText(agentEvent.message, "reasoning");
+		if (reasoning) {
+			const message =
+				setOrCreateReasoningMessage(entry, taskId, reasoning) ??
+				createReasoningMessage(entry, taskId, reasoning, "reasoning_end");
+			input.emitMessage(taskId, message);
+			entry.activeReasoningMessageId = null;
+			emitSummary(input, {
+				lastOutputAt: now(),
+			});
+		}
+		return;
+	}
+
 	if (agentEvent?.type === "content_start" && agentEvent.contentType === "reasoning") {
 		const reasoning = typeof agentEvent.reasoning === "string" ? agentEvent.reasoning : null;
 		if (reasoning && reasoning.length > 0) {
@@ -348,6 +523,84 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		emitSummary(input, {
 			lastOutputAt: now(),
 		});
+		return;
+	}
+
+	if (agentEvent?.type === "tool-started") {
+		const toolCall = asRecord(agentEvent.toolCall);
+		const toolName = typeof toolCall?.toolName === "string" ? toolCall.toolName : null;
+		const toolCallId = typeof toolCall?.toolCallId === "string" ? toolCall.toolCallId : null;
+		const toolInput = toolCall?.input;
+		const toolDisplay = getClineToolCallDisplay(toolName, toolInput);
+		const isUserAttentionTool = isClineUserAttentionTool(toolName);
+		input.emitMessage(
+			taskId,
+			startToolCallMessage(entry, taskId, {
+				toolName,
+				toolCallId,
+				input: toolInput,
+			}),
+		);
+		const summaryPatch: Partial<RuntimeTaskSessionSummary> = {
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText: `Using ${formatClineToolCallLabel(toolDisplay.toolName, toolDisplay.inputSummary)}`,
+				toolName: toolDisplay.toolName,
+				toolInputSummary: toolDisplay.inputSummary,
+				finalMessage: null,
+				hookEventName: "tool_call",
+				notificationType: isUserAttentionTool ? "user_attention" : null,
+				source: "cline-sdk",
+			},
+		};
+		if (isUserAttentionTool && (entry.summary.state === "running" || entry.summary.state === "idle")) {
+			summaryPatch.state = "awaiting_review";
+			summaryPatch.reviewReason = "hook";
+		} else if (!isUserAttentionTool && canReturnToRunning(entry.summary.reviewReason)) {
+			summaryPatch.state = "running";
+			summaryPatch.reviewReason = null;
+		}
+		emitSummary(input, summaryPatch);
+		return;
+	}
+
+	if (agentEvent?.type === "tool-finished") {
+		const toolCall = asRecord(agentEvent.toolCall);
+		const toolName = typeof toolCall?.toolName === "string" ? toolCall.toolName : null;
+		const toolCallId = typeof toolCall?.toolCallId === "string" ? toolCall.toolCallId : null;
+		const { output: toolOutput, error: toolError } = readToolResult(agentEvent.message);
+		const toolInput = toolCallId ? entry.toolInputByToolCallId.get(toolCallId) : undefined;
+		const toolDisplay = getClineToolCallDisplay(toolName, toolInput);
+		const isUserAttentionTool = isClineUserAttentionTool(toolName);
+		input.emitMessage(
+			taskId,
+			finishToolCallMessage(entry, taskId, {
+				toolName,
+				toolCallId,
+				output: toolOutput,
+				error: toolError,
+				durationMs: null,
+			}),
+		);
+		const summaryPatch: Partial<RuntimeTaskSessionSummary> = {
+			lastOutputAt: now(),
+			lastHookAt: now(),
+			latestHookActivity: {
+				activityText: `${toolError ? "Failed" : "Completed"} ${formatClineToolCallLabel(toolDisplay.toolName, toolDisplay.inputSummary)}`,
+				toolName: toolDisplay.toolName,
+				toolInputSummary: toolDisplay.inputSummary,
+				finalMessage: null,
+				hookEventName: "tool_result",
+				notificationType: null,
+				source: "cline-sdk",
+			},
+		};
+		if (isUserAttentionTool && canReturnToRunning(entry.summary.reviewReason)) {
+			summaryPatch.state = "running";
+			summaryPatch.reviewReason = null;
+		}
+		emitSummary(input, summaryPatch);
 		return;
 	}
 
@@ -435,11 +688,13 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 			const message =
 				setOrCreateAssistantMessage(entry, taskId, text) ?? createAssistantMessage(entry, taskId, text);
 			input.emitMessage(taskId, message);
+			emitAssistantTextSummary(input, text);
+		} else {
+			emitSummary(input, {
+				lastOutputAt: now(),
+			});
 		}
 		entry.activeAssistantMessageId = null;
-		emitSummary(input, {
-			lastOutputAt: now(),
-		});
 		return;
 	}
 

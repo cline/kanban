@@ -628,6 +628,9 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		exit: (code) => {
 			process.exit(code);
 		},
+		reraiseSignal: (signal) => {
+			process.kill(process.pid, signal);
+		},
 		onShutdown: async () => {
 			shutdownIndicator.start();
 			try {

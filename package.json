@@ -1,6 +1,6 @@
 {
   "name": "kanban",
-  "version": "0.1.67",
+  "version": "0.1.68",
   "description": "A kanban foundation for coding agents",
   "publishConfig": {
     "access": "public",
@@ -91,8 +91,8 @@
     "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.9"
   },
   "dependencies": {
-    "@clinebot/core": "^0.0.36",
-    "@clinebot/shared": "^0.0.36",
+    "@clinebot/core": "^0.0.38",
+    "@clinebot/shared": "^0.0.38",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",
@@ -107,5 +107,8 @@
     "tree-kill": "^1.2.2",
     "ws": "^8.18.0",
     "zod": "^4.3.6"
+  },
+  "overrides": {
+    "protobufjs": "7.5.8"
   }
 }

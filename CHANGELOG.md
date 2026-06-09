@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.68]
+
+- Codex hooks are now pre-trusted, eliminating permission prompts when Kanban manages Codex sessions
+- Fixed signal handling to properly re-raise signals and ignore SIGQUIT for cleaner process cleanup
+- Updated Cline SDK from 0.0.36 to 0.0.38, which includes: new OpenAI ChatGPT Subscription and v0 providers, Ollama no longer requires an API key, file-based and event-driven automation, auto-compaction for provider requests, per-turn usage metrics on assistant messages, normalized provider usage costs, web fetch enabled by default in act mode, various message handling and abort fixes
+
 ## [0.1.67]
 
 - "New version available" notification with one-click update from the web UI

@@ -102,7 +102,16 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launchCommand).toContain("hooks.UserPromptSubmit");
 		expect(launchCommand).toContain("hooks.Stop");
 		expect(launchCommand).toContain("hooks.PermissionRequest");
-		expect(launchCommand).toContain("features.codex_hooks=true");
+		expect(getCodexConfigOverrideValues(launch.args, "features.hooks")).toEqual(["true"]);
+		expect(getCodexConfigOverrideValues(launch.args, "features.codex_hooks")).toEqual([]);
+		const hookTrustState = getCodexConfigOverrideValues(launch.args, "hooks.state");
+		expect(hookTrustState).toHaveLength(1);
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:user_prompt_submit:0:0"');
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:stop:0:0"');
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:permission_request:0:0"');
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:pre_tool_use:0:0"');
+		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:post_tool_use:0:0"');
+		expect(hookTrustState[0]).toContain('trusted_hash="sha256:');
 		expect(launchCommand).toContain("timeout=5");
 		expect(launchCommand).not.toContain("codex-wrapper");
 		expect(launchCommand).not.toContain("notify=");
@@ -595,6 +604,36 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeFromTrash: true,
 		});
 		expect(clineLaunch.args).toContain("--continue");
+	});
+
+	it("places Codex hook config before the resume subcommand", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-codex-resume-hooks",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+			workspaceId: "workspace-1",
+		});
+
+		const resumeIndex = launch.args.indexOf("resume");
+		expect(resumeIndex).toBeGreaterThan(0);
+		for (const key of [
+			"features.hooks",
+			"hooks.state",
+			"hooks.UserPromptSubmit",
+			"hooks.Stop",
+			"hooks.PermissionRequest",
+			"hooks.PreToolUse",
+			"hooks.PostToolUse",
+		]) {
+			const configIndex = launch.args.findIndex((arg) => arg.startsWith(`${key}=`));
+			expect(configIndex).toBeGreaterThan(-1);
+			expect(configIndex).toBeLessThan(resumeIndex);
+		}
 	});
 
 	it("applies autonomous mode flags in adapters for non-droid CLIs", async () => {
