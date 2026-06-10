@@ -15,7 +15,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		label: "Claude Code",
 		binary: "claude",
 		baseArgs: [],
-		autonomousArgs: ["--dangerously-skip-permissions"],
+		autonomousArgs: ["--permission-mode", "auto"],
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code/quickstart",
 	},
 	{

@@ -648,7 +648,11 @@ describe("prepareAgentLaunch hook strategies", () => {
 			cwd: "/tmp",
 			prompt: "",
 		});
-		expect(claudeLaunch.args).toContain("--dangerously-skip-permissions");
+		const permissionModeIndex = claudeLaunch.args.indexOf("--permission-mode");
+		expect(permissionModeIndex).toBeGreaterThan(-1);
+		expect(claudeLaunch.args[permissionModeIndex + 1]).toBe("auto");
+		expect(claudeLaunch.args).not.toContain("--dangerously-skip-permissions");
+		expect(claudeLaunch.env.CLAUDE_CODE_ENABLE_AUTO_MODE).toBe("1");
 
 		const codexLaunch = await prepareAgentLaunch({
 			taskId: "task-codex-auto",
@@ -693,6 +697,59 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(clineLaunch.args).toContain("--auto-approve-all");
+	});
+
+	it("does not add a Claude permission mode when args already set one", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-explicit-mode",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--permission-mode", "acceptEdits"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(launch.args.filter((arg) => arg === "--permission-mode")).toHaveLength(1);
+		expect(launch.args).not.toContain("auto");
+	});
+
+	it("starts Claude plan mode without bypass flags and keeps auto mode reachable", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-plan",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+			startInPlanMode: true,
+		});
+		const permissionModeIndex = launch.args.indexOf("--permission-mode");
+		expect(permissionModeIndex).toBeGreaterThan(-1);
+		expect(launch.args[permissionModeIndex + 1]).toBe("plan");
+		expect(launch.args).not.toContain("--dangerously-skip-permissions");
+		expect(launch.args).not.toContain("--allow-dangerously-skip-permissions");
+		expect(launch.env.CLAUDE_CODE_ENABLE_AUTO_MODE).toBe("1");
+	});
+
+	it("strips an explicit Claude bypass arg in plan mode", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-plan-bypass",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--dangerously-skip-permissions"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+			startInPlanMode: true,
+		});
+		expect(launch.args).not.toContain("--dangerously-skip-permissions");
+		expect(launch.args).not.toContain("--allow-dangerously-skip-permissions");
+		const permissionModeIndex = launch.args.indexOf("--permission-mode");
+		expect(launch.args[permissionModeIndex + 1]).toBe("plan");
 	});
 
 	it("preserves explicit autonomous args when autonomous mode is disabled", async () => {
