@@ -9,6 +9,7 @@ import type {
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
+import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { buildKanbanCommandParts } from "../core/kanban-command";
 import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
@@ -597,6 +598,16 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 		args,
 		env: {},
 	};
+}
+
+function buildSoftPlanPrompt(prompt: string): string {
+	const trimmedPrompt = prompt.trim();
+	return [
+		"First, inspect the codebase and produce a clear implementation plan only.",
+		"Do not modify files, do not use write tools, and do not implement anything yet.",
+		"After you present the plan, ask for approval before making changes.",
+		trimmedPrompt ? `\n\nTask:\n${trimmedPrompt}` : " Ask the user what they want planned if the task is unclear.",
+	].join(" ");
 }
 
 function toBracketedPasteSubmission(command: string): string {
@@ -1348,17 +1359,7 @@ const kiroAdapter: AgentSessionAdapter = {
 			}
 		}
 
-		const trimmedPrompt = input.prompt.trim();
-		const planPrompt = input.startInPlanMode
-			? [
-					"First, inspect the codebase and produce a clear implementation plan only.",
-					"Do not modify files, do not use write tools, and do not implement anything yet.",
-					"After you present the plan, ask for approval before making changes.",
-					trimmedPrompt
-						? `\n\nTask:\n${trimmedPrompt}`
-						: " Ask the user what they want planned if the task is unclear.",
-				].join(" ")
-			: input.prompt;
+		const planPrompt = input.startInPlanMode ? buildSoftPlanPrompt(input.prompt) : input.prompt;
 		const withPromptLaunch = withPrompt(args, planPrompt, "append");
 		return {
 			...withPromptLaunch,
@@ -1427,6 +1428,47 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+const hermesAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--yolo")) {
+			args.push("--yolo");
+		}
+
+		if (!hasCliOption(args, "--source")) {
+			args.push("--source", "tool");
+		}
+
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		if (appendedSystemPrompt) {
+			env.HERMES_EPHEMERAL_SYSTEM_PROMPT = appendedSystemPrompt;
+		}
+
+		if (isHomeAgentSessionId(input.taskId)) {
+			return {
+				args,
+				env,
+			};
+		}
+
+		if (!hasCliOption(args, "--quiet") && !hasCliOption(args, "-Q")) {
+			args.push("--quiet");
+		}
+
+		const prompt = input.startInPlanMode ? buildSoftPlanPrompt(input.prompt) : input.prompt;
+		const withPromptLaunch = withPrompt(args, prompt, "flag", "-q");
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1434,6 +1476,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
 	kiro: kiroAdapter,
+	hermes: hermesAdapter,
 	cline: clineAdapter,
 };
 

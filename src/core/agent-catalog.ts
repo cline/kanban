@@ -35,6 +35,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://github.com/cline/cline",
 	},
 	{
+		id: "hermes",
+		label: "Hermes Agent",
+		binary: "hermes",
+		baseArgs: ["chat"],
+		autonomousArgs: ["--yolo"],
+		installUrl: "https://github.com/NousResearch/hermes-agent",
+	},
+	{
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
@@ -72,6 +80,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 // Re-enable additional CLIs by uncommenting entries below when ready.
 export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"cline",
+	"hermes",
 	"claude",
 	"codex",
 	"droid",
