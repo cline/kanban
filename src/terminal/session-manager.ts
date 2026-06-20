@@ -2,6 +2,7 @@
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type {
+	RuntimeAgentId,
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
 	RuntimeTaskSessionReviewReason,
@@ -35,6 +36,7 @@ import type { TerminalSessionListener, TerminalSessionService } from "./terminal
 import { TerminalStateMirror } from "./terminal-state-mirror";
 
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
+const MAX_DEFERRED_STARTUP_BUFFER_CHARS = 16_384;
 const AUTO_RESTART_WINDOW_MS = 5_000;
 const MAX_AUTO_RESTARTS_PER_WINDOW = 3;
 // TUI apps (Codex, OpenCode) can query OSC 10/11 before the browser terminal is attached
@@ -56,6 +58,7 @@ interface ActiveProcessState {
 	terminalProtocolFilter: TerminalProtocolFilterState;
 	onSessionCleanup: (() => Promise<void>) | null;
 	deferredStartupInput: string | null;
+	deferredStartupBuffer: string;
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
 	awaitingCodexPromptAfterEnter: boolean;
@@ -202,22 +205,30 @@ function hasCodexStartupUiRendered(text: string): boolean {
 	return stripped.includes("openai codex (v");
 }
 
+function hasHermesStartupUiRendered(text: string): boolean {
+	const stripped = stripAnsi(text).toLowerCase();
+	return stripped.includes("welcome to hermes agent") || stripped.includes("type your message");
+}
+
 export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
 
-	private trySendDeferredCodexStartupInput(taskId: string): boolean {
+	private trySendDeferredStartupInput(taskId: string, expectedAgentId: RuntimeAgentId): boolean {
 		const entry = this.entries.get(taskId);
 		const active = entry?.active;
-		if (!entry || !active || entry.summary.agentId !== "codex") {
+		if (!entry || !active || entry.summary.agentId !== expectedAgentId) {
 			return false;
 		}
 		if (active.deferredStartupInput === null) {
 			return false;
 		}
-		const trustPromptVisible =
-			active.workspaceTrustBuffer !== null && hasCodexWorkspaceTrustPrompt(active.workspaceTrustBuffer);
-		if (trustPromptVisible) {
+		// Codex shows a workspace-trust prompt before its input box; don't paste over it.
+		if (
+			expectedAgentId === "codex" &&
+			active.workspaceTrustBuffer !== null &&
+			hasCodexWorkspaceTrustPrompt(active.workspaceTrustBuffer)
+		) {
 			return false;
 		}
 		const deferredInput = active.deferredStartupInput;
@@ -370,9 +381,18 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 					const needsDecodedOutput =
 						entry.active.workspaceTrustBuffer !== null ||
+						entry.active.deferredStartupInput !== null ||
 						(entry.active.detectOutputTransition !== null &&
 							(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true));
 					const data = needsDecodedOutput ? filteredChunk.toString("utf8") : "";
+
+					// Accumulate startup output until any deferred prompt is typed into the TUI, so
+					// readiness markers are detected even when split across PTY chunks.
+					if (entry.active.deferredStartupInput !== null && data.length > 0) {
+						entry.active.deferredStartupBuffer = (entry.active.deferredStartupBuffer + data).slice(
+							-MAX_DEFERRED_STARTUP_BUFFER_CHARS,
+						);
+					}
 
 					if (entry.active.workspaceTrustBuffer !== null) {
 						entry.active.workspaceTrustBuffer += data;
@@ -417,7 +437,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 								(hasCodexInteractivePrompt(entry.active.workspaceTrustBuffer) ||
 									hasCodexStartupUiRendered(entry.active.workspaceTrustBuffer))))
 					) {
-						this.trySendDeferredCodexStartupInput(request.taskId);
+						this.trySendDeferredStartupInput(request.taskId, "codex");
+					}
+
+					// Hermes runs interactively; type the task prompt once its chat TUI has rendered.
+					if (
+						entry.summary.agentId === "hermes" &&
+						entry.active.deferredStartupInput !== null &&
+						hasHermesStartupUiRendered(entry.active.deferredStartupBuffer)
+					) {
+						this.trySendDeferredStartupInput(request.taskId, "hermes");
 					}
 
 					const adapterEvent = entry.active.detectOutputTransition?.(data, entry.summary) ?? null;
@@ -520,6 +549,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			}),
 			onSessionCleanup: launch.cleanup ?? null,
 			deferredStartupInput: launch.deferredStartupInput ?? null,
+			deferredStartupBuffer: "",
 			detectOutputTransition: launch.detectOutputTransition ?? null,
 			shouldInspectOutputForTransition: launch.shouldInspectOutputForTransition ?? null,
 			awaitingCodexPromptAfterEnter: false,
@@ -673,6 +703,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			}),
 			onSessionCleanup: null,
 			deferredStartupInput: null,
+			deferredStartupBuffer: "",
 			detectOutputTransition: null,
 			shouldInspectOutputForTransition: null,
 			awaitingCodexPromptAfterEnter: false,

@@ -455,6 +455,48 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
 	});
 
+	it("launches Hermes interactively and defers the task prompt into the chat TUI", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-hermes",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "Refactor the billing module",
+		});
+
+		// Interactive launch: never the one-shot -q/--quiet flags, which run once and exit.
+		expect(launch.args).not.toContain("-q");
+		expect(launch.args).not.toContain("--quiet");
+		expect(launch.args).not.toContain("-Q");
+		expect(launch.args).not.toContain("Refactor the billing module");
+		expect(launch.args).toContain("--yolo");
+		expect(launch.args).toContain("--source");
+		expect(launch.args).toContain("tool");
+		expect(launch.deferredStartupInput).toContain("[200~");
+		expect(launch.deferredStartupInput).toContain("Refactor the billing module");
+		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
+	});
+
+	it("omits Hermes autonomous flag and prompt seeding when there is no prompt", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-hermes-empty",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(launch.args).not.toContain("--yolo");
+		expect(launch.args).toEqual(["chat", "--source", "tool"]);
+		expect(launch.deferredStartupInput).toBeUndefined();
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

@@ -9,7 +9,6 @@ import type {
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
-import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { buildKanbanCommandParts } from "../core/kanban-command";
 import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
@@ -1446,25 +1445,18 @@ const hermesAdapter: AgentSessionAdapter = {
 			env.HERMES_EPHEMERAL_SYSTEM_PROMPT = appendedSystemPrompt;
 		}
 
-		if (isHomeAgentSessionId(input.taskId)) {
-			return {
-				args,
-				env,
-			};
-		}
-
-		if (!hasCliOption(args, "--quiet") && !hasCliOption(args, "-Q")) {
-			args.push("--quiet");
-		}
-
+		// `hermes chat` only accepts an initial prompt via -q/--query, which runs the prompt once
+		// and exits. Kanban needs a persistent interactive session, so we launch interactive
+		// `hermes chat` and type the task prompt into the TUI once it has rendered. Home sidebar
+		// sessions start without a prompt and let the user drive the conversation directly.
 		const prompt = input.startInPlanMode ? buildSoftPlanPrompt(input.prompt) : input.prompt;
-		const withPromptLaunch = withPrompt(args, prompt, "flag", "-q");
+		const trimmedPrompt = prompt.trim();
+		const deferredStartupInput = trimmedPrompt ? toBracketedPasteSubmission(trimmedPrompt) : undefined;
+
 		return {
-			...withPromptLaunch,
-			env: {
-				...withPromptLaunch.env,
-				...env,
-			},
+			args,
+			env,
+			deferredStartupInput,
 		};
 	},
 };
