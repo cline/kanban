@@ -211,8 +211,15 @@ function hasCodexStartupUiRendered(text: string): boolean {
 }
 
 function hasHermesStartupUiRendered(text: string): boolean {
-	const stripped = stripAnsi(text).toLowerCase();
-	return stripped.includes("welcome to hermes agent") || stripped.includes("type your message");
+	// Hermes prints "Welcome to Hermes Agent! Type your message..." BEFORE app.run() starts
+	// (while the PTY is still in cooked mode). In cooked mode, ICRNL converts \r to \n, so the
+	// trailing \r of the bracketed paste submission becomes \n (ControlJ). In SSH sessions Hermes
+	// binds ControlJ to insert-newline instead of submit, causing the prompt to appear in the
+	// input box but never get sent. The ❯ prompt symbol only appears once prompt_toolkit's
+	// Application renders its first frame (after app.run() switches the PTY to raw mode), so
+	// detecting it ensures \r arrives when Hermes is ready to treat it as Enter → submit.
+	const stripped = stripAnsi(text);
+	return stripped.includes("❯");
 }
 
 export class TerminalSessionManager implements TerminalSessionService {
