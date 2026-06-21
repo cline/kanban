@@ -39,7 +39,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		label: "Hermes Agent",
 		binary: "hermes",
 		baseArgs: ["chat"],
-		autonomousArgs: ["--yolo"],
+		autonomousArgs: [],
 		installUrl: "https://github.com/NousResearch/hermes-agent",
 	},
 	{
