@@ -497,6 +497,43 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.deferredStartupInput).toBeUndefined();
 	});
 
+	it("writes Hermes hooks config.yaml and overrides HERMES_HOME when workspaceId is provided", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-hermes-hooks",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "Fix the bug",
+			workspaceId: "ws-hermes-1",
+		});
+
+		const hookDir = join(homedir(), ".cline", "kanban", "hooks", "hermes");
+		const configPath = join(hookDir, "config.yaml");
+
+		expect(existsSync(configPath)).toBe(true);
+
+		const configContent = readFileSync(configPath, "utf8");
+		expect(configContent).toContain("hooks:");
+		expect(configContent).toContain("post_llm_call:");
+		expect(configContent).toContain("pre_tool_call:");
+		expect(configContent).toContain("post_tool_call:");
+		expect(configContent).toContain("pre_approval_request:");
+		expect(configContent).toContain("to_review");
+		expect(configContent).toContain("to_in_progress");
+		expect(configContent).toContain("activity");
+		expect(configContent).toContain("--source");
+		expect(configContent).toContain("hermes");
+
+		expect(launch.env.HERMES_HOME).toBe(hookDir);
+		expect(launch.env.HERMES_ACCEPT_HOOKS).toBe("1");
+		expect(launch.args).toContain("--accept-hooks");
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-hermes-hooks");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("ws-hermes-1");
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

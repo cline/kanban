@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, symlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1428,6 +1428,58 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+function buildHermesHooksConfigYaml(
+	toReviewCommand: string,
+	toInProgressCommand: string,
+	activityCommand: string,
+): string {
+	const lines = [
+		"hooks:",
+		"  post_llm_call:",
+		`    - command: ${JSON.stringify(toReviewCommand)}`,
+		"  pre_llm_call:",
+		`    - command: ${JSON.stringify(toInProgressCommand)}`,
+		"  pre_tool_call:",
+		`    - command: ${JSON.stringify(toInProgressCommand)}`,
+		"  post_tool_call:",
+		`    - command: ${JSON.stringify(activityCommand)}`,
+		"  pre_approval_request:",
+		`    - command: ${JSON.stringify(toReviewCommand)}`,
+	];
+	return `${lines.join("\n")}\n`;
+}
+
+async function ensureHermesHomeDataLinks(hookDir: string, realHermesHome: string): Promise<void> {
+	if (process.platform === "win32") {
+		return;
+	}
+	const dataPaths = [
+		"memories",
+		"sessions",
+		"skills",
+		"audio_cache",
+		"image_cache",
+		"checkpoints",
+		"pairing",
+		".env",
+		"SOUL.md",
+	];
+	for (const name of dataPaths) {
+		const source = join(realHermesHome, name);
+		const linkPath = join(hookDir, name);
+		try {
+			await access(source);
+		} catch {
+			continue;
+		}
+		try {
+			await symlink(source, linkPath);
+		} catch {
+			// Already exists or not writable — ignored.
+		}
+	}
+}
+
 const hermesAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -1444,6 +1496,36 @@ const hermesAdapter: AgentSessionAdapter = {
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 		if (appendedSystemPrompt) {
 			env.HERMES_EPHEMERAL_SYSTEM_PROMPT = appendedSystemPrompt;
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			const hookDir = getHookAgentDirectory("hermes");
+			const configPath = join(hookDir, "config.yaml");
+
+			const toReviewCommand = buildHookCommand("to_review", { source: "hermes" });
+			const toInProgressCommand = buildHookCommand("to_in_progress", { source: "hermes" });
+			const activityCommand = buildHookCommand("activity", { source: "hermes" });
+
+			const configContent = buildHermesHooksConfigYaml(toReviewCommand, toInProgressCommand, activityCommand);
+			await ensureTextFile(configPath, configContent);
+
+			const realHermesHome = process.env.HERMES_HOME ?? join(homedir(), ".hermes");
+			await ensureHermesHomeDataLinks(hookDir, realHermesHome);
+
+			env.HERMES_HOME = hookDir;
+			env.HERMES_ACCEPT_HOOKS = "1";
+			if (!hasCliOption(args, "--accept-hooks")) {
+				args.push("--accept-hooks");
+			}
+
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
 		}
 
 		// `hermes chat` only accepts an initial prompt via -q/--query, which runs the prompt once
