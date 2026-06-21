@@ -192,6 +192,11 @@ function buildTerminalEnvironment(
 		COLORTERM: "truecolor",
 		TERM: "xterm-256color",
 		TERM_PROGRAM: "kanban",
+		// Ensure color support is never disabled by the inherited environment.
+		// NO_COLOR and CI can cause supports-color to return level 0 even when
+		// COLORTERM=truecolor is set. FORCE_COLOR bypasses all heuristics.
+		NO_COLOR: undefined,
+		NODE_DISABLE_COLORS: undefined,
 	};
 }
 
