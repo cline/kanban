@@ -472,7 +472,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args).not.toContain("--quiet");
 		expect(launch.args).not.toContain("-Q");
 		expect(launch.args).not.toContain("Refactor the billing module");
-		expect(launch.args).toContain("--yolo");
+		expect(launch.args).not.toContain("--yolo");
 		expect(launch.args).toContain("--source");
 		expect(launch.args).toContain("tool");
 		expect(launch.deferredStartupInput).toContain("[200~");

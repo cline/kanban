@@ -1485,10 +1485,6 @@ const hermesAdapter: AgentSessionAdapter = {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
 
-		if (input.autonomousModeEnabled && !hasCliOption(args, "--yolo")) {
-			args.push("--yolo");
-		}
-
 		if (!hasCliOption(args, "--source")) {
 			args.push("--source", "tool");
 		}
