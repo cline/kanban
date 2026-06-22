@@ -95,7 +95,7 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 }
 
 describe.sequential("shutdown coordinator integration", () => {
-	it("moves all in-progress and review cards to trash for every indexed project on shutdown", async () => {
+	it("keeps in-progress and review cards in place on shutdown and only interrupts running sessions", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-shutdown-scope-");
 			try {
@@ -164,20 +164,25 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(didCloseRuntimeServer).toBe(true);
 
 				const managedAfter = await loadWorkspaceState(managedProjectPath);
-				const managedTrash = managedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-				expect(managedTrash.map((card) => card.id).sort()).toEqual(
-					["managed-idle", "managed-missing-session", "managed-running"].sort(),
+				const columnIds = (board: typeof managedAfter.board, columnId: string) =>
+					(board.columns.find((column) => column.id === columnId)?.cards ?? []).map((card) => card.id).sort();
+				// Cards stay where they were: nothing is moved to trash on shutdown.
+				expect(columnIds(managedAfter.board, "trash")).toEqual([]);
+				expect(columnIds(managedAfter.board, "in_progress")).toEqual(
+					["managed-missing-session", "managed-running"].sort(),
 				);
+				expect(columnIds(managedAfter.board, "review")).toEqual(["managed-idle"]);
+				// Only the actively-running session is reflected as interrupted; idle stays idle.
 				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
-				expect(managedAfter.sessions["managed-idle"]?.state).toBe("interrupted");
+				expect(managedAfter.sessions["managed-idle"]?.state).toBe("idle");
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 
+				// Indexed (non-active) workspaces are left untouched entirely.
 				const indexedAfter = await loadWorkspaceState(indexedProjectPath);
-				const indexedTrash = indexedAfter.board.columns.find((column) => column.id === "trash")?.cards ?? [];
-				expect(indexedTrash.map((card) => card.id).sort()).toEqual(
-					["indexed-awaiting-review", "indexed-missing-session"].sort(),
-				);
-				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("interrupted");
+				expect(columnIds(indexedAfter.board, "trash")).toEqual([]);
+				expect(columnIds(indexedAfter.board, "in_progress")).toEqual(["indexed-missing-session"]);
+				expect(columnIds(indexedAfter.board, "review")).toEqual(["indexed-awaiting-review"]);
+				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("awaiting_review");
 				expect(indexedAfter.sessions["indexed-missing-session"]).toBeUndefined();
 			} finally {
 				cleanup();

@@ -466,7 +466,11 @@ export function useBoardInteractions({
 				}
 				if (
 					summary.state === "interrupted" &&
-					previous?.state !== "interrupted" &&
+					// Only trash on an observed running->interrupted transition (e.g. an in-app abort).
+					// On a fresh hydration `previous` is undefined, so persisted interrupted sessions
+					// (e.g. left over from a shutdown) keep their column instead of jumping to Done.
+					previous !== undefined &&
+					previous.state !== "interrupted" &&
 					columnId &&
 					columnId !== "trash"
 				) {
