@@ -1428,11 +1428,7 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
-function buildHermesHooksConfigYaml(
-	toReviewCommand: string,
-	toInProgressCommand: string,
-	activityCommand: string,
-): string {
+function buildHermesHooksYaml(toReviewCommand: string, toInProgressCommand: string, activityCommand: string): string {
 	const lines = [
 		"hooks:",
 		"  post_llm_call:",
@@ -1447,6 +1443,43 @@ function buildHermesHooksConfigYaml(
 		`    - command: ${JSON.stringify(toReviewCommand)}`,
 	];
 	return `${lines.join("\n")}\n`;
+}
+
+// Strip a top-level YAML key and its indented block. Handles typical flat
+// Hermes config.yaml files; edge cases like multiline scalars are tolerated
+// (they're just kept if they don't match the pattern).
+function stripYamlTopLevelKey(yaml: string, key: string): string {
+	const lines = yaml.split("\n");
+	const result: string[] = [];
+	const keyPattern = new RegExp(`^${key}\\s*:`);
+	let skipping = false;
+	for (const line of lines) {
+		if (keyPattern.test(line)) {
+			skipping = true;
+			continue;
+		}
+		// End of skipped block: a new non-indented, non-comment, non-blank line
+		if (skipping && line.length > 0 && !/^\s/.test(line) && !line.startsWith("#")) {
+			skipping = false;
+		}
+		if (!skipping) {
+			result.push(line);
+		}
+	}
+	return result.join("\n");
+}
+
+async function buildHermesConfigYaml(hooksYaml: string, userConfigPath: string): Promise<string> {
+	let userConfig: string;
+	try {
+		userConfig = await readFile(userConfigPath, "utf8");
+	} catch {
+		return hooksYaml;
+	}
+	// Preserve all user settings (model, API keys, etc.) and replace any
+	// existing hooks block with ours.
+	const withoutHooks = stripYamlTopLevelKey(userConfig, "hooks").trimEnd();
+	return withoutHooks ? `${withoutHooks}\n${hooksYaml}` : hooksYaml;
 }
 
 async function ensureHermesHomeDataLinks(hookDir: string, realHermesHome: string): Promise<void> {
@@ -1503,10 +1536,12 @@ const hermesAdapter: AgentSessionAdapter = {
 			const toInProgressCommand = buildHookCommand("to_in_progress", { source: "hermes" });
 			const activityCommand = buildHookCommand("activity", { source: "hermes" });
 
-			const configContent = buildHermesHooksConfigYaml(toReviewCommand, toInProgressCommand, activityCommand);
+			const realHermesHome = process.env.HERMES_HOME ?? join(homedir(), ".hermes");
+
+			const hooksYaml = buildHermesHooksYaml(toReviewCommand, toInProgressCommand, activityCommand);
+			const configContent = await buildHermesConfigYaml(hooksYaml, join(realHermesHome, "config.yaml"));
 			await ensureTextFile(configPath, configContent);
 
-			const realHermesHome = process.env.HERMES_HOME ?? join(homedir(), ".hermes");
 			await ensureHermesHomeDataLinks(hookDir, realHermesHome);
 
 			env.HERMES_HOME = hookDir;

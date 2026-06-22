@@ -534,6 +534,37 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("ws-hermes-1");
 	});
 
+	it("preserves user model and settings from ~/.hermes/config.yaml when merging hooks", async () => {
+		const home = setupTempHome();
+		// Simulate a user config with a model setting and existing hooks
+		const userHermesDir = join(home, ".hermes");
+		mkdirSync(userHermesDir, { recursive: true });
+		writeFileSync(
+			join(userHermesDir, "config.yaml"),
+			"model: claude-sonnet-4-5\ntemperature: 0.7\nhooks:\n  pre_llm_call:\n    - command: old-hook\n",
+		);
+
+		await prepareAgentLaunch({
+			taskId: "task-hermes-model",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			cwd: "/tmp",
+			prompt: "Fix it",
+			workspaceId: "ws-model-test",
+		});
+
+		const hookDir = join(home, ".cline", "kanban", "hooks", "hermes");
+		const merged = readFileSync(join(hookDir, "config.yaml"), "utf8");
+		// User settings preserved
+		expect(merged).toContain("model: claude-sonnet-4-5");
+		expect(merged).toContain("temperature: 0.7");
+		// Old hooks replaced by ours
+		expect(merged).not.toContain("old-hook");
+		expect(merged).toContain("post_llm_call:");
+		expect(merged).toContain("to_review");
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
