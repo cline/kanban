@@ -13,14 +13,21 @@ import {
 import { SearchSelectDropdown } from "@/components/search-select-dropdown";
 import { cn } from "@/components/ui/cn";
 import { NativeSelect } from "@/components/ui/native-select";
-import { fetchClineProviderCatalog, fetchClineProviderModels } from "@/runtime/runtime-config-query";
+import {
+	fetchClineProviderCatalog,
+	fetchClineProviderModels,
+	fetchHermesProfiles,
+} from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
 	RuntimeClineReasoningEffort,
 	RuntimeTaskClineSettings,
+	RuntimeTaskHermesSettings,
 } from "@/runtime/types";
+
+const TASK_AGENT_PICKER_ORDER: readonly RuntimeAgentId[] = ["cline", "hermes", "claude", "codex", "droid", "kiro"];
 
 // ---------------------------------------------------------------------------
 // Hook: manages fetch state for Cline provider catalog + model lists
@@ -49,6 +56,8 @@ export interface UseTaskAgentModelPickerResult {
 	isLoadingModels: boolean;
 	/** Map of provider ID → its default model ID (from the provider catalog). */
 	providerDefaultModels: Record<string, string>;
+	hermesProfileOptions: Array<{ value: string; label: string }>;
+	isLoadingHermesProfiles: boolean;
 }
 
 export function useTaskAgentModelPicker({
@@ -64,9 +73,30 @@ export function useTaskAgentModelPicker({
 	const [providerModels, setProviderModels] = useState<RuntimeClineProviderModel[]>([]);
 	const [isLoadingProviders, setIsLoadingProviders] = useState(false);
 	const [isLoadingModels, setIsLoadingModels] = useState(false);
+	const [hermesProfiles, setHermesProfiles] = useState<string[]>([]);
+	const [isLoadingHermesProfiles, setIsLoadingHermesProfiles] = useState(false);
 
 	// Derive the effective agent: explicit override takes precedence, then the global default
 	const effectiveAgentId = agentId ?? defaultAgentId ?? null;
+
+	useEffect(() => {
+		if (!active || effectiveAgentId !== "hermes") return;
+		let cancelled = false;
+		setIsLoadingHermesProfiles(true);
+		void fetchHermesProfiles(workspaceId)
+			.then((profiles) => {
+				if (!cancelled) setHermesProfiles(profiles);
+			})
+			.catch(() => {
+				if (!cancelled) setHermesProfiles(["default"]);
+			})
+			.finally(() => {
+				if (!cancelled) setIsLoadingHermesProfiles(false);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [active, effectiveAgentId, workspaceId]);
 
 	useEffect(() => {
 		if (!active || effectiveAgentId !== "cline") {
@@ -128,7 +158,12 @@ export function useTaskAgentModelPicker({
 	}, [active, effectiveAgentId, effectiveProviderId, workspaceId]);
 
 	const agentOptions = useMemo(() => {
-		const catalog = getRuntimeLaunchSupportedAgentCatalog();
+		const orderIndexByAgentId = new Map(TASK_AGENT_PICKER_ORDER.map((agentId, index) => [agentId, index] as const));
+		const catalog = [...getRuntimeLaunchSupportedAgentCatalog()].sort((left, right) => {
+			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+			return leftOrderIndex - rightOrderIndex;
+		});
 		let firstLabel = "Default";
 		if (defaultAgentId) {
 			const defaultAgent = catalog.find((a) => a.id === defaultAgentId);
@@ -204,6 +239,13 @@ export function useTaskAgentModelPicker({
 		isLoadingProviders,
 		isLoadingModels,
 		providerDefaultModels,
+		hermesProfileOptions: [
+			{ value: "", label: "Default" },
+			...hermesProfiles
+				.filter((profile) => profile !== "default")
+				.map((profile) => ({ value: profile, label: profile })),
+		],
+		isLoadingHermesProfiles,
 	};
 }
 
@@ -229,6 +271,8 @@ export function TaskAgentModelPicker({
 	onAgentIdChange,
 	clineSettings,
 	onClineSettingsChange,
+	hermesSettings,
+	onHermesSettingsChange,
 	agentOptions,
 	clineProviderOptions,
 	clineModelOptions,
@@ -241,11 +285,15 @@ export function TaskAgentModelPicker({
 	defaultProviderId,
 	defaultReasoningEffort,
 	providerDefaultModels,
+	hermesProfileOptions = [],
+	isLoadingHermesProfiles = false,
 }: {
 	agentId: RuntimeAgentId | undefined;
 	onAgentIdChange: (value: RuntimeAgentId | undefined) => void;
 	clineSettings?: RuntimeTaskClineSettings | undefined;
 	onClineSettingsChange?: (value: RuntimeTaskClineSettings | undefined) => void;
+	hermesSettings?: RuntimeTaskHermesSettings | undefined;
+	onHermesSettingsChange?: (value: RuntimeTaskHermesSettings | undefined) => void;
 	agentOptions: Array<{ value: string; label: string }>;
 	clineProviderOptions: Array<{ value: string; label: string }>;
 	clineModelOptions: Array<{ value: string; label: string }>;
@@ -262,6 +310,8 @@ export function TaskAgentModelPicker({
 	defaultReasoningEffort?: RuntimeClineReasoningEffort | null;
 	/** Map of provider ID → its default model ID (from the provider catalog). */
 	providerDefaultModels?: Record<string, string>;
+	hermesProfileOptions?: Array<{ value: string; label: string }>;
+	isLoadingHermesProfiles?: boolean;
 }): ReactElement {
 	const clineProviderId = clineSettings?.providerId;
 	const clineModelId = clineSettings?.modelId;
@@ -278,6 +328,7 @@ export function TaskAgentModelPicker({
 	// (either explicitly overridden to cline, or defaulting to cline)
 	const effectiveAgentId = agentId ?? defaultAgentId ?? null;
 	const showClineProviderPicker = effectiveAgentId === "cline";
+	const showHermesProfilePicker = effectiveAgentId === "hermes";
 
 	// Show the Cline model picker when a provider is effectively selected
 	// (either explicitly overridden, or the global default provider is set)
@@ -477,6 +528,7 @@ export function TaskAgentModelPicker({
 										onClineSettingsChange?.(undefined);
 										setReasoningEffort("");
 									}
+									if (value !== "hermes") onHermesSettingsChange?.(undefined);
 								}}
 							>
 								{agentOptions.map((option) => (
@@ -597,6 +649,29 @@ export function TaskAgentModelPicker({
 										/>
 									</div>
 								) : null}
+							</div>
+						) : null}
+						{showHermesProfilePicker ? (
+							<div className="w-full sm:w-1/2 min-w-0">
+								<span className="text-[11px] text-text-secondary block mb-1">
+									Profile{isLoadingHermesProfiles ? " (loading\u2026)" : ""}
+								</span>
+								<NativeSelect
+									size="sm"
+									fill
+									value={hermesSettings?.profile ?? ""}
+									disabled={isLoadingHermesProfiles}
+									onChange={(event) => {
+										const profile = event.currentTarget.value;
+										onHermesSettingsChange?.(profile ? { profile } : undefined);
+									}}
+								>
+									{hermesProfileOptions.map((option) => (
+										<option key={option.value} value={option.value}>
+											{option.label}
+										</option>
+									))}
+								</NativeSelect>
 							</div>
 						) : null}
 					</div>

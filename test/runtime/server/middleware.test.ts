@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { PassThrough } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { setKanbanRuntimeHost, setKanbanRuntimePort } from "../../../src/core/runtime-endpoint";
 import { evaluateCors, evaluateHost, handleSocketUpgrade } from "../../../src/server/middleware";
 
 const ALLOWED_ORIGIN = "http://127.0.0.1:3484";
@@ -130,6 +131,11 @@ describe("evaluateHost", () => {
 });
 
 describe("handleSocketUpgrade", () => {
+	beforeEach(() => {
+		setKanbanRuntimeHost("127.0.0.1");
+		setKanbanRuntimePort(3484);
+	});
+
 	it("passes through upgrades whose Host and Origin are both allowed", () => {
 		const socket = new PassThrough();
 		const request = makeFakeRequest({ host: "127.0.0.1:3484", origin: ALLOWED_ORIGIN });

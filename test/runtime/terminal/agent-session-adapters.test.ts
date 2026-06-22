@@ -455,6 +455,139 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
 	});
 
+	it("launches Hermes interactively and defers the task prompt into the chat TUI", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-hermes",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "Refactor the billing module",
+		});
+
+		// Interactive launch: never the one-shot -q/--quiet flags, which run once and exit.
+		expect(launch.args).not.toContain("-q");
+		expect(launch.args).not.toContain("--quiet");
+		expect(launch.args).not.toContain("-Q");
+		expect(launch.args).not.toContain("Refactor the billing module");
+		expect(launch.args).not.toContain("--yolo");
+		expect(launch.args).toContain("--source");
+		expect(launch.args).toContain("tool");
+		expect(launch.deferredStartupInput).toContain("[200~");
+		expect(launch.deferredStartupInput).toContain("Refactor the billing module");
+		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
+	});
+
+	it("omits Hermes autonomous flag and prompt seeding when there is no prompt", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-hermes-empty",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(launch.args).not.toContain("--yolo");
+		expect(launch.args).toEqual(["chat", "--source", "tool"]);
+		expect(launch.deferredStartupInput).toBeUndefined();
+	});
+
+	it("writes Hermes hooks config.yaml and overrides HERMES_HOME when workspaceId is provided", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-hermes-hooks",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "Fix the bug",
+			workspaceId: "ws-hermes-1",
+		});
+
+		const hookDir = join(homedir(), ".cline", "kanban", "hooks", "hermes", "default");
+		const configPath = join(hookDir, "config.yaml");
+
+		expect(existsSync(configPath)).toBe(true);
+
+		const configContent = readFileSync(configPath, "utf8");
+		expect(configContent).toContain("hooks:");
+		expect(configContent).toContain("post_llm_call:");
+		expect(configContent).toContain("pre_tool_call:");
+		expect(configContent).toContain("post_tool_call:");
+		expect(configContent).toContain("pre_approval_request:");
+		expect(configContent).toContain("to_review");
+		expect(configContent).toContain("to_in_progress");
+		expect(configContent).toContain("activity");
+		expect(configContent).toContain("--source");
+		expect(configContent).toContain("hermes");
+
+		expect(launch.env.HERMES_HOME).toBe(hookDir);
+		expect(launch.env.HERMES_ACCEPT_HOOKS).toBe("1");
+		expect(launch.args).toContain("--accept-hooks");
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-hermes-hooks");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("ws-hermes-1");
+	});
+
+	it("preserves user model and settings from ~/.hermes/config.yaml when merging hooks", async () => {
+		const home = setupTempHome();
+		// Simulate a user config with a model setting and existing hooks
+		const userHermesDir = join(home, ".hermes");
+		mkdirSync(userHermesDir, { recursive: true });
+		writeFileSync(
+			join(userHermesDir, "config.yaml"),
+			"model: claude-sonnet-4-5\ntemperature: 0.7\nhooks:\n  pre_llm_call:\n    - command: old-hook\n",
+		);
+
+		await prepareAgentLaunch({
+			taskId: "task-hermes-model",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			cwd: "/tmp",
+			prompt: "Fix it",
+			workspaceId: "ws-model-test",
+		});
+
+		const hookDir = join(home, ".cline", "kanban", "hooks", "hermes", "default");
+		const merged = readFileSync(join(hookDir, "config.yaml"), "utf8");
+		// User settings preserved
+		expect(merged).toContain("model: claude-sonnet-4-5");
+		expect(merged).toContain("temperature: 0.7");
+		// Old hooks replaced by ours
+		expect(merged).not.toContain("old-hook");
+		expect(merged).toContain("post_llm_call:");
+		expect(merged).toContain("to_review");
+	});
+
+	it("uses the selected Hermes profile settings in an isolated hook home", async () => {
+		const home = setupTempHome();
+		const profileHome = join(home, ".hermes", "profiles", "reviewer");
+		mkdirSync(profileHome, { recursive: true });
+		writeFileSync(join(profileHome, "config.yaml"), "model: reviewer-model\n");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-hermes-profile",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			cwd: "/tmp",
+			prompt: "Review it",
+			workspaceId: "ws-profile-test",
+			hermesProfile: "reviewer",
+		});
+
+		const hookDir = join(home, ".cline", "kanban", "hooks", "hermes", "reviewer");
+		expect(readFileSync(join(hookDir, "config.yaml"), "utf8")).toContain("model: reviewer-model");
+		expect(launch.env.HERMES_HOME).toBe(hookDir);
+		expect(launch.env.HERMES_PROFILE).toBe("reviewer");
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

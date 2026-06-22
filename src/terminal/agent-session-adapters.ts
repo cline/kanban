@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, symlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -15,6 +15,7 @@ import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
 import { configureCodexHooks, hasCodexConfigOverride } from "./codex-hook-config";
+import { resolveHermesProfileHome } from "./hermes-profiles";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
 	getOpenCodeAuthPathCandidates,
@@ -38,6 +39,7 @@ export interface AgentAdapterLaunchInput {
 	resumeFromTrash?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	hermesProfile?: string;
 }
 
 export type AgentOutputTransitionDetector = (
@@ -597,6 +599,16 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 		args,
 		env: {},
 	};
+}
+
+function buildSoftPlanPrompt(prompt: string): string {
+	const trimmedPrompt = prompt.trim();
+	return [
+		"First, inspect the codebase and produce a clear implementation plan only.",
+		"Do not modify files, do not use write tools, and do not implement anything yet.",
+		"After you present the plan, ask for approval before making changes.",
+		trimmedPrompt ? `\n\nTask:\n${trimmedPrompt}` : " Ask the user what they want planned if the task is unclear.",
+	].join(" ");
 }
 
 function toBracketedPasteSubmission(command: string): string {
@@ -1348,17 +1360,7 @@ const kiroAdapter: AgentSessionAdapter = {
 			}
 		}
 
-		const trimmedPrompt = input.prompt.trim();
-		const planPrompt = input.startInPlanMode
-			? [
-					"First, inspect the codebase and produce a clear implementation plan only.",
-					"Do not modify files, do not use write tools, and do not implement anything yet.",
-					"After you present the plan, ask for approval before making changes.",
-					trimmedPrompt
-						? `\n\nTask:\n${trimmedPrompt}`
-						: " Ask the user what they want planned if the task is unclear.",
-				].join(" ")
-			: input.prompt;
+		const planPrompt = input.startInPlanMode ? buildSoftPlanPrompt(input.prompt) : input.prompt;
 		const withPromptLaunch = withPrompt(args, planPrompt, "append");
 		return {
 			...withPromptLaunch,
@@ -1427,6 +1429,158 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+function buildHermesHooksYaml(toReviewCommand: string, toInProgressCommand: string, activityCommand: string): string {
+	const lines = [
+		"hooks:",
+		"  post_llm_call:",
+		`    - command: ${JSON.stringify(toReviewCommand)}`,
+		"  pre_llm_call:",
+		`    - command: ${JSON.stringify(toInProgressCommand)}`,
+		"  pre_tool_call:",
+		`    - command: ${JSON.stringify(toInProgressCommand)}`,
+		"  post_tool_call:",
+		`    - command: ${JSON.stringify(activityCommand)}`,
+		"  pre_approval_request:",
+		`    - command: ${JSON.stringify(toReviewCommand)}`,
+	];
+	return `${lines.join("\n")}\n`;
+}
+
+// Strip a top-level YAML key and its indented block. Handles typical flat
+// Hermes config.yaml files; edge cases like multiline scalars are tolerated
+// (they're just kept if they don't match the pattern).
+function stripYamlTopLevelKey(yaml: string, key: string): string {
+	const lines = yaml.split("\n");
+	const result: string[] = [];
+	const keyPattern = new RegExp(`^${key}\\s*:`);
+	let skipping = false;
+	for (const line of lines) {
+		if (keyPattern.test(line)) {
+			skipping = true;
+			continue;
+		}
+		// End of skipped block: a new non-indented, non-comment, non-blank line
+		if (skipping && line.length > 0 && !/^\s/.test(line) && !line.startsWith("#")) {
+			skipping = false;
+		}
+		if (!skipping) {
+			result.push(line);
+		}
+	}
+	return result.join("\n");
+}
+
+async function buildHermesConfigYaml(hooksYaml: string, userConfigPath: string): Promise<string> {
+	let userConfig: string;
+	try {
+		userConfig = await readFile(userConfigPath, "utf8");
+	} catch {
+		return hooksYaml;
+	}
+	// Preserve all user settings (model, API keys, etc.) and replace any
+	// existing hooks block with ours.
+	const withoutHooks = stripYamlTopLevelKey(userConfig, "hooks").trimEnd();
+	return withoutHooks ? `${withoutHooks}\n${hooksYaml}` : hooksYaml;
+}
+
+async function ensureHermesHomeDataLinks(hookDir: string, realHermesHome: string): Promise<void> {
+	if (process.platform === "win32") {
+		return;
+	}
+	const dataPaths = [
+		"memories",
+		"sessions",
+		"skills",
+		"audio_cache",
+		"image_cache",
+		"checkpoints",
+		"pairing",
+		".env",
+		"SOUL.md",
+	];
+	for (const name of dataPaths) {
+		const source = join(realHermesHome, name);
+		const linkPath = join(hookDir, name);
+		try {
+			await access(source);
+		} catch {
+			continue;
+		}
+		try {
+			await symlink(source, linkPath);
+		} catch {
+			// Already exists or not writable — ignored.
+		}
+	}
+}
+
+const hermesAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (!hasCliOption(args, "--source")) {
+			args.push("--source", "tool");
+		}
+
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		if (appendedSystemPrompt) {
+			env.HERMES_EPHEMERAL_SYSTEM_PROMPT = appendedSystemPrompt;
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			const hookDir = join(getHookAgentDirectory("hermes"), input.hermesProfile ?? "default");
+			const configPath = join(hookDir, "config.yaml");
+
+			const toReviewCommand = buildHookCommand("to_review", { source: "hermes" });
+			const toInProgressCommand = buildHookCommand("to_in_progress", { source: "hermes" });
+			const activityCommand = buildHookCommand("activity", { source: "hermes" });
+
+			const realHermesHome = input.hermesProfile
+				? resolveHermesProfileHome(input.hermesProfile)
+				: (process.env.HERMES_HOME ?? join(homedir(), ".hermes"));
+
+			const hooksYaml = buildHermesHooksYaml(toReviewCommand, toInProgressCommand, activityCommand);
+			const configContent = await buildHermesConfigYaml(hooksYaml, join(realHermesHome, "config.yaml"));
+			await ensureTextFile(configPath, configContent);
+
+			await ensureHermesHomeDataLinks(hookDir, realHermesHome);
+
+			env.HERMES_HOME = hookDir;
+			if (input.hermesProfile) {
+				env.HERMES_PROFILE = input.hermesProfile;
+			}
+			env.HERMES_ACCEPT_HOOKS = "1";
+			if (!hasCliOption(args, "--accept-hooks")) {
+				args.push("--accept-hooks");
+			}
+
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		// `hermes chat` only accepts an initial prompt via -q/--query, which runs the prompt once
+		// and exits. Kanban needs a persistent interactive session, so we launch interactive
+		// `hermes chat` and type the task prompt into the TUI once it has rendered. Home sidebar
+		// sessions start without a prompt and let the user drive the conversation directly.
+		const prompt = input.startInPlanMode ? buildSoftPlanPrompt(input.prompt) : input.prompt;
+		const trimmedPrompt = prompt.trim();
+		const deferredStartupInput = trimmedPrompt ? toBracketedPasteSubmission(trimmedPrompt) : undefined;
+
+		return {
+			args,
+			env,
+			deferredStartupInput,
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1434,6 +1588,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
 	kiro: kiroAdapter,
+	hermes: hermesAdapter,
 	cline: clineAdapter,
 };
 
