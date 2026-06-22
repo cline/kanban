@@ -38,6 +38,12 @@ export async function fetchRuntimeConfig(workspaceId: string | null): Promise<Ru
 	return await trpcClient.runtime.getConfig.query();
 }
 
+export async function fetchHermesProfiles(workspaceId: string | null): Promise<string[]> {
+	const trpcClient = getRuntimeTrpcClient(workspaceId);
+	const response = await trpcClient.runtime.getHermesProfiles.query();
+	return response.profiles;
+}
+
 export async function saveRuntimeConfig(
 	workspaceId: string | null,
 	nextConfig: {

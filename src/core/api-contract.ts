@@ -105,6 +105,14 @@ export const runtimeTaskClineSettingsSchema = z.object({
 	reasoningEffort: runtimeClineReasoningEffortSchema.optional(),
 });
 export type RuntimeTaskClineSettings = z.infer<typeof runtimeTaskClineSettingsSchema>;
+export const runtimeTaskHermesSettingsSchema = z.object({
+	profile: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
+});
+export type RuntimeTaskHermesSettings = z.infer<typeof runtimeTaskHermesSettingsSchema>;
+export const runtimeHermesProfilesResponseSchema = z.object({
+	profiles: z.array(z.string()),
+});
+export type RuntimeHermesProfilesResponse = z.infer<typeof runtimeHermesProfilesResponseSchema>;
 export const runtimeTaskImageSchema = z.object({
 	id: z.string(),
 	data: z.string(),
@@ -149,6 +157,7 @@ export const runtimeBoardCardSchema = z
 		images: z.array(runtimeTaskImageSchema).optional(),
 		agentId: runtimeAgentIdSchema.optional(),
 		clineSettings: runtimeTaskClineSettingsSchema.optional(),
+		hermesSettings: runtimeTaskHermesSettingsSchema.optional(),
 		clineProviderId: z.string().optional(),
 		clineModelId: z.string().optional(),
 		clineReasoningEffort: runtimeLegacyTaskClineReasoningEffortSchema.optional(),
@@ -992,6 +1001,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	rows: z.number().int().positive().optional(),
 	agentId: runtimeAgentIdSchema.optional(),
 	clineSettings: runtimeTaskClineSettingsSchema.optional(),
+	hermesSettings: runtimeTaskHermesSettingsSchema.optional(),
 });
 export type RuntimeTaskSessionStartRequest = z.infer<typeof runtimeTaskSessionStartRequestSchema>;
 

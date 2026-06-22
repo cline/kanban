@@ -51,6 +51,7 @@ import type {
 	RuntimeGitSummaryResponse,
 	RuntimeGitSyncAction,
 	RuntimeGitSyncResponse,
+	RuntimeHermesProfilesResponse,
 	RuntimeHookIngestRequest,
 	RuntimeHookIngestResponse,
 	RuntimeOpenFileRequest,
@@ -142,6 +143,7 @@ import {
 	runtimeGitSummaryResponseSchema,
 	runtimeGitSyncActionSchema,
 	runtimeGitSyncResponseSchema,
+	runtimeHermesProfilesResponseSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeHookIngestResponseSchema,
 	runtimeOpenFileRequestSchema,
@@ -197,6 +199,7 @@ export interface RuntimeTrpcContext {
 	requestedWorkspaceId: string | null;
 	workspaceScope: RuntimeTrpcWorkspaceScope | null;
 	runtimeApi: {
+		getHermesProfiles: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeHermesProfilesResponse>;
 		loadConfig: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeConfigResponse>;
 		saveConfig: (
 			scope: RuntimeTrpcWorkspaceScope | null,
@@ -428,6 +431,9 @@ const gitSyncActionInputSchema = z.object({
 
 export const runtimeAppRouter = t.router({
 	runtime: t.router({
+		getHermesProfiles: t.procedure.output(runtimeHermesProfilesResponseSchema).query(async ({ ctx }) => {
+			return await ctx.runtimeApi.getHermesProfiles(ctx.workspaceScope);
+		}),
 		getConfig: t.procedure.output(runtimeConfigResponseSchema).query(async ({ ctx }) => {
 			return await ctx.runtimeApi.loadConfig(ctx.workspaceScope);
 		}),

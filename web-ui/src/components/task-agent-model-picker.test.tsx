@@ -12,17 +12,20 @@ import type {
 
 const fetchClineProviderCatalogMock = vi.hoisted(() => vi.fn());
 const fetchClineProviderModelsMock = vi.hoisted(() => vi.fn());
+const fetchHermesProfilesMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@runtime-agent-catalog", () => ({
 	getRuntimeLaunchSupportedAgentCatalog: vi.fn(() => [
 		{ id: "cline", label: "Cline", binary: "cline" },
 		{ id: "claude", label: "Claude Code", binary: "claude" },
+		{ id: "hermes", label: "Hermes Agent", binary: "hermes" },
 	]),
 }));
 
 vi.mock("@/runtime/runtime-config-query", () => ({
 	fetchClineProviderCatalog: fetchClineProviderCatalogMock,
 	fetchClineProviderModels: fetchClineProviderModelsMock,
+	fetchHermesProfiles: fetchHermesProfilesMock,
 }));
 
 function createProvider(
@@ -166,6 +169,44 @@ describe("useTaskAgentModelPicker – clineProviderOptions", () => {
 
 		expect(snapshot).not.toBeNull();
 		expect(snapshot!.clineProviderOptions).toEqual([{ value: "", label: "cline" }]);
+	});
+});
+
+describe("TaskAgentModelPicker – Hermes profiles", () => {
+	it("persists the selected Hermes profile", async () => {
+		const onHermesSettingsChange = vi.fn();
+		const { TaskAgentModelPicker } = await import("@/components/task-agent-model-picker");
+
+		await act(async () =>
+			root.render(
+				<TaskAgentModelPicker
+					agentId="hermes"
+					onAgentIdChange={() => {}}
+					onHermesSettingsChange={onHermesSettingsChange}
+					agentOptions={[{ value: "hermes", label: "Hermes Agent" }]}
+					clineProviderOptions={[]}
+					clineModelOptions={[]}
+					hermesProfileOptions={[
+						{ value: "", label: "Default" },
+						{ value: "reviewer", label: "reviewer" },
+					]}
+					isLoadingProviders={false}
+					isLoadingModels={false}
+				/>,
+			),
+		);
+
+		await act(async () => {
+			container.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		const selects = container.querySelectorAll("select");
+		await act(async () => {
+			const profileSelect = selects.item(1);
+			profileSelect.value = "reviewer";
+			profileSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+
+		expect(onHermesSettingsChange).toHaveBeenCalledWith({ profile: "reviewer" });
 	});
 });
 

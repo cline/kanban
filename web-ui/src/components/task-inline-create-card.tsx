@@ -9,7 +9,12 @@ import { TaskAgentModelPicker, useTaskAgentModelPicker } from "@/components/task
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import type { RuntimeAgentId, RuntimeClineReasoningEffort, RuntimeTaskClineSettings } from "@/runtime/types";
+import type {
+	RuntimeAgentId,
+	RuntimeClineReasoningEffort,
+	RuntimeTaskClineSettings,
+	RuntimeTaskHermesSettings,
+} from "@/runtime/types";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
 import { useDocumentEvent, useMeasure } from "@/utils/react-use";
@@ -71,6 +76,8 @@ export function TaskInlineCreateCard({
 	onAgentIdChange,
 	clineSettings,
 	onClineSettingsChange,
+	hermesSettings,
+	onHermesSettingsChange,
 	defaultAgentId,
 	defaultProviderId,
 	defaultModelId,
@@ -103,6 +110,8 @@ export function TaskInlineCreateCard({
 	onAgentIdChange?: (value: RuntimeAgentId | undefined) => void;
 	clineSettings?: RuntimeTaskClineSettings | undefined;
 	onClineSettingsChange?: (value: RuntimeTaskClineSettings | undefined) => void;
+	hermesSettings?: RuntimeTaskHermesSettings | undefined;
+	onHermesSettingsChange?: (value: RuntimeTaskHermesSettings | undefined) => void;
 	/** Default agent ID from runtimeConfig.selectedAgentId, used to show "Default (AgentName)" in picker */
 	defaultAgentId?: RuntimeAgentId | null;
 	/** Default Cline provider ID from runtimeConfig.clineProviderSettings.providerId */
@@ -146,6 +155,8 @@ export function TaskInlineCreateCard({
 		isLoadingProviders,
 		isLoadingModels,
 		providerDefaultModels,
+		hermesProfileOptions,
+		isLoadingHermesProfiles,
 	} = useTaskAgentModelPicker({
 		active: true,
 		workspaceId,
@@ -314,6 +325,8 @@ export function TaskInlineCreateCard({
 						onAgentIdChange={onAgentIdChange}
 						clineSettings={clineSettings}
 						onClineSettingsChange={onClineSettingsChange}
+						hermesSettings={hermesSettings}
+						onHermesSettingsChange={onHermesSettingsChange}
 						agentOptions={agentOptions}
 						clineProviderOptions={clineProviderOptions}
 						clineModelOptions={clineModelOptions}
@@ -325,6 +338,8 @@ export function TaskInlineCreateCard({
 						defaultProviderId={defaultProviderId}
 						defaultReasoningEffort={defaultReasoningEffort}
 						providerDefaultModels={providerDefaultModels}
+						hermesProfileOptions={hermesProfileOptions}
+						isLoadingHermesProfiles={isLoadingHermesProfiles}
 						onPopoverOpenChange={setIsModelPickerPopoverOpen}
 					/>
 				) : null}

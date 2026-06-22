@@ -45,6 +45,7 @@ import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveTaskTitle } from "../core/task-title.js";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
+import { listHermesProfiles } from "../terminal/hermes-profiles";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { resolveTaskCwd } from "../workspace/task-worktree";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
@@ -109,6 +110,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		buildRuntimeConfigResponse(runtimeConfig, clineProviderService.getProviderSettingsSummary());
 
 	return {
+		getHermesProfiles: async () => ({ profiles: await listHermesProfiles() }),
 		loadConfig: async (workspaceScope) => {
 			const activeRuntimeConfig = deps.getActiveRuntimeConfig?.();
 			if (!workspaceScope && !activeRuntimeConfig) {
@@ -292,6 +294,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					cols: body.cols,
 					rows: body.rows,
 					workspaceId: workspaceScope.workspaceId,
+					...(body.hermesSettings?.profile ? { hermesProfile: body.hermesSettings.profile } : {}),
 				});
 
 				let nextSummary = summary;

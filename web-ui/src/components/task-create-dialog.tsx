@@ -26,7 +26,12 @@ import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
-import type { RuntimeAgentId, RuntimeClineReasoningEffort, RuntimeTaskClineSettings } from "@/runtime/types";
+import type {
+	RuntimeAgentId,
+	RuntimeClineReasoningEffort,
+	RuntimeTaskClineSettings,
+	RuntimeTaskHermesSettings,
+} from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
@@ -122,6 +127,8 @@ export function TaskCreateDialog({
 	onAgentIdChange,
 	clineSettings,
 	onClineSettingsChange,
+	hermesSettings,
+	onHermesSettingsChange,
 	defaultAgentId,
 	defaultProviderId,
 	defaultModelId,
@@ -153,6 +160,8 @@ export function TaskCreateDialog({
 	onAgentIdChange?: (value: RuntimeAgentId | undefined) => void;
 	clineSettings?: RuntimeTaskClineSettings | undefined;
 	onClineSettingsChange?: (value: RuntimeTaskClineSettings | undefined) => void;
+	hermesSettings?: RuntimeTaskHermesSettings | undefined;
+	onHermesSettingsChange?: (value: RuntimeTaskHermesSettings | undefined) => void;
 	/** Default agent ID from runtimeConfig.selectedAgentId, used to show "Default (AgentName)" in picker */
 	defaultAgentId?: RuntimeAgentId | null;
 	/** Default Cline provider ID from runtimeConfig.clineProviderSettings.providerId */
@@ -186,6 +195,8 @@ export function TaskCreateDialog({
 		isLoadingProviders,
 		isLoadingModels,
 		providerDefaultModels,
+		hermesProfileOptions,
+		isLoadingHermesProfiles,
 	} = useTaskAgentModelPicker({
 		active: open,
 		workspaceId,
@@ -582,6 +593,8 @@ export function TaskCreateDialog({
 							onAgentIdChange={onAgentIdChange}
 							clineSettings={clineSettings}
 							onClineSettingsChange={onClineSettingsChange}
+							hermesSettings={hermesSettings}
+							onHermesSettingsChange={onHermesSettingsChange}
 							agentOptions={agentOptions}
 							clineProviderOptions={clineProviderOptions}
 							clineModelOptions={clineModelOptions}
@@ -593,6 +606,8 @@ export function TaskCreateDialog({
 							defaultProviderId={defaultProviderId}
 							defaultReasoningEffort={defaultReasoningEffort}
 							providerDefaultModels={providerDefaultModels}
+							hermesProfileOptions={hermesProfileOptions}
+							isLoadingHermesProfiles={isLoadingHermesProfiles}
 						/>
 					) : null}
 				</div>

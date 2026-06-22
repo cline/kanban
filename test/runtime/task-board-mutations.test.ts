@@ -142,6 +142,17 @@ describe("per-task agent/model/provider overrides", () => {
 		});
 	});
 
+	it("persists task-level Hermes profile settings on the card", () => {
+		const created = addTaskToColumn(
+			createBoard(),
+			"backlog",
+			{ prompt: "Review task", baseRef: "main", agentId: "hermes", hermesSettings: { profile: "reviewer" } },
+			() => "aaaaa111",
+		);
+
+		expect(created.task.hermesSettings).toEqual({ profile: "reviewer" });
+	});
+
 	it("leaves override fields undefined when not provided", () => {
 		const created = addTaskToColumn(
 			createBoard(),
@@ -152,6 +163,7 @@ describe("per-task agent/model/provider overrides", () => {
 
 		expect(created.task.agentId).toBeUndefined();
 		expect(created.task.clineSettings).toBeUndefined();
+		expect(created.task.hermesSettings).toBeUndefined();
 	});
 
 	it("updates agentId from undefined to a value", () => {
