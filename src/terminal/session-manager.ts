@@ -194,7 +194,9 @@ function buildTerminalEnvironment(
 		TERM_PROGRAM: "kanban",
 		// Ensure color support is never disabled by the inherited environment.
 		// NO_COLOR and CI can cause supports-color to return level 0 even when
-		// COLORTERM=truecolor is set. FORCE_COLOR bypasses all heuristics.
+		// COLORTERM=truecolor is set. FORCE_COLOR=3 bypasses all heuristics for
+		// every agent (chalk, supports-color, and compatible tools all respect it).
+		FORCE_COLOR: "3",
 		NO_COLOR: undefined,
 		NODE_DISABLE_COLORS: undefined,
 	};

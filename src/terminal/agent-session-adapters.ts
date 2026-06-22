@@ -618,7 +618,6 @@ const claudeAdapter: AgentSessionAdapter = {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {
 			FORCE_HYPERLINK: "1",
-			FORCE_COLOR: "3",
 		};
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 		if (
