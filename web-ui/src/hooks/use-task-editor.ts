@@ -8,7 +8,7 @@ import {
 	TASK_AUTO_REVIEW_MODE_STORAGE_KEY,
 	TASK_START_IN_PLAN_MODE_STORAGE_KEY,
 } from "@/hooks/app-utils";
-import type { RuntimeAgentId, RuntimeTaskClineSettings } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeTaskClineSettings, RuntimeTaskHermesSettings } from "@/runtime/types";
 import { addTaskToColumnWithResult, findCardSelection, updateTask, updateTaskTitle } from "@/state/board-state";
 import { toTelemetrySelectedAgentId, trackTaskCreated } from "@/telemetry/events";
 import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
@@ -53,6 +53,8 @@ export interface UseTaskEditorResult {
 	setNewTaskAgentId: Dispatch<SetStateAction<RuntimeAgentId | undefined>>;
 	newTaskClineSettings: RuntimeTaskClineSettings | undefined;
 	setNewTaskClineSettings: Dispatch<SetStateAction<RuntimeTaskClineSettings | undefined>>;
+	newTaskHermesSettings: RuntimeTaskHermesSettings | undefined;
+	setNewTaskHermesSettings: Dispatch<SetStateAction<RuntimeTaskHermesSettings | undefined>>;
 	editingTaskId: string | null;
 	editTaskPrompt: string;
 	setEditTaskPrompt: Dispatch<SetStateAction<string>>;
@@ -71,6 +73,8 @@ export interface UseTaskEditorResult {
 	setEditTaskAgentId: Dispatch<SetStateAction<RuntimeAgentId | undefined>>;
 	editTaskClineSettings: RuntimeTaskClineSettings | undefined;
 	setEditTaskClineSettings: Dispatch<SetStateAction<RuntimeTaskClineSettings | undefined>>;
+	editTaskHermesSettings: RuntimeTaskHermesSettings | undefined;
+	setEditTaskHermesSettings: Dispatch<SetStateAction<RuntimeTaskHermesSettings | undefined>>;
 	handleOpenCreateTask: () => void;
 	handleCancelCreateTask: () => void;
 	handleOpenEditTask: (task: BoardCard, options?: OpenEditTaskOptions) => void;
@@ -123,8 +127,12 @@ export function useTaskEditor({
 
 	const [newTaskAgentId, setNewTaskAgentId] = useState<RuntimeAgentId | undefined>(undefined);
 	const [newTaskClineSettings, setNewTaskClineSettings] = useState<RuntimeTaskClineSettings | undefined>(undefined);
+	const [newTaskHermesSettings, setNewTaskHermesSettings] = useState<RuntimeTaskHermesSettings | undefined>(undefined);
 	const [editTaskAgentId, setEditTaskAgentId] = useState<RuntimeAgentId | undefined>(undefined);
 	const [editTaskClineSettings, setEditTaskClineSettings] = useState<RuntimeTaskClineSettings | undefined>(undefined);
+	const [editTaskHermesSettings, setEditTaskHermesSettings] = useState<RuntimeTaskHermesSettings | undefined>(
+		undefined,
+	);
 
 	const lastCreatedTaskBranchRef = useMemo(() => {
 		if (!currentProjectId) {
@@ -209,6 +217,7 @@ export function useTaskEditor({
 
 		setNewTaskAgentId(undefined);
 		setNewTaskClineSettings(undefined);
+		setNewTaskHermesSettings(undefined);
 		setIsInlineTaskCreateOpen(true);
 	}, []);
 
@@ -220,6 +229,7 @@ export function useTaskEditor({
 		setNewTaskBranchRef(resolvedDefaultTaskBranchRef);
 		setNewTaskAgentId(undefined);
 		setNewTaskClineSettings(undefined);
+		setNewTaskHermesSettings(undefined);
 	}, [resolvedDefaultTaskBranchRef]);
 
 	const handleOpenEditTask = useCallback(
@@ -243,6 +253,7 @@ export function useTaskEditor({
 			setEditTaskBranchRef(fallbackBranch);
 			setEditTaskAgentId(task.agentId);
 			setEditTaskClineSettings(task.clineSettings);
+			setEditTaskHermesSettings(task.hermesSettings);
 		},
 		[resolvedDefaultTaskBranchRef, setSelectedTaskId],
 	);
@@ -285,6 +296,7 @@ export function useTaskEditor({
 				images: editTaskImages,
 				agentId: editTaskAgentId,
 				clineSettings: editTaskClineSettings,
+				hermesSettings: editTaskHermesSettings,
 				baseRef,
 			});
 			return updated.updated ? updated.board : currentBoard;
@@ -299,6 +311,7 @@ export function useTaskEditor({
 		setEditTaskBranchRef("");
 		setEditTaskAgentId(undefined);
 		setEditTaskClineSettings(undefined);
+		setEditTaskHermesSettings(undefined);
 		return savedTaskId;
 	}, [
 		editTaskAgentId,
@@ -306,6 +319,7 @@ export function useTaskEditor({
 		editTaskAutoReviewMode,
 		editTaskBranchRef,
 		editTaskClineSettings,
+		editTaskHermesSettings,
 		editTaskPrompt,
 		editTaskImages,
 		editTaskStartInPlanMode,
@@ -352,6 +366,7 @@ export function useTaskEditor({
 				images: newTaskImages,
 				agentId: newTaskAgentId,
 				clineSettings: newTaskClineSettings,
+				hermesSettings: newTaskHermesSettings,
 				baseRef,
 			});
 			setBoard(created.board);
@@ -373,6 +388,7 @@ export function useTaskEditor({
 			setNewTaskBranchRef(baseRef);
 			setNewTaskAgentId(undefined);
 			setNewTaskClineSettings(undefined);
+			setNewTaskHermesSettings(undefined);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
 			}
@@ -386,6 +402,7 @@ export function useTaskEditor({
 			newTaskAutoReviewMode,
 			newTaskBranchRef,
 			newTaskClineSettings,
+			newTaskHermesSettings,
 			newTaskImages,
 			newTaskPrompt,
 			newTaskStartInPlanMode,
@@ -394,6 +411,7 @@ export function useTaskEditor({
 			setBoard,
 			setNewTaskAgentId,
 			setNewTaskClineSettings,
+			setNewTaskHermesSettings,
 		],
 	);
 
@@ -418,6 +436,7 @@ export function useTaskEditor({
 					images: newTaskImages,
 					agentId: newTaskAgentId,
 					clineSettings: newTaskClineSettings,
+					hermesSettings: newTaskHermesSettings,
 					baseRef,
 				});
 				updatedBoard = created.board;
@@ -444,6 +463,7 @@ export function useTaskEditor({
 			setNewTaskBranchRef(baseRef);
 			setNewTaskAgentId(undefined);
 			setNewTaskClineSettings(undefined);
+			setNewTaskHermesSettings(undefined);
 			if (!options?.keepDialogOpen) {
 				setIsInlineTaskCreateOpen(false);
 			}
@@ -457,6 +477,7 @@ export function useTaskEditor({
 			newTaskAutoReviewMode,
 			newTaskBranchRef,
 			newTaskClineSettings,
+			newTaskHermesSettings,
 			newTaskImages,
 			newTaskStartInPlanMode,
 			resolvedDefaultTaskBranchRef,
@@ -464,6 +485,7 @@ export function useTaskEditor({
 			setBoard,
 			setNewTaskAgentId,
 			setNewTaskClineSettings,
+			setNewTaskHermesSettings,
 		],
 	);
 
@@ -481,9 +503,11 @@ export function useTaskEditor({
 		setEditTaskBranchRef("");
 		setEditTaskAgentId(undefined);
 		setEditTaskClineSettings(undefined);
+		setEditTaskHermesSettings(undefined);
 		setNewTaskImages([]);
 		setNewTaskAgentId(undefined);
 		setNewTaskClineSettings(undefined);
+		setNewTaskHermesSettings(undefined);
 	}, []);
 
 	return {
@@ -505,6 +529,8 @@ export function useTaskEditor({
 		setNewTaskAgentId,
 		newTaskClineSettings,
 		setNewTaskClineSettings,
+		newTaskHermesSettings,
+		setNewTaskHermesSettings,
 		editingTaskId,
 		editTaskPrompt,
 		setEditTaskPrompt,
@@ -523,6 +549,8 @@ export function useTaskEditor({
 		setEditTaskAgentId,
 		editTaskClineSettings,
 		setEditTaskClineSettings,
+		editTaskHermesSettings,
+		setEditTaskHermesSettings,
 		handleOpenCreateTask,
 		handleCancelCreateTask,
 		handleOpenEditTask,

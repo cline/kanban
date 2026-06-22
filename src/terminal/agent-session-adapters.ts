@@ -15,6 +15,7 @@ import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
 import { configureCodexHooks, hasCodexConfigOverride } from "./codex-hook-config";
+import { resolveHermesProfileHome } from "./hermes-profiles";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
 	getOpenCodeAuthPathCandidates,
@@ -38,6 +39,7 @@ export interface AgentAdapterLaunchInput {
 	resumeFromTrash?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	hermesProfile?: string;
 }
 
 export type AgentOutputTransitionDetector = (
@@ -1528,14 +1530,16 @@ const hermesAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const hookDir = getHookAgentDirectory("hermes");
+			const hookDir = join(getHookAgentDirectory("hermes"), input.hermesProfile ?? "default");
 			const configPath = join(hookDir, "config.yaml");
 
 			const toReviewCommand = buildHookCommand("to_review", { source: "hermes" });
 			const toInProgressCommand = buildHookCommand("to_in_progress", { source: "hermes" });
 			const activityCommand = buildHookCommand("activity", { source: "hermes" });
 
-			const realHermesHome = process.env.HERMES_HOME ?? join(homedir(), ".hermes");
+			const realHermesHome = input.hermesProfile
+				? resolveHermesProfileHome(input.hermesProfile)
+				: (process.env.HERMES_HOME ?? join(homedir(), ".hermes"));
 
 			const hooksYaml = buildHermesHooksYaml(toReviewCommand, toInProgressCommand, activityCommand);
 			const configContent = await buildHermesConfigYaml(hooksYaml, join(realHermesHome, "config.yaml"));
@@ -1544,6 +1548,9 @@ const hermesAdapter: AgentSessionAdapter = {
 			await ensureHermesHomeDataLinks(hookDir, realHermesHome);
 
 			env.HERMES_HOME = hookDir;
+			if (input.hermesProfile) {
+				env.HERMES_PROFILE = input.hermesProfile;
+			}
 			env.HERMES_ACCEPT_HOOKS = "1";
 			if (!hasCliOption(args, "--accept-hooks")) {
 				args.push("--accept-hooks");

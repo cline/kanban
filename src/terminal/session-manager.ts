@@ -93,6 +93,7 @@ export interface StartTaskSessionRequest {
 	rows?: number;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	hermesProfile?: string;
 }
 
 export interface StartShellSessionRequest {
@@ -359,6 +360,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			resumeFromTrash: request.resumeFromTrash,
 			env: request.env,
 			workspaceId: request.workspaceId,
+			hermesProfile: request.hermesProfile,
 		});
 
 		const env = buildTerminalEnvironment(request.env, launch.env);

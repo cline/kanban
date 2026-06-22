@@ -6,6 +6,7 @@ import type {
 	RuntimeBoardDependency,
 	RuntimeTaskAutoReviewMode,
 	RuntimeTaskClineSettings,
+	RuntimeTaskHermesSettings,
 	RuntimeTaskImage,
 } from "./api-contract";
 import { createUniqueTaskId } from "./task-id";
@@ -21,6 +22,7 @@ export interface RuntimeCreateTaskInput {
 	images?: RuntimeTaskImage[];
 	agentId?: RuntimeAgentId;
 	clineSettings?: RuntimeTaskClineSettings;
+	hermesSettings?: RuntimeTaskHermesSettings;
 	baseRef: string;
 }
 
@@ -33,6 +35,7 @@ export interface RuntimeUpdateTaskInput {
 	images?: RuntimeTaskImage[];
 	agentId?: RuntimeAgentId | null;
 	clineSettings?: RuntimeTaskClineSettings | null;
+	hermesSettings?: RuntimeTaskHermesSettings | null;
 	baseRef: string;
 }
 
@@ -59,6 +62,11 @@ function cloneTaskClineSettings(settings?: RuntimeTaskClineSettings | null): Run
 		...(modelId ? { modelId } : {}),
 		...(settings.reasoningEffort ? { reasoningEffort: settings.reasoningEffort } : {}),
 	};
+}
+
+function cloneTaskHermesSettings(settings?: RuntimeTaskHermesSettings | null): RuntimeTaskHermesSettings | undefined {
+	const profile = settings?.profile.trim();
+	return profile ? { profile } : undefined;
 }
 
 export interface RuntimeCreateTaskResult {
@@ -309,6 +317,7 @@ export function addTaskToColumn(
 		images: cloneTaskImages(input.images),
 		...(input.agentId ? { agentId: input.agentId } : {}),
 		...(input.clineSettings !== undefined ? { clineSettings: cloneTaskClineSettings(input.clineSettings) } : {}),
+		...(input.hermesSettings !== undefined ? { hermesSettings: cloneTaskHermesSettings(input.hermesSettings) } : {}),
 		baseRef,
 		createdAt: now,
 		updatedAt: now,
@@ -630,6 +639,10 @@ export function updateTask(
 						: input.clineSettings === null
 							? undefined
 							: cloneTaskClineSettings(input.clineSettings),
+				hermesSettings:
+					input.hermesSettings === undefined
+						? cloneTaskHermesSettings(card.hermesSettings)
+						: cloneTaskHermesSettings(input.hermesSettings),
 				baseRef,
 				updatedAt: now,
 			};

@@ -3,7 +3,12 @@ import { createShortTaskId } from "@runtime-task-id";
 import * as runtimeTaskState from "@runtime-task-state";
 
 import { createInitialBoardData } from "@/data/board-data";
-import type { RuntimeAgentId, RuntimeClineReasoningEffort, RuntimeTaskClineSettings } from "@/runtime/types";
+import type {
+	RuntimeAgentId,
+	RuntimeClineReasoningEffort,
+	RuntimeTaskClineSettings,
+	RuntimeTaskHermesSettings,
+} from "@/runtime/types";
 import { isAllowedCrossColumnCardMove, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import {
 	type BoardCard,
@@ -27,6 +32,7 @@ export interface TaskDraft {
 	images?: TaskImage[];
 	agentId?: RuntimeAgentId;
 	clineSettings?: RuntimeTaskClineSettings;
+	hermesSettings?: RuntimeTaskHermesSettings;
 	baseRef: string;
 }
 
@@ -159,6 +165,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef?: unknown;
 		agentId?: unknown;
 		clineSettings?: unknown;
+		hermesSettings?: unknown;
 		clineProviderId?: unknown;
 		clineModelId?: unknown;
 		clineReasoningEffort?: unknown;
@@ -183,6 +190,12 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		legacyModelId: card.clineModelId,
 		legacyReasoningEffort: card.clineReasoningEffort,
 	});
+	const hermesProfile =
+		card.hermesSettings && typeof card.hermesSettings === "object"
+			? (card.hermesSettings as { profile?: unknown }).profile
+			: undefined;
+	const hermesSettings =
+		typeof hermesProfile === "string" && hermesProfile.trim() ? { profile: hermesProfile.trim() } : undefined;
 
 	const now = Date.now();
 
@@ -199,6 +212,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		baseRef,
 		...(typeof card.agentId === "string" && card.agentId ? { agentId: card.agentId as RuntimeAgentId } : {}),
 		...(clineSettings !== undefined ? { clineSettings } : {}),
+		...(hermesSettings !== undefined ? { hermesSettings } : {}),
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
 	};
@@ -346,6 +360,7 @@ export function addTaskToColumnWithResult(
 			images: draft.images,
 			agentId: draft.agentId,
 			clineSettings: draft.clineSettings,
+			hermesSettings: draft.hermesSettings,
 			baseRef: draft.baseRef,
 		},
 		createBrowserUuid,
@@ -544,6 +559,7 @@ export function updateTask(board: BoardData, taskId: string, draft: TaskDraft): 
 							: undefined,
 				agentId: draft.agentId,
 				clineSettings: draft.clineSettings,
+				hermesSettings: draft.hermesSettings,
 				baseRef,
 				updatedAt: Date.now(),
 			};
@@ -575,6 +591,7 @@ export function updateTaskTitle(
 		images: selection.card.images,
 		agentId: selection.card.agentId,
 		clineSettings: selection.card.clineSettings,
+		hermesSettings: selection.card.hermesSettings,
 		baseRef: selection.card.baseRef,
 	});
 }
@@ -664,6 +681,7 @@ export function disableTaskAutoReview(board: BoardData, taskId: string): { board
 		images: selection.card.images,
 		agentId: selection.card.agentId,
 		clineSettings: selection.card.clineSettings,
+		hermesSettings: selection.card.hermesSettings,
 		baseRef: selection.card.baseRef,
 	});
 }

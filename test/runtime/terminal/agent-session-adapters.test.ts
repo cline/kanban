@@ -510,7 +510,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "ws-hermes-1",
 		});
 
-		const hookDir = join(homedir(), ".cline", "kanban", "hooks", "hermes");
+		const hookDir = join(homedir(), ".cline", "kanban", "hooks", "hermes", "default");
 		const configPath = join(hookDir, "config.yaml");
 
 		expect(existsSync(configPath)).toBe(true);
@@ -554,7 +554,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "ws-model-test",
 		});
 
-		const hookDir = join(home, ".cline", "kanban", "hooks", "hermes");
+		const hookDir = join(home, ".cline", "kanban", "hooks", "hermes", "default");
 		const merged = readFileSync(join(hookDir, "config.yaml"), "utf8");
 		// User settings preserved
 		expect(merged).toContain("model: claude-sonnet-4-5");
@@ -563,6 +563,29 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(merged).not.toContain("old-hook");
 		expect(merged).toContain("post_llm_call:");
 		expect(merged).toContain("to_review");
+	});
+
+	it("uses the selected Hermes profile settings in an isolated hook home", async () => {
+		const home = setupTempHome();
+		const profileHome = join(home, ".hermes", "profiles", "reviewer");
+		mkdirSync(profileHome, { recursive: true });
+		writeFileSync(join(profileHome, "config.yaml"), "model: reviewer-model\n");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-hermes-profile",
+			agentId: "hermes",
+			binary: "hermes",
+			args: ["chat"],
+			cwd: "/tmp",
+			prompt: "Review it",
+			workspaceId: "ws-profile-test",
+			hermesProfile: "reviewer",
+		});
+
+		const hookDir = join(home, ".cline", "kanban", "hooks", "hermes", "reviewer");
+		expect(readFileSync(join(hookDir, "config.yaml"), "utf8")).toContain("model: reviewer-model");
+		expect(launch.env.HERMES_HOME).toBe(hookDir);
+		expect(launch.env.HERMES_PROFILE).toBe("reviewer");
 	});
 
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
