@@ -28,6 +28,7 @@ const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"claude",
 	"codex",
 	"cline",
+	"cursor",
 	"droid",
 	"kiro",
 	"gemini",
@@ -58,6 +59,8 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 			return "- If Linear MCP is not available in the current agent (Claude Code), suggest running: `claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp`";
 		case "codex":
 			return "- If Linear MCP is not available in the current agent (OpenAI Codex), suggest running: `codex mcp add linear --url https://mcp.linear.app/mcp`";
+		case "cursor":
+			return "- If Linear MCP is not available in the current agent (Cursor Agent), suggest adding `linear` in `.cursor/mcp.json` or `~/.cursor/mcp.json`, then run: `agent mcp login linear`";
 		case "gemini":
 			return "- If Linear MCP is not available in the current agent (Gemini CLI), suggest running: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
 		case "opencode":

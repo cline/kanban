@@ -603,6 +603,38 @@ function toBracketedPasteSubmission(command: string): string {
 	return `\u001b[200~${command}\u001b[201~\r`;
 }
 
+// Cursor CLI does not expose a separate append-system-prompt flag, so home
+// sidebar guidance is passed as the initial prompt content.
+function mergeCursorPromptWithHomeSystemPrompt(prompt: string, appendedSystemPrompt: string | null): string {
+	if (!appendedSystemPrompt) {
+		return prompt;
+	}
+	const trimmedPrompt = prompt.trim();
+	if (!trimmedPrompt) {
+		return appendedSystemPrompt;
+	}
+	return `${appendedSystemPrompt}\n\n# User Request\n\n${trimmedPrompt}`;
+}
+
+function removeCursorPlanModeConflicts(args: string[]): string[] {
+	const filtered: string[] = [];
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--force" || arg === "-f" || arg === "--yolo" || arg === "--plan") {
+			continue;
+		}
+		if (arg === "--mode") {
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--mode=")) {
+			continue;
+		}
+		filtered.push(arg);
+	}
+	return filtered;
+}
+
 const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -700,6 +732,54 @@ const claudeAdapter: AgentSessionAdapter = {
 		}
 
 		const withPromptLaunch = withPrompt(args, input.prompt, "append");
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+		};
+	},
+};
+
+const cursorAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.startInPlanMode) {
+			const filteredArgs = removeCursorPlanModeConflicts(args);
+			args.length = 0;
+			args.push(...filteredArgs, "--plan");
+		} else if (
+			input.autonomousModeEnabled &&
+			!hasCliOption(args, "--force") &&
+			!hasCliOption(args, "-f") &&
+			!hasCliOption(args, "--yolo")
+		) {
+			args.push("--force");
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume") && !hasCliOption(args, "--continue")) {
+			args.push("--continue");
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		const prompt = mergeCursorPromptWithHomeSystemPrompt(
+			input.prompt,
+			resolveHomeAgentAppendSystemPrompt(input.taskId),
+		);
+		const withPromptLaunch = withPrompt(args, prompt, "append");
 		return {
 			...withPromptLaunch,
 			env: {
@@ -1430,6 +1510,7 @@ const clineAdapter: AgentSessionAdapter = {
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
+	cursor: cursorAdapter,
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
 	droid: droidAdapter,

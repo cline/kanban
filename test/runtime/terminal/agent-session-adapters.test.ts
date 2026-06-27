@@ -159,6 +159,98 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
 	});
 
+	it("injects Kanban sidebar instructions into home Cursor prompts", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:cursor",
+			agentId: "cursor",
+			binary: "cursor-agent",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Create a task for the failing login test",
+		});
+
+		const initialPrompt = launch.args.at(-1) ?? "";
+		expect(initialPrompt).toContain("Kanban sidebar agent");
+		expect(initialPrompt).toContain("Current home agent: `cursor`");
+		expect(initialPrompt).toContain("agent mcp login linear");
+		expect(initialPrompt).toContain("# User Request");
+		expect(initialPrompt).toContain("Create a task for the failing login test");
+	});
+
+	it("uses Kanban sidebar bootstrap guidance as the initial home Cursor prompt", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:cursor",
+			agentId: "cursor",
+			binary: "cursor-agent",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const initialPrompt = launch.args.at(-1) ?? "";
+		expect(initialPrompt).toContain("Kanban sidebar agent");
+		expect(initialPrompt).toContain("Current home agent: `cursor`");
+		expect(initialPrompt).not.toContain("# User Request");
+	});
+
+	it("wires Cursor hook runtime env when workspace context exists", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-cursor",
+			agentId: "cursor",
+			binary: "cursor-agent",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-cursor");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+	});
+
+	it("enforces Cursor plan mode and removes conflicting mode or force args", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-cursor-plan",
+			agentId: "cursor",
+			binary: "cursor-agent",
+			args: ["--force", "--mode", "ask", "--yolo"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "Audit the auth module",
+			startInPlanMode: true,
+		});
+
+		expect(launch.args).toContain("--plan");
+		expect(launch.args).not.toContain("--force");
+		expect(launch.args).not.toContain("--yolo");
+		expect(launch.args).not.toContain("--mode");
+		expect(launch.args).not.toContain("ask");
+		expect(launch.args.at(-1)).toBe("Audit the auth module");
+	});
+
+	it("adds Cursor resume and autonomous flags when appropriate", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-cursor-auto",
+			agentId: "cursor",
+			binary: "cursor-agent",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+
+		expect(launch.args).toContain("--force");
+		expect(launch.args).toContain("--continue");
+	});
+
 	it("disables Codex startup update checks for Kanban-launched sessions", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

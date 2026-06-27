@@ -4,7 +4,7 @@
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { getRuntimeAgentCatalogEntry, isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
+import { getRuntimeAgentBinaryCandidates, isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
 import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { detectInstalledCommands } from "../terminal/agent-registry";
@@ -54,7 +54,7 @@ const PROJECT_CONFIG_PARENT_DIR = ".cline";
 const PROJECT_CONFIG_DIR = "kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
-const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "droid", "kiro"];
+const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "cursor", "codex", "droid", "kiro"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree on a detached HEAD. When you are finished with the task, commit the working changes onto {{base_ref}}.
@@ -103,9 +103,8 @@ Steps:
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
 	const detected = new Set(detectedCommands);
 	for (const agentId of AUTO_SELECT_AGENT_PRIORITY) {
-		const catalogEntry = getRuntimeAgentCatalogEntry(agentId);
-		const binary = catalogEntry?.binary ?? agentId;
-		if (detected.has(binary) || detected.has(agentId)) {
+		const binaryCandidates = getRuntimeAgentBinaryCandidates(agentId);
+		if (binaryCandidates.some((binary) => detected.has(binary)) || detected.has(agentId)) {
 			return agentId;
 		}
 	}
@@ -120,6 +119,7 @@ function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): 
 	if (
 		(agentId === "claude" ||
 			agentId === "codex" ||
+			agentId === "cursor" ||
 			agentId === "gemini" ||
 			agentId === "opencode" ||
 			agentId === "droid" ||
