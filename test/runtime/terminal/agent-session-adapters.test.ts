@@ -174,7 +174,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const initialPrompt = launch.args.at(-1) ?? "";
 		expect(initialPrompt).toContain("Kanban sidebar agent");
 		expect(initialPrompt).toContain("Current home agent: `cursor`");
-		expect(initialPrompt).toContain("agent mcp login linear");
+		expect(initialPrompt).toContain("cursor-agent mcp login linear");
 		expect(initialPrompt).toContain("# User Request");
 		expect(initialPrompt).toContain("Create a task for the failing login test");
 	});
@@ -198,19 +198,64 @@ describe("prepareAgentLaunch hook strategies", () => {
 	});
 
 	it("wires Cursor hook runtime env when workspace context exists", async () => {
-		setupTempHome();
+		const cwd = setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-cursor",
 			agentId: "cursor",
 			binary: "cursor-agent",
 			args: [],
-			cwd: "/tmp",
+			cwd,
 			prompt: "",
 			workspaceId: "workspace-1",
 		});
 
 		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-cursor");
 		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+
+		const hooksPath = join(cwd, ".cursor", "hooks.json");
+		const config = JSON.parse(readFileSync(hooksPath, "utf8")) as {
+			version?: number;
+			hooks?: Record<string, Array<{ command?: string }>>;
+		};
+		expect(config.version).toBe(1);
+		expect(config.hooks?.beforeSubmitPrompt?.[0]?.command).toContain("to_in_progress");
+		expect(config.hooks?.beforeShellExecution?.[0]?.command).toContain("to_in_progress");
+		expect(config.hooks?.afterFileEdit?.[0]?.command).toContain("activity");
+		expect(config.hooks?.stop?.[0]?.command).toContain("to_review");
+		expect(config.hooks?.stop?.[0]?.command).toContain("Waiting for review");
+	});
+
+	it("restores pre-existing Cursor hooks on cleanup", async () => {
+		const cwd = setupTempHome();
+		const hooksDir = join(cwd, ".cursor");
+		const hooksPath = join(hooksDir, "hooks.json");
+		const originalConfig = {
+			version: 1,
+			hooks: {
+				stop: [{ command: "echo existing-stop" }],
+			},
+		};
+		mkdirSync(hooksDir, { recursive: true });
+		writeFileSync(hooksPath, JSON.stringify(originalConfig, null, 2), "utf8");
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-cursor-existing-hooks",
+			agentId: "cursor",
+			binary: "cursor-agent",
+			args: [],
+			cwd,
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		const mergedConfig = JSON.parse(readFileSync(hooksPath, "utf8")) as {
+			hooks?: Record<string, Array<{ command?: string }>>;
+		};
+		expect(mergedConfig.hooks?.stop?.[0]?.command).toBe("echo existing-stop");
+		expect(mergedConfig.hooks?.stop?.[1]?.command).toContain("to_review");
+
+		await launch.cleanup?.();
+		expect(readFileSync(hooksPath, "utf8")).toBe(JSON.stringify(originalConfig, null, 2));
 	});
 
 	it("enforces Cursor plan mode and removes conflicting mode or force args", async () => {

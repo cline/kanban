@@ -60,7 +60,7 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 		case "codex":
 			return "- If Linear MCP is not available in the current agent (OpenAI Codex), suggest running: `codex mcp add linear --url https://mcp.linear.app/mcp`";
 		case "cursor":
-			return "- If Linear MCP is not available in the current agent (Cursor Agent), suggest adding `linear` in `.cursor/mcp.json` or `~/.cursor/mcp.json`, then run: `agent mcp login linear`";
+			return "- If Linear MCP is not available in the current agent (Cursor Agent), suggest adding `linear` in `.cursor/mcp.json` or `~/.cursor/mcp.json`, then run: `cursor-agent mcp login linear` (or `agent mcp login linear` if `cursor-agent` is not available)";
 		case "gemini":
 			return "- If Linear MCP is not available in the current agent (Gemini CLI), suggest running: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
 		case "opencode":

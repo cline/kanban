@@ -131,6 +131,7 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		});
 		expect(prompt).toContain("Current home agent: `cursor`");
 		expect(prompt).toContain(".cursor/mcp.json");
+		expect(prompt).toContain("cursor-agent mcp login linear");
 		expect(prompt).toContain("agent mcp login linear");
 	});
 

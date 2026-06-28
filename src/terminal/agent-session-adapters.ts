@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -107,6 +107,14 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 		parts.push("--notification-type", metadata.notificationType);
 	}
 	return parts.map(quoteShellArg).join(" ");
+}
+
+function buildCursorHookCommand(event: RuntimeHookEvent, hookEventName: string, activityText?: string): string {
+	return buildHookCommand(event, {
+		source: "cursor",
+		hookEventName,
+		activityText,
+	});
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
@@ -580,6 +588,88 @@ async function ensureTextFile(filePath: string, content: string, executable = fa
 	});
 }
 
+async function readOptionalTextFile(filePath: string): Promise<string | null> {
+	try {
+		return await readFile(filePath, "utf8");
+	} catch {
+		return null;
+	}
+}
+
+function parseJsonRecord(raw: string | null): Record<string, unknown> {
+	if (!raw) {
+		return {};
+	}
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			return parsed as Record<string, unknown>;
+		}
+	} catch {
+		// Invalid existing hook configs are preserved during cleanup.
+	}
+	return {};
+}
+
+function normalizeHookEntries(value: unknown): Array<Record<string, unknown>> {
+	return Array.isArray(value)
+		? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
+		: [];
+}
+
+function mergeCursorHooksConfig(rawConfig: string | null): string {
+	const config = parseJsonRecord(rawConfig);
+	const hooksRecord =
+		config.hooks && typeof config.hooks === "object" && !Array.isArray(config.hooks)
+			? (config.hooks as Record<string, unknown>)
+			: {};
+	const hooksToAdd: Record<string, Array<Record<string, string>>> = {
+		beforeSubmitPrompt: [{ command: buildCursorHookCommand("to_in_progress", "beforeSubmitPrompt") }],
+		beforeShellExecution: [{ command: buildCursorHookCommand("to_in_progress", "beforeShellExecution") }],
+		beforeMCPExecution: [{ command: buildCursorHookCommand("to_in_progress", "beforeMCPExecution") }],
+		beforeReadFile: [{ command: buildCursorHookCommand("activity", "beforeReadFile") }],
+		afterFileEdit: [{ command: buildCursorHookCommand("activity", "afterFileEdit") }],
+		stop: [{ command: buildCursorHookCommand("to_review", "stop", "Waiting for review") }],
+	};
+
+	const nextHooks: Record<string, Array<Record<string, unknown>>> = {};
+	for (const [hookName, existingEntries] of Object.entries(hooksRecord)) {
+		nextHooks[hookName] = normalizeHookEntries(existingEntries);
+	}
+	for (const [hookName, entries] of Object.entries(hooksToAdd)) {
+		nextHooks[hookName] = [...(nextHooks[hookName] ?? []), ...entries];
+	}
+
+	return JSON.stringify(
+		{
+			...config,
+			version: typeof config.version === "number" ? config.version : 1,
+			hooks: nextHooks,
+		},
+		null,
+		2,
+	);
+}
+
+async function configureCursorHooks(cwd: string): Promise<(() => Promise<void>) | null> {
+	const hooksPath = join(cwd, ".cursor", "hooks.json");
+	const originalContent = await readOptionalTextFile(hooksPath);
+	const nextContent = mergeCursorHooksConfig(originalContent);
+	await ensureTextFile(hooksPath, nextContent);
+
+	return async () => {
+		const currentContent = await readOptionalTextFile(hooksPath);
+		if (currentContent !== nextContent) {
+			return;
+		}
+		if (originalContent === null) {
+			await rm(hooksPath, { force: true });
+			return;
+		}
+		await ensureTextFile(hooksPath, originalContent);
+	};
+}
+
 function withPrompt(args: string[], prompt: string, mode: "append" | "flag", flag?: string): PreparedAgentLaunch {
 	const trimmed = prompt.trim();
 	if (!trimmed) {
@@ -746,6 +836,7 @@ const cursorAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+		let cleanup: (() => Promise<void>) | null = null;
 
 		if (input.startInPlanMode) {
 			const filteredArgs = removeCursorPlanModeConflicts(args);
@@ -766,6 +857,7 @@ const cursorAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
+			cleanup = await configureCursorHooks(input.cwd);
 			Object.assign(
 				env,
 				createHookRuntimeEnv({
@@ -786,6 +878,7 @@ const cursorAdapter: AgentSessionAdapter = {
 				...withPromptLaunch.env,
 				...env,
 			},
+			cleanup: cleanup ?? undefined,
 		};
 	},
 };
