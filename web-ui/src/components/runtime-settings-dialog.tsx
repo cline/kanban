@@ -21,6 +21,7 @@ import {
 	Plus,
 	Settings,
 	SlidersHorizontal,
+	Terminal,
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -90,11 +91,34 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 	{ value: "pr", label: "Make PR" },
 ];
 
+const TERMINAL_SHELL_AUTO_OPTION = "__auto__";
+
+const TERMINAL_SHELL_FAMILY_LABELS: Record<string, string> = {
+	cmd: "Command Prompt (cmd)",
+	powershell: "Windows PowerShell",
+	pwsh: "PowerShell (pwsh)",
+	bash: "Bash",
+	zsh: "Zsh",
+	fish: "Fish",
+	sh: "sh",
+};
+
+function formatTerminalShellLabel(shell: string): string {
+	const baseName = shell.replaceAll("\\", "/").split("/").at(-1) ?? shell;
+	const family = baseName.toLowerCase().replace(/\.(exe|com|cmd|bat)$/, "");
+	const label = TERMINAL_SHELL_FAMILY_LABELS[family];
+	if (!label) {
+		return shell;
+	}
+	const isPath = shell.includes("/") || shell.includes("\\");
+	return isPath ? `${label} — ${shell}` : label;
+}
+
 export type RuntimeSettingsSection = "shortcuts";
 
 const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro"];
 
-type SettingsNavId = "general" | "cline" | "git-prompts" | "notifications" | "appearance" | "project";
+type SettingsNavId = "general" | "cline" | "git-prompts" | "notifications" | "terminal" | "appearance" | "project";
 
 const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 	id: SettingsNavId;
@@ -106,6 +130,7 @@ const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 	{ id: "cline", label: "Cline", icon: <Bot size={16} />, clineOnly: true },
 	{ id: "git-prompts", label: "Git Prompts", icon: <GitCommit size={16} /> },
 	{ id: "notifications", label: "Notifications", icon: <Bell size={16} /> },
+	{ id: "terminal", label: "Terminal", icon: <Terminal size={16} /> },
 	{ id: "appearance", label: "Appearance", icon: <Palette size={16} /> },
 	{ id: "project", label: "Project", icon: <FolderOpen size={16} /> },
 ];
@@ -369,6 +394,7 @@ export function RuntimeSettingsDialog({
 	const [selectedAgentId, setSelectedAgentId] = useState<RuntimeAgentId>("claude");
 	const [agentAutonomousModeEnabled, setAgentAutonomousModeEnabled] = useState(true);
 	const [readyForReviewNotificationsEnabled, setReadyForReviewNotificationsEnabled] = useState(true);
+	const [terminalShell, setTerminalShell] = useState<string | null>(null);
 	const [initialThemeId, setInitialThemeId] = useState<ThemeId>(readStoredThemeId);
 	const [draftThemeId, setDraftThemeId] = useState<ThemeId>(readStoredThemeId);
 	const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>("unsupported");
@@ -442,6 +468,7 @@ export function RuntimeSettingsDialog({
 	const initialSelectedAgentId = configuredAgentId ?? fallbackAgentId;
 	const initialAgentAutonomousModeEnabled = config?.agentAutonomousModeEnabled ?? true;
 	const initialReadyForReviewNotificationsEnabled = config?.readyForReviewNotificationsEnabled ?? true;
+	const initialTerminalShell = config?.terminalShell ?? null;
 	const initialShortcuts = config?.shortcuts ?? [];
 	const initialCommitPromptTemplate = config?.commitPromptTemplate ?? "";
 	const initialOpenPrPromptTemplate = config?.openPrPromptTemplate ?? "";
@@ -457,6 +484,13 @@ export function RuntimeSettingsDialog({
 		selectedAgentId,
 		liveAuthStatuses: liveMcpAuthStatuses,
 	});
+	const terminalShellOptions = useMemo(() => {
+		const options = [...(config?.detectedShells ?? [])];
+		if (terminalShell && !options.includes(terminalShell)) {
+			options.push(terminalShell);
+		}
+		return options;
+	}, [config?.detectedShells, terminalShell]);
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
 			return false;
@@ -468,6 +502,9 @@ export function RuntimeSettingsDialog({
 			return true;
 		}
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
+			return true;
+		}
+		if (terminalShell !== initialTerminalShell) {
 			return true;
 		}
 		if (clineSettings.hasUnsavedChanges) {
@@ -505,11 +542,13 @@ export function RuntimeSettingsDialog({
 		initialReadyForReviewNotificationsEnabled,
 		initialSelectedAgentId,
 		initialShortcuts,
+		initialTerminalShell,
 		initialThemeId,
 		openPrPromptTemplate,
 		readyForReviewNotificationsEnabled,
 		selectedAgentId,
 		shortcuts,
+		terminalShell,
 	]);
 
 	useEffect(() => {
@@ -519,6 +558,7 @@ export function RuntimeSettingsDialog({
 		setSelectedAgentId(configuredAgentId ?? fallbackAgentId);
 		setAgentAutonomousModeEnabled(config?.agentAutonomousModeEnabled ?? true);
 		setReadyForReviewNotificationsEnabled(config?.readyForReviewNotificationsEnabled ?? true);
+		setTerminalShell(config?.terminalShell ?? null);
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
 		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
@@ -530,6 +570,7 @@ export function RuntimeSettingsDialog({
 		config?.readyForReviewNotificationsEnabled,
 		config?.selectedAgentId,
 		config?.shortcuts,
+		config?.terminalShell,
 		fallbackAgentId,
 		open,
 	]);
@@ -704,6 +745,7 @@ export function RuntimeSettingsDialog({
 			shortcuts,
 			commitPromptTemplate,
 			openPrPromptTemplate,
+			terminalShell,
 		});
 		if (!saved) {
 			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
@@ -939,6 +981,39 @@ export function RuntimeSettingsDialog({
 								/>
 							) : null}
 						</div>
+					</div>
+
+					{/* ---- Terminal ---- */}
+					<div data-settings-section="terminal" />
+					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
+						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
+							<Terminal size={16} className="text-text-secondary" />
+							Terminal
+						</h2>
+					</div>
+					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
+						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0 mb-2">
+							Shell
+						</h6>
+						<NativeSelect
+							value={terminalShell ?? TERMINAL_SHELL_AUTO_OPTION}
+							onChange={(event) =>
+								setTerminalShell(event.target.value === TERMINAL_SHELL_AUTO_OPTION ? null : event.target.value)
+							}
+							disabled={controlsDisabled}
+							aria-label="Terminal shell"
+							style={{ minWidth: 220 }}
+						>
+							<option value={TERMINAL_SHELL_AUTO_OPTION}>Auto (system default)</option>
+							{terminalShellOptions.map((shell) => (
+								<option key={shell} value={shell}>
+									{formatTerminalShellLabel(shell)}
+								</option>
+							))}
+						</NativeSelect>
+						<p className="text-text-secondary text-[13px] mt-2 mb-0">
+							Shell used when opening the built-in terminal. Applies to newly started terminal sessions.
+						</p>
 					</div>
 
 					{/* ---- Appearance ---- */}
