@@ -209,26 +209,45 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks?.PostToolUseFailure).toBeDefined();
 	});
 
-	it("writes Gemini settings with AfterTool mapped to to_in_progress", async () => {
+	it("writes Antigravity plugin hooks with native event names", async () => {
 		setupTempHome();
 		await prepareAgentLaunch({
 			taskId: "task-1",
 			agentId: "gemini",
-			binary: "gemini",
+			binary: "agy",
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
 			workspaceId: "workspace-1",
 		});
 
-		const settingsPath = join(homedir(), ".cline", "kanban", "hooks", "gemini", "settings.json");
-		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-			hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
+		const pluginPath = join(homedir(), ".gemini", "antigravity-cli", "plugins", "kanban", "plugin.json");
+		const plugin = JSON.parse(readFileSync(pluginPath, "utf8")) as { name?: string };
+		expect(plugin.name).toBe("kanban");
+
+		const hooksPath = join(homedir(), ".gemini", "antigravity-cli", "plugins", "kanban", "hooks.json");
+		const hooks = JSON.parse(readFileSync(hooksPath, "utf8")) as {
+			kanban?: {
+				PreInvocation?: Array<{ command?: string }>;
+				PreToolUse?: Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>;
+				PostToolUse?: Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>;
+				PostInvocation?: Array<{ command?: string }>;
+				Stop?: Array<{ command?: string }>;
+			};
 		};
-		const afterToolCommand = settings.hooks?.AfterTool?.[0]?.hooks?.[0]?.command;
-		expect(afterToolCommand).toContain("hooks");
-		expect(afterToolCommand).toContain("gemini-hook");
-		const hookScriptPath = join(homedir(), ".cline", "kanban", "hooks", "gemini", "gemini-hook.mjs");
+		expect(hooks.kanban?.PreInvocation?.[0]?.command).toContain("--event");
+		expect(hooks.kanban?.PreInvocation?.[0]?.command).toContain("PreInvocation");
+		expect(hooks.kanban?.PreToolUse?.[0]?.matcher).toBe("*");
+		expect(hooks.kanban?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("--event");
+		expect(hooks.kanban?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("PreToolUse");
+		expect(hooks.kanban?.PostToolUse?.[0]?.matcher).toBe("*");
+		expect(hooks.kanban?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("--event");
+		expect(hooks.kanban?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("PostToolUse");
+		expect(hooks.kanban?.PostInvocation?.[0]?.command).toContain("--event");
+		expect(hooks.kanban?.PostInvocation?.[0]?.command).toContain("PostInvocation");
+		expect(hooks.kanban?.Stop?.[0]?.command).toContain("--event");
+		expect(hooks.kanban?.Stop?.[0]?.command).toContain("Stop");
+		const hookScriptPath = join(homedir(), ".cline", "kanban", "hooks", "gemini", "antigravity-hook.mjs");
 		expect(existsSync(hookScriptPath)).toBe(false);
 	});
 
@@ -455,6 +474,25 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
 	});
 
+	it("defers Antigravity planning startup input until startup UI is ready", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-antigravity-plan",
+			agentId: "gemini",
+			binary: "agy",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Audit the release workflow",
+			startInPlanMode: true,
+		});
+
+		expect(launch.args).not.toContain("--approval-mode=plan");
+		expect(launch.args).not.toContain("Audit the release workflow");
+		expect(launch.deferredStartupInput).toContain("\u001b[200~");
+		expect(launch.deferredStartupInput).toContain("/planning Audit the release workflow");
+		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
+	});
+
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -553,13 +591,13 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const geminiLaunch = await prepareAgentLaunch({
 			taskId: "task-gemini",
 			agentId: "gemini",
-			binary: "gemini",
+			binary: "agy",
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
 			resumeFromTrash: true,
 		});
-		expect(geminiLaunch.args).toEqual(expect.arrayContaining(["--resume", "latest"]));
+		expect(geminiLaunch.args).toContain("--continue");
 
 		const opencodeLaunch = await prepareAgentLaunch({
 			taskId: "task-opencode",
@@ -664,13 +702,13 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const geminiLaunch = await prepareAgentLaunch({
 			taskId: "task-gemini-auto",
 			agentId: "gemini",
-			binary: "gemini",
+			binary: "agy",
 			args: [],
 			autonomousModeEnabled: true,
 			cwd: "/tmp",
 			prompt: "",
 		});
-		expect(geminiLaunch.args).toContain("--yolo");
+		expect(geminiLaunch.args).toContain("--dangerously-skip-permissions");
 
 		const kiroLaunch = await prepareAgentLaunch({
 			taskId: "task-kiro-auto",
@@ -723,13 +761,13 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const geminiLaunch = await prepareAgentLaunch({
 			taskId: "task-gemini-no-auto",
 			agentId: "gemini",
-			binary: "gemini",
-			args: ["--yolo"],
+			binary: "agy",
+			args: ["--dangerously-skip-permissions"],
 			autonomousModeEnabled: false,
 			cwd: "/tmp",
 			prompt: "",
 		});
-		expect(geminiLaunch.args).toContain("--yolo");
+		expect(geminiLaunch.args).toContain("--dangerously-skip-permissions");
 
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline-no-auto",

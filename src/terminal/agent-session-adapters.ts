@@ -568,6 +568,10 @@ function getHookAgentDirectory(agentId: RuntimeAgentId): string {
 	return join(getRuntimeHomePath(), "hooks", agentId);
 }
 
+function getAntigravityPluginDirectory(): string {
+	return join(homedir(), ".gemini", "antigravity-cli", "plugins", "kanban");
+}
+
 const KIRO_KANBAN_AGENT_NAME = "kanban";
 
 function getKiroAgentConfigPath(): string {
@@ -806,54 +810,52 @@ const geminiAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+		let deferredStartupInput: string | undefined;
 
-		if (input.autonomousModeEnabled && !hasCliOption(args, "--yolo")) {
-			args.push("--yolo");
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--dangerously-skip-permissions")) {
+			args.push("--dangerously-skip-permissions");
 		}
 
-		if (input.resumeFromTrash && !hasCliOption(args, "--resume")) {
-			args.push("--resume", "latest");
-		}
-
-		if (input.startInPlanMode) {
-			args.push("--approval-mode=plan");
+		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
+			args.push("--continue");
 		}
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const configPath = join(getHookAgentDirectory("gemini"), "settings.json");
-			const geminiHookCommand = buildHooksCommand(["gemini-hook"]);
+			const pluginDirectory = getAntigravityPluginDirectory();
+			const pluginManifestPath = join(pluginDirectory, "plugin.json");
+			const hooksPath = join(pluginDirectory, "hooks.json");
+			const preInvocationHookCommand = buildHooksCommand(["antigravity-hook", "--event", "PreInvocation"]);
+			const preToolUseHookCommand = buildHooksCommand(["antigravity-hook", "--event", "PreToolUse"]);
+			const postToolUseHookCommand = buildHooksCommand(["antigravity-hook", "--event", "PostToolUse"]);
+			const postInvocationHookCommand = buildHooksCommand(["antigravity-hook", "--event", "PostInvocation"]);
+			const stopHookCommand = buildHooksCommand(["antigravity-hook", "--event", "Stop"]);
 
-			const config = {
-				hooks: {
-					BeforeTool: [
+			const hooksConfig = {
+				kanban: {
+					PreInvocation: [{ type: "command", command: preInvocationHookCommand }],
+					PreToolUse: [
 						{
-							hooks: [{ type: "command", command: geminiHookCommand }],
+							matcher: "*",
+							hooks: [{ type: "command", command: preToolUseHookCommand }],
 						},
 					],
-					AfterTool: [
+					PostToolUse: [
 						{
-							hooks: [{ type: "command", command: geminiHookCommand }],
+							matcher: "*",
+							hooks: [{ type: "command", command: postToolUseHookCommand }],
 						},
 					],
-					AfterAgent: [
-						{
-							hooks: [{ type: "command", command: geminiHookCommand }],
-						},
-					],
-					BeforeAgent: [
-						{
-							hooks: [{ type: "command", command: geminiHookCommand }],
-						},
-					],
-					Notification: [
-						{
-							hooks: [{ type: "command", command: geminiHookCommand }],
-						},
-					],
+					PostInvocation: [{ type: "command", command: postInvocationHookCommand }],
+					Stop: [{ type: "command", command: stopHookCommand }],
 				},
 			};
-			await ensureTextFile(configPath, JSON.stringify(config, null, 2));
+			const pluginManifest = {
+				name: "kanban",
+				description: "Kanban task state hooks for Antigravity CLI sessions.",
+			};
+			await ensureTextFile(pluginManifestPath, JSON.stringify(pluginManifest, null, 2));
+			await ensureTextFile(hooksPath, JSON.stringify(hooksConfig, null, 2));
 			Object.assign(
 				env,
 				createHookRuntimeEnv({
@@ -861,21 +863,20 @@ const geminiAdapter: AgentSessionAdapter = {
 					workspaceId: hooks.workspaceId,
 				}),
 			);
-			env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = configPath;
 		}
 
 		const trimmed = input.prompt.trim();
-		if (trimmed) {
+		if (input.startInPlanMode) {
+			const planningCommand = trimmed ? `/planning ${trimmed}` : "/planning";
+			deferredStartupInput = toBracketedPasteSubmission(planningCommand);
+		} else if (trimmed) {
 			args.push("-i", trimmed);
-			return {
-				args,
-				env,
-			};
 		}
 
 		return {
 			args,
 			env,
+			deferredStartupInput,
 		};
 	},
 };
