@@ -59,7 +59,7 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 		case "codex":
 			return "- If Linear MCP is not available in the current agent (OpenAI Codex), suggest running: `codex mcp add linear --url https://mcp.linear.app/mcp`";
 		case "gemini":
-			return "- If Linear MCP is not available in the current agent (Gemini CLI), suggest running: `gemini mcp add linear https://mcp.linear.app/mcp --transport http --scope user`";
+			return "- If Linear MCP is not available in the current agent (Antigravity CLI), tell the user to open `/mcp` in `agy`, or add Linear to `~/.gemini/config/mcp_config.json` / `.agents/mcp_config.json` using `https://mcp.linear.app/mcp`.";
 		case "opencode":
 			return "- If Linear MCP is not available in the current agent (OpenCode), suggest running `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
 		case "droid":
