@@ -60,11 +60,11 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	},
 	{
 		id: "gemini",
-		label: "Antigravity / Gemini CLI",
-		binary: "gemini",
+		label: "Antigravity CLI",
+		binary: "agy",
 		baseArgs: [],
-		autonomousArgs: ["--yolo"],
-		installUrl: "https://github.com/google-gemini/gemini-cli",
+		autonomousArgs: ["--dangerously-skip-permissions"],
+		installUrl: "https://antigravity.google/docs/cli-getting-started",
 	},
 ];
 

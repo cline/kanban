@@ -138,7 +138,7 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.agents.find((agent) => agent.id === "opencode")?.command).toBe("opencode");
 		expect(response.agents.find((agent) => agent.id === "droid")?.command).toBe("droid");
 		expect(response.agents.find((agent) => agent.id === "kiro")?.command).toBe("kiro-cli chat");
-		expect(response.agents.find((agent) => agent.id === "gemini")?.command).toBe("gemini");
+		expect(response.agents.find((agent) => agent.id === "gemini")?.command).toBe("agy");
 	});
 
 	it("sets debug mode from runtime environment variables", () => {

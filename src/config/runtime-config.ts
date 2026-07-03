@@ -112,7 +112,8 @@ export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly 
 	for (const agentId of AUTO_SELECT_AGENT_PRIORITY) {
 		const catalogEntry = getRuntimeAgentCatalogEntry(agentId);
 		const binary = catalogEntry?.binary ?? agentId;
-		if (detected.has(binary) || detected.has(agentId)) {
+		const idAliasMatchesInstalledCommand = agentId !== "gemini" && detected.has(agentId);
+		if (detected.has(binary) || idAliasMatchesInstalledCommand) {
 			return agentId;
 		}
 	}
