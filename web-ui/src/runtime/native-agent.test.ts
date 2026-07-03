@@ -228,9 +228,9 @@ describe("native-agent helpers", () => {
 		config.agents = [
 			{
 				id: "gemini",
-				label: "Antigravity / Gemini CLI",
-				binary: "gemini",
-				command: "gemini",
+				label: "Antigravity CLI",
+				binary: "agy",
+				command: "agy",
 				defaultArgs: [],
 				installed: true,
 				configured: false,
