@@ -127,6 +127,13 @@ function hasCliOption(args: string[], optionName: string): boolean {
 	return false;
 }
 
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return null;
+	}
+	return value as Record<string, unknown>;
+}
+
 function getClineHookScriptPath(
 	hooksDir: string,
 	hookName: "Notification" | "TaskComplete" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse",
@@ -1025,6 +1032,33 @@ function tryExtractOpenCodeModelFromConfig(rawConfig: string): string | null {
 	return null;
 }
 
+async function readOpenCodeConfigObject(configPath: string | null): Promise<Record<string, unknown> | null> {
+	if (!configPath) {
+		return null;
+	}
+	try {
+		const rawConfig = await readFile(configPath, "utf8");
+		try {
+			return asObjectRecord(JSON.parse(rawConfig));
+		} catch {
+			return asObjectRecord(JSON.parse(stripJsonComments(rawConfig)));
+		}
+	} catch {
+		return null;
+	}
+}
+
+function mergeOpenCodePluginConfig(
+	baseConfig: Record<string, unknown> | null,
+	pluginFileUrl: string,
+): Record<string, unknown> {
+	const basePlugins = Array.isArray(baseConfig?.plugin) ? baseConfig.plugin : [];
+	return {
+		...(baseConfig ?? {}),
+		plugin: [...basePlugins, pluginFileUrl],
+	};
+}
+
 async function resolveOpenCodePreferredModelArg(configPath: string | null): Promise<string | null> {
 	if (configPath) {
 		try {
@@ -1116,6 +1150,9 @@ const opencodeAdapter: AgentSessionAdapter = {
 		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
 		}
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--auto")) {
+			args.push("--auto");
+		}
 
 		if (input.startInPlanMode) {
 			env.OPENCODE_EXPERIMENTAL_PLAN_MODE = "true";
@@ -1136,9 +1173,8 @@ const opencodeAdapter: AgentSessionAdapter = {
 			);
 			await ensureTextFile(pluginPath, pluginContent);
 			const pluginFileUrl = pathToFileURL(pluginPath).href;
-			const config = {
-				plugin: [pluginFileUrl],
-			};
+			const baseConfig = await readOpenCodeConfigObject(baseConfigPath);
+			const config = mergeOpenCodePluginConfig(baseConfig, pluginFileUrl);
 			await ensureTextFile(configPath, JSON.stringify(config));
 			Object.assign(
 				env,

@@ -277,6 +277,45 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(plugin).toContain('currentState = "idle"');
 	});
 
+	it("preserves existing OpenCode config when adding Kanban hooks", async () => {
+		const homePath = setupTempHome();
+		const userConfigPath = join(homePath, "opencode-user.jsonc");
+		writeFileSync(
+			userConfigPath,
+			`{
+				// User provider and plugin settings should survive hook injection.
+				"model": "openai/gpt-4o",
+				"mcp": { "linear": { "url": "https://mcp.linear.app/mcp" } },
+				"plugin": ["file:///user/plugin.js"]
+			}`,
+			"utf8",
+		);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-opencode-config",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			env: { OPENCODE_CONFIG: userConfigPath },
+			workspaceId: "workspace-1",
+		});
+
+		const generatedConfigPath = launch.env.OPENCODE_CONFIG;
+		expect(generatedConfigPath).toBeDefined();
+		expect(generatedConfigPath).not.toBe(userConfigPath);
+		const config = JSON.parse(readFileSync(generatedConfigPath ?? "", "utf8")) as {
+			model?: string;
+			mcp?: Record<string, unknown>;
+			plugin?: string[];
+		};
+		expect(config.model).toBe("openai/gpt-4o");
+		expect(config.mcp?.linear).toBeDefined();
+		expect(config.plugin).toContain("file:///user/plugin.js");
+		expect(config.plugin?.some((plugin) => plugin.endsWith("/kanban.js"))).toBe(true);
+	});
+
 	it("loads OpenCode preferred model from LOCALAPPDATA state and auth paths", async () => {
 		const homePath = setupTempHome();
 		const localAppDataPath = join(homePath, "AppData", "Local");
@@ -698,6 +737,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
+
+		const opencodeLaunch = await prepareAgentLaunch({
+			taskId: "task-opencode-auto",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(opencodeLaunch.args).toContain("--auto");
 
 		const geminiLaunch = await prepareAgentLaunch({
 			taskId: "task-gemini-auto",

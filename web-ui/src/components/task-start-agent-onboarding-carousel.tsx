@@ -307,11 +307,17 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	if (agentId === "codex") {
 		return "OpenAI's coding agent CLI with access to the latest GPT models.";
 	}
+	if (agentId === "opencode") {
+		return "OpenCode's provider-agnostic coding agent CLI for terminal-based task sessions.";
+	}
 	if (agentId === "droid") {
 		return "Factory's coding agent with access to the latest frontier models.";
 	}
 	if (agentId === "kiro") {
 		return "Amazon's coding agent with access to the latest frontier models.";
+	}
+	if (agentId === "gemini") {
+		return "Google Antigravity's coding agent CLI, launched from Kanban with agy.";
 	}
 	return "Install from the official docs.";
 }
