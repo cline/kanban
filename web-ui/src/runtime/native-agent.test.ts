@@ -223,12 +223,12 @@ describe("native-agent helpers", () => {
 		).toBe(true);
 	});
 
-	it("ignores non-launch agents when checking native CLI availability", () => {
+	it("accepts newly launch-supported native CLI agents when available", () => {
 		const config = createRuntimeConfigResponse("claude");
 		config.agents = [
 			{
 				id: "gemini",
-				label: "Gemini CLI",
+				label: "Antigravity / Gemini CLI",
 				binary: "gemini",
 				command: "gemini",
 				defaultArgs: [],
@@ -236,7 +236,7 @@ describe("native-agent helpers", () => {
 				configured: false,
 			},
 		];
-		expect(isTaskAgentSetupSatisfied(config)).toBe(false);
+		expect(isTaskAgentSetupSatisfied(config)).toBe(true);
 	});
 
 	it("selects the latest incoming chat message only for the matching task", () => {
