@@ -116,7 +116,7 @@ export interface ClineSessionRuntime {
 	clearTaskSessions(taskId: string): Promise<void>;
 	getTaskSessionId(taskId: string): string | null;
 	getTaskProviderId(taskId: string): string | null;
-	canRestartTaskSession(taskId: string): boolean;
+	canRestartTaskSession(_taskId: string): boolean;
 	readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
 	dispose(): Promise<void>;
 }
@@ -288,7 +288,30 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 	}): Promise<StartClineSessionRuntimeResult> {
 		const lastStartRequest = this.lastStartRequestByTaskId.get(input.taskId);
 		if (!lastStartRequest) {
-			throw new Error(`No previous Cline session config is available for task ${input.taskId}.`);
+			const persistedSnapshot = await this.readPersistedTaskSession(input.taskId);
+			const record = persistedSnapshot?.record;
+			if (!record) {
+				throw new Error(`No previous Cline session config is available for task ${input.taskId}.`);
+			}
+			const recovered: StartClineSessionRuntimeRequest = {
+				taskId: input.taskId,
+				cwd: record.cwd || record.workspaceRoot,
+				providerId: record.provider,
+				modelId: record.model,
+				mode: input.mode || "act",
+				apiKey: undefined as unknown as string,
+				baseUrl: undefined as unknown as string,
+				reasoningEffort: undefined,
+				systemPrompt: "",
+				taskTitle: undefined as unknown as string,
+				userInstructionService: undefined,
+				requestToolApproval: undefined,
+				prompt: input.prompt,
+				initialMessages: input.initialMessages,
+				images: input.images,
+			};
+			this.lastStartRequestByTaskId.set(input.taskId, recovered);
+			return await this.startTaskSession(recovered);
 		}
 
 		return await this.startTaskSession({
@@ -409,8 +432,9 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		return this.lastStartRequestByTaskId.get(taskId)?.providerId ?? null;
 	}
 
-	canRestartTaskSession(taskId: string): boolean {
-		return this.lastStartRequestByTaskId.has(taskId);
+	canRestartTaskSession(_taskId: string): boolean {
+		// Allow restart even without in-memory config — restartTaskSession will recover from persisted data
+		return true;
 	}
 
 	async readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
