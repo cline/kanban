@@ -15,7 +15,7 @@ import type {
 import { z } from "zod";
 
 import type { RuntimeClineMcpServer } from "../core/api-contract";
-import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint";
+import { getKanbanOauthRedirectOrigin } from "../core/runtime-endpoint";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { createClineMcpSettingsService, resolveMcpSettingsPath } from "./cline-mcp-settings-service";
 import {
@@ -440,7 +440,7 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 			serverName: this.server.name,
 			redirectUrl:
 				parseOauthSettings(this.oauthSettingsPath).servers[this.server.name]?.redirectUrl ??
-				buildKanbanRuntimeUrl(OAUTH_CALLBACK_PATH),
+				getKanbanOauthRedirectOrigin() + OAUTH_CALLBACK_PATH,
 		});
 	}
 
@@ -546,7 +546,7 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 }
 
 function buildMcpOauthCallbackUrl(requestId: string): string {
-	const callbackUrl = new URL(buildKanbanRuntimeUrl(OAUTH_CALLBACK_PATH));
+	const callbackUrl = new URL(getKanbanOauthRedirectOrigin() + OAUTH_CALLBACK_PATH);
 	callbackUrl.searchParams.set(OAUTH_CALLBACK_REQUEST_ID_PARAM, requestId);
 	return callbackUrl.toString();
 }
