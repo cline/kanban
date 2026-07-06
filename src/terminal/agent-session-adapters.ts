@@ -610,12 +610,17 @@ const claudeAdapter: AgentSessionAdapter = {
 			FORCE_HYPERLINK: "1",
 		};
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		if (input.autonomousModeEnabled) {
+			// Auto mode is gated behind this env var on Bedrock/Vertex/Foundry; the Anthropic API ignores it.
+			env.CLAUDE_CODE_ENABLE_AUTO_MODE = "1";
+		}
 		if (
 			input.autonomousModeEnabled &&
 			!input.startInPlanMode &&
+			!hasCliOption(args, "--permission-mode") &&
 			!hasCliOption(args, "--dangerously-skip-permissions")
 		) {
-			args.push("--dangerously-skip-permissions");
+			args.push("--permission-mode", "auto");
 		}
 		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
 			args.push("--continue");
@@ -624,9 +629,6 @@ const claudeAdapter: AgentSessionAdapter = {
 			const withoutImmediateBypass = args.filter((arg) => arg !== "--dangerously-skip-permissions");
 			args.length = 0;
 			args.push(...withoutImmediateBypass);
-			if (!hasCliOption(args, "--allow-dangerously-skip-permissions")) {
-				args.push("--allow-dangerously-skip-permissions");
-			}
 			args.push("--permission-mode", "plan");
 		}
 
