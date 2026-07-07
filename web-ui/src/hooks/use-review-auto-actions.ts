@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import { getTaskWorkspaceSnapshot, subscribeToAnyTaskMetadata } from "@/stores/workspace-metadata-store";
 import type { BoardCard, BoardColumnId, BoardData, TaskAutoReviewMode } from "@/types";
@@ -23,6 +24,7 @@ interface RequestMoveTaskToTrashOptions {
 
 interface UseReviewAutoActionsOptions {
 	board: BoardData;
+	sessions: Record<string, RuntimeTaskSessionSummary>;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (
@@ -35,12 +37,14 @@ interface UseReviewAutoActionsOptions {
 
 export function useReviewAutoActions({
 	board,
+	sessions,
 	taskGitActionLoadingByTaskId,
 	runAutoReviewGitAction,
 	requestMoveTaskToTrash,
 	resetKey,
 }: UseReviewAutoActionsOptions): void {
 	const boardRef = useRef<BoardData>(board);
+	const sessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>(sessions);
 	const runAutoReviewGitActionRef = useRef(runAutoReviewGitAction);
 	const requestMoveTaskToTrashRef = useRef(requestMoveTaskToTrash);
 	const awaitingCleanActionByTaskIdRef = useRef<Record<string, TaskGitAction>>({});
@@ -52,6 +56,10 @@ export function useReviewAutoActions({
 	useEffect(() => {
 		boardRef.current = board;
 	}, [board]);
+
+	useEffect(() => {
+		sessionsRef.current = sessions;
+	}, [sessions]);
 
 	useEffect(() => {
 		runAutoReviewGitActionRef.current = runAutoReviewGitAction;
@@ -153,6 +161,13 @@ export function useReviewAutoActions({
 					continue;
 				}
 
+				const session = sessionsRef.current[reviewTask.id];
+				if (session?.reviewReason === "error" || session?.state === "failed") {
+					delete awaitingCleanActionByTaskIdRef.current[reviewTask.id];
+					clearAutoReviewTimer(reviewTask.id);
+					continue;
+				}
+
 				const autoReviewMode = resolveTaskAutoReviewMode(reviewTask.autoReviewMode);
 				const loadingState = taskGitActionLoadingByTaskId[reviewTask.id];
 				const isGitActionInFlight =
@@ -180,6 +195,10 @@ export function useReviewAutoActions({
 								return;
 							}
 							if (!isTaskAutoReviewEnabled(latestSelection.card)) {
+								return;
+							}
+							const latestSession = sessionsRef.current[reviewTask.id];
+							if (latestSession?.reviewReason === "error" || latestSession?.state === "failed") {
 								return;
 							}
 							const latestMode = resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode);
@@ -215,6 +234,10 @@ export function useReviewAutoActions({
 					if (!isTaskAutoReviewEnabled(latestSelection.card)) {
 						return;
 					}
+					const latestSession = sessionsRef.current[reviewTask.id];
+					if (latestSession?.reviewReason === "error" || latestSession?.state === "failed") {
+						return;
+					}
 					const latestMode = resolveTaskAutoReviewMode(latestSelection.card.autoReviewMode);
 					if (latestMode !== autoReviewMode) {
 						return;
@@ -236,6 +259,12 @@ export function useReviewAutoActions({
 			source: "board_or_loading_change",
 		});
 	}, [board, evaluateAutoReview, taskGitActionLoadingByTaskId]);
+
+	useEffect(() => {
+		evaluateAutoReview({
+			source: "sessions_change",
+		});
+	}, [evaluateAutoReview, sessions]);
 
 	useEffect(() => {
 		return subscribeToAnyTaskMetadata((taskId) => {
