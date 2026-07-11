@@ -1,4 +1,5 @@
 import type { DropResult } from "@hello-pangea/dnd";
+import pLimit from "p-limit";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
@@ -27,6 +28,13 @@ import {
 	hasPromptedForBrowserNotificationPermission,
 	requestBrowserNotificationPermission,
 } from "@/utils/notification-permission";
+
+// Clearing the Done column fires stopTaskSession + cleanupTaskWorkspace per task.
+// The tRPC client batches same-tick calls into one request, so an unbounded
+// Promise.all makes the server run every stop/worktree-delete concurrently —
+// with a large column that means 100+ simultaneous git operations against the
+// shared repo, which can freeze or crash the runtime. Bound the fan-out instead.
+const CLEAR_TRASH_CLEANUP_CONCURRENCY = 4;
 
 interface TaskGitActionLoadingStateLike {
 	commitSource: string | null;
@@ -847,12 +855,15 @@ export function useBoardInteractions({
 			clearTaskWorkspaceInfo(selectedTaskId);
 		}
 
+		const limitCleanup = pLimit(CLEAR_TRASH_CLEANUP_CONCURRENCY);
 		void (async () => {
 			await Promise.all(
-				taskIds.map(async (taskId) => {
-					await stopTaskSession(taskId);
-					await cleanupTaskWorkspace(taskId);
-				}),
+				taskIds.map((taskId) =>
+					limitCleanup(async () => {
+						await stopTaskSession(taskId);
+						await cleanupTaskWorkspace(taskId);
+					}),
+				),
 			);
 		})();
 	}, [
