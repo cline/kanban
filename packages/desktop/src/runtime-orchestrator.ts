@@ -4,13 +4,21 @@ import { powerSaveBlocker } from "electron";
 
 import { RuntimeChildManager } from "./runtime-child.js";
 
-
 interface RuntimeOrchestratorOptions {
-
 	host: string;
 	port: number;
 	healthTimeoutMs: number;
 	resolveCliShimPath: () => string;
+	/** Re-evaluated on every spawn. `null` ⇒ use the shim's bundled cli. */
+	resolveCliEntryOverride?: () => string | null;
+	/** Called when a staged spawn fails its readiness probe. The
+	 *  orchestrator retries once with the bundled cli on this same launch;
+	 *  the callback should clear/roll back the version it just tried.
+	 *  `cliEntry` is the exact override path used for the failed spawn —
+	 *  capturing it at spawn time avoids racing with a concurrent
+	 *  background staging that may have moved the pointer to a *new*
+	 *  version (which we must not roll back). */
+	onCliEntryOverrideFailed?: (reason: string, cliEntry: string) => void;
 	fetchImpl?: typeof fetch;
 	attachedProbeIntervalMs?: number;
 	attachedProbeFailureThreshold?: number;
@@ -71,6 +79,15 @@ export class RuntimeOrchestrator extends EventEmitter<RuntimeOrchestratorEventMa
 	// at spawn time. Initial value `null` distinguishes "not yet looked
 	// up" from "looked up and resolved to a string".
 	private cachedShimPath: string | null = null;
+	// Captured at spawn time so the failure handler rolls back the
+	// version that actually ran — not whatever the pointer happens to
+	// say at failure time, which a concurrent background stage may have
+	// already replaced.
+	private currentSpawnOverridePath: string | null = null;
+	// Latched during the one same-launch fallback retry, so a callback
+	// that synchronously clears the pointer + a still-broken bundled
+	// runtime can't loop forever.
+	private overrideRetryInFlight = false;
 
 	// Latched once `shutdown()` / `dispose()` begin. Every `await` boundary
 	// in the lifecycle methods (`connect`, `restart`, `startOwnRuntime`)
@@ -353,6 +370,35 @@ export class RuntimeOrchestrator extends EventEmitter<RuntimeOrchestratorEventMa
 				this.manager.removeAllListeners("error");
 				this.manager = null;
 			}
+			// A staged runtime that failed its readiness probe is broken;
+			// notify the host (clears the pointer) and retry the same
+			// launch with the bundled cli. The latch prevents an infinite
+			// loop if the bundled runtime is also broken.
+			const reason = err instanceof Error ? err.message : String(err);
+			const failedOverride = this.currentSpawnOverridePath;
+			if (failedOverride && !this.overrideRetryInFlight) {
+				this.currentSpawnOverridePath = null;
+				this.overrideRetryInFlight = true;
+				try {
+					this.opts.onCliEntryOverrideFailed?.(reason, failedOverride);
+				} catch (cbErr) {
+					console.warn(
+						"[desktop] onCliEntryOverrideFailed threw:",
+						cbErr instanceof Error ? cbErr.message : cbErr,
+					);
+				}
+				console.warn(
+					`[desktop] Staged runtime failed (${reason}); falling back to bundled.`,
+				);
+				if (this.terminated) return;
+				try {
+					await this.startOwnRuntime();
+				} finally {
+					this.overrideRetryInFlight = false;
+				}
+				return;
+			}
+			this.currentSpawnOverridePath = null;
 			// Suppress on terminated — caller (drain inside shutdown/dispose)
 			// already moved past the point where it cares about the spawn
 			// failure, and re-throwing would surface as an unhandled
@@ -389,10 +435,31 @@ export class RuntimeOrchestrator extends EventEmitter<RuntimeOrchestratorEventMa
 		return resolved;
 	}
 
+	private resolveCliEntryOverride(): string | undefined {
+		this.currentSpawnOverridePath = null;
+		const resolver = this.opts.resolveCliEntryOverride;
+		if (!resolver) return undefined;
+		let override: string | null;
+		try {
+			override = resolver();
+		} catch (err) {
+			console.warn(
+				"[desktop] resolveCliEntryOverride threw:",
+				err instanceof Error ? err.message : err,
+			);
+			return undefined;
+		}
+		if (!override) return undefined;
+		this.currentSpawnOverridePath = override;
+		console.log(`[desktop] Runtime override → ${override}`);
+		return override;
+	}
+
 	private createManager(): RuntimeChildManager {
 		const manager = new RuntimeChildManager({
 			cliPath: this.getValidatedShimPath(),
 			shutdownTimeoutMs: DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS,
+			cliEntryOverride: this.resolveCliEntryOverride(),
 		});
 
 

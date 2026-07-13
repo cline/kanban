@@ -11,6 +11,17 @@ set "SCRIPT_DIR=%~dp0"
 set "RESOURCES_DIR=%SCRIPT_DIR%.."
 set "CLI_ENTRY=%RESOURCES_DIR%\app.asar.unpacked\cli\cli.js"
 
+REM Runtime-update override (see POSIX shim for rationale): fail loud
+REM on missing file rather than silently falling back to bundled.
+if defined KANBAN_CLI_OVERRIDE (
+  if not exist "%KANBAN_CLI_OVERRIDE%" (
+    echo error: KANBAN_CLI_OVERRIDE points to missing file: %KANBAN_CLI_OVERRIDE% >&2
+    endlocal
+    exit /b 1
+  )
+  set "CLI_ENTRY=%KANBAN_CLI_OVERRIDE%"
+)
+
 REM Windows packaged layout:
 REM   Kanban\resources\bin\kanban.cmd     (this file)
 REM   RESOURCES_DIR = Kanban\resources
