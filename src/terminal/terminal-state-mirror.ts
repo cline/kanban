@@ -68,7 +68,14 @@ export class TerminalStateMirror {
 	async getSnapshot(): Promise<TerminalRestoreSnapshot> {
 		await this.operationQueue;
 		return {
-			snapshot: this.serializeAddon.serialize(),
+			// Serialize only the visible viewport (scrollback: 0) instead of the
+			// full buffer. The viewer immediately receives live output deltas
+			// after restore, so shipping the entire scrollback history on every
+			// task switch is unnecessary and was the dominant cause of the
+			// ~60s main-thread freeze (#581) and OOM trajectory (#273) during
+			// long agent runs. This keeps the restore payload to roughly
+			// rows*cols bytes regardless of run length.
+			snapshot: this.serializeAddon.serialize({ scrollback: 0 }),
 			cols: this.terminal.cols,
 			rows: this.terminal.rows,
 		};
