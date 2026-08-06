@@ -112,8 +112,9 @@
   "overrides": {
     "protobufjs": ">=7.6.1 <8",
     "simple-git": ">=3.36.0",
-    "fast-uri": ">=3.1.4 <4",
-    "hono": ">=4.12.25",
-    "@hono/node-server": ">=1.14.0"
+    "fast-uri": ">=3.1.5 <4",
+    "hono": ">=4.12.34 <5",
+    "@hono/node-server": ">=1.14.0",
+    "nanoid@>=5.0.0 <6": ">=5.1.11 <6"
   }
 }
