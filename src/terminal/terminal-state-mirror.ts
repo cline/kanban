@@ -4,7 +4,17 @@ import headlessTerminalModule from "@xterm/headless";
 const { SerializeAddon } = serializeAddonModule as typeof import("@xterm/addon-serialize");
 const { Terminal } = headlessTerminalModule as typeof import("@xterm/headless");
 
-const TERMINAL_SCROLLBACK = 10_000;
+/**
+ * Server-side headless terminal scrollback.
+ *
+ * Kept deliberately small because the entire buffer is serialized via
+ * `serializeAddon.serialize()` and shipped over the WebSocket on every
+ * viewer connect (task switch). A 10,000-line buffer caused ~60s main-thread
+ * freezes (#581) and RSS spikes toward OOM (#273) during long agent runs.
+ * 1,000 lines is enough to show recent output while keeping the restore
+ * snapshot ~10x smaller.
+ */
+const TERMINAL_SCROLLBACK = 1_000;
 
 export interface TerminalRestoreSnapshot {
 	snapshot: string;
