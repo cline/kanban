@@ -31,6 +31,7 @@ const PROJECTS: RuntimeProjectSummary[] = [
 		id: "project-1",
 		name: "Kanban",
 		path: "/tmp/kanban",
+		vcs: "local",
 		taskCounts: {
 			backlog: 0,
 			in_progress: 0,
@@ -194,6 +195,11 @@ describe("ProjectNavigationPanel width persistence", () => {
 		renderPanel();
 		expect(container.textContent).toContain("Kanban is in beta. Help us improve by sharing your experience.");
 		expect(container.textContent).toContain("Report issue");
+	});
+
+	it("shows a repository provider badge for Local projects", () => {
+		renderPanel();
+		expect(container.textContent).toContain("Local");
 	});
 
 	it("shows send feedback instead of report issue when Cline OAuth is available", () => {

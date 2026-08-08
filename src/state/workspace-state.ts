@@ -500,6 +500,27 @@ function detectGitRepositoryInfo(repoPath: string): RuntimeGitRepositoryInfo {
 	};
 }
 
+export function detectGitRemoteOriginUrl(repoPath: string): string | null {
+	return runGitCapture(repoPath, ["config", "--get", "remote.origin.url"]);
+}
+
+export function detectGitRemoteVcs(repoPath: string): "github" | "gerrit" | "local" | undefined {
+	const remoteUrl = detectGitRemoteOriginUrl(repoPath);
+	if (!remoteUrl) {
+		return "local";
+	}
+
+	if (/github\.com/i.test(remoteUrl)) {
+		return "github";
+	}
+
+	if (/(?:^|[:/@])gerrit/i.test(remoteUrl) || /\/a\//i.test(remoteUrl)) {
+		return "gerrit";
+	}
+
+	return undefined;
+}
+
 async function resolveWorkspacePath(cwd: string): Promise<string> {
 	const resolvedCwd = resolve(cwd);
 	let canonicalCwd = resolvedCwd;
