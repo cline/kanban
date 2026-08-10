@@ -4,7 +4,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import * as ClineCore from "@clinebot/core";
+import * as ClineCore from "@cline/core";
 import {
 	addLocalProvider,
 	type ClineAccountBalance,
@@ -14,12 +14,6 @@ import {
 	type ClineOrganization,
 	type CreateMcpToolsOptions,
 	createMcpTools,
-	DEFAULT_EXTERNAL_IDCS_CLIENT_ID,
-	DEFAULT_EXTERNAL_IDCS_SCOPES,
-	DEFAULT_EXTERNAL_IDCS_URL,
-	DEFAULT_INTERNAL_IDCS_CLIENT_ID,
-	DEFAULT_INTERNAL_IDCS_SCOPES,
-	DEFAULT_INTERNAL_IDCS_URL,
 	ensureCustomProvidersLoaded,
 	getLocalProviderModels,
 	getValidClineCredentials,
@@ -35,8 +29,21 @@ import {
 	resolveProviderConfig,
 	completeClineDeviceAuth as sdkCompleteClineDeviceAuth,
 	startClineDeviceAuth as sdkStartClineDeviceAuth,
-} from "@clinebot/core";
-import type { AgentTool } from "@clinebot/shared";
+} from "@cline/core";
+import type { AgentTool } from "@cline/shared";
+
+// OCA IDCS defaults. `@cline/core` declares these in `dist/auth/oca.d.ts` but
+// stopped re-exporting them from its public entry point, and there is no
+// `./auth/oca` subpath, so they are unreachable through the package API. Values
+// mirror the SDK's own declarations verbatim — they are public OAuth client ids
+// and issuer URLs, not secrets. Delete this block and import from the SDK again
+// the moment core re-exports them.
+const DEFAULT_INTERNAL_IDCS_CLIENT_ID = "a8331954c0cf48ba99b5dd223a14c6ea";
+const DEFAULT_INTERNAL_IDCS_URL = "https://idcs-9dc693e80d9b469480d7afe00e743931.identity.oraclecloud.com";
+const DEFAULT_INTERNAL_IDCS_SCOPES = "openid offline_access";
+const DEFAULT_EXTERNAL_IDCS_CLIENT_ID = "c1aba3deed5740659981a752714eba33";
+const DEFAULT_EXTERNAL_IDCS_URL = "https://login-ext.identity.oraclecloud.com";
+const DEFAULT_EXTERNAL_IDCS_SCOPES = "openid offline_access";
 
 export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<ProviderSettings["reasoning"]>["effort"]>;
@@ -347,7 +354,7 @@ function mergeSdkProviderModels(models: SdkProviderModel[]): SdkProviderModel[] 
 	return [...modelById.values()];
 }
 
-// Temporary compatibility path for @clinebot/core 0.0.36. Once the SDK makes
+// Temporary compatibility path for @cline/core 0.0.36. Once the SDK makes
 // getLocalProviderModels honor loadLatestOnInit and applies live catalog lookups
 // through resolveProviderModelCatalogKeys, replace this with a single SDK call
 // using CLINE_MODEL_CATALOG_DEFAULTS.
@@ -626,7 +633,7 @@ export function saveSdkProviderSettings(input: SaveSdkProviderSettingsInput): vo
 export function createSdkInMemoryMcpManager(options: SdkMcpManagerOptions): SdkMcpManager {
 	const managerConstructor = InMemoryMcpManager;
 	if (!managerConstructor) {
-		throw new Error("InMemoryMcpManager is not available from @clinebot/core/node.");
+		throw new Error("InMemoryMcpManager is not available from @cline/core/node.");
 	}
 	return new managerConstructor(options);
 }
@@ -676,7 +683,7 @@ export async function fetchSdkClineUserRemoteConfig(
 ): Promise<SdkUserRemoteConfigResponse | null> {
 	const accountServiceConstructor = ClineAccountService;
 	if (!accountServiceConstructor) {
-		throw new Error("ClineAccountService is not available from @clinebot/core/node.");
+		throw new Error("ClineAccountService is not available from @cline/core/node.");
 	}
 	const accountService = new accountServiceConstructor({
 		apiBaseUrl: input.apiBaseUrl,

@@ -1,6 +1,6 @@
 import * as os from "node:os";
-import { type BasicLogger, createClineTelemetryServiceConfig, type ITelemetryService } from "@clinebot/core";
-import { createConfiguredTelemetryService } from "@clinebot/core/telemetry";
+import { type BasicLogger, createClineTelemetryServiceConfig, type ITelemetryService } from "@cline/core";
+import { createConfiguredTelemetryService } from "@cline/core/telemetry";
 import packageJson from "../../package.json" with { type: "json" };
 
 const appVersion = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";

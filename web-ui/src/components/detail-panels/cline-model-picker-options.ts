@@ -17,12 +17,18 @@ const CLINE_MODEL_NAME_BY_ID: Record<string, string> = {
 	"deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
 };
 
+// Order and membership follow `runtimeClineReasoningEffortSchema`, which in turn
+// follows the SDK's own effort union. A value the SDK accepts but this list omits
+// is not merely unselectable — `formatClineReasoningEffortLabel` falls back to
+// "Default", so the picker would quietly misreport what the task is set to.
 export const CLINE_REASONING_EFFORT_OPTIONS: SearchSelectOption[] = [
 	{ value: "", label: "Default" },
+	{ value: "minimal", label: "Minimal" },
 	{ value: "low", label: "Low" },
 	{ value: "medium", label: "Medium" },
 	{ value: "high", label: "High" },
 	{ value: "xhigh", label: "Extra high" },
+	{ value: "max", label: "Max" },
 ];
 
 export interface BuildClineAgentModelPickerOptionsResult {

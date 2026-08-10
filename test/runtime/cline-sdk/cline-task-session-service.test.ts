@@ -1,4 +1,4 @@
-import type { ToolApprovalRequest, ToolApprovalResult } from "@clinebot/core";
+import type { ToolApprovalRequest, ToolApprovalResult } from "@cline/core";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { ClineRuntimeSetup } from "../../../src/cline-sdk/cline-runtime-setup";
 import type {

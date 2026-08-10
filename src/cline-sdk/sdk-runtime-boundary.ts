@@ -21,11 +21,11 @@ import {
 	type ToolApprovalRequest,
 	type ToolApprovalResult,
 	type UserInstructionConfigService,
-} from "@clinebot/core";
+} from "@cline/core";
 import { CLINE_BUILTIN_SLASH_COMMANDS } from "./cline-slash-commands";
 import { getCliTelemetryService } from "./cline-telemetry-service";
 
-export { TelemetryLoggerSink, TelemetryService } from "@clinebot/core";
+export { TelemetryLoggerSink, TelemetryService } from "@cline/core";
 
 export type ClineSdkSessionHost = ClineCore;
 export type ClineSdkBasicLogger = BasicLogger;

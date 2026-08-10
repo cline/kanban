@@ -88,7 +88,7 @@ export const runtimeTaskAutoReviewModeSchema = z.preprocess(
 );
 export type RuntimeTaskAutoReviewMode = z.infer<typeof runtimeTaskAutoReviewModeEnum>;
 
-export const runtimeClineReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
+export const runtimeClineReasoningEffortSchema = z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]);
 export type RuntimeClineReasoningEffort = z.infer<typeof runtimeClineReasoningEffortSchema>;
 export const runtimeTaskClineSettingsSchema = z.object({
 	providerId: z.string().optional(),
@@ -104,7 +104,15 @@ export const runtimeTaskImageSchema = z.object({
 });
 export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
 
-const runtimeLegacyTaskClineReasoningEffortSchema = z.enum(["default", "low", "medium", "high", "xhigh"]);
+const runtimeLegacyTaskClineReasoningEffortSchema = z.enum([
+	"default",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+]);
 
 function normalizeRuntimeTaskClineSettings(input: {
 	clineSettings?: RuntimeTaskClineSettings;
