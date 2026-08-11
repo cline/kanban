@@ -105,10 +105,16 @@
     "ora": "^9.3.0",
     "proper-lockfile": "^4.1.2",
     "tree-kill": "^1.2.2",
-    "ws": "^8.18.0",
+    "undici": "^6.27.0",
+    "ws": "^8.21.0",
     "zod": "^4.3.6"
   },
   "overrides": {
-    "protobufjs": "7.5.8"
+    "protobufjs": ">=7.6.1 <8",
+    "simple-git": ">=3.36.0",
+    "fast-uri": ">=3.1.5 <4",
+    "hono": ">=4.12.34 <5",
+    "@hono/node-server": ">=1.14.0",
+    "nanoid@>=5.0.0 <6": ">=5.1.11 <6"
   }
 }
