@@ -23,9 +23,9 @@
 	"devDependencies": {
 		"@electron/notarize": "^3.0.0",
 		"@types/node": "^22.10.5",
-		"electron": "^41.5.0",
+		"electron": "^41.10.3",
 		"electron-builder": "^26.8.1",
-		"esbuild": "^0.27.0",
+		"esbuild": "^0.28.1",
 		"shx": "^0.4.0",
 		"typescript": "^5.9.3",
 		"vitest": "^4.1.0"
@@ -34,6 +34,10 @@
 		"node-pty": "^1.2.0-beta.11"
 	},
 	"overrides": {
-		"undici": ">=6.27.0 <7"
+		"undici": ">=6.27.0 <7",
+		"esbuild": "$esbuild",
+		"js-yaml": ">=4.3.1 <5",
+		"nanoid@<4": ">=3.3.17 <4",
+		"postcss": ">=8.5.23 <9"
 	}
 }
