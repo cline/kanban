@@ -16,6 +16,7 @@ import {
 	Terminal,
 } from "lucide-react";
 import { useState } from "react";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { OpenWorkspaceButton } from "@/components/open-workspace-button";
 import {
 	getRuntimeShortcutIconComponent,
@@ -29,6 +30,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useI18n } from "@/i18n/i18n-context";
 import type { RuntimeGitSyncAction, RuntimeProjectShortcut } from "@/runtime/types";
 import {
 	useHomeGitSummaryValue,
@@ -125,6 +127,9 @@ function GitBranchStatusControl({
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
 }): React.ReactElement {
+	const { t } = useI18n();
+	const changedFilesLabel = t(changedFiles === 1 ? "common.file" : "common.files");
+
 	if (onToggleGitHistory) {
 		return (
 			<div className="flex items-center min-w-0 overflow-hidden">
@@ -142,7 +147,7 @@ function GitBranchStatusControl({
 					<span className="truncate w-full text-left">{branchLabel}</span>
 				</Button>
 				<span className="font-mono text-xs text-text-tertiary ml-1.5 shrink-0 whitespace-nowrap">
-					({changedFiles} {changedFiles === 1 ? "file" : "files"}
+					({changedFiles} {changedFilesLabel}
 					<span className="text-status-green"> +{additions}</span>
 					<span className="text-status-red"> -{deletions}</span>)
 				</span>
@@ -156,7 +161,7 @@ function GitBranchStatusControl({
 			<span className="text-text-primary">{branchLabel}</span>
 			<span className="ml-1.5">
 				<span className="text-text-tertiary">
-					({changedFiles} {changedFiles === 1 ? "file" : "files"}
+					({changedFiles} {changedFilesLabel}
 				</span>
 				<span className="text-status-green"> +{additions}</span>
 				<span className="text-status-red"> -{deletions}</span>
@@ -187,6 +192,7 @@ function TopBarGitStatusSection({
 	onGitPull?: () => void;
 	onGitPush?: () => void;
 }): React.ReactElement | null {
+	const { t } = useI18n();
 	const homeGitSummary = useHomeGitSummaryValue();
 	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedTaskId, selectedTaskBaseRef);
 	const taskWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(selectedTaskId);
@@ -195,14 +201,16 @@ function TopBarGitStatusSection({
 		const branchLabel = homeGitSummary.currentBranch ?? "detached HEAD";
 		const pullCount = homeGitSummary.behindCount ?? 0;
 		const pushCount = homeGitSummary.aheadCount ?? 0;
+		const pullCommitLabel = t(pullCount === 1 ? "topbar.commit" : "topbar.commits");
+		const pushCommitLabel = t(pushCount === 1 ? "topbar.commit" : "topbar.commits");
 		const pullTooltip =
 			pullCount > 0
-				? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
-				: "Pull from upstream. Branch is already up to date.";
+				? t("topbar.pullCommits", { count: pullCount, commitLabel: pullCommitLabel })
+				: t("topbar.pullUpToDate");
 		const pushTooltip =
 			pushCount > 0
-				? `Push ${pushCount} local commit${pushCount === 1 ? "" : "s"} to upstream.`
-				: "Push local commits to upstream. No local commits are pending.";
+				? t("topbar.pushCommits", { count: pushCount, commitLabel: pushCommitLabel })
+				: t("topbar.pushNoPending");
 		return (
 			<>
 				<div className="w-px h-5 bg-border mx-1" />
@@ -215,17 +223,14 @@ function TopBarGitStatusSection({
 					isGitHistoryOpen={isGitHistoryOpen}
 				/>
 				<div className="flex gap-0 ml-1">
-					<Tooltip
-						side="bottom"
-						content="Fetch latest refs from upstream without changing your local branch or files."
-					>
+					<Tooltip side="bottom" content={t("topbar.fetchTooltip")}>
 						<Button
 							variant="ghost"
 							size="sm"
 							icon={runningGitAction === "fetch" ? <Spinner size={14} /> : <CircleArrowDown size={18} />}
 							onClick={onGitFetch}
 							disabled={runningGitAction === "fetch"}
-							aria-label="Fetch from upstream"
+							aria-label={t("topbar.fetch")}
 						/>
 					</Tooltip>
 					<Tooltip side="bottom" content={pullTooltip}>
@@ -235,7 +240,7 @@ function TopBarGitStatusSection({
 							icon={runningGitAction === "pull" ? <Spinner size={14} /> : <ArrowDown size={14} />}
 							onClick={onGitPull}
 							disabled={runningGitAction === "pull"}
-							aria-label="Pull from upstream"
+							aria-label={t("topbar.pull")}
 						>
 							<span className="text-text-tertiary">{pullCount}</span>
 						</Button>
@@ -247,7 +252,7 @@ function TopBarGitStatusSection({
 							icon={runningGitAction === "push" ? <Spinner size={14} /> : <ArrowUp size={14} />}
 							onClick={onGitPush}
 							disabled={runningGitAction === "push"}
-							aria-label="Push to upstream"
+							aria-label={t("topbar.push")}
 						>
 							<span className="text-text-tertiary">{pushCount}</span>
 						</Button>
@@ -349,6 +354,7 @@ export function TopBar({
 	isOpeningWorkspace: boolean;
 	hideProjectDependentActions?: boolean;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const isMobile = useIsMobile();
 	const displayWorkspacePath = workspacePath ? formatPathForDisplay(workspacePath) : null;
 	const workspaceSegments = displayWorkspacePath ? getWorkspacePathSegments(displayWorkspacePath) : [];
@@ -367,13 +373,13 @@ export function TopBar({
 	const [isCreateShortcutSaving, setIsCreateShortcutSaving] = useState(false);
 	const [createShortcutError, setCreateShortcutError] = useState<string | null>(null);
 	const [newShortcutIcon, setNewShortcutIcon] = useState<RuntimeShortcutPickerIconId>("play");
-	const [newShortcutLabel, setNewShortcutLabel] = useState("Run");
+	const [newShortcutLabel, setNewShortcutLabel] = useState(() => t("topbar.run"));
 	const [newShortcutCommand, setNewShortcutCommand] = useState("");
 	const canSaveNewShortcut = newShortcutCommand.trim().length > 0;
 	const handleOpenCreateShortcutDialog = () => {
 		setCreateShortcutError(null);
 		setNewShortcutIcon("play");
-		setNewShortcutLabel("Run");
+		setNewShortcutLabel(t("topbar.run"));
 		setNewShortcutCommand("");
 		setIsCreateShortcutDialogOpen(true);
 	};
@@ -390,7 +396,7 @@ export function TopBar({
 		});
 		setIsCreateShortcutSaving(false);
 		if (!result.ok) {
-			setCreateShortcutError(result.message ?? "Could not save shortcut.");
+			setCreateShortcutError(result.message ?? t("topbar.shortcutDialog.saveError"));
 			return;
 		}
 		setIsCreateShortcutDialogOpen(false);
@@ -414,7 +420,7 @@ export function TopBar({
 							size="sm"
 							icon={<Menu size={16} />}
 							onClick={onToggleSidebar}
-							aria-label="Toggle sidebar"
+							aria-label={t("topbar.toggleSidebar")}
 							className={cn("shrink-0", MOBILE_TOUCH_TARGET)}
 						/>
 					) : null}
@@ -425,7 +431,7 @@ export function TopBar({
 								size="sm"
 								icon={<ArrowLeft size={16} />}
 								onClick={onBack}
-								aria-label="Back to board"
+								aria-label={t("topbar.backToBoard")}
 								className={cn("mr-1 shrink-0", isMobile && MOBILE_TOUCH_TARGET)}
 							/>
 						</div>
@@ -543,7 +549,7 @@ export function TopBar({
 													size="sm"
 													variant="default"
 													icon={<ChevronDown size={12} />}
-													aria-label="Select shortcut"
+													aria-label={t("topbar.selectShortcut")}
 													disabled={Boolean(runningShortcutLabel)}
 													className="rounded-l-none border-l-0 kb-navbar-btn"
 													style={{ width: 24, paddingLeft: 0, paddingRight: 0 }}
@@ -587,7 +593,7 @@ export function TopBar({
 															onClick={handleAddShortcut}
 														>
 															<Plus size={14} />
-															<span>Add shortcut</span>
+															<span>{t("topbar.addShortcut")}</span>
 														</button>
 													</div>
 												</RadixPopover.Content>
@@ -602,7 +608,7 @@ export function TopBar({
 										onClick={handleOpenCreateShortcutDialog}
 										className="text-xs kb-navbar-btn"
 									>
-										Run
+										{t("topbar.run")}
 									</Button>
 								) : null
 							) : null}
@@ -611,7 +617,7 @@ export function TopBar({
 									side="bottom"
 									content={
 										<span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-											<span>Toggle terminal</span>
+											<span>{t("topbar.toggleTerminal")}</span>
 											<span className="inline-flex items-center gap-0.5 whitespace-nowrap">
 												<span>(</span>
 												{isMacPlatform ? <Command size={11} /> : <span>Ctrl</span>}
@@ -626,7 +632,7 @@ export function TopBar({
 										icon={<Terminal size={16} />}
 										onClick={onToggleTerminal}
 										disabled={Boolean(isTerminalLoading)}
-										aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
+										aria-label={isTerminalOpen ? t("topbar.closeTerminal") : t("topbar.openTerminal")}
 										className="ml-2"
 									/>
 								</Tooltip>
@@ -637,7 +643,7 @@ export function TopBar({
 									size="sm"
 									icon={<Bug size={16} />}
 									onClick={onOpenDebugDialog}
-									aria-label="Debug"
+									aria-label={t("topbar.debug")}
 									data-testid="open-debug-dialog-button"
 									className="ml-0.5 mr-0.5"
 								/>
@@ -666,12 +672,14 @@ export function TopBar({
 									icon={<Terminal size={16} />}
 									onClick={onToggleTerminal}
 									disabled={Boolean(isTerminalLoading)}
-									aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
+									aria-label={isTerminalOpen ? t("topbar.closeTerminal") : t("topbar.openTerminal")}
 									className={MOBILE_TOUCH_TARGET}
 								/>
 							) : null}
 						</>
 					) : null}
+
+					<LanguageSwitcher className={cn("ml-0.5 mr-0.5", isMobile && MOBILE_TOUCH_TARGET)} />
 
 					{/* Settings: always visible */}
 					<Button
@@ -679,7 +687,7 @@ export function TopBar({
 						size="sm"
 						icon={<Settings size={16} />}
 						onClick={() => onOpenSettings?.()}
-						aria-label="Settings"
+						aria-label={t("topbar.settings")}
 						data-testid="open-settings-button"
 						className={cn("ml-0.5 mr-0.5", isMobile && MOBILE_TOUCH_TARGET)}
 					/>
@@ -698,20 +706,16 @@ export function TopBar({
 					}
 				}}
 			>
-				<DialogHeader title="Set up your first script shortcut" icon={<Play size={16} />} />
+				<DialogHeader title={t("topbar.shortcutDialog.title")} icon={<Play size={16} />} />
 				<DialogBody>
-					<p className="text-text-secondary text-[13px] mt-0 mb-2">
-						Script shortcuts run a command in the bottom terminal so you can quickly run and test your project.
-					</p>
-					<p className="text-text-secondary text-[13px] mt-0 mb-3">
-						You can always open Settings to add and manage more shortcuts later.
-					</p>
+					<p className="text-text-secondary text-[13px] mt-0 mb-2">{t("topbar.shortcutDialog.description1")}</p>
+					<p className="text-text-secondary text-[13px] mt-0 mb-3">{t("topbar.shortcutDialog.description2")}</p>
 					<div className="grid gap-2" style={{ gridTemplateColumns: "max-content 1fr 2fr" }}>
 						<FirstShortcutIconPicker value={newShortcutIcon} onSelect={setNewShortcutIcon} />
 						<input
 							value={newShortcutLabel}
 							onChange={(event) => setNewShortcutLabel(event.target.value)}
-							placeholder="Label"
+							placeholder={t("topbar.shortcutDialog.labelPlaceholder")}
 							disabled={isCreateShortcutSaving}
 							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-60"
 						/>
@@ -737,7 +741,7 @@ export function TopBar({
 						}}
 						disabled={isCreateShortcutSaving}
 					>
-						Cancel
+						{t("common.cancel")}
 					</Button>
 					<Button
 						variant="primary"
@@ -749,10 +753,10 @@ export function TopBar({
 						{isCreateShortcutSaving ? (
 							<>
 								<Spinner size={12} />
-								Saving...
+								{t("common.saving")}
 							</>
 						) : (
-							"Save"
+							t("common.save")
 						)}
 					</Button>
 				</DialogFooter>

@@ -6,6 +6,7 @@ import { SearchSelectDropdown } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useI18n } from "@/i18n/i18n-context";
 import {
 	fetchClineAccountBalance,
 	fetchClineAccountOrganizations,
@@ -31,6 +32,7 @@ export function AccountOrganizationSection({
 	open: boolean;
 	onAccountSwitched?: () => void;
 }): React.ReactElement | null {
+	const { t } = useI18n();
 	const [organizations, setOrganizations] = useState<RuntimeClineAccountOrganization[]>([]);
 	const [balanceData, setBalanceData] = useState<RuntimeClineAccountBalanceResponse | null>(null);
 	const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
@@ -57,13 +59,13 @@ export function AccountOrganizationSection({
 		} catch (error) {
 			if (generation !== balanceGenRef.current) return;
 			setBalanceData(null);
-			setBalanceError(error instanceof Error ? error.message : "Failed to load account balance.");
+			setBalanceError(error instanceof Error ? error.message : t("cline.error.loadBalance"));
 		} finally {
 			if (generation === balanceGenRef.current) {
 				setIsLoadingBalance(false);
 			}
 		}
-	}, [workspaceId]);
+	}, [t, workspaceId]);
 
 	const refreshOrgs = useCallback(async () => {
 		const generation = ++orgsGenRef.current;
@@ -78,13 +80,13 @@ export function AccountOrganizationSection({
 			}
 		} catch (error) {
 			if (generation !== orgsGenRef.current) return;
-			setOrgsError(error instanceof Error ? error.message : "Failed to load organizations.");
+			setOrgsError(error instanceof Error ? error.message : t("cline.error.loadOrganizations"));
 		} finally {
 			if (generation === orgsGenRef.current) {
 				setIsLoadingOrgs(false);
 			}
 		}
-	}, [workspaceId]);
+	}, [t, workspaceId]);
 
 	useEffect(() => {
 		if (!open) {
@@ -119,19 +121,19 @@ export function AccountOrganizationSection({
 				const organizationId = orgId === "personal" ? null : orgId;
 				const response = await switchClineAccount(workspaceId, organizationId);
 				if (!response.ok) {
-					setSwitchError(response.error ?? "Failed to switch account.");
+					setSwitchError(response.error ?? t("cline.error.switchAccount"));
 				} else {
 					await refreshBalance();
 					await refreshOrgs();
 					onAccountSwitched?.();
 				}
 			} catch (error) {
-				setSwitchError(error instanceof Error ? error.message : "Failed to switch account.");
+				setSwitchError(error instanceof Error ? error.message : t("cline.error.switchAccount"));
 			} finally {
 				setIsSwitching(false);
 			}
 		},
-		[workspaceId, refreshBalance, refreshOrgs, onAccountSwitched],
+		[workspaceId, refreshBalance, refreshOrgs, onAccountSwitched, t],
 	);
 
 	const dropdownValue = selectedOrgId ?? "personal";
@@ -147,7 +149,7 @@ export function AccountOrganizationSection({
 		return null;
 	}
 	const accountOptions = [
-		{ value: "personal", label: "Personal" },
+		{ value: "personal", label: t("cline.personal") },
 		...organizations.map((org) => ({
 			value: org.organizationId,
 			label: org.name,
@@ -156,13 +158,13 @@ export function AccountOrganizationSection({
 	const accountButtonText =
 		accountOptions.find((option) => option.value === dropdownValue)?.label ??
 		balanceData?.activeAccountLabel ??
-		"Personal";
+		t("cline.personal");
 
 	return (
 		<div>
 			{showSelector ? (
 				<div className="mb-3">
-					<p className="text-text-secondary text-[12px] mt-0 mb-1">Account</p>
+					<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.account")}</p>
 					<div className="flex items-center gap-2">
 						<div className="min-w-0 w-1/2 max-w-full">
 							<SearchSelectDropdown
@@ -175,9 +177,9 @@ export function AccountOrganizationSection({
 								fill
 								size="sm"
 								buttonText={accountButtonText}
-								emptyText="Select account"
-								noResultsText="No matching accounts"
-								placeholder="Search accounts..."
+								emptyText={t("cline.selectAccount")}
+								noResultsText={t("cline.noMatchingAccounts")}
+								placeholder={t("cline.searchAccounts")}
 								showSelectedIndicator
 							/>
 						</div>
@@ -192,7 +194,7 @@ export function AccountOrganizationSection({
 			) : null}
 
 			<div className="mb-2">
-				<p className="text-text-secondary text-[12px] mt-0 mb-1">Credits</p>
+				<p className="text-text-secondary text-[12px] mt-0 mb-1">{t("cline.credits")}</p>
 				<div className="flex items-center gap-2">
 					<div className="flex items-center gap-1.5">
 						{isLoadingBalance && balanceData === null ? (
@@ -202,12 +204,12 @@ export function AccountOrganizationSection({
 								{formatBalance(balanceData?.balance ?? null)}
 							</span>
 						)}
-						<Tooltip side="bottom" content="Refresh balance">
+						<Tooltip side="bottom" content={t("cline.refreshBalance")}>
 							<button
 								type="button"
 								onClick={() => void refreshBalance()}
 								disabled={isLoadingBalance}
-								aria-label="Refresh balance"
+								aria-label={t("cline.refreshBalance")}
 								className="inline-flex cursor-pointer items-center justify-center rounded-md p-0.5 text-text-secondary transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-default disabled:opacity-40"
 							>
 								<RefreshCw size={12} className={isLoadingBalance ? "animate-spin" : ""} />
@@ -220,7 +222,7 @@ export function AccountOrganizationSection({
 						icon={<ExternalLink size={14} />}
 						onClick={() => window.open(getCreditsUrl(selectedOrgId !== null), "_blank", "noopener,noreferrer")}
 					>
-						Add Credits
+						{t("cline.addCredits")}
 					</Button>
 				</div>
 			</div>

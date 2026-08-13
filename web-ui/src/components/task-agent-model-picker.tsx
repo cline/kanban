@@ -13,6 +13,7 @@ import {
 import { SearchSelectDropdown } from "@/components/search-select-dropdown";
 import { cn } from "@/components/ui/cn";
 import { NativeSelect } from "@/components/ui/native-select";
+import { useI18n } from "@/i18n/i18n-context";
 import { fetchClineProviderCatalog, fetchClineProviderModels } from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
@@ -60,6 +61,7 @@ export function useTaskAgentModelPicker({
 	defaultProviderId,
 	defaultModelId,
 }: UseTaskAgentModelPickerInput): UseTaskAgentModelPickerResult {
+	const { t } = useI18n();
 	const [providerCatalog, setProviderCatalog] = useState<RuntimeClineProviderCatalogItem[]>([]);
 	const [providerModels, setProviderModels] = useState<RuntimeClineProviderModel[]>([]);
 	const [isLoadingProviders, setIsLoadingProviders] = useState(false);
@@ -129,7 +131,7 @@ export function useTaskAgentModelPicker({
 
 	const agentOptions = useMemo(() => {
 		const catalog = getRuntimeLaunchSupportedAgentCatalog();
-		let firstLabel = "Default";
+		let firstLabel = t("common.default");
 		if (defaultAgentId) {
 			const defaultAgent = catalog.find((a) => a.id === defaultAgentId);
 			if (defaultAgent) {
@@ -143,10 +145,10 @@ export function useTaskAgentModelPicker({
 				.filter((agent) => agent.id !== defaultAgentId)
 				.map((agent) => ({ value: agent.id, label: agent.label })),
 		];
-	}, [defaultAgentId]);
+	}, [defaultAgentId, t]);
 
 	const clineProviderOptions = useMemo(() => {
-		let firstLabel = "Default";
+		let firstLabel = t("common.default");
 		if (defaultProviderId) {
 			const defaultProvider = providerCatalog.find((p) => p.id === defaultProviderId);
 			firstLabel = defaultProvider ? defaultProvider.name : defaultProviderId;
@@ -156,7 +158,7 @@ export function useTaskAgentModelPicker({
 			// Exclude the default provider from the explicit list — it's already represented by the first option
 			...providerCatalog.filter((p) => p.id !== defaultProviderId).map((p) => ({ value: p.id, label: p.name })),
 		];
-	}, [providerCatalog, defaultProviderId]);
+	}, [providerCatalog, defaultProviderId, t]);
 
 	// Map of provider ID → its catalog default model ID. Used by the component to
 	// auto-select the right model when the user switches providers.
@@ -183,7 +185,7 @@ export function useTaskAgentModelPicker({
 	}, [clineProviderId, defaultModelId, defaultProviderId, providerCatalog]);
 
 	const clineModelOptions = useMemo(() => {
-		let defaultLabel = "Default";
+		let defaultLabel = t("common.default");
 		if (effectiveDefaultModelId) {
 			const defaultModel = providerModels.find((m) => m.id === effectiveDefaultModelId);
 			defaultLabel = defaultModel ? defaultModel.name : effectiveDefaultModelId;
@@ -193,7 +195,7 @@ export function useTaskAgentModelPicker({
 			// Exclude the default model from the explicit list — it's already represented by the first option
 			...providerModels.filter((m) => m.id !== effectiveDefaultModelId).map((m) => ({ value: m.id, label: m.name })),
 		];
-	}, [providerModels, effectiveDefaultModelId]);
+	}, [providerModels, effectiveDefaultModelId, t]);
 
 	return {
 		agentOptions,
@@ -263,6 +265,7 @@ export function TaskAgentModelPicker({
 	/** Map of provider ID → its default model ID (from the provider catalog). */
 	providerDefaultModels?: Record<string, string>;
 }): ReactElement {
+	const { t } = useI18n();
 	const clineProviderId = clineSettings?.providerId;
 	const clineModelId = clineSettings?.modelId;
 	const clineReasoningEffort = clineSettings?.reasoningEffort;
@@ -459,13 +462,13 @@ export function TaskAgentModelPicker({
 							size={12}
 							className={cn("transition-transform", isSettingsExpanded ? "rotate-0" : "-rotate-90")}
 						/>
-						Override Agent Settings
+						{t("task.overrideAgentSettings")}
 					</button>
 				</Collapsible.Trigger>
 				<Collapsible.Content className="pt-2">
 					<div className="flex flex-col gap-2">
 						<div className="w-full sm:w-1/2 min-w-0">
-							<span className="text-[11px] text-text-secondary block mb-1">Agent</span>
+							<span className="text-[11px] text-text-secondary block mb-1">{t("task.agent")}</span>
 							<NativeSelect
 								size="sm"
 								fill
@@ -490,7 +493,7 @@ export function TaskAgentModelPicker({
 							<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
 								<div className="min-w-0">
 									<span className="text-[11px] text-text-secondary block mb-1">
-										Provider{isLoadingProviders ? " (loading\u2026)" : ""}
+										{isLoadingProviders ? t("task.providerLoading") : t("task.provider")}
 									</span>
 									<SearchSelectDropdown
 										options={clineProviderOptions}
@@ -531,9 +534,9 @@ export function TaskAgentModelPicker({
 										disabled={isLoadingProviders}
 										fill
 										size="sm"
-										placeholder="Search providers..."
-										emptyText="No providers available"
-										noResultsText="No matching providers"
+										placeholder={t("task.searchProviders")}
+										emptyText={t("task.noProviders")}
+										noResultsText={t("task.noMatchingProviders")}
 										showSelectedIndicator
 										onPopoverOpenChange={setIsProviderPopoverOpen}
 									/>
@@ -541,7 +544,7 @@ export function TaskAgentModelPicker({
 								{showClineModelPicker ? (
 									<div className="min-w-0">
 										<span className="text-[11px] text-text-secondary block mb-1">
-											Model{isLoadingModels ? " (loading\u2026)" : ""}
+											{isLoadingModels ? t("task.modelLoading") : t("task.model")}
 										</span>
 										<ClineChatModelSelector
 											modelOptions={modelPickerOptions.options}

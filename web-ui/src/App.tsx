@@ -55,6 +55,7 @@ import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
+import { useI18n } from "@/i18n/i18n-context";
 import { LayoutCustomizationsProvider } from "@/resize/layout-customizations";
 import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { useProjectNavigationLayout } from "@/resize/use-project-navigation-layout";
@@ -80,6 +81,7 @@ import { useTerminalThemeColors } from "@/terminal/theme-colors";
 import type { BoardData } from "@/types";
 
 export default function App(): ReactElement {
+	const { t } = useI18n();
 	const terminalThemeColors = useTerminalThemeColors();
 	const [board, setBoard] = useState<BoardData>(() => createInitialBoardData());
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
@@ -460,12 +462,12 @@ export default function App(): ReactElement {
 			{
 				intent: "warning",
 				icon: "warning-sign",
-				message: "Workspace changed elsewhere. Synced latest state. Retry your last edit if needed.",
+				message: t("app.toast.workspaceConflict"),
 				timeout: 5000,
 			},
 			"workspace-state-conflict",
 		);
-	}, []);
+	}, [t]);
 
 	useWorkspacePersistence({
 		board,
@@ -494,8 +496,8 @@ export default function App(): ReactElement {
 					intent: "danger",
 					icon: "warning-sign",
 					message: removedPath
-						? `Project no longer exists and was removed: ${removedPath}`
-						: "Project no longer exists and was removed.",
+						? t("app.toast.projectRemovedWithPath", { path: removedPath })
+						: t("app.toast.projectRemoved"),
 					timeout: 6000,
 				},
 				`project-removed-${removedPath || "unknown"}`,
@@ -511,7 +513,7 @@ export default function App(): ReactElement {
 			notifyError(streamError, { key: `error:${streamError}` });
 		}
 		lastStreamErrorRef.current = streamError;
-	}, [isRuntimeDisconnected, streamError]);
+	}, [isRuntimeDisconnected, streamError, t]);
 
 	useEffect(() => {
 		resetTaskEditorState();
@@ -682,10 +684,10 @@ export default function App(): ReactElement {
 			return undefined;
 		}
 		if (!activeSelectedTaskWorkspaceInfo.exists) {
-			return selectedCard.column.id === "trash" ? "Task worktree deleted" : "Task worktree not created yet";
+			return selectedCard.column.id === "trash" ? t("app.worktree.deleted") : t("app.worktree.notCreated");
 		}
 		return undefined;
-	}, [selectedCard]);
+	}, [selectedCard, t]);
 
 	const sidebarLayout = useProjectNavigationLayout();
 	const handleToggleSidebar = useCallback(() => {
@@ -901,17 +903,15 @@ export default function App(): ReactElement {
 								<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0 p-6">
 									<div className="flex flex-col items-center justify-center gap-3 text-text-tertiary">
 										<FolderOpen size={48} strokeWidth={1} />
-										<h3 className="text-sm font-semibold text-text-primary">No projects yet</h3>
-										<p className="text-[13px] text-text-secondary">
-											Add a git repository to start using Kanban.
-										</p>
+										<h3 className="text-sm font-semibold text-text-primary">{t("app.noProjects.title")}</h3>
+										<p className="text-[13px] text-text-secondary">{t("app.noProjects.description")}</p>
 										<Button
 											variant="primary"
 											onClick={() => {
 												void handleAddProject();
 											}}
 										>
-											Add Project
+											{t("app.noProjects.addProject")}
 										</Button>
 									</div>
 								</div>

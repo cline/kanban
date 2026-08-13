@@ -5,9 +5,11 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { BoardCard } from "@/components/board-card";
 import { Button } from "@/components/ui/button";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
+import { useI18n } from "@/i18n/i18n-context";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { isCardDropDisabled, type ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import type { BoardCard as BoardCardModel, BoardColumnId, BoardColumn as BoardColumnModel } from "@/types";
+import { getBoardColumnTitleKey } from "@/utils/board-column-title";
 
 export function BoardColumn({
 	column,
@@ -70,6 +72,7 @@ export function BoardColumn({
 	workspacePath?: string | null;
 	defaultClineModelId?: string | null;
 }): React.ReactElement {
+	const { t } = useI18n();
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -80,12 +83,13 @@ export function BoardColumn({
 	});
 	const createTaskButtonText = (
 		<span className="inline-flex items-center gap-1.5">
-			<span>Create task</span>
+			<span>{t("board.createTask")}</span>
 			<span aria-hidden className="text-text-secondary">
 				(c)
 			</span>
 		</span>
 	);
+	const columnTitle = t(getBoardColumnTitleKey(column.id));
 
 	return (
 		<section
@@ -105,7 +109,7 @@ export function BoardColumn({
 				>
 					<div className="flex items-center gap-2">
 						<ColumnIndicator columnId={column.id} />
-						<span className="font-semibold text-sm">{column.title}</span>
+						<span className="font-semibold text-sm">{columnTitle}</span>
 						<span className="text-text-secondary text-xs">{column.cards.length}</span>
 					</div>
 					{canStartAllTasks ? (
@@ -115,8 +119,8 @@ export function BoardColumn({
 							size="sm"
 							onClick={onStartAllTasks}
 							disabled={column.cards.length === 0}
-							aria-label="Start all backlog tasks"
-							title={column.cards.length > 0 ? "Start all backlog tasks" : "Backlog is empty"}
+							aria-label={t("board.startAllBacklogTasks")}
+							title={column.cards.length > 0 ? t("board.startAllBacklogTasks") : t("board.backlogEmpty")}
 						/>
 					) : null}
 					{canClearTrash ? (
@@ -127,8 +131,8 @@ export function BoardColumn({
 							className="text-status-red hover:text-status-red"
 							onClick={onClearTrash}
 							disabled={column.cards.length === 0}
-							aria-label="Clear done"
-							title={column.cards.length > 0 ? "Clear done items permanently" : "Done is empty"}
+							aria-label={t("board.clearDone")}
+							title={column.cards.length > 0 ? t("board.clearDoneItems") : t("board.doneEmpty")}
 						/>
 					) : null}
 				</div>
@@ -139,7 +143,7 @@ export function BoardColumn({
 							{canCreate ? (
 								<Button
 									icon={<Plus size={14} />}
-									aria-label="Create task"
+									aria-label={t("board.createTask")}
 									fill
 									onClick={onCreateTask}
 									style={{ marginBottom: 6, flexShrink: 0 }}

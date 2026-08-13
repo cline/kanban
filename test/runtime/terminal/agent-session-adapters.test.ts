@@ -104,6 +104,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launchCommand).toContain("hooks.PermissionRequest");
 		expect(getCodexConfigOverrideValues(launch.args, "features.hooks")).toEqual(["true"]);
 		expect(getCodexConfigOverrideValues(launch.args, "features.codex_hooks")).toEqual([]);
+		expect(launch.args).toContain("--dangerously-bypass-hook-trust");
 		const hookTrustState = getCodexConfigOverrideValues(launch.args, "hooks.state");
 		expect(hookTrustState).toHaveLength(1);
 		expect(hookTrustState[0]).toContain('"/<session-flags>/config.toml:user_prompt_submit:0:0"');
@@ -620,7 +621,10 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		const resumeIndex = launch.args.indexOf("resume");
+		const hookTrustBypassIndex = launch.args.indexOf("--dangerously-bypass-hook-trust");
 		expect(resumeIndex).toBeGreaterThan(0);
+		expect(hookTrustBypassIndex).toBeGreaterThan(-1);
+		expect(hookTrustBypassIndex).toBeLessThan(resumeIndex);
 		for (const key of [
 			"features.hooks",
 			"hooks.state",

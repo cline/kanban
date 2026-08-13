@@ -11,6 +11,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/i18n/i18n-context";
 
 export function ClearTrashDialog({
 	open,
@@ -23,7 +24,8 @@ export function ClearTrashDialog({
 	onCancel: () => void;
 	onConfirm: () => void;
 }): ReactElement {
-	const taskLabel = taskCount === 1 ? "task" : "tasks";
+	const { t } = useI18n();
+	const taskLabel = t(taskCount === 1 ? "common.task" : "common.tasks");
 
 	return (
 		<AlertDialog
@@ -33,23 +35,23 @@ export function ClearTrashDialog({
 			}}
 		>
 			<AlertDialogHeader>
-				<AlertDialogTitle>Clear done items permanently?</AlertDialogTitle>
+				<AlertDialogTitle>{t("clearDone.title")}</AlertDialogTitle>
 			</AlertDialogHeader>
 			<AlertDialogBody>
 				<AlertDialogDescription>
-					This will permanently delete {taskCount} {taskLabel} from Done.
+					{t("clearDone.description", { count: taskCount, taskLabel })}
 				</AlertDialogDescription>
-				<p className="text-text-primary">This action cannot be undone.</p>
+				<p className="text-text-primary">{t("common.irreversible")}</p>
 			</AlertDialogBody>
 			<AlertDialogFooter>
 				<AlertDialogCancel asChild>
 					<Button variant="default" onClick={onCancel}>
-						Cancel
+						{t("common.cancel")}
 					</Button>
 				</AlertDialogCancel>
 				<AlertDialogAction asChild>
 					<Button variant="danger" onClick={onConfirm}>
-						Clear Done
+						{t("clearDone.confirm")}
 					</Button>
 				</AlertDialogAction>
 			</AlertDialogFooter>

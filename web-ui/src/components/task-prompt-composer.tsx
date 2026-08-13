@@ -17,6 +17,7 @@ import {
 import { TaskImageStrip } from "@/components/task-image-strip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { useI18n } from "@/i18n/i18n-context";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { TaskImage } from "@/types";
 import { useDebouncedEffect } from "@/utils/react-use";
@@ -58,6 +59,7 @@ export function TaskPromptComposer({
 	workspaceId = null,
 	showAttachImageButton = true,
 }: TaskPromptComposerProps): ReactElement {
+	const { t } = useI18n();
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const mentionSearchRequestIdRef = useRef(0);
@@ -362,8 +364,8 @@ export function TaskPromptComposer({
 					onSelectItem={applySuggestion}
 					onHoverItem={setSelectedSuggestionIndex}
 					isLoading={isMentionSearchLoading}
-					loadingMessage="Loading files..."
-					emptyMessage="No matching files."
+					loadingMessage={t("task.loadingFiles")}
+					emptyMessage={t("task.noMatchingFiles")}
 				>
 					<textarea
 						id={id}
@@ -381,7 +383,7 @@ export function TaskPromptComposer({
 							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
 						}
 						onPaste={handlePaste}
-						placeholder={placeholder ?? "Describe the task"}
+						placeholder={placeholder ?? t("task.describePlaceholder")}
 						disabled={disabled}
 						className={cn(
 							"w-full rounded-md border bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none",
@@ -399,7 +401,7 @@ export function TaskPromptComposer({
 					<div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-accent/5">
 						<div className="flex items-center gap-1.5 text-[12px] text-accent font-medium">
 							<ImagePlus size={14} />
-							<span>Drop image here</span>
+							<span>{t("task.dropImageHere")}</span>
 						</div>
 					</div>
 				) : null}
@@ -427,7 +429,7 @@ export function TaskPromptComposer({
 							onClick={handleAttachClick}
 							disabled={disabled || !enabled}
 						>
-							Attach image
+							{t("task.attachImage")}
 						</Button>
 					</div>
 				</>

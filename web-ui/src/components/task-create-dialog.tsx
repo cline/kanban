@@ -22,20 +22,19 @@ import { useHotkeys } from "react-hotkeys-hook";
 import type { BranchSelectOption } from "@/components/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/branch-select-dropdown";
 import { TaskAgentModelPicker, useTaskAgentModelPicker } from "@/components/task-agent-model-picker";
+import { TaskFileImageHint } from "@/components/task-file-image-hint";
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
+import { useI18n } from "@/i18n/i18n-context";
 import type { RuntimeAgentId, RuntimeClineReasoningEffort, RuntimeTaskClineSettings } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 
-const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
-	{ value: "commit", label: "Make commit" },
-	{ value: "pr", label: "Make PR" },
-];
+const AUTO_REVIEW_MODE_OPTIONS: TaskAutoReviewMode[] = ["commit", "pr"];
 
 type TaskCreateStartAction = "start" | "start_and_open";
 
@@ -162,6 +161,7 @@ export function TaskCreateDialog({
 	/** Default Cline reasoning effort from runtimeConfig.clineProviderSettings.reasoningEffort */
 	defaultReasoningEffort?: RuntimeClineReasoningEffort | null;
 }): ReactElement {
+	const { t } = useI18n();
 	const [mode, setMode] = useState<"single" | "multi">("single");
 	const [createMore, setCreateMore] = useState(false);
 	const [composerResetKey, setComposerResetKey] = useState(0);
@@ -418,12 +418,17 @@ export function TaskCreateDialog({
 		[open, mode, handleRunSingleStartAction, onCreateStartAndOpen],
 	);
 
-	const dialogTitle = mode === "multi" ? `New tasks${validTaskCount > 0 ? ` (${validTaskCount})` : ""}` : "New task";
+	const dialogTitle =
+		mode === "multi"
+			? validTaskCount > 0
+				? t("task.newCount", { count: validTaskCount })
+				: t("task.newPlural")
+			: t("task.new");
 
-	const taskCountLabel = validTaskCount === 1 ? "task" : "tasks";
-	const primaryStartLabel = effectivePrimaryStartAction === "start" ? "Start task" : "Start and open";
+	const taskCountLabel = t(validTaskCount === 1 ? "common.task" : "common.tasks");
+	const primaryStartLabel = effectivePrimaryStartAction === "start" ? t("task.startTask") : t("task.startAndOpen");
 	const primaryStartShortcutModifier = effectivePrimaryStartAction === "start" ? "mod" : "alt";
-	const secondaryStartLabel = secondaryStartAction === "start" ? "Start task" : "Start and open";
+	const secondaryStartLabel = secondaryStartAction === "start" ? t("task.startTask") : t("task.startAndOpen");
 	const secondaryStartShortcutModifier = secondaryStartAction === "start" ? "mod" : "alt";
 
 	return (
@@ -440,19 +445,14 @@ export function TaskCreateDialog({
 							onImagesChange={onImagesChange}
 							onSubmit={handleCreateSingle}
 							onSubmitAndStart={() => handleRunSingleStartAction("start")}
-							placeholder="Describe the task..."
+							placeholder={t("task.describePlaceholder")}
 							autoFocus
 							workspaceId={workspaceId}
 							showAttachImageButton={false}
 						/>
 						<div className="flex items-center justify-between mt-1.5">
 							<p className="text-[11px] text-text-tertiary">
-								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
-								reference files. Drag and drop or{" "}
-								<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">
-									{pasteShortcutLabel}
-								</code>{" "}
-								to add images.
+								<TaskFileImageHint pasteShortcut={pasteShortcutLabel} />
 							</p>
 							{detectedItems.length >= 2 ? (
 								<button
@@ -461,7 +461,7 @@ export function TaskCreateDialog({
 									className="inline-flex items-center gap-1.5 text-[12px] text-status-blue hover:text-[#86BEFF] cursor-pointer shrink-0"
 								>
 									<List size={12} />
-									Split into {detectedItems.length} tasks
+									{t("task.splitIntoTasks", { count: detectedItems.length })}
 								</button>
 							) : null}
 						</div>
@@ -480,7 +480,7 @@ export function TaskCreateDialog({
 										value={taskPrompt}
 										onChange={(e) => handleUpdateTaskPrompt(index, e.target.value)}
 										onKeyDown={(e) => handleInputKeyDown(index, e)}
-										placeholder="Describe the task..."
+										placeholder={t("task.describePlaceholder")}
 										className="flex-1 min-w-0 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 									/>
 									<Button
@@ -488,7 +488,7 @@ export function TaskCreateDialog({
 										size="sm"
 										icon={<X size={14} />}
 										onClick={() => handleRemoveTask(index)}
-										aria-label={`Remove task ${index + 1}`}
+										aria-label={t("task.remove", { index: index + 1 })}
 									/>
 								</div>
 							))}
@@ -500,7 +500,7 @@ export function TaskCreateDialog({
 								className="inline-flex items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary cursor-pointer"
 							>
 								<Plus size={12} />
-								Add task
+								{t("task.add")}
 							</button>
 							<button
 								type="button"
@@ -508,7 +508,7 @@ export function TaskCreateDialog({
 								className="inline-flex items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary cursor-pointer"
 							>
 								<ArrowLeft size={12} />
-								Back to single prompt
+								{t("task.backToSinglePrompt")}
 							</button>
 						</div>
 					</div>
@@ -530,18 +530,18 @@ export function TaskCreateDialog({
 								<Check size={10} className="text-white" />
 							</RadixCheckbox.Indicator>
 						</RadixCheckbox.Root>
-						Start in plan mode
+						{t("task.startInPlanMode")}
 					</label>
 
 					<div>
-						<span className="text-[11px] text-text-secondary block mb-1">Worktree base ref</span>
+						<span className="text-[11px] text-text-secondary block mb-1">{t("task.worktreeBaseRef")}</span>
 						<BranchSelectDropdown
 							options={branchOptions}
 							selectedValue={branchRef}
 							onSelect={onBranchRefChange}
 							fill
 							size="sm"
-							emptyText="No branches detected"
+							emptyText={t("task.noBranches")}
 						/>
 					</div>
 
@@ -560,7 +560,7 @@ export function TaskCreateDialog({
 									<Check size={10} className="text-white" />
 								</RadixCheckbox.Indicator>
 							</RadixCheckbox.Root>
-							Automatically
+							{t("task.automatically")}
 						</label>
 						<NativeSelect
 							size="sm"
@@ -569,8 +569,8 @@ export function TaskCreateDialog({
 							style={{ width: "16ch", maxWidth: "100%" }}
 						>
 							{AUTO_REVIEW_MODE_OPTIONS.map((option) => (
-								<option key={option.value} value={option.value}>
-									{option.label}
+								<option key={option} value={option}>
+									{option === "commit" ? t("task.makeCommit") : t("task.makePr")}
 								</option>
 							))}
 						</NativeSelect>
@@ -610,13 +610,13 @@ export function TaskCreateDialog({
 					>
 						<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
 					</RadixSwitch.Root>
-					<span>Create more</span>
+					<span>{t("task.createMore")}</span>
 				</label>
 				{mode === "single" ? (
 					<>
 						<Button size="sm" onClick={handleCreateSingle} disabled={!prompt.trim() || !branchRef}>
 							<span className="inline-flex items-center">
-								Create
+								{t("task.create")}
 								<ButtonShortcut />
 							</span>
 						</Button>
@@ -642,7 +642,7 @@ export function TaskCreateDialog({
 												size="sm"
 												disabled={!prompt.trim() || !branchRef}
 												className="rounded-l-none border-l border-white/20 px-1"
-												aria-label="More start options"
+												aria-label={t("task.moreStartOptions")}
 											>
 												<ChevronDown size={12} />
 											</Button>
@@ -685,7 +685,7 @@ export function TaskCreateDialog({
 					<>
 						<Button size="sm" onClick={handleCreateAll} disabled={validTaskCount === 0 || !branchRef}>
 							<span className="inline-flex items-center">
-								Create {validTaskCount} {taskCountLabel}
+								{t("task.createCount", { count: validTaskCount, taskLabel: taskCountLabel })}
 								<ButtonShortcut />
 							</span>
 						</Button>
@@ -697,7 +697,7 @@ export function TaskCreateDialog({
 								disabled={validTaskCount === 0 || !branchRef}
 							>
 								<span className="inline-flex items-center">
-									Start {validTaskCount} {taskCountLabel}
+									{t("task.startCount", { count: validTaskCount, taskLabel: taskCountLabel })}
 									<ButtonShortcut includeShift />
 								</span>
 							</Button>
