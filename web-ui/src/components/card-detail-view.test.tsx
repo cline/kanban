@@ -22,8 +22,12 @@ const {
 	mockClineSendText: vi.fn(async () => {}),
 }));
 
+const mockUseHotkeys = vi.fn();
+
 vi.mock("react-hotkeys-hook", () => ({
-	useHotkeys: () => {},
+	useHotkeys: (...args: unknown[]) => {
+		mockUseHotkeys(...args);
+	},
 }));
 
 vi.mock("@/hooks/use-is-mobile", () => ({
@@ -149,6 +153,23 @@ function requireAgentPanel(container: HTMLElement): HTMLElement {
 	return panel;
 }
 
+function requireDiffPanel(container: HTMLElement): HTMLElement {
+	const separator = requireResizeSeparator(container);
+	const panel = separator.nextElementSibling;
+	if (!(panel instanceof HTMLElement)) {
+		throw new Error("Expected a diff panel element.");
+	}
+	return panel;
+}
+
+function requireExpandAgentButton(container: HTMLElement): HTMLButtonElement {
+	const button = container.querySelector('button[aria-label="Expand agent view to full width"]');
+	if (!(button instanceof HTMLButtonElement)) {
+		throw new Error("Expected an expand agent button.");
+	}
+	return button;
+}
+
 function requireDetailDiffSeparator(container: HTMLElement): HTMLElement {
 	const separator = container.querySelector('[aria-label="Resize detail diff panels"]');
 	if (!(separator instanceof HTMLElement)) {
@@ -173,6 +194,7 @@ describe("CardDetailView", () => {
 
 	beforeEach(() => {
 		window.localStorage.clear();
+		mockUseHotkeys.mockClear();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -775,5 +797,217 @@ describe("CardDetailView", () => {
 		});
 
 		expect(requireDetailDiffFileTreePanel(container).style.flex).toBe("0 0 18%");
+	});
+
+	it("gives the agent panel the full width and hides both side panels when expanded", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const agentPanel = requireAgentPanel(container);
+		const diffPanel = requireDiffPanel(container);
+		expect(agentPanel.style.width).not.toBe("100%");
+		expect(container.querySelector('[aria-label="Resize task cards and detail panels"]')).toBeInstanceOf(HTMLElement);
+
+		await act(async () => {
+			requireExpandAgentButton(container).click();
+		});
+
+		expect(agentPanel.style.width).toBe("100%");
+		expect(agentPanel.style.display).toBe("flex");
+		expect(diffPanel.style.display).toBe("none");
+		// Both side panels are gone: the task cards column unmounts and the diff column is hidden.
+		expect(container.querySelector('[aria-label="Resize task cards and detail panels"]')).toBeNull();
+		expect(container.querySelector('[aria-label="Resize agent and diff panels"]')).toBeNull();
+		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeNull();
+		expect(container.querySelector('button[aria-label="Collapse full width agent view"]')).toBeInstanceOf(
+			HTMLButtonElement,
+		);
+	});
+
+	it("restores the side panels when the expanded agent panel is collapsed again", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireExpandAgentButton(container).click();
+		});
+
+		const collapseButton = container.querySelector('button[aria-label="Collapse full width agent view"]');
+		if (!(collapseButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected a collapse agent button.");
+		}
+
+		await act(async () => {
+			collapseButton.click();
+		});
+
+		expect(requireAgentPanel(container).style.width).not.toBe("100%");
+		expect(requireDiffPanel(container).style.display).toBe("flex");
+		expect(container.querySelector('[aria-label="Resize task cards and detail panels"]')).toBeInstanceOf(HTMLElement);
+		expect(container.querySelector('button[aria-label="Expand split diff view"]')).toBeInstanceOf(HTMLButtonElement);
+	});
+
+	it("collapses the expanded agent panel on Escape without closing the detail view", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireExpandAgentButton(container).click();
+		});
+
+		expect(container.querySelector('button[aria-label="Collapse full width agent view"]')).toBeInstanceOf(
+			HTMLButtonElement,
+		);
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+		});
+
+		expect(container.querySelector('button[aria-label="Collapse full width agent view"]')).toBeNull();
+		expect(requireExpandAgentButton(container)).toBeInstanceOf(HTMLButtonElement);
+	});
+
+	it("toggles the expanded agent panel with the mod+shift+f hotkey", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const registration = mockUseHotkeys.mock.calls.find((call) => call[0] === "mod+shift+f");
+		expect(registration).toBeDefined();
+
+		// The chat composer holds focus for most of a task, so the shortcut has to survive form tags.
+		expect(registration?.[2]).toMatchObject({
+			enableOnContentEditable: true,
+			enableOnFormTags: true,
+			preventDefault: true,
+		});
+
+		const pressToggleHotkey = async (): Promise<void> => {
+			const handler = mockUseHotkeys.mock.calls.find((call) => call[0] === "mod+shift+f")?.[1] as () => void;
+			await act(async () => {
+				handler();
+			});
+		};
+
+		// Captured up front: expanding removes the separator these lookups walk from.
+		const agentPanel = requireAgentPanel(container);
+
+		await pressToggleHotkey();
+		expect(agentPanel.style.width).toBe("100%");
+
+		await pressToggleHotkey();
+		expect(agentPanel.style.width).not.toBe("100%");
+		expect(requireAgentPanel(container)).toBe(agentPanel);
+	});
+
+	it("expands only one panel at a time when switching from the agent panel to the diff panel", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					sessionSummary={null}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		const agentPanel = requireAgentPanel(container);
+		const diffPanel = requireDiffPanel(container);
+
+		await act(async () => {
+			requireExpandAgentButton(container).click();
+		});
+		expect(agentPanel.style.width).toBe("100%");
+
+		// Collapse the agent panel first, then expand the diff panel from the restored toolbar.
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+		});
+
+		const expandDiffButton = container.querySelector('button[aria-label="Expand split diff view"]');
+		if (!(expandDiffButton instanceof HTMLButtonElement)) {
+			throw new Error("Expected an expand diff button.");
+		}
+
+		await act(async () => {
+			expandDiffButton.click();
+		});
+
+		expect(diffPanel.style.width).toBe("100%");
+		expect(diffPanel.style.display).toBe("flex");
+		expect(agentPanel.style.display).toBe("none");
+		expect(container.querySelector('button[aria-label="Expand agent view to full width"]')).toBeNull();
 	});
 });
