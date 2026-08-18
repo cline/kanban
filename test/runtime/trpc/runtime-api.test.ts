@@ -243,6 +243,7 @@ function createClineTaskSessionServiceMock() {
 		listMessages: vi.fn<(...args: unknown[]) => unknown[]>(() => []),
 		loadTaskSessionMessages: vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => []),
 		applyTurnCheckpoint: vi.fn<(...args: unknown[]) => RuntimeTaskSessionSummary | null>(() => null),
+		listSlashCommands: vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => []),
 		dispose: vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
 	};
 }
@@ -1422,6 +1423,96 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 		expect(cancelResponse.ok).toBe(true);
 		expect(clineTaskSessionService.cancelTaskTurn).toHaveBeenCalledWith("task-1");
+	});
+
+	it("starts a new AG2 PTY turn when the chat composer sends a follow-up", async () => {
+		const summary = createSummary({ agentId: "ag2", pid: 99, state: "awaiting_review" });
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "ag2",
+			label: "AG2",
+			command: "mlx-agents ag2-run",
+			binary: "mlx-agents",
+			args: ["ag2-run"],
+		});
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/repo");
+		const terminalManager = {
+			getSummary: vi.fn(() => summary),
+			listChatMessages: vi.fn(() => []),
+			appendChatMessage: vi.fn(),
+			startTaskSession: vi.fn(async () => summary),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(null);
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "ag2" as const,
+			})),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const sendResponse = await api.sendTaskChatMessage(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-ag2", text: "now summarize the architecture" },
+		);
+
+		expect(sendResponse.ok).toBe(true);
+		expect(terminalManager.appendChatMessage).toHaveBeenCalledWith(
+			"task-ag2",
+			expect.objectContaining({
+				role: "user",
+				content: "now summarize the architecture",
+			}),
+		);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				taskId: "task-ag2",
+				agentId: "ag2",
+				prompt: "now summarize the architecture",
+			}),
+		);
+		expect(clineTaskSessionService.startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("lists AG2 slash skills from the project path without the Cline SDK", async () => {
+		const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const root = await mkdtemp(join(tmpdir(), "kanban-ag2-slash-"));
+		try {
+			await mkdir(join(root, ".cline", "skills", "boot-coder"), { recursive: true });
+			await writeFile(
+				join(root, ".cline", "skills", "boot-coder", "SKILL.md"),
+				"---\nname: boot-coder\ndescription: Boot the coder profile.\n---\n",
+			);
+			const clineTaskSessionService = createClineTaskSessionServiceMock();
+			const api = createTestRuntimeApi({
+				getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+				loadScopedRuntimeConfig: vi.fn(async () => ({
+					...createRuntimeConfigState(),
+					selectedAgentId: "ag2" as const,
+				})),
+				setActiveRuntimeConfig: vi.fn(),
+				getScopedTerminalManager: vi.fn(async () => ({}) as never),
+				getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+				resolveInteractiveShellCommand: vi.fn(),
+				runCommand: vi.fn(),
+			});
+			const response = await api.getClineSlashCommands({
+				workspaceId: "workspace-1",
+				workspacePath: root,
+			});
+			expect(response.commands.some((command) => command.name === "boot-coder")).toBe(true);
+			expect(response.commands.some((command) => command.name === "clear")).toBe(true);
+			expect(clineTaskSessionService.listSlashCommands).not.toHaveBeenCalled();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	it("handles clear slash commands without sending them to the model", async () => {

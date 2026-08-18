@@ -17,6 +17,7 @@ import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtim
 import type {
 	RuntimeCommandRunResponse,
 	RuntimeRunUpdateResponse,
+	RuntimeTaskChatMessage,
 	RuntimeUpdateStatusResponse,
 } from "../core/api-contract";
 import {
@@ -44,6 +45,7 @@ import {
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveTaskTitle } from "../core/task-title.js";
 import { openInBrowser } from "../server/browser";
+import { listProjectSkillSlashCommands } from "../skills/project-skills";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { resolveTaskCwd } from "../workspace/task-worktree";
@@ -89,6 +91,17 @@ async function resolveExistingTaskCwdOrEnsure(options: {
 			ensure: true,
 		});
 	}
+}
+
+function buildAg2FollowUpPrompt(prior: RuntimeTaskChatMessage[], text: string): string {
+	const snippets = prior
+		.filter((message) => message.role === "user" || message.role === "assistant")
+		.slice(-4)
+		.map((message) => `${message.role}: ${message.content.slice(0, 800)}`);
+	if (snippets.length === 0) {
+		return text;
+	}
+	return `Prior conversation:\n${snippets.join("\n\n")}\n\nFollow-up from the user:\n${text}`;
 }
 
 export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrpcContext["runtimeApi"] {
@@ -387,16 +400,24 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 				const summary = clineTaskSessionService.getSummary(body.taskId);
 				const messages = await clineTaskSessionService.loadTaskSessionMessages(body.taskId);
-				if (!summary && messages.length === 0) {
+				if (summary || messages.length > 0) {
 					return {
-						ok: false,
-						messages: [],
-						error: "Task chat session is not available.",
+						ok: true,
+						messages,
+					};
+				}
+				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+				const ptyMessages = terminalManager.listChatMessages?.(body.taskId) ?? [];
+				if (ptyMessages.length > 0) {
+					return {
+						ok: true,
+						messages: ptyMessages,
 					};
 				}
 				return {
-					ok: true,
-					messages,
+					ok: false,
+					messages: [],
+					error: "Task chat session is not available.",
 				};
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -409,8 +430,19 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		},
 		getClineSlashCommands: async (workspaceScope) => {
 			if (!workspaceScope) {
+				return { commands: [] };
+			}
+			const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+			if (scopedRuntimeConfig.selectedAgentId === "ag2") {
 				return {
-					commands: [],
+					commands: [
+						{
+							name: "clear",
+							instructions: "",
+							description: "Start a fresh chat session and clear prior context.",
+						},
+						...listProjectSkillSlashCommands(workspaceScope.workspacePath),
+					],
 				};
 			}
 			const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
@@ -487,16 +519,24 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const body = parseTaskChatCancelRequest(input);
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 				const summary = await clineTaskSessionService.cancelTaskTurn(body.taskId);
-				if (!summary) {
+				if (summary) {
 					return {
-						ok: false,
-						summary: null,
-						error: "Task chat session turn is not running.",
+						ok: true,
+						summary,
+					};
+				}
+				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+				const ptySummary = terminalManager.stopTaskSession?.(body.taskId) ?? null;
+				if (ptySummary) {
+					return {
+						ok: true,
+						summary: ptySummary,
 					};
 				}
 				return {
-					ok: true,
-					summary,
+					ok: false,
+					summary: null,
+					error: "Task chat session turn is not running.",
 				};
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -606,40 +646,87 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					requestedMode,
 					body.images,
 				);
+				if (!summary && !isHomeAgentSessionId(body.taskId)) {
+					const reboundSummary = await clineTaskSessionService.rebindPersistedTaskSession(body.taskId);
+					if (reboundSummary) {
+						summary = await clineTaskSessionService.sendTaskSessionInput(
+							body.taskId,
+							body.text,
+							requestedMode,
+							body.images,
+						);
+					}
+				}
 				if (!summary) {
-					if (!isHomeAgentSessionId(body.taskId)) {
-						const reboundSummary = await clineTaskSessionService.rebindPersistedTaskSession(body.taskId);
-						if (reboundSummary) {
-							summary = await clineTaskSessionService.sendTaskSessionInput(
-								body.taskId,
-								body.text,
-								requestedMode,
-								body.images,
-							);
-						}
-						if (!summary) {
+					const scopedRuntimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+					const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
+					const ptyAgent =
+						terminalManager.getSummary?.(body.taskId)?.agentId ?? scopedRuntimeConfig.selectedAgentId;
+					if (ptyAgent === "ag2") {
+						const resolved = resolveAgentCommand({ ...scopedRuntimeConfig, selectedAgentId: "ag2" });
+						if (!resolved) {
 							return {
 								ok: false,
 								summary: null,
-								error: "Task chat session is not running.",
+								error: "AG2 is not installed. mlx-agents must be on PATH.",
 							};
 						}
-					} else {
-						const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
-						summary = await clineTaskSessionService.startTaskSession({
-							taskId: body.taskId,
-							cwd: workspaceScope.workspacePath,
-							prompt: body.text,
-							images: body.images,
-							resumeFromPersistence: true,
-							providerId: clineLaunchConfig.providerId,
-							modelId: clineLaunchConfig.modelId,
-							mode: requestedMode,
-							apiKey: clineLaunchConfig.apiKey,
-							baseUrl: clineLaunchConfig.baseUrl,
-							reasoningEffort: clineLaunchConfig.reasoningEffort,
+						const prior = terminalManager.listChatMessages(body.taskId);
+						const prompt = buildAg2FollowUpPrompt(prior, body.text);
+						terminalManager.appendChatMessage(body.taskId, {
+							id: `ag2-user-${Date.now()}`,
+							role: "user",
+							content: body.text,
+							createdAt: Date.now(),
+							meta: null,
 						});
+						const taskCwd = isHomeAgentSessionId(body.taskId)
+							? workspaceScope.workspacePath
+							: await resolveExistingTaskCwdOrEnsure({
+									cwd: workspaceScope.workspacePath,
+									taskId: body.taskId,
+									baseRef: "HEAD",
+								});
+						summary = await terminalManager.startTaskSession({
+							taskId: body.taskId,
+							agentId: "ag2",
+							binary: resolved.binary,
+							args: resolved.args,
+							autonomousModeEnabled: scopedRuntimeConfig.agentAutonomousModeEnabled,
+							cwd: taskCwd,
+							prompt,
+							images: body.images,
+							cols: 120,
+							rows: 40,
+							workspaceId: workspaceScope.workspaceId,
+						});
+						return {
+							ok: true,
+							summary,
+							message: terminalManager.listChatMessages(body.taskId).at(-1) ?? null,
+						};
 					}
+					if (!isHomeAgentSessionId(body.taskId)) {
+						return {
+							ok: false,
+							summary: null,
+							error: "Task chat session is not running.",
+						};
+					}
+					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
+					summary = await clineTaskSessionService.startTaskSession({
+						taskId: body.taskId,
+						cwd: workspaceScope.workspacePath,
+						prompt: body.text,
+						images: body.images,
+						resumeFromPersistence: true,
+						providerId: clineLaunchConfig.providerId,
+						modelId: clineLaunchConfig.modelId,
+						mode: requestedMode,
+						apiKey: clineLaunchConfig.apiKey,
+						baseUrl: clineLaunchConfig.baseUrl,
+						reasoningEffort: clineLaunchConfig.reasoningEffort,
+					});
 				}
 				const latestMessage = clineTaskSessionService.listMessages(body.taskId).at(-1) ?? null;
 				return {
