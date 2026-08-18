@@ -810,4 +810,29 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(kiroLaunch.args).toContain("--trust-all-tools");
 	});
+
+	it("launches AG2 via mlx-agents ag2-run with Kanban hook env", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "2ceb2",
+			agentId: "ag2",
+			binary: "mlx-agents",
+			args: [],
+			cwd: "/tmp/worktree",
+			prompt: "Create KANBAN-SMOKE.txt with ok",
+			workspaceId: "workspace-1",
+		});
+		expect(launch.binary ?? "mlx-agents").toBe("mlx-agents");
+		expect(launch.args[0]).toBe("ag2-run");
+		expect(launch.args).toContain("Create KANBAN-SMOKE.txt with ok");
+		expect(launch.args).toContain("--workspace");
+		expect(launch.args).toContain("/tmp/worktree");
+		expect(launch.args).toContain("--role");
+		expect(launch.args).toContain("supervisor");
+		expect(launch.args).toContain("--task-id");
+		expect(launch.args).toContain("2ceb2");
+		expect(launch.args).toContain("--ensure-server");
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("2ceb2");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+	});
 });

@@ -66,6 +66,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		autonomousArgs: ["--yolo"],
 		installUrl: "https://github.com/google-gemini/gemini-cli",
 	},
+	{
+		id: "ag2",
+		label: "AG2",
+		binary: "mlx-agents",
+		baseArgs: ["ag2-run"],
+		autonomousArgs: [],
+		installUrl: "https://github.com/ag2ai/ag2",
+	},
 ];
 
 // Temporarily keep launch support scoped to the core agent set.
@@ -76,6 +84,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"codex",
 	"droid",
 	"kiro",
+	"ag2",
 	// "opencode",
 	// "gemini",
 ];

@@ -1429,6 +1429,31 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+const ag2Adapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const env: Record<string, string | undefined> = {};
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+		const args = ["ag2-run", input.prompt, "--workspace", input.cwd, "--role", "supervisor", "--ensure-server"];
+		if (input.taskId) {
+			args.push("--task-id", input.taskId);
+		}
+		return {
+			binary: input.binary ?? "mlx-agents",
+			args,
+			env,
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1437,6 +1462,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,
+	ag2: ag2Adapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
