@@ -1,4 +1,4 @@
-import { access, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
+import { access, cp, lstat, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import type {
@@ -62,6 +62,24 @@ async function pathExists(path: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+export const PROJECT_SKILL_TREES = [".agents", ".cline/skills", ".cursor/skills", ".clinerules"] as const;
+
+export async function copyProjectSkillTrees(repoPath: string, worktreePath: string): Promise<string[]> {
+	const copied: string[] = [];
+	for (const relativePath of PROJECT_SKILL_TREES) {
+		const sourcePath = join(repoPath, relativePath);
+		if (!(await pathExists(sourcePath))) {
+			continue;
+		}
+		const targetPath = join(worktreePath, relativePath);
+		await rm(targetPath, { recursive: true, force: true });
+		await mkdir(dirname(targetPath), { recursive: true });
+		await cp(sourcePath, targetPath, { recursive: true });
+		copied.push(relativePath);
+	}
+	return copied;
 }
 
 function isMissingInitialCommitError(message: string): boolean {
@@ -386,6 +404,7 @@ async function syncIgnoredPathsIntoWorktree(repoPath: string, worktreePath: stri
 			isDirectory: sourceStat.isDirectory(),
 		});
 	}
+	await copyProjectSkillTrees(repoPath, worktreePath);
 }
 
 async function initializeSubmodulesIfNeeded(worktreePath: string): Promise<void> {
