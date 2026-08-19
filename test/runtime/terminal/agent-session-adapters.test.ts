@@ -834,5 +834,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args).toContain("--ensure-server");
 		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("2ceb2");
 		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.consumeOutput).toEqual(expect.any(Function));
+		expect(launch.buildFollowUpPrompt).toEqual(expect.any(Function));
+		expect(launch.buildFollowUpPrompt?.([], "next turn")).toBe("next turn");
 	});
 });

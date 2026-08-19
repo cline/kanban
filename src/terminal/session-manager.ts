@@ -1,6 +1,8 @@
 // PTY-backed runtime for non-Cline task sessions and the workspace shell terminal.
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
+
+import { getAgentCapabilities, getRuntimeAgentCatalogEntry } from "../core/agent-catalog";
 import type {
 	RuntimeTaskChatMessage,
 	RuntimeTaskHookActivity,
@@ -10,7 +12,6 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
-import { consumeAg2ChatOutput } from "./ag2-chat-stream";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -264,6 +265,15 @@ export class TerminalSessionManager implements TerminalSessionService {
 		this.upsertChatMessage(entry, message);
 	}
 
+	clearChatMessages(taskId: string): void {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return;
+		}
+		entry.chatMessages = [];
+		entry.chatLineBuffer = "";
+	}
+
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
 		for (const [taskId, summary] of Object.entries(record)) {
 			this.entries.set(taskId, {
@@ -323,8 +333,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 			request: cloneStartTaskSessionRequest(request),
 		};
 		if (entry.active && isActiveState(entry.summary.state)) {
-			if (request.agentId === "ag2" && request.prompt.trim().length > 0) {
-				throw new Error("AG2 is still running. Wait for it to finish, then send.");
+			const capabilities = getAgentCapabilities(request.agentId);
+			if (capabilities?.rejectFollowUpWhileRunning && request.prompt.trim().length > 0) {
+				const label = getRuntimeAgentCatalogEntry(request.agentId)?.label ?? request.agentId;
+				throw new Error(`${label} is still running. Wait for it to finish, then send.`);
 			}
 			return cloneSummary(entry.summary);
 		}
@@ -336,7 +348,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 		entry.terminalStateMirror?.dispose();
 		entry.terminalStateMirror = null;
-		if (request.agentId !== "ag2") {
+		if (!getAgentCapabilities(request.agentId)?.preserveChatAcrossRestarts) {
 			entry.chatMessages = [];
 		}
 		entry.chatLineBuffer = "";
@@ -398,8 +410,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 						return;
 					}
 					let displayChunk = filteredChunk;
-					if (request.agentId === "ag2") {
-						const consumed = consumeAg2ChatOutput(entry.chatLineBuffer, filteredChunk.toString("utf8"));
+					if (launch.consumeOutput) {
+						const consumed = launch.consumeOutput(entry.chatLineBuffer, filteredChunk.toString("utf8"));
 						entry.chatLineBuffer = consumed.buffer;
 						for (const message of consumed.messages) {
 							this.upsertChatMessage(entry, message);
@@ -1031,9 +1043,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (wasSuppressed) {
 			return false;
 		}
-		// AG2 is a one-shot `mlx-agents ag2-run` PTY, not a long-lived TUI.
-		// Restarting it after a clean exit re-runs the whole supervisor loop.
-		if (entry.summary.agentId === "ag2") {
+		if (!getAgentCapabilities(entry.summary.agentId)?.autoRestart) {
 			return false;
 		}
 		if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {

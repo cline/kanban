@@ -12,7 +12,12 @@ import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import { isNativeChatPanelAgent, selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
+import {
+	getChatComposerPlaceholder,
+	isNativeChatPanelAgent,
+	selectLatestTaskChatMessageForTask,
+	shouldShowClineModelPicker,
+} from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeConfigResponse,
@@ -159,7 +164,7 @@ export function useHomeSidebarAgentPanel({
 				summary={homeAgentPanelSummary ?? createIdleTaskSession(taskId)}
 				defaultMode="act"
 				showComposerModeToggle={false}
-				showClineModelPicker={runtimeProjectConfig.selectedAgentId === "cline"}
+				showClineModelPicker={shouldShowClineModelPicker(runtimeProjectConfig.selectedAgentId)}
 				workspaceId={currentProjectId}
 				runtimeConfig={runtimeProjectConfig}
 				onSendMessage={
@@ -170,9 +175,8 @@ export function useHomeSidebarAgentPanel({
 				incomingMessage={latestHomeTaskChatMessage}
 				incomingMessages={homeTaskChatMessages}
 				composerPlaceholder={
-					runtimeProjectConfig.selectedAgentId === "ag2"
-						? "Message AG2"
-						: "Ask Cline to add, edit, start, or link tasks"
+					getChatComposerPlaceholder(runtimeProjectConfig.selectedAgentId) ??
+					"Ask Cline to add, edit, start, or link tasks"
 				}
 			/>
 		);

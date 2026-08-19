@@ -17,7 +17,7 @@ import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
-import { isNativeChatPanelAgent } from "@/runtime/native-agent";
+import { getChatComposerPlaceholder, isNativeChatPanelAgent, shouldShowClineModelPicker } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeClineReasoningEffort,
@@ -639,8 +639,8 @@ export function CardDetailView({
 			taskColumnId={selection.column.id}
 			defaultMode="act"
 			showComposerModeToggle={false}
-			showClineModelPicker={effectiveTaskAgentId === "cline"}
-			composerPlaceholder={effectiveTaskAgentId === "ag2" ? "Message AG2" : undefined}
+			showClineModelPicker={shouldShowClineModelPicker(effectiveTaskAgentId)}
+			composerPlaceholder={getChatComposerPlaceholder(effectiveTaskAgentId)}
 			workspaceId={currentProjectId}
 			runtimeConfig={runtimeConfig}
 			taskClineSettings={selection.card.clineSettings}

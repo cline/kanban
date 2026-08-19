@@ -254,6 +254,9 @@ export function useHomeAgentSession({
 		if (!currentProjectId || !descriptor || descriptor.panelMode !== "chat") {
 			return;
 		}
+		if (!runtimeProjectConfig || !isNativeClineAgentSelected(runtimeProjectConfig.selectedAgentId)) {
+			return;
+		}
 
 		const previousVersion = previousClineSessionContextVersionByWorkspaceRef.current.get(currentProjectId);
 		previousClineSessionContextVersionByWorkspaceRef.current.set(currentProjectId, clineSessionContextVersion);
@@ -291,7 +294,14 @@ export function useHomeAgentSession({
 		return () => {
 			cancelled = true;
 		};
-	}, [clineSessionContextVersion, currentProjectId, descriptor, sessionSummaries, upsertSessionSummary]);
+	}, [
+		clineSessionContextVersion,
+		currentProjectId,
+		descriptor,
+		runtimeProjectConfig,
+		sessionSummaries,
+		upsertSessionSummary,
+	]);
 
 	useEffect(() => {
 		if (!currentProjectId || !descriptor || descriptor.panelMode !== "terminal") {
