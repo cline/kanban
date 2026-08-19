@@ -2,6 +2,7 @@
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type {
+	RuntimeTaskChatMessage,
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
 	RuntimeTaskSessionReviewReason,
@@ -9,6 +10,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
+import { consumeAg2ChatOutput } from "./ag2-chat-stream";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -73,6 +75,8 @@ interface SessionEntry {
 	suppressAutoRestartOnExit: boolean;
 	autoRestartTimestamps: number[];
 	pendingAutoRestart: Promise<void> | null;
+	chatMessages: RuntimeTaskChatMessage[];
+	chatLineBuffer: string;
 }
 
 export interface StartTaskSessionRequest {
@@ -205,6 +209,7 @@ function hasCodexStartupUiRendered(text: string): boolean {
 export class TerminalSessionManager implements TerminalSessionService {
 	private readonly entries = new Map<string, SessionEntry>();
 	private readonly summaryListeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
+	private readonly chatListeners = new Set<(taskId: string, message: RuntimeTaskChatMessage) => void>();
 
 	private trySendDeferredCodexStartupInput(taskId: string): boolean {
 		const entry = this.entries.get(taskId);
@@ -242,6 +247,23 @@ export class TerminalSessionManager implements TerminalSessionService {
 		};
 	}
 
+	onChatMessage(listener: (taskId: string, message: RuntimeTaskChatMessage) => void): () => void {
+		this.chatListeners.add(listener);
+		return () => {
+			this.chatListeners.delete(listener);
+		};
+	}
+
+	listChatMessages(taskId: string): RuntimeTaskChatMessage[] {
+		const entry = this.entries.get(taskId);
+		return entry ? entry.chatMessages.map((message) => ({ ...message })) : [];
+	}
+
+	appendChatMessage(taskId: string, message: RuntimeTaskChatMessage): void {
+		const entry = this.ensureEntry(taskId);
+		this.upsertChatMessage(entry, message);
+	}
+
 	hydrateFromRecord(record: Record<string, RuntimeTaskSessionSummary>): void {
 		for (const [taskId, summary] of Object.entries(record)) {
 			this.entries.set(taskId, {
@@ -254,6 +276,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 				suppressAutoRestartOnExit: false,
 				autoRestartTimestamps: [],
 				pendingAutoRestart: null,
+				chatMessages: [],
+				chatLineBuffer: "",
 			});
 		}
 	}
@@ -299,6 +323,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			request: cloneStartTaskSessionRequest(request),
 		};
 		if (entry.active && isActiveState(entry.summary.state)) {
+			if (request.agentId === "ag2" && request.prompt.trim().length > 0) {
+				throw new Error("AG2 is still running. Wait for it to finish, then send.");
+			}
 			return cloneSummary(entry.summary);
 		}
 
@@ -309,6 +336,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 		entry.terminalStateMirror?.dispose();
 		entry.terminalStateMirror = null;
+		if (request.agentId !== "ag2") {
+			entry.chatMessages = [];
+		}
+		entry.chatLineBuffer = "";
 
 		const cols = Number.isFinite(request.cols) && (request.cols ?? 0) > 0 ? Math.floor(request.cols ?? 0) : 120;
 		const rows = Number.isFinite(request.rows) && (request.rows ?? 0) > 0 ? Math.floor(request.rows ?? 0) : 40;
@@ -366,13 +397,26 @@ export class TerminalSessionManager implements TerminalSessionService {
 					if (filteredChunk.byteLength === 0) {
 						return;
 					}
-					entry.terminalStateMirror?.applyOutput(filteredChunk);
+					let displayChunk = filteredChunk;
+					if (request.agentId === "ag2") {
+						const consumed = consumeAg2ChatOutput(entry.chatLineBuffer, filteredChunk.toString("utf8"));
+						entry.chatLineBuffer = consumed.buffer;
+						for (const message of consumed.messages) {
+							this.upsertChatMessage(entry, message);
+						}
+						if (consumed.passthrough.length === 0) {
+							updateSummary(entry, { lastOutputAt: now() });
+							return;
+						}
+						displayChunk = Buffer.from(consumed.passthrough, "utf8");
+					}
+					entry.terminalStateMirror?.applyOutput(displayChunk);
 
 					const needsDecodedOutput =
 						entry.active.workspaceTrustBuffer !== null ||
 						(entry.active.detectOutputTransition !== null &&
 							(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true));
-					const data = needsDecodedOutput ? filteredChunk.toString("utf8") : "";
+					const data = needsDecodedOutput ? displayChunk.toString("utf8") : "";
 
 					if (entry.active.workspaceTrustBuffer !== null) {
 						entry.active.workspaceTrustBuffer += data;
@@ -439,7 +483,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 
 					for (const taskListener of entry.listeners.values()) {
-						taskListener.onOutput?.(filteredChunk);
+						taskListener.onOutput?.(displayChunk);
 					}
 				},
 				onExit: (event) => {
@@ -974,6 +1018,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			suppressAutoRestartOnExit: false,
 			autoRestartTimestamps: [],
 			pendingAutoRestart: null,
+			chatMessages: [],
+			chatLineBuffer: "",
 		};
 		this.entries.set(taskId, created);
 		return created;
@@ -983,6 +1029,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const wasSuppressed = entry.suppressAutoRestartOnExit;
 		entry.suppressAutoRestartOnExit = false;
 		if (wasSuppressed) {
+			return false;
+		}
+		// AG2 is a one-shot `mlx-agents ag2-run` PTY, not a long-lived TUI.
+		// Restarting it after a clean exit re-runs the whole supervisor loop.
+		if (entry.summary.agentId === "ag2") {
 			return false;
 		}
 		if (entry.listeners.size === 0 || entry.restartRequest?.kind !== "task") {
@@ -1035,6 +1086,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 		const snapshot = cloneSummary(summary);
 		for (const listener of this.summaryListeners) {
 			listener(snapshot);
+		}
+	}
+
+	private upsertChatMessage(entry: SessionEntry, message: RuntimeTaskChatMessage): void {
+		const existingIndex = entry.chatMessages.findIndex((current) => current.id === message.id);
+		if (existingIndex >= 0) {
+			entry.chatMessages[existingIndex] = message;
+		} else {
+			entry.chatMessages.push(message);
+		}
+		const snapshot = { ...message };
+		for (const listener of this.chatListeners) {
+			listener(entry.summary.taskId, snapshot);
 		}
 	}
 }

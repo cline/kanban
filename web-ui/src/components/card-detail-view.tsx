@@ -17,7 +17,7 @@ import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
-import { isNativeClineAgentSelected } from "@/runtime/native-agent";
+import { isNativeChatPanelAgent } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeClineReasoningEffort,
@@ -513,7 +513,7 @@ export function CardDetailView({
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const effectiveTaskAgentId = sessionSummary?.agentId ?? selection.card.agentId ?? selectedAgentId;
-	const showClineAgentChatPanel = isNativeClineAgentSelected(effectiveTaskAgentId);
+	const showClineAgentChatPanel = isNativeChatPanelAgent(effectiveTaskAgentId);
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];
@@ -639,13 +639,15 @@ export function CardDetailView({
 			taskColumnId={selection.column.id}
 			defaultMode="act"
 			showComposerModeToggle={false}
+			showClineModelPicker={effectiveTaskAgentId === "cline"}
+			composerPlaceholder={effectiveTaskAgentId === "ag2" ? "Message AG2" : undefined}
 			workspaceId={currentProjectId}
 			runtimeConfig={runtimeConfig}
 			taskClineSettings={selection.card.clineSettings}
 			taskHasExplicitClineSettings={hasExplicitTaskClineSettings}
 			onClineSettingsSaved={onClineSettingsSaved}
 			onTaskClineSettingsChanged={onTaskClineSettingsChanged}
-			onSendMessage={onSendClineChatMessage}
+			onSendMessage={isNativeChatPanelAgent(effectiveTaskAgentId) ? onSendClineChatMessage : undefined}
 			onCancelTurn={onCancelClineChatTurn}
 			onLoadMessages={onLoadClineChatMessages}
 			incomingMessages={streamedClineChatMessages}

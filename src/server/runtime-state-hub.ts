@@ -497,10 +497,16 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			if (terminalSummaryUnsubscribeByWorkspaceId.has(workspaceId)) {
 				return;
 			}
-			const unsubscribe = manager.onSummary((summary) => {
+			const unsubscribeSummary = manager.onSummary((summary) => {
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
 			});
-			terminalSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
+			const unsubscribeChat = manager.onChatMessage((taskId, message) => {
+				broadcastTaskChatMessage(workspaceId, taskId, message);
+			});
+			terminalSummaryUnsubscribeByWorkspaceId.set(workspaceId, () => {
+				unsubscribeSummary();
+				unsubscribeChat();
+			});
 		},
 		trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => {
 			if (clineSummaryUnsubscribeByWorkspaceId.has(workspaceId)) {

@@ -83,6 +83,40 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.getSummary("task-1")?.pid).toBe(222);
 	});
 
+	it("does not restart an attached AG2 session after a clean exit", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager();
+		manager.attach("task-ag2", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-ag2",
+			agentId: "ag2",
+			binary: "mlx-agents",
+			args: ["ag2-run"],
+			cwd: "/tmp/task-ag2",
+			prompt: "Create KANBAN-SMOKE.txt with ok",
+		});
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		spawnedSessions[0]?.triggerExit(0);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager.getSummary("task-ag2")?.state).toBe("awaiting_review");
+		expect(manager.getSummary("task-ag2")?.pid).toBeNull();
+	});
+
 	it("does not restart an attached agent session after an explicit stop", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {

@@ -397,6 +397,16 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		getTaskChatMessages: async (workspaceScope, input) => {
 			try {
 				const body = parseTaskChatMessagesRequest(input);
+				const scopedRuntimeConfig = workspaceScope ? await deps.loadScopedRuntimeConfig(workspaceScope) : null;
+				const terminalManager = workspaceScope ? await deps.getScopedTerminalManager(workspaceScope) : null;
+				const terminalSummary = terminalManager?.getSummary?.(body.taskId) ?? null;
+				const effectiveAgentId = terminalSummary?.agentId ?? scopedRuntimeConfig?.selectedAgentId ?? null;
+				if (effectiveAgentId === "ag2") {
+					return {
+						ok: true,
+						messages: terminalManager?.listChatMessages?.(body.taskId) ?? [],
+					};
+				}
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 				const summary = clineTaskSessionService.getSummary(body.taskId);
 				const messages = await clineTaskSessionService.loadTaskSessionMessages(body.taskId);
@@ -406,8 +416,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						messages,
 					};
 				}
-				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
-				const ptyMessages = terminalManager.listChatMessages?.(body.taskId) ?? [];
+				const ptyMessages = terminalManager?.listChatMessages?.(body.taskId) ?? [];
 				if (ptyMessages.length > 0) {
 					return {
 						ok: true,

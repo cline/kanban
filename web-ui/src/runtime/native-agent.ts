@@ -11,6 +11,10 @@ export function isNativeClineAgentSelected(agentId: RuntimeAgentId | null | unde
 	return agentId === "cline";
 }
 
+export function isNativeChatPanelAgent(agentId: RuntimeAgentId | null | undefined): boolean {
+	return agentId === "cline" || agentId === "ag2";
+}
+
 export function getRuntimeClineProviderSettings(
 	config: Pick<RuntimeConfigResponse, "clineProviderSettings"> | null | undefined,
 ): RuntimeClineProviderSettings {

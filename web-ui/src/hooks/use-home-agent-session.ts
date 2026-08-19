@@ -8,7 +8,11 @@ import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useRef } from "react";
 
 import { notifyError } from "@/components/app-toaster";
-import { getRuntimeClineProviderSettings, isNativeClineAgentSelected } from "@/runtime/native-agent";
+import {
+	getRuntimeClineProviderSettings,
+	isNativeChatPanelAgent,
+	isNativeClineAgentSelected,
+} from "@/runtime/native-agent";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -140,6 +144,12 @@ export function useHomeAgentSession({
 		if (isNativeClineAgentSelected(runtimeProjectConfig.selectedAgentId)) {
 			panelMode = "chat";
 			descriptorKey = buildClineDescriptor(runtimeProjectConfig);
+		} else if (isNativeChatPanelAgent(runtimeProjectConfig.selectedAgentId)) {
+			if (!runtimeProjectConfig.effectiveCommand) {
+				return null;
+			}
+			panelMode = "chat";
+			descriptorKey = buildTerminalDescriptor(runtimeProjectConfig);
 		} else {
 			if (!runtimeProjectConfig.effectiveCommand) {
 				return null;
