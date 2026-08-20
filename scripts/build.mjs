@@ -55,6 +55,14 @@ await Promise.all([
 		entryPoints: ["src/index.ts"],
 		outfile: "dist/index.js",
 	}),
+	// Lightweight Codex hook entrypoint. Keeping this separate from the main
+	// CLI avoids loading runtime telemetry and server dependencies per hook.
+	esbuild.build({
+		...shared,
+		entryPoints: ["src/codex-hook-cli.ts"],
+		outfile: "dist/codex-hook.js",
+		banner: { js: `#!/usr/bin/env node\n${cjsShimBanner}` },
+	}),
 ]);
 
-console.log("esbuild: bundled dist/cli.js and dist/index.js");
+console.log("esbuild: bundled dist/cli.js, dist/codex-hook.js, and dist/index.js");

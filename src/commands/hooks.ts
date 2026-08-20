@@ -35,7 +35,7 @@ interface HooksIngestArgs {
 	payload?: Record<string, unknown> | null;
 }
 
-interface HookCommandMetadataOptionValues {
+export interface HookCommandMetadataOptionValues {
 	source?: string;
 	activityText?: string;
 	toolName?: string;
@@ -531,7 +531,7 @@ function mapGeminiHookEvent(eventName: string): RuntimeHookEvent | null {
 	return null;
 }
 
-async function runCodexHookSubcommand(
+export async function runCodexHookSubcommand(
 	event: RuntimeHookEvent,
 	options: HookCommandMetadataOptionValues,
 	payloadArg: string | undefined,

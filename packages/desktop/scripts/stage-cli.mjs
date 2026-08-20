@@ -15,6 +15,7 @@ const repoRoot = resolve(desktopRoot, "../..");
 const distDir = resolve(repoRoot, "dist");
 const webUiIndex = resolve(distDir, "web-ui/index.html");
 const cliEntry = resolve(distDir, "cli.js");
+const codexHookEntry = resolve(distDir, "codex-hook.js");
 const stageDir = resolve(desktopRoot, "cli");
 
 function fail(message) {
@@ -29,6 +30,9 @@ if (!existsSync(distDir)) {
 }
 if (!existsSync(cliEntry)) {
 	fail(`${cliEntry} is missing.`);
+}
+if (!existsSync(codexHookEntry)) {
+	fail(`${codexHookEntry} is missing.`);
 }
 if (!existsSync(webUiIndex)) {
 	fail(

@@ -60,6 +60,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "npx @biomejs/biome lint src test web-ui/src web-ui/tests vitest.config.ts web-ui/vite.config.ts web-ui/vitest.config.ts web-ui/playwright.config.ts",
     "format": "npx @biomejs/biome check --write .",
+    "perf:monitor": "node scripts/monitor-performance.mjs",
     "check": "npx @biomejs/biome check . && npm run typecheck && npm run test",
     "test": "vitest run",
     "test:fast": "vitest run test/runtime test/utilities",

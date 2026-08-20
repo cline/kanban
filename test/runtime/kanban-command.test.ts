@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildKanbanCommandParts, resolveKanbanCommandParts } from "../../src/core/kanban-command";
+import {
+	buildKanbanCodexHookCommandParts,
+	buildKanbanCommandParts,
+	resolveKanbanCommandParts,
+} from "../../src/core/kanban-command";
 
 describe("resolveKanbanCommandParts", () => {
 	it("resolves node plus script entrypoint", () => {
@@ -45,5 +49,47 @@ describe("buildKanbanCommandParts", () => {
 				argv: ["/usr/local/bin/node", "/tmp/.npx/321/node_modules/kanban/dist/cli.js"],
 			}),
 		).toEqual(["/usr/local/bin/node", "/tmp/.npx/321/node_modules/kanban/dist/cli.js", "hooks", "ingest"]);
+	});
+});
+
+describe("buildKanbanCodexHookCommandParts", () => {
+	it("uses the lightweight bundled hook beside the packaged CLI", () => {
+		expect(
+			buildKanbanCodexHookCommandParts(["--event", "activity"], {
+				execPath: "/usr/local/bin/node",
+				argv: ["/usr/local/bin/node", "/tmp/node_modules/kanban/dist/cli.js"],
+			}),
+		).toEqual([
+			"/usr/local/bin/node",
+			"/tmp/node_modules/kanban/dist/codex-hook.js",
+			"--event",
+			"activity",
+		]);
+	});
+
+	it("uses the lightweight source hook while running through tsx", () => {
+		expect(
+			buildKanbanCodexHookCommandParts(["--event", "activity"], {
+				execPath: "/usr/local/bin/node",
+				execArgv: ["--import", "tsx"],
+				argv: ["/usr/local/bin/node", "/repo/src/cli.ts"],
+			}),
+		).toEqual([
+			"/usr/local/bin/node",
+			"--import",
+			"tsx",
+			"/repo/src/codex-hook-cli.ts",
+			"--event",
+			"activity",
+		]);
+	});
+
+	it("falls back to the main CLI for opaque executable launches", () => {
+		expect(
+			buildKanbanCodexHookCommandParts(["--event", "activity"], {
+				execPath: "/usr/local/bin/kanban",
+				argv: ["/usr/local/bin/kanban"],
+			}),
+		).toEqual(["/usr/local/bin/kanban", "hooks", "codex-hook", "--event", "activity"]);
 	});
 });

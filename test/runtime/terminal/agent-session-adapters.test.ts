@@ -83,6 +83,7 @@ afterEach(() => {
 describe("prepareAgentLaunch hook strategies", () => {
 	it("configures Codex hooks without legacy notify", async () => {
 		setupTempHome();
+		setKanbanProcessContext();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-1",
 			agentId: "codex",
@@ -98,7 +99,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
 		expect(launchCommand).toContain("codex");
-		expect(launchCommand).toContain("codex-hook");
+		expect(launchCommand).toContain("codex-hook.js");
+		expect(launchCommand).not.toContain("dist/cli.js hooks codex-hook");
 		expect(launchCommand).toContain("hooks.UserPromptSubmit");
 		expect(launchCommand).toContain("hooks.Stop");
 		expect(launchCommand).toContain("hooks.PermissionRequest");

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { RuntimeHookEvent } from "../core/api-contract";
-import { buildKanbanCommandParts } from "../core/kanban-command";
+import { buildKanbanCodexHookCommandParts } from "../core/kanban-command";
 import { quoteShellArg } from "../core/shell";
 
 const CODEX_HOOK_TIMEOUT_SECONDS = 5;
@@ -57,7 +57,7 @@ function addCodexConfigOverrideBeforeSubcommand(args: string[], key: string, val
 }
 
 function buildCodexHookCommand(event: RuntimeHookEvent): string {
-	return buildKanbanCommandParts(["hooks", "codex-hook", "--event", event, "--source", "codex"])
+	return buildKanbanCodexHookCommandParts(["--event", event, "--source", "codex"])
 		.map(quoteShellArg)
 		.join(" ");
 }
