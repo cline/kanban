@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.70]
+
+- Fixed a freeze that could occur when clearing completed tasks on large boards by limiting cleanup concurrency
+
 ## [0.1.69]
 
 - Claude Code autonomous tasks now run in Claude Code's built-in "auto" permission mode instead of fully bypassing permissions, for safer unattended runs

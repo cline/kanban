@@ -69,6 +69,7 @@ interface HookSnapshot {
 	handleRestoreTaskFromTrash: (taskId: string) => void;
 	handleStartTask: (taskId: string) => void;
 	handleCardSelect: (taskId: string) => void;
+	handleConfirmClearTrash: () => void;
 }
 
 function createRect(width: number, height: number): DOMRect {
@@ -90,6 +91,8 @@ function HookHarness({
 	setBoard,
 	ensureTaskWorkspace,
 	startTaskSession,
+	stopTaskSession = NOOP_STOP_SESSION,
+	cleanupTaskWorkspace = NOOP_CLEANUP_WORKSPACE,
 	selectedCard = null,
 	setSelectedTaskIdOverride,
 	onSnapshot,
@@ -98,6 +101,8 @@ function HookHarness({
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	ensureTaskWorkspace: UseTaskSessionsResult["ensureTaskWorkspace"];
 	startTaskSession: UseTaskSessionsResult["startTaskSession"];
+	stopTaskSession?: (taskId: string) => Promise<void>;
+	cleanupTaskWorkspace?: (taskId: string) => Promise<unknown>;
 	selectedCard?: { card: BoardCard; column: { id: "backlog" | "in_progress" | "review" | "trash" } } | null;
 	setSelectedTaskIdOverride?: Dispatch<SetStateAction<string | null>>;
 	onSnapshot?: (snapshot: HookSnapshot) => void;
@@ -118,8 +123,8 @@ function HookHarness({
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
 		setIsClearTrashDialogOpen,
 		setIsGitHistoryOpen,
-		stopTaskSession: NOOP_STOP_SESSION,
-		cleanupTaskWorkspace: NOOP_CLEANUP_WORKSPACE,
+		stopTaskSession,
+		cleanupTaskWorkspace,
 		ensureTaskWorkspace,
 		startTaskSession,
 		fetchTaskWorkspaceInfo: NOOP_FETCH_WORKSPACE_INFO,
@@ -134,8 +139,15 @@ function HookHarness({
 			handleRestoreTaskFromTrash: actions.handleRestoreTaskFromTrash,
 			handleStartTask: actions.handleStartTask,
 			handleCardSelect: actions.handleCardSelect,
+			handleConfirmClearTrash: actions.handleConfirmClearTrash,
 		});
-	}, [actions.handleCardSelect, actions.handleRestoreTaskFromTrash, actions.handleStartTask, onSnapshot]);
+	}, [
+		actions.handleCardSelect,
+		actions.handleConfirmClearTrash,
+		actions.handleRestoreTaskFromTrash,
+		actions.handleStartTask,
+		onSnapshot,
+	]);
 
 	return null;
 }
@@ -676,5 +688,89 @@ describe("useBoardInteractions", () => {
 		});
 
 		expect(setSelectedTaskId).not.toHaveBeenCalled();
+	});
+
+	it("bounds clear-trash cleanup concurrency while still cleaning up every task", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		useProgrammaticCardMovesMock.mockReturnValue({
+			handleProgrammaticCardMoveReady: () => {},
+			setRequestMoveTaskToTrashHandler: () => {},
+			tryProgrammaticCardMove: () => "unavailable",
+			consumeProgrammaticCardMove: () => ({}),
+			resolvePendingProgrammaticTrashMove: () => {},
+			waitForProgrammaticCardMoveAvailability: async () => {},
+			resetProgrammaticCardMoves: () => {},
+			requestMoveTaskToTrashWithAnimation: async () => {},
+			programmaticCardMoveCycle: 0,
+		});
+
+		useLinkedBacklogTaskActionsMock.mockReturnValue({
+			handleCreateDependency: () => {},
+			handleDeleteDependency: () => {},
+			confirmMoveTaskToTrash: async () => {},
+			requestMoveTaskToTrash: async () => {},
+		});
+
+		const trashTaskCount = 25;
+		const trashTasks = Array.from({ length: trashTaskCount }, (_, index) =>
+			createTask(`task-trash-${index}`, `Trash task ${index}`, index + 1),
+		);
+		const board: BoardData = {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Done", cards: trashTasks },
+			],
+			dependencies: [],
+		};
+
+		// Track how many per-task cleanup chains (stop -> cleanup) run at once.
+		let inFlight = 0;
+		let maxInFlight = 0;
+		const stopTaskSession = vi.fn(async (_taskId: string) => {
+			inFlight += 1;
+			maxInFlight = Math.max(maxInFlight, inFlight);
+			await Promise.resolve();
+		});
+		const cleanupTaskWorkspace = vi.fn(async (_taskId: string) => {
+			await Promise.resolve();
+			inFlight -= 1;
+			return null;
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={board}
+					setBoard={() => board}
+					ensureTaskWorkspace={async () => ({ ok: true as const })}
+					startTaskSession={async () => ({ ok: true as const })}
+					stopTaskSession={stopTaskSession}
+					cleanupTaskWorkspace={cleanupTaskWorkspace}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (!latestSnapshot) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot!.handleConfirmClearTrash();
+		});
+
+		expect(stopTaskSession).toHaveBeenCalledTimes(trashTaskCount);
+		expect(cleanupTaskWorkspace).toHaveBeenCalledTimes(trashTaskCount);
+		expect(maxInFlight).toBeGreaterThan(0);
+		expect(maxInFlight).toBeLessThanOrEqual(4);
+		for (const task of trashTasks) {
+			expect(stopTaskSession).toHaveBeenCalledWith(task.id);
+			expect(cleanupTaskWorkspace).toHaveBeenCalledWith(task.id);
+		}
 	});
 });
