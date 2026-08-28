@@ -385,6 +385,26 @@ export async function listSdkProviderModels(providerId: string): Promise<SdkProv
 
 const providerManager = new ProviderSettingsManager();
 
+let ensureProvidersLoadPromise: Promise<void> | null = null;
+
+export function ensureSdkCustomProvidersLoaded(): Promise<void> {
+	if (!ensureProvidersLoadPromise) {
+		ensureProvidersLoadPromise = ensureCustomProvidersLoaded(providerManager).catch((error: unknown) => {
+			ensureProvidersLoadPromise = null;
+			throw error;
+		});
+	}
+	return ensureProvidersLoadPromise;
+}
+
+export function resolveSdkLaunchProviderId(providerId: string): string {
+	const normalizedProviderId = providerId.trim().toLowerCase();
+	const isBuiltInProviderId = ClineCore.Llms.isBuiltInProviderId;
+	return typeof isBuiltInProviderId === "function" && !isBuiltInProviderId(normalizedProviderId)
+		? "lmstudio"
+		: normalizedProviderId;
+}
+
 function resolveModelsPath(): string {
 	return join(dirname(providerManager.getFilePath()), "models.json");
 }
