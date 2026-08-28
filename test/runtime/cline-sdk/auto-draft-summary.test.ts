@@ -52,6 +52,11 @@ describe("automatic card summary policy", () => {
 		);
 	});
 
+	it("drafts when the final message arrives after the transition to awaiting review", () => {
+		const awaitingFinalMessage = createCompletedSummary({ latestHookActivity: null });
+		expect(shouldAutoDraftCardSummary(awaitingFinalMessage, createCompletedSummary(), false)).toBe(true);
+	});
+
 	it.each([
 		["not awaiting review", createSummary({ state: "running" })],
 		["interrupted completion", createCompletedSummary({ reviewReason: "interrupted" })],

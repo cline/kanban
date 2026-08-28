@@ -102,9 +102,7 @@ export function CardSummaryPanel({
 					<Sparkles size={14} />
 					<span>Summary</span>
 				</div>
-				<p className="mb-3 text-xs">
-					No summary yet. Summaries are automatically drafted when tasks complete successfully.
-				</p>
+				<p className="mb-3 text-xs">No summary yet. A summary is drafted when a task returns a final response.</p>
 				<Button variant="default" size="sm" onClick={() => setIsEditing(true)} className="h-7 text-xs">
 					Add Summary
 				</Button>

@@ -84,7 +84,7 @@ export function shouldAutoDraftCardSummary(
 	if (!latestSummary || latestSummary.state !== "awaiting_review") {
 		return false;
 	}
-	if (previousSummary?.state === "awaiting_review") {
+	if (previousSummary?.state === "awaiting_review" && previousSummary.latestHookActivity?.finalMessage?.trim()) {
 		return false;
 	}
 	if (latestSummary.reviewReason === "interrupted") {
