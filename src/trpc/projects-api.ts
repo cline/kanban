@@ -4,10 +4,17 @@ import type {
 	RuntimeBoardData,
 	RuntimeDirectoryListResponse,
 	RuntimeProjectAddResponse,
+	RuntimeProjectMemoryResponse,
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
 } from "../core/api-contract";
-import { parseDirectoryListRequest, parseProjectAddRequest, parseProjectRemoveRequest } from "../core/api-validation";
+import {
+	parseDirectoryListRequest,
+	parseProjectAddRequest,
+	parseProjectMemorySaveRequest,
+	parseProjectRemoveRequest,
+} from "../core/api-validation";
+import { getProjectMemoryMaxChars, readProjectMemory, writeProjectMemory } from "../state/project-memory";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
@@ -21,7 +28,7 @@ import { cloneGitRepository } from "../workspace/git-clone";
 import { ensureInitialCommit, initializeGitRepository } from "../workspace/initialize-repo";
 import { isPathWithinRoot } from "../workspace/path-sandbox";
 import { deleteTaskWorktree } from "../workspace/task-worktree";
-import type { RuntimeTrpcContext } from "./app-router";
+import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
 
 interface DisposeWorkspaceOptions {
 	stopTerminalSessions?: boolean;
@@ -362,6 +369,34 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 							: message,
 				} satisfies RuntimeDirectoryListResponse;
 			}
+		},
+		getProjectMemory: async (scope: RuntimeTrpcWorkspaceScope) => {
+			const result = await readProjectMemory(scope.workspaceId);
+			if (result.type === "validation_error") {
+				throw new Error(result.message);
+			}
+			const maxChars = getProjectMemoryMaxChars();
+			return {
+				content: result.content,
+				maxChars,
+				remainingChars: maxChars - result.content.length,
+			} satisfies RuntimeProjectMemoryResponse;
+		},
+		saveProjectMemory: async (scope: RuntimeTrpcWorkspaceScope, input) => {
+			const body = parseProjectMemorySaveRequest(input);
+			const result = await writeProjectMemory(scope.workspaceId, body.content);
+			if (result.type === "validation_error") {
+				throw new Error(result.message);
+			}
+			if (result.type === "write_error") {
+				throw new Error(result.message);
+			}
+			const maxChars = getProjectMemoryMaxChars();
+			return {
+				content: result.content,
+				maxChars,
+				remainingChars: maxChars - result.content.length,
+			} satisfies RuntimeProjectMemoryResponse;
 		},
 	};
 }

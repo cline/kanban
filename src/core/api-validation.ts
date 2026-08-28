@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import {
+	type RuntimeCardSummaryPromoteRequest,
+	type RuntimeCardSummarySaveRequest,
 	type RuntimeClineAccountSwitchRequest,
 	type RuntimeClineAddProviderRequest,
 	type RuntimeClineDeviceAuthCompleteRequest,
@@ -16,6 +18,7 @@ import {
 	type RuntimeGitCheckoutRequest,
 	type RuntimeHookIngestRequest,
 	type RuntimeProjectAddRequest,
+	type RuntimeProjectMemorySaveRequest,
 	type RuntimeProjectRemoveRequest,
 	type RuntimeShellSessionStartRequest,
 	type RuntimeTaskChatAbortRequest,
@@ -33,6 +36,8 @@ import {
 	type RuntimeWorkspaceStateSaveRequest,
 	type RuntimeWorktreeDeleteRequest,
 	type RuntimeWorktreeEnsureRequest,
+	runtimeCardSummaryPromoteRequestSchema,
+	runtimeCardSummarySaveRequestSchema,
 	runtimeClineAccountSwitchRequestSchema,
 	runtimeClineAddProviderRequestSchema,
 	runtimeClineDeviceAuthCompleteRequestSchema,
@@ -48,6 +53,7 @@ import {
 	runtimeGitCheckoutRequestSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeProjectAddRequestSchema,
+	runtimeProjectMemorySaveRequestSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeShellSessionStartRequestSchema,
 	runtimeTaskChatAbortRequestSchema,
@@ -201,6 +207,18 @@ export function parseProjectRemoveRequest(value: unknown): RuntimeProjectRemoveR
 	return {
 		projectId,
 	};
+}
+
+export function parseProjectMemorySaveRequest(value: unknown): RuntimeProjectMemorySaveRequest {
+	return parseWithSchema(runtimeProjectMemorySaveRequestSchema, value);
+}
+
+export function parseCardSummaryPromoteRequest(value: unknown): RuntimeCardSummaryPromoteRequest {
+	return parseWithSchema(runtimeCardSummaryPromoteRequestSchema, value);
+}
+
+export function parseCardSummarySaveRequest(value: unknown): RuntimeCardSummarySaveRequest {
+	return parseWithSchema(runtimeCardSummarySaveRequestSchema, value);
 }
 
 export function parseRuntimeConfigSaveRequest(value: unknown): RuntimeConfigSaveRequest {

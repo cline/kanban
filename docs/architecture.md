@@ -409,3 +409,32 @@ A new engineer opening this repo will probably notice a few things quickly:
 - the architecture now favors clean ownership over compatibility glue because this area did not have legacy users to preserve
 
 If you approach the code with those assumptions, the rest of the system starts to make sense much faster.
+
+## Project Memory
+
+Project memory is a per-project, user-authored context file (`project-memory.md`) injected into every new Cline task session.
+
+| Property | Value |
+| --- | --- |
+| Location | `~/.cline/kanban/workspaces/<workspaceId>/project-memory.md` |
+| Scope | per-project (workspace-scoped) |
+| Editing | manual, user-approved via Project Memory Editor dialog |
+| Size limit | 10,000 characters |
+| Injection | automatic into new Cline sessions |
+| Transcript ingestion | none (no automatic transcript accumulation) |
+
+**Appropriate content:**
+
+- architecture facts (key services, data flows, deployment topology)
+- commands and test methods (e.g., "Use browser CDP for E2E tests", "Run `cargo test --all`")
+- conventions (code style, naming patterns, folder structure decisions)
+- known failure prevention (e.g., "Don't use X library due to Y bug")
+
+**What NOT to include:**
+
+- task-specific transcripts or assistant output
+- tool call logs or temporary debugging output
+- personal notes unrelated to project execution
+- sensitive credentials or secrets
+
+The UI exposes this via `ProjectMemoryEditorDialog` which calls `trpcClient.projects.getMemory.query()` and `trpcClient.projects.saveMemory.mutate({content})`. The backend routes are defined in `src/trpc/app-router.ts` and implemented in `src/trpc/projects-api.ts` using `readProjectMemory`/`writeProjectMemory` from `src/state/project-memory.ts`.

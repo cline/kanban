@@ -3,15 +3,104 @@
 // history, and subscribe to summaries and chat events without knowing SDK
 // host, repository, or event-adapter details.
 import type {
+	RuntimeBoardData,
 	RuntimeClineReasoningEffort,
 	RuntimeTaskImage,
 	RuntimeTaskSessionMode,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
+import { RUNTIME_CARD_SUMMARY_MAX_CHARS } from "../core/api-contract";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
+
+const DEPENDENCY_SUMMARY_MAX_COUNT = 3;
+const DEPENDENCY_SUMMARY_TOTAL_MAX_CHARS = 4000;
+const DEPENDENCY_SECTION_HEADER = "# Completed Prerequisites";
+
+export function formatDependencySummaries(board: RuntimeBoardData, taskId: string): string {
+	const dependencies = board.dependencies.filter((dependency) => dependency.fromTaskId === taskId);
+	if (dependencies.length === 0) {
+		return "";
+	}
+	const trashColumn = board.columns.find((col) => col.id === "trash");
+	if (!trashColumn) {
+		return "";
+	}
+	const completedSummaries: Array<{ taskId: string; title: string; summary: string }> = [];
+	for (const card of trashColumn.cards) {
+		const isPrerequisite = dependencies.some((dependency) => dependency.toTaskId === card.id);
+		if (isPrerequisite && card.summary?.content) {
+			completedSummaries.push({
+				taskId: card.id,
+				title: card.title ?? `Task ${card.id}`,
+				summary: card.summary.content,
+			});
+		}
+	}
+	if (completedSummaries.length === 0) {
+		return "";
+	}
+	completedSummaries.sort((a, b) => a.taskId.localeCompare(b.taskId));
+	const countText =
+		completedSummaries.length > DEPENDENCY_SUMMARY_MAX_COUNT
+			? ` (showing ${DEPENDENCY_SUMMARY_MAX_COUNT} of ${completedSummaries.length})`
+			: "";
+	const header = `\n\n${DEPENDENCY_SECTION_HEADER}${countText}\n\n`;
+	const reservedForHeaderAndFormatting = header.length + 200;
+	const availableForSummaries = DEPENDENCY_SUMMARY_TOTAL_MAX_CHARS - reservedForHeaderAndFormatting;
+	if (availableForSummaries <= 0) {
+		return header.trim();
+	}
+	const limited = completedSummaries.slice(0, DEPENDENCY_SUMMARY_MAX_COUNT);
+	const lines: string[] = [];
+	let usedChars = 0;
+	for (const item of limited) {
+		const prefix = `- **${item.title}**: `;
+		const maxSummaryChars = availableForSummaries - usedChars - prefix.length - 2;
+		if (maxSummaryChars <= 0) {
+			break;
+		}
+		const summaryText = item.summary.length > maxSummaryChars ? item.summary.slice(0, maxSummaryChars) : item.summary;
+		const line = `${prefix}${summaryText}`;
+		lines.push(line);
+		usedChars += line.length + 1;
+	}
+	if (lines.length === 0) {
+		return "";
+	}
+	const section = `${header}${lines.join("\n")}`;
+	return section.length > DEPENDENCY_SUMMARY_TOTAL_MAX_CHARS
+		? section.slice(0, DEPENDENCY_SUMMARY_TOTAL_MAX_CHARS)
+		: section;
+}
+
+export function shouldAutoDraftCardSummary(
+	previousSummary: RuntimeTaskSessionSummary | null,
+	latestSummary: RuntimeTaskSessionSummary | null,
+	alreadyDrafted: boolean,
+): boolean {
+	if (!latestSummary || latestSummary.state !== "awaiting_review") {
+		return false;
+	}
+	if (previousSummary?.state === "awaiting_review") {
+		return false;
+	}
+	if (latestSummary.reviewReason === "interrupted") {
+		return false;
+	}
+	return Boolean(latestSummary.latestHookActivity?.finalMessage?.trim()) && !alreadyDrafted;
+}
+
+export function normalizeAutomaticCardSummary(finalMessage: string): string {
+	return finalMessage
+		.replace(/\r\n/g, "\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim()
+		.slice(0, RUNTIME_CARD_SUMMARY_MAX_CHARS);
+}
+
 import {
 	compactPersistedMessagesForContextOverflow,
 	isContextOverflowError,
@@ -74,6 +163,8 @@ export interface StartClineTaskSessionRequest {
 	baseUrl?: string | null;
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
 	systemPrompt?: string | null;
+	projectMemory?: string;
+	dependencySummaries?: string;
 }
 
 export interface ClineTaskSessionService {
@@ -106,6 +197,7 @@ export interface CreateInMemoryClineTaskSessionServiceOptions {
 	createMessageRepository?: () => ClineMessageRepository;
 	createRuntimeSetup?: (workspacePath: string) => Promise<ClineRuntimeSetup>;
 	watcherRegistry?: ClineWatcherRegistry;
+	onAutoDraftSummary?: (taskId: string, workspacePath: string, content: string) => Promise<void>;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -166,6 +258,8 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 	private readonly messageRepository: ClineMessageRepository;
 	private readonly watcherRegistry: ClineWatcherRegistry;
 	private readonly runtimeSetupLeaseByWorkspacePath = new Map<string, Promise<ClineRuntimeSetupLease>>();
+	private readonly onAutoDraftSummary?: (taskId: string, workspacePath: string, content: string) => Promise<void>;
+	private readonly autoDraftedTaskIds = new Set<string>();
 
 	constructor(options: CreateInMemoryClineTaskSessionServiceOptions = {}) {
 		const createSessionRuntime = options.createSessionRuntime ?? createInMemoryClineSessionRuntime;
@@ -181,6 +275,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			},
 		});
 		this.messageRepository = createMessageRepository();
+		this.onAutoDraftSummary = options.onAutoDraftSummary;
 	}
 
 	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void {
@@ -413,6 +508,14 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(request.taskId);
 				if (appendedSystemPrompt) {
 					systemPrompt = `${systemPrompt}\n\n${appendedSystemPrompt}`;
+				}
+
+				if (request.projectMemory?.trim()) {
+					systemPrompt = `${systemPrompt}\n\n# Project Memory (Durable Context)\n\n${request.projectMemory}`;
+				}
+
+				if (request.dependencySummaries?.trim()) {
+					systemPrompt = `${systemPrompt}\n\n${request.dependencySummaries}`;
 				}
 
 				const startResult = await this.sessionRuntime.startTaskSession({
@@ -867,7 +970,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		return lease.setup;
 	}
 
-	private handleTaskEvent(taskId: string, event: unknown): void {
+	private async handleTaskEvent(taskId: string, event: unknown): Promise<void> {
 		const entry = this.messageRepository.getTaskEntry(taskId);
 		if (!entry) {
 			return;
@@ -897,6 +1000,37 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		if (shouldAbortForCreditLimit) {
 			void this.sessionRuntime.abortTaskSession(taskId).catch(() => undefined);
 		}
+		if (this.shouldAutoDraftSummary(previousSummary, latestSummary)) {
+			await this.autoDraftSummary(taskId, entry.summary.workspacePath, latestSummary);
+		}
+	}
+
+	private shouldAutoDraftSummary(
+		previousSummary: RuntimeTaskSessionSummary | null,
+		latestSummary: RuntimeTaskSessionSummary | null,
+	): boolean {
+		return shouldAutoDraftCardSummary(
+			previousSummary,
+			latestSummary,
+			latestSummary ? this.autoDraftedTaskIds.has(latestSummary.taskId) : false,
+		);
+	}
+
+	private async autoDraftSummary(
+		taskId: string,
+		workspacePath: string | null,
+		summary: RuntimeTaskSessionSummary | null,
+	): Promise<void> {
+		if (!this.onAutoDraftSummary || !workspacePath || !summary) {
+			return;
+		}
+		const finalMessage = summary.latestHookActivity?.finalMessage?.trim();
+		if (!finalMessage) {
+			return;
+		}
+		const normalized = normalizeAutomaticCardSummary(finalMessage);
+		await this.onAutoDraftSummary(taskId, workspacePath, normalized);
+		this.autoDraftedTaskIds.add(taskId);
 	}
 }
 

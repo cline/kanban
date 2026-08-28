@@ -3,6 +3,7 @@ import { Files, GitCompareArrows, Maximize2, MessageSquare, Minimize2, X } from 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { CardSummaryPanel } from "@/components/card-summary-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { ClineAgentChatPanel, type ClineAgentChatPanelHandle } from "@/components/detail-panels/cline-agent-chat-panel";
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
@@ -18,6 +19,7 @@ import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { isNativeClineAgentSelected } from "@/runtime/native-agent";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgentId,
 	RuntimeClineReasoningEffort,
@@ -459,6 +461,52 @@ export function CardDetailView({
 	const mainRowRef = useRef<HTMLDivElement | null>(null);
 	const detailDiffRowRef = useRef<HTMLDivElement | null>(null);
 	const clineAgentChatPanelRef = useRef<ClineAgentChatPanelHandle | null>(null);
+	const [isSavingSummary, setIsSavingSummary] = useState(false);
+
+	const handleSaveSummary = useCallback(
+		async (content: string) => {
+			setIsSavingSummary(true);
+			try {
+				const trpc = getRuntimeTrpcClient(currentProjectId);
+				await trpc.workspace.saveCardSummary.mutate({
+					taskId: selection.card.id,
+					summary: {
+						content,
+						source: "manual" as const,
+						updatedAt: Date.now(),
+					},
+				});
+			} finally {
+				setIsSavingSummary(false);
+			}
+		},
+		[currentProjectId, selection.card.id],
+	);
+
+	const handleClearSummary = useCallback(async () => {
+		setIsSavingSummary(true);
+		try {
+			const trpc = getRuntimeTrpcClient(currentProjectId);
+			await trpc.workspace.saveCardSummary.mutate({
+				taskId: selection.card.id,
+				summary: null,
+			});
+		} finally {
+			setIsSavingSummary(false);
+		}
+	}, [currentProjectId, selection.card.id]);
+
+	const handlePromoteSummary = useCallback(async () => {
+		setIsSavingSummary(true);
+		try {
+			const trpc = getRuntimeTrpcClient(currentProjectId);
+			await trpc.workspace.promoteCardSummaryToProjectMemory.mutate({
+				taskId: selection.card.id,
+			});
+		} finally {
+			setIsSavingSummary(false);
+		}
+	}, [currentProjectId, selection.card.id]);
 
 	const handleSeparatorMouseDown = useResizeHandler(
 		detailLayoutRef,
@@ -713,6 +761,13 @@ export function CardDetailView({
 							style={{ display: mobileTab === "chat" ? "flex" : "none" }}
 						>
 							{agentChatPanel}
+							<CardSummaryPanel
+								summary={selection.card.summary ?? null}
+								isSaving={isSavingSummary}
+								onSave={handleSaveSummary}
+								onClear={handleClearSummary}
+								onPromoteToProjectMemory={handlePromoteSummary}
+							/>
 						</div>
 						{/* Diff panel */}
 						<div
@@ -842,10 +897,17 @@ export function CardDetailView({
 					<>
 						<div ref={mainRowRef} className="flex min-h-0 flex-1 overflow-hidden">
 							<div
-								className="min-h-0 min-w-0"
+								className="min-h-0 min-w-0 flex-col"
 								style={{ display: isDiffExpanded ? "none" : "flex", width: agentPanelPercent }}
 							>
 								{agentChatPanel}
+								<CardSummaryPanel
+									summary={selection.card.summary ?? null}
+									isSaving={isSavingSummary}
+									onSave={handleSaveSummary}
+									onClear={handleClearSummary}
+									onPromoteToProjectMemory={handlePromoteSummary}
+								/>
 							</div>
 							{!isDiffExpanded ? (
 								<ResizeHandle

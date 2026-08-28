@@ -1,6 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type {
+	RuntimeCardSummaryPromoteResponse,
+	RuntimeCardSummarySaveResponse,
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
 	RuntimeGitSummaryResponse,
@@ -12,11 +14,19 @@ import type {
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
 import {
+	parseCardSummaryPromoteRequest,
+	parseCardSummarySaveRequest,
 	parseGitCheckoutRequest,
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
-import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
+import { updateProjectMemory } from "../state/project-memory";
+import {
+	loadWorkspaceState,
+	saveWorkspaceState,
+	updateCardSummary,
+	WorkspaceStateConflictError,
+} from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import {
 	createEmptyWorkspaceChangesResponse,
@@ -436,6 +446,73 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 				cwd: diffCwd,
 				commitHash: input.commitHash,
 			});
+		},
+		saveCardSummary: async (workspaceScope, input) => {
+			try {
+				const body = parseCardSummarySaveRequest(input);
+				const result = await updateCardSummary(workspaceScope.workspacePath, body.taskId, body.summary ?? null);
+				if (!result.ok) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: result.error ?? "Failed to save card summary",
+					});
+				}
+				void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);
+				return { ok: true } satisfies RuntimeCardSummarySaveResponse;
+			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				const message = error instanceof Error ? error.message : String(error);
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message,
+				});
+			}
+		},
+		promoteCardSummaryToProjectMemory: async (workspaceScope, input) => {
+			try {
+				const body = parseCardSummaryPromoteRequest(input);
+				const state = await loadWorkspaceState(workspaceScope.workspacePath);
+				let cardSummary: { content: string; source: string } | undefined;
+				for (const column of state.board.columns) {
+					const card = column.cards.find((c) => c.id === body.taskId);
+					if (card?.summary) {
+						cardSummary = card.summary;
+						break;
+					}
+				}
+				if (!cardSummary) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Card summary not found",
+					});
+				}
+				const timestamp = new Date().toISOString();
+				const card = state.board.columns.flatMap((c) => c.cards).find((c) => c.id === body.taskId);
+				const taskTitle = card?.title ?? "Untitled Task";
+				const section = `## Task Summary: ${taskTitle} (${timestamp})\n${cardSummary.content}`;
+				const writeResult = await updateProjectMemory(workspaceScope.workspaceId, (currentMemory) =>
+					currentMemory ? `${currentMemory}\n\n${section}` : section,
+				);
+				if (writeResult.type !== "success") {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: writeResult.message ?? "Failed to write project memory",
+					});
+				}
+				void deps.broadcastRuntimeProjectsUpdated(workspaceScope.workspaceId);
+				return { ok: true } satisfies RuntimeCardSummaryPromoteResponse;
+			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				const message = error instanceof Error ? error.message : String(error);
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message,
+				});
+			}
 		},
 	};
 }

@@ -1002,9 +1002,7 @@ describe("InMemoryClineTaskSessionService", () => {
 		);
 		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				systemPrompt: expect.stringContaining(
-					"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
-				),
+				systemPrompt: expect.stringContaining(`"/usr/local/bin/node" "/Users/example/repo/dist/cli.js"`),
 			}),
 		);
 	});
@@ -1037,6 +1035,56 @@ describe("InMemoryClineTaskSessionService", () => {
 				userInstructionService: runtimeSetup.setup.userInstructionService,
 				requestToolApproval: runtimeSetup.setup.requestToolApproval,
 				systemPrompt: expect.stringContaining("Workspace rule"),
+			}),
+		);
+	});
+
+	it("appends project and task memory to the system prompt when provided", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Add a task",
+			projectMemory: "Custom project memory content\n\n# Task Memory Index\n\n- Prior task [completed]",
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				systemPrompt: expect.stringContaining("# Project Memory (Durable Context)"),
+			}),
+		);
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				systemPrompt: expect.stringContaining("Custom project memory content"),
+			}),
+		);
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				systemPrompt: expect.stringContaining("# Task Memory Index"),
+			}),
+		);
+	});
+
+	it("does not append project memory section when empty", async () => {
+		const { service, runtime } = createTrackedService();
+
+		await service.startTaskSession({
+			taskId: "task-2",
+			cwd: "/tmp/worktree",
+			prompt: "Add a task",
+			projectMemory: "",
+		});
+		await vi.waitFor(() => {
+			expect(runtime.startTaskSessionMock).toHaveBeenCalledTimes(1);
+		});
+
+		expect(runtime.startTaskSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				systemPrompt: expect.not.stringContaining("# Project Memory (Durable Context)"),
 			}),
 		);
 	});

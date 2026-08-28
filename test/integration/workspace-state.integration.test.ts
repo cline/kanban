@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../../src/core/api-contract";
+import { readTaskMemoryIndex } from "../../src/state/task-memory";
 import type { WorkspaceStateConflictError } from "../../src/state/workspace-state";
 import {
 	getWorkspacesRootPath,
@@ -14,6 +15,7 @@ import {
 	loadWorkspaceState,
 	removeWorkspaceIndexEntry,
 	saveWorkspaceState,
+	updateCardSummary,
 } from "../../src/state/workspace-state";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
@@ -96,6 +98,122 @@ function initGitRepository(path: string): void {
 }
 
 describe.sequential("workspace-state integration", () => {
+	it("archives a batch of summarized Done tasks before deleting them", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-");
+			try {
+				const workspacePath = join(sandboxRoot, "project-a");
+				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
+				const initial = await loadWorkspaceState(workspacePath);
+				const board = createBoard("unused");
+				board.columns[0].cards = [];
+				board.columns[3].cards = [
+					{
+						id: "done-1",
+						title: "Working approach",
+						prompt: "Implement it",
+						startInPlanMode: false,
+						baseRef: "main",
+						createdAt: 1,
+						updatedAt: 2,
+						summary: { content: "Used the SDK parser.", source: "automatic", updatedAt: 3 },
+					},
+					{
+						id: "done-2",
+						title: "Failed approach",
+						prompt: "Try polling",
+						startInPlanMode: false,
+						baseRef: "main",
+						createdAt: 1,
+						updatedAt: 2,
+						summary: { content: "Polling leaked child processes.", source: "automatic", updatedAt: 3 },
+					},
+					{
+						id: "done-3",
+						title: "Missing handoff",
+						prompt: "Investigate the legacy path",
+						startInPlanMode: false,
+						baseRef: "main",
+						createdAt: 1,
+						updatedAt: 2,
+					},
+				];
+
+				const saved = await saveWorkspaceState(workspacePath, {
+					board,
+					sessions: {
+						"done-2": { ...createSessionSummary("done-2"), state: "failed", reviewReason: "error" },
+					},
+					expectedRevision: initial.revision,
+				});
+				board.columns[3].cards = [];
+				await saveWorkspaceState(workspacePath, {
+					board,
+					sessions: saved.sessions,
+					expectedRevision: saved.revision,
+				});
+
+				const context = await loadWorkspaceContext(workspacePath);
+				const index = await readTaskMemoryIndex(context.workspaceId);
+				expect(index).toContain("Working approach** [completed]");
+				expect(index).toContain("Failed approach** [failed]");
+				expect(index).toContain("Missing handoff** [completed]");
+				expect(index).toContain("No outcome summary was captured. Original task: Investigate the legacy path");
+				const detailPaths = Array.from(index.matchAll(/Detail: (.*\.md)/g), (match) => match[1]);
+				expect(detailPaths).toHaveLength(3);
+				for (const detailPath of detailPaths) {
+					expect(readFileSync(detailPath as string, "utf8")).toContain("- Archived:");
+				}
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("preserves a manual card summary during automatic drafting", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-");
+			try {
+				const workspacePath = join(sandboxRoot, "project-a");
+				mkdirSync(workspacePath, { recursive: true });
+				initGitRepository(workspacePath);
+
+				const initial = await loadWorkspaceState(workspacePath);
+				await saveWorkspaceState(workspacePath, {
+					board: createBoard("Task One"),
+					sessions: {},
+					expectedRevision: initial.revision,
+				});
+				await updateCardSummary(workspacePath, "task-1", {
+					content: "User-approved handoff",
+					source: "manual",
+					updatedAt: 10,
+				});
+
+				const result = await updateCardSummary(
+					workspacePath,
+					"task-1",
+					{
+						content: "Automatic replacement",
+						source: "automatic",
+						updatedAt: 20,
+					},
+					{ preserveManual: true },
+				);
+
+				expect(result.ok).toBe(true);
+				const loaded = await loadWorkspaceState(workspacePath);
+				expect(loaded.board.columns[0]?.cards[0]?.summary).toMatchObject({
+					content: "User-approved handoff",
+					source: "manual",
+				});
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("persists revision numbers and rejects stale writes", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-");

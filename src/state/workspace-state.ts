@@ -19,6 +19,7 @@ import {
 import { createGitProcessEnv } from "../core/git-process-env";
 import { updateTaskDependencies } from "../core/task-board-mutations";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
+import { synchronizeTaskMemories, type TaskMemoryArchiveInput } from "./task-memory";
 
 const RUNTIME_HOME_PARENT_DIR = ".cline";
 const RUNTIME_HOME_DIR = "kanban";
@@ -113,6 +114,19 @@ const workspaceIndexFileSchema = z
 			}
 		}
 	});
+
+function collectRemovedTasks(currentBoard: RuntimeBoardData, nextBoard: RuntimeBoardData): TaskMemoryArchiveInput[] {
+	const nextTaskIds = new Set(nextBoard.columns.flatMap((column) => column.cards.map((card) => card.id)));
+	const removedTasks: TaskMemoryArchiveInput[] = [];
+	for (const column of currentBoard.columns) {
+		for (const card of column.cards) {
+			if (!nextTaskIds.has(card.id)) {
+				removedTasks.push({ card, columnId: column.id });
+			}
+		}
+	}
+	return removedTasks;
+}
 
 const workspaceSessionsSchema = z
 	.record(z.string(), runtimeTaskSessionSummarySchema)
@@ -652,6 +666,7 @@ export async function saveWorkspaceState(
 	const parsedPayload = parseWorkspaceStateSavePayload(payload);
 	const context = await loadWorkspaceContext(cwd);
 	return await lockedFileSystem.withLock(getWorkspaceDirectoryLockRequest(context.workspaceId), async () => {
+		const currentBoard = await readWorkspaceBoard(context.workspaceId);
 		const metaPath = getWorkspaceMetaPath(context.workspaceId);
 		const currentMeta = await readWorkspaceMeta(context.workspaceId);
 		const expectedRevision = parsedPayload.expectedRevision;
@@ -670,6 +685,12 @@ export async function saveWorkspaceState(
 			revision: nextRevision,
 			updatedAt: Date.now(),
 		};
+		await synchronizeTaskMemories({
+			workspaceId: context.workspaceId,
+			board,
+			sessions,
+			archivedTasks: collectRemovedTasks(currentBoard, board),
+		});
 
 		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), board, {
 			lock: null,
@@ -725,6 +746,12 @@ export async function mutateWorkspaceState<T>(
 			revision: nextRevision,
 			updatedAt: Date.now(),
 		};
+		await synchronizeTaskMemories({
+			workspaceId: context.workspaceId,
+			board: nextBoard,
+			sessions: nextSessions,
+			archivedTasks: collectRemovedTasks(currentBoard, nextBoard),
+		});
 
 		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), nextBoard, {
 			lock: null,
@@ -742,4 +769,58 @@ export async function mutateWorkspaceState<T>(
 			saved: true,
 		};
 	});
+}
+
+export async function updateCardSummary(
+	cwd: string,
+	taskId: string,
+	summary: {
+		content: string;
+		source: "automatic" | "manual";
+		sourceUpdatedAt?: number;
+		updatedAt: number;
+	} | null,
+	options: { preserveManual?: boolean } = {},
+): Promise<{ ok: boolean; error?: string }> {
+	const result = await mutateWorkspaceState<{ ok: boolean; error?: string }>(cwd, (state) => {
+		const nextBoard = { ...state.board };
+		let found = false;
+
+		for (const column of nextBoard.columns) {
+			const cardIndex = column.cards.findIndex((card) => card.id === taskId);
+			if (cardIndex !== -1) {
+				const card = column.cards[cardIndex];
+				if (options.preserveManual && card.summary?.source === "manual") {
+					return {
+						board: state.board,
+						value: { ok: true },
+						save: false,
+					};
+				}
+				column.cards = [...column.cards];
+				column.cards[cardIndex] = {
+					...card,
+					summary: summary ?? undefined,
+					updatedAt: Date.now(),
+				};
+				found = true;
+				break;
+			}
+		}
+
+		if (!found) {
+			return {
+				board: state.board,
+				value: { ok: false, error: "Card not found" },
+				save: false,
+			};
+		}
+
+		return {
+			board: nextBoard,
+			value: { ok: true },
+			save: true,
+		};
+	});
+	return result.value;
 }

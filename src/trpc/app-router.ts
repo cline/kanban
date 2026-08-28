@@ -6,6 +6,10 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type {
+	RuntimeCardSummaryPromoteRequest,
+	RuntimeCardSummaryPromoteResponse,
+	RuntimeCardSummarySaveRequest,
+	RuntimeCardSummarySaveResponse,
 	RuntimeClineAccountBalanceResponse,
 	RuntimeClineAccountOrganizationsResponse,
 	RuntimeClineAccountProfileResponse,
@@ -58,6 +62,8 @@ import type {
 	RuntimeProjectAddRequest,
 	RuntimeProjectAddResponse,
 	RuntimeProjectDirectoryPickerResponse,
+	RuntimeProjectMemoryResponse,
+	RuntimeProjectMemorySaveRequest,
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
 	RuntimeProjectsResponse,
@@ -97,6 +103,10 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract";
 import {
+	runtimeCardSummaryPromoteRequestSchema,
+	runtimeCardSummaryPromoteResponseSchema,
+	runtimeCardSummarySaveRequestSchema,
+	runtimeCardSummarySaveResponseSchema,
 	runtimeClineAccountBalanceResponseSchema,
 	runtimeClineAccountOrganizationsResponseSchema,
 	runtimeClineAccountProfileResponseSchema,
@@ -149,6 +159,8 @@ import {
 	runtimeProjectAddRequestSchema,
 	runtimeProjectAddResponseSchema,
 	runtimeProjectDirectoryPickerResponseSchema,
+	runtimeProjectMemoryResponseSchema,
+	runtimeProjectMemorySaveRequestSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
 	runtimeProjectsResponseSchema,
@@ -350,6 +362,14 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeGitCommitDiffRequest,
 		) => Promise<RuntimeGitCommitDiffResponse>;
+		saveCardSummary: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeCardSummarySaveRequest,
+		) => Promise<RuntimeCardSummarySaveResponse>;
+		promoteCardSummaryToProjectMemory: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeCardSummaryPromoteRequest,
+		) => Promise<RuntimeCardSummaryPromoteResponse>;
 	};
 	projectsApi: {
 		listProjects: (preferredWorkspaceId: string | null) => Promise<RuntimeProjectsResponse>;
@@ -366,6 +386,11 @@ export interface RuntimeTrpcContext {
 			preferredWorkspaceId: string | null,
 			input: RuntimeDirectoryListRequest,
 		) => Promise<RuntimeDirectoryListResponse>;
+		getProjectMemory: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeProjectMemoryResponse>;
+		saveProjectMemory: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeProjectMemorySaveRequest,
+		) => Promise<RuntimeProjectMemoryResponse>;
 	};
 	hooksApi: {
 		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
@@ -689,6 +714,18 @@ export const runtimeAppRouter = t.router({
 			.query(async ({ ctx, input }) => {
 				return await ctx.workspaceApi.loadCommitDiff(ctx.workspaceScope, input);
 			}),
+		saveCardSummary: workspaceProcedure
+			.input(runtimeCardSummarySaveRequestSchema)
+			.output(runtimeCardSummarySaveResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.saveCardSummary(ctx.workspaceScope, input);
+			}),
+		promoteCardSummaryToProjectMemory: workspaceProcedure
+			.input(runtimeCardSummaryPromoteRequestSchema)
+			.output(runtimeCardSummaryPromoteResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.promoteCardSummaryToProjectMemory(ctx.workspaceScope, input);
+			}),
 	}),
 	projects: t.router({
 		list: t.procedure.output(runtimeProjectsResponseSchema).query(async ({ ctx }) => {
@@ -714,6 +751,15 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeDirectoryListResponseSchema)
 			.query(async ({ ctx, input }) => {
 				return await ctx.projectsApi.listDirectoryContents(ctx.requestedWorkspaceId, input);
+			}),
+		getMemory: workspaceProcedure.output(runtimeProjectMemoryResponseSchema).query(async ({ ctx }) => {
+			return await ctx.projectsApi.getProjectMemory(ctx.workspaceScope);
+		}),
+		saveMemory: workspaceProcedure
+			.input(runtimeProjectMemorySaveRequestSchema)
+			.output(runtimeProjectMemoryResponseSchema)
+			.mutation(async ({ ctx, input }) => {
+				return await ctx.projectsApi.saveProjectMemory(ctx.workspaceScope, input);
 			}),
 	}),
 	hooks: t.router({

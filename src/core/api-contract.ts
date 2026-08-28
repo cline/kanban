@@ -104,6 +104,16 @@ export const runtimeTaskImageSchema = z.object({
 });
 export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
 
+export const RUNTIME_CARD_SUMMARY_MAX_CHARS = 2_000;
+
+export const runtimeCardSummarySchema = z.object({
+	content: z.string().max(RUNTIME_CARD_SUMMARY_MAX_CHARS),
+	source: z.enum(["automatic", "manual"]),
+	sourceUpdatedAt: z.number().optional(),
+	updatedAt: z.number(),
+});
+export type RuntimeCardSummary = z.infer<typeof runtimeCardSummarySchema>;
+
 const runtimeLegacyTaskClineReasoningEffortSchema = z.enum(["default", "low", "medium", "high", "xhigh"]);
 
 function normalizeRuntimeTaskClineSettings(input: {
@@ -146,6 +156,7 @@ export const runtimeBoardCardSchema = z
 		baseRef: z.string(),
 		createdAt: z.number(),
 		updatedAt: z.number(),
+		summary: runtimeCardSummarySchema.optional(),
 	})
 	.transform(
 		({
@@ -536,6 +547,41 @@ export const runtimeProjectRemoveResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeProjectRemoveResponse = z.infer<typeof runtimeProjectRemoveResponseSchema>;
+
+export const runtimeProjectMemoryResponseSchema = z.object({
+	content: z.string(),
+	maxChars: z.number().int().positive(),
+	remainingChars: z.number().int(),
+});
+export type RuntimeProjectMemoryResponse = z.infer<typeof runtimeProjectMemoryResponseSchema>;
+
+export const runtimeProjectMemorySaveRequestSchema = z.object({
+	content: z.string(),
+});
+export type RuntimeProjectMemorySaveRequest = z.infer<typeof runtimeProjectMemorySaveRequestSchema>;
+
+export const runtimeCardSummaryPromoteRequestSchema = z.object({
+	taskId: z.string(),
+});
+export type RuntimeCardSummaryPromoteRequest = z.infer<typeof runtimeCardSummaryPromoteRequestSchema>;
+
+export const runtimeCardSummarySaveRequestSchema = z.object({
+	taskId: z.string(),
+	summary: runtimeCardSummarySchema.nullable(),
+});
+export type RuntimeCardSummarySaveRequest = z.infer<typeof runtimeCardSummarySaveRequestSchema>;
+
+export const runtimeCardSummarySaveResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeCardSummarySaveResponse = z.infer<typeof runtimeCardSummarySaveResponseSchema>;
+
+export const runtimeCardSummaryPromoteResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+});
+export type RuntimeCardSummaryPromoteResponse = z.infer<typeof runtimeCardSummaryPromoteResponseSchema>;
 
 export const runtimeWorktreeEnsureRequestSchema = z.object({
 	taskId: z.string(),

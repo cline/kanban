@@ -9,6 +9,7 @@ import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } fr
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import {
 	Bell,
+	BookOpen,
 	Bot,
 	Check,
 	ChevronDown,
@@ -24,6 +25,7 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ProjectMemoryEditorDialog } from "@/components/project-memory-editor-dialog";
 import { AccountOrganizationSection } from "@/components/shared/account-organization-section";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import {
@@ -379,6 +381,7 @@ export function RuntimeSettingsDialog({
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [pendingShortcutScrollIndex, setPendingShortcutScrollIndex] = useState<number | null>(null);
+	const [projectMemoryOpen, setProjectMemoryOpen] = useState(false);
 	const copiedVariableResetTimerRef = useRef<number | null>(null);
 	const shortcutsSectionRef = useRef<HTMLHeadingElement | null>(null);
 	const shortcutRowRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -1066,6 +1069,17 @@ export function RuntimeSettingsDialog({
 							: "<project>/.cline/kanban/config.json"}
 						{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 					</p>
+					<Button
+						size="sm"
+						icon={<BookOpen size={14} />}
+						onClick={() => setProjectMemoryOpen(true)}
+						disabled={!workspaceId}
+					>
+						Project memory
+					</Button>
+					<p className="text-text-secondary text-[13px] mt-2 mb-4">
+						Shared context included in every new Cline task for this project.
+					</p>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
 						<div className="flex items-center justify-between mb-2">
 							<h6
@@ -1187,6 +1201,11 @@ export function RuntimeSettingsDialog({
 					Save
 				</Button>
 			</DialogFooter>
+			<ProjectMemoryEditorDialog
+				open={projectMemoryOpen}
+				onOpenChange={setProjectMemoryOpen}
+				workspaceId={workspaceId}
+			/>
 		</Dialog>
 	);
 }

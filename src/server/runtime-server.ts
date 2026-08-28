@@ -36,7 +36,7 @@ import {
 	validatePasscode,
 	validateSession,
 } from "../security/passcode-manager";
-import { loadWorkspaceContextById } from "../state/workspace-state";
+import { loadWorkspaceContextById, updateCardSummary } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { createTerminalWebSocketBridge } from "../terminal/ws-server";
 import { type RuntimeTrpcContext, type RuntimeTrpcWorkspaceScope, runtimeAppRouter } from "../trpc/app-router";
@@ -150,6 +150,24 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		if (!service) {
 			service = createInMemoryClineTaskSessionService({
 				watcherRegistry: clineWatcherRegistry,
+				onAutoDraftSummary: async (taskId: string, _workspacePath: string, content: string) => {
+					const updatedAt = Date.now();
+					const result = await updateCardSummary(
+						scope.workspacePath,
+						taskId,
+						{
+							content,
+							source: "automatic",
+							sourceUpdatedAt: updatedAt,
+							updatedAt,
+						},
+						{ preserveManual: true },
+					);
+					if (!result.ok) {
+						throw new Error(result.error ?? "Failed to save automatic card summary");
+					}
+					void deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated(scope.workspaceId, scope.workspacePath);
+				},
 			});
 			clineTaskSessionServiceByWorkspaceId.set(scope.workspaceId, service);
 			deps.runtimeStateHub.trackClineTaskSessionService(scope.workspaceId, scope.workspacePath, service);

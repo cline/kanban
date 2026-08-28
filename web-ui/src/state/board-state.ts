@@ -164,6 +164,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		clineReasoningEffort?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
+		summary?: unknown;
 	};
 	const prompt = typeof card.prompt === "string" ? card.prompt.trim() : "";
 	if (!prompt) {
@@ -185,6 +186,8 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	});
 
 	const now = Date.now();
+	const summary =
+		typeof card.summary === "object" && card.summary !== null ? (card.summary as Record<string, unknown>) : null;
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
@@ -201,6 +204,16 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		...(clineSettings !== undefined ? { clineSettings } : {}),
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
+		...(summary && typeof summary.content === "string"
+			? {
+					summary: {
+						content: summary.content,
+						source: summary.source === "manual" ? ("manual" as const) : ("automatic" as const),
+						sourceUpdatedAt: typeof summary.sourceUpdatedAt === "number" ? summary.sourceUpdatedAt : undefined,
+						updatedAt: typeof summary.updatedAt === "number" ? summary.updatedAt : now,
+					},
+				}
+			: {}),
 	};
 }
 

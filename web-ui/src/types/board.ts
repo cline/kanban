@@ -49,6 +49,12 @@ export interface BoardCard {
 	baseRef: string;
 	createdAt: number;
 	updatedAt: number;
+	summary?: {
+		content: string;
+		source: "automatic" | "manual";
+		sourceUpdatedAt?: number;
+		updatedAt: number;
+	};
 }
 
 export interface BoardColumn {

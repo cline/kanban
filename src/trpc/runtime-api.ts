@@ -12,6 +12,7 @@ import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-s
 import { createClineProviderService } from "../cline-sdk/cline-provider-service";
 import { isClineClearSlashCommand } from "../cline-sdk/cline-slash-commands";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
+import { formatDependencySummaries } from "../cline-sdk/cline-task-session-service";
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
 import type {
@@ -44,6 +45,9 @@ import {
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveTaskTitle } from "../core/task-title.js";
 import { openInBrowser } from "../server/browser";
+import { readProjectMemory } from "../state/project-memory";
+import { readTaskMemoryIndex } from "../state/task-memory";
+import { loadWorkspaceState } from "../state/workspace-state";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { resolveTaskCwd } from "../workspace/task-worktree";
@@ -229,6 +233,22 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					});
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const resolvedClineTitle = resolveTaskTitle(body.taskTitle?.trim(), body.prompt);
+					const projectMemoryResult = await readProjectMemory(workspaceScope.workspaceId);
+					const projectMemory = projectMemoryResult.type === "success" ? projectMemoryResult.content : undefined;
+					let taskMemoryIndex: string | undefined;
+					try {
+						taskMemoryIndex = await readTaskMemoryIndex(workspaceScope.workspaceId);
+					} catch {
+						taskMemoryIndex = undefined;
+					}
+					const projectContext = [projectMemory?.trim(), taskMemoryIndex?.trim()].filter(Boolean).join("\n\n");
+					let dependencySummaries: string | undefined;
+					try {
+						const state = await loadWorkspaceState(workspaceScope.workspacePath);
+						dependencySummaries = formatDependencySummaries(state.board, body.taskId);
+					} catch {
+						dependencySummaries = undefined;
+					}
 					const summary = await clineTaskSessionService.startTaskSession({
 						taskId: body.taskId,
 						cwd: taskCwd,
@@ -243,6 +263,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						apiKey: clineLaunchConfig.apiKey,
 						baseUrl: clineLaunchConfig.baseUrl,
 						reasoningEffort: clineLaunchConfig.reasoningEffort,
+						projectMemory: projectContext || undefined,
+						dependencySummaries: dependencySummaries?.trim() ? dependencySummaries : undefined,
 					});
 
 					let nextSummary = summary;
