@@ -1,18 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { z } from "zod";
 
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 
 const PROJECT_MEMORY_FILENAME = "project-memory.md";
-const PROJECT_MEMORY_MAX_CHARS = 10_000;
-
-const projectMemoryContentSchema = z.string().max(PROJECT_MEMORY_MAX_CHARS, {
-	message: `Project memory exceeds maximum size of ${PROJECT_MEMORY_MAX_CHARS} characters.`,
-});
-
-export type ProjectMemoryContent = z.infer<typeof projectMemoryContentSchema>;
+export type ProjectMemoryContent = string;
 
 export interface ProjectMemoryValidationError {
 	type: "validation_error";
@@ -66,24 +59,14 @@ async function readProjectMemoryFile(workspaceId: string): Promise<string> {
 		throw error;
 	}
 }
-
 export function normalizeProjectMemoryContent(content: string): string {
 	return content.replace(/\r\n/g, "\n").trim();
 }
 
 export function validateProjectMemoryContent(content: string): ProjectMemoryReadResult {
-	const normalized = normalizeProjectMemoryContent(content);
-	const parsed = projectMemoryContentSchema.safeParse(normalized);
-	if (!parsed.success) {
-		const firstError = parsed.error.issues[0];
-		return {
-			type: "validation_error",
-			message: firstError?.message ?? "Invalid project memory content.",
-		};
-	}
 	return {
 		type: "success",
-		content: parsed.data,
+		content: normalizeProjectMemoryContent(content),
 	};
 }
 
@@ -102,7 +85,6 @@ export async function readProjectMemory(workspaceId: string): Promise<ProjectMem
 		};
 	}
 }
-
 export async function writeProjectMemory(workspaceId: string, content: string): Promise<ProjectMemoryWriteResult> {
 	return await updateProjectMemory(workspaceId, () => content);
 }
@@ -136,8 +118,4 @@ export async function updateProjectMemory(
 			message: `Failed to write project memory: ${message}`,
 		};
 	}
-}
-
-export function getProjectMemoryMaxChars(): number {
-	return PROJECT_MEMORY_MAX_CHARS;
 }

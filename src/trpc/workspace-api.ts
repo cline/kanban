@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import type { ProjectMemoryConsolidationInput } from "../cline-sdk/cline-project-memory-consolidator";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type {
 	RuntimeCardSummaryPromoteResponse,
@@ -20,7 +21,7 @@ import {
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
-import { updateProjectMemory } from "../state/project-memory";
+import { readProjectMemory, updateProjectMemory } from "../state/project-memory";
 import {
 	loadWorkspaceState,
 	saveWorkspaceState,
@@ -54,6 +55,7 @@ export interface CreateWorkspaceApiDependencies {
 	broadcastRuntimeWorkspaceStateUpdated: (workspaceId: string, workspacePath: string) => Promise<void> | void;
 	broadcastRuntimeProjectsUpdated: (preferredCurrentProjectId: string | null) => Promise<void> | void;
 	buildWorkspaceStateSnapshot: (workspaceId: string, workspacePath: string) => Promise<RuntimeWorkspaceStateResponse>;
+	consolidateProjectMemory?: (input: ProjectMemoryConsolidationInput) => Promise<string>;
 }
 
 function normalizeOptionalTaskWorkspaceScopeInput(
@@ -472,29 +474,46 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		promoteCardSummaryToProjectMemory: async (workspaceScope, input) => {
 			try {
+				if (!deps.consolidateProjectMemory) {
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message: "Project memory consolidation is unavailable.",
+					});
+				}
 				const body = parseCardSummaryPromoteRequest(input);
 				const state = await loadWorkspaceState(workspaceScope.workspacePath);
-				let cardSummary: { content: string; source: string } | undefined;
-				for (const column of state.board.columns) {
-					const card = column.cards.find((c) => c.id === body.taskId);
-					if (card?.summary) {
-						cardSummary = card.summary;
-						break;
-					}
-				}
-				if (!cardSummary) {
+				const card = state.board.columns.flatMap((column) => column.cards).find((item) => item.id === body.taskId);
+				if (!card?.summary) {
 					throw new TRPCError({
 						code: "BAD_REQUEST",
 						message: "Card summary not found",
 					});
 				}
-				const timestamp = new Date().toISOString();
-				const card = state.board.columns.flatMap((c) => c.cards).find((c) => c.id === body.taskId);
-				const taskTitle = card?.title ?? "Untitled Task";
-				const section = `## Task Summary: ${taskTitle} (${timestamp})\n${cardSummary.content}`;
-				const writeResult = await updateProjectMemory(workspaceScope.workspaceId, (currentMemory) =>
-					currentMemory ? `${currentMemory}\n\n${section}` : section,
-				);
+				const currentResult = await readProjectMemory(workspaceScope.workspaceId);
+				if (currentResult.type !== "success") {
+					throw new TRPCError({ code: "BAD_REQUEST", message: currentResult.message });
+				}
+				const consolidatedMemory = await deps.consolidateProjectMemory({
+					workspacePath: workspaceScope.workspacePath,
+					currentMemory: currentResult.content,
+					taskId: card.id,
+					taskTitle: card.title,
+					taskSummary: card.summary.content,
+				});
+				let changedDuringConsolidation = false;
+				const writeResult = await updateProjectMemory(workspaceScope.workspaceId, (currentMemory) => {
+					if (currentMemory !== currentResult.content) {
+						changedDuringConsolidation = true;
+						return currentMemory;
+					}
+					return consolidatedMemory;
+				});
+				if (changedDuringConsolidation) {
+					throw new TRPCError({
+						code: "CONFLICT",
+						message: "Project memory changed while it was being consolidated. Try Consolidate again.",
+					});
+				}
 				if (writeResult.type !== "success") {
 					throw new TRPCError({
 						code: "BAD_REQUEST",

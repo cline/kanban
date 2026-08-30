@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	getProjectMemoryMaxChars,
-	readProjectMemory,
-	updateProjectMemory,
-	writeProjectMemory,
-} from "../../src/state/project-memory";
+import { readProjectMemory, updateProjectMemory, writeProjectMemory } from "../../src/state/project-memory";
 import { createTempDir } from "../utilities/temp-dir";
 
 async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
@@ -32,12 +27,6 @@ async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
 }
 
 describe("project-memory", () => {
-	describe("getProjectMemoryMaxChars", () => {
-		it("returns the configured maximum", () => {
-			expect(getProjectMemoryMaxChars()).toBeGreaterThan(0);
-		});
-	});
-
 	describe("readProjectMemory and writeProjectMemory", () => {
 		it("serializes concurrent updates without losing content", async () => {
 			await withTemporaryHome(async () => {
@@ -140,42 +129,21 @@ describe("project-memory", () => {
 			});
 		});
 
-		it("rejects oversized content", async () => {
+		it("writes and reads content without a character limit", async () => {
 			await withTemporaryHome(async () => {
 				const workspaceId = "test-workspace";
-				const maxChars = getProjectMemoryMaxChars();
-				const oversizedContent = "x".repeat(maxChars + 1);
+				const largeContent = "x".repeat(25_000);
 
-				const writeResult = await writeProjectMemory(workspaceId, oversizedContent);
-				expect(writeResult.type).toBe("validation_error");
-				if (writeResult.type === "validation_error") {
-					expect(writeResult.message).toContain("exceeds maximum size");
-				}
-
-				const readResult = await readProjectMemory(workspaceId);
-				expect(readResult.type).toBe("success");
-				if (readResult.type === "success") {
-					expect(readResult.content).toBe("");
-				}
-			});
-		});
-
-		it("accepts content at exactly the maximum size", async () => {
-			await withTemporaryHome(async () => {
-				const workspaceId = "test-workspace";
-				const maxChars = getProjectMemoryMaxChars();
-				const exactContent = "x".repeat(maxChars);
-
-				const writeResult = await writeProjectMemory(workspaceId, exactContent);
+				const writeResult = await writeProjectMemory(workspaceId, largeContent);
 				expect(writeResult.type).toBe("success");
 				if (writeResult.type === "success") {
-					expect(writeResult.content.length).toBe(maxChars);
+					expect(writeResult.content).toBe(largeContent);
 				}
 
 				const readResult = await readProjectMemory(workspaceId);
 				expect(readResult.type).toBe("success");
 				if (readResult.type === "success") {
-					expect(readResult.content.length).toBe(maxChars);
+					expect(readResult.content).toBe(largeContent);
 				}
 			});
 		});

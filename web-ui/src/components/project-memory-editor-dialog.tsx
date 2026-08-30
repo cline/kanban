@@ -2,7 +2,6 @@ import { AlertTriangle, BookOpen, Save } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 
@@ -30,12 +29,11 @@ This is durable, project-scoped context that will be injected into every new Cli
 - Personal notes unrelated to project execution
 - Sensitive credentials or secrets
 
-Keep this concise and high-signal. Maximum 10,000 characters.`;
+Keep this minimal, concise, deduplicated, and high-signal.`;
 
 export function ProjectMemoryEditorDialog({ open, onOpenChange, workspaceId }: ProjectMemoryEditorDialogProps) {
 	const [content, setContent] = useState("");
 	const [originalContent, setOriginalContent] = useState("");
-	const [maxChars, setMaxChars] = useState(10_000);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -50,7 +48,6 @@ export function ProjectMemoryEditorDialog({ open, onOpenChange, workspaceId }: P
 			const memory = await trpcClient.projects.getMemory.query();
 			setContent(memory.content);
 			setOriginalContent(memory.content);
-			setMaxChars(memory.maxChars);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			setError(`Failed to load project memory: ${message}`);
@@ -69,7 +66,6 @@ export function ProjectMemoryEditorDialog({ open, onOpenChange, workspaceId }: P
 			const result = await trpcClient.projects.saveMemory.mutate({ content });
 			setContent(result.content);
 			setOriginalContent(result.content);
-			setMaxChars(result.maxChars);
 			toast.success("Project memory saved");
 			onOpenChange(false);
 		} catch (err) {
@@ -95,8 +91,6 @@ export function ProjectMemoryEditorDialog({ open, onOpenChange, workspaceId }: P
 		setContent(newContent);
 	}, []);
 
-	const remainingChars = maxChars - content.length;
-	const isOverLimit = remainingChars < 0;
 	const hasChanges = content !== originalContent;
 
 	return (
@@ -128,16 +122,11 @@ export function ProjectMemoryEditorDialog({ open, onOpenChange, workspaceId }: P
 								disabled={isSaving}
 							/>
 
-							<div className="flex items-center justify-between text-xs">
-								<span className={cn("text-text-secondary", isOverLimit && "text-status-red font-medium")}>
-									{remainingChars.toLocaleString()} characters remaining
-								</span>
-								{content.length > 0 && (
-									<span className="text-text-tertiary">
-										{content.length.toLocaleString()} / {maxChars.toLocaleString()} characters
-									</span>
-								)}
-							</div>
+							{content.length > 0 && (
+								<div className="text-right text-xs text-text-tertiary">
+									{content.length.toLocaleString()} characters
+								</div>
+							)}
 						</>
 					)}
 				</div>
@@ -146,11 +135,7 @@ export function ProjectMemoryEditorDialog({ open, onOpenChange, workspaceId }: P
 				<Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSaving}>
 					Cancel
 				</Button>
-				<Button
-					variant="primary"
-					onClick={saveProjectMemory}
-					disabled={isSaving || isLoading || !hasChanges || isOverLimit}
-				>
+				<Button variant="primary" onClick={saveProjectMemory} disabled={isSaving || isLoading || !hasChanges}>
 					<Save size={16} />
 					{isSaving ? "Saving..." : "Save Memory"}
 				</Button>

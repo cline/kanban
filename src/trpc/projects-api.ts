@@ -14,7 +14,7 @@ import {
 	parseProjectMemorySaveRequest,
 	parseProjectRemoveRequest,
 } from "../core/api-validation";
-import { getProjectMemoryMaxChars, readProjectMemory, writeProjectMemory } from "../state/project-memory";
+import { readProjectMemory, writeProjectMemory } from "../state/project-memory";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceContext,
@@ -375,11 +375,8 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			if (result.type === "validation_error") {
 				throw new Error(result.message);
 			}
-			const maxChars = getProjectMemoryMaxChars();
 			return {
 				content: result.content,
-				maxChars,
-				remainingChars: maxChars - result.content.length,
 			} satisfies RuntimeProjectMemoryResponse;
 		},
 		saveProjectMemory: async (scope: RuntimeTrpcWorkspaceScope, input) => {
@@ -391,11 +388,8 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 			if (result.type === "write_error") {
 				throw new Error(result.message);
 			}
-			const maxChars = getProjectMemoryMaxChars();
 			return {
 				content: result.content,
-				maxChars,
-				remainingChars: maxChars - result.content.length,
 			} satisfies RuntimeProjectMemoryResponse;
 		},
 	};

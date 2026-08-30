@@ -550,8 +550,6 @@ export type RuntimeProjectRemoveResponse = z.infer<typeof runtimeProjectRemoveRe
 
 export const runtimeProjectMemoryResponseSchema = z.object({
 	content: z.string(),
-	maxChars: z.number().int().positive(),
-	remainingChars: z.number().int(),
 });
 export type RuntimeProjectMemoryResponse = z.infer<typeof runtimeProjectMemoryResponseSchema>;
 

@@ -3,6 +3,7 @@ import { Files, GitCompareArrows, Maximize2, MessageSquare, Minimize2, X } from 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { toast } from "sonner";
 import { CardSummaryPanel } from "@/components/card-summary-panel";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { ClineAgentChatPanel, type ClineAgentChatPanelHandle } from "@/components/detail-panels/cline-agent-chat-panel";
@@ -503,6 +504,7 @@ export function CardDetailView({
 			await trpc.workspace.promoteCardSummaryToProjectMemory.mutate({
 				taskId: selection.card.id,
 			});
+			toast.success("Project memory consolidated");
 		} finally {
 			setIsSavingSummary(false);
 		}

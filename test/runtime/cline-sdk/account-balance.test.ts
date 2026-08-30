@@ -28,7 +28,7 @@ const localProviderMocks = vi.hoisted(() => ({
 
 vi.mock("@clinebot/core", () => ({
 	addLocalProvider: vi.fn(),
-	ensureCustomProvidersLoaded: vi.fn(),
+	ensureCustomProvidersLoaded: vi.fn(async () => undefined),
 	getLocalProviderModels: localProviderMocks.getLocalProviderModels,
 	getValidClineCredentials: vi.fn(),
 	getValidOcaCredentials: vi.fn(),

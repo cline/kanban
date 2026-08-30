@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service";
+import { consolidateProjectMemory } from "../cline-sdk/cline-project-memory-consolidator";
 import {
 	type ClineTaskSessionService,
 	createInMemoryClineTaskSessionService,
@@ -231,6 +232,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			workspaceApi: createWorkspaceApi({
 				ensureTerminalManagerForWorkspace: deps.ensureTerminalManagerForWorkspace,
 				getScopedClineTaskSessionService,
+				consolidateProjectMemory,
 				broadcastRuntimeWorkspaceStateUpdated: deps.runtimeStateHub.broadcastRuntimeWorkspaceStateUpdated,
 				broadcastRuntimeProjectsUpdated: deps.runtimeStateHub.broadcastRuntimeProjectsUpdated,
 				buildWorkspaceStateSnapshot: deps.workspaceRegistry.buildWorkspaceStateSnapshot,

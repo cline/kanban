@@ -1,4 +1,4 @@
-import { Check, Copy, Sparkles, Trash2, Upload } from "lucide-react";
+import { Check, Copy, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -82,7 +82,7 @@ export function CardSummaryPanel({
 			setError(null);
 			await onPromoteToProjectMemory();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to promote to project memory");
+			setError(err instanceof Error ? err.message : "Failed to consolidate project memory");
 		}
 	};
 
@@ -216,8 +216,8 @@ export function CardSummaryPanel({
 								disabled={isSaving}
 								className="h-6 gap-1 text-[10px]"
 							>
-								<Upload size={12} />
-								Promote to Project Memory
+								<Sparkles size={12} />
+								Consolidate into Project Memory
 							</Button>
 						)}
 					</div>
@@ -240,10 +240,10 @@ export function CardSummaryPanel({
 								size="sm"
 								onClick={handlePromote}
 								disabled={isSaving}
-								icon={<Upload size={12} />}
+								icon={<Sparkles size={12} />}
 								className="h-6 text-[10px]"
 							>
-								Promote
+								Consolidate
 							</Button>
 						) : null}
 					</div>
