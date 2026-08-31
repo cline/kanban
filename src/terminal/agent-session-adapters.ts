@@ -1429,6 +1429,90 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+const primeAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		// Resume from trash
+		if (input.resumeFromTrash && !hasCliOption(args, "-c") && !hasCliOption(args, "--continue")) {
+			args.push("-c");
+		}
+
+		// Set hook env vars so hook commands identify this task
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		// Build system prompt injections
+		const systemPromptParts: string[] = [];
+
+		// Kanban sidebar instructions (home agent only)
+		const sidebarPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		if (sidebarPrompt) {
+			systemPromptParts.push(sidebarPrompt);
+		}
+
+		// Hook instructions for task sessions
+		if (hooks) {
+			const toReviewCmd = buildHookCommand("to_review", { source: "prime" });
+			const toInProgressCmd = buildHookCommand("to_in_progress", { source: "prime" });
+			const activityCmd = buildHookCommand("activity", { source: "prime" });
+			systemPromptParts.push(
+				[
+					"## Kanban Task Board",
+					"",
+					"You are working on a Kanban task card. Run these shell commands (in the background) to update your task status on the board:",
+					"",
+					`- When you START working — run: ${toInProgressCmd}`,
+					`- After significant actions (editing files, running tests) — run: ${activityCmd}`,
+					`- When the task is DONE and ready for review — run: ${toReviewCmd}`,
+					"",
+					"These commands update the card position on the Kanban board automatically.",
+				].join("\n"),
+			);
+		}
+
+		if (
+			systemPromptParts.length > 0 &&
+			!hasCliOption(args, "--append-system-prompt") &&
+			!hasCliOption(args, "--system-prompt")
+		) {
+			args.push("--append-system-prompt", systemPromptParts.join("\n\n"));
+		}
+
+		// Build task prompt (plan mode support)
+		let finalPrompt = input.prompt;
+		if (input.startInPlanMode) {
+			const planPrefix = [
+				"First, inspect the codebase and produce a clear implementation plan only.",
+				"Do not modify files and do not implement anything yet.",
+				"After you present the plan, ask for approval before making changes.",
+			].join(" ");
+			finalPrompt = finalPrompt.trim()
+				? `${planPrefix}\n\nTask:\n${finalPrompt}`
+				: `${planPrefix} Ask the user what they want planned if the task is unclear.`;
+		}
+
+		// Pass prompt as trailing argument
+		const withPromptLaunch = withPrompt(args, finalPrompt, "append");
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1437,6 +1521,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,
+	prime: primeAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
