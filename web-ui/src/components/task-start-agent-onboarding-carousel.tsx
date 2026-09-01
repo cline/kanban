@@ -305,6 +305,9 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	if (agentId === "kiro") {
 		return "Amazon's coding agent with access to the latest frontier models.";
 	}
+	if (agentId === "genpro") {
+		return "GenPro's policy-bound router and quota-aware execution supervisor.";
+	}
 	return "Install from the official docs.";
 }
 

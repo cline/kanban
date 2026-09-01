@@ -66,6 +66,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		autonomousArgs: ["--yolo"],
 		installUrl: "https://github.com/google-gemini/gemini-cli",
 	},
+	{
+		id: "genpro",
+		label: "GenPro Supervisor",
+		binary: "genpro-supervisor-adapter",
+		baseArgs: [],
+		autonomousArgs: [],
+		installUrl: "https://github.com/Starmatrices/GenPro_FSM",
+	},
 ];
 
 // Temporarily keep launch support scoped to the core agent set.
@@ -76,6 +84,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"codex",
 	"droid",
 	"kiro",
+	"genpro",
 	// "opencode",
 	// "gemini",
 ];
