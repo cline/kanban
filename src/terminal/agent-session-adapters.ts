@@ -1,5 +1,5 @@
-import { access, readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -15,6 +15,7 @@ import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
 import { configureCodexHooks, hasCodexConfigOverride } from "./codex-hook-config";
+import { buildGenproProviderDiscoveryEnvironment, resolveGenproExecutable } from "./genpro-launcher";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
 	getOpenCodeAuthPathCandidates,
@@ -38,6 +39,7 @@ export interface AgentAdapterLaunchInput {
 	resumeFromTrash?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	projectPath?: string;
 }
 
 export type AgentOutputTransitionDetector = (
@@ -1429,6 +1431,62 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+const genproAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const hooks = resolveHookContext(input);
+		if (!hooks) {
+			throw new Error("GenPro Supervisor requires a task-scoped Kanban workspace");
+		}
+		const projectPath = input.projectPath?.trim();
+		if (!projectPath) {
+			throw new Error("GenPro Supervisor requires a stable project workspace path");
+		}
+		const binary = resolveGenproExecutable(input.binary);
+		const providerDiscoveryEnvironment = buildGenproProviderDiscoveryEnvironment();
+
+		const promptDirectory = await mkdtemp(join(tmpdir(), "kanban-genpro-"));
+		const promptPath = join(promptDirectory, "prompt.txt");
+		try {
+			await writeFile(promptPath, input.prompt, { encoding: "utf8", mode: 0o600 });
+		} catch (error) {
+			await rm(promptDirectory, { recursive: true, force: true });
+			throw error;
+		}
+
+		const args = [
+			...input.args,
+			"--task-id",
+			input.taskId,
+			"--workspace-id",
+			hooks.workspaceId,
+			"--project-path",
+			projectPath,
+			"--working-directory",
+			input.cwd,
+			"--prompt-file",
+			promptPath,
+		];
+		if (input.startInPlanMode) {
+			args.push("--start-in-plan-mode");
+		}
+		if (input.resumeFromTrash) {
+			args.push("--resume-from-trash");
+		}
+
+		return {
+			binary,
+			args,
+			env: {
+				...createHookRuntimeEnv(hooks),
+				...providerDiscoveryEnvironment,
+			},
+			cleanup: async () => {
+				await rm(promptDirectory, { recursive: true, force: true });
+			},
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1437,6 +1495,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,
+	genpro: genproAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {

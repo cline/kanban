@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +9,8 @@ import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters
 const originalHome = process.env.HOME;
 const originalAppData = process.env.APPDATA;
 const originalLocalAppData = process.env.LOCALAPPDATA;
+const originalGenproExecutable = process.env.KANBAN_GENPRO_EXECUTABLE;
+const originalGenproCodexExecutable = process.env.KANBAN_GENPRO_CODEX_EXECUTABLE;
 let tempHome: string | null = null;
 const originalArgv = [...process.argv];
 const originalExecArgv = [...process.execArgv];
@@ -72,6 +74,16 @@ afterEach(() => {
 	} else {
 		process.env.LOCALAPPDATA = originalLocalAppData;
 	}
+	if (originalGenproExecutable === undefined) {
+		delete process.env.KANBAN_GENPRO_EXECUTABLE;
+	} else {
+		process.env.KANBAN_GENPRO_EXECUTABLE = originalGenproExecutable;
+	}
+	if (originalGenproCodexExecutable === undefined) {
+		delete process.env.KANBAN_GENPRO_CODEX_EXECUTABLE;
+	} else {
+		process.env.KANBAN_GENPRO_CODEX_EXECUTABLE = originalGenproCodexExecutable;
+	}
 	process.argv = [...originalArgv];
 	process.execArgv = [...originalExecArgv];
 	Object.defineProperty(process, "execPath", {
@@ -81,6 +93,84 @@ afterEach(() => {
 });
 
 describe("prepareAgentLaunch hook strategies", () => {
+	it("prepares a task-scoped GenPro launch without exposing the prompt in argv", async () => {
+		const root = setupTempHome();
+		const executable = join(root, "genpro-supervisor-adapter");
+		writeFileSync(executable, "#!/bin/sh\n", { mode: 0o700 });
+		chmodSync(executable, 0o700);
+		process.env.KANBAN_GENPRO_EXECUTABLE = executable;
+		const prompt = "Implement the private task without bypass permissions";
+		const launch = await prepareAgentLaunch({
+			taskId: "task-genpro",
+			agentId: "genpro",
+			binary: "genpro-supervisor-adapter",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp/worktree",
+			prompt,
+			workspaceId: "workspace-1",
+			projectPath: "/tmp/project",
+		});
+
+		const promptFlagIndex = launch.args.indexOf("--prompt-file");
+		expect(promptFlagIndex).toBeGreaterThan(-1);
+		const promptPath = launch.args[promptFlagIndex + 1];
+		expect(promptPath).toBeTruthy();
+		expect(readFileSync(promptPath, "utf8")).toBe(prompt);
+		if (process.platform !== "win32") {
+			expect(statSync(promptPath).mode & 0o777).toBe(0o600);
+		}
+		expect(launch.args).toEqual(
+			expect.arrayContaining([
+				"--task-id",
+				"task-genpro",
+				"--workspace-id",
+				"workspace-1",
+				"--project-path",
+				"/tmp/project",
+				"--working-directory",
+				"/tmp/worktree",
+			]),
+		);
+		expect(launch.args).not.toContain(prompt);
+		expect(launch.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+		expect(launch.binary).toBe(executable);
+		expect(launch.env).toEqual({
+			KANBAN_HOOK_TASK_ID: "task-genpro",
+			KANBAN_HOOK_WORKSPACE_ID: "workspace-1",
+		});
+
+		await launch.cleanup?.();
+		expect(existsSync(promptPath)).toBe(false);
+	});
+
+	it("refuses an unscoped GenPro launch before creating prompt evidence", async () => {
+		await expect(
+			prepareAgentLaunch({
+				taskId: "task-genpro",
+				agentId: "genpro",
+				binary: "genpro-supervisor-adapter",
+				args: [],
+				cwd: "/tmp/worktree",
+				prompt: "task prompt",
+			}),
+		).rejects.toThrow("requires a task-scoped Kanban workspace");
+	});
+
+	it("refuses a GenPro launch without a stable project path", async () => {
+		await expect(
+			prepareAgentLaunch({
+				taskId: "task-genpro",
+				agentId: "genpro",
+				binary: "genpro-supervisor-adapter",
+				args: [],
+				cwd: "/tmp/worktree",
+				prompt: "task prompt",
+				workspaceId: "workspace-1",
+			}),
+		).rejects.toThrow("requires a stable project workspace path");
+	});
+
 	it("configures Codex hooks without legacy notify", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

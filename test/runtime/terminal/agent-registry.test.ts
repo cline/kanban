@@ -2,10 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandDiscoveryMocks = vi.hoisted(() => ({
 	isBinaryAvailableOnPath: vi.fn(),
+	resolveOptionalGenproExecutable: vi.fn(),
 }));
 
 vi.mock("../../../src/terminal/command-discovery.js", () => ({
 	isBinaryAvailableOnPath: commandDiscoveryMocks.isBinaryAvailableOnPath,
+}));
+
+vi.mock("../../../src/terminal/genpro-launcher.js", () => ({
+	resolveOptionalGenproExecutable: commandDiscoveryMocks.resolveOptionalGenproExecutable,
 }));
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config";
@@ -35,6 +40,8 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 beforeEach(() => {
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+	commandDiscoveryMocks.resolveOptionalGenproExecutable.mockReset();
+	commandDiscoveryMocks.resolveOptionalGenproExecutable.mockReturnValue(null);
 	delete process.env.KANBAN_DEBUG_MODE;
 	delete process.env.DEBUG_MODE;
 	delete process.env.debug_mode;
@@ -48,6 +55,18 @@ describe("agent-registry", () => {
 
 		expect(detected).toEqual(["claude"]);
 		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(8);
+	});
+
+	it("resolves the configured GenPro launcher without changing other agents", () => {
+		commandDiscoveryMocks.resolveOptionalGenproExecutable.mockReturnValue(
+			"/opt/genpro/bin/genpro-supervisor-adapter",
+		);
+
+		const genpro = resolveAgentCommand(createRuntimeConfigState({ selectedAgentId: "genpro" }));
+		const claude = resolveAgentCommand(createRuntimeConfigState({ selectedAgentId: "claude" }));
+
+		expect(genpro?.binary).toBe("/opt/genpro/bin/genpro-supervisor-adapter");
+		expect(claude).toBeNull();
 	});
 
 	it("treats shell-only agents as unavailable", () => {
@@ -78,12 +97,13 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(true);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro", "genpro"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "kiro")?.defaultArgs).toEqual(["chat"]);
+		expect(response.agents.find((agent) => agent.id === "genpro")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.installed).toBe(true);
 	});
 
@@ -106,7 +126,7 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(false);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro", "genpro"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);

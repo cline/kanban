@@ -1,5 +1,5 @@
 import { accessSync, constants } from "node:fs";
-import { delimiter, join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 function canAccessPath(path: string): boolean {
 	try {
@@ -10,8 +10,8 @@ function canAccessPath(path: string): boolean {
 	}
 }
 
-function getWindowsExecutableCandidates(binary: string): string[] {
-	const pathext = process.env.PATHEXT?.split(";").filter(Boolean) ?? [".COM", ".EXE", ".BAT", ".CMD"];
+function getWindowsExecutableCandidates(binary: string, environment: NodeJS.ProcessEnv): string[] {
+	const pathext = environment.PATHEXT?.split(";").filter(Boolean) ?? [".COM", ".EXE", ".BAT", ".CMD"];
 	const lowerBinary = binary.toLowerCase();
 	if (pathext.some((extension) => lowerBinary.endsWith(extension.toLowerCase()))) {
 		return [binary];
@@ -44,35 +44,41 @@ function getWindowsExecutableCandidates(binary: string): string[] {
 // environment the Kanban process already has, instead of silently relying on hidden shell
 // side effects.
 export function isBinaryAvailableOnPath(binary: string): boolean {
+	return resolveBinaryOnPath(binary) !== null;
+}
+
+export function resolveBinaryOnPath(binary: string, environment: NodeJS.ProcessEnv = process.env): string | null {
 	const trimmed = binary.trim();
 	if (!trimmed) {
-		return false;
+		return null;
 	}
 	if (trimmed.includes("/") || trimmed.includes("\\")) {
-		return canAccessPath(trimmed);
+		return canAccessPath(trimmed) ? resolve(trimmed) : null;
 	}
 
-	const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+	const pathEntries = (environment.PATH ?? "").split(delimiter).filter(Boolean);
 	if (pathEntries.length === 0) {
-		return false;
+		return null;
 	}
 
 	if (process.platform === "win32") {
-		const candidates = getWindowsExecutableCandidates(trimmed);
+		const candidates = getWindowsExecutableCandidates(trimmed, environment);
 		for (const entry of pathEntries) {
 			for (const candidate of candidates) {
-				if (canAccessPath(join(entry, candidate))) {
-					return true;
+				const candidatePath = join(entry, candidate);
+				if (canAccessPath(candidatePath)) {
+					return resolve(candidatePath);
 				}
 			}
 		}
-		return false;
+		return null;
 	}
 
 	for (const entry of pathEntries) {
-		if (canAccessPath(join(entry, trimmed))) {
-			return true;
+		const candidatePath = join(entry, trimmed);
+		if (canAccessPath(candidatePath)) {
+			return resolve(candidatePath);
 		}
 	}
-	return false;
+	return null;
 }

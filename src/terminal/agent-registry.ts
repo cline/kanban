@@ -7,6 +7,7 @@ import type {
 	RuntimeConfigResponse,
 } from "../core/api-contract";
 import { isBinaryAvailableOnPath } from "./command-discovery";
+import { resolveOptionalGenproExecutable } from "./genpro-launcher";
 
 export interface ResolvedAgentCommand {
 	agentId: RuntimeAgentId;
@@ -53,7 +54,11 @@ export function detectInstalledCommands(): string[] {
 	const detected: string[] = [];
 
 	for (const candidate of candidates) {
-		if (isBinaryAvailableOnPath(candidate)) {
+		const available =
+			candidate === "genpro-supervisor-adapter"
+				? resolveOptionalGenproExecutable(candidate) !== null
+				: isBinaryAvailableOnPath(candidate);
+		if (available) {
 			detected.push(candidate);
 		}
 	}
@@ -86,12 +91,13 @@ export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Resolved
 	}
 	const defaultArgs = getDefaultArgs(selected.id);
 	const command = joinCommand(selected.binary, defaultArgs);
-	if (isBinaryAvailableOnPath(selected.binary)) {
+	const resolvedBinary = selected.id === "genpro" ? resolveOptionalGenproExecutable(selected.binary) : null;
+	if (resolvedBinary || (selected.id !== "genpro" && isBinaryAvailableOnPath(selected.binary))) {
 		return {
 			agentId: selected.id,
 			label: selected.label,
 			command,
-			binary: selected.binary,
+			binary: resolvedBinary ?? selected.binary,
 			args: defaultArgs,
 		};
 	}
