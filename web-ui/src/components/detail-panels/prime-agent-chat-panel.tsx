@@ -1,0 +1,215 @@
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
+import { type PrimeAcpChatMessage, usePrimeAcpChatSession } from "@/hooks/use-prime-acp-chat-session";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { TaskImage } from "@/types";
+
+const BOTTOM_LOCK_THRESHOLD_PX = 24;
+export interface PrimeAgentChatPanelHandle {
+	appendToDraft: (text: string) => void;
+	sendText: (text: string) => Promise<void>;
+}
+export interface PrimeAgentChatPanelProps {
+	taskId: string;
+	summary: RuntimeTaskSessionSummary | null;
+	onSendMessage?: (
+		taskId: string,
+		text: string,
+		options?: { images?: TaskImage[]; mode?: any },
+	) => Promise<ClineChatActionResult>;
+	onCancelTurn?: (taskId: string) => Promise<{ ok: boolean; message?: string }>;
+	onLoadMessages?: (taskId: string) => Promise<PrimeAcpChatMessage[] | null>;
+	incomingMessages?: PrimeAcpChatMessage[] | null;
+	incomingMessage?: PrimeAcpChatMessage | null;
+}
+function RoleBadge({ role }: { role: string }) {
+	const colors: Record<string, string> = {
+		user: "bg-accent text-white",
+		assistant: "bg-surface-3 text-text-primary",
+		reasoning: "bg-surface-3 text-text-secondary border border-dashed",
+		tool: "bg-status-orange/10 text-status-orange border border-status-orange/20",
+		system: "bg-surface-2 text-text-secondary",
+		status: "bg-surface-2 text-text-tertiary",
+	};
+	const label = role === "reasoning" ? "thought" : role;
+	return (
+		<span
+			className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${colors[role] ?? colors.system}`}
+		>
+			{label}
+		</span>
+	);
+}
+function ChatMessageItem({ message }: { message: PrimeAcpChatMessage }) {
+	const isUser = message.role === "user";
+	const isTool = message.role === "tool";
+	const isReasoning = message.role === "reasoning";
+	return (
+		<div
+			className={`flex flex-col gap-1.5 rounded-md px-3 py-2 ${isUser ? "bg-accent/10 border border-accent/15" : isTool ? "bg-surface-2 border border-border" : isReasoning ? "bg-surface-1 border border-dashed border-border" : "bg-surface-0 border border-transparent"}`}
+		>
+			<div className="flex items-center gap-2">
+				<RoleBadge role={message.role} />
+				{message.meta?.toolName ? (
+					<span className="text-xs text-text-secondary">{message.meta.toolName}</span>
+				) : null}
+				<span className="ml-auto text-[10px] text-text-tertiary">
+					{new Date(message.createdAt).toLocaleTimeString()}
+				</span>
+			</div>
+			{message.images && message.images.length > 0 ? (
+				<div className="flex flex-wrap gap-2">
+					{message.images.map((img) => (
+						<img
+							key={img.id}
+							src={`data:${img.mimeType};base64,${img.data}`}
+							alt={img.name ?? "image"}
+							className="max-h-40 rounded border border-border object-contain"
+						/>
+					))}
+				</div>
+			) : null}
+			<div
+				className={`prose prose-sm max-w-none ${isReasoning ? "text-text-secondary italic" : "text-text-primary"} prose-p:my-1 prose-pre:my-2 prose-pre:rounded prose-pre:bg-surface-2 prose-code:text-xs`}
+			>
+				<ReactMarkdown remarkPlugins={[remarkGfm]}>
+					{message.content || (isTool ? "(no output)" : "")}
+				</ReactMarkdown>
+			</div>
+		</div>
+	);
+}
+export const PrimeAgentChatPanel = React.forwardRef<PrimeAgentChatPanelHandle, PrimeAgentChatPanelProps>(
+	function PrimeAgentChatPanel(
+		{ taskId, summary, onSendMessage, onCancelTurn, onLoadMessages, incomingMessages, incomingMessage },
+		ref,
+	) {
+		const [draft, setDraft] = useState("");
+		const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+		const scrollRef = useRef<HTMLDivElement | null>(null);
+		const { messages, isSending, isCanceling, error, sendMessage, cancelTurn } = usePrimeAcpChatSession({
+			taskId,
+			onSendMessage,
+			onCancelTurn,
+			onLoadMessages,
+			incomingMessages,
+			incomingMessage,
+		});
+		const isPinnedToBottom = useCallback((container: HTMLDivElement): boolean => {
+			const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
+			return remaining <= BOTTOM_LOCK_THRESHOLD_PX;
+		}, []);
+		const handleScroll = useCallback(() => {
+			const c = scrollRef.current;
+			if (!c) return;
+			setIsAutoScrollEnabled(isPinnedToBottom(c));
+		}, [isPinnedToBottom]);
+		useLayoutEffect(() => {
+			const c = scrollRef.current;
+			if (!c || !isAutoScrollEnabled) return;
+			c.scrollTop = c.scrollHeight;
+		}, [messages, isAutoScrollEnabled, isSending]);
+		useEffect(() => {
+			setDraft("");
+			setIsAutoScrollEnabled(true);
+		}, [taskId]);
+		const handleSend = useCallback(async () => {
+			const text = draft.trim();
+			if (!text) return;
+			const ok = await sendMessage(text);
+			if (ok) setDraft("");
+		}, [draft, sendMessage]);
+		const handleKeyDown = useCallback(
+			(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+				if (e.key === "Enter" && !e.shiftKey) {
+					e.preventDefault();
+					void handleSend();
+				}
+			},
+			[handleSend],
+		);
+		React.useImperativeHandle(ref, () => ({
+			appendToDraft: (text: string) => {
+				const trimmed = text.trim();
+				if (!trimmed) return;
+				setDraft((prev) => (prev.trim().length === 0 ? trimmed : `${prev.trimEnd()}\n\n${trimmed}`));
+			},
+			sendText: async (text: string) => {
+				await sendMessage(text);
+			},
+		}));
+		const canSend = Boolean(onSendMessage) && !isSending && !isCanceling;
+		const canCancel = summary?.state === "running" && Boolean(onCancelTurn);
+		return (
+			<div className="flex min-h-0 flex-1 flex-col bg-surface-0">
+				<div className="flex items-center justify-between border-b border-divider px-3 py-2">
+					<div className="flex items-center gap-2">
+						<span className="text-sm font-semibold text-text-primary">Prime Agent (ACP)</span>
+						{summary ? (
+							<span className="rounded bg-surface-3 px-1.5 py-0.5 text-xs text-text-secondary">
+								{summary.state}
+							</span>
+						) : null}
+					</div>
+					{canCancel ? (
+						<Button variant="default" size="sm" onClick={() => void cancelTurn()} disabled={isCanceling}>
+							{isCanceling ? <Spinner size={12} /> : null} Cancel
+						</Button>
+					) : null}
+				</div>
+				<div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-2 py-3">
+					{messages.length === 0 ? (
+						<div className="flex flex-col items-center justify-center gap-2 py-12 text-text-tertiary">
+							<p className="text-sm">No messages yet. Start the conversation.</p>
+							<p className="text-xs">Messages are structured HTML via ACP, not xterm.</p>
+						</div>
+					) : (
+						<div className="flex flex-col gap-3">
+							{messages.map((m) => (
+								<ChatMessageItem key={m.id} message={m} />
+							))}
+							{summary?.state === "running" ? (
+								<div className="flex items-center gap-2 px-3 py-2 text-xs text-text-tertiary">
+									<Spinner size={12} /> Prime is working…
+								</div>
+							) : null}
+						</div>
+					)}
+				</div>
+				{error ? (
+					<div className="mx-2 rounded bg-status-red/10 px-3 py-2 text-xs text-status-red">{error}</div>
+				) : null}
+				<div className="border-t border-divider p-2">
+					<div className="flex gap-2">
+						<textarea
+							value={draft}
+							onChange={(e) => setDraft(e.target.value)}
+							onKeyDown={handleKeyDown}
+							placeholder="Ask Prime Agent… (Enter to send, Shift+Enter for newline)"
+							rows={3}
+							className="min-h-[60px] flex-1 resize-none rounded-md border border-border bg-surface-1 px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+							disabled={!canSend}
+						/>
+						<div className="flex flex-col gap-2">
+							<Button
+								variant="primary"
+								size="sm"
+								onClick={() => void handleSend()}
+								disabled={!canSend || draft.trim().length === 0}
+							>
+								Send
+							</Button>
+						</div>
+					</div>
+					<div className="mt-1 text-[10px] text-text-tertiary">
+						ACP via prime-agent --mode acp · HTML rendering · auto-approve permissions
+					</div>
+				</div>
+			</div>
+		);
+	},
+);
