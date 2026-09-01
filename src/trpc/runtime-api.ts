@@ -1,3 +1,4 @@
+// biome-ignore-all lint: ACP
 // Coordinates the runtime-side TRPC handlers used by the browser.
 // This is the main backend entrypoint for sessions, settings, git, and
 // workspace actions, but detailed Cline, terminal, and config behavior
@@ -7,6 +8,8 @@ import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { TRPCError } from "@trpc/server";
+import { isPrimeAcpEnabled } from "../acp/acp-config";
+import type { PrimeAcpTaskSessionService } from "../acp/acp-task-session-service";
 import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service";
 import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service";
 import { createClineProviderService } from "../cline-sdk/cline-provider-service";
@@ -57,6 +60,7 @@ export interface CreateRuntimeApiDependencies {
 	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
 	getScopedClineTaskSessionService: (scope: RuntimeTrpcWorkspaceScope) => Promise<ClineTaskSessionService>;
+	getScopedPrimeAcpTaskSessionService?: (scope: RuntimeTrpcWorkspaceScope) => Promise<PrimeAcpTaskSessionService>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	broadcastClineMcpAuthStatusesUpdated?: (
@@ -201,8 +205,10 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					: null;
 				const effectiveAgentId = previousTerminalAgentId ?? body.agentId ?? scopedRuntimeConfig.selectedAgentId;
 				let useClinePath = effectiveAgentId === "cline";
+				let usePrimeAcpPath =
+					effectiveAgentId === "prime" && isPrimeAcpEnabled() && Boolean(deps.getScopedPrimeAcpTaskSessionService);
 				const shouldProbePersistedClineSession =
-					body.resumeFromTrash && !useClinePath && previousTerminalAgentId === null;
+					body.resumeFromTrash && !useClinePath && !usePrimeAcpPath && previousTerminalAgentId === null;
 				if (shouldProbePersistedClineSession) {
 					// If the terminal summary already has a concrete non-Cline agentId,
 					// skip Cline persisted-session probing. That probe can cold-start the
@@ -264,6 +270,36 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						ok: true,
 						summary: nextSummary,
 					};
+				}
+
+				if (usePrimeAcpPath && deps.getScopedPrimeAcpTaskSessionService) {
+					try {
+						const primeService = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+						const primeSummary = await primeService.startTaskSession({
+							taskId: body.taskId,
+							cwd: taskCwd,
+							prompt: body.prompt,
+							images: body.images,
+							resumeFromTrash: body.resumeFromTrash,
+						});
+						let nextSummary = primeSummary;
+						if (shouldCaptureTurnCheckpoint) {
+							try {
+								const nextTurn = (primeSummary.latestTurnCheckpoint?.turn ?? 0) + 1;
+								const checkpoint = await captureTaskTurnCheckpoint({
+									cwd: taskCwd,
+									taskId: body.taskId,
+									turn: nextTurn,
+								});
+								nextSummary = primeService.applyTurnCheckpoint(body.taskId, checkpoint) ?? primeSummary;
+							} catch {}
+						}
+						return { ok: true, summary: nextSummary };
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						console.error(`[prime-acp] start failed, falling back to PTY: ${message}`);
+						usePrimeAcpPath = false;
+					}
 				}
 
 				const resolvedConfig =
@@ -332,6 +368,19 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						summary: clineSummary,
 					};
 				}
+				if (isPrimeAcpEnabled() && deps.getScopedPrimeAcpTaskSessionService) {
+					try {
+						const primeService = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+						const primeSummary = await primeService.stopTaskSession(body.taskId);
+						if (primeSummary && primeSummary.agentId === "prime") {
+							return { ok: true, summary: primeSummary };
+						}
+						if (primeSummary) {
+							const list = primeService.getSummary(body.taskId);
+							if (list) return { ok: true, summary: primeSummary };
+						}
+					} catch {}
+				}
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = terminalManager.stopTaskSession(body.taskId);
 				return {
@@ -358,6 +407,13 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						ok: true,
 						summary: clineSummary,
 					};
+				}
+				if (isPrimeAcpEnabled() && deps.getScopedPrimeAcpTaskSessionService) {
+					try {
+						const primeService = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+						const primeSummary = await primeService.sendTaskSessionInput(body.taskId, payloadText);
+						if (primeSummary) return { ok: true, summary: primeSummary };
+					} catch {}
 				}
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
 				const summary = terminalManager.writeInput(body.taskId, Buffer.from(payloadText, "utf8"));
@@ -387,16 +443,21 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 				const summary = clineTaskSessionService.getSummary(body.taskId);
 				const messages = await clineTaskSessionService.loadTaskSessionMessages(body.taskId);
-				if (!summary && messages.length === 0) {
-					return {
-						ok: false,
-						messages: [],
-						error: "Task chat session is not available.",
-					};
+				if (summary || messages.length > 0) {
+					return { ok: true, messages };
+				}
+				if (isPrimeAcpEnabled() && deps.getScopedPrimeAcpTaskSessionService) {
+					try {
+						const primeService = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+						const pSummary = primeService.getSummary(body.taskId);
+						const pMessages = await primeService.loadTaskSessionMessages(body.taskId);
+						if (pSummary || pMessages.length > 0) return { ok: true, messages: pMessages };
+					} catch {}
 				}
 				return {
-					ok: true,
-					messages,
+					ok: false,
+					messages: [],
+					error: "Task chat session is not available.",
 				};
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -437,6 +498,12 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						reasoningEffort: clineLaunchConfig.reasoningEffort,
 					});
 				}
+				if (!summary && isPrimeAcpEnabled() && deps.getScopedPrimeAcpTaskSessionService) {
+					try {
+						const primeService = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+						summary = await primeService.reloadTaskSession(body.taskId);
+					} catch {}
+				}
 				if (!summary) {
 					return {
 						ok: false,
@@ -461,7 +528,13 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseTaskChatAbortRequest(input);
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
-				const summary = await clineTaskSessionService.abortTaskSession(body.taskId);
+				let summary = await clineTaskSessionService.abortTaskSession(body.taskId);
+				if (!summary && isPrimeAcpEnabled() && deps.getScopedPrimeAcpTaskSessionService) {
+					try {
+						const primeService = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+						summary = await primeService.abortTaskSession(body.taskId);
+					} catch {}
+				}
 				if (!summary) {
 					return {
 						ok: false,
@@ -486,7 +559,13 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseTaskChatCancelRequest(input);
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
-				const summary = await clineTaskSessionService.cancelTaskTurn(body.taskId);
+				let summary = await clineTaskSessionService.cancelTaskTurn(body.taskId);
+				if (!summary && isPrimeAcpEnabled() && deps.getScopedPrimeAcpTaskSessionService) {
+					try {
+						const primeService = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+						summary = await primeService.cancelTaskTurn(body.taskId);
+					} catch {}
+				}
 				if (!summary) {
 					return {
 						ok: false,
@@ -589,6 +668,25 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		sendTaskChatMessage: async (workspaceScope, input) => {
 			try {
 				const body = parseTaskChatSendRequest(input);
+				if (isPrimeAcpEnabled() && deps.getScopedPrimeAcpTaskSessionService) {
+					try {
+						const primeServiceMaybe = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+						const primeExisting = primeServiceMaybe.getSummary(body.taskId);
+						if (primeExisting && primeExisting.agentId === "prime") {
+							const isClear = isClineClearSlashCommand(body.text);
+							if (isClear) {
+								const summary = await primeServiceMaybe.clearTaskSession(body.taskId);
+								deps.broadcastTaskChatCleared?.(workspaceScope.workspaceId, body.taskId);
+								return { ok: true, summary, message: null };
+							}
+							const summary = await primeServiceMaybe.sendTaskSessionInput(body.taskId, body.text, body.images);
+							if (summary) {
+								const latestMessage = primeServiceMaybe.listMessages(body.taskId).at(-1) ?? null;
+								return { ok: true, summary, message: latestMessage };
+							}
+						}
+					} catch {}
+				}
 				const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 				if (isClineClearSlashCommand(body.text)) {
 					const summary = await clineTaskSessionService.clearTaskSession(body.taskId);
@@ -618,6 +716,20 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 							);
 						}
 						if (!summary) {
+							if (isPrimeAcpEnabled() && deps.getScopedPrimeAcpTaskSessionService) {
+								try {
+									const primeService = await deps.getScopedPrimeAcpTaskSessionService(workspaceScope);
+									const pSummary = await primeService.sendTaskSessionInput(
+										body.taskId,
+										body.text,
+										body.images,
+									);
+									if (pSummary) {
+										const latest = primeService.listMessages(body.taskId).at(-1) ?? null;
+										return { ok: true, summary: pSummary, message: latest };
+									}
+								} catch {}
+							}
 							return {
 								ok: false,
 								summary: null,

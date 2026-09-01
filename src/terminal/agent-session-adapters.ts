@@ -7,6 +7,7 @@ import type {
 	RuntimeAgentId,
 	RuntimeHookEvent,
 	RuntimeTaskImage,
+	RuntimeTaskPrimeSettings,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
 import { buildKanbanCommandParts } from "../core/kanban-command";
@@ -38,6 +39,7 @@ export interface AgentAdapterLaunchInput {
 	resumeFromTrash?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	primeSettings?: RuntimeTaskPrimeSettings;
 }
 
 export type AgentOutputTransitionDetector = (
@@ -1429,6 +1431,108 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+function primePromptDetector(data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null {
+	if (summary.state !== "running") {
+		return null;
+	}
+	const stripped = stripAnsi(data);
+	if (
+		stripped.includes("Which option") ||
+		stripped.includes("please tell me which") ||
+		stripped.includes("Ask the user what they want")
+	) {
+		return { type: "hook.to_review" };
+	}
+	return null;
+}
+
+function shouldInspectPrimeOutput(summary: RuntimeTaskSessionSummary): boolean {
+	return summary.state === "running";
+}
+
+const primeAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+		const primeModel = input.primeSettings?.modelId
+			? `${input.primeSettings.providerId ?? "opencode-go"}/${input.primeSettings.modelId}`
+			: input.primeSettings?.providerId
+				? input.primeSettings.providerId
+				: null;
+		if (!hasCliOption(args, "--model") && !hasCliOption(args, "-m")) {
+			if (primeModel) {
+				args.push("--model", primeModel);
+			} else {
+				args.push("--model", "opencode-go/muse-spark-1.2-contributor");
+			}
+		}
+		if (input.resumeFromTrash && !hasCliOption(args, "-c") && !hasCliOption(args, "--continue")) {
+			args.push("-c");
+		}
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+		const systemPromptParts: string[] = [];
+		const sidebarPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		if (sidebarPrompt) {
+			systemPromptParts.push(sidebarPrompt);
+		}
+		if (hooks) {
+			const toReviewCmd = buildHookCommand("to_review", { source: "prime" });
+			const toInProgressCmd = buildHookCommand("to_in_progress", { source: "prime" });
+			const activityCmd = buildHookCommand("activity", { source: "prime" });
+			systemPromptParts.push(
+				[
+					"## Kanban Task Board",
+					"",
+					"You are working on a Kanban task card. Run these shell commands (in the background) to update your task status on the board:",
+					"",
+					`- When you START working — run: ${toInProgressCmd}`,
+					`- After significant actions (editing files, running tests) — run: ${activityCmd}`,
+					`- When the task is DONE and ready for review — run: ${toReviewCmd}`,
+					"",
+					"These commands update the card position on the Kanban board automatically.",
+				].join("\n"),
+			);
+		}
+		if (
+			systemPromptParts.length > 0 &&
+			!hasCliOption(args, "--append-system-prompt") &&
+			!hasCliOption(args, "--system-prompt")
+		) {
+			args.push("--append-system-prompt", systemPromptParts.join("\n\n"));
+		}
+		let finalPrompt = input.prompt;
+		if (input.startInPlanMode) {
+			finalPrompt = [
+				"First, inspect the codebase and produce a clear implementation plan only.",
+				"Do not modify files yet. After you present the plan, ask for approval before making changes.",
+				finalPrompt ? `\n\nTask:\n${finalPrompt}` : " Ask the user what they want planned if the task is unclear.",
+			].join(" ");
+		}
+		const withPromptLaunch = withPrompt(args, finalPrompt, "append");
+		if (hooks) {
+			return {
+				...withPromptLaunch,
+				env: { ...withPromptLaunch.env, ...env },
+				detectOutputTransition: primePromptDetector,
+				shouldInspectOutputForTransition: shouldInspectPrimeOutput,
+			};
+		}
+		return {
+			...withPromptLaunch,
+			env: { ...withPromptLaunch.env, ...env },
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1437,6 +1541,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,
+	prime: primeAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {

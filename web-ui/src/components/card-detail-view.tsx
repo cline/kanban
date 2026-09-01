@@ -8,6 +8,7 @@ import { ClineAgentChatPanel, type ClineAgentChatPanelHandle } from "@/component
 import { ColumnContextPanel } from "@/components/detail-panels/column-context-panel";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/detail-panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/detail-panels/file-tree-panel";
+import { PrimeAgentChatPanel, type PrimeAgentChatPanelHandle } from "@/components/detail-panels/prime-agent-chat-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
@@ -18,6 +19,7 @@ import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import { isNativeClineAgentSelected } from "@/runtime/native-agent";
+import { isNativePrimeAgentSelected } from "@/runtime/prime-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeClineReasoningEffort,
@@ -514,6 +516,7 @@ export function CardDetailView({
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const effectiveTaskAgentId = sessionSummary?.agentId ?? selection.card.agentId ?? selectedAgentId;
 	const showClineAgentChatPanel = isNativeClineAgentSelected(effectiveTaskAgentId);
+	const showPrimeAgentChatPanel = isNativePrimeAgentSelected(effectiveTaskAgentId);
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];
@@ -608,6 +611,8 @@ export function CardDetailView({
 		(formatted: string) => {
 			if (showClineAgentChatPanel) {
 				clineAgentChatPanelRef.current?.appendToDraft(formatted);
+			} else if (showPrimeAgentChatPanel) {
+				primeAgentChatPanelRef.current?.appendToDraft(formatted);
 				setIsDiffExpanded(false);
 				return;
 			}
@@ -620,6 +625,8 @@ export function CardDetailView({
 		(formatted: string) => {
 			if (showClineAgentChatPanel) {
 				void clineAgentChatPanelRef.current?.sendText(formatted);
+			} else if (showPrimeAgentChatPanel) {
+				void primeAgentChatPanelRef.current?.sendText(formatted);
 				setIsDiffExpanded(false);
 				return;
 			}
@@ -631,6 +638,7 @@ export function CardDetailView({
 
 	const showBottomTerminal = bottomTerminalOpen && !!bottomTerminalTaskId;
 
+	const primeAgentChatPanelRef = useRef<PrimeAgentChatPanelHandle | null>(null);
 	const agentChatPanel = showClineAgentChatPanel ? (
 		<ClineAgentChatPanel
 			ref={clineAgentChatPanelRef}
@@ -667,6 +675,17 @@ export function CardDetailView({
 					? getTaskAutoReviewCancelButtonLabel(selection.card.autoReviewMode)
 					: null
 			}
+		/>
+	) : showPrimeAgentChatPanel ? (
+		<PrimeAgentChatPanel
+			ref={primeAgentChatPanelRef}
+			taskId={selection.card.id}
+			summary={sessionSummary}
+			onSendMessage={onSendClineChatMessage}
+			onCancelTurn={onCancelClineChatTurn}
+			onLoadMessages={onLoadClineChatMessages}
+			incomingMessages={streamedClineChatMessages as any}
+			incomingMessage={latestClineChatMessage as any}
 		/>
 	) : (
 		<AgentTerminalPanel

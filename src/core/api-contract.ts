@@ -71,7 +71,16 @@ export const runtimeSlashCommandsResponseSchema = z.object({
 });
 export type RuntimeSlashCommandsResponse = z.infer<typeof runtimeSlashCommandsResponseSchema>;
 
-export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "kiro", "cline"]);
+export const runtimeAgentIdSchema = z.enum([
+	"claude",
+	"codex",
+	"gemini",
+	"opencode",
+	"droid",
+	"kiro",
+	"cline",
+	"prime",
+]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
 const runtimeBoardColumnIdEnum = z.enum(["backlog", "in_progress", "review", "trash"]);
@@ -96,6 +105,13 @@ export const runtimeTaskClineSettingsSchema = z.object({
 	reasoningEffort: runtimeClineReasoningEffortSchema.optional(),
 });
 export type RuntimeTaskClineSettings = z.infer<typeof runtimeTaskClineSettingsSchema>;
+
+export const runtimeTaskPrimeSettingsSchema = z.object({
+	providerId: z.string().optional(),
+	modelId: z.string().optional(),
+});
+
+export type RuntimeTaskPrimeSettings = z.infer<typeof runtimeTaskPrimeSettingsSchema>;
 export const runtimeTaskImageSchema = z.object({
 	id: z.string(),
 	data: z.string(),
@@ -108,6 +124,7 @@ const runtimeLegacyTaskClineReasoningEffortSchema = z.enum(["default", "low", "m
 
 function normalizeRuntimeTaskClineSettings(input: {
 	clineSettings?: RuntimeTaskClineSettings;
+	primeSettings?: RuntimeTaskPrimeSettings;
 	clineProviderId?: string;
 	clineModelId?: string;
 	clineReasoningEffort?: z.infer<typeof runtimeLegacyTaskClineReasoningEffortSchema>;
@@ -983,6 +1000,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	rows: z.number().int().positive().optional(),
 	agentId: runtimeAgentIdSchema.optional(),
 	clineSettings: runtimeTaskClineSettingsSchema.optional(),
+	primeSettings: runtimeTaskPrimeSettingsSchema.optional(),
 });
 export type RuntimeTaskSessionStartRequest = z.infer<typeof runtimeTaskSessionStartRequestSchema>;
 

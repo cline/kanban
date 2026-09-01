@@ -91,6 +91,7 @@
     "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.9"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.14.1",
     "@clinebot/core": "^0.0.38",
     "@clinebot/shared": "^0.0.38",
     "@modelcontextprotocol/sdk": "^1.27.1",
