@@ -1433,6 +1433,11 @@ const clineAdapter: AgentSessionAdapter = {
 
 const genproAdapter: AgentSessionAdapter = {
 	async prepare(input) {
+		if (input.autonomousModeEnabled) {
+			throw new Error(
+				"Autonomous mode is unsupported for the GenPro Supervisor adapter; ForgePilot governs execution policy.",
+			);
+		}
 		const hooks = resolveHookContext(input);
 		if (!hooks) {
 			throw new Error("GenPro Supervisor requires a task-scoped Kanban workspace");

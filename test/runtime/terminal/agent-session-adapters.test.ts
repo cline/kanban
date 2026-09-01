@@ -105,7 +105,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			agentId: "genpro",
 			binary: "genpro-supervisor-adapter",
 			args: [],
-			autonomousModeEnabled: true,
+			autonomousModeEnabled: false,
 			cwd: "/tmp/worktree",
 			prompt,
 			workspaceId: "workspace-1",
@@ -142,6 +142,24 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		await launch.cleanup?.();
 		expect(existsSync(promptPath)).toBe(false);
+	});
+
+	it("rejects autonomous GenPro before resolving its launcher", async () => {
+		await expect(
+			prepareAgentLaunch({
+				taskId: "task-genpro-auto",
+				agentId: "genpro",
+				binary: "genpro-supervisor-adapter",
+				args: [],
+				autonomousModeEnabled: true,
+				cwd: "/tmp/worktree",
+				prompt: "task prompt",
+				workspaceId: "workspace-1",
+				projectPath: "/tmp/project",
+			}),
+		).rejects.toThrow(
+			"Autonomous mode is unsupported for the GenPro Supervisor adapter; ForgePilot governs execution policy.",
+		);
 	});
 
 	it("refuses an unscoped GenPro launch before creating prompt evidence", async () => {
