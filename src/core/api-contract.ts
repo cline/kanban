@@ -105,6 +105,13 @@ export const runtimeTaskClineSettingsSchema = z.object({
 	reasoningEffort: runtimeClineReasoningEffortSchema.optional(),
 });
 export type RuntimeTaskClineSettings = z.infer<typeof runtimeTaskClineSettingsSchema>;
+
+export const runtimeTaskPrimeSettingsSchema = z.object({
+	providerId: z.string().optional(),
+	modelId: z.string().optional(),
+});
+
+export type RuntimeTaskPrimeSettings = z.infer<typeof runtimeTaskPrimeSettingsSchema>;
 export const runtimeTaskImageSchema = z.object({
 	id: z.string(),
 	data: z.string(),
@@ -117,6 +124,7 @@ const runtimeLegacyTaskClineReasoningEffortSchema = z.enum(["default", "low", "m
 
 function normalizeRuntimeTaskClineSettings(input: {
 	clineSettings?: RuntimeTaskClineSettings;
+	primeSettings?: RuntimeTaskPrimeSettings;
 	clineProviderId?: string;
 	clineModelId?: string;
 	clineReasoningEffort?: z.infer<typeof runtimeLegacyTaskClineReasoningEffortSchema>;
@@ -992,6 +1000,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	rows: z.number().int().positive().optional(),
 	agentId: runtimeAgentIdSchema.optional(),
 	clineSettings: runtimeTaskClineSettingsSchema.optional(),
+	primeSettings: runtimeTaskPrimeSettingsSchema.optional(),
 });
 export type RuntimeTaskSessionStartRequest = z.infer<typeof runtimeTaskSessionStartRequestSchema>;
 

@@ -687,15 +687,6 @@ export function CardDetailView({
 			incomingMessages={streamedClineChatMessages as any}
 			incomingMessage={latestClineChatMessage as any}
 		/>
-	) : showPrimeAgentChatPanel ? (
-		<PrimeAgentChatPanel
-			ref={primeAgentChatPanelRef}
-			taskId={selection.card.id}
-			summary={sessionSummary}
-			taskColumnId={selection.column.id}
-			workspaceId={currentProjectId}
-			runtimeConfig={runtimeConfig}
-		/>
 	) : (
 		<AgentTerminalPanel
 			taskId={selection.card.id}

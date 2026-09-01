@@ -7,6 +7,7 @@ import type {
 	RuntimeAgentId,
 	RuntimeHookEvent,
 	RuntimeTaskImage,
+	RuntimeTaskPrimeSettings,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
 import { buildKanbanCommandParts } from "../core/kanban-command";
@@ -38,6 +39,7 @@ export interface AgentAdapterLaunchInput {
 	resumeFromTrash?: boolean;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	primeSettings?: RuntimeTaskPrimeSettings;
 }
 
 export type AgentOutputTransitionDetector = (
@@ -1452,8 +1454,17 @@ const primeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
+		const primeModel = input.primeSettings?.modelId
+			? `${input.primeSettings.providerId ?? "opencode-go"}/${input.primeSettings.modelId}`
+			: input.primeSettings?.providerId
+				? input.primeSettings.providerId
+				: null;
 		if (!hasCliOption(args, "--model") && !hasCliOption(args, "-m")) {
-			args.push("--model", "opencode-go/muse-spark-1.2-contributor");
+			if (primeModel) {
+				args.push("--model", primeModel);
+			} else {
+				args.push("--model", "opencode-go/muse-spark-1.2-contributor");
+			}
 		}
 		if (input.resumeFromTrash && !hasCliOption(args, "-c") && !hasCliOption(args, "--continue")) {
 			args.push("-c");
