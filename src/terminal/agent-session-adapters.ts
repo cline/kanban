@@ -1429,17 +1429,35 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+function primePromptDetector(data: string, summary: RuntimeTaskSessionSummary): SessionTransitionEvent | null {
+	if (summary.state !== "running") {
+		return null;
+	}
+	const stripped = stripAnsi(data);
+	if (
+		stripped.includes("Which option") ||
+		stripped.includes("please tell me which") ||
+		stripped.includes("Ask the user what they want")
+	) {
+		return { type: "hook.to_review" };
+	}
+	return null;
+}
+
+function shouldInspectPrimeOutput(summary: RuntimeTaskSessionSummary): boolean {
+	return summary.state === "running";
+}
+
 const primeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
 		const env: Record<string, string | undefined> = {};
-
-		// Resume from trash
+		if (!hasCliOption(args, "--model") && !hasCliOption(args, "-m")) {
+			args.push("--model", "opencode-go/muse-spark-1.2-contributor");
+		}
 		if (input.resumeFromTrash && !hasCliOption(args, "-c") && !hasCliOption(args, "--continue")) {
 			args.push("-c");
 		}
-
-		// Set hook env vars so hook commands identify this task
 		const hooks = resolveHookContext(input);
 		if (hooks) {
 			Object.assign(
@@ -1450,17 +1468,11 @@ const primeAdapter: AgentSessionAdapter = {
 				}),
 			);
 		}
-
-		// Build system prompt injections
 		const systemPromptParts: string[] = [];
-
-		// Kanban sidebar instructions (home agent only)
 		const sidebarPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 		if (sidebarPrompt) {
 			systemPromptParts.push(sidebarPrompt);
 		}
-
-		// Hook instructions for task sessions
 		if (hooks) {
 			const toReviewCmd = buildHookCommand("to_review", { source: "prime" });
 			const toInProgressCmd = buildHookCommand("to_in_progress", { source: "prime" });
@@ -1479,7 +1491,6 @@ const primeAdapter: AgentSessionAdapter = {
 				].join("\n"),
 			);
 		}
-
 		if (
 			systemPromptParts.length > 0 &&
 			!hasCliOption(args, "--append-system-prompt") &&
@@ -1487,28 +1498,26 @@ const primeAdapter: AgentSessionAdapter = {
 		) {
 			args.push("--append-system-prompt", systemPromptParts.join("\n\n"));
 		}
-
-		// Build task prompt (plan mode support)
 		let finalPrompt = input.prompt;
 		if (input.startInPlanMode) {
-			const planPrefix = [
+			finalPrompt = [
 				"First, inspect the codebase and produce a clear implementation plan only.",
-				"Do not modify files and do not implement anything yet.",
-				"After you present the plan, ask for approval before making changes.",
+				"Do not modify files yet. After you present the plan, ask for approval before making changes.",
+				finalPrompt ? `\n\nTask:\n${finalPrompt}` : " Ask the user what they want planned if the task is unclear.",
 			].join(" ");
-			finalPrompt = finalPrompt.trim()
-				? `${planPrefix}\n\nTask:\n${finalPrompt}`
-				: `${planPrefix} Ask the user what they want planned if the task is unclear.`;
 		}
-
-		// Pass prompt as trailing argument
 		const withPromptLaunch = withPrompt(args, finalPrompt, "append");
+		if (hooks) {
+			return {
+				...withPromptLaunch,
+				env: { ...withPromptLaunch.env, ...env },
+				detectOutputTransition: primePromptDetector,
+				shouldInspectOutputForTransition: shouldInspectPrimeOutput,
+			};
+		}
 		return {
 			...withPromptLaunch,
-			env: {
-				...withPromptLaunch.env,
-				...env,
-			},
+			env: { ...withPromptLaunch.env, ...env },
 		};
 	},
 };
