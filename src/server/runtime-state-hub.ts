@@ -41,6 +41,7 @@ export interface CreateRuntimeStateHubDependencies {
 export interface RuntimeStateHub {
 	trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => void;
 	trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => void;
+	trackPrimeAcpTaskSessionService?: (workspaceId: string, workspacePath: string, service: any) => void;
 	broadcastTaskChatMessage: (workspaceId: string, taskId: string, message: ClineTaskMessage) => void;
 	broadcastTaskChatCleared: (workspaceId: string, taskId: string) => void;
 	handleUpgrade: (
@@ -64,6 +65,9 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const terminalSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
 	const clineSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
 	const clineMessageUnsubscribeByWorkspaceId = new Map<string, () => void>();
+	const primeSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
+	const primeMessageUnsubscribeByWorkspaceId = new Map<string, () => void>();
+	const primePreviousSummaryByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const clinePreviousSummaryByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const pendingTaskSessionSummariesByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const taskSessionBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
@@ -267,6 +271,17 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			}
 		}
 		clineMessageUnsubscribeByWorkspaceId.delete(workspaceId);
+		const unsubscribePrimeSummary = primeSummaryUnsubscribeByWorkspaceId.get(workspaceId);
+		if (unsubscribePrimeSummary) {
+			try { unsubscribePrimeSummary(); } catch {}
+		}
+		primeSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
+		primePreviousSummaryByWorkspaceId.delete(workspaceId);
+		const unsubscribePrimeMessage = primeMessageUnsubscribeByWorkspaceId.get(workspaceId);
+		if (unsubscribePrimeMessage) {
+			try { unsubscribePrimeMessage(); } catch {}
+		}
+		primeMessageUnsubscribeByWorkspaceId.delete(workspaceId);
 		disposeTaskSessionSummaryBroadcast(workspaceId);
 		workspaceMetadataMonitor.disposeWorkspace(workspaceId);
 
@@ -455,11 +470,15 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 					const clineSummaries = Array.from(
 						clinePreviousSummaryByWorkspaceId.get(monitorWorkspaceId)?.values() ?? [],
 					);
-					if (clineSummaries.length > 0) {
+					const primeSummaries = Array.from(
+						primePreviousSummaryByWorkspaceId.get(monitorWorkspaceId)?.values() ?? [],
+					);
+					const combinedSummaries = [...clineSummaries, ...primeSummaries];
+					if (combinedSummaries.length > 0) {
 						sendRuntimeStateMessage(client, {
 							type: "task_sessions_updated",
 							workspaceId: monitorWorkspaceId,
-							summaries: clineSummaries,
+							summaries: combinedSummaries,
 						} satisfies RuntimeStateStreamTaskSessionsMessage);
 					}
 				}
@@ -539,6 +558,32 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			});
 			clineMessageUnsubscribeByWorkspaceId.set(workspaceId, unsubscribeMessage);
 		},
+		trackPrimeAcpTaskSessionService: (workspaceId: string, workspacePath: string, service: any) => {
+			if (primeSummaryUnsubscribeByWorkspaceId.has(workspaceId)) return;
+			const previousSummariesByTaskId = new Map<string, RuntimeTaskSessionSummary>();
+			primePreviousSummaryByWorkspaceId.set(workspaceId, previousSummariesByTaskId);
+			for (const summary of service.listSummaries()) {
+				previousSummariesByTaskId.set(summary.taskId, summary);
+				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+			}
+			const unsubscribe = service.onSummary((summary: RuntimeTaskSessionSummary) => {
+				const previousSummary = previousSummariesByTaskId.get(summary.taskId);
+				previousSummariesByTaskId.set(summary.taskId, summary);
+				queueTaskSessionSummaryBroadcast(workspaceId, summary);
+				const didCheckpointChange =
+					previousSummary?.latestTurnCheckpoint?.commit !== summary.latestTurnCheckpoint?.commit ||
+					previousSummary?.previousTurnCheckpoint?.commit !== summary.previousTurnCheckpoint?.commit;
+				if (didCheckpointChange) void broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath);
+				if (previousSummary && previousSummary.state !== "awaiting_review" && summary.state === "awaiting_review") {
+					broadcastTaskReadyForReview(workspaceId, summary.taskId);
+				}
+			});
+			primeSummaryUnsubscribeByWorkspaceId.set(workspaceId, unsubscribe);
+			const unsubscribeMessage = service.onMessage((taskId: string, message: any) => {
+				broadcastTaskChatMessage(workspaceId, taskId, message);
+			});
+			primeMessageUnsubscribeByWorkspaceId.set(workspaceId, unsubscribeMessage);
+		},
 		broadcastTaskChatMessage,
 		broadcastTaskChatCleared,
 		handleUpgrade: (request, socket, head, context) => {
@@ -583,6 +628,11 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				}
 			}
 			clineMessageUnsubscribeByWorkspaceId.clear();
+			for (const unsubscribe of primeSummaryUnsubscribeByWorkspaceId.values()) { try { unsubscribe(); } catch {} }
+			primeSummaryUnsubscribeByWorkspaceId.clear();
+			primePreviousSummaryByWorkspaceId.clear();
+			for (const unsubscribe of primeMessageUnsubscribeByWorkspaceId.values()) { try { unsubscribe(); } catch {} }
+			primeMessageUnsubscribeByWorkspaceId.clear();
 			workspaceMetadataMonitor.close();
 			for (const client of runtimeStateClients) {
 				try {

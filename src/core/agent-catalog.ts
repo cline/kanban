@@ -66,6 +66,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		autonomousArgs: ["--yolo"],
 		installUrl: "https://github.com/google-gemini/gemini-cli",
 	},
+	{
+		id: "prime",
+		label: "Prime Agent",
+		binary: "prime-agent",
+		baseArgs: [],
+		autonomousArgs: [],
+		installUrl: "https://github.com/PrimeIntellect-ai/prime-agent",
+	},
 ];
 
 // Temporarily keep launch support scoped to the core agent set.
@@ -76,6 +84,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"codex",
 	"droid",
 	"kiro",
+	"prime",
 	// "opencode",
 	// "gemini",
 ];

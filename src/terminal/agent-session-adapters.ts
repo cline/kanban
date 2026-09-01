@@ -1429,6 +1429,39 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+const primeAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+		if (input.resumeFromTrash && !hasCliOption(args, "-c") && !hasCliOption(args, "--continue")) {
+			args.push("-c");
+		}
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+		let finalPrompt = input.prompt;
+		if (input.startInPlanMode) {
+			finalPrompt = [
+				"First, inspect the codebase and produce a clear implementation plan only.",
+				"Do not modify files yet. After you present the plan, ask for approval before making changes.",
+				finalPrompt ? `\n\nTask:\n${finalPrompt}` : " Ask the user what they want planned if the task is unclear.",
+			].join(" ");
+		}
+		const withPromptLaunch = withPrompt(args, finalPrompt, "append");
+		return {
+			...withPromptLaunch,
+			env: { ...withPromptLaunch.env, ...env },
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1437,6 +1470,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,
+	prime: primeAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
