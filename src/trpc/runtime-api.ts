@@ -227,6 +227,20 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 								}
 							: {}),
 					});
+					const hasImages = Boolean(body.images && body.images.length > 0);
+					if (hasImages && clineLaunchConfig.modelId) {
+						const providerModels = await clineProviderService
+							.getProviderModels(clineLaunchConfig.providerId)
+							.catch(() => ({ models: [] }));
+						const selectedModel = providerModels.models.find((model) => model.id === clineLaunchConfig.modelId);
+						if (selectedModel?.supportsVision === false) {
+							return {
+								ok: false,
+								summary: null,
+								error: "The selected Cline model does not support image input. Switch to a vision-capable model or remove the images to start this task.",
+							};
+						}
+					}
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const resolvedClineTitle = resolveTaskTitle(body.taskTitle?.trim(), body.prompt);
 					const summary = await clineTaskSessionService.startTaskSession({
@@ -598,6 +612,29 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						summary,
 						message: null,
 					};
+				}
+				const chatHasImages = Boolean(body.images && body.images.length > 0);
+				if (chatHasImages) {
+					try {
+						const clineLaunchConfig = await clineProviderService.resolveLaunchConfig();
+						if (clineLaunchConfig.modelId) {
+							const providerModels = await clineProviderService
+								.getProviderModels(clineLaunchConfig.providerId)
+								.catch(() => ({ models: [] }));
+							const selectedModel = providerModels.models.find(
+								(model) => model.id === clineLaunchConfig.modelId,
+							);
+							if (selectedModel?.supportsVision === false) {
+								return {
+									ok: false,
+									summary: null,
+									error: "The selected Cline model does not support image input. Switch to a vision-capable model or remove the images to send this message.",
+								};
+							}
+						}
+					} catch {
+						// Provider lookup failed — skip validation, let the SDK handle it.
+					}
 				}
 				const requestedMode = body.mode;
 				let summary = await clineTaskSessionService.sendTaskSessionInput(

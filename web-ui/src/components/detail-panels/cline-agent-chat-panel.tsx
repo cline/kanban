@@ -219,7 +219,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		const panelError = composerError ?? error;
 		const attachmentWarningMessage =
 			draftImages.length > 0 && selectedModel?.supportsVision === false
-				? "The selected Cline model may not accept image input. Choose a vision-capable model to use these images."
+				? "The selected model does not support image input. Switch to a vision-capable model or remove the images to send."
 				: null;
 
 		const isPinnedToBottom = useCallback((container: HTMLDivElement): boolean => {
