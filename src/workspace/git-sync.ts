@@ -110,12 +110,9 @@ function parseStatusPath(line: string): string | null {
 	return tokens[tokens.length - 1] ?? null;
 }
 
-export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceProbe> {
-	const repoRoot = await resolveRepoRoot(cwd);
-	const [statusResult, headCommitResult] = await Promise.all([
-		runGit(repoRoot, ["status", "--porcelain=v2", "--branch", "--untracked-files=all"]),
-		runGit(repoRoot, ["rev-parse", "--verify", "HEAD"]),
-	]);
+export async function probeGitWorkspaceState(cwd: string, options?: { repoRoot?: string }): Promise<GitWorkspaceProbe> {
+	const repoRoot = options?.repoRoot ?? (await resolveRepoRoot(cwd));
+	const statusResult = await runGit(repoRoot, ["status", "--porcelain=v2", "--branch", "--untracked-files=all"]);
 
 	if (!statusResult.ok) {
 		throw new Error(statusResult.error ?? "Git status command failed.");
@@ -125,6 +122,7 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 	let upstreamBranch: string | null = null;
 	let aheadCount = 0;
 	let behindCount = 0;
+	let headCommit: string | null = null;
 	const fingerprintPaths: string[] = [];
 	const untrackedPaths: string[] = [];
 	let changedFiles = 0;
@@ -132,6 +130,11 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 	for (const rawLine of statusResult.stdout.split("\n")) {
 		const line = rawLine.trim();
 		if (!line) {
+			continue;
+		}
+		if (line.startsWith("# branch.oid ")) {
+			const oid = line.slice("# branch.oid ".length).trim();
+			headCommit = oid && oid !== "(initial)" ? oid : null;
 			continue;
 		}
 		if (line.startsWith("# branch.head ")) {
@@ -174,7 +177,6 @@ export async function probeGitWorkspaceState(cwd: string): Promise<GitWorkspaceP
 		}
 	}
 
-	const headCommit = headCommitResult.ok && headCommitResult.stdout ? headCommitResult.stdout : null;
 	const fingerprints = await buildPathFingerprints(repoRoot, fingerprintPaths);
 
 	return {
@@ -208,6 +210,9 @@ async function resolveRepoRoot(cwd: string): Promise<string> {
 }
 
 async function countUntrackedAdditions(repoRoot: string, untrackedPaths: string[]): Promise<number> {
+	if (untrackedPaths.length === 0) {
+		return 0;
+	}
 	const counts = await Promise.all(
 		untrackedPaths.map(async (relativePath) => {
 			try {
@@ -221,6 +226,19 @@ async function countUntrackedAdditions(repoRoot: string, untrackedPaths: string[
 	return counts.reduce((total, value) => total + value, 0);
 }
 
+async function getTrackedDiffTotals(probe: GitWorkspaceProbe): Promise<{ additions: number; deletions: number }> {
+	// `git diff --numstat HEAD` only has output when there are tracked changes.
+	// `probe.changedFiles` already counts both tracked and untracked entries, so
+	// when those are equal (or both zero) we can skip the subprocess entirely —
+	// the dominant case for an idle clean repo on the metadata-monitor poll.
+	const trackedChangeCount = probe.changedFiles - probe.untrackedPaths.length;
+	if (trackedChangeCount <= 0) {
+		return { additions: 0, deletions: 0 };
+	}
+	const diffResult = await runGit(probe.repoRoot, ["diff", "--numstat", "HEAD", "--"]);
+	return diffResult.ok ? parseNumstatTotals(diffResult.stdout) : { additions: 0, deletions: 0 };
+}
+
 async function hasGitRef(repoRoot: string, ref: string): Promise<boolean> {
 	const result = await runGit(repoRoot, ["show-ref", "--verify", "--quiet", ref]);
 	return result.ok;
@@ -231,9 +249,10 @@ export async function getGitSyncSummary(
 	options?: { probe?: GitWorkspaceProbe },
 ): Promise<RuntimeGitSyncSummary> {
 	const probe = options?.probe ?? (await probeGitWorkspaceState(cwd));
-	const diffResult = await runGit(probe.repoRoot, ["diff", "--numstat", "HEAD", "--"]);
-	const trackedTotals = diffResult.ok ? parseNumstatTotals(diffResult.stdout) : { additions: 0, deletions: 0 };
-	const untrackedAdditions = await countUntrackedAdditions(probe.repoRoot, probe.untrackedPaths);
+	const [trackedTotals, untrackedAdditions] = await Promise.all([
+		getTrackedDiffTotals(probe),
+		countUntrackedAdditions(probe.repoRoot, probe.untrackedPaths),
+	]);
 
 	return {
 		currentBranch: probe.currentBranch,

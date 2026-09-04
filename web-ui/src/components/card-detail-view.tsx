@@ -32,8 +32,9 @@ import { useTerminalThemeColors } from "@/terminal/theme-colors";
 import { type BoardCard, type CardSelection, getTaskAutoReviewCancelButtonLabel } from "@/types";
 import { useWindowEvent } from "@/utils/react-use";
 
-// We still poll the open detail diff because line content can change without changing
-// the overall file or line counts that drive the shared workspace metadata stream.
+// We poll the open detail diff while a task is running because in-place line
+// edits can change without bumping the file/additions/deletions counters that
+// drive the shared workspace metadata stream's `taskWorkspaceStateVersion`.
 const DETAIL_DIFF_POLL_INTERVAL_MS = 1_000;
 const DIFF_MODE_ACTIVE_BACKGROUND = "color-mix(in srgb, var(--color-surface-3) 80%, var(--color-text-primary))";
 
@@ -494,7 +495,9 @@ export function CardDetailView({
 		selection.card.baseRef,
 		diffMode,
 		taskWorkspaceStateVersion,
-		isDocumentVisible && !gitHistoryPanel && selection.column.id !== "trash" ? DETAIL_DIFF_POLL_INTERVAL_MS : null,
+		isDocumentVisible && !gitHistoryPanel && selection.column.id !== "trash" && sessionSummary?.state === "running"
+			? DETAIL_DIFF_POLL_INTERVAL_MS
+			: null,
 		lastTurnViewKey,
 		true,
 	);
