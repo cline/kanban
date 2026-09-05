@@ -7,7 +7,7 @@ import type {
 	RuntimeClineProviderModel,
 	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
-	RuntimeTaskClineSettings,
+	RuntimeTaskAgentSettings,
 } from "@/runtime/types";
 
 const fetchClineProviderCatalogMock = vi.hoisted(() => vi.fn());
@@ -144,14 +144,14 @@ function HookHarness({
 	workspaceId,
 	selectedAgentId,
 	config,
-	taskClineSettings,
+	taskAgentSettings,
 	onSnapshot,
 }: {
 	open: boolean;
 	workspaceId: string | null;
 	selectedAgentId: RuntimeConfigResponse["selectedAgentId"];
 	config: RuntimeConfigResponse | null;
-	taskClineSettings?: RuntimeTaskClineSettings;
+	taskAgentSettings?: RuntimeTaskAgentSettings;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
 	const state = useRuntimeSettingsClineController({
@@ -159,7 +159,7 @@ function HookHarness({
 		workspaceId,
 		selectedAgentId,
 		config,
-		taskClineSettings,
+		taskAgentSettings,
 	});
 
 	useEffect(() => {
@@ -523,7 +523,7 @@ describe("useRuntimeSettingsClineController", () => {
 					workspaceId="workspace-1"
 					selectedAgentId="cline"
 					config={config}
-					taskClineSettings={{
+					taskAgentSettings={{
 						providerId: "openrouter",
 						modelId: "anthropic/claude-sonnet-4.6",
 						reasoningEffort: "low",
@@ -580,7 +580,7 @@ describe("useRuntimeSettingsClineController", () => {
 					workspaceId="workspace-1"
 					selectedAgentId="cline"
 					config={config}
-					taskClineSettings={{
+					taskAgentSettings={{
 						modelId: "anthropic/claude-sonnet-4.6",
 					}}
 					onSnapshot={(snapshot) => {
@@ -634,7 +634,7 @@ describe("useRuntimeSettingsClineController", () => {
 					workspaceId="workspace-1"
 					selectedAgentId="cline"
 					config={config}
-					taskClineSettings={{}}
+					taskAgentSettings={{}}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}

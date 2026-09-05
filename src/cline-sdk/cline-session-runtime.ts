@@ -77,6 +77,8 @@ export interface StartClineSessionRuntimeRequest {
 	mode?: RuntimeTaskSessionMode;
 	apiKey?: string | null;
 	baseUrl?: string | null;
+	// Per-task override in the narrow Cline effort vocabulary; null means
+	// "explicitly cleared to the model default".
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
 	systemPrompt: string;
 	userInstructionService?: ClineSdkUserInstructionService;
@@ -214,7 +216,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 					reasoningEffort:
 						request.reasoningEffort === null
 							? ("none" as ClineSdkStartSessionInput["config"]["reasoningEffort"])
-							: (request.reasoningEffort ?? undefined),
+							: request.reasoningEffort,
 					cwd: request.cwd,
 					mode: resolvedMode,
 					enableTools: true,
