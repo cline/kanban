@@ -36,6 +36,9 @@ export interface CreateRuntimeStateHubDependencies {
 		WorkspaceRegistry,
 		"resolveWorkspaceForStream" | "buildProjectsPayload" | "buildWorkspaceStateSnapshot"
 	>;
+	// #285: optional heartbeat interval override (milliseconds). Defaults to 30s.
+	// Exposed so tests can drive the ping/pong sweep on a short real interval.
+	heartbeatIntervalMs?: number;
 }
 
 export interface RuntimeStateHub {
@@ -72,6 +75,34 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
 	let clineSessionContextVersion = 0;
 	const runtimeStateWebSocketServer = new WebSocketServer({ noServer: true });
+	// #285: detect dead clients (laptop sleep, network blip, tab killed before clean
+	// unload) with a WebSocket ping/pong heartbeat, so stale sockets do not accumulate
+	// in runtimeStateClients forever. Unresponsive sockets are terminated and cleaned up.
+	const RUNTIME_STATE_HEARTBEAT_INTERVAL_MS = deps.heartbeatIntervalMs ?? 30_000;
+	const runtimeStateClientLiveness = new WeakMap<WebSocket, boolean>();
+	const runtimeStateHeartbeatTimer = setInterval(() => {
+		for (const client of runtimeStateClients) {
+			if (runtimeStateClientLiveness.get(client) === false) {
+				cleanupRuntimeStateClient(client);
+				try {
+					client.terminate();
+				} catch {
+					// Ignore termination errors for an already-dead socket.
+				}
+				continue;
+			}
+			runtimeStateClientLiveness.set(client, false);
+			try {
+				client.ping();
+			} catch {
+				// Ignore ping errors; the next sweep terminates the socket.
+			}
+		}
+	}, RUNTIME_STATE_HEARTBEAT_INTERVAL_MS);
+	// Do not keep the process alive solely for the heartbeat sweep.
+	if (typeof runtimeStateHeartbeatTimer.unref === "function") {
+		runtimeStateHeartbeatTimer.unref();
+	}
 	const workspaceMetadataMonitor = createWorkspaceMetadataMonitor({
 		onMetadataUpdated: (workspaceId, workspaceMetadata) => {
 			const clients = runtimeStateClientsByWorkspaceId.get(workspaceId);
@@ -339,6 +370,10 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	};
 
 	runtimeStateWebSocketServer.on("connection", async (client: WebSocket, context: unknown) => {
+		runtimeStateClientLiveness.set(client, true);
+		client.on("pong", () => {
+			runtimeStateClientLiveness.set(client, true);
+		});
 		client.on("close", () => {
 			cleanupRuntimeStateClient(client);
 		});
@@ -583,6 +618,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				}
 			}
 			clineMessageUnsubscribeByWorkspaceId.clear();
+			clearInterval(runtimeStateHeartbeatTimer);
 			workspaceMetadataMonitor.close();
 			for (const client of runtimeStateClients) {
 				try {
