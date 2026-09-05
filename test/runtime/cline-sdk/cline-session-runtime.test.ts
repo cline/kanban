@@ -124,6 +124,49 @@ describe("InMemoryClineSessionRuntime", () => {
 		);
 	});
 
+	it("starts ClinePass sessions on the provider the bundled SDK registers, keeping the ClinePass model", async () => {
+		const fakeHost = {
+			start: vi.fn(async (input: { config?: { sessionId?: string } }) => ({
+				sessionId: input.config?.sessionId ?? "session-1",
+				result: {},
+			})),
+			send: vi.fn(async () => ({})),
+			stop: vi.fn(async () => {}),
+			abort: vi.fn(async () => {}),
+			delete: vi.fn(async () => true),
+			dispose: vi.fn(async () => {}),
+			get: vi.fn(async () => undefined),
+			list: vi.fn(async () => []),
+			readMessages: vi.fn(async () => []),
+			subscribe: vi.fn(() => () => {}),
+		};
+
+		const runtime = createInMemoryClineSessionRuntime({
+			createSessionHost: async () => fakeHost,
+			createMcpRuntimeService: createNoopMcpRuntimeService,
+		});
+
+		await runtime.startTaskSession({
+			taskId: "task-1",
+			cwd: "/tmp/worktree",
+			prompt: "Investigate startup",
+			providerId: "cline-pass",
+			modelId: "cline-pass/glm-5.2",
+			apiKey: "workos:test-token",
+			systemPrompt: "You are a helpful coding assistant.",
+		});
+
+		expect(fakeHost.start).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					providerId: "cline",
+					modelId: "cline-pass/glm-5.2",
+					apiKey: "workos:test-token",
+				}),
+			}),
+		);
+	});
+
 	it("leaves reasoning effort unset when no override is provided", async () => {
 		const fakeHost = {
 			start: vi.fn(async (input: { config?: { sessionId?: string; reasoningEffort?: string } }) => ({

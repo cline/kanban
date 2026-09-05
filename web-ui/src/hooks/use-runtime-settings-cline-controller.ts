@@ -144,7 +144,7 @@ export interface UseRuntimeSettingsClineControllerResult {
 
 function toManagedClineOauthProvider(value: string): RuntimeClineOauthProvider | null {
 	const normalized = value.trim().toLowerCase();
-	if (normalized === "cline" || normalized === "oca" || normalized === "openai-codex") {
+	if (normalized === "cline" || normalized === "cline-pass" || normalized === "oca" || normalized === "openai-codex") {
 		return normalized;
 	}
 	return null;

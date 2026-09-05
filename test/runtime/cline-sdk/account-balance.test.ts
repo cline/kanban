@@ -37,6 +37,7 @@ vi.mock("@clinebot/core", () => ({
 	loginOcaOAuth: vi.fn(),
 	loginOpenAICodex: vi.fn(),
 	resolveDefaultMcpSettingsPath: vi.fn(),
+	DEFAULT_MODELS_CATALOG_URL: "https://models.dev/api.json",
 	resolveClineDataDir: vi.fn(() => "/tmp/cline"),
 	loadMcpSettingsFile: vi.fn(),
 	ClineAccountService: class {

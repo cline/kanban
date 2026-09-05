@@ -598,7 +598,7 @@ export const runtimeProjectShortcutSchema = z.object({
 });
 export type RuntimeProjectShortcut = z.infer<typeof runtimeProjectShortcutSchema>;
 
-export const runtimeClineOauthProviderSchema = z.enum(["cline", "oca", "openai-codex"]);
+export const runtimeClineOauthProviderSchema = z.enum(["cline", "cline-pass", "oca", "openai-codex"]);
 export type RuntimeClineOauthProvider = z.infer<typeof runtimeClineOauthProviderSchema>;
 
 export const runtimeClineProviderSettingsSchema = z.object({

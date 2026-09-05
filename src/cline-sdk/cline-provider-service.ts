@@ -21,6 +21,13 @@ import type {
 	RuntimeClineReasoningEffort,
 } from "../core/api-contract";
 import { openInBrowser } from "../server/browser";
+import {
+	CLINE_PASS_PROVIDER_ID,
+	CLINE_PASS_PROVIDER_NAME,
+	isClineAccountProviderId,
+	isClinePassProviderId,
+	resolveSdkRuntimeProviderId,
+} from "./cline-pass-provider";
 import { createKanbanClineLogger } from "./cline-runtime-logger";
 import {
 	addSdkCustomProvider,
@@ -41,6 +48,7 @@ import {
 	refreshManagedOauthCredentials,
 	SDK_DEFAULT_MODEL_ID,
 	SDK_DEFAULT_PROVIDER_ID,
+	SDK_MODELS_CATALOG_URL,
 	type SdkCustomProviderCapability,
 	type SdkProviderSettings,
 	saveSdkProviderSettings,
@@ -53,6 +61,7 @@ const WORKOS_TOKEN_PREFIX = "workos:";
 const DEFAULT_CLINE_API_BASE_URL = "https://api.cline.bot";
 const MANAGED_PROVIDER_ENV_KEYS: Record<ManagedClineOauthProviderId, readonly string[]> = {
 	cline: ["CLINE_API_KEY"],
+	"cline-pass": ["CLINE_API_KEY"],
 	oca: ["OCA_API_KEY"],
 	"openai-codex": [],
 };
@@ -64,11 +73,27 @@ const LITELLM_MODELS_RESPONSE_SCHEMA = z.object({
 });
 const LITELLM_MODEL_LIST_PATHNAMES = ["/models", "/model/info"] as const;
 const LITELLM_MODEL_LIST_TIMEOUT_MS = 2_500;
+// The bundled SDK ships no ClinePass models, so its model list is read from the
+// same public model catalog the SDK uses for live model metadata.
+const MODELS_CATALOG_MODEL_SCHEMA = z.object({
+	id: z.string().optional(),
+	name: z.string().optional(),
+	attachment: z.boolean().optional(),
+	reasoning: z.boolean().optional(),
+	modalities: z.object({ input: z.array(z.string()).optional() }).optional(),
+});
+const MODELS_CATALOG_SCHEMA = z.record(
+	z.string(),
+	z.object({ models: z.record(z.string(), MODELS_CATALOG_MODEL_SCHEMA).optional() }),
+);
+const MODELS_CATALOG_TIMEOUT_MS = 10_000;
+const MODELS_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const LOGGER = createKanbanClineLogger({ component: "cline-provider-service" });
 
 type ClineRemoteConfig = z.infer<typeof CLINE_REMOTE_CONFIG_SCHEMA>;
 type LiteLlmModelListPathname = (typeof LITELLM_MODEL_LIST_PATHNAMES)[number];
 type LiteLlmModelListItem = NonNullable<z.infer<typeof LITELLM_MODELS_RESPONSE_SCHEMA>["data"]>[number];
+type ModelsCatalogModel = z.infer<typeof MODELS_CATALOG_MODEL_SCHEMA>;
 type SdkReasoningEffort = NonNullable<NonNullable<SdkProviderSettings["reasoning"]>["effort"]>;
 
 export interface ResolvedClineLaunchConfig {
@@ -118,12 +143,20 @@ function parseClineRemoteConfigValue(value: string): ClineRemoteConfig {
 }
 
 function isManagedOauthProviderId(providerId: string): providerId is ManagedClineOauthProviderId {
-	return providerId === "cline" || providerId === "oca" || providerId === "openai-codex";
+	return (
+		providerId === "cline" ||
+		providerId === CLINE_PASS_PROVIDER_ID ||
+		providerId === "oca" ||
+		providerId === "openai-codex"
+	);
 }
 
 function formatManagedProviderDisplayName(providerId: ManagedClineOauthProviderId): string {
 	if (providerId === "cline") {
 		return "Cline";
+	}
+	if (providerId === CLINE_PASS_PROVIDER_ID) {
+		return CLINE_PASS_PROVIDER_NAME;
 	}
 	if (providerId === "oca") {
 		return "Oracle Code Assist";
@@ -150,7 +183,7 @@ function ensureWorkosPrefix(accessToken: string): string {
 }
 
 function toProviderApiKey(providerId: ManagedClineOauthProviderId, accessToken: string): string {
-	if (providerId === "cline") {
+	if (isClineAccountProviderId(providerId)) {
 		return `${WORKOS_TOKEN_PREFIX}${accessToken}`;
 	}
 	return accessToken;
@@ -313,6 +346,33 @@ async function fetchLiteLlmBaseUrlModels(settings: SdkProviderSettings | null): 
 	return [];
 }
 
+function toModelsCatalogProviderModel(modelId: string, model: ModelsCatalogModel): RuntimeClineProviderModel {
+	const supportsVision = model.modalities?.input?.includes("image") ?? false;
+	return {
+		id: modelId,
+		name: model.name?.trim() || modelId,
+		supportsVision: supportsVision || undefined,
+		supportsAttachments: (model.attachment ?? supportsVision) || undefined,
+		supportsReasoningEffort: model.reasoning || undefined,
+	};
+}
+
+async function fetchModelsCatalogProviderModels(providerId: string): Promise<RuntimeClineProviderModel[]> {
+	const response = await globalThis.fetch(SDK_MODELS_CATALOG_URL, {
+		method: "GET",
+		headers: { Accept: "application/json" },
+		signal: AbortSignal.timeout(MODELS_CATALOG_TIMEOUT_MS),
+	});
+	if (!response.ok) {
+		throw new Error(`Model catalog request returned HTTP ${response.status}.`);
+	}
+
+	const catalog = MODELS_CATALOG_SCHEMA.parse((await response.json()) as unknown);
+	return Object.entries(catalog[providerId]?.models ?? {}).map(([modelId, model]) =>
+		toModelsCatalogProviderModel(model.id?.trim() || modelId, model),
+	);
+}
+
 function createEmptyProviderSettingsSummary(): RuntimeClineProviderSettings {
 	return {
 		providerId: null,
@@ -422,13 +482,15 @@ async function refreshManagedOauthSettings(
 	const nextCredentials = await refreshManagedOauthCredentials({
 		providerId,
 		currentCredentials: {
-			access: providerId === "cline" ? stripWorkosPrefix(accessToken) : accessToken,
+			access: isClineAccountProviderId(providerId) ? stripWorkosPrefix(accessToken) : accessToken,
 			refresh: refreshToken,
 			expires: normalizeEpochMs(settings.auth?.expiresAt),
 			accountId: settings.auth?.accountId ?? undefined,
 		},
 		baseUrl: settings.baseUrl?.trim() || null,
-		oauthProvider: providerId,
+		// ClinePass refreshes against the Cline identity provider, exactly like the
+		// usage-billing `cline` provider does.
+		oauthProvider: resolveSdkRuntimeProviderId(providerId),
 	});
 	if (!nextCredentials) {
 		throw new Error(`OAuth credentials for provider "${providerId}" are invalid. Re-run OAuth login.`);
@@ -488,6 +550,32 @@ export function createClineProviderService() {
 		return promise;
 	}
 
+	// The bundled SDK catalog carries no ClinePass models, so the model list comes
+	// from the public catalog. Cached because Settings and the per-task model
+	// picker both ask for it, and a failure resolves to an empty list so callers
+	// keep whatever model is already saved.
+	let clinePassModelsCache: { promise: Promise<RuntimeClineProviderModel[]>; expiresAt: number } | null = null;
+
+	function fetchClinePassModelsDeduped(): Promise<RuntimeClineProviderModel[]> {
+		if (clinePassModelsCache && Date.now() < clinePassModelsCache.expiresAt) {
+			return clinePassModelsCache.promise;
+		}
+		const promise = fetchModelsCatalogProviderModels(CLINE_PASS_PROVIDER_ID).catch((error: unknown) => {
+			if (clinePassModelsCache?.promise === promise) {
+				clinePassModelsCache = null;
+			}
+			LOGGER.log("ClinePass model catalog request failed.", {
+				severity: "warn",
+				providerId: CLINE_PASS_PROVIDER_ID,
+				url: SDK_MODELS_CATALOG_URL,
+				errorMessage: toErrorMessage(error),
+			});
+			return [];
+		});
+		clinePassModelsCache = { promise, expiresAt: Date.now() + MODELS_CATALOG_CACHE_TTL_MS };
+		return promise;
+	}
+
 	return {
 		getProviderSettingsSummary(): RuntimeClineProviderSettings {
 			return getProviderSettingsSummary();
@@ -503,7 +591,7 @@ export function createClineProviderService() {
 				}
 
 				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
-				if (normalizedProviderId !== "cline") {
+				if (!isClineAccountProviderId(normalizedProviderId)) {
 					return {
 						profile: null,
 					};
@@ -597,7 +685,7 @@ export function createClineProviderService() {
 			}
 
 			const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
-			if (normalizedProviderId !== "cline") {
+			if (!isClineAccountProviderId(normalizedProviderId)) {
 				throw new Error("Featurebase token requires a Cline provider.");
 			}
 
@@ -632,7 +720,7 @@ export function createClineProviderService() {
 					return { balance: null, activeAccountLabel: null, activeOrganizationId: null };
 				}
 				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
-				if (normalizedProviderId !== "cline") {
+				if (!isClineAccountProviderId(normalizedProviderId)) {
 					return { balance: null, activeAccountLabel: null, activeOrganizationId: null };
 				}
 
@@ -695,7 +783,7 @@ export function createClineProviderService() {
 					return { organizations: [] };
 				}
 				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
-				if (normalizedProviderId !== "cline") {
+				if (!isClineAccountProviderId(normalizedProviderId)) {
 					return { organizations: [] };
 				}
 
@@ -746,7 +834,7 @@ export function createClineProviderService() {
 					return { ok: false, error: "No provider settings configured." };
 				}
 				const normalizedProviderId = selectedSettings.provider.trim().toLowerCase();
-				if (normalizedProviderId !== "cline") {
+				if (!isClineAccountProviderId(normalizedProviderId)) {
 					return { ok: false, error: "Account switching requires a Cline provider." };
 				}
 
@@ -885,6 +973,16 @@ export function createClineProviderService() {
 				providerModels = [
 					...providerModels,
 					...liteLlmModels.filter((model) => !existingModelIds.has(model.id)),
+				].sort((left, right) => left.name.localeCompare(right.name));
+			}
+			// Without this the picker only ever offers the single saved ClinePass
+			// model, because the bundled SDK catalog has no ClinePass entry.
+			if (isClinePassProviderId(normalizedProviderId)) {
+				const clinePassModels = await fetchClinePassModelsDeduped();
+				const existingModelIds = new Set(providerModels.map((model) => model.id));
+				providerModels = [
+					...providerModels,
+					...clinePassModels.filter((model) => !existingModelIds.has(model.id)),
 				].sort((left, right) => left.name.localeCompare(right.name));
 			}
 
@@ -1181,7 +1279,9 @@ export function createClineProviderService() {
 				const credentials = await loginManagedOauthProvider({
 					providerId: input.providerId,
 					baseUrl,
-					oauthProvider: input.providerId,
+					// ClinePass signs in through the Cline identity provider; only the
+					// saved settings stay keyed by the ClinePass provider id.
+					oauthProvider: resolveSdkRuntimeProviderId(input.providerId),
 					callbacks: createRuntimeOauthCallbacks(input.providerId),
 				});
 
