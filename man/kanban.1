@@ -12,7 +12,7 @@ kanban \- local orchestration board for coding agents
 .RI " " [ options ]
 .br
 .B kanban hooks
-.RI " " ingest|notify|gemini-hook|codex-wrapper
+.RI " " ingest|notify|antigravity-hook|codex-wrapper
 .RI " " [ options ]
 .br
 .B kanban mcp
@@ -109,7 +109,8 @@ same options as
 .BR ingest ,
 but best-effort.
 .br
-.B gemini-hook
+.B antigravity-hook
+.RI [ --event " " PreInvocation|PreToolUse|PostToolUse|PostInvocation|Stop ]
 .br
 .B codex-wrapper
 .B --real-binary
