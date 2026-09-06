@@ -92,10 +92,21 @@ export function isKanbanRuntimeHttps(): boolean {
 }
 
 const LOCALHOST_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+const WILDCARD_HOSTS = new Set(["0.0.0.0", "::"]);
+
+/**
+ * Returns true when the runtime host is a wildcard bind address (0.0.0.0 or ::),
+ * meaning the server listens on all network interfaces.
+ */
+export function isKanbanWildcardHost(): boolean {
+	return WILDCARD_HOSTS.has(runtimeHost);
+}
 
 /**
  * Returns true when Kanban is bound to a non-localhost host, meaning it is
  * accessible to other machines on the network and passcode auth is required.
+ * Wildcard addresses (0.0.0.0, ::) are also considered remote since they
+ * expose the server to all network interfaces.
  */
 export function isKanbanRemoteHost(): boolean {
 	return !LOCALHOST_HOSTS.has(runtimeHost);

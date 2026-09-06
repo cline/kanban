@@ -5,6 +5,7 @@ import {
 	getKanbanRuntimeOrigin,
 	getKanbanRuntimePort,
 	isKanbanRemoteHost,
+	isKanbanWildcardHost,
 } from "../core/runtime-endpoint";
 
 export type CorsDecision =
@@ -28,16 +29,16 @@ export function evaluateCors(input: CorsGateInput): CorsDecision {
 		return { kind: "allow", origin: null };
 	}
 
-	const isDevServer = isDev && (origin === "http://localhost:4173" || origin === "http://127.0.0.1:4173");
-
-	if (origin !== input.allowedOrigin && !isDevServer) {
-		return { kind: "reject", origin };
+	if (!isKanbanWildcardHost()) {
+		const isDevServer = isDev && (origin === "http://localhost:4173" || origin === "http://127.0.0.1:4173");
+		if (origin !== input.allowedOrigin && !isDevServer) {
+			return { kind: "reject", origin };
+		}
 	}
 
 	if (isPreflight) {
 		return { kind: "preflight", origin };
 	}
-
 	return { kind: "allow", origin };
 }
 
@@ -49,6 +50,13 @@ export interface HostGateInput {
 export type HostDecision = { kind: "allow" } | { kind: "reject"; host: string | null };
 
 export function evaluateHost(input: HostGateInput): HostDecision {
+	// When bound to a wildcard address (0.0.0.0 or ::), the user explicitly
+	// chose to expose the server. Skip Host header validation — security is
+	// handled by passcode auth, not by Host restrictions.
+	if (isKanbanWildcardHost()) {
+		return { kind: "allow" };
+	}
+
 	if (!input.hostHeader) {
 		return { kind: "reject", host: null };
 	}
@@ -68,13 +76,21 @@ export function getAllowedHostHeaders(): ReadonlySet<string> {
 		allowed.add(`${host}:${port}`);
 	};
 
+	if (isKanbanWildcardHost()) {
+		// Host validation is skipped for wildcard binds (see evaluateHost),
+		// so the allowlist is irrelevant. Return an empty set.
+		return allowed;
+	}
+
 	if (isKanbanRemoteHost()) {
+		// When bound to a specific remote host, only that host is allowed.
 		addHostPort(boundHost);
 		return allowed;
 	}
 
 	addHostPort("localhost");
 	addHostPort("127.0.0.1");
+
 	if (isDev) {
 		// Vite's default dev server host:port
 		allowed.add("localhost:4173");
