@@ -3,10 +3,8 @@ import pLimit from "p-limit";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
-import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useLinkedBacklogTaskActions } from "@/hooks/use-linked-backlog-task-actions";
 import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
-import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import {
@@ -35,11 +33,6 @@ import {
 // with a large column that means 100+ simultaneous git operations against the
 // shared repo, which can freeze or crash the runtime. Bound the fan-out instead.
 const CLEAR_TRASH_CLEANUP_CONCURRENCY = 4;
-
-interface TaskGitActionLoadingStateLike {
-	commitSource: string | null;
-	prSource: string | null;
-}
 
 interface SelectedBoardCard {
 	card: BoardCard;
@@ -75,8 +68,6 @@ interface UseBoardInteractionsInput {
 		options?: SendTerminalInputOptions,
 	) => Promise<{ ok: boolean; message?: string }>;
 	readyForReviewNotificationsEnabled: boolean;
-	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingStateLike>;
-	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 }
 
 export interface UseBoardInteractionsResult {
@@ -119,8 +110,6 @@ export function useBoardInteractions({
 	fetchTaskWorkspaceInfo,
 	sendTaskSessionInput,
 	readyForReviewNotificationsEnabled,
-	taskGitActionLoadingByTaskId,
-	runAutoReviewGitAction,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
 	const previousSessionsRef = useRef<Record<string, RuntimeTaskSessionSummary>>({});
 	const notificationPermissionPromptInFlightRef = useRef(false);
@@ -530,14 +519,6 @@ export function useBoardInteractions({
 	useEffect(() => {
 		setRequestMoveTaskToTrashHandler(requestMoveTaskToTrash);
 	}, [requestMoveTaskToTrash, setRequestMoveTaskToTrashHandler]);
-
-	useReviewAutoActions({
-		board,
-		taskGitActionLoadingByTaskId,
-		runAutoReviewGitAction,
-		requestMoveTaskToTrash: requestMoveTaskToTrashWithAnimation,
-		resetKey: currentProjectId,
-	});
 
 	const resumeTaskFromTrash = useCallback(
 		async (task: BoardCard, taskId: string, options?: { optimisticMoveApplied?: boolean }): Promise<void> => {

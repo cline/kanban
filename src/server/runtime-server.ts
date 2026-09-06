@@ -59,6 +59,8 @@ export interface CreateRuntimeServerDependencies {
 	runtimeStateHub: RuntimeStateHub;
 	warn: (message: string) => void;
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
+	/** Notified when a native Cline task session service is created for a workspace. */
+	onClineTaskSessionServiceReady?: (workspaceId: string, service: ClineTaskSessionService) => void;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
@@ -153,6 +155,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			});
 			clineTaskSessionServiceByWorkspaceId.set(scope.workspaceId, service);
 			deps.runtimeStateHub.trackClineTaskSessionService(scope.workspaceId, scope.workspacePath, service);
+			deps.onClineTaskSessionServiceReady?.(scope.workspaceId, service);
 		}
 		return service;
 	};

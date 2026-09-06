@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
+import type { ClineTaskSessionService } from "./cline-sdk/cline-task-session-service";
 import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerTaskCommand } from "./commands/task";
@@ -31,6 +32,7 @@ import {
 	setKanbanRuntimeTls,
 } from "./core/runtime-endpoint";
 import { disablePasscode, generateInternalToken, generatePasscode } from "./security/passcode-manager";
+import type { AutoReviewReconciler } from "./server/auto-review-reconciler";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
 import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
@@ -390,23 +392,29 @@ async function startServer(): Promise<{
 	const [
 		{ resolveProjectInputPath },
 		{ pickDirectoryPathFromSystemDialog },
+		{ createAutoReviewReconciler },
 		{ createRuntimeServer },
 		{ createRuntimeStateHub },
 		{ resolveInteractiveShellCommand },
 		{ shutdownRuntimeServer },
+		{ loadWorkspaceStateById, mutateWorkspaceState },
 		{ collectProjectWorktreeTaskIdsForRemoval, createWorkspaceRegistry },
 		{ clearPendingUpdateNotification, getPendingUpdateNotification },
 	] = await Promise.all([
 		import("./projects/project-path.js"),
 		import("./server/directory-picker.js"),
+		import("./server/auto-review-reconciler.js"),
 		import("./server/runtime-server.js"),
 		import("./server/runtime-state-hub.js"),
 		import("./server/shell.js"),
 		import("./server/shutdown-coordinator.js"),
+		import("./state/workspace-state.js"),
 		import("./server/workspace-registry.js"),
 		import("./update/update.js"),
 	]);
 	let runtimeStateHub: RuntimeStateHub | undefined;
+	let autoReviewReconciler: AutoReviewReconciler | undefined;
+	const clineTaskSessionServiceByWorkspaceId = new Map<string, ClineTaskSessionService>();
 	const workspaceRegistry = await createWorkspaceRegistry({
 		cwd: process.cwd(),
 		loadGlobalRuntimeConfig,
@@ -415,6 +423,7 @@ async function startServer(): Promise<{
 		pathIsDirectory,
 		onTerminalManagerReady: (workspaceId, manager) => {
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
+			autoReviewReconciler?.trackWorkspace(workspaceId);
 		},
 	});
 	runtimeStateHub = createRuntimeStateHub({
@@ -424,7 +433,6 @@ async function startServer(): Promise<{
 	for (const { workspaceId, terminalManager } of workspaceRegistry.listManagedWorkspaces()) {
 		runtimeHub.trackTerminalManager(workspaceId, terminalManager);
 	}
-
 	const disposeTrackedWorkspace = (
 		workspaceId: string,
 		options?: {
@@ -435,6 +443,8 @@ async function startServer(): Promise<{
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
 		runtimeHub.disposeWorkspace(workspaceId);
+		autoReviewReconciler?.untrackWorkspace(workspaceId);
+		clineTaskSessionServiceByWorkspaceId.delete(workspaceId);
 		return disposed;
 	};
 
@@ -445,6 +455,9 @@ async function startServer(): Promise<{
 			console.warn(`[kanban] ${message}`);
 		},
 		ensureTerminalManagerForWorkspace: workspaceRegistry.ensureTerminalManagerForWorkspace,
+		onClineTaskSessionServiceReady: (workspaceId, service) => {
+			clineTaskSessionServiceByWorkspaceId.set(workspaceId, service);
+		},
 		resolveInteractiveShellCommand,
 		runCommand: runScopedCommand,
 		resolveProjectInputPath,
@@ -495,11 +508,51 @@ async function startServer(): Promise<{
 		},
 	});
 
+	// Auto-review runs here in the runtime so it keeps advancing review cards
+	// with no browser tab open and recovers armed cards after a restart. It is
+	// started only after the server has bound: processes that merely attach to an
+	// already-running runtime never reach this point and must not reconcile.
+	autoReviewReconciler = createAutoReviewReconciler({
+		listWorkspaces: () => workspaceRegistry.listManagedWorkspaces(),
+		getWorkspaceState: async (workspaceId) => {
+			const state = await loadWorkspaceStateById(workspaceId);
+			if (!state) {
+				throw new Error(`Workspace ${workspaceId} is no longer registered.`);
+			}
+			return state;
+		},
+		mutateWorkspaceState,
+		getPromptTemplates: async (workspaceId, workspacePath) => {
+			const config = await workspaceRegistry.loadScopedRuntimeConfig({ workspaceId, workspacePath });
+			return {
+				commitPromptTemplate: config.commitPromptTemplate,
+				openPrPromptTemplate: config.openPrPromptTemplate,
+				commitPromptTemplateDefault: config.commitPromptTemplateDefault,
+				openPrPromptTemplateDefault: config.openPrPromptTemplateDefault,
+			};
+		},
+		getSelectedAgentId: async (workspaceId, workspacePath) => {
+			const config = await workspaceRegistry.loadScopedRuntimeConfig({ workspaceId, workspacePath });
+			return config.selectedAgentId;
+		},
+		getClineTaskSessionService: (workspaceId) => clineTaskSessionServiceByWorkspaceId.get(workspaceId) ?? null,
+		onBoardMutated: (workspaceId, workspacePath) =>
+			void runtimeHub.broadcastRuntimeWorkspaceStateUpdated(workspaceId, workspacePath),
+		warn: (message) => {
+			console.warn(`[kanban] ${message}`);
+		},
+	});
+	await autoReviewReconciler.start();
+
 	const close = async () => {
+		autoReviewReconciler?.close();
 		await runtimeServer.close();
 	};
 
 	const shutdown = async (options?: { skipSessionCleanup?: boolean }) => {
+		// Stop auto-review before session cleanup so it cannot arm or trigger git
+		// actions while shutdown is interrupting sessions and sweeping the board.
+		autoReviewReconciler?.close();
 		await shutdownRuntimeServer({
 			workspaceRegistry,
 			warn: (message) => {
