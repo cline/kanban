@@ -47,7 +47,27 @@ describe("agent-registry", () => {
 		const detected = detectInstalledCommands();
 
 		expect(detected).toEqual(["claude"]);
-		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(8);
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(10);
+	});
+
+	it("resolves Cursor Agent through the canonical binary before the documented alias", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "cursor-agent");
+
+		const resolved = resolveAgentCommand(createRuntimeConfigState({ selectedAgentId: "cursor" }));
+
+		expect(resolved?.agentId).toBe("cursor");
+		expect(resolved?.binary).toBe("cursor-agent");
+		expect(resolved?.command).toBe("cursor-agent");
+	});
+
+	it("falls back to the Cursor documented agent binary when cursor-agent is unavailable", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "agent");
+
+		const resolved = resolveAgentCommand(createRuntimeConfigState({ selectedAgentId: "cursor" }));
+
+		expect(resolved?.agentId).toBe("cursor");
+		expect(resolved?.binary).toBe("agent");
+		expect(resolved?.command).toBe("agent");
 	});
 
 	it("treats shell-only agents as unavailable", () => {
@@ -78,9 +98,10 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(true);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cursor", "cline", "droid", "kiro"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "cursor")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "kiro")?.defaultArgs).toEqual(["chat"]);
@@ -91,7 +112,9 @@ describe("buildRuntimeConfigResponse", () => {
 		const config = createRuntimeConfigState({
 			agentAutonomousModeEnabled: false,
 		});
-		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "claude");
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation(
+			(binary: string) => binary === "claude" || binary === "agent",
+		);
 
 		const response = buildRuntimeConfigResponse(config, {
 			providerId: null,
@@ -106,15 +129,17 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(false);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cursor", "cline", "droid", "kiro"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "cursor")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "kiro")?.defaultArgs).toEqual(["chat"]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.installed).toBe(true);
 		expect(response.agents.find((agent) => agent.id === "claude")?.command).toBe("claude");
 		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");
+		expect(response.agents.find((agent) => agent.id === "cursor")?.command).toBe("agent");
 		expect(response.agents.find((agent) => agent.id === "droid")?.command).toBe("droid");
 		expect(response.agents.find((agent) => agent.id === "kiro")?.command).toBe("kiro-cli chat");
 	});

@@ -68,6 +68,9 @@ function writeFakeCommand(binDir: string, command: string): void {
 describe.sequential("runtime-config auto agent selection", () => {
 	it("selects agents using the configured priority order", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["codex", "opencode", "gemini"])).toBe("codex");
+		expect(pickBestInstalledAgentIdFromDetected(["cursor-agent", "codex", "droid"])).toBe("cursor");
+		expect(pickBestInstalledAgentIdFromDetected(["agent", "codex", "droid"])).toBe("codex");
+		expect(pickBestInstalledAgentIdFromDetected(["agent"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected(["opencode", "droid", "gemini"])).toBe("droid");
 		expect(pickBestInstalledAgentIdFromDetected(["kiro-cli", "gemini"])).toBe("kiro");
 		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini", "cline"])).toBe("droid");
@@ -88,7 +91,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 		try {
 			writeFakeCommand(tempBin, "opencode");
-			writeFakeCommand(tempBin, "codex");
+			writeFakeCommand(tempBin, "cursor-agent");
 			writeFakeCommand(tempBin, "gemini");
 
 			const previousShell = process.env.SHELL;
@@ -97,7 +100,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 				const isolatedPath = `${tempBin}${delimiter}/usr/bin${delimiter}/bin`;
 				await withTemporaryEnv({ home: tempHome, pathPrefix: isolatedPath, replacePath: true }, async () => {
 					const state = await loadRuntimeConfig(tempProject);
-					expect(state.selectedAgentId).toBe("codex");
+					expect(state.selectedAgentId).toBe("cursor");
 					const persisted = JSON.parse(
 						readFileSync(join(tempHome, ".cline", "kanban", "config.json"), "utf8"),
 					) as {
@@ -107,14 +110,14 @@ describe.sequential("runtime-config auto agent selection", () => {
 						commitPromptTemplate?: string;
 						openPrPromptTemplate?: string;
 					};
-					expect(persisted.selectedAgentId).toBe("codex");
+					expect(persisted.selectedAgentId).toBe("cursor");
 					expect(persisted.agentAutonomousModeEnabled).toBeUndefined();
 					expect(persisted.readyForReviewNotificationsEnabled).toBeUndefined();
 					expect(persisted.commitPromptTemplate).toBeUndefined();
 					expect(persisted.openPrPromptTemplate).toBeUndefined();
 
 					const reloadedState = await loadRuntimeConfig(tempProject);
-					expect(reloadedState.selectedAgentId).toBe("codex");
+					expect(reloadedState.selectedAgentId).toBe("cursor");
 				});
 			} finally {
 				if (previousShell === undefined) {

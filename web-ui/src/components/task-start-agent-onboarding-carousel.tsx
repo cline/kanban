@@ -83,7 +83,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 ];
 
-const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro"];
+const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "cursor", "codex", "droid", "kiro"];
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
 	kind: "agent-selection",
 	title: "",
@@ -299,6 +299,9 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	if (agentId === "codex") {
 		return "OpenAI's coding agent CLI with access to the latest GPT models.";
 	}
+	if (agentId === "cursor") {
+		return "Cursor's coding agent CLI powered by Cursor Agent.";
+	}
 	if (agentId === "droid") {
 		return "Factory's coding agent with access to the latest frontier models.";
 	}
@@ -313,6 +316,9 @@ function getInstallLinkLabel(agentId: RuntimeAgentId): string {
 		return "Learn more";
 	}
 	if (agentId === "codex") {
+		return "Learn more";
+	}
+	if (agentId === "cursor") {
 		return "Learn more";
 	}
 	if (agentId === "droid") {
