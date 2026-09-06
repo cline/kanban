@@ -9,6 +9,7 @@ import { useProgrammaticCardMoves } from "@/hooks/use-programmatic-card-moves";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
 import type { UseTaskSessionsResult } from "@/hooks/use-task-sessions";
 import type { RuntimeTaskSessionSummary, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import { patchCardPendingGitAction } from "@/runtime/workspace-state-query";
 import {
 	applyDragResult,
 	clearColumnTasks,
@@ -531,12 +532,19 @@ export function useBoardInteractions({
 		setRequestMoveTaskToTrashHandler(requestMoveTaskToTrash);
 	}, [requestMoveTaskToTrash, setRequestMoveTaskToTrashHandler]);
 
+	const persistPendingGitAction = useCallback(
+		async (taskId: string, value: Parameters<typeof patchCardPendingGitAction>[2]) =>
+			await patchCardPendingGitAction(currentProjectId, taskId, value),
+		[currentProjectId],
+	);
+
 	useReviewAutoActions({
 		board,
 		taskGitActionLoadingByTaskId,
 		runAutoReviewGitAction,
 		requestMoveTaskToTrash: requestMoveTaskToTrashWithAnimation,
 		resetKey: currentProjectId,
+		persistPendingGitAction,
 	});
 
 	const resumeTaskFromTrash = useCallback(

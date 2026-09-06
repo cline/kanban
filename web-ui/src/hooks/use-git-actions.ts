@@ -18,6 +18,7 @@ import {
 } from "@/stores/workspace-metadata-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
+import { isPendingGitActionStale } from "@/types";
 
 type TaskGitActionSource = "card" | "agent";
 
@@ -219,10 +220,21 @@ export function useGitActions({
 	);
 
 	const runTaskGitAction = useCallback(
-		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {
+		async (
+			taskId: string,
+			action: TaskGitAction,
+			source: TaskGitActionSource,
+			options: { skipPendingGitActionLock?: boolean } = {},
+		) => {
 			const taskLoadingState = taskGitActionLoadingByTaskId[taskId];
 			const actionInFlightSource = action === "commit" ? taskLoadingState?.commitSource : taskLoadingState?.prSource;
 			if (actionInFlightSource !== null && actionInFlightSource !== undefined) {
+				return false;
+			}
+			// Cross-tab lock: refuse a second git action while another one is armed on the
+			// card. The arming state is server-side, so every tab sees it.
+			const pendingGitAction = findCardSelection(board, taskId)?.card.pendingGitAction ?? null;
+			if (!options.skipPendingGitActionLock && pendingGitAction && !isPendingGitActionStale(pendingGitAction)) {
 				return false;
 			}
 			setTaskGitActionLoading(taskId, action, source);
@@ -500,7 +512,9 @@ export function useGitActions({
 
 	const runAutoReviewGitAction = useCallback(
 		async (taskId: string, action: TaskGitAction) => {
-			return await runTaskGitAction(taskId, action, "card");
+			// The auto-review loop persists the arming state itself before calling this,
+			// so it must bypass the pending-git-action lock it just set.
+			return await runTaskGitAction(taskId, action, "card", { skipPendingGitActionLock: true });
 		},
 		[runTaskGitAction],
 	);
