@@ -76,6 +76,8 @@ export interface ResolvedClineLaunchConfig {
 	modelId: string | null;
 	apiKey: string | null;
 	baseUrl: string | null;
+	// Launch override uses the narrow Cline effort vocabulary; runtime-api maps
+	// opaque card values into it and the Cline SDK validates at launch.
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
 }
 

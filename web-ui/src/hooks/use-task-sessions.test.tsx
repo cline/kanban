@@ -188,7 +188,7 @@ describe("useTaskSessions", () => {
 			cols: 120,
 			rows: 40,
 			agentId: undefined,
-			clineSettings: undefined,
+			agentSettings: undefined,
 		});
 	});
 
@@ -256,7 +256,7 @@ describe("useTaskSessions", () => {
 			await latestSnapshot?.startTaskSession({
 				...createTask(),
 				agentId: "cline",
-				clineSettings: {
+				agentSettings: {
 					providerId: "openrouter",
 					modelId: "anthropic/claude-opus-4.6",
 					reasoningEffort: "low",
@@ -266,7 +266,7 @@ describe("useTaskSessions", () => {
 
 		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				clineSettings: {
+				agentSettings: {
 					providerId: "openrouter",
 					modelId: "anthropic/claude-opus-4.6",
 					reasoningEffort: "low",
@@ -295,7 +295,7 @@ describe("useTaskSessions", () => {
 		await act(async () => {
 			await latestSnapshot?.startTaskSession({
 				...createTask(),
-				clineSettings: {
+				agentSettings: {
 					reasoningEffort: "high",
 				},
 			});
@@ -303,7 +303,7 @@ describe("useTaskSessions", () => {
 
 		expect(startTaskSessionMutateMock).toHaveBeenCalledWith(
 			expect.objectContaining({
-				clineSettings: {
+				agentSettings: {
 					reasoningEffort: "high",
 				},
 			}),

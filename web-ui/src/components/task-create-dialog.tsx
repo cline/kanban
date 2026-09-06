@@ -26,7 +26,7 @@ import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
-import type { RuntimeAgentId, RuntimeClineReasoningEffort, RuntimeTaskClineSettings } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeClineReasoningEffort, RuntimeTaskAgentSettings } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
@@ -120,8 +120,8 @@ export function TaskCreateDialog({
 	onBranchRefChange,
 	agentId,
 	onAgentIdChange,
-	clineSettings,
-	onClineSettingsChange,
+	agentSettings,
+	onAgentSettingsChange,
 	defaultAgentId,
 	defaultProviderId,
 	defaultModelId,
@@ -151,8 +151,8 @@ export function TaskCreateDialog({
 	onBranchRefChange: (value: string) => void;
 	agentId?: RuntimeAgentId | undefined;
 	onAgentIdChange?: (value: RuntimeAgentId | undefined) => void;
-	clineSettings?: RuntimeTaskClineSettings | undefined;
-	onClineSettingsChange?: (value: RuntimeTaskClineSettings | undefined) => void;
+	agentSettings?: RuntimeTaskAgentSettings | undefined;
+	onAgentSettingsChange?: (value: RuntimeTaskAgentSettings | undefined) => void;
 	/** Default agent ID from runtimeConfig.selectedAgentId, used to show "Default (AgentName)" in picker */
 	defaultAgentId?: RuntimeAgentId | null;
 	/** Default Cline provider ID from runtimeConfig.clineProviderSettings.providerId */
@@ -190,7 +190,7 @@ export function TaskCreateDialog({
 		active: open,
 		workspaceId,
 		agentId,
-		clineSettings,
+		agentSettings,
 		defaultAgentId,
 		defaultProviderId,
 		defaultModelId,
@@ -576,12 +576,12 @@ export function TaskCreateDialog({
 						</NativeSelect>
 					</div>
 
-					{onAgentIdChange && onClineSettingsChange ? (
+					{onAgentIdChange && onAgentSettingsChange ? (
 						<TaskAgentModelPicker
 							agentId={agentId}
 							onAgentIdChange={onAgentIdChange}
-							clineSettings={clineSettings}
-							onClineSettingsChange={onClineSettingsChange}
+							agentSettings={agentSettings}
+							onAgentSettingsChange={onAgentSettingsChange}
 							agentOptions={agentOptions}
 							clineProviderOptions={clineProviderOptions}
 							clineModelOptions={clineModelOptions}

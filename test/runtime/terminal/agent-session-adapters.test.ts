@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { buildTaskAgentSettingsForUpdate } from "../../../src/commands/task";
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
 
 const originalHome = process.env.HOME;
@@ -390,6 +391,72 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(config.hooks?.stop?.[0]?.command).toContain("Waiting for review");
 	});
 
+	it("routes Pi through hooks pi-wrapper with a dedicated session dir and real TUI args", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "hi",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-pi");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.autoRestartOnExit).toBe(false);
+
+		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
+		expect(launchCommand).toContain("hooks");
+		expect(launchCommand).toContain("pi-wrapper");
+		expect(launchCommand).toContain("--real-binary");
+		expect(launchCommand).toContain("pi");
+		expect(launchCommand).toContain("--session-dir");
+		expect(launchCommand).toContain(join(homedir(), ".cline", "kanban", "sessions", "pi", "task-pi"));
+		expect(launchCommand).toContain("--approve");
+		expect(launch.args.at(-1)).toBe("hi");
+		expect(launchCommand).not.toContain("--mode json");
+		expect(launchCommand).not.toContain("--resume");
+	});
+
+	it("preserves an explicit Pi session dir without overriding it", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-explicit-session",
+			agentId: "pi",
+			binary: "pi",
+			args: ["--session-dir", "/tmp/custom-pi-session"],
+			cwd: "/tmp",
+			prompt: "hi",
+			workspaceId: "workspace-1",
+		});
+
+		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
+		expect(launchCommand).toContain("/tmp/custom-pi-session");
+		expect(launchCommand).not.toContain(
+			join(homedir(), ".cline", "kanban", "sessions", "pi", "task-pi-explicit-session"),
+		);
+	});
+
+	it("appends Kanban sidebar instructions for home Pi sessions", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.args).toContain("--append-system-prompt");
+		const promptIndex = launch.args.indexOf("--append-system-prompt");
+		expect(launch.args[promptIndex + 1]).toContain("Current home agent: `pi`");
+	});
+
 	it("materializes task images for CLI prompts", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -593,6 +660,18 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeFromTrash: true,
 		});
 		expect(kiroLaunch.args).toContain("--resume");
+
+		const piLaunch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(piLaunch.args).toContain("--continue");
+		expect(piLaunch.args).not.toContain("--resume");
 
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline",
@@ -809,5 +888,266 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(kiroLaunch.args).toContain("--trust-all-tools");
+	});
+});
+
+describe("per-task agentSettings overrides", () => {
+	const SENTINEL = {
+		providerId: "acme-provider",
+		modelId: "not-a-real-model-xyz",
+		reasoningEffort: "MAXIMUM_OVERDRIVE",
+	};
+
+	it("claude: passes model/effort verbatim as --model/--effort", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("--model");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		const effortIndex = launch.args.indexOf("--effort");
+		expect(effortIndex).toBeGreaterThan(-1);
+		expect(launch.args[effortIndex + 1]).toBe(SENTINEL.reasoningEffort);
+	});
+
+	it("claude: keeps an existing --model arg and does not duplicate", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--model", "user-pinned-model"],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		expect(launch.args.filter((arg) => arg === "--model")).toHaveLength(1);
+		expect(launch.args).toContain("user-pinned-model");
+		expect(launch.args).not.toContain(SENTINEL.modelId);
+		expect(launch.args).toContain("--effort");
+	});
+
+	it("codex: model via -m and effort via -c model_reasoning_effort=", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("-m");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		expect(getCodexConfigOverrideValues(launch.args, "model_reasoning_effort")).toEqual([SENTINEL.reasoningEffort]);
+	});
+
+	it("codex: does not duplicate when -m or model_reasoning_effort is already set", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: ["-m", "user-pinned-model", "-c", "model_reasoning_effort=user-effort"],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		expect(launch.args.filter((arg) => arg === "-m")).toHaveLength(1);
+		expect(launch.args).toContain("user-pinned-model");
+		expect(getCodexConfigOverrideValues(launch.args, "model_reasoning_effort")).toEqual(["user-effort"]);
+	});
+
+	it("droid: long-form --model and --reasoning-effort only (no -r)", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "droid",
+			binary: "droid",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("--model");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		const effortIndex = launch.args.indexOf("--reasoning-effort");
+		expect(effortIndex).toBeGreaterThan(-1);
+		expect(launch.args[effortIndex + 1]).toBe(SENTINEL.reasoningEffort);
+		expect(launch.args).not.toContain("-r");
+	});
+
+	it("gemini: model via -m only; effort has no flag and is not injected", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "gemini",
+			binary: "gemini",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("-m");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		expect(launch.args).not.toContain(SENTINEL.reasoningEffort);
+	});
+
+	it("opencode: composes provider/model when both set; unprefixed when only modelId", async () => {
+		setupTempHome();
+		const withProvider = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { providerId: "openrouter", modelId: "acme-model" },
+		});
+		const modelFlag = withProvider.args.indexOf("--model");
+		expect(modelFlag).toBeGreaterThan(-1);
+		expect(withProvider.args[modelFlag + 1]).toBe("openrouter/acme-model");
+
+		const withoutProvider = await prepareAgentLaunch({
+			taskId: "task-2",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: "acme-model" },
+		});
+		const bareFlag = withoutProvider.args.indexOf("--model");
+		expect(bareFlag).toBeGreaterThan(-1);
+		expect(withoutProvider.args[bareFlag + 1]).toBe("acme-model");
+	});
+
+	it("opencode: task model wins over config-derived preferred model", async () => {
+		setupTempHome();
+		const stateDir = join(tempHome ?? "", ".local", "state", "opencode");
+		mkdirSync(stateDir, { recursive: true });
+		writeFileSync(
+			join(stateDir, "model.json"),
+			JSON.stringify({ recent: [{ providerID: "openrouter", modelID: "config-preferred-model" }] }),
+		);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: "task-pinned-model" },
+		});
+
+		expect(launch.args.filter((arg) => arg === "--model")).toHaveLength(1);
+		const modelFlag = launch.args.indexOf("--model");
+		expect(launch.args[modelFlag + 1]).toBe("task-pinned-model");
+	});
+
+	it("omits --model after task update --model default clears the card setting", async () => {
+		const cleared = buildTaskAgentSettingsForUpdate({ modelId: SENTINEL.modelId }, { modelId: null });
+		expect(cleared).toBeNull();
+
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: cleared ?? undefined,
+		});
+
+		expect(launch.args).not.toContain("--model");
+	});
+
+	it("kiro: emits a visible session warning when settings are present; none when absent", async () => {
+		setupTempHome();
+		const withSettings = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "kiro",
+			binary: "kiro-cli",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId },
+		});
+		expect(withSettings.sessionWarning).toBeDefined();
+		expect(withSettings.sessionWarning).toContain("kiro");
+
+		const withoutSettings = await prepareAgentLaunch({
+			taskId: "task-2",
+			agentId: "kiro",
+			binary: "kiro-cli",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(withoutSettings.sessionWarning).toBeUndefined();
+	});
+
+	it("pi: passes model/thinking/provider verbatim and does not warn", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-settings",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: {
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-5",
+				reasoningEffort: "high",
+			},
+		});
+
+		expect(launch.sessionWarning).toBeUndefined();
+		expect(launch.args).toEqual(
+			expect.arrayContaining(["--provider", "anthropic", "--model", "claude-sonnet-4-5", "--thinking", "high"]),
+		);
+	});
+
+	it("pi: keeps existing --model/--thinking/--provider flags and does not duplicate", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-existing",
+			agentId: "pi",
+			binary: "pi",
+			args: ["--model", "already-set", "--thinking", "low", "--provider", "openai"],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: {
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-5",
+				reasoningEffort: "high",
+			},
+		});
+
+		expect(launch.args.filter((arg) => arg === "--model")).toHaveLength(1);
+		expect(launch.args.filter((arg) => arg === "--thinking")).toHaveLength(1);
+		expect(launch.args.filter((arg) => arg === "--provider")).toHaveLength(1);
+		expect(launch.args).toContain("already-set");
+		expect(launch.args).not.toContain("claude-sonnet-4-5");
 	});
 });

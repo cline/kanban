@@ -17,6 +17,7 @@ import {
 import { enrichDroidReviewMetadata } from "./hook-events/droid-hook-events";
 import { asRecord, normalizeWhitespace, readNestedString, readStringField } from "./hook-events/hook-utils";
 import { normalizeKiroHookMetadata } from "./hook-events/kiro-hook-events";
+import { runPiWrapperSubcommand } from "./hook-events/pi-hooks";
 
 export {
 	createCodexWatcherState,
@@ -736,6 +737,41 @@ async function runHooksIngest(
 	}
 }
 
+const PI_NOTIFY_ATTEMPTS = 6;
+const PI_NOTIFY_RETRY_DELAY_MS = 150;
+
+async function sleep(ms: number): Promise<void> {
+	await new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
+}
+
+async function notifyPiEventDirect(
+	event: RuntimeHookEvent,
+	metadata: Partial<RuntimeTaskHookActivity> | undefined,
+	env: NodeJS.ProcessEnv,
+): Promise<void> {
+	const context = parseHookRuntimeContextFromEnv(env);
+	let lastError: unknown;
+	for (let attempt = 0; attempt < PI_NOTIFY_ATTEMPTS; attempt += 1) {
+		try {
+			await ingestHookEvent({
+				event,
+				taskId: context.taskId,
+				workspaceId: context.workspaceId,
+				metadata,
+			});
+			return;
+		} catch (error) {
+			lastError = error;
+			await sleep(PI_NOTIFY_RETRY_DELAY_MS);
+		}
+	}
+	if (lastError) {
+		// Best effort only: the wrapper must still exit with Pi's status.
+	}
+}
+
 export function registerHooksCommand(program: Command): void {
 	const hooks = program.command("hooks").description("Runtime hook helpers for agent integrations.");
 
@@ -816,5 +852,22 @@ export function registerHooksCommand(program: Command): void {
 				realBinary: options.realBinary,
 				agentArgs: agentArgs ?? [],
 			});
+		});
+
+	hooks
+		.command("pi-wrapper [agentArgs...]")
+		.description("Pi wrapper that watches the session JSONL and emits Kanban hook notifications.")
+		.requiredOption("--real-binary <path>", "Path to the actual pi binary.")
+		.requiredOption("--session-dir <dir>", "Per-task Pi session directory.")
+		.allowUnknownOption(true)
+		.action(async (agentArgs: string[] | undefined, options: { realBinary: string; sessionDir: string }) => {
+			await runPiWrapperSubcommand(
+				{
+					realBinary: options.realBinary,
+					sessionDir: options.sessionDir,
+					agentArgs: agentArgs ?? [],
+				},
+				notifyPiEventDirect,
+			);
 		});
 }

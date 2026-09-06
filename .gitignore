@@ -1,10 +1,12 @@
 node_modules
 dist
 coverage
+*.tsbuildinfo
 .DS_Store
 test-results
 playwright-report
 .worktrees
+.serena/
 .sentry-artifacts
 .env
 .env.*

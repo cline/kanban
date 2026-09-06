@@ -195,6 +195,13 @@ const savedClineOauthConfig = {
 			command: "claude",
 			installed: true,
 		},
+		{
+			id: "pi",
+			label: "Pi",
+			binary: "pi",
+			command: "pi",
+			installed: true,
+		},
 	],
 	clineProviderSettings: {
 		providerId: null,
@@ -387,5 +394,23 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(handleSaved).toHaveBeenCalledTimes(1);
+	});
+
+	it("lists Pi as a launch-supported agent", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const piRow = Array.from(document.body.querySelectorAll('[role="button"]')).find((element) =>
+			element.textContent?.includes("Pi"),
+		);
+		expect(piRow).toBeTruthy();
 	});
 });
