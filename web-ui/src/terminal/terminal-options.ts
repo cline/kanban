@@ -36,7 +36,7 @@ export function createKanbanTerminalOptions({
 		macOptionClickForcesSelection: isMacPlatform,
 		macOptionIsMeta: isMacPlatform,
 		rightClickSelectsWord: false,
-		scrollOnEraseInDisplay: true,
+		scrollOnEraseInDisplay: false,
 		scrollOnUserInput: true,
 		scrollback: 10_000,
 		smoothScrollDuration: 0,
