@@ -226,6 +226,21 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return true;
 	}
 
+	private trySendDeferredKimiStartupInput(taskId: string, agentId: string): boolean {
+		const entry = this.entries.get(taskId);
+		const active = entry?.active;
+		if (!entry || !active || agentId !== "kimi") {
+			return false;
+		}
+		if (active.deferredStartupInput === null) {
+			return false;
+		}
+		const deferredInput = active.deferredStartupInput;
+		active.deferredStartupInput = null;
+		active.session.write(deferredInput);
+		return true;
+	}
+
 	private hasLiveOutputListener(entry: SessionEntry): boolean {
 		for (const listener of entry.listeners.values()) {
 			if (listener.onOutput) {
@@ -370,6 +385,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 
 					const needsDecodedOutput =
 						entry.active.workspaceTrustBuffer !== null ||
+						(entry.active.deferredStartupInput !== null && request.agentId === "kimi") ||
 						(entry.active.detectOutputTransition !== null &&
 							(entry.active.shouldInspectOutputForTransition?.(entry.summary) ?? true));
 					const data = needsDecodedOutput ? filteredChunk.toString("utf8") : "";
@@ -418,6 +434,10 @@ export class TerminalSessionManager implements TerminalSessionService {
 									hasCodexStartupUiRendered(entry.active.workspaceTrustBuffer))))
 					) {
 						this.trySendDeferredCodexStartupInput(request.taskId);
+					}
+
+					if (request.agentId === "kimi" && entry.active.deferredStartupInput !== null && data.length > 0) {
+						this.trySendDeferredKimiStartupInput(request.taskId, request.agentId);
 					}
 
 					const adapterEvent = entry.active.detectOutputTransition?.(data, entry.summary) ?? null;

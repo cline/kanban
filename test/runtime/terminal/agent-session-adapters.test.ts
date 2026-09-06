@@ -9,6 +9,8 @@ import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters
 const originalHome = process.env.HOME;
 const originalAppData = process.env.APPDATA;
 const originalLocalAppData = process.env.LOCALAPPDATA;
+const originalKimiShareDir = process.env.KIMI_SHARE_DIR;
+const originalKimiCodeHome = process.env.KIMI_CODE_HOME;
 let tempHome: string | null = null;
 const originalArgv = [...process.argv];
 const originalExecArgv = [...process.execArgv];
@@ -71,6 +73,16 @@ afterEach(() => {
 		delete process.env.LOCALAPPDATA;
 	} else {
 		process.env.LOCALAPPDATA = originalLocalAppData;
+	}
+	if (originalKimiShareDir === undefined) {
+		delete process.env.KIMI_SHARE_DIR;
+	} else {
+		process.env.KIMI_SHARE_DIR = originalKimiShareDir;
+	}
+	if (originalKimiCodeHome === undefined) {
+		delete process.env.KIMI_CODE_HOME;
+	} else {
+		process.env.KIMI_CODE_HOME = originalKimiCodeHome;
 	}
 	process.argv = [...originalArgv];
 	process.execArgv = [...originalExecArgv];
@@ -157,6 +169,54 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(developerInstructions[0]).toContain("Kanban sidebar agent");
 		expect(developerInstructions[0]).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
 		expect(getCodexConfigOverrideValues(launch.args, "check_for_update_on_startup")).toEqual(["false"]);
+	});
+
+	it("appends Kanban sidebar instructions for home Kimi Code sessions", async () => {
+		const homePath = setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:kimi",
+			agentId: "kimi",
+			binary: "kimi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const agentFileIndex = launch.args.indexOf("--agent-file");
+		expect(agentFileIndex).toBeGreaterThanOrEqual(0);
+		const agentFilePath = launch.args[agentFileIndex + 1] ?? "";
+		expect(agentFilePath).toBe(join(homePath, ".cline", "kanban", "hooks", "kimi", "agent.yaml"));
+
+		const agentFile = JSON.parse(readFileSync(agentFilePath, "utf8")) as {
+			agent?: {
+				extend?: string;
+				system_prompt_args?: {
+					ROLE_ADDITIONAL?: string;
+				};
+			};
+		};
+		const roleAdditional = agentFile.agent?.system_prompt_args?.ROLE_ADDITIONAL ?? "";
+		expect(agentFile.agent?.extend).toBe("default");
+		expect(roleAdditional).toContain("Kanban sidebar agent");
+		expect(roleAdditional).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
+	});
+
+	it("preserves explicit Kimi Code agent selection for home sessions", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:kimi",
+			agentId: "kimi",
+			binary: "kimi",
+			args: ["--agent", "okabe"],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		expect(launch.args).toContain("--agent");
+		expect(launch.args).toContain("okabe");
+		expect(launch.args).not.toContain("--agent-file");
 	});
 
 	it("disables Codex startup update checks for Kanban-launched sessions", async () => {
@@ -390,6 +450,64 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(config.hooks?.stop?.[0]?.command).toContain("Waiting for review");
 	});
 
+	it("writes Kimi Code hook config and defers the first prompt into the interactive session", async () => {
+		const homePath = setupTempHome();
+		const kimiHome = join(homePath, ".kimi");
+		mkdirSync(kimiHome, { recursive: true });
+		writeFileSync(
+			join(kimiHome, "config.toml"),
+			[
+				'default_model = "kimi-code/kimi-for-coding"',
+				"telemetry = false",
+				"",
+				"hooks = [",
+				'  { event = "PostToolUse", command = "echo user-hook", timeout = 5 }',
+				"]",
+				"",
+				"[models]",
+			].join("\n"),
+			"utf8",
+		);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-kimi-1",
+			agentId: "kimi",
+			binary: "kimi",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "Implement Kimi support",
+			startInPlanMode: true,
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-kimi-1");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.args).toContain("--yolo");
+		expect(launch.args).toContain("--plan");
+
+		const configFileArgIndex = launch.args.indexOf("--config-file");
+		expect(configFileArgIndex).toBeGreaterThanOrEqual(0);
+		const configPath = launch.args[configFileArgIndex + 1] ?? "";
+		expect(configPath).toBe(join(homePath, ".cline", "kanban", "hooks", "kimi", "config.toml"));
+
+		const config = readFileSync(configPath, "utf8");
+		expect(config).toContain('default_model = "kimi-code/kimi-for-coding"');
+		expect(config).toContain('command = "echo user-hook"');
+		expect(config.match(/^hooks = \[/gm)).toHaveLength(1);
+		expect(config).not.toContain("[[hooks]]");
+		expect(config).toContain("# <kanban-kimi-hooks>");
+		expect(config).toContain('event = "UserPromptSubmit"');
+		expect(config).toContain('event = "Stop"');
+		expect(config).toContain("'--source' 'kimi'");
+		expect(config).toContain("to_review");
+		expect(config).toContain("to_in_progress");
+
+		expect(launch.deferredStartupInput).toContain("\u001b[200~");
+		expect(launch.deferredStartupInput).toContain("Implement Kimi support");
+		expect(launch.deferredStartupInput?.endsWith("\r")).toBe(true);
+	});
+
 	it("materializes task images for CLI prompts", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -594,6 +712,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(kiroLaunch.args).toContain("--resume");
 
+		const kimiLaunch = await prepareAgentLaunch({
+			taskId: "task-kimi",
+			agentId: "kimi",
+			binary: "kimi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(kimiLaunch.args).toContain("--continue");
+
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline",
 			agentId: "cline",
@@ -686,6 +815,17 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(kiroLaunch.args).toContain("--trust-all-tools");
+
+		const kimiLaunch = await prepareAgentLaunch({
+			taskId: "task-kimi-auto",
+			agentId: "kimi",
+			binary: "kimi",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(kimiLaunch.args).toContain("--yolo");
 
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline-auto",
@@ -809,5 +949,16 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(kiroLaunch.args).toContain("--trust-all-tools");
+
+		const kimiLaunch = await prepareAgentLaunch({
+			taskId: "task-kimi-no-auto",
+			agentId: "kimi",
+			binary: "kimi",
+			args: ["--yolo"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(kimiLaunch.args).toContain("--yolo");
 	});
 });

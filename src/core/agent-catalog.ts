@@ -59,6 +59,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		installUrl: "https://kiro.dev",
 	},
 	{
+		id: "kimi",
+		label: "Kimi Code",
+		binary: "kimi",
+		baseArgs: [],
+		autonomousArgs: ["--yolo"],
+		installUrl: "https://moonshotai.github.io/kimi-code/en/guides/getting-started",
+	},
+	{
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
@@ -76,6 +84,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"codex",
 	"droid",
 	"kiro",
+	"kimi",
 	// "opencode",
 	// "gemini",
 ];
