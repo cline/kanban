@@ -34,9 +34,9 @@ export class TerminalStateMirror {
 		});
 	}
 
-	applyOutput(chunk: Buffer): void {
+	applyOutput(chunk: Buffer): Promise<void> {
 		const chunkCopy = new Uint8Array(chunk);
-		this.enqueueOperation(
+		return this.enqueueOperation(
 			() =>
 				new Promise<void>((resolve) => {
 					this.terminal.write(chunkCopy, () => {
@@ -64,15 +64,28 @@ export class TerminalStateMirror {
 		};
 	}
 
+	async getVisibleText(): Promise<string> {
+		await this.operationQueue;
+		const buffer = this.terminal.buffer.active;
+		const startLine = buffer.viewportY;
+		const endLine = Math.min(buffer.length, startLine + this.terminal.rows);
+		const lines: string[] = [];
+		for (let y = startLine; y < endLine; y += 1) {
+			lines.push(buffer.getLine(y)?.translateToString(true) ?? "");
+		}
+		return lines.join("\n");
+	}
+
 	dispose(): void {
 		this.terminal.dispose();
 	}
 
-	private enqueueOperation(operation: () => void | Promise<void>): void {
+	private enqueueOperation(operation: () => void | Promise<void>): Promise<void> {
 		this.operationQueue = this.operationQueue
 			.catch(() => undefined)
 			.then(async () => {
 				await operation();
 			});
+		return this.operationQueue;
 	}
 }
