@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import type {
 	RuntimeAgentId,
 	RuntimeHookEvent,
+	RuntimeTaskChatMessage,
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
@@ -14,6 +15,7 @@ import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
+import { consumeAg2ChatOutput } from "./ag2-chat-stream";
 import { configureCodexHooks, hasCodexConfigOverride } from "./codex-hook-config";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
@@ -47,6 +49,12 @@ export type AgentOutputTransitionDetector = (
 
 export type AgentOutputTransitionInspectionPredicate = (summary: RuntimeTaskSessionSummary) => boolean;
 
+export interface AgentOutputChatResult {
+	buffer: string;
+	messages: RuntimeTaskChatMessage[];
+	passthrough: string;
+}
+
 export interface PreparedAgentLaunch {
 	binary?: string;
 	args: string[];
@@ -55,6 +63,8 @@ export interface PreparedAgentLaunch {
 	deferredStartupInput?: string;
 	detectOutputTransition?: AgentOutputTransitionDetector;
 	shouldInspectOutputForTransition?: AgentOutputTransitionInspectionPredicate;
+	consumeOutput?: (buffer: string, chunk: string) => AgentOutputChatResult;
+	buildFollowUpPrompt?: (prior: RuntimeTaskChatMessage[], text: string) => string;
 }
 
 interface HookContext {
@@ -71,6 +81,8 @@ interface HookCommandMetadata {
 
 interface AgentSessionAdapter {
 	prepare(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch>;
+	consumeOutput?: (buffer: string, chunk: string) => AgentOutputChatResult;
+	buildFollowUpPrompt?: (prior: RuntimeTaskChatMessage[], text: string) => string;
 }
 
 function escapeForTemplateLiteral(value: string): string {
@@ -1429,6 +1441,46 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+function buildPtyChatFollowUpPrompt(prior: RuntimeTaskChatMessage[], text: string): string {
+	const snippets = prior
+		.filter((message) => message.role === "user" || message.role === "assistant")
+		.slice(-4)
+		.map((message) => `${message.role}: ${message.content.slice(0, 800)}`);
+	if (snippets.length === 0) {
+		return text;
+	}
+	return `Prior conversation:\n${snippets.join("\n\n")}\n\nFollow-up from the user:\n${text}`;
+}
+
+const ag2Adapter: AgentSessionAdapter = {
+	consumeOutput: consumeAg2ChatOutput,
+	buildFollowUpPrompt: buildPtyChatFollowUpPrompt,
+	async prepare(input) {
+		const env: Record<string, string | undefined> = {};
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+		const args = ["ag2-run", input.prompt, "--workspace", input.cwd, "--role", "supervisor", "--ensure-server"];
+		if (input.taskId) {
+			args.push("--task-id", input.taskId);
+		}
+		return {
+			binary: input.binary ?? "mlx-agents",
+			args,
+			env,
+			consumeOutput: consumeAg2ChatOutput,
+			buildFollowUpPrompt: buildPtyChatFollowUpPrompt,
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1437,15 +1489,30 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,
+	ag2: ag2Adapter,
 };
+
+export function buildAgentFollowUpPrompt(
+	agentId: RuntimeAgentId,
+	prior: RuntimeTaskChatMessage[],
+	text: string,
+): string {
+	return ADAPTERS[agentId].buildFollowUpPrompt?.(prior, text) ?? text;
+}
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
 	const preparedPrompt = await prepareTaskPromptWithImages({
 		prompt: input.prompt,
 		images: input.images,
 	});
-	return await ADAPTERS[input.agentId].prepare({
+	const adapter = ADAPTERS[input.agentId];
+	const launch = await adapter.prepare({
 		...input,
 		prompt: preparedPrompt,
 	});
+	return {
+		...launch,
+		consumeOutput: launch.consumeOutput ?? adapter.consumeOutput,
+		buildFollowUpPrompt: launch.buildFollowUpPrompt ?? adapter.buildFollowUpPrompt,
+	};
 }

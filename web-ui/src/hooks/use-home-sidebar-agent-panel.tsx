@@ -12,7 +12,12 @@ import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import { selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
+import {
+	getChatComposerPlaceholder,
+	isNativeChatPanelAgent,
+	selectLatestTaskChatMessageForTask,
+	shouldShowClineModelPicker,
+} from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeConfigResponse,
@@ -159,14 +164,20 @@ export function useHomeSidebarAgentPanel({
 				summary={homeAgentPanelSummary ?? createIdleTaskSession(taskId)}
 				defaultMode="act"
 				showComposerModeToggle={false}
+				showClineModelPicker={shouldShowClineModelPicker(runtimeProjectConfig.selectedAgentId)}
 				workspaceId={currentProjectId}
 				runtimeConfig={runtimeProjectConfig}
-				onSendMessage={handleSendHomeClineChatMessage}
+				onSendMessage={
+					isNativeChatPanelAgent(runtimeProjectConfig.selectedAgentId) ? handleSendHomeClineChatMessage : undefined
+				}
 				onCancelTurn={handleCancelHomeClineChatTurn}
 				onLoadMessages={handleLoadHomeClineChatMessages}
 				incomingMessage={latestHomeTaskChatMessage}
 				incomingMessages={homeTaskChatMessages}
-				composerPlaceholder="Ask Cline to add, edit, start, or link tasks"
+				composerPlaceholder={
+					getChatComposerPlaceholder(runtimeProjectConfig.selectedAgentId) ??
+					"Ask Cline to add, edit, start, or link tasks"
+				}
 			/>
 		);
 	}

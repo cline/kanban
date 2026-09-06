@@ -168,6 +168,22 @@ describe("shouldSuppressImmediateDuplicateShutdownSignals", () => {
 			}),
 		).toBe(false);
 	});
+
+	it("enables duplicate suppression for tsx wrapper launches", () => {
+		expect(
+			shouldSuppressImmediateDuplicateShutdownSignals({
+				argv: ["/usr/local/bin/node", "/repo/node_modules/tsx/dist/cli.mjs", "/repo/src/cli.ts"],
+				env: {},
+			}),
+		).toBe(true);
+		expect(
+			shouldSuppressImmediateDuplicateShutdownSignals({
+				argv: ["/usr/local/bin/node", "/repo/src/cli.ts"],
+				env: {},
+				execArgv: ["--import", "tsx"],
+			}),
+		).toBe(true);
+	});
 });
 
 describe("getExitCodeForSignal", () => {
