@@ -4,7 +4,13 @@ import { type UseGitHistoryDataResult, useGitHistoryData } from "@/components/gi
 import { buildTaskGitActionPrompt, type TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { isNativeClineAgentSelected } from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type {
+	RuntimeConfigResponse,
+	RuntimeGitSyncAction,
+	RuntimeTaskSessionSummary,
+	RuntimeTaskWorkspaceInfoResponse,
+} from "@/runtime/types";
+import { fetchWorkspaceState } from "@/runtime/workspace-state-query";
 import { findCardSelection } from "@/state/board-state";
 import {
 	getTaskWorkspaceInfo,
@@ -74,6 +80,17 @@ export interface UseGitActionsResult {
 	resetGitActionState: () => void;
 }
 
+const SESSION_PROMPT_CONFIRM_TIMEOUT_MS = 2_000;
+const SESSION_PROMPT_CONFIRM_POLL_MS = 50;
+
+type SessionActivityBaseline = Pick<RuntimeTaskSessionSummary, "lastOutputAt" | "lastHookAt" | "state">;
+
+const IDLE_SESSION_ACTIVITY_BASELINE: SessionActivityBaseline = {
+	lastOutputAt: null,
+	lastHookAt: null,
+	state: "idle",
+};
+
 function matchesWorkspaceInfoSelection(
 	workspaceInfo: RuntimeTaskWorkspaceInfoResponse | null,
 	card: BoardCard | null,
@@ -82,6 +99,162 @@ function matchesWorkspaceInfoSelection(
 		return false;
 	}
 	return workspaceInfo.taskId === card.id && workspaceInfo.baseRef === card.baseRef;
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		window.setTimeout(resolve, ms);
+	});
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+	let timeoutId: number | null = null;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<null>((resolve) => {
+				timeoutId = window.setTimeout(() => {
+					resolve(null);
+				}, ms);
+			}),
+		]);
+	} finally {
+		if (timeoutId !== null) {
+			window.clearTimeout(timeoutId);
+		}
+	}
+}
+
+function toSessionActivityBaseline(summary: RuntimeTaskSessionSummary): SessionActivityBaseline {
+	return {
+		lastOutputAt: summary.lastOutputAt,
+		lastHookAt: summary.lastHookAt,
+		state: summary.state,
+	};
+}
+
+function sessionActivityAdvanced(
+	summary: RuntimeTaskSessionSummary | null,
+	baseline: SessionActivityBaseline,
+): boolean {
+	if (!summary) {
+		return false;
+	}
+	if (
+		summary.lastOutputAt != null &&
+		(baseline.lastOutputAt == null || summary.lastOutputAt > baseline.lastOutputAt)
+	) {
+		return true;
+	}
+	if (summary.lastHookAt != null && (baseline.lastHookAt == null || summary.lastHookAt > baseline.lastHookAt)) {
+		return true;
+	}
+	return baseline.state !== "running" && summary.state === "running";
+}
+
+async function readTaskSessionSummary(projectId: string, taskId: string): Promise<RuntimeTaskSessionSummary | null> {
+	const workspaceState = await fetchWorkspaceState(projectId);
+	return workspaceState.sessions[taskId] ?? null;
+}
+
+async function readSessionActivityBaseline(
+	projectId: string,
+	taskId: string,
+	fallback: SessionActivityBaseline,
+): Promise<SessionActivityBaseline> {
+	try {
+		const summary = await readTaskSessionSummary(projectId, taskId);
+		return summary ? toSessionActivityBaseline(summary) : fallback;
+	} catch {
+		return fallback;
+	}
+}
+
+async function waitForSessionActivity(input: {
+	projectId: string;
+	taskId: string;
+	baseline: SessionActivityBaseline;
+	timeoutMs: number;
+}): Promise<boolean> {
+	const deadline = Date.now() + input.timeoutMs;
+	while (true) {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) {
+			return false;
+		}
+		try {
+			const summary = await withTimeout(readTaskSessionSummary(input.projectId, input.taskId), remaining);
+			if (sessionActivityAdvanced(summary, input.baseline)) {
+				return true;
+			}
+		} catch {
+			// Keep polling until the deadline so a transient read cannot hang delivery.
+		}
+		const remainingAfterRead = deadline - Date.now();
+		if (remainingAfterRead <= 0) {
+			return false;
+		}
+		await sleep(Math.min(SESSION_PROMPT_CONFIRM_POLL_MS, remainingAfterRead));
+	}
+}
+
+async function deliverConfirmedTaskSessionPrompt(input: {
+	projectId: string;
+	taskId: string;
+	prompt: string;
+	sendTaskSessionInput: UseGitActionsInput["sendTaskSessionInput"];
+}): Promise<{ ok: boolean; message?: string }> {
+	const pasteBaseline = await readSessionActivityBaseline(
+		input.projectId,
+		input.taskId,
+		IDLE_SESSION_ACTIVITY_BASELINE,
+	);
+	const typed = await input.sendTaskSessionInput(input.taskId, input.prompt, {
+		appendNewline: false,
+		mode: "paste",
+	});
+	if (!typed.ok) {
+		return { ok: false, message: typed.message ?? "Could not send instructions to the task session." };
+	}
+	const pasteLanded = await waitForSessionActivity({
+		projectId: input.projectId,
+		taskId: input.taskId,
+		baseline: pasteBaseline,
+		timeoutMs: SESSION_PROMPT_CONFIRM_TIMEOUT_MS,
+	});
+	if (!pasteLanded) {
+		return { ok: false, message: "Could not confirm the prompt was delivered to the task session." };
+	}
+	const submitBaseline = await readSessionActivityBaseline(input.projectId, input.taskId, pasteBaseline);
+	const submitted = await input.sendTaskSessionInput(input.taskId, "\r", { appendNewline: false });
+	if (!submitted.ok) {
+		return { ok: false, message: submitted.message ?? "Could not submit instructions to the task session." };
+	}
+	if (
+		await waitForSessionActivity({
+			projectId: input.projectId,
+			taskId: input.taskId,
+			baseline: submitBaseline,
+			timeoutMs: SESSION_PROMPT_CONFIRM_TIMEOUT_MS,
+		})
+	) {
+		return { ok: true };
+	}
+	const retried = await input.sendTaskSessionInput(input.taskId, "\r", { appendNewline: false });
+	if (!retried.ok) {
+		return { ok: false, message: retried.message ?? "Could not submit instructions to the task session." };
+	}
+	if (
+		await waitForSessionActivity({
+			projectId: input.projectId,
+			taskId: input.taskId,
+			baseline: submitBaseline,
+			timeoutMs: SESSION_PROMPT_CONFIRM_TIMEOUT_MS,
+		})
+	) {
+		return { ok: true };
+	}
+	return { ok: false, message: "Could not confirm the prompt was submitted to the task session." };
 }
 
 export function useGitActions({
@@ -299,25 +472,26 @@ export function useGitActions({
 					}
 					return true;
 				}
-				const typed = await sendTaskSessionInput(taskId, prompt, { appendNewline: false, mode: "paste" });
-				if (!typed.ok) {
+				if (!currentProjectId) {
 					showAppToast({
 						intent: "danger",
 						icon: "warning-sign",
-						message: typed.message ?? "Could not send instructions to the task session.",
+						message: "Could not confirm prompt delivery because no project is selected.",
 						timeout: 7000,
 					});
 					return false;
 				}
-				await new Promise<void>((resolve) => {
-					window.setTimeout(resolve, 200);
+				const delivered = await deliverConfirmedTaskSessionPrompt({
+					projectId: currentProjectId,
+					taskId,
+					prompt,
+					sendTaskSessionInput,
 				});
-				const submitted = await sendTaskSessionInput(taskId, "\r", { appendNewline: false });
-				if (!submitted.ok) {
+				if (!delivered.ok) {
 					showAppToast({
 						intent: "danger",
 						icon: "warning-sign",
-						message: submitted.message ?? "Could not submit instructions to the task session.",
+						message: delivered.message ?? "Could not send instructions to the task session.",
 						timeout: 7000,
 					});
 					return false;
@@ -329,6 +503,7 @@ export function useGitActions({
 		},
 		[
 			board,
+			currentProjectId,
 			fetchTaskWorkspaceInfo,
 			runtimeProjectConfig,
 			sendTaskChatMessage,
