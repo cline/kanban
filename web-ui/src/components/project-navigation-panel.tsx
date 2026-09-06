@@ -601,6 +601,7 @@ const MORE_SHORTCUTS = [
 	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
 	{ keys: [ALT, "Shift", "Enter"], label: "Start and open task" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
+	{ keys: [MOD, "Shift", "F"], label: "Expand agent panel" },
 	{ keys: ["Esc"], label: "Close / back" },
 ];
 
