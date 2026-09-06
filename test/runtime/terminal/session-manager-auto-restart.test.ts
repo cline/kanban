@@ -195,4 +195,34 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(session.write).toHaveBeenCalledWith(deferredStartupInput);
 		expect(session.write).toHaveBeenCalledTimes(1);
 	});
+
+	it("keeps restoreGeneration for one live PTY and increments on a new start", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager();
+		const startRequest = {
+			taskId: "task-1",
+			agentId: "codex" as const,
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		};
+
+		await manager.startTaskSession(startRequest);
+		const first = await manager.getRestoreSnapshot("task-1");
+		const second = await manager.getRestoreSnapshot("task-1");
+		expect(first?.restoreGeneration).toBe(1);
+		expect(second?.restoreGeneration).toBe(1);
+
+		spawnedSessions[0]?.triggerExit(0);
+		await manager.startTaskSession(startRequest);
+		const third = await manager.getRestoreSnapshot("task-1");
+		expect(third?.restoreGeneration).toBe(2);
+	});
 });

@@ -16,7 +16,7 @@ describe("createKanbanTerminalOptions", () => {
 		expect(options.cursorBlink).toBe(false);
 		expect(options.cursorInactiveStyle).toBe("outline");
 		expect(options.cursorStyle).toBe("block");
-		expect(options.scrollback).toBe(10_000);
+		expect(options.scrollback).toBe(1_000);
 		expect(options.macOptionIsMeta).toBe(true);
 		expect(options.windowOptions).toEqual({
 			getCellSizePixels: true,

@@ -67,6 +67,7 @@ interface SessionEntry {
 	summary: RuntimeTaskSessionSummary;
 	active: ActiveProcessState | null;
 	terminalStateMirror: TerminalStateMirror | null;
+	restoreGeneration: number;
 	listenerIdCounter: number;
 	listeners: Map<number, TerminalSessionListener>;
 	restartRequest: RestartableSessionRequest | null;
@@ -248,6 +249,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				summary: cloneSummary(summary),
 				active: null,
 				terminalStateMirror: null,
+				restoreGeneration: 0,
 				listenerIdCounter: 1,
 				listeners: new Map(),
 				restartRequest: null,
@@ -289,7 +291,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry?.terminalStateMirror) {
 			return null;
 		}
-		return await entry.terminalStateMirror.getSnapshot();
+		const snapshot = await entry.terminalStateMirror.getSnapshot();
+		return {
+			...snapshot,
+			restoreGeneration: entry.restoreGeneration,
+		};
 	}
 
 	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
@@ -528,6 +534,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
+		entry.restoreGeneration += 1;
 
 		const startedAt = now();
 		updateSummary(entry, {
@@ -681,6 +688,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
+		entry.restoreGeneration += 1;
 
 		updateSummary(entry, {
 			state: "running",
@@ -968,6 +976,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			summary: createDefaultSummary(taskId),
 			active: null,
 			terminalStateMirror: null,
+			restoreGeneration: 0,
 			listenerIdCounter: 1,
 			listeners: new Map(),
 			restartRequest: null,
