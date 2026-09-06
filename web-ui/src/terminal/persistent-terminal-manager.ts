@@ -1,4 +1,3 @@
-import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -189,7 +188,13 @@ class PersistentTerminal {
 			rows: initialGeometry.rows,
 		});
 		this.terminal.loadAddon(this.fitAddon);
-		this.terminal.loadAddon(new ClipboardAddon());
+		// Not loading ClipboardAddon intentionally: it relays OSC 52 clipboard-set
+		// requests from whatever CLI is running in the terminal (e.g. Claude Code's
+		// own select-to-copy) into navigator.clipboard.writeText() with no active
+		// user gesture, which corrupts multi-byte CJK text. The addon's own base64
+		// decode is not at fault (verified correct); the Cmd+C handler below calls
+		// the same API but synchronously inside a real keydown event, and is
+		// unaffected. See https://github.com/cline/kanban/issues/574.
 		this.terminal.loadAddon(new WebLinksAddon());
 		this.terminal.loadAddon(this.unicode11Addon);
 		this.terminal.unicode.activeVersion = "11";
