@@ -30,7 +30,7 @@ interface HookSnapshot {
 	startTaskSession: ReturnType<typeof useTaskSessions>["startTaskSession"];
 }
 
-function createTask(): BoardCard {
+function createTask(overrides: Partial<BoardCard> = {}): BoardCard {
 	return {
 		id: "task-1",
 		title: "Resume me",
@@ -41,6 +41,7 @@ function createTask(): BoardCard {
 		baseRef: "main",
 		createdAt: 1,
 		updatedAt: 1,
+		...overrides,
 	};
 }
 
@@ -67,13 +68,13 @@ describe("useTaskSessions", () => {
 	beforeEach(() => {
 		startTaskSessionMutateMock.mockReset();
 		trackTaskResumedFromTrashMock.mockReset();
-		startTaskSessionMutateMock.mockResolvedValue({
+		startTaskSessionMutateMock.mockImplementation(async (input: { taskId: string; agentId?: string }) => ({
 			ok: true,
 			summary: {
-				taskId: "task-1",
+				taskId: input.taskId,
 				state: "running",
-				agentId: "codex",
-				workspacePath: "/tmp/task-1",
+				agentId: input.agentId ?? "codex",
+				workspacePath: `/tmp/${input.taskId}`,
 				pid: 123,
 				startedAt: 1,
 				updatedAt: 1,
@@ -83,7 +84,7 @@ describe("useTaskSessions", () => {
 				lastHookAt: null,
 				latestHookActivity: null,
 			},
-		});
+		}));
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -305,6 +306,78 @@ describe("useTaskSessions", () => {
 			expect.objectContaining({
 				clineSettings: {
 					reasoningEffort: "high",
+				},
+			}),
+		);
+	});
+
+	it("keeps each task start bound to its own provider and model overrides", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			await latestSnapshot?.startTaskSession(
+				createTask({
+					id: "task-anthropic",
+					title: "Anthropic task",
+					prompt: "Use Anthropic",
+					agentId: "cline",
+					clineSettings: {
+						providerId: "anthropic",
+						modelId: "anthropic/claude-opus-4.6",
+					},
+				}),
+			);
+			await latestSnapshot?.startTaskSession(
+				createTask({
+					id: "task-groq",
+					title: "Groq task",
+					prompt: "Use Groq",
+					agentId: "cline",
+					clineSettings: {
+						providerId: "groq",
+						modelId: "groq/llama-4-maverick",
+						reasoningEffort: "medium",
+					},
+				}),
+			);
+		});
+
+		expect(startTaskSessionMutateMock).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({
+				taskId: "task-anthropic",
+				taskTitle: "Anthropic task",
+				agentId: "cline",
+				clineSettings: {
+					providerId: "anthropic",
+					modelId: "anthropic/claude-opus-4.6",
+				},
+			}),
+		);
+		expect(startTaskSessionMutateMock).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({
+				taskId: "task-groq",
+				taskTitle: "Groq task",
+				agentId: "cline",
+				clineSettings: {
+					providerId: "groq",
+					modelId: "groq/llama-4-maverick",
+					reasoningEffort: "medium",
 				},
 			}),
 		);

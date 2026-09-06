@@ -300,7 +300,9 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						overrides && "reasoningEffort" in overrides
 							? overrides.reasoningEffort || ""
 							: clineSettings.reasoningEffort;
-					if (taskHasExplicitClineSettings) {
+					const shouldPersistTaskClineSettings =
+						taskHasExplicitClineSettings || onTaskClineSettingsChanged !== undefined;
+					if (shouldPersistTaskClineSettings) {
 						onTaskClineSettingsChanged?.({
 							providerId: clineSettings.providerId,
 							modelId: nextModelId,
