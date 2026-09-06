@@ -338,7 +338,7 @@ function applyThemeChange(themeId: ThemeId): void {
 
 export function readStoredThemeId(): ThemeId {
 	const stored = readLocalStorageItem(LocalStorageKey.Theme);
-	return isThemeId(stored) ? stored : "default";
+	return isThemeId(stored) ? stored : "light";
 }
 
 export function applyThemeToDocument(themeId: ThemeId): void {
