@@ -889,7 +889,17 @@ export function DiffViewerPanel({
 										>
 											{group.entries.map((entry) => (
 												<div key={entry.id} className="kb-diff-entry">
-													{entry.isBinary ? null : viewMode === "split" ? (
+													{entry.isBinary ? (
+														<div
+															style={{
+																padding: "12px",
+																fontSize: 12,
+																color: "var(--color-text-tertiary)",
+															}}
+														>
+															Binary file not shown.
+														</div>
+													) : viewMode === "split" ? (
 														<SplitDiff
 															path={group.path}
 															oldText={entry.oldText}

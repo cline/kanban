@@ -265,6 +265,7 @@ describe("DiffViewerPanel", () => {
 
 		expect(container.textContent).toContain("assets/logo.png");
 		expect(container.textContent).toContain("Binary");
+		expect(container.textContent).toContain("Binary file not shown.");
 		expect(container.querySelector(".kb-diff-row")).toBeNull();
 	});
 
