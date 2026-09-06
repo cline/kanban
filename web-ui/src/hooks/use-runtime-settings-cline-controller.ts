@@ -564,6 +564,12 @@ export function useRuntimeSettingsClineController(
 				setBaseUrl(savedSettings.baseUrl ?? "");
 				setReasoningEffort(savedSettings.reasoningEffort ?? "");
 				setProviderSettingsOverride(savedSettings);
+				setIsLoadingProviderCatalog(true);
+				try {
+					setProviderCatalog(await fetchClineProviderCatalog(workspaceId));
+				} finally {
+					setIsLoadingProviderCatalog(false);
+				}
 				return { ok: true };
 			} catch (error) {
 				return {
@@ -712,6 +718,12 @@ export function useRuntimeSettingsClineController(
 				setReasoningEffort(nextSettings.reasoningEffort ?? "");
 			}
 			setProviderSettingsOverride(nextSettings);
+			setIsLoadingProviderCatalog(true);
+			try {
+				setProviderCatalog(await fetchClineProviderCatalog(workspaceId));
+			} finally {
+				setIsLoadingProviderCatalog(false);
+			}
 			return { ok: true };
 		} catch (error) {
 			return { ok: false, message: error instanceof Error ? error.message : String(error) };

@@ -835,6 +835,7 @@ export function createClineProviderService() {
 							oauthSupported: (provider.capabilities ?? []).includes("oauth"),
 							enabled:
 								selectedProviderId.length > 0 ? selectedProviderId === provider.id : provider.id === "cline",
+							apiKeyConfigured: Boolean(resolveVisibleApiKey(getSdkProviderSettings(provider.id))),
 							defaultModelId: provider.defaultModelId ?? null,
 							baseUrl: provider.baseUrl?.trim() || null,
 							supportsBaseUrl: (provider.baseUrl?.trim().length ?? 0) > 0,
@@ -858,6 +859,7 @@ export function createClineProviderService() {
 					name: selectedProviderId,
 					oauthSupported: false,
 					enabled: true,
+					apiKeyConfigured: Boolean(resolveVisibleApiKey(getSdkProviderSettings(selectedProviderId))),
 					defaultModelId: getProviderSettingsSummary().modelId,
 					baseUrl: getProviderSettingsSummary().baseUrl,
 					supportsBaseUrl: (getProviderSettingsSummary().baseUrl?.trim().length ?? 0) > 0,
