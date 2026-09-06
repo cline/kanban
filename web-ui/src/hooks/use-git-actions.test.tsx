@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type UseGitActionsResult, useGitActions } from "@/hooks/use-git-actions";
-import type { RuntimeConfigResponse, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeConfigResponse, RuntimeTaskWorkspaceInfoResponse } from "@/runtime/types";
 import { clearTaskWorkspaceInfo, clearTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 import type { BoardData } from "@/types";
 
@@ -19,6 +19,7 @@ vi.mock("@/components/git-history/use-git-history-data", () => ({
 }));
 
 interface HookSnapshot {
+	handleCommitTask: UseGitActionsResult["handleCommitTask"];
 	handleAgentCommitTask: UseGitActionsResult["handleAgentCommitTask"];
 }
 
@@ -51,7 +52,7 @@ function createGitHistoryResult(): UseGitActionsResult["gitHistory"] {
 	};
 }
 
-function createBoard(): BoardData {
+function createBoard(agentId?: RuntimeAgentId): BoardData {
 	return {
 		columns: [
 			{
@@ -68,6 +69,7 @@ function createBoard(): BoardData {
 						baseRef: "main",
 						createdAt: 1,
 						updatedAt: 1,
+						...(agentId ? { agentId } : {}),
 					},
 				],
 			},
@@ -130,18 +132,22 @@ function createWorkspaceInfo(): RuntimeTaskWorkspaceInfoResponse {
 
 function HookHarness({
 	onSnapshot,
+	board = createBoard(),
+	runtimeProjectConfig = createRuntimeConfig("cline"),
 	sendTaskSessionInput,
 	sendTaskChatMessage,
 }: {
 	onSnapshot: (snapshot: HookSnapshot) => void;
+	board?: BoardData;
+	runtimeProjectConfig?: RuntimeConfigResponse;
 	sendTaskSessionInput: Parameters<typeof useGitActions>[0]["sendTaskSessionInput"];
 	sendTaskChatMessage: Parameters<typeof useGitActions>[0]["sendTaskChatMessage"];
 }): null {
 	const gitActions = useGitActions({
 		currentProjectId: "project-1",
-		board: createBoard(),
+		board,
 		selectedCard: null,
-		runtimeProjectConfig: createRuntimeConfig("cline"),
+		runtimeProjectConfig,
 		sendTaskSessionInput,
 		sendTaskChatMessage,
 		fetchTaskWorkspaceInfo: async () => createWorkspaceInfo(),
@@ -151,9 +157,10 @@ function HookHarness({
 
 	useEffect(() => {
 		onSnapshot({
+			handleCommitTask: gitActions.handleCommitTask,
 			handleAgentCommitTask: gitActions.handleAgentCommitTask,
 		});
-	}, [gitActions.handleAgentCommitTask, onSnapshot]);
+	}, [gitActions.handleAgentCommitTask, gitActions.handleCommitTask, onSnapshot]);
 
 	return null;
 }
@@ -162,6 +169,46 @@ describe("useGitActions", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
+
+	async function commitFromReviewCard(args: {
+		projectAgentId: RuntimeConfigResponse["selectedAgentId"];
+		cardAgentId?: RuntimeAgentId;
+	}): Promise<{
+		sendTaskSessionInput: ReturnType<typeof vi.fn>;
+		sendTaskChatMessage: ReturnType<typeof vi.fn>;
+	}> {
+		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
+		const sendTaskChatMessage = vi.fn(async () => ({ ok: true }));
+		let latestSnapshot: HookSnapshot | null = null;
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(args.cardAgentId)}
+					runtimeProjectConfig={createRuntimeConfig(args.projectAgentId)}
+					sendTaskSessionInput={sendTaskSessionInput}
+					sendTaskChatMessage={sendTaskChatMessage}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await Promise.resolve();
+		});
+
+		if (latestSnapshot === null) {
+			throw new Error("Expected a hook snapshot.");
+		}
+
+		await act(async () => {
+			latestSnapshot?.handleCommitTask("task-1");
+			await Promise.resolve();
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		return { sendTaskSessionInput, sendTaskChatMessage };
+	}
 
 	beforeEach(() => {
 		showAppToastMock.mockReset();
@@ -223,6 +270,70 @@ describe("useGitActions", () => {
 
 		expect(sendTaskChatMessage).toHaveBeenCalledWith("task-1", expect.any(String), { mode: "act" });
 		expect(sendTaskSessionInput).not.toHaveBeenCalled();
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
+	it("routes a cline card override to chat when the project default is a terminal agent", async () => {
+		const { sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
+			projectAgentId: "codex",
+			cardAgentId: "cline",
+		});
+
+		expect(sendTaskChatMessage).toHaveBeenCalledWith("task-1", expect.any(String), { mode: "act" });
+		expect(sendTaskSessionInput).not.toHaveBeenCalled();
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
+	it("routes a terminal card override to the session when the project default is cline", async () => {
+		const { sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
+			projectAgentId: "cline",
+			cardAgentId: "codex",
+		});
+
+		expect(sendTaskChatMessage).not.toHaveBeenCalled();
+		expect(sendTaskSessionInput).toHaveBeenCalledWith("task-1", expect.any(String), {
+			appendNewline: false,
+			mode: "paste",
+		});
+
+		await act(async () => {
+			await new Promise<void>((resolve) => {
+				window.setTimeout(resolve, 200);
+			});
+		});
+
+		expect(sendTaskSessionInput).toHaveBeenCalledWith("task-1", "\r", { appendNewline: false });
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
+	it("routes a card with no agent override through cline chat when the project default is cline", async () => {
+		const { sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
+			projectAgentId: "cline",
+		});
+
+		expect(sendTaskChatMessage).toHaveBeenCalledWith("task-1", expect.any(String), { mode: "act" });
+		expect(sendTaskSessionInput).not.toHaveBeenCalled();
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
+	it("routes a card with no agent override through the session when the project default is a terminal agent", async () => {
+		const { sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
+			projectAgentId: "codex",
+		});
+
+		expect(sendTaskChatMessage).not.toHaveBeenCalled();
+		expect(sendTaskSessionInput).toHaveBeenCalledWith("task-1", expect.any(String), {
+			appendNewline: false,
+			mode: "paste",
+		});
+
+		await act(async () => {
+			await new Promise<void>((resolve) => {
+				window.setTimeout(resolve, 200);
+			});
+		});
+
+		expect(sendTaskSessionInput).toHaveBeenCalledWith("task-1", "\r", { appendNewline: false });
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 });
