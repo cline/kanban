@@ -22,6 +22,7 @@ import {
 	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
 } from "./claude-workspace-trust";
 import { hasCodexWorkspaceTrustPrompt, shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
+import { augmentEnvironmentPath } from "./command-discovery";
 import { stripAnsi } from "./output-utils";
 import { PtySession } from "./pty-session";
 import { reduceSessionTransition, type SessionTransitionEvent } from "./session-state-machine";
@@ -183,13 +184,13 @@ function formatShellSpawnFailure(binary: string, error: unknown): string {
 function buildTerminalEnvironment(
 	...sources: Array<Record<string, string | undefined> | undefined>
 ): Record<string, string | undefined> {
-	return {
+	return augmentEnvironmentPath({
 		...process.env,
 		...Object.assign({}, ...sources),
 		COLORTERM: "truecolor",
 		TERM: "xterm-256color",
 		TERM_PROGRAM: "kanban",
-	};
+	});
 }
 
 function hasCodexInteractivePrompt(text: string): boolean {

@@ -1,4 +1,5 @@
 import { accessSync, constants } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
 function canAccessPath(path: string): boolean {
@@ -10,13 +11,72 @@ function canAccessPath(path: string): boolean {
 	}
 }
 
-function getWindowsExecutableCandidates(binary: string): string[] {
-	const pathext = process.env.PATHEXT?.split(";").filter(Boolean) ?? [".COM", ".EXE", ".BAT", ".CMD"];
+function getPathValue(env: NodeJS.ProcessEnv): string | undefined {
+	return process.platform === "win32" ? (env.PATH ?? env.Path) : env.PATH;
+}
+
+function getWindowsExecutableCandidates(binary: string, env: NodeJS.ProcessEnv): string[] {
+	const pathext = (env.PATHEXT ?? process.env.PATHEXT)?.split(";").filter(Boolean) ?? [".COM", ".EXE", ".BAT", ".CMD"];
 	const lowerBinary = binary.toLowerCase();
 	if (pathext.some((extension) => lowerBinary.endsWith(extension.toLowerCase()))) {
 		return [binary];
 	}
 	return [binary, ...pathext.map((extension) => `${binary}${extension}`)];
+}
+
+function normalizePathEntryForComparison(entry: string): string {
+	return process.platform === "win32" ? entry.toLowerCase() : entry;
+}
+
+function getStandardExecutablePathEntries(): string[] {
+	if (process.platform === "win32") {
+		return [];
+	}
+
+	const entries: string[] = [];
+	const homePath = homedir().trim();
+	if (homePath.length > 0) {
+		entries.push(join(homePath, ".local", "bin"), join(homePath, "bin"));
+	}
+	return entries;
+}
+
+function getExecutableSearchPathEntries(env: NodeJS.ProcessEnv = process.env): string[] {
+	const mergedEntries = [...(getPathValue(env) ?? "").split(delimiter), ...getStandardExecutablePathEntries()];
+	const searchEntries: string[] = [];
+	const seen = new Set<string>();
+
+	for (const candidate of mergedEntries) {
+		const normalized = candidate.trim();
+		if (normalized.length === 0) {
+			continue;
+		}
+		const comparisonKey = normalizePathEntryForComparison(normalized);
+		if (seen.has(comparisonKey)) {
+			continue;
+		}
+		seen.add(comparisonKey);
+		searchEntries.push(normalized);
+	}
+
+	return searchEntries;
+}
+
+export function augmentEnvironmentPath(env: Record<string, string | undefined>): Record<string, string | undefined> {
+	const pathEntries = getExecutableSearchPathEntries(env);
+	if (pathEntries.length === 0) {
+		return env;
+	}
+
+	const nextPath = pathEntries.join(delimiter);
+	if (getPathValue(env) === nextPath) {
+		return env;
+	}
+
+	return {
+		...env,
+		PATH: nextPath,
+	};
 }
 
 // Intentionally perform PATH inspection in-process instead of spawning `which`, `where`,
@@ -38,12 +98,18 @@ function getWindowsExecutableCandidates(binary: string): string[] {
 // 3. Depending on external lookup commands is also less robust than inspecting PATH directly.
 //    For example, detection should not depend on `which` itself being available on PATH.
 //
+// GUI app launches can still arrive with a reduced PATH that omits common user-local install
+// locations such as ~/.local/bin. Instead of shelling out to reconstruct the user's login
+// environment, we deterministically append a short allowlist of home-directory executable
+// directories before scanning. That keeps startup predictable while covering the most common
+// packaged-app PATH gaps without broadening detection to unrelated system-wide installs.
+//
 // Why this is acceptable:
 // If a binary is only available after re-running shell init files, Kanban should treat it as
 // unavailable for task-agent startup. That keeps behavior predictable and aligned with the
 // environment the Kanban process already has, instead of silently relying on hidden shell
 // side effects.
-export function isBinaryAvailableOnPath(binary: string): boolean {
+export function isBinaryAvailableOnPath(binary: string, env: NodeJS.ProcessEnv = process.env): boolean {
 	const trimmed = binary.trim();
 	if (!trimmed) {
 		return false;
@@ -52,13 +118,13 @@ export function isBinaryAvailableOnPath(binary: string): boolean {
 		return canAccessPath(trimmed);
 	}
 
-	const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+	const pathEntries = getExecutableSearchPathEntries(env);
 	if (pathEntries.length === 0) {
 		return false;
 	}
 
 	if (process.platform === "win32") {
-		const candidates = getWindowsExecutableCandidates(trimmed);
+		const candidates = getWindowsExecutableCandidates(trimmed, env);
 		for (const entry of pathEntries) {
 			for (const candidate of candidates) {
 				if (canAccessPath(join(entry, candidate))) {
