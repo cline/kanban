@@ -57,7 +57,7 @@ export interface CreateRuntimeApiDependencies {
 	setActiveRuntimeConfig: (config: RuntimeConfigState) => void;
 	getScopedTerminalManager: (scope: RuntimeTrpcWorkspaceScope) => Promise<TerminalSessionManager>;
 	getScopedClineTaskSessionService: (scope: RuntimeTrpcWorkspaceScope) => Promise<ClineTaskSessionService>;
-	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
+	resolveInteractiveShellCommand: (preferredShell?: string | null) => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	broadcastClineMcpAuthStatusesUpdated?: (
 		statuses: Awaited<ReturnType<ReturnType<typeof createClineMcpRuntimeService>["getAuthStatuses"]>>,
@@ -660,7 +660,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			try {
 				const body = parseShellSessionStartRequest(input);
 				const terminalManager = await deps.getScopedTerminalManager(workspaceScope);
-				const shell = deps.resolveInteractiveShellCommand();
+				const runtimeConfig = await deps.loadScopedRuntimeConfig(workspaceScope);
+				const shell = deps.resolveInteractiveShellCommand(runtimeConfig.terminalShell);
 				const shellCwd = body.workspaceTaskId
 					? await resolveTaskCwd({
 							cwd: workspaceScope.workspacePath,

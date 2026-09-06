@@ -59,6 +59,8 @@ function createRuntimeConfigResponse(
 		openPrPromptTemplate: "",
 		commitPromptTemplateDefault: "",
 		openPrPromptTemplateDefault: "",
+		terminalShell: null,
+		detectedShells: [],
 	};
 	return {
 		...nextConfig,

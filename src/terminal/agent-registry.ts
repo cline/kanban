@@ -6,6 +6,7 @@ import type {
 	RuntimeClineProviderSettings,
 	RuntimeConfigResponse,
 } from "../core/api-contract";
+import { detectAvailableShells } from "../core/shell";
 import { isBinaryAvailableOnPath } from "./command-discovery";
 
 export interface ResolvedAgentCommand {
@@ -124,5 +125,7 @@ export function buildRuntimeConfigResponse(
 		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
 		commitPromptTemplateDefault: runtimeConfig.commitPromptTemplateDefault,
 		openPrPromptTemplateDefault: runtimeConfig.openPrPromptTemplateDefault,
+		terminalShell: runtimeConfig.terminalShell,
+		detectedShells: detectAvailableShells(),
 	};
 }

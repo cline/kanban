@@ -178,6 +178,8 @@ const savedClineOauthConfig = {
 	openPrPromptTemplate: "",
 	commitPromptTemplateDefault: "",
 	openPrPromptTemplateDefault: "",
+	terminalShell: null,
+	detectedShells: [],
 	globalConfigPath: null,
 	projectConfigPath: null,
 	agents: [
@@ -364,6 +366,46 @@ describe("RuntimeSettingsDialog", () => {
 		expect(handleOpenChange).toHaveBeenCalledWith(false);
 		expect(window.localStorage.getItem("kanban.theme")).toBe("graphite");
 		expect(document.documentElement.getAttribute("data-theme")).toBe("graphite");
+	});
+
+	it("lists detected shells in the terminal section and enables save on change", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={{ ...savedClineOauthConfig, detectedShells: ["pwsh", "bash"] }}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const saveButton = findButtonByText(document.body, "Save");
+		const shellSelect = document.body.querySelector(
+			'select[aria-label="Terminal shell"]',
+		) as HTMLSelectElement | null;
+
+		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
+		expect(shellSelect).toBeInstanceOf(HTMLSelectElement);
+		expect(saveButton?.disabled).toBe(true);
+		expect(Array.from(shellSelect?.options ?? []).map((option) => option.value)).toEqual([
+			"__auto__",
+			"pwsh",
+			"bash",
+		]);
+		expect(shellSelect?.value).toBe("__auto__");
+
+		// Assign through the prototype setter so React's value tracker sees the change.
+		const nativeValueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+		await act(async () => {
+			if (shellSelect) {
+				nativeValueSetter?.call(shellSelect, "pwsh");
+				shellSelect.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+		});
+
+		expect(shellSelect?.value).toBe("pwsh");
+		expect(saveButton?.disabled).toBe(false);
 	});
 
 	it("forwards cline setup saves to the dialog onSaved callback", async () => {
