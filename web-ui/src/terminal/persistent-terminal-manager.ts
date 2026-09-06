@@ -615,6 +615,7 @@ class PersistentTerminal {
 					return;
 				}
 				this.terminal.reset();
+				this.requestResize();
 			});
 	}
 

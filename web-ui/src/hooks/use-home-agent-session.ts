@@ -12,6 +12,14 @@ import { getRuntimeClineProviderSettings, isNativeClineAgentSelected } from "@/r
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
+import {
+	clearTerminalGeometry,
+	getTerminalGeometry,
+	prepareWaitForTerminalGeometry,
+} from "@/terminal/terminal-geometry-registry";
+
+const APPROX_TERMINAL_CELL_WIDTH_PX = 8;
+const HOME_AGENT_TERMINAL_HORIZONTAL_CHROME_PX = 24;
 
 type HomeAgentPanelMode = "chat" | "terminal";
 
@@ -22,7 +30,9 @@ interface HomeAgentDescriptor {
 }
 
 interface UseHomeAgentSessionInput {
+	canStartTerminalSession: boolean;
 	currentProjectId: string | null;
+	homeSidebarWidth: number;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
 	clineSessionContextVersion: number;
@@ -94,6 +104,18 @@ function buildHomeAgentSessionKey(session: HomeAgentSessionIdentity): string {
 	return `${session.workspaceId}:${session.taskId}`;
 }
 
+function estimateHomeAgentSessionGeometry(homeSidebarWidth: number): { cols: number; rows: number } {
+	const fallbackGeometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
+	if (!Number.isFinite(homeSidebarWidth) || homeSidebarWidth <= 0) {
+		return fallbackGeometry;
+	}
+	const terminalWidth = Math.max(0, homeSidebarWidth - HOME_AGENT_TERMINAL_HORIZONTAL_CHROME_PX);
+	return {
+		cols: Math.max(20, Math.floor(terminalWidth / APPROX_TERMINAL_CELL_WIDTH_PX)),
+		rows: fallbackGeometry.rows,
+	};
+}
+
 async function stopHomeAgentSession(session: HomeAgentSessionIdentity | null): Promise<void> {
 	if (!session) {
 		return;
@@ -108,7 +130,9 @@ async function stopHomeAgentSession(session: HomeAgentSessionIdentity | null): P
 }
 
 export function useHomeAgentSession({
+	canStartTerminalSession,
 	currentProjectId,
+	homeSidebarWidth,
 	runtimeProjectConfig,
 	workspaceGit,
 	clineSessionContextVersion,
@@ -124,7 +148,11 @@ export function useHomeAgentSession({
 	const previousClineSessionContextVersionByWorkspaceRef = useRef(new Map<string, number>());
 	const nextStartRequestIdRef = useRef(0);
 	const disposedRef = useRef(false);
+	const canStartTerminalSessionRef = useRef(canStartTerminalSession);
+	const homeSidebarWidthRef = useRef(homeSidebarWidth);
 	const clineProviderSettings = getRuntimeClineProviderSettings(runtimeProjectConfig);
+	canStartTerminalSessionRef.current = canStartTerminalSession;
+	homeSidebarWidthRef.current = homeSidebarWidth;
 
 	useEffect(() => {
 		latestBaseRefRef.current = resolveHomeAgentBaseRef(workspaceGit);
@@ -284,7 +312,7 @@ export function useHomeAgentSession({
 	}, [clineSessionContextVersion, currentProjectId, descriptor, sessionSummaries, upsertSessionSummary]);
 
 	useEffect(() => {
-		if (!currentProjectId || !descriptor || descriptor.panelMode !== "terminal") {
+		if (!currentProjectId || !descriptor || descriptor.panelMode !== "terminal" || !canStartTerminalSession) {
 			return;
 		}
 
@@ -312,7 +340,24 @@ export function useHomeAgentSession({
 
 		void (async () => {
 			try {
-				const geometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
+				clearTerminalGeometry(session.taskId);
+				const waitForTerminalGeometry = prepareWaitForTerminalGeometry(session.taskId);
+				await waitForTerminalGeometry();
+				if (!canStartTerminalSessionRef.current) {
+					if (pendingStartRequestIdsRef.current.get(sessionKey) === requestId) {
+						pendingStartRequestIdsRef.current.delete(sessionKey);
+					}
+					return;
+				}
+				if (
+					disposedRef.current ||
+					pendingStartRequestIdsRef.current.get(sessionKey) !== requestId ||
+					desiredTaskIdByWorkspaceRef.current.get(session.workspaceId) !== session.taskId
+				) {
+					return;
+				}
+				const geometry =
+					getTerminalGeometry(session.taskId) ?? estimateHomeAgentSessionGeometry(homeSidebarWidthRef.current);
 				const trpcClient = getRuntimeTrpcClient(session.workspaceId);
 				const response = await trpcClient.runtime.startTaskSession.mutate({
 					taskId: session.taskId,
@@ -330,6 +375,11 @@ export function useHomeAgentSession({
 					return;
 				}
 				pendingStartRequestIdsRef.current.delete(sessionKey);
+
+				if (!canStartTerminalSessionRef.current) {
+					await stopHomeAgentSession(session);
+					return;
+				}
 
 				if (desiredTaskIdByWorkspaceRef.current.get(session.workspaceId) !== session.taskId) {
 					await stopHomeAgentSession(session);
@@ -357,7 +407,7 @@ export function useHomeAgentSession({
 				notifyError(message);
 			}
 		})();
-	}, [currentProjectId, descriptor, sessionSummaries, upsertSessionSummary]);
+	}, [canStartTerminalSession, currentProjectId, descriptor, upsertSessionSummary]);
 
 	useEffect(() => {
 		return () => {
