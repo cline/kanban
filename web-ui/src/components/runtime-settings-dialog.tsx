@@ -77,8 +77,12 @@ function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, aut
 	if (agentId === "cline") {
 		return "";
 	}
-	const args = autonomousModeEnabled ? (getRuntimeAgentCatalogEntry(agentId)?.autonomousArgs ?? []) : [];
-	return [binary, ...args.map(quoteCommandPartForDisplay)].join(" ");
+	const catalogEntry = getRuntimeAgentCatalogEntry(agentId);
+	const baseArgs = catalogEntry?.baseArgs ?? [];
+	const autonomousArgs = autonomousModeEnabled ? (catalogEntry?.autonomousArgs ?? []) : [];
+	return [binary, ...baseArgs.map(quoteCommandPartForDisplay), ...autonomousArgs.map(quoteCommandPartForDisplay)].join(
+		" ",
+	);
 }
 
 function normalizeTemplateForComparison(value: string): string {
@@ -92,7 +96,7 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 
 export type RuntimeSettingsSection = "shortcuts";
 
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro"];
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "hermes", "claude", "codex", "droid", "kiro"];
 
 type SettingsNavId = "general" | "cline" | "git-prompts" | "notifications" | "appearance" | "project";
 
