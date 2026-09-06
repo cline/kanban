@@ -34,6 +34,15 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				installed: true,
 				configured: selectedAgentId === "codex",
 			},
+			{
+				id: "grok",
+				label: "Grok Build",
+				binary: "grok",
+				command: "grok",
+				defaultArgs: [],
+				installed: true,
+				configured: selectedAgentId === "grok",
+			},
 		],
 		shortcuts: [],
 		clineProviderSettings: {
@@ -166,6 +175,10 @@ describe("useStartupOnboarding", () => {
 
 		expect(result).toEqual({ ok: true });
 		expect(saveRuntimeConfigMock).toHaveBeenCalledWith(null, { selectedAgentId: "codex" });
+
+		const grokResult = await snapshot.handleSelectOnboardingAgent("grok");
+		expect(grokResult).toEqual({ ok: true });
+		expect(saveRuntimeConfigMock).toHaveBeenCalledWith(null, { selectedAgentId: "grok" });
 	});
 
 	it("waits for runtime config to finish loading before opening onboarding", async () => {

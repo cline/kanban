@@ -2,6 +2,7 @@
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type {
+	RuntimeTaskAgentSettings,
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
 	RuntimeTaskSessionReviewReason,
@@ -90,6 +91,7 @@ export interface StartTaskSessionRequest {
 	rows?: number;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	agentSettings?: RuntimeTaskAgentSettings;
 }
 
 export interface StartShellSessionRequest {
@@ -121,6 +123,8 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		lastHookAt: null,
 		latestHookActivity: null,
 		warningMessage: null,
+		modelId: null,
+		reasoningEffort: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};
@@ -151,6 +155,7 @@ function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): StartTa
 		args: [...request.args],
 		images: request.images ? request.images.map((image) => ({ ...image })) : undefined,
 		env: request.env ? { ...request.env } : undefined,
+		agentSettings: request.agentSettings ? { ...request.agentSettings } : undefined,
 	};
 }
 
@@ -334,6 +339,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			resumeFromTrash: request.resumeFromTrash,
 			env: request.env,
 			workspaceId: request.workspaceId,
+			agentSettings: request.agentSettings,
 		});
 
 		const env = buildTerminalEnvironment(request.env, launch.env);
@@ -529,6 +535,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
 
+		if (launch.sessionWarning) {
+			const warningOutput = Buffer.from(`\r\n[kanban] ${launch.sessionWarning}\r\n`, "utf8");
+			terminalStateMirror.applyOutput(warningOutput);
+			for (const taskListener of entry.listeners.values()) {
+				taskListener.onOutput?.(warningOutput);
+			}
+		}
+
 		const startedAt = now();
 		updateSummary(entry, {
 			state: request.resumeFromTrash ? "awaiting_review" : "running",
@@ -536,12 +550,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspacePath: request.cwd,
 			pid: session.pid,
 			startedAt,
-			lastOutputAt: null,
+			lastOutputAt: launch.sessionWarning ? startedAt : null,
 			reviewReason: request.resumeFromTrash ? "attention" : null,
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
-			warningMessage: null,
+			warningMessage: launch.sessionWarning ?? null,
+			modelId: request.agentSettings?.modelId ?? null,
+			reasoningEffort: request.agentSettings?.reasoningEffort ?? null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});

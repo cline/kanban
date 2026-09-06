@@ -170,6 +170,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		modelId: null,
+		reasoningEffort: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 		...overrides,
@@ -617,7 +619,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				taskId: "task-1",
 				baseRef: "main",
 				prompt: "Reasoning-only override task",
-				clineSettings: {
+				agentSettings: {
 					reasoningEffort: "medium",
 				},
 			},
@@ -676,7 +678,7 @@ describe("createRuntimeApi startTaskSession", () => {
 				taskId: "task-1",
 				baseRef: "main",
 				prompt: "Task with model override",
-				clineSettings: {
+				agentSettings: {
 					modelId: "anthropic/claude-opus-4.6",
 				},
 			},

@@ -1,5 +1,10 @@
 import type { RuntimeConfigState } from "../config/runtime-config";
-import { getRuntimeLaunchSupportedAgentCatalog, RUNTIME_AGENT_CATALOG } from "../core/agent-catalog";
+import type { RuntimeAgentCapabilities, RuntimeAgentCatalogEntry } from "../core/agent-catalog";
+import {
+	getRuntimeLaunchSupportedAgentCatalog,
+	isRuntimeAgentLaunchSupported,
+	RUNTIME_AGENT_CATALOG,
+} from "../core/agent-catalog";
 import type {
 	RuntimeAgentDefinition,
 	RuntimeAgentId,
@@ -22,6 +27,12 @@ function getDefaultArgs(agentId: RuntimeAgentId): string[] {
 		return [];
 	}
 	return [...entry.baseArgs];
+}
+
+// Embedded agents (the Cline SDK) are always installed; everything else needs
+// its binary on PATH.
+function isAgentInstalled(entry: RuntimeAgentCatalogEntry, detectedSet: ReadonlySet<string>): boolean {
+	return entry.embedded === true || detectedSet.has(entry.binary);
 }
 
 function quoteForDisplay(part: string): string {
@@ -66,7 +77,7 @@ function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: stri
 	return getRuntimeLaunchSupportedAgentCatalog().map((entry) => {
 		const defaultArgs = getDefaultArgs(entry.id);
 		const command = joinCommand(entry.binary, defaultArgs);
-		const isInstalled = entry.id === "cline" ? true : detectedSet.has(entry.binary);
+		const isInstalled = isAgentInstalled(entry, detectedSet);
 		return {
 			id: entry.id,
 			label: entry.label,
@@ -77,6 +88,28 @@ function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: stri
 			configured: runtimeConfig.selectedAgentId === entry.id,
 		};
 	});
+}
+
+export interface RuntimeAgentCapabilityReportEntry {
+	id: RuntimeAgentId;
+	label: string;
+	installed: boolean;
+	configured: boolean;
+	launchSupported: boolean;
+	capabilities: RuntimeAgentCapabilities;
+}
+
+// Mechanism-only report for the `kanban agents` command: no model/effort value lists.
+export function buildAgentCapabilityReport(runtimeConfig: RuntimeConfigState): RuntimeAgentCapabilityReportEntry[] {
+	const detectedSet = new Set(detectInstalledCommands());
+	return RUNTIME_AGENT_CATALOG.map((entry) => ({
+		id: entry.id,
+		label: entry.label,
+		installed: isAgentInstalled(entry, detectedSet),
+		configured: runtimeConfig.selectedAgentId === entry.id,
+		launchSupported: isRuntimeAgentLaunchSupported(entry.id),
+		capabilities: entry.capabilities,
+	}));
 }
 
 export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): ResolvedAgentCommand | null {

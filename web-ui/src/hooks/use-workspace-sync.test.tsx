@@ -83,6 +83,8 @@ function createSessionSummary(
 					source: "cline-sdk",
 				}
 			: null,
+		modelId: null,
+		reasoningEffort: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};

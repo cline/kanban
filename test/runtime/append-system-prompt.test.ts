@@ -84,6 +84,41 @@ describe("renderAppendSystemPrompt", () => {
 		expect(rendered).not.toContain("claude mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
 		expect(rendered).not.toContain("droid mcp add linear https://mcp.linear.app/mcp --type http");
 	});
+
+	it("documents per-task agent and settings override flags on task create and task update", () => {
+		const rendered = renderAppendSystemPrompt("kanban");
+
+		expect(rendered).toContain("--agent-id");
+		expect(rendered).toContain("--provider <id>");
+		expect(rendered).toContain("--model <id>");
+		expect(rendered).toContain("--effort <level>");
+		expect(rendered).toContain("--agent-id default");
+		expect(rendered).toContain("--effort inherit");
+		expect(rendered).toContain("kanban agents");
+	});
+
+	it("documents the agents capability command", () => {
+		const rendered = renderAppendSystemPrompt("kanban");
+
+		expect(rendered).toContain("## agents");
+		expect(rendered).toContain("capabilities.modelOverride");
+		expect(rendered).toContain("capabilities.effortOverride");
+		expect(rendered).toContain("capabilities.docsUrl");
+	});
+
+	it("encodes override behavior without hardcoded model names or effort tables", () => {
+		const rendered = renderAppendSystemPrompt("kanban");
+
+		expect(rendered).toContain("# Per-Task Agent, Provider, Model, and Effort Overrides");
+		expect(rendered).toContain("Never invent or guess a model ID");
+		expect(rendered).toContain("surface the agent's own error message");
+
+		// No hardcoded model IDs or effort-level vocabularies may leak into the prompt.
+		expect(rendered).not.toContain("claude-sonnet-4-20250514");
+		expect(rendered).not.toContain("kimi-k2-0905-preview");
+		expect(rendered).not.toContain("moonshot");
+		expect(rendered).not.toContain("xhigh");
+	});
 });
 
 describe("resolveHomeAgentAppendSystemPrompt", () => {
@@ -132,5 +167,18 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 		expect(prompt).toContain("Current home agent: `kiro`");
 		expect(prompt).toContain("kiro-cli mcp add --name linear --url https://mcp.linear.app/mcp --scope global");
 		expect(prompt).not.toContain("--scope user");
+	});
+
+	it("returns active-agent guidance for grok home sidebar sessions", () => {
+		const prompt = resolveHomeAgentAppendSystemPrompt("__home_agent__:workspace-1:grok", {
+			currentVersion: "0.1.10",
+			cwd: "/Users/example/repo",
+			execPath: "/usr/local/bin/node",
+			execArgv: [],
+			argv: ["node", "/Users/example/repo/dist/cli.js"],
+			resolveRealPath: (path) => path,
+		});
+		expect(prompt).toContain("Current home agent: `grok`");
+		expect(prompt).toContain("grok mcp add --transport http --scope user linear https://mcp.linear.app/mcp");
 	});
 });
