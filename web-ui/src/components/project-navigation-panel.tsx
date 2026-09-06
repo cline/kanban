@@ -20,7 +20,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { FeaturebaseFeedbackState } from "@/hooks/use-featurebase-feedback-widget";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeClineProviderSettings, RuntimeProjectSummary, RuntimeProjectVcs } from "@/runtime/types";
 import {
 	LocalStorageKey,
 	readLocalStorageItem,
@@ -44,6 +44,18 @@ interface TaskCountBadge {
 	toneClassName: string;
 	count: number;
 }
+
+const PROJECT_VCS_BADGE_LABELS: Record<RuntimeProjectVcs, string> = {
+	github: "GitHub",
+	gerrit: "Gerrit",
+	local: "Local",
+};
+
+const PROJECT_VCS_BADGE_CLASS_NAMES: Record<RuntimeProjectVcs, string> = {
+	github: "bg-blue-100 text-blue-800 border border-blue-200",
+	gerrit: "bg-amber-100 text-amber-900 border border-amber-200",
+	local: "bg-slate-100 text-slate-700 border border-slate-200",
+};
 
 export function ProjectNavigationPanel({
 	projects,
@@ -705,6 +717,16 @@ function ProjectRow({
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
+	const vcsBadge = project.vcs ? (
+		<span
+			className={cn(
+				"inline-flex items-center justify-center rounded-sm px-0.5 py-[1px] text-[8px] font-semibold uppercase tracking-[0.02em] leading-none",
+				PROJECT_VCS_BADGE_CLASS_NAMES[project.vcs],
+			)}
+		>
+			{PROJECT_VCS_BADGE_LABELS[project.vcs]}
+		</span>
+	) : null;
 	const taskCountBadges: TaskCountBadge[] = [
 		{
 			id: "backlog",
@@ -772,6 +794,7 @@ function ProjectRow({
 				>
 					{displayPath}
 				</div>
+				{vcsBadge ? <div className="mt-1 flex flex-wrap gap-1">{vcsBadge}</div> : null}
 				{taskCountBadges.length > 0 ? (
 					<div className="flex gap-1 mt-1">
 						{taskCountBadges.map((badge) => (
