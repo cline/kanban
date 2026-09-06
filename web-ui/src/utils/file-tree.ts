@@ -47,3 +47,18 @@ export function buildFileTree(paths: string[]): FileTreeNode[] {
 
 	return sortNodes(root);
 }
+
+/**
+ * Recursively extract all directory paths from a file tree.
+ * Used for batch collapse operations.
+ */
+export function getAllDirectoryPaths(nodes: FileTreeNode[]): string[] {
+	const paths: string[] = [];
+	for (const node of nodes) {
+		if (node.type === "directory") {
+			paths.push(node.path);
+			paths.push(...getAllDirectoryPaths(node.children));
+		}
+	}
+	return paths;
+}
