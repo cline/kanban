@@ -20,6 +20,7 @@ interface UseAppHotkeysInput {
 	handleOpenSettings: () => void;
 	handleToggleGitHistory: () => void;
 	handleCloseGitHistory: () => void;
+	handleToggleSidebar: () => void;
 	onStartAllTasks: () => void;
 }
 
@@ -37,6 +38,7 @@ export function useAppHotkeys({
 	handleOpenSettings,
 	handleToggleGitHistory,
 	handleCloseGitHistory,
+	handleToggleSidebar,
 	onStartAllTasks,
 }: UseAppHotkeysInput): void {
 	useHotkeys(
@@ -104,6 +106,19 @@ export function useAppHotkeys({
 		},
 		{ preventDefault: true },
 		[canUseCreateTaskShortcut, handleOpenCreateTask],
+	);
+
+	useHotkeys(
+		"mod+e",
+		() => {
+			handleToggleSidebar();
+		},
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[handleToggleSidebar],
 	);
 
 	useHotkeys(

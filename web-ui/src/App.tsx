@@ -614,6 +614,11 @@ export default function App(): ReactElement {
 		setSelectedTaskId,
 	});
 
+	const sidebarLayout = useProjectNavigationLayout();
+	const handleToggleSidebar = useCallback(() => {
+		sidebarLayout.setSidebarCollapsed(!sidebarLayout.isCollapsed);
+	}, [sidebarLayout]);
+
 	useAppHotkeys({
 		selectedCard,
 		isDetailTerminalOpen,
@@ -628,6 +633,7 @@ export default function App(): ReactElement {
 		handleOpenSettings,
 		handleToggleGitHistory,
 		handleCloseGitHistory,
+		handleToggleSidebar,
 		onStartAllTasks: handleStartAllBacklogTasksFromBoard,
 	});
 
@@ -686,11 +692,6 @@ export default function App(): ReactElement {
 		}
 		return undefined;
 	}, [selectedCard]);
-
-	const sidebarLayout = useProjectNavigationLayout();
-	const handleToggleSidebar = useCallback(() => {
-		sidebarLayout.setSidebarCollapsed(!sidebarLayout.isCollapsed);
-	}, [sidebarLayout]);
 
 	const navbarWorkspacePath = hasNoProjects ? undefined : activeWorkspacePath;
 	const navbarWorkspaceHint = hasNoProjects ? undefined : activeWorkspaceHint;
@@ -833,6 +834,7 @@ export default function App(): ReactElement {
 				<div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 					<TopBar
 						onToggleSidebar={!selectedCard ? handleToggleSidebar : undefined}
+						isLeftPanelCollapsed={sidebarLayout.isCollapsed}
 						onBack={selectedCard ? handleBack : undefined}
 						workspacePath={navbarWorkspacePath}
 						isWorkspacePathLoading={shouldShowProjectLoadingState}
