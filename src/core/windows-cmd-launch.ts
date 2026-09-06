@@ -1,10 +1,21 @@
-import { accessSync, constants } from "node:fs";
-import { extname, join } from "node:path";
+import { accessSync, constants, readFileSync } from "node:fs";
+import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 const WINDOWS_CMD_META_CHARS_REGEXP = /([()\][%!^"`<>&|;, *?])/g;
 const WINDOWS_CMD_EXTENSIONS = new Set([".cmd", ".bat"]);
 const WINDOWS_DIRECT_EXTENSIONS = new Set([".exe", ".com"]);
 const DEFAULT_WINDOWS_PATHEXT = [".COM", ".EXE", ".BAT", ".CMD"];
+const WINDOWS_BATCH_INDIRECT_NODE_PATTERN = /"%_prog%"\s+"([^"]+\.(?:c?js|mjs))"\s+%\*/i;
+// Match a quoted or bare `node(.exe)` command token, not an exact fixed path,
+// because Yarn/pnpm-style shims can invoke either a bundled node.exe or PATH node.
+const WINDOWS_BATCH_DIRECT_NODE_PATTERN =
+	/(?:"([^"]*node(?:\.exe)?)"|\b(node(?:\.exe)?)\b)\s+"([^"]+\.(?:c?js|mjs))"\s+%\*/i;
+const WINDOWS_BATCH_DIRECT_EXECUTABLE_PATTERN = /"([^"]+\.(?:exe|com))"\s+%\*/i;
+
+interface WindowsResolvedLaunch {
+	binary: string;
+	args: string[];
+}
 
 // `process.env` behaves case-insensitively on Windows, but once we copy env into a
 // plain object for child-process merging we need to preserve that behavior ourselves.
@@ -54,7 +65,7 @@ function getWindowsPathExtensions(env: NodeJS.ProcessEnv): string[] {
 	return configured;
 }
 
-function resolveWindowsBinaryExtension(binary: string, env: NodeJS.ProcessEnv): string | null {
+function resolveWindowsBinaryPath(binary: string, env: NodeJS.ProcessEnv): string | null {
 	const trimmed = binary.trim();
 	if (!trimmed) {
 		return null;
@@ -62,7 +73,23 @@ function resolveWindowsBinaryExtension(binary: string, env: NodeJS.ProcessEnv): 
 
 	const extension = extname(trimmed);
 	if (extension) {
-		return extension.toLowerCase();
+		if (trimmed.includes("\\") || trimmed.includes("/")) {
+			return canAccessPath(trimmed) ? trimmed : null;
+		}
+		if (canAccessPath(trimmed)) {
+			return trimmed;
+		}
+		const pathEntries = (getWindowsEnvValue(env, "PATH") ?? "")
+			.split(";")
+			.map((entry) => entry.trim())
+			.filter(Boolean);
+		for (const pathEntry of pathEntries) {
+			const candidate = join(pathEntry, trimmed);
+			if (canAccessPath(candidate)) {
+				return candidate;
+			}
+		}
+		return null;
 	}
 
 	const pathExtensions = getWindowsPathExtensions(env);
@@ -71,7 +98,7 @@ function resolveWindowsBinaryExtension(binary: string, env: NodeJS.ProcessEnv): 
 		for (const pathExtension of pathExtensions) {
 			const candidate = `${trimmed}${pathExtension}`;
 			if (canAccessPath(candidate)) {
-				return pathExtension.toLowerCase();
+				return candidate;
 			}
 		}
 		return null;
@@ -89,11 +116,157 @@ function resolveWindowsBinaryExtension(binary: string, env: NodeJS.ProcessEnv): 
 		for (const pathExtension of pathExtensions) {
 			const candidate = join(pathEntry, `${trimmed}${pathExtension}`);
 			if (canAccessPath(candidate)) {
-				return pathExtension.toLowerCase();
+				return candidate;
 			}
 		}
 	}
 	return null;
+}
+
+function resolveWindowsBinaryExtension(binary: string, env: NodeJS.ProcessEnv): string | null {
+	const resolvedBinaryPath = resolveWindowsBinaryPath(binary, env);
+	if (resolvedBinaryPath) {
+		return extname(resolvedBinaryPath).toLowerCase();
+	}
+
+	const trimmed = binary.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	const extension = extname(trimmed);
+	return extension ? extension.toLowerCase() : null;
+}
+
+function resolveWindowsBatchShimPath(value: string, shimPath: string): string {
+	const shimDirectory = dirname(shimPath);
+	const dp0 = shimDirectory.endsWith("\\") ? shimDirectory : `${shimDirectory}\\`;
+	const expanded = value.replace(/%dp0%/gi, dp0);
+	if (isAbsolute(expanded)) {
+		return resolve(expanded);
+	}
+	return resolve(shimDirectory, expanded);
+}
+
+function resolveWindowsBatchShimNodeBinary(shimPath: string, env: NodeJS.ProcessEnv): string | null {
+	const bundledNode = join(dirname(shimPath), "node.exe");
+	if (canAccessPath(bundledNode)) {
+		return bundledNode;
+	}
+
+	return resolveWindowsBinaryPath("node", env);
+}
+
+function readWindowsBatchShim(shimPath: string): string | null {
+	try {
+		return readFileSync(shimPath, "utf8");
+	} catch {
+		return null;
+	}
+}
+
+export function resolveWindowsBatchShimLaunch(
+	binary: string,
+	args: string[],
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): WindowsResolvedLaunch | null {
+	if (platform !== "win32") {
+		return null;
+	}
+
+	const resolvedBinaryPath = resolveWindowsBinaryPath(binary, env);
+	if (!resolvedBinaryPath) {
+		return null;
+	}
+
+	const resolvedExtension = extname(resolvedBinaryPath).toLowerCase();
+	if (!WINDOWS_CMD_EXTENSIONS.has(resolvedExtension)) {
+		return null;
+	}
+
+	const shimContent = readWindowsBatchShim(resolvedBinaryPath);
+	if (!shimContent) {
+		return null;
+	}
+
+	const indirectNodeMatch = shimContent.match(WINDOWS_BATCH_INDIRECT_NODE_PATTERN);
+	if (indirectNodeMatch) {
+		const nodeBinary = resolveWindowsBatchShimNodeBinary(resolvedBinaryPath, env);
+		if (!nodeBinary) {
+			return null;
+		}
+		const scriptPath = resolveWindowsBatchShimPath(indirectNodeMatch[1], resolvedBinaryPath);
+		return {
+			binary: nodeBinary,
+			args: [scriptPath, ...args],
+		};
+	}
+
+	const directNodeMatch = shimContent.match(WINDOWS_BATCH_DIRECT_NODE_PATTERN);
+	if (directNodeMatch) {
+		const nodeBinaryToken = directNodeMatch[1] || directNodeMatch[2];
+		const scriptPath = resolveWindowsBatchShimPath(directNodeMatch[3], resolvedBinaryPath);
+		let nodeBinary: string | null = null;
+		if (nodeBinaryToken) {
+			const normalizedNodeBinaryToken = nodeBinaryToken.trim().toLowerCase();
+			if (normalizedNodeBinaryToken === "node" || normalizedNodeBinaryToken === "node.exe") {
+				nodeBinary = resolveWindowsBatchShimNodeBinary(resolvedBinaryPath, env);
+			} else {
+				nodeBinary = resolveWindowsBatchShimPath(nodeBinaryToken, resolvedBinaryPath);
+			}
+		}
+		if (!nodeBinary || !canAccessPath(nodeBinary)) {
+			return null;
+		}
+		return {
+			binary: nodeBinary,
+			args: [scriptPath, ...args],
+		};
+	}
+
+	const directExecutableMatch = shimContent.match(WINDOWS_BATCH_DIRECT_EXECUTABLE_PATTERN);
+	if (directExecutableMatch) {
+		const executablePath = resolveWindowsBatchShimPath(directExecutableMatch[1], resolvedBinaryPath);
+		if (!canAccessPath(executablePath)) {
+			return null;
+		}
+		return {
+			binary: executablePath,
+			args: [...args],
+		};
+	}
+
+	return null;
+}
+
+export function resolveWindowsSpawnLaunch(
+	binary: string,
+	args: string[],
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): { binary: string; args: string[]; useCmdShell: boolean } {
+	const resolvedBatchShimLaunch = resolveWindowsBatchShimLaunch(binary, args, platform, env);
+	if (resolvedBatchShimLaunch) {
+		return {
+			...resolvedBatchShimLaunch,
+			useCmdShell: false,
+		};
+	}
+
+	if (!shouldUseWindowsCmdLaunch(binary, platform, env)) {
+		return {
+			binary,
+			args,
+			useCmdShell: false,
+		};
+	}
+
+	return {
+		binary: resolveWindowsComSpec(env),
+		args,
+		useCmdShell: true,
+	};
 }
 
 function normalizeWindowsCmdArgument(value: string): string {
