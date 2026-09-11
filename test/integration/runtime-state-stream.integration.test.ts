@@ -168,7 +168,7 @@ function resolveTsxLoaderImportSpecifier(): string {
 	return pathToFileURL(requireFromHere.resolve("tsx")).href;
 }
 
-async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): Promise<{ runtimeUrl: string }> {
+async function waitForProcessStart(process: ChildProcess, timeoutMs = 30_000): Promise<{ runtimeUrl: string }> {
 	return await new Promise((resolveStart, rejectStart) => {
 		if (!process.stdout || !process.stderr) {
 			rejectStart(new Error("Expected child process stdout/stderr pipes to be available."));

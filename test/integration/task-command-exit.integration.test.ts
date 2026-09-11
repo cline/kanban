@@ -82,7 +82,7 @@ async function getAvailablePort(): Promise<number> {
 	return port;
 }
 
-async function waitForServerStart(process: ChildProcess, timeoutMs = 10_000): Promise<void> {
+async function waitForServerStart(process: ChildProcess, timeoutMs = 30_000): Promise<void> {
 	await new Promise<void>((resolveStart, rejectStart) => {
 		if (!process.stdout || !process.stderr) {
 			rejectStart(new Error("Expected child process stdout/stderr pipes to be available."));

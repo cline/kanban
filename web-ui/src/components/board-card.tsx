@@ -2,7 +2,7 @@ import { Draggable } from "@hello-pangea/dnd";
 import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
 import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
-import { AlertCircle, AlertTriangle, Bot, GitBranch, Pencil, Play, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Bot, Copy, GitBranch, Pencil, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -269,6 +269,7 @@ export function BoardCard({
 	const [descriptionWidthFallback, setDescriptionWidthFallback] = useState(0);
 	const [descriptionFont, setDescriptionFont] = useState(DEFAULT_TEXT_MEASURE_FONT);
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+	const [isCopied, setIsCopied] = useState(false);
 	const reviewWorkspaceSnapshot = useTaskWorkspaceSnapshotValue(card.id);
 	const isTrashCard = columnId === "trash";
 	const isCardInteractive = !isTrashCard;
@@ -469,6 +470,14 @@ export function BoardCard({
 
 	const activeDescriptionDisplay = isDescriptionExpanded ? descriptionDisplay.expanded : descriptionDisplay.collapsed;
 
+	const handleCopyPrompt = (event: MouseEvent<HTMLButtonElement>) => {
+		stopEvent(event);
+		navigator.clipboard.writeText(card.prompt).then(() => {
+			setIsCopied(true);
+			setTimeout(() => setIsCopied(false), 1500);
+		});
+	};
+
 	return (
 		<Draggable draggableId={card.id} index={index} isDragDisabled={false}>
 			{(provided, snapshot) => {
@@ -531,20 +540,21 @@ export function BoardCard({
 							setIsHovered(true);
 							onDependencyPointerEnter?.(card.id);
 						}}
+						onMouseLeave={() => {
+							setIsHovered(false);
+						}}
 						onMouseMove={() => {
 							if (!isDependencyLinking) {
 								return;
 							}
 							onDependencyPointerEnter?.(card.id);
 						}}
-						onMouseLeave={() => setIsHovered(false)}
 					>
 						<div
 							className={cn(
-								"rounded-md border border-border-bright bg-surface-2 p-2.5",
+								"group/card rounded-md border border-border-bright bg-surface-2 p-2.5",
 								isCardInteractive && "cursor-pointer hover:bg-surface-3 hover:border-border-bright",
 								isDragging && "shadow-lg",
-								isHovered && isCardInteractive && "bg-surface-3 border-border-bright",
 								isDependencySource && "kb-board-card-dependency-source",
 								isDependencyTarget && "kb-board-card-dependency-target",
 							)}
@@ -560,8 +570,8 @@ export function BoardCard({
 											onBlur={submitTitle}
 											onKeyDown={handleTitleKeyDown}
 											onMouseDown={(event) => {
-												event.stopPropagation();
-											}}
+											event.stopPropagation();
+										}}
 											className="h-7 w-full rounded-md border border-border-focus bg-surface-2 px-2 text-sm font-medium text-text-primary focus:outline-none"
 										/>
 									) : onSaveTitle ? (
@@ -579,10 +589,10 @@ export function BoardCard({
 												aria-label="Edit task title"
 												onMouseDown={stopEvent}
 												onClick={(event) => {
-													stopEvent(event);
-													setDraftTitle(card.title);
-													setIsEditingTitle(true);
-												}}
+												stopEvent(event);
+												setDraftTitle(card.title);
+												setIsEditingTitle(true);
+											}}
 												className={cn(
 													"shrink-0 cursor-pointer rounded-sm p-0.5 text-text-tertiary hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
 													isHovered ? "opacity-100" : "opacity-0",
@@ -602,55 +612,68 @@ export function BoardCard({
 										</p>
 									)}
 								</div>
-								{columnId === "backlog" ? (
-									<Button
-										icon={<Play size={14} />}
-										variant="ghost"
-										size="sm"
-										aria-label="Start task"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onStart?.(card.id);
-										}}
-									/>
-								) : columnId === "review" ? (
-									<Button
-										icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
-										variant="ghost"
-										size="sm"
-										disabled={isMoveToTrashLoading}
-										aria-label="Move task to done"
-										onMouseDown={stopEvent}
-										onClick={(event) => {
-											stopEvent(event);
-											onMoveToTrash?.(card.id);
-										}}
-									/>
-								) : columnId === "trash" ? (
-									<Tooltip
-										side="bottom"
-										content={
-											<>
-												Restore session
-												<br />
-												in new worktree
-											</>
-										}
-									>
+								<div className="flex items-center">
+									<Tooltip content={isCopied ? "Copied!" : "Copy prompt"}>
 										<Button
-											icon={<RotateCcw size={12} />}
+											icon={<Copy size={14} />}
 											variant="ghost"
 											size="sm"
-											aria-label="Restore task from done"
+											aria-label="Copy task prompt"
+											className="opacity-0 group-hover/card:opacity-100 transition-opacity duration-100"
+											onMouseDown={stopEvent}
+											onClick={handleCopyPrompt}
+										/>
+									</Tooltip>
+									{columnId === "backlog" ? (
+										<Button
+											icon={<Play size={14} />}
+											variant="ghost"
+											size="sm"
+											aria-label="Start task"
 											onMouseDown={stopEvent}
 											onClick={(event) => {
 												stopEvent(event);
-												onRestoreFromTrash?.(card.id);
+												onStart?.(card.id);
 											}}
 										/>
-									</Tooltip>
-								) : null}
+									) : columnId === "review" ? (
+										<Button
+											icon={isMoveToTrashLoading ? <Spinner size={13} /> : <Trash2 size={13} />}
+											variant="ghost"
+											size="sm"
+											disabled={isMoveToTrashLoading}
+											aria-label="Move task to done"
+											onMouseDown={stopEvent}
+											onClick={(event) => {
+												stopEvent(event);
+												onMoveToTrash?.(card.id);
+											}}
+										/>
+									) : columnId === "trash" ? (
+										<Tooltip
+											side="bottom"
+											content={
+												<>
+													Restore session
+													<br />
+													in new worktree
+												</>
+											}
+										>
+											<Button
+												icon={<RotateCcw size={12} />}
+												variant="ghost"
+												size="sm"
+												aria-label="Restore task from trash"
+												onMouseDown={stopEvent}
+												onClick={(event) => {
+													stopEvent(event);
+													onRestoreFromTrash?.(card.id);
+												}}
+											/>
+										</Tooltip>
+									) : null}
+								</div>
 							</div>
 							{displayDescription ? (
 								<div ref={descriptionContainerRef}>
