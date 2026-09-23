@@ -49,7 +49,7 @@ export function getTaskPromptDescription(prompt: string, title: string): string 
 
 function wrapTextByWidth(
 	text: string,
-	options: Pick<InlineSuffixClampOptions, "maxWidthPx" | "measureText">,
+	options: Pick<InlineSuffixClampOptions, "maxWidthPx" | "maxLines" | "measureText">,
 ): string[] {
 	const normalizedText = normalizePromptForDisplay(text);
 	if (!normalizedText) {
@@ -65,8 +65,16 @@ function wrapTextByWidth(
 
 	while (startIndex < normalizedText.length) {
 		let low = startIndex + 1;
-		let high = normalizedText.length;
+		let high = low;
 		let fitIndex = startIndex + 1;
+
+		// Find a local upper bound before binary searching. Measuring half of a
+		// large prompt for every line makes canvas text shaping prohibitively costly.
+		while (high < normalizedText.length && options.measureText(normalizedText.slice(startIndex, high)) <= maxWidth) {
+			fitIndex = high;
+			low = high + 1;
+			high = Math.min(normalizedText.length, startIndex + (high - startIndex) * 2);
+		}
 
 		while (low <= high) {
 			const middle = Math.floor((low + high) / 2);
@@ -94,6 +102,10 @@ function wrapTextByWidth(
 		}
 
 		lines.push(line);
+		// Callers only need to know whether the line budget is exceeded.
+		if (lines.length > options.maxLines) {
+			return lines;
+		}
 		startIndex = endIndex;
 		while (normalizedText[startIndex] === " ") {
 			startIndex += 1;

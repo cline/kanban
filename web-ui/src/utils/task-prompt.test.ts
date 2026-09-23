@@ -35,6 +35,61 @@ describe("getTaskPromptDescription", () => {
 });
 
 describe("clampTextWithInlineSuffix", () => {
+	it.each([3, 10])("bounds text measurement for a large log with a %i-line preview", (maxLines) => {
+		const prompt = "2026-09-20 INFO worker completed request successfully elapsed=12ms\n".repeat(1600);
+		let measuredChars = 0;
+		let longestMeasurement = 0;
+		const measured = clampTextWithInlineSuffix(prompt, {
+			maxWidthPx: 280,
+			maxLines,
+			suffix: "… See more",
+			measureText: (value) => {
+				measuredChars += value.length;
+				longestMeasurement = Math.max(longestMeasurement, value.length);
+				return value.length * 7;
+			},
+		});
+
+		expect(measured.isTruncated).toBe(true);
+		expect(measured.text.length).toBeLessThan(maxLines * 40);
+		expect(normalizePromptForDisplay(prompt).startsWith(measured.text)).toBe(true);
+		// Guard the expensive work, rather than relying on machine-dependent timing.
+		expect(longestMeasurement).toBeLessThanOrEqual(64);
+		expect(measuredChars).toBeLessThan(100_000);
+	});
+
+	it("wraps long text without spaces and reserves room for the suffix", () => {
+		const measured = clampTextWithInlineSuffix("运行日志".repeat(10_000), {
+			maxWidthPx: 20,
+			maxLines: 3,
+			suffix: "… More",
+			measureText: (value) => value.length,
+		});
+		expect(measured).toEqual({ text: `${"运行日志".repeat(13)}运行`, isTruncated: true });
+	});
+
+	it("retains text that exactly fills the line budget", () => {
+		expect(
+			clampTextWithInlineSuffix("abcdefghijkl", {
+				maxWidthPx: 4,
+				maxLines: 3,
+				suffix: "…",
+				measureText: (value) => value.length,
+			}),
+		).toEqual({ text: "abcdefghijkl", isTruncated: false });
+	});
+
+	it("makes progress when a single character is wider than the available width", () => {
+		expect(
+			clampTextWithInlineSuffix("abcd", {
+				maxWidthPx: 1,
+				maxLines: 3,
+				suffix: "…",
+				measureText: (value) => value.length * 10,
+			}),
+		).toEqual({ text: "ab", isTruncated: true });
+	});
+
 	it("returns the full text when it fits within the available lines", () => {
 		const measured = clampTextWithInlineSuffix("short description", {
 			maxWidthPx: 20,
