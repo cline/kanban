@@ -1,11 +1,37 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { closeSync, openSync, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { resolve } from "node:path";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
+import { ensureDaemonLogDirectory, getDaemonLogPath } from "./cli/daemon-logs";
+import {
+	getOptionWasProvided,
+	type LaunchCommandOptions,
+	type NormalizedLaunchOptions,
+	normalizeLaunchOptions,
+	registerLaunchOptions,
+	toLaunchArgs,
+} from "./cli/launch-options";
+import {
+	getProcessStartedAt,
+	isKanbanCommandLineProcess,
+	isKanbanProcess,
+	isProcessAlive,
+	stopManagedProcess,
+} from "./cli/process-control";
+import {
+	createManagedProcessLaunch,
+	listManagedProcesses,
+	type ManagedProcessLaunch,
+	type ManagedProcessMode,
+	type ManagedProcessRecord,
+	registerManagedProcess,
+	replaceManagedProcesses,
+	unregisterManagedProcess,
+} from "./cli/process-registry";
 import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 import { registerHooksCommand } from "./commands/hooks";
 import { registerTaskCommand } from "./commands/task";
@@ -16,6 +42,7 @@ import {
 	installGracefulShutdownHandlers,
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./core/graceful-shutdown";
+import { buildKanbanCommandParts } from "./core/kanban-command";
 import {
 	buildKanbanRuntimeUrl,
 	clearKanbanRuntimeTls,
@@ -25,7 +52,6 @@ import {
 	getKanbanRuntimePort,
 	getRuntimeFetch,
 	isKanbanRemoteHost,
-	parseRuntimePort,
 	setKanbanRuntimeHost,
 	setKanbanRuntimePort,
 	setKanbanRuntimeTls,
@@ -37,44 +63,17 @@ import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-nod
 import type { TerminalSessionManager } from "./terminal/session-manager";
 import { runOnDemandUpdate } from "./update/update";
 
-interface CliOptions {
-	noOpen: boolean;
-	skipShutdownCleanup: boolean;
-	host: string | null;
-	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
-	https: boolean;
-	cert: string | null;
-	key: string | null;
-	noPasscode: boolean;
-}
-
 const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
-function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } | { mode: "auto" } {
-	const normalized = rawValue.trim().toLowerCase();
-	if (!normalized) {
-		throw new Error("Missing value for --port.");
-	}
-	if (normalized === "auto") {
-		return { mode: "auto" };
-	}
-	try {
-		return { mode: "fixed", value: parseRuntimePort(normalized) };
-	} catch {
-		throw new Error(`Invalid port value: ${rawValue}. Expected an integer from 1-65535 or "auto".`);
-	}
+interface RootCommandOptions extends LaunchCommandOptions {
+	update?: boolean;
+	__daemonChild?: boolean;
 }
 
-interface RootCommandOptions {
-	host?: string;
-	port?: { mode: "fixed"; value: number } | { mode: "auto" };
-	open?: boolean;
-	skipShutdownCleanup?: boolean;
-	update?: boolean;
-	https?: boolean;
-	cert?: string;
-	key?: string;
-	noPasscode?: boolean;
+interface RuntimeRunOptions extends NormalizedLaunchOptions {
+	mode: ManagedProcessMode;
+	daemonChild?: boolean;
+	launchArgs?: string[];
 }
 
 type ShutdownIndicatorResult = "done" | "interrupted" | "failed";
@@ -188,7 +187,7 @@ async function findAvailableRuntimePort(startPort: number): Promise<number> {
 	throw new Error("No available runtime port found.");
 }
 
-async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<number | null> {
+async function applyRuntimePortOption(portOption: NormalizedLaunchOptions["port"]): Promise<number | null> {
 	if (!portOption) {
 		return null;
 	}
@@ -203,7 +202,7 @@ async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<n
 
 type TlsResult = { enabled: false } | { enabled: true };
 
-async function resolveRuntimeTls(options: CliOptions): Promise<TlsResult> {
+async function resolveRuntimeTls(options: NormalizedLaunchOptions): Promise<TlsResult> {
 	const wantsHttps = options.https || options.cert !== null || options.key !== null;
 	if (!wantsHttps) {
 		clearKanbanRuntimeTls();
@@ -255,8 +254,40 @@ function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	);
 }
 
+async function probeKanbanServer(): Promise<boolean> {
+	const configuredHost = getKanbanRuntimeHost();
+	const probeHost = configuredHost === "0.0.0.0" || configuredHost === "::" ? "127.0.0.1" : configuredHost;
+	if (probeHost !== configuredHost) {
+		setKanbanRuntimeHost(probeHost);
+	}
+	try {
+		const runtimeFetch = await getRuntimeFetch();
+		const response = await runtimeFetch(buildKanbanRuntimeUrl("/api/health"), {
+			method: "GET",
+			signal: AbortSignal.timeout(1_500),
+		});
+		if (!response.ok) {
+			return false;
+		}
+		const payload = (await response.json().catch(() => null)) as { service?: unknown } | null;
+		if (payload?.service !== "kanban") {
+			return false;
+		}
+		return true;
+	} catch {
+		return false;
+	} finally {
+		if (probeHost !== configuredHost) {
+			setKanbanRuntimeHost(configuredHost);
+		}
+	}
+}
+
 async function canReachKanbanServer(workspaceId: string | null): Promise<boolean> {
 	try {
+		if (await probeKanbanServer()) {
+			return true;
+		}
 		const headers: Record<string, string> = {};
 		if (workspaceId) {
 			headers["x-kanban-workspace-id"] = workspaceId;
@@ -517,7 +548,9 @@ async function startServer(): Promise<{
 	};
 }
 
-async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaited<ReturnType<typeof startServer>>> {
+async function startServerWithAutoPortRetry(
+	options: Pick<NormalizedLaunchOptions, "port">,
+): Promise<Awaited<ReturnType<typeof startServer>>> {
 	if (options.port?.mode !== "auto") {
 		return await startServer();
 	}
@@ -537,7 +570,7 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 	}
 }
 
-async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
+async function runMainCommand(options: RuntimeRunOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
 	if (options.host) {
 		setKanbanRuntimeHost(options.host);
 		console.log(`Binding to host ${options.host}.`);
@@ -584,14 +617,32 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		if (
 			options.port?.mode !== "auto" &&
 			isAddressInUseError(error) &&
-			(await tryOpenExistingServer({ noOpen: options.noOpen, shouldAutoOpenBrowser }))
+			(await tryOpenExistingServer({ noOpen: !options.open, shouldAutoOpenBrowser }))
 		) {
 			return;
 		}
 		throw error;
 	}
 	console.log(`Cline Kanban running at ${runtime.url}`);
-	if (!options.noOpen && shouldAutoOpenBrowser) {
+	const managedRecord: ManagedProcessRecord = {
+		pid: process.pid,
+		host: getKanbanRuntimeHost(),
+		port: getKanbanRuntimePort(),
+		endpoint: new URL(runtime.url).host,
+		startedAt: (getProcessStartedAt(process.pid) ?? new Date()).toISOString(),
+		mode: options.mode,
+		cwd: process.cwd(),
+		logFile: options.mode === "background" ? (process.env.KANBAN_DAEMON_LOG_FILE ?? null) : null,
+		launchArgs: options.launchArgs ?? [],
+		launch: createManagedProcessLaunch(options, getKanbanRuntimePort(), getKanbanRuntimeHost()),
+	};
+	try {
+		await registerManagedProcess(managedRecord);
+	} catch (error) {
+		await runtime.shutdown({ skipSessionCleanup: options.skipShutdownCleanup }).catch(() => {});
+		throw new Error(`Could not register Kanban process: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	if (!options.daemonChild && options.open && shouldAutoOpenBrowser) {
 		try {
 			openInBrowser(runtime.url, {
 				warn: (message) => {
@@ -603,7 +654,9 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			console.warn(`Could not open browser automatically: ${message}`);
 		}
 	}
-	console.log("Press Ctrl+C to stop.");
+	if (options.mode === "foreground") {
+		console.log("Press Ctrl+C to stop.");
+	}
 
 	let isShuttingDown = false;
 	const shutdownIndicator = createShutdownIndicator();
@@ -619,6 +672,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		await runtime.shutdown({
 			skipSessionCleanup: options.skipShutdownCleanup,
 		});
+		await unregisterManagedProcess(process.pid).catch(() => {});
 		await disposeCliTelemetryService().catch(() => {});
 	};
 
@@ -659,6 +713,280 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	});
 }
 
+function delay(milliseconds: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function managedLaunchToOptions(launch: ManagedProcessLaunch): NormalizedLaunchOptions {
+	return {
+		host: launch.host,
+		port: { mode: "fixed", value: launch.port },
+		open: launch.open,
+		skipShutdownCleanup: launch.skipShutdownCleanup,
+		https: launch.https,
+		cert: launch.cert,
+		key: launch.key,
+		noPasscode: launch.noPasscode,
+		agent: launch.agent,
+	};
+}
+
+function mergeRestartOptions(
+	base: NormalizedLaunchOptions,
+	overrides: LaunchCommandOptions,
+	command: Command,
+): NormalizedLaunchOptions {
+	const parsed = normalizeLaunchOptions(overrides);
+	const merged = { ...base };
+	const provided = (name: string) => getOptionWasProvided(command, name);
+	if (provided("host")) merged.host = parsed.host;
+	if (provided("port")) merged.port = parsed.port;
+	if (provided("open")) merged.open = parsed.open;
+	if (provided("skipShutdownCleanup")) merged.skipShutdownCleanup = parsed.skipShutdownCleanup;
+	if (provided("https")) merged.https = parsed.https;
+	if (provided("cert")) merged.cert = parsed.cert;
+	if (provided("key")) merged.key = parsed.key;
+	if (provided("noPasscode")) merged.noPasscode = parsed.noPasscode;
+	if (provided("agent")) merged.agent = parsed.agent;
+	return merged;
+}
+
+async function getActiveManagedProcesses(): Promise<ManagedProcessRecord[]> {
+	const records = await listManagedProcesses();
+	const active: ManagedProcessRecord[] = [];
+	for (const record of records) {
+		if (isKanbanProcess(record)) {
+			active.push(record);
+		}
+	}
+	if (active.length !== records.length) {
+		await replaceManagedProcesses(active);
+	}
+	return active;
+}
+
+async function findManagedProcessAtEndpoint(host: string, port: number): Promise<ManagedProcessRecord | null> {
+	const records = await getActiveManagedProcesses();
+	for (const record of records) {
+		if (record.host !== host || record.port !== port) {
+			continue;
+		}
+		setKanbanRuntimeHost(host);
+		setKanbanRuntimePort(port);
+		if (await probeKanbanServer()) {
+			return record;
+		}
+	}
+	return null;
+}
+
+async function waitForDaemonRecord(pid: number, timeoutMs = 15_000): Promise<ManagedProcessRecord> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const records = await listManagedProcesses();
+		const record = records.find((candidate) => candidate.pid === pid);
+		if (record && isKanbanProcess(record)) {
+			setKanbanRuntimeHost(record.host);
+			setKanbanRuntimePort(record.port);
+			if (await probeKanbanServer()) {
+				return record;
+			}
+		}
+		if (!isProcessAlive(pid)) {
+			break;
+		}
+		await delay(100);
+	}
+	throw new Error(`Kanban daemon failed to become ready. Check the log file for PID ${pid}.`);
+}
+
+async function openRuntimeInBrowser(openBrowser: boolean, url: string): Promise<void> {
+	if (!openBrowser) {
+		return;
+	}
+	const { openInBrowser } = await import("./server/browser.js");
+	openInBrowser(url, {
+		warn: (message) => {
+			console.warn(message);
+		},
+	});
+}
+
+async function startDaemonProcess(
+	options: NormalizedLaunchOptions,
+	cwd = process.cwd(),
+	launchArgs = toLaunchArgs(options),
+): Promise<ManagedProcessRecord> {
+	if (options.host) {
+		setKanbanRuntimeHost(options.host);
+	}
+	if (options.port?.mode === "fixed") {
+		setKanbanRuntimePort(options.port.value);
+	}
+	await resolveRuntimeTls(options);
+
+	if (options.port?.mode !== "auto") {
+		const host = getKanbanRuntimeHost();
+		const port = getKanbanRuntimePort();
+		const existing = await findManagedProcessAtEndpoint(host, port);
+		if (existing) {
+			console.log(`Kanban already running (pid ${existing.pid}) at ${existing.endpoint}`);
+			await openRuntimeInBrowser(options.open, getKanbanRuntimeOrigin());
+			return existing;
+		}
+		const unregisteredProbe = await probeKanbanServer();
+		if (unregisteredProbe) {
+			throw new Error(
+				`A Kanban server is already running at ${getKanbanRuntimeOrigin()} but is not registered for process management.`,
+			);
+		}
+	}
+
+	await ensureDaemonLogDirectory();
+	const logFile = getDaemonLogPath();
+	const logFd = openSync(logFile, "a");
+	const childArgs = ["--__daemon-child", ...launchArgs];
+	const commandParts = buildKanbanCommandParts(childArgs);
+	const child = spawn(commandParts[0] ?? process.execPath, commandParts.slice(1), {
+		cwd,
+		env: {
+			...process.env,
+			KANBAN_DAEMON_MODE: "1",
+			KANBAN_DAEMON_LOG_FILE: logFile,
+		},
+		stdio: ["ignore", logFd, logFd],
+		detached: true,
+		windowsHide: true,
+	});
+	child.on("error", () => {
+		// Readiness polling reports the startup failure and points to the log.
+	});
+	closeSync(logFd);
+	const pid = child.pid;
+	child.unref();
+	if (!pid) {
+		throw new Error(`Could not start Kanban daemon. Check ${logFile}.`);
+	}
+	try {
+		const record = await waitForDaemonRecord(pid);
+		console.log(`Kanban started in background (pid ${record.pid}) at ${record.endpoint}`);
+		console.log(`Log file: ${logFile}`);
+		await openRuntimeInBrowser(options.open, getKanbanRuntimeOrigin());
+		return record;
+	} catch (error) {
+		if (isProcessAlive(pid)) {
+			await stopManagedProcess(pid, 1_000);
+		}
+		throw new Error(`${error instanceof Error ? error.message : String(error)} Log file: ${logFile}`);
+	}
+}
+
+async function stopManagedRecord(record: ManagedProcessRecord): Promise<void> {
+	if (!isKanbanProcess(record)) {
+		await unregisterManagedProcess(record.pid);
+		throw new Error(`PID ${record.pid} is not a Kanban process.`);
+	}
+	const result = await stopManagedProcess(record.pid);
+	await unregisterManagedProcess(record.pid);
+	if (!result.stopped) {
+		throw new Error(`Could not stop Kanban process ${record.pid}.`);
+	}
+	const suffix = result.forced ? " (force-killed after graceful shutdown timed out)" : "";
+	console.log(`Stopped Kanban process ${record.pid}${suffix}.`);
+}
+
+async function stopAllManagedProcesses(records: readonly ManagedProcessRecord[]): Promise<void> {
+	const failures: string[] = [];
+	for (const record of records) {
+		try {
+			await stopManagedRecord(record);
+		} catch (error) {
+			failures.push(error instanceof Error ? error.message : String(error));
+		}
+	}
+	if (failures.length > 0) {
+		throw new Error(failures.join("\n"));
+	}
+}
+
+async function runStopCommand(pidValue?: string): Promise<void> {
+	const records = await getActiveManagedProcesses();
+	if (pidValue !== undefined) {
+		const pid = Number.parseInt(pidValue, 10);
+		if (!Number.isInteger(pid) || pid <= 0 || String(pid) !== pidValue) {
+			throw new Error(`Invalid PID: ${pidValue}.`);
+		}
+		const record = records.find((candidate) => candidate.pid === pid);
+		if (!record) {
+			if (!isKanbanCommandLineProcess(pid)) {
+				throw new Error(`PID ${pid} is not a Kanban process.`);
+			}
+			const result = await stopManagedProcess(pid);
+			if (!result.stopped) {
+				throw new Error(`Could not stop Kanban process ${pid}.`);
+			}
+			console.log(
+				`Stopped Kanban process ${pid}${result.forced ? " (force-killed after graceful shutdown timed out)" : ""}.`,
+			);
+			return;
+		}
+		await stopManagedRecord(record);
+		return;
+	}
+	if (records.length === 0) {
+		console.log("No running Kanban processes found.");
+		return;
+	}
+	await stopAllManagedProcesses(records);
+}
+
+function formatStatusTable(records: readonly ManagedProcessRecord[]): string {
+	const lines = ["PID\tENDPOINT\tSTARTED\tMODE\tSTATUS"];
+	for (const record of records) {
+		lines.push(`${record.pid}\t${record.endpoint}\t${record.startedAt}\t${record.mode}\trunning`);
+	}
+	return lines.join("\n");
+}
+
+async function runStatusCommand(asJson: boolean): Promise<void> {
+	const records = await getActiveManagedProcesses();
+	if (asJson) {
+		console.log(JSON.stringify(records, null, 2));
+		return;
+	}
+	console.log(records.length > 0 ? formatStatusTable(records) : "No running Kanban processes found.");
+}
+
+async function runRestartCommand(
+	pidValue: string | undefined,
+	overrides: LaunchCommandOptions,
+	command: Command,
+	overrideLaunchArgs: string[],
+): Promise<void> {
+	const records = await getActiveManagedProcesses();
+	if (pidValue === undefined) {
+		await stopAllManagedProcesses(records);
+		await startDaemonProcess(normalizeLaunchOptions(overrides), process.cwd(), overrideLaunchArgs);
+		return;
+	}
+	const pid = Number.parseInt(pidValue, 10);
+	if (!Number.isInteger(pid) || pid <= 0 || String(pid) !== pidValue) {
+		throw new Error(`Invalid PID: ${pidValue}.`);
+	}
+	const record = records.find((candidate) => candidate.pid === pid);
+	if (!record) {
+		throw new Error(`PID ${pid} is not a registered Kanban process.`);
+	}
+	const launchOptions = mergeRestartOptions(managedLaunchToOptions(record.launch), overrides, command);
+	const restartLaunchArgs = [...record.launchArgs, ...overrideLaunchArgs];
+	await stopManagedRecord(record);
+	if (record.mode === "foreground") {
+		await runMainCommand({ ...launchOptions, mode: "foreground", launchArgs: restartLaunchArgs }, true);
+		return;
+	}
+	await startDaemonProcess(launchOptions, record.cwd, restartLaunchArgs);
+}
+
 async function runUpdateCommand(): Promise<void> {
 	const result = await runOnDemandUpdate({
 		currentVersion: KANBAN_VERSION,
@@ -672,29 +1000,58 @@ async function runUpdateCommand(): Promise<void> {
 	throw new Error(result.message);
 }
 
+const LAUNCH_OPTIONS_WITH_VALUES = new Set(["--host", "--port", "--agent", "--cert", "--key"]);
+
+function removeInternalLaunchArguments(args: readonly string[]): string[] {
+	return args.filter((argument) => argument !== "--__daemon-child");
+}
+
+function getLaunchArgumentsAfterCommand(
+	invocationArgs: readonly string[],
+	commandName: string,
+	positionalToRemove?: string,
+): string[] {
+	const commandIndex = invocationArgs.indexOf(commandName);
+	if (commandIndex < 0) {
+		return [];
+	}
+	const args = invocationArgs.slice(commandIndex + 1);
+	const result: string[] = [];
+	let skipNextValue = false;
+	let removedPositional = false;
+	for (const argument of args) {
+		if (skipNextValue) {
+			result.push(argument);
+			skipNextValue = false;
+			continue;
+		}
+		const optionName = argument.split("=", 1)[0] ?? argument;
+		if (LAUNCH_OPTIONS_WITH_VALUES.has(optionName) && !argument.includes("=")) {
+			result.push(argument);
+			skipNextValue = true;
+			continue;
+		}
+		if (!removedPositional && positionalToRemove !== undefined && argument === positionalToRemove) {
+			removedPositional = true;
+			continue;
+		}
+		result.push(argument);
+	}
+	return removeInternalLaunchArguments(result);
+}
+
 function createProgram(invocationArgs: string[]): Command {
 	const shouldAutoOpenBrowser = shouldAutoOpenBrowserTabForInvocation(invocationArgs);
-	const program = new Command();
+	const program = new Command().enablePositionalOptions();
 	program
 		.name("kanban")
 		.description("Local orchestration board for coding agents.")
-		.version(KANBAN_VERSION, "-v, --version", "Output the version number")
-		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
-		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
-		.option("--no-open", "Do not open browser automatically.")
-		.option("--skip-shutdown-cleanup", "Do not move sessions to done or delete task worktrees on shutdown.")
-		.option("--https", "Enable HTTPS. Requires both --cert and --key.")
-		.option("--cert <path>", "Path to a TLS certificate PEM file (implies HTTPS).")
-		.option("--key <path>", "Path to a TLS private key PEM file (implies HTTPS).")
+		.version(KANBAN_VERSION, "-v, --version", "Output the version number");
+	registerLaunchOptions(program)
 		.option("--update", "Update Kanban to the latest published version and exit.")
-		.option(
-			"--no-passcode",
-			"Disable auto-generated passcode for remote access (for advanced users behind a reverse proxy).",
-		)
+		.addOption(new Option("--__daemon-child", "Internal daemon child marker.").hideHelp())
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
-
-	program.addOption(new Option("--agent <id>", "Deprecated compatibility flag. Ignored.").hideHelp());
 
 	registerTaskCommand(program);
 	registerHooksCommand(program);
@@ -713,6 +1070,39 @@ function createProgram(invocationArgs: string[]): Command {
 			await runUpdateCommand();
 		});
 
+	const startCommand = program.command("start").description("Start Kanban in the background.");
+	registerLaunchOptions(startCommand).action(async (options: LaunchCommandOptions) => {
+		await startDaemonProcess(
+			normalizeLaunchOptions(options),
+			process.cwd(),
+			getLaunchArgumentsAfterCommand(invocationArgs, "start"),
+		);
+	});
+
+	const stopCommand = program
+		.command("stop [pid]")
+		.description("Stop a Kanban process, or all Kanban processes when PID is omitted.");
+	stopCommand.action(async (pid: string | undefined) => {
+		await runStopCommand(pid);
+	});
+
+	const restartCommand = program
+		.command("restart [pid]")
+		.description("Restart a Kanban process, or all processes into one background instance.");
+	registerLaunchOptions(restartCommand).action(
+		async (pid: string | undefined, options: LaunchCommandOptions, command: Command) => {
+			await runRestartCommand(pid, options, command, getLaunchArgumentsAfterCommand(invocationArgs, "restart", pid));
+		},
+	);
+
+	program
+		.command("status")
+		.description("Show running foreground and background Kanban processes.")
+		.option("--json", "Output machine-readable JSON.")
+		.action(async (options: { json?: boolean }) => {
+			await runStatusCommand(options.json === true);
+		});
+
 	program.action(async (options: RootCommandOptions) => {
 		if (options.update === true) {
 			await runUpdateCommand();
@@ -720,14 +1110,10 @@ function createProgram(invocationArgs: string[]): Command {
 		}
 		await runMainCommand(
 			{
-				host: options.host ?? null,
-				port: options.port ?? null,
-				noOpen: options.open === false,
-				skipShutdownCleanup: options.skipShutdownCleanup === true,
-				https: options.https === true,
-				cert: options.cert ?? null,
-				key: options.key ?? null,
-				noPasscode: options.noPasscode === true,
+				...normalizeLaunchOptions(options),
+				mode: options.__daemonChild === true ? "background" : "foreground",
+				daemonChild: options.__daemonChild === true,
+				launchArgs: removeInternalLaunchArguments(invocationArgs),
 			},
 			shouldAutoOpenBrowser,
 		);
@@ -740,7 +1126,8 @@ async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
 	const program = createProgram(argv);
 	await program.parseAsync(argv, { from: "user" });
-	if (!shouldAutoOpenBrowserTabForInvocation(argv)) {
+	const isDaemonChild = argv.includes("--__daemon-child");
+	if (!shouldAutoOpenBrowserTabForInvocation(argv) && !isDaemonChild) {
 		await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
 		process.exit(process.exitCode ?? 0);
 	}

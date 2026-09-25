@@ -284,6 +284,11 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 
 			const requestUrl = new URL(req.url ?? "/", "http://localhost");
 			const pathname = normalizeRequestPath(requestUrl.pathname);
+			if (pathname === "/api/health") {
+				res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+				res.end(JSON.stringify({ service: "kanban" }));
+				return;
+			}
 
 			// ── Passcode gate (remote mode only) ──────────────────────────────
 			const passcodeActive = isRemoteMode && isPasscodeEnabled();
