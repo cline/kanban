@@ -29,6 +29,16 @@ describe("evaluateCors", () => {
 		expect(decision).toEqual({ kind: "allow", origin: null });
 	});
 
+	it("rejects requests with no Origin header when requireOrigin is true", () => {
+		const decision = evaluateCors({
+			method: "GET",
+			originHeader: undefined,
+			allowedOrigin: ALLOWED_ORIGIN,
+			requireOrigin: true,
+		});
+		expect(decision).toEqual({ kind: "reject", origin: "" });
+	});
+
 	it("allows requests whose Origin matches the runtime origin", () => {
 		const decision = evaluateCors({
 			method: "POST",
@@ -165,5 +175,18 @@ describe("handleSocketUpgrade", () => {
 		const result = handleSocketUpgrade(request, socket);
 		expect(result).toEqual({ end: true });
 		expect(socket.destroyed).toBe(true);
+	});
+
+	it("rejects upgrades with a missing Origin header", () => {
+		const socket = new PassThrough();
+		const written: Buffer[] = [];
+		socket.on("data", (chunk) => {
+			written.push(chunk as Buffer);
+		});
+		const request = makeFakeRequest({ host: "127.0.0.1:3484" });
+		const result = handleSocketUpgrade(request, socket);
+		expect(result).toEqual({ end: true });
+		expect(socket.destroyed).toBe(true);
+		expect(Buffer.concat(written).toString("utf8")).toContain("HTTP/1.1 403 Forbidden");
 	});
 });

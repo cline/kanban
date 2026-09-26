@@ -16,6 +16,7 @@ export interface CorsGateInput {
 	method: string | undefined;
 	originHeader: string | undefined;
 	allowedOrigin: string;
+	requireOrigin?: boolean;
 }
 
 const isDev = process.env.NODE_ENV === "development";
@@ -25,6 +26,9 @@ export function evaluateCors(input: CorsGateInput): CorsDecision {
 	const isPreflight = input.method === "OPTIONS";
 
 	if (origin === null) {
+		if (input.requireOrigin) {
+			return { kind: "reject", origin: "" };
+		}
 		return { kind: "allow", origin: null };
 	}
 
@@ -154,12 +158,17 @@ export function handleSocketUpgrade(request: IncomingMessage, socket: Duplex): {
 		return rejectSocket(socket);
 	}
 
+	if (!request.headers.origin) {
+		return rejectSocket(socket);
+	}
+
 	const corsDecision = evaluateCors({
 		method: request.method,
 		originHeader: request.headers.origin,
 		allowedOrigin: getKanbanRuntimeOrigin(),
+		requireOrigin: true,
 	});
-	if (corsDecision.kind === "reject") {
+	if (corsDecision.kind === "reject" || corsDecision.origin === null) {
 		return rejectSocket(socket);
 	}
 
