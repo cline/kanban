@@ -318,6 +318,45 @@ describe.sequential("runtime-config auto agent selection", () => {
 		}
 	});
 
+	it("preserves worktreeSharedDirectories when shortcuts are saved", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-preserve-shared-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanban-project-runtime-config-preserve-shared-",
+		);
+
+		try {
+			const runtimeProjectConfigDir = join(tempProject, ".cline", "kanban");
+			mkdirSync(runtimeProjectConfigDir, { recursive: true });
+			writeFileSync(
+				join(runtimeProjectConfigDir, "config.json"),
+				JSON.stringify({ worktreeSharedDirectories: ["node_modules", ".next"] }),
+				"utf8",
+			);
+
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				await saveRuntimeConfig(tempProject, {
+					selectedAgentId: "cline",
+					selectedShortcutLabel: null,
+					agentAutonomousModeEnabled: true,
+					readyForReviewNotificationsEnabled: true,
+					shortcuts: [{ label: "Ship", command: "npm run ship" }],
+					commitPromptTemplate: "commit",
+					openPrPromptTemplate: "pr",
+				});
+
+				const payload = JSON.parse(readFileSync(join(runtimeProjectConfigDir, "config.json"), "utf8")) as {
+					shortcuts?: unknown;
+					worktreeSharedDirectories?: string[];
+				};
+				expect(payload.worktreeSharedDirectories).toEqual(["node_modules", ".next"]);
+				expect(payload.shortcuts).toEqual([{ label: "Ship", command: "npm run ship" }]);
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
 	it("removes an existing empty project config file when no shortcuts are saved", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-cleanup-empty-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
