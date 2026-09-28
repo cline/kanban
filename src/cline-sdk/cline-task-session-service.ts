@@ -159,6 +159,50 @@ function buildClineStartPrompt(prompt: string, startInPlanMode?: boolean): strin
 		trimmedPrompt ? `\n\nTask:\n${trimmedPrompt}` : " Ask the user what they want planned if the task is unclear.",
 	].join(" ");
 }
+
+/**
+ * A crash or force-quit mid-tool-call leaves assistant `tool_use` blocks whose
+ * matching `tool_result` blocks were never persisted. Resuming with that
+ * history fails inside the SDK with "Tool result is missing". Drop everything
+ * from the last assistant message that still has an unresolved tool call so
+ * the resumed session starts from a clean turn boundary.
+ *
+ * Results are collected across the whole history before scanning for
+ * unresolved calls, because a `tool_result` always follows the assistant
+ * message that issued its `tool_use` — a forward-only scan would wrongly mark
+ * healthy trailing turns as incomplete.
+ */
+export function stripIncompleteToolTurns(messages: ClineSdkPersistedMessage[]): ClineSdkPersistedMessage[] {
+	const resolvedToolUseIds = new Set<string>();
+	for (const message of messages) {
+		const blocks = typeof message.content === "string" ? [] : message.content;
+		for (const block of blocks) {
+			if (block.type === "tool_result") {
+				resolvedToolUseIds.add(block.tool_use_id);
+			}
+		}
+	}
+
+	let lastIncompleteIndex = -1;
+	for (const [index, message] of messages.entries()) {
+		if (message.role !== "assistant") {
+			continue;
+		}
+		const blocks = typeof message.content === "string" ? [] : message.content;
+		const hasUnresolvedToolUse = blocks.some(
+			(block) => block.type === "tool_use" && !resolvedToolUseIds.has(block.id),
+		);
+		if (hasUnresolvedToolUse) {
+			lastIncompleteIndex = index;
+		}
+	}
+
+	if (lastIncompleteIndex === -1) {
+		return messages;
+	}
+	return messages.slice(0, lastIncompleteIndex);
+}
+
 export class InMemoryClineTaskSessionService implements ClineTaskSessionService {
 	private readonly pendingTurnCancelTaskIds = new Set<string>();
 	private readonly providerIdByTaskId = new Map<string, string>();
@@ -273,12 +317,15 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		}
 
 		const persistedSnapshot = await this.sessionRuntime.readPersistedTaskSession(input.taskId);
+		const persistedMessages = persistedSnapshot?.messages;
 		const restartedSession = await this.sessionRuntime.restartTaskSession({
 			taskId: input.taskId,
 			prompt: input.prompt,
 			mode: input.mode,
 			images: input.images,
-			initialMessages: persistedSnapshot?.messages,
+			// Drop a trailing incomplete tool turn (crash mid-tool-call) so the
+			// SDK does not reject the resume with "Tool result is missing".
+			initialMessages: persistedMessages ? stripIncompleteToolTurns(persistedMessages) : undefined,
 		});
 		return {
 			result: restartedSession.result,
@@ -309,7 +356,9 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			prompt: input.prompt,
 			mode: input.mode,
 			images: input.images,
-			initialMessages: compactedMessages,
+			// Compaction can carry a crashed turn's unresolved tool_use into the
+			// replacement session; strip it so the restart is not rejected.
+			initialMessages: stripIncompleteToolTurns(compactedMessages),
 		});
 		return {
 			result: restartedSession.result,
