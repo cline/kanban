@@ -118,6 +118,8 @@ export interface ClineSessionRuntime {
 	getTaskProviderId(taskId: string): string | null;
 	canRestartTaskSession(taskId: string): boolean;
 	readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null>;
+	/** Eagerly create the SDK session host so the first user interaction does not pay the cold-start cost. */
+	prewarm(): Promise<void>;
 	dispose(): Promise<void>;
 }
 
@@ -156,6 +158,12 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 	>();
 	private readonly mcpToolBundleByTaskId = new Map<string, ClineMcpToolBundle>();
 	private sessionHostPromise: Promise<ClineSessionHostBoundary> | null = null;
+	private sessionHostUnsubscribe: (() => void) | null = null;
+	// Cache of persisted session records keyed by taskId so repeated card opens
+	// and rebind attempts do not trigger a full sessionHost.list() scan (which
+	// runs dead-session reconciliation + N manifest reads). Invalidated on
+	// session start, stop, abort, and clear.
+	private readonly persistedRecordByTaskId = new Map<string, ClineSdkSessionRecord>();
 
 	constructor(options: CreateInMemoryClineSessionRuntimeOptions = {}) {
 		this.onTaskEvent = options.onTaskEvent ?? null;
@@ -398,6 +406,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			this.taskIdBySessionId.delete(sessionId);
 		}
 		this.clearTaskSessionBinding(taskId);
+		this.persistedRecordByTaskId.delete(taskId);
 		await this.releaseTaskMcpToolBundle(taskId);
 	}
 
@@ -426,9 +435,27 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		};
 	}
 
+	async prewarm(): Promise<void> {
+		try {
+			await this.ensureSessionHost();
+		} catch {
+			// Best-effort pre-warming; the first real interaction will surface any errors.
+		}
+	}
+
 	async dispose(): Promise<void> {
 		const hostPromise = this.sessionHostPromise;
 		this.sessionHostPromise = null;
+		// Unsubscribe from the SDK event stream before disposing the host so the
+		// orphaned listener does not retain a reference to this runtime instance.
+		if (this.sessionHostUnsubscribe) {
+			try {
+				this.sessionHostUnsubscribe();
+			} catch {
+				// Ignore unsubscribe errors during shutdown.
+			}
+			this.sessionHostUnsubscribe = null;
+		}
 		if (hostPromise) {
 			try {
 				const host = await hostPromise;
@@ -440,6 +467,7 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		this.sessionIdByTaskId.clear();
 		this.taskIdBySessionId.clear();
 		this.lastStartRequestByTaskId.clear();
+		this.persistedRecordByTaskId.clear();
 
 		const mcpBundles = [...this.mcpToolBundleByTaskId.values()];
 		this.mcpToolBundleByTaskId.clear();
@@ -477,6 +505,8 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 		}
 		this.sessionIdByTaskId.set(taskId, sessionId);
 		this.taskIdBySessionId.set(sessionId, taskId);
+		// Invalidate the persisted-record cache: a new session has been bound.
+		this.persistedRecordByTaskId.delete(taskId);
 	}
 
 	private clearTaskSessionBinding(taskId: string, sessionId?: string): void {
@@ -503,6 +533,19 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			}
 		}
 
+		// Return the cached record if we already resolved this taskId via a list()
+		// scan. This avoids repeating the expensive sessionHost.list() call
+		// (which runs dead-session reconciliation + N manifest file reads) on
+		// every card open or rebind attempt for the same task.
+		const cachedRecord = this.persistedRecordByTaskId.get(taskId);
+		if (cachedRecord) {
+			const refreshedRecord = (await sessionHost.get(cachedRecord.sessionId)) ?? null;
+			if (refreshedRecord) {
+				return refreshedRecord;
+			}
+			this.persistedRecordByTaskId.delete(taskId);
+		}
+
 		const sessionIdPrefix = buildSessionIdPrefix(taskId);
 		const records: ClineSdkSessionRecord[] = await sessionHost.list();
 		const matchingRecord = records
@@ -512,13 +555,16 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 				const rightTimestamp = Date.parse(right.updatedAt || right.startedAt);
 				return rightTimestamp - leftTimestamp;
 			})[0];
+		if (matchingRecord) {
+			this.persistedRecordByTaskId.set(taskId, matchingRecord);
+		}
 		return matchingRecord ?? null;
 	}
 
 	private async ensureSessionHost(): Promise<ClineSessionHostBoundary> {
 		if (!this.sessionHostPromise) {
 			this.sessionHostPromise = this.createSessionHost().then((sessionHost: ClineSessionHostBoundary) => {
-				sessionHost.subscribe((event: unknown) => {
+				this.sessionHostUnsubscribe = sessionHost.subscribe((event: unknown) => {
 					this.handleSessionEvent(event);
 				});
 				return sessionHost;

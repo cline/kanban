@@ -227,6 +227,7 @@ function createFakeClineSessionRuntime(): FakeClineSessionRuntimeController {
 			async readPersistedTaskSession(taskId: string): Promise<ClinePersistedTaskSessionSnapshot | null> {
 				return await readPersistedTaskSessionMock(taskId);
 			},
+			async prewarm(): Promise<void> {},
 			async dispose(): Promise<void> {
 				sessionIdByTaskId.clear();
 				taskIdBySessionId.clear();

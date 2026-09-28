@@ -98,6 +98,8 @@ export interface ClineTaskSessionService {
 	listSlashCommands(workspacePath: string): Promise<ClineSdkSlashCommand[]>;
 	loadTaskSessionMessages(taskId: string): Promise<ClineTaskMessage[]>;
 	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null;
+	/** Eagerly initialize the SDK session host so the first card open or action does not pay the cold-start cost. */
+	prewarm(): Promise<void>;
 	dispose(): Promise<void>;
 }
 
@@ -793,6 +795,10 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 		}
 		this.emitSummary(summary);
 		return summary;
+	}
+
+	async prewarm(): Promise<void> {
+		await this.sessionRuntime.prewarm();
 	}
 
 	async dispose(): Promise<void> {
