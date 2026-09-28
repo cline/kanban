@@ -1,8 +1,8 @@
 import type { IncomingMessage, Server } from "node:http";
 import type { Socket } from "node:net";
 
-import type { RawData, WebSocket } from "ws";
-import { WebSocketServer } from "ws";
+import type { RawData } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 
 import type { RuntimeTerminalWsServerMessage } from "../core/api-contract";
 import { parseTerminalWsClientMessage } from "../core/api-validation";
@@ -34,6 +34,17 @@ export interface CreateTerminalWebSocketBridgeRequest {
 	 * @returns true if the request is authenticated, false otherwise.
 	 */
 	validateUpgradeSession?: (cookieHeader: string | undefined) => boolean;
+	/**
+	 * Interval between viewer liveness pings. Defaults to
+	 * TERMINAL_WS_HEARTBEAT_INTERVAL_MS. Exposed so tests can use a short interval.
+	 */
+	heartbeatIntervalMs?: number;
+	/**
+	 * How long a backpressured viewer may go without acknowledging any output
+	 * before it is treated as unable to drain and disconnected. Defaults to
+	 * TERMINAL_WS_ACK_STALL_TIMEOUT_MS. Exposed so tests can use a short timeout.
+	 */
+	ackStallTimeoutMs?: number;
 }
 
 export interface TerminalWebSocketBridge {
@@ -81,6 +92,14 @@ const OUTPUT_BUFFER_LOW_WATER_MARK_BYTES = Math.floor(OUTPUT_BUFFER_HIGH_WATER_M
 const OUTPUT_ACK_HIGH_WATER_MARK_BYTES = 100_000;
 const OUTPUT_ACK_LOW_WATER_MARK_BYTES = 5_000;
 const OUTPUT_RESUME_CHECK_INTERVAL_MS = 16;
+const TERMINAL_WS_HEARTBEAT_INTERVAL_MS = 30_000;
+// A backgrounded or suspended browser tab keeps answering protocol-level pings
+// (browsers pong from the network stack, without running JavaScript), so the
+// heartbeat above cannot detect it. But its renderer is frozen, so it never
+// sends output_ack, and a viewer that is already backpressured then holds
+// pauseOutput() on the shared PTY forever. Treat "no ack progress while paused"
+// as its own liveness signal and disconnect the viewer when it stalls.
+const TERMINAL_WS_ACK_STALL_TIMEOUT_MS = 20_000;
 
 function getWebSocketTransportSocket(ws: WebSocket): Socket | null {
 	const transportSocket = (ws as WebSocket & { _socket?: Socket })._socket;
@@ -125,12 +144,54 @@ function getTerminalClientId(url: URL): string {
 	return url.searchParams.get("clientId")?.trim() || "legacy";
 }
 
+// Browser viewer sockets can die without a clean close (laptop lid, dropped SSH
+// tunnel, killed browser). The ws library then keeps them OPEN indefinitely, and
+// while such a zombie viewer is backpressured it holds pauseOutput() on the shared
+// PTY forever, which blocks the agent process on its stdout writes.
+//
+// Ping every viewer periodically and terminate any socket that misses a pong. The
+// normal close handlers then run and release the viewer's backpressure claim.
+function startWebSocketHeartbeat(wss: WebSocketServer, intervalMs: number): () => void {
+	const aliveSockets = new WeakSet<WebSocket>();
+	const onConnection = (client: WebSocket) => {
+		aliveSockets.add(client);
+		client.on("pong", () => {
+			aliveSockets.add(client);
+		});
+	};
+	wss.on("connection", onConnection);
+	const timer = setInterval(() => {
+		for (const client of wss.clients) {
+			if (client.readyState !== WebSocket.OPEN) {
+				continue;
+			}
+			if (!aliveSockets.has(client)) {
+				client.terminate();
+				continue;
+			}
+			aliveSockets.delete(client);
+			try {
+				client.ping();
+			} catch {
+				client.terminate();
+			}
+		}
+	}, intervalMs);
+	timer.unref();
+	return () => {
+		clearInterval(timer);
+		wss.off("connection", onConnection);
+	};
+}
+
 export function createTerminalWebSocketBridge({
 	server,
 	resolveTerminalManager,
 	isTerminalIoWebSocketPath,
 	isTerminalControlWebSocketPath,
 	validateUpgradeSession,
+	heartbeatIntervalMs,
+	ackStallTimeoutMs,
 }: CreateTerminalWebSocketBridgeRequest): TerminalWebSocketBridge {
 	const activeSockets = new Set<Socket>();
 	const terminalStreamStates = new Map<string, TerminalStreamState>();
@@ -144,6 +205,10 @@ export function createTerminalWebSocketBridge({
 
 	const ioServer = new WebSocketServer({ noServer: true });
 	const controlServer = new WebSocketServer({ noServer: true });
+	const resolvedHeartbeatIntervalMs = heartbeatIntervalMs ?? TERMINAL_WS_HEARTBEAT_INTERVAL_MS;
+	const resolvedAckStallTimeoutMs = ackStallTimeoutMs ?? TERMINAL_WS_ACK_STALL_TIMEOUT_MS;
+	const stopIoHeartbeat = startWebSocketHeartbeat(ioServer, resolvedHeartbeatIntervalMs);
+	const stopControlHeartbeat = startWebSocketHeartbeat(controlServer, resolvedHeartbeatIntervalMs);
 
 	const getOrCreateTerminalStreamState = (connectionKey: string): TerminalStreamState => {
 		const existing = terminalStreamStates.get(connectionKey);
@@ -222,6 +287,10 @@ export function createTerminalWebSocketBridge({
 		let lastOutputSentAt = 0;
 		let outputPaused = false;
 		let resumeCheckTimer: ReturnType<typeof setTimeout> | null = null;
+		// Armed whenever this viewer is holding the PTY paused. Any acknowledged
+		// byte counts as progress and rearms it; expiry means the viewer is not
+		// draining at all and must not keep the shared PTY blocked.
+		let ackStallTimer: ReturnType<typeof setTimeout> | null = null;
 		// Same idea as VS Code terminal flow control: count output that has been sent
 		// but not yet acknowledged as committed by the terminal renderer. We also look
 		// at the websocket's own bufferedAmount so we catch both xterm lag and socket lag.
@@ -234,6 +303,29 @@ export function createTerminalWebSocketBridge({
 		const canResumeOutput = () =>
 			ws.bufferedAmount < OUTPUT_BUFFER_LOW_WATER_MARK_BYTES &&
 			unacknowledgedOutputBytes < OUTPUT_ACK_LOW_WATER_MARK_BYTES;
+
+		const clearAckStallTimer = () => {
+			if (ackStallTimer !== null) {
+				clearTimeout(ackStallTimer);
+				ackStallTimer = null;
+			}
+		};
+
+		const armAckStallTimer = () => {
+			clearAckStallTimer();
+			ackStallTimer = setTimeout(() => {
+				ackStallTimer = null;
+				if (!outputPaused || ws.readyState !== ws.OPEN) {
+					return;
+				}
+				// This viewer may still be answering pings, but it has acknowledged
+				// nothing for a full timeout while holding the PTY paused. Terminate
+				// it; the normal close handler releases its backpressure claim and
+				// resumes the PTY. A returning tab reconnects and gets a fresh restore.
+				ws.terminate();
+			}, resolvedAckStallTimeoutMs);
+			ackStallTimer.unref?.();
+		};
 
 		const clearResumeCheck = () => {
 			if (resumeCheckTimer !== null) {
@@ -255,6 +347,7 @@ export function createTerminalWebSocketBridge({
 			if (canResumeOutput()) {
 				outputPaused = false;
 				clearResumeCheck();
+				clearAckStallTimer();
 				streamState.backpressuredViewerIds.delete(clientId);
 				if (streamState.backpressuredViewerIds.size === 0) {
 					terminalManager.resumeOutput(taskId);
@@ -289,6 +382,7 @@ export function createTerminalWebSocketBridge({
 				if (!previouslyPaused) {
 					terminalManager.pauseOutput(taskId);
 				}
+				armAckStallTimer();
 				scheduleResumeCheck();
 			}
 		};
@@ -330,7 +424,13 @@ export function createTerminalWebSocketBridge({
 				}
 			},
 			acknowledgeOutput: (bytes: number) => {
-				unacknowledgedOutputBytes = Math.max(0, unacknowledgedOutputBytes - Math.max(0, Math.floor(bytes)));
+				const acknowledgedBytes = Math.max(0, Math.floor(bytes));
+				unacknowledgedOutputBytes = Math.max(0, unacknowledgedOutputBytes - acknowledgedBytes);
+				// A viewer that drains slowly is fine; a viewer that drains nothing is not.
+				// Rearm on progress so only a fully stalled renderer trips the watchdog.
+				if (acknowledgedBytes > 0 && outputPaused) {
+					armAckStallTimer();
+				}
 				checkResumeAfterBackpressure();
 			},
 			dispose: () => {
@@ -339,6 +439,7 @@ export function createTerminalWebSocketBridge({
 					outputFlushTimer = null;
 				}
 				clearResumeCheck();
+				clearAckStallTimer();
 				if (outputPaused) {
 					outputPaused = false;
 					streamState.backpressuredViewerIds.delete(clientId);
@@ -558,6 +659,8 @@ export function createTerminalWebSocketBridge({
 
 	return {
 		close: async () => {
+			stopIoHeartbeat();
+			stopControlHeartbeat();
 			for (const client of ioServer.clients) {
 				try {
 					client.terminate();
