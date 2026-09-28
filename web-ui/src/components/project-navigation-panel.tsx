@@ -381,7 +381,7 @@ export function ProjectNavigationPanel({
 							/>
 						))}
 
-						{!isLoadingProjects ? (
+						{sortedProjects.length === 0 && isLoadingProjects ? null : (
 							<button
 								type="button"
 								className="kb-project-row flex cursor-pointer items-center gap-1.5 rounded-md text-text-secondary hover:text-text-primary"
@@ -392,7 +392,7 @@ export function ProjectNavigationPanel({
 								<Plus size={14} className="shrink-0" />
 								<span className="text-sm">Add Project</span>
 							</button>
-						) : null}
+						)}
 					</div>
 					<ShortcutsCard />
 					<ProjectSupportFooter
