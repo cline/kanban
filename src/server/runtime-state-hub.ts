@@ -25,6 +25,7 @@ import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor";
 import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry";
 
 const TASK_SESSION_STREAM_BATCH_MS = 150;
+const TASK_CHAT_STREAM_BATCH_MS = 50;
 
 export interface DisposeRuntimeStateWorkspaceOptions {
 	disconnectClients?: boolean;
@@ -67,6 +68,8 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const clinePreviousSummaryByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const pendingTaskSessionSummariesByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const taskSessionBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
+	const pendingTaskChatMessagesByWorkspaceId = new Map<string, Array<{ taskId: string; message: ClineTaskMessage }>>();
+	const taskChatBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
 	const runtimeStateClientsByWorkspaceId = new Map<string, Set<WebSocket>>();
 	const runtimeStateClients = new Set<WebSocket>();
 	const runtimeStateWorkspaceIdByClient = new Map<WebSocket, string>();
@@ -145,6 +148,12 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 	};
 
+	// Remove the unconditional projects broadcast from the summary flush.
+	// Project state does not change when a task summary changes; the projects
+	// payload is already broadcast in all the right places (workspace state
+	// reset, project mutation, workspace setup). Keeping it here caused ~7
+	// unnecessary buildProjectsPayload + broadcast cycles per second during
+	// active agent runs.
 	const flushTaskSessionSummaries = (workspaceId: string) => {
 		const pending = pendingTaskSessionSummariesByWorkspaceId.get(workspaceId);
 		if (!pending || pending.size === 0) {
@@ -163,7 +172,6 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				sendRuntimeStateMessage(client, payload);
 			}
 		}
-		void broadcastRuntimeProjectsUpdated(workspaceId);
 	};
 
 	const queueTaskSessionSummaryBroadcast = (workspaceId: string, summary: RuntimeTaskSessionSummary) => {
@@ -182,20 +190,52 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		taskSessionBroadcastTimersByWorkspaceId.set(workspaceId, timer);
 	};
 
+	// Batch chat message broadcasts to avoid saturating the event loop with
+	// per-token JSON.stringify + ws.send calls during active LLM streams.
+	// Without batching, assistant-text-delta events (30–80/sec) each trigger
+	// a synchronous WebSocket write, starving other event loop work. The
+	// 50 ms window coalesces 1–4 token deltas into a single flush while
+	// keeping perceived latency below a single frame.
+	const flushTaskChatMessages = (workspaceId: string) => {
+		taskChatBroadcastTimersByWorkspaceId.delete(workspaceId);
+		const pending = pendingTaskChatMessagesByWorkspaceId.get(workspaceId);
+		if (!pending || pending.length === 0) {
+			return;
+		}
+		pendingTaskChatMessagesByWorkspaceId.delete(workspaceId);
+		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
+		if (!runtimeClients || runtimeClients.size === 0) {
+			return;
+		}
+		for (const { taskId, message } of pending) {
+			const payload: RuntimeStateStreamTaskChatMessage = {
+				type: "task_chat_message",
+				workspaceId,
+				taskId,
+				message,
+			};
+			for (const client of runtimeClients) {
+				sendRuntimeStateMessage(client, payload);
+			}
+		}
+	};
+
 	const broadcastTaskChatMessage = (workspaceId: string, taskId: string, message: ClineTaskMessage) => {
 		const runtimeClients = runtimeStateClientsByWorkspaceId.get(workspaceId);
 		if (!runtimeClients || runtimeClients.size === 0) {
 			return;
 		}
-		const payload: RuntimeStateStreamTaskChatMessage = {
-			type: "task_chat_message",
-			workspaceId,
-			taskId,
-			message,
-		};
-		for (const client of runtimeClients) {
-			sendRuntimeStateMessage(client, payload);
+		const pending = pendingTaskChatMessagesByWorkspaceId.get(workspaceId) ?? [];
+		pending.push({ taskId, message });
+		pendingTaskChatMessagesByWorkspaceId.set(workspaceId, pending);
+		if (taskChatBroadcastTimersByWorkspaceId.has(workspaceId)) {
+			return;
 		}
+		const timer = setTimeout(() => {
+			flushTaskChatMessages(workspaceId);
+		}, TASK_CHAT_STREAM_BATCH_MS);
+		timer.unref();
+		taskChatBroadcastTimersByWorkspaceId.set(workspaceId, timer);
 	};
 
 	const broadcastTaskChatCleared = (workspaceId: string, taskId: string) => {
@@ -220,6 +260,15 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 		taskSessionBroadcastTimersByWorkspaceId.delete(workspaceId);
 		pendingTaskSessionSummariesByWorkspaceId.delete(workspaceId);
+	};
+
+	const disposeTaskChatMessageBroadcast = (workspaceId: string) => {
+		const chatTimer = taskChatBroadcastTimersByWorkspaceId.get(workspaceId);
+		if (chatTimer) {
+			clearTimeout(chatTimer);
+		}
+		taskChatBroadcastTimersByWorkspaceId.delete(workspaceId);
+		pendingTaskChatMessagesByWorkspaceId.delete(workspaceId);
 	};
 
 	const cleanupRuntimeStateClient = (client: WebSocket) => {
@@ -268,6 +317,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 		clineMessageUnsubscribeByWorkspaceId.delete(workspaceId);
 		disposeTaskSessionSummaryBroadcast(workspaceId);
+		disposeTaskChatMessageBroadcast(workspaceId);
 		workspaceMetadataMonitor.disposeWorkspace(workspaceId);
 
 		if (!options?.disconnectClients) {
@@ -558,6 +608,11 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			}
 			taskSessionBroadcastTimersByWorkspaceId.clear();
 			pendingTaskSessionSummariesByWorkspaceId.clear();
+			for (const chatTimer of taskChatBroadcastTimersByWorkspaceId.values()) {
+				clearTimeout(chatTimer);
+			}
+			taskChatBroadcastTimersByWorkspaceId.clear();
+			pendingTaskChatMessagesByWorkspaceId.clear();
 			for (const unsubscribe of terminalSummaryUnsubscribeByWorkspaceId.values()) {
 				try {
 					unsubscribe();
