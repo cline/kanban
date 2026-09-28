@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTaskEditor } from "@/hooks/use-task-editor";
-import type { RuntimeAgentId, RuntimeTaskClineSettings } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeTaskAgentSettings } from "@/runtime/types";
 import type { BoardCard, BoardData, TaskAutoReviewMode, TaskImage } from "@/types";
 
 function createTask(taskId: string, prompt: string, createdAt: number, overrides: Partial<BoardCard> = {}): BoardCard {
@@ -40,7 +40,7 @@ interface HookSnapshot {
 	newTaskImages: TaskImage[];
 	newTaskBranchRef: string;
 	newTaskAgentId: RuntimeAgentId | undefined;
-	newTaskClineSettings: RuntimeTaskClineSettings | undefined;
+	newTaskAgentSettings: RuntimeTaskAgentSettings | undefined;
 	editingTaskId: string | null;
 	editTaskPrompt: string;
 	editTaskStartInPlanMode: boolean;
@@ -57,7 +57,7 @@ interface HookSnapshot {
 	setEditTaskAutoReviewEnabled: (value: boolean) => void;
 	setEditTaskAutoReviewMode: (value: TaskAutoReviewMode) => void;
 	setNewTaskAgentId: (value: RuntimeAgentId | undefined) => void;
-	setNewTaskClineSettings: (value: RuntimeTaskClineSettings | undefined) => void;
+	setNewTaskAgentSettings: (value: RuntimeTaskAgentSettings | undefined) => void;
 }
 
 function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
@@ -97,7 +97,7 @@ function HookHarness({
 			newTaskImages: editor.newTaskImages,
 			newTaskBranchRef: editor.newTaskBranchRef,
 			newTaskAgentId: editor.newTaskAgentId,
-			newTaskClineSettings: editor.newTaskClineSettings,
+			newTaskAgentSettings: editor.newTaskAgentSettings,
 			editingTaskId: editor.editingTaskId,
 			editTaskPrompt: editor.editTaskPrompt,
 			editTaskStartInPlanMode: editor.editTaskStartInPlanMode,
@@ -114,7 +114,7 @@ function HookHarness({
 			setEditTaskAutoReviewEnabled: editor.setEditTaskAutoReviewEnabled,
 			setEditTaskAutoReviewMode: editor.setEditTaskAutoReviewMode,
 			setNewTaskAgentId: editor.setNewTaskAgentId,
-			setNewTaskClineSettings: editor.setNewTaskClineSettings,
+			setNewTaskAgentSettings: editor.setNewTaskAgentSettings,
 		});
 	}, [
 		board,
@@ -133,7 +133,7 @@ function HookHarness({
 		editor.newTaskImages,
 		editor.newTaskBranchRef,
 		editor.newTaskAgentId,
-		editor.newTaskClineSettings,
+		editor.newTaskAgentSettings,
 		editor.setEditTaskAutoReviewEnabled,
 		editor.setEditTaskAutoReviewMode,
 		editor.setEditTaskPrompt,
@@ -316,7 +316,7 @@ describe("useTaskEditor", () => {
 		});
 		await act(async () => {
 			requireSnapshot(latestSnapshot).setNewTaskAgentId("codex");
-			requireSnapshot(latestSnapshot).setNewTaskClineSettings({
+			requireSnapshot(latestSnapshot).setNewTaskAgentSettings({
 				providerId: "provider-abc",
 				modelId: "model-xyz",
 				reasoningEffort: "low",
@@ -338,7 +338,7 @@ describe("useTaskEditor", () => {
 		expect(snapshot.newTaskPrompt).toBe("");
 		expect(snapshot.newTaskBranchRef).toBe("main");
 		expect(snapshot.newTaskAgentId).toBeUndefined();
-		expect(snapshot.newTaskClineSettings).toBeUndefined();
+		expect(snapshot.newTaskAgentSettings).toBeUndefined();
 		expect(snapshot.board.columns[0]?.cards.some((card) => card.prompt === "Create another task")).toBe(true);
 	});
 	it("copies attached images to each split task and clears the draft images", async () => {
@@ -416,7 +416,7 @@ describe("useTaskEditor", () => {
 
 		await act(async () => {
 			requireSnapshot(latestSnapshot).setNewTaskPrompt("Reasoning override only");
-			requireSnapshot(latestSnapshot).setNewTaskClineSettings({
+			requireSnapshot(latestSnapshot).setNewTaskAgentSettings({
 				reasoningEffort: "low",
 			});
 		});
@@ -426,7 +426,7 @@ describe("useTaskEditor", () => {
 		});
 
 		const createdCard = requireSnapshot(latestSnapshot).board.columns[0]?.cards[0];
-		expect(createdCard?.clineSettings).toEqual({
+		expect(createdCard?.agentSettings).toEqual({
 			reasoningEffort: "low",
 		});
 	});
@@ -451,7 +451,7 @@ describe("useTaskEditor", () => {
 
 		await act(async () => {
 			requireSnapshot(latestSnapshot).setNewTaskAgentId("codex");
-			requireSnapshot(latestSnapshot).setNewTaskClineSettings({
+			requireSnapshot(latestSnapshot).setNewTaskAgentSettings({
 				providerId: "provider-abc",
 				modelId: "model-xyz",
 				reasoningEffort: "medium",
@@ -468,7 +468,7 @@ describe("useTaskEditor", () => {
 		expect(backlogCards).toHaveLength(3);
 		for (const card of backlogCards) {
 			expect(card.agentId).toBe("codex");
-			expect(card.clineSettings).toEqual({
+			expect(card.agentSettings).toEqual({
 				providerId: "provider-abc",
 				modelId: "model-xyz",
 				reasoningEffort: "medium",

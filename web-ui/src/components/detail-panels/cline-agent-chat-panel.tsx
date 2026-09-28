@@ -2,6 +2,7 @@
 // Rendering lives here, while session state and action wiring come from the
 // controller hook so multiple surfaces can share the same behavior.
 
+import { parseRuntimeClineReasoningEffort } from "@runtime-task-agent-settings";
 import { AlertTriangle } from "lucide-react";
 import React, {
 	type ReactElement,
@@ -13,7 +14,6 @@ import React, {
 	useRef,
 	useState,
 } from "react";
-
 import { ClineChatComposer } from "@/components/detail-panels/cline-chat-composer";
 import { ClineChatMessageItem } from "@/components/detail-panels/cline-chat-message-item";
 import {
@@ -32,7 +32,7 @@ import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-
 import type {
 	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
-	RuntimeTaskClineSettings,
+	RuntimeTaskAgentSettings,
 	RuntimeTaskSessionMode,
 	RuntimeTaskSessionSummary,
 } from "@/runtime/types";
@@ -70,14 +70,10 @@ export interface ClineAgentChatPanelProps {
 	showComposerModeToggle?: boolean;
 	workspaceId?: string | null;
 	runtimeConfig?: RuntimeConfigResponse | null;
-	taskClineSettings?: RuntimeTaskClineSettings;
-	taskHasExplicitClineSettings?: boolean;
-	onClineSettingsSaved?: () => void;
-	onTaskClineSettingsChanged?: (settings: {
-		providerId: string;
-		modelId: string;
-		reasoningEffort: RuntimeClineReasoningEffort | "";
-	}) => void;
+	taskAgentSettings?: RuntimeTaskAgentSettings;
+	taskHasExplicitAgentSettings?: boolean;
+	onAgentSettingsSaved?: () => void;
+	onTaskAgentSettingsChanged?: (settings: { providerId: string; modelId: string; reasoningEffort: string }) => void;
 	onSendMessage?: (
 		taskId: string,
 		text: string,
@@ -109,10 +105,10 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			showComposerModeToggle = true,
 			workspaceId = null,
 			runtimeConfig = null,
-			taskClineSettings,
-			taskHasExplicitClineSettings = false,
-			onClineSettingsSaved,
-			onTaskClineSettingsChanged,
+			taskAgentSettings,
+			taskHasExplicitAgentSettings = false,
+			onAgentSettingsSaved,
+			onTaskAgentSettingsChanged,
 			onSendMessage,
 			onCancelTurn,
 			onLoadMessages,
@@ -178,7 +174,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			workspaceId,
 			selectedAgentId: "cline",
 			config: runtimeConfig,
-			taskClineSettings,
+			taskAgentSettings,
 		});
 
 		const modelPickerOptions = useMemo(
@@ -300,8 +296,8 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						overrides && "reasoningEffort" in overrides
 							? overrides.reasoningEffort || ""
 							: clineSettings.reasoningEffort;
-					if (taskHasExplicitClineSettings) {
-						onTaskClineSettingsChanged?.({
+					if (taskHasExplicitAgentSettings) {
+						onTaskAgentSettingsChanged?.({
 							providerId: clineSettings.providerId,
 							modelId: nextModelId,
 							reasoningEffort: nextReasoningEffort,
@@ -316,13 +312,13 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						setComposerError(result.message ?? "Could not save Cline model settings.");
 						return false;
 					}
-					onClineSettingsSaved?.();
+					onAgentSettingsSaved?.();
 					return true;
 				} finally {
 					setIsSavingModel(false);
 				}
 			},
-			[clineSettings, onClineSettingsSaved, onTaskClineSettingsChanged, taskHasExplicitClineSettings, workspaceId],
+			[clineSettings, onAgentSettingsSaved, onTaskAgentSettingsChanged, taskHasExplicitAgentSettings, workspaceId],
 		);
 
 		const handleSelectModel = useCallback(
@@ -450,7 +446,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						selectedModelButtonText={selectedModelButtonText}
 						onSelectModel={handleSelectModel}
 						reasoningEnabledModelIds={reasoningEnabledModelIds}
-						selectedReasoningEffort={clineSettings.reasoningEffort}
+						selectedReasoningEffort={parseRuntimeClineReasoningEffort(clineSettings.reasoningEffort) ?? ""}
 						onSelectReasoningEffort={handleSelectReasoningEffort}
 						isModelLoading={clineSettings.isLoadingProviderModels}
 						isModelSaving={isSavingModel}

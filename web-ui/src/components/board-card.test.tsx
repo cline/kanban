@@ -109,6 +109,8 @@ function createSummary(
 		exitCode: null,
 		lastHookAt: 1,
 		latestHookActivity: null,
+		modelId: null,
+		reasoningEffort: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 		...overrides,
@@ -282,7 +284,7 @@ describe("BoardCard", () => {
 				<BoardCard
 					card={createCard({
 						agentId: "cline",
-						clineSettings: {
+						agentSettings: {
 							modelId: "openai/gpt-5.5",
 							reasoningEffort: "low",
 						},
@@ -303,7 +305,7 @@ describe("BoardCard", () => {
 			root.render(
 				<BoardCard
 					card={createCard({
-						clineSettings: {
+						agentSettings: {
 							reasoningEffort: "low",
 						},
 					})}
@@ -322,7 +324,7 @@ describe("BoardCard", () => {
 			root.render(
 				<BoardCard
 					card={createCard({
-						clineSettings: {
+						agentSettings: {
 							reasoningEffort: "low",
 						},
 					})}
@@ -341,7 +343,7 @@ describe("BoardCard", () => {
 				<BoardCard
 					card={createCard({
 						agentId: "cline",
-						clineSettings: {},
+						agentSettings: {},
 					})}
 					index={0}
 					columnId="backlog"
@@ -359,7 +361,7 @@ describe("BoardCard", () => {
 			root.render(
 				<BoardCard
 					card={createCard({
-						clineSettings: {
+						agentSettings: {
 							providerId: "groq",
 						},
 					})}
@@ -380,7 +382,7 @@ describe("BoardCard", () => {
 				<BoardCard
 					card={createCard({
 						agentId: "cline",
-						clineSettings: {
+						agentSettings: {
 							modelId: "openai/gpt-5.5",
 						},
 					})}
@@ -422,6 +424,8 @@ describe("BoardCard", () => {
 							notificationType: null,
 							source: "cline-sdk",
 						},
+						modelId: null,
+						reasoningEffort: null,
 						latestTurnCheckpoint: null,
 						previousTurnCheckpoint: null,
 					}}
@@ -568,6 +572,8 @@ describe("BoardCard", () => {
 							notificationType: null,
 							source: "cline-sdk",
 						},
+						modelId: null,
+						reasoningEffort: null,
 						latestTurnCheckpoint: null,
 						previousTurnCheckpoint: null,
 					}}

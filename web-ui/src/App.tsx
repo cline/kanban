@@ -64,12 +64,12 @@ import {
 	selectLatestTaskChatMessageForTask,
 	selectTaskChatMessagesForTask,
 } from "@/runtime/native-agent";
-import type { RuntimeClineReasoningEffort, RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
 import { useWorkspacePersistence } from "@/runtime/use-workspace-persistence";
 import { saveWorkspaceState } from "@/runtime/workspace-state-query";
-import { applyTaskDetailClineSettingsChange, findCardSelection } from "@/state/board-state";
+import { applyTaskDetailAgentSettingsChange, findCardSelection } from "@/state/board-state";
 import {
 	getTaskWorkspaceInfo,
 	getTaskWorkspaceSnapshot,
@@ -302,8 +302,8 @@ export default function App(): ReactElement {
 		setNewTaskBranchRef,
 		newTaskAgentId,
 		setNewTaskAgentId,
-		newTaskClineSettings,
-		setNewTaskClineSettings,
+		newTaskAgentSettings,
+		setNewTaskAgentSettings,
 		editingTaskId,
 		editTaskPrompt,
 		setEditTaskPrompt,
@@ -320,8 +320,8 @@ export default function App(): ReactElement {
 		setEditTaskBranchRef,
 		editTaskAgentId,
 		setEditTaskAgentId,
-		editTaskClineSettings,
-		setEditTaskClineSettings,
+		editTaskAgentSettings,
+		setEditTaskAgentSettings,
 		handleOpenCreateTask,
 		handleCancelCreateTask,
 		handleOpenEditTask,
@@ -719,21 +719,13 @@ export default function App(): ReactElement {
 		runtimeProjectConfig?.clineProviderSettings?.oauthProvider ??
 		null;
 	const handleClineTaskSettingsChangedForTask = useCallback(
-		({
-			providerId,
-			modelId,
-			reasoningEffort,
-		}: {
-			providerId: string;
-			modelId: string;
-			reasoningEffort: RuntimeClineReasoningEffort | "";
-		}) => {
+		({ providerId, modelId, reasoningEffort }: { providerId: string; modelId: string; reasoningEffort: string }) => {
 			if (!selectedCard) {
 				return;
 			}
 			const taskId = selectedCard.card.id;
 			setBoard((currentBoard) => {
-				const result = applyTaskDetailClineSettingsChange(
+				const result = applyTaskDetailAgentSettingsChange(
 					currentBoard,
 					taskId,
 					{
@@ -783,8 +775,8 @@ export default function App(): ReactElement {
 			onBranchRefChange={setEditTaskBranchRef}
 			agentId={editTaskAgentId}
 			onAgentIdChange={setEditTaskAgentId}
-			clineSettings={editTaskClineSettings}
-			onClineSettingsChange={setEditTaskClineSettings}
+			agentSettings={editTaskAgentSettings}
+			onAgentSettingsChange={setEditTaskAgentSettings}
 			defaultAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 			defaultProviderId={defaultTaskClineProviderId}
 			defaultModelId={runtimeProjectConfig?.clineProviderSettings?.modelId ?? null}
@@ -1074,8 +1066,8 @@ export default function App(): ReactElement {
 									isBottomTerminalExpanded={isDetailTerminalExpanded}
 									onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 									isDocumentVisible={isDocumentVisible}
-									onClineSettingsSaved={refreshRuntimeProjectConfig}
-									onTaskClineSettingsChanged={handleClineTaskSettingsChangedForTask}
+									onAgentSettingsSaved={refreshRuntimeProjectConfig}
+									onTaskAgentSettingsChanged={handleClineTaskSettingsChangedForTask}
 								/>
 							</div>
 						) : null}
@@ -1131,8 +1123,8 @@ export default function App(): ReactElement {
 					onBranchRefChange={setNewTaskBranchRef}
 					agentId={newTaskAgentId}
 					onAgentIdChange={setNewTaskAgentId}
-					clineSettings={newTaskClineSettings}
-					onClineSettingsChange={setNewTaskClineSettings}
+					agentSettings={newTaskAgentSettings}
+					onAgentSettingsChange={setNewTaskAgentSettings}
 					defaultAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 					defaultProviderId={defaultTaskClineProviderId}
 					defaultModelId={runtimeProjectConfig?.clineProviderSettings?.modelId ?? null}
