@@ -273,6 +273,60 @@ describe.sequential("runtime-config auto agent selection", () => {
 		}
 	});
 
+	it("keeps a configured cline-cli agent when launch support is enabled", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-cline-cli-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-cline-cli-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-cline-cli-");
+
+		try {
+			writeFakeCommand(tempBin, "cline");
+
+			const runtimeConfigDir = join(tempHome, ".cline", "kanban");
+			mkdirSync(runtimeConfigDir, { recursive: true });
+			writeFileSync(
+				join(runtimeConfigDir, "config.json"),
+				JSON.stringify(
+					{
+						selectedAgentId: "cline-cli",
+					},
+					null,
+					2,
+				),
+				"utf8",
+			);
+
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
+				const state = await loadRuntimeConfig(tempProject);
+				expect(state.selectedAgentId).toBe("cline-cli");
+			});
+		} finally {
+			cleanupBin();
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("does not auto-select the Cline CLI over the embedded Cline default", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-cline-cli-auto-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanban-project-runtime-config-cline-cli-auto-",
+		);
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-cline-cli-auto-");
+
+		try {
+			writeFakeCommand(tempBin, "cline");
+
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
+				const state = await loadRuntimeConfig(tempProject);
+				expect(state.selectedAgentId).toBe("cline");
+			});
+		} finally {
+			cleanupBin();
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
 	it("save omits default keys when they were not previously set", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-omit-defaults-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
