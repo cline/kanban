@@ -12,6 +12,8 @@ import type {
 	RuntimeTerminalWsClientMessage,
 	RuntimeTerminalWsServerMessage,
 } from "@/runtime/types";
+import { type AppliedRestore, shouldSkipWarmRestore } from "@/terminal/restore-generation";
+import { splitRestoreSnapshot } from "@/terminal/restore-snapshot-chunks";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
 import {
@@ -161,6 +163,7 @@ class PersistentTerminal {
 	private restoreCompleted = false;
 	private outputTextDecoder = new TextDecoder();
 	private terminalWriteQueue: Promise<void> = Promise.resolve();
+	private lastRestore: AppliedRestore | null = null;
 	private disposed = false;
 
 	constructor(
@@ -313,16 +316,23 @@ class PersistentTerminal {
 		snapshot: string,
 		cols: number | null | undefined,
 		rows: number | null | undefined,
+		restoreGeneration?: number,
 	): Promise<void> {
+		if (shouldSkipWarmRestore(this.lastRestore, { restoreGeneration, cols, rows })) {
+			return;
+		}
 		await this.terminalWriteQueue.catch(() => undefined);
 		this.terminal.reset();
 		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
 			this.terminal.resize(cols, rows);
 		}
-		if (!snapshot) {
-			return;
+		if (snapshot) {
+			for (const chunk of splitRestoreSnapshot(snapshot)) {
+				await this.enqueueTerminalWrite(chunk);
+			}
 		}
-		await this.enqueueTerminalWrite(snapshot);
+		this.lastRestore =
+			restoreGeneration !== undefined && cols && rows ? { generation: restoreGeneration, cols, rows } : null;
 	}
 
 	private requestResize(): void {
@@ -421,7 +431,7 @@ class PersistentTerminal {
 
 			if (payload.type === "restore") {
 				this.restoreCompleted = false;
-				void this.applyRestore(payload.snapshot, payload.cols, payload.rows)
+				void this.applyRestore(payload.snapshot, payload.cols, payload.rows, payload.restoreGeneration)
 					.then(() => {
 						if (this.disposed || this.controlSocket !== controlSocket) {
 							return;
@@ -691,6 +701,7 @@ class PersistentTerminal {
 		this.ioSocket = null;
 		this.controlSocket = null;
 		this.subscribers.clear();
+		this.lastRestore = null;
 		this.terminal.dispose();
 		this.hostElement.remove();
 	}
