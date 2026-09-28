@@ -1,17 +1,17 @@
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import type { Command } from "commander";
-
+import { getRuntimeAgentCatalogEntry } from "../core/agent-catalog";
 import type {
 	RuntimeAgentId,
 	RuntimeBoardCard,
 	RuntimeBoardColumnId,
 	RuntimeBoardDependency,
-	RuntimeClineReasoningEffort,
-	RuntimeTaskClineSettings,
+	RuntimeTaskAgentSettings,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import { runtimeAgentIdSchema, runtimeClineReasoningEffortSchema } from "../core/api-contract";
+import { runtimeAgentIdSchema } from "../core/api-contract";
 import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin, getRuntimeFetch } from "../core/runtime-endpoint";
+import { cloneRuntimeTaskAgentSettings } from "../core/task-agent-settings";
 import {
 	addTaskDependency,
 	addTaskToColumn,
@@ -108,52 +108,38 @@ function parseOptionalStringOrDefault(value: string | undefined): string | null 
 	return value;
 }
 
-type ParsedTaskClineReasoningEffort = RuntimeClineReasoningEffort | "default" | null | undefined;
+type ParsedTaskReasoningEffort = string | null | undefined;
 
-function parseTaskClineReasoningEffort(value: string | undefined): ParsedTaskClineReasoningEffort {
+function parseTaskReasoningEffort(value: string | undefined): ParsedTaskReasoningEffort {
 	if (value === undefined) {
 		return undefined;
 	}
 	if (value === "inherit") {
 		return null;
 	}
-	if (value === "default") {
-		return "default";
-	}
-	const result = runtimeClineReasoningEffortSchema.safeParse(value);
-	if (result.success) {
-		return result.data;
-	}
-	throw new Error("Invalid Cline reasoning effort. Expected one of: default, low, medium, high, xhigh, inherit.");
+	return value;
 }
 
-function cloneTaskClineSettings(settings?: RuntimeTaskClineSettings): RuntimeTaskClineSettings | undefined {
-	if (settings === undefined) {
-		return undefined;
-	}
-	const providerId = settings.providerId?.trim();
-	const modelId = settings.modelId?.trim();
-	return {
-		...(providerId ? { providerId } : {}),
-		...(modelId ? { modelId } : {}),
-		...(settings.reasoningEffort ? { reasoningEffort: settings.reasoningEffort } : {}),
-	};
-}
-
-function formatTaskClineSettings(settings?: RuntimeTaskClineSettings): JsonRecord {
+/**
+ * Emits `agentSettings` plus a deprecated `clineSettings` mirror so existing
+ * CLI consumers keep working until the mirror is removed.
+ */
+export function formatTaskAgentSettings(settings?: RuntimeTaskAgentSettings): JsonRecord {
 	if (settings === undefined) {
 		return {};
 	}
+	const cloned = cloneRuntimeTaskAgentSettings(settings) ?? {};
 	return {
-		clineSettings: cloneTaskClineSettings(settings) ?? {},
+		agentSettings: cloned,
+		clineSettings: cloned,
 	};
 }
 
-function buildTaskClineSettingsForCreate(input: {
+export function buildTaskAgentSettingsForCreate(input: {
 	providerId?: string;
 	modelId?: string;
-	reasoningEffort?: ParsedTaskClineReasoningEffort;
-}): RuntimeTaskClineSettings | undefined {
+	reasoningEffort?: ParsedTaskReasoningEffort;
+}): RuntimeTaskAgentSettings | undefined {
 	const providerId = input.providerId?.trim();
 	const modelId = input.modelId?.trim();
 	const reasoningEffort = input.reasoningEffort === null ? undefined : input.reasoningEffort;
@@ -167,18 +153,18 @@ function buildTaskClineSettingsForCreate(input: {
 	};
 }
 
-function buildTaskClineSettingsForUpdate(
-	currentSettings: RuntimeTaskClineSettings | undefined,
+export function buildTaskAgentSettingsForUpdate(
+	currentSettings: RuntimeTaskAgentSettings | undefined,
 	input: {
 		providerId?: string | null;
 		modelId?: string | null;
-		reasoningEffort?: ParsedTaskClineReasoningEffort;
+		reasoningEffort?: ParsedTaskReasoningEffort;
 	},
-): RuntimeTaskClineSettings | null | undefined {
+): RuntimeTaskAgentSettings | null | undefined {
 	if (input.providerId === undefined && input.modelId === undefined && input.reasoningEffort === undefined) {
 		return undefined;
 	}
-	const nextSettings = cloneTaskClineSettings(currentSettings) ?? {};
+	const nextSettings = cloneRuntimeTaskAgentSettings(currentSettings) ?? {};
 	let preserveEmptyOverride = currentSettings !== undefined && Object.keys(currentSettings).length === 0;
 
 	if (input.providerId !== undefined) {
@@ -221,6 +207,47 @@ function buildTaskClineSettingsForUpdate(
 	}
 
 	return nextSettings;
+}
+
+/** True only when the command itself named an agent (`--agent-id`), not when a card already has one. */
+export function shouldWarnOnExplicitAgentId(
+	explicitAgentId: RuntimeAgentId | null | undefined,
+): explicitAgentId is RuntimeAgentId {
+	return explicitAgentId != null;
+}
+
+/**
+ * Never silently drop per-task settings: when an explicit agent override is
+ * set, warn on stderr about settings the agent has no launch mechanism for.
+ * Values are always stored and passed through verbatim regardless.
+ */
+export function warnOnAgentSettingsMechanismGaps(
+	agentId: RuntimeAgentId,
+	settings: RuntimeTaskAgentSettings | undefined,
+): void {
+	if (!settings) {
+		return;
+	}
+	const entry = getRuntimeAgentCatalogEntry(agentId);
+	if (!entry) {
+		return;
+	}
+	const { label, capabilities } = entry;
+	if (settings.modelId && capabilities.modelOverride === "none") {
+		process.stderr.write(
+			`Warning: ${label} has no launch-time model override; --model "${settings.modelId}" is stored but ignored at launch.\n`,
+		);
+	}
+	if (settings.reasoningEffort && capabilities.effortOverride === "none") {
+		process.stderr.write(
+			`Warning: ${label} has no launch-time reasoning-effort override; --effort "${settings.reasoningEffort}" is stored but ignored at launch.\n`,
+		);
+	}
+	if (settings.providerId && capabilities.providerOverride === "none") {
+		process.stderr.write(
+			`Warning: ${label} does not read a provider; --provider "${settings.providerId}" is stored but ignored at launch.\n`,
+		);
+	}
 }
 
 function resolveTaskCommandTarget(input: TaskCommandTarget, commandName: string): ResolvedTaskCommandTarget {
@@ -352,7 +379,7 @@ function formatTaskRecord(
 		autoReviewEnabled: task.autoReviewEnabled === true,
 		autoReviewMode: task.autoReviewMode ?? "commit",
 		...(task.agentId ? { agentId: task.agentId } : {}),
-		...formatTaskClineSettings(task.clineSettings),
+		...formatTaskAgentSettings(task.agentSettings),
 		createdAt: task.createdAt,
 		updatedAt: task.updatedAt,
 		session: session
@@ -482,11 +509,14 @@ async function createTask(input: {
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: "commit" | "pr";
 	agentId?: RuntimeAgentId;
-	clineSettings?: RuntimeTaskClineSettings;
+	agentSettings?: RuntimeTaskAgentSettings;
 }): Promise<JsonRecord> {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
+	if (shouldWarnOnExplicitAgentId(input.agentId)) {
+		warnOnAgentSettingsMechanismGaps(input.agentId, input.agentSettings);
+	}
 	const created = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (state) => {
 		const resolvedBaseRef = (input.baseRef ?? "").trim() || resolveTaskBaseRef(state);
 		if (!resolvedBaseRef) {
@@ -502,7 +532,7 @@ async function createTask(input: {
 				autoReviewEnabled: input.autoReviewEnabled,
 				autoReviewMode: input.autoReviewMode,
 				agentId: input.agentId,
-				clineSettings: input.clineSettings,
+				agentSettings: input.agentSettings,
 				baseRef: resolvedBaseRef,
 			},
 			() => globalThis.crypto.randomUUID(),
@@ -526,7 +556,7 @@ async function createTask(input: {
 			autoReviewEnabled: created.autoReviewEnabled === true,
 			autoReviewMode: created.autoReviewMode ?? "commit",
 			...(created.agentId ? { agentId: created.agentId } : {}),
-			...formatTaskClineSettings(created.clineSettings),
+			...formatTaskAgentSettings(created.agentSettings),
 		},
 	};
 }
@@ -542,9 +572,9 @@ async function updateTaskCommand(input: {
 	autoReviewEnabled?: boolean;
 	autoReviewMode?: "commit" | "pr";
 	agentId?: RuntimeAgentId | null;
-	clineProviderId?: string | null;
-	clineModelId?: string | null;
-	clineReasoningEffort?: ParsedTaskClineReasoningEffort;
+	providerId?: string | null;
+	modelId?: string | null;
+	reasoningEffort?: ParsedTaskReasoningEffort;
 }): Promise<JsonRecord> {
 	if (
 		input.title === undefined &&
@@ -554,9 +584,9 @@ async function updateTaskCommand(input: {
 		input.autoReviewEnabled === undefined &&
 		input.autoReviewMode === undefined &&
 		input.agentId === undefined &&
-		input.clineProviderId === undefined &&
-		input.clineModelId === undefined &&
-		input.clineReasoningEffort === undefined
+		input.providerId === undefined &&
+		input.modelId === undefined &&
+		input.reasoningEffort === undefined
 	) {
 		throw new Error("task update requires at least one field to change.");
 	}
@@ -564,16 +594,18 @@ async function updateTaskCommand(input: {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
+	let mergedAgentSettings: RuntimeTaskAgentSettings | null | undefined;
 	const updated = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (runtimeState) => {
 		const taskRecord = findTaskRecord(runtimeState, input.taskId);
 		if (!taskRecord) {
 			throw new Error(`Task "${input.taskId}" was not found in workspace ${workspaceRepoPath}.`);
 		}
-		const nextTaskClineSettings = buildTaskClineSettingsForUpdate(taskRecord.task.clineSettings, {
-			providerId: input.clineProviderId,
-			modelId: input.clineModelId,
-			reasoningEffort: input.clineReasoningEffort,
+		const agentSettings = buildTaskAgentSettingsForUpdate(taskRecord.task.agentSettings, {
+			providerId: input.providerId,
+			modelId: input.modelId,
+			reasoningEffort: input.reasoningEffort,
 		});
+		mergedAgentSettings = agentSettings;
 
 		const updatedTask = updateTask(runtimeState.board, input.taskId, {
 			title: input.title ?? taskRecord.task.title,
@@ -583,7 +615,7 @@ async function updateTaskCommand(input: {
 			autoReviewEnabled: input.autoReviewEnabled ?? taskRecord.task.autoReviewEnabled === true,
 			autoReviewMode: input.autoReviewMode ?? taskRecord.task.autoReviewMode ?? "commit",
 			agentId: input.agentId,
-			clineSettings: nextTaskClineSettings,
+			agentSettings,
 		});
 		if (!updatedTask.updated || !updatedTask.task) {
 			throw new Error(`Task "${input.taskId}" could not be updated.`);
@@ -599,6 +631,10 @@ async function updateTaskCommand(input: {
 			value: formatTaskRecord(nextState, updatedTask.task, taskRecord.columnId),
 		};
 	});
+
+	if (shouldWarnOnExplicitAgentId(input.agentId)) {
+		warnOnAgentSettingsMechanismGaps(input.agentId, mergedAgentSettings ?? undefined);
+	}
 
 	return {
 		ok: true,
@@ -711,7 +747,7 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 			startInPlanMode: task.startInPlanMode,
 			baseRef: task.baseRef,
 			agentId: task.agentId,
-			clineSettings: task.clineSettings,
+			agentSettings: task.agentSettings,
 		});
 		if (!started.ok || !started.summary) {
 			throw new Error(started.error ?? "Could not start task session.");
@@ -1060,6 +1096,22 @@ async function deleteTaskCommand(input: {
 	};
 }
 
+/**
+ * Resolve a settings flag that has both a generic form and a deprecated
+ * `--cline-*` alias. Passing both forms for the same field is an error.
+ */
+export function resolveSettingsFlag(
+	generic: string | undefined,
+	alias: string | undefined,
+	genericName: string,
+	aliasName: string,
+): string | undefined {
+	if (generic !== undefined && alias !== undefined) {
+		throw new Error(`Cannot use both ${genericName} and the deprecated ${aliasName} for the same field.`);
+	}
+	return generic ?? alias;
+}
+
 function parseOptionalBooleanOption(value: unknown, flagName: string): boolean | undefined {
 	if (value === undefined) {
 		return undefined;
@@ -1125,19 +1177,13 @@ export function registerTaskCommand(program: Command): void {
 		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
 		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
 		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
-		.option("--agent-id <id>", "Agent override: cline | claude | codex | droid | gemini | opencode | default.")
-		.option(
-			"--cline-provider <id>",
-			'Cline provider override (e.g. anthropic, openai, cline). Use "default" for workspace default.',
-		)
-		.option(
-			"--cline-model <id>",
-			'Cline model override (e.g. claude-sonnet-4-20250514). Use "default" for workspace default.',
-		)
-		.option(
-			"--cline-reasoning-effort <level>",
-			"Cline reasoning effort override: default | low | medium | high | xhigh.",
-		)
+		.option("--agent-id <id>", "Agent override: cline | claude | codex | droid | gemini | opencode | kiro | default.")
+		.option("--provider <id>", "Provider override for the task's agent. Valid values depend on the agent.")
+		.option("--model <id>", "Model override for the task's agent. Valid values depend on the agent.")
+		.option("--effort <level>", "Reasoning effort override for the task's agent. Valid values depend on the agent.")
+		.option("--cline-provider <id>", "(Deprecated: use --provider) Provider override for the task's agent.")
+		.option("--cline-model <id>", "(Deprecated: use --model) Model override for the task's agent.")
+		.option("--cline-reasoning-effort <level>", "(Deprecated: use --effort) Reasoning effort override.")
 		.action(
 			async (options: {
 				title?: string;
@@ -1148,6 +1194,9 @@ export function registerTaskCommand(program: Command): void {
 				autoReviewEnabled?: unknown;
 				autoReviewMode?: "commit" | "pr";
 				agentId?: string;
+				provider?: string;
+				model?: string;
+				effort?: string;
 				clineProvider?: string;
 				clineModel?: string;
 				clineReasoningEffort?: string;
@@ -1164,10 +1213,28 @@ export function registerTaskCommand(program: Command): void {
 							autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
 							autoReviewMode: options.autoReviewMode,
 							agentId: parseAgentId(options.agentId) ?? undefined,
-							clineSettings: buildTaskClineSettingsForCreate({
-								providerId: parseOptionalStringOrDefault(options.clineProvider) ?? undefined,
-								modelId: parseOptionalStringOrDefault(options.clineModel) ?? undefined,
-								reasoningEffort: parseTaskClineReasoningEffort(options.clineReasoningEffort),
+							agentSettings: buildTaskAgentSettingsForCreate({
+								providerId:
+									parseOptionalStringOrDefault(
+										resolveSettingsFlag(
+											options.provider,
+											options.clineProvider,
+											"--provider",
+											"--cline-provider",
+										),
+									) ?? undefined,
+								modelId:
+									parseOptionalStringOrDefault(
+										resolveSettingsFlag(options.model, options.clineModel, "--model", "--cline-model"),
+									) ?? undefined,
+								reasoningEffort: parseTaskReasoningEffort(
+									resolveSettingsFlag(
+										options.effort,
+										options.clineReasoningEffort,
+										"--effort",
+										"--cline-reasoning-effort",
+									),
+								),
 							}),
 						}),
 				);
@@ -1187,17 +1254,23 @@ export function registerTaskCommand(program: Command): void {
 		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
 		.option(
 			"--agent-id <id>",
-			'Agent override: cline | claude | codex | droid | gemini | opencode. Use "default" to clear.',
+			'Agent override: cline | claude | codex | droid | gemini | opencode | kiro. Use "default" to clear.',
 		)
 		.option(
-			"--cline-provider <id>",
-			'Cline provider override (e.g. anthropic, openai, cline). Use "default" to clear.',
+			"--provider <id>",
+			'Provider override for the task\'s agent. Use "default" to clear. Valid values depend on the agent.',
 		)
-		.option("--cline-model <id>", 'Cline model override (e.g. claude-sonnet-4-20250514). Use "default" to clear.')
 		.option(
-			"--cline-reasoning-effort <level>",
-			'Cline reasoning effort override: default | low | medium | high | xhigh. Use "inherit" to clear.',
+			"--model <id>",
+			'Model override for the task\'s agent. Use "default" to clear. Valid values depend on the agent.',
 		)
+		.option(
+			"--effort <level>",
+			'Reasoning effort override for the task\'s agent. Use "default" or "inherit" to clear.',
+		)
+		.option("--cline-provider <id>", "(Deprecated: use --provider) Provider override for the task's agent.")
+		.option("--cline-model <id>", "(Deprecated: use --model) Model override for the task's agent.")
+		.option("--cline-reasoning-effort <level>", "(Deprecated: use --effort) Reasoning effort override.")
 		.action(
 			async (options: {
 				taskId: string;
@@ -1209,6 +1282,9 @@ export function registerTaskCommand(program: Command): void {
 				autoReviewEnabled?: unknown;
 				autoReviewMode?: "commit" | "pr";
 				agentId?: string;
+				provider?: string;
+				model?: string;
+				effort?: string;
 				clineProvider?: string;
 				clineModel?: string;
 				clineReasoningEffort?: string;
@@ -1226,9 +1302,20 @@ export function registerTaskCommand(program: Command): void {
 							autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
 							autoReviewMode: options.autoReviewMode,
 							agentId: parseAgentId(options.agentId),
-							clineProviderId: parseOptionalStringOrDefault(options.clineProvider),
-							clineModelId: parseOptionalStringOrDefault(options.clineModel),
-							clineReasoningEffort: parseTaskClineReasoningEffort(options.clineReasoningEffort),
+							providerId: parseOptionalStringOrDefault(
+								resolveSettingsFlag(options.provider, options.clineProvider, "--provider", "--cline-provider"),
+							),
+							modelId: parseOptionalStringOrDefault(
+								resolveSettingsFlag(options.model, options.clineModel, "--model", "--cline-model"),
+							),
+							reasoningEffort: parseTaskReasoningEffort(
+								resolveSettingsFlag(
+									options.effort,
+									options.clineReasoningEffort,
+									"--effort",
+									"--cline-reasoning-effort",
+								),
+							),
 						}),
 				);
 			},

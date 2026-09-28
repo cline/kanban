@@ -70,6 +70,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["codex", "opencode", "gemini"])).toBe("codex");
 		expect(pickBestInstalledAgentIdFromDetected(["opencode", "droid", "gemini"])).toBe("droid");
 		expect(pickBestInstalledAgentIdFromDetected(["kiro-cli", "gemini"])).toBe("kiro");
+		expect(pickBestInstalledAgentIdFromDetected(["grok"])).toBe("grok");
+		expect(pickBestInstalledAgentIdFromDetected(["agent"])).toBeNull();
+		expect(pickBestInstalledAgentIdFromDetected(["agent", "grok"])).toBe("grok");
+		expect(pickBestInstalledAgentIdFromDetected(["claude", "grok"])).toBe("claude");
 		expect(pickBestInstalledAgentIdFromDetected(["droid", "gemini", "cline"])).toBe("droid");
 		expect(pickBestInstalledAgentIdFromDetected(["gemini", "cline"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex", "cline"])).toBe("claude");
@@ -202,6 +206,39 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(state.shortcuts).toEqual([]);
 			});
 		} finally {
+			cleanupHome();
+		}
+	});
+
+	it("keeps a configured grok agent when launch support is enabled", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-grok-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-grok-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-grok-");
+
+		try {
+			writeFakeCommand(tempBin, "grok");
+
+			const runtimeConfigDir = join(tempHome, ".cline", "kanban");
+			mkdirSync(runtimeConfigDir, { recursive: true });
+			writeFileSync(
+				join(runtimeConfigDir, "config.json"),
+				JSON.stringify(
+					{
+						selectedAgentId: "grok",
+					},
+					null,
+					2,
+				),
+				"utf8",
+			);
+
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
+				const state = await loadRuntimeConfig(tempProject);
+				expect(state.selectedAgentId).toBe("grok");
+			});
+		} finally {
+			cleanupBin();
+			cleanupProject();
 			cleanupHome();
 		}
 	});

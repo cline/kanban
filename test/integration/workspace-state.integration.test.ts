@@ -58,6 +58,8 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		modelId: null,
+		reasoningEffort: null,
 	};
 }
 

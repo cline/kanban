@@ -18,6 +18,8 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		modelId: null,
+		reasoningEffort: null,
 		...overrides,
 	};
 }

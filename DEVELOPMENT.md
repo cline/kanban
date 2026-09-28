@@ -225,6 +225,13 @@ They are distinct from Cline SDK plugin runtime hooks such as `beforeRun`,
   - `PreToolUse` for active tools like `Read`, `Grep`, `Glob`, `FetchUrl`, `WebSearch`, `Execute`, `Task`, `Edit`, and `Create` emits `to_in_progress`
   - `PreToolUse` for `AskUser` and `Stop` emit `to_review`
   - `PostToolUse` for `AskUser` and `UserPromptSubmit` emit `to_in_progress`
+- Grok Build
+  - Project hooks live at `<worktree>/.grok/hooks/kanban.json` and require `--trust`
+  - `UserPromptSubmit`, `PostToolUse`, and `PostToolUseFailure` emit `to_in_progress`
+  - `PreToolUse` emits `activity`
+  - `Stop` emits `to_review` only when the hook payload `reason` is `end_turn`
+  - `StopCancelled` with `permission_rejected` / `permission_cancelled` emits `to_review`
+  - `Notification` with `permission_prompt` or `idle_prompt` emits `to_review`
 
 Important behavior details:
 
