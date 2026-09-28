@@ -742,6 +742,23 @@ async function run(): Promise<void> {
 	await program.parseAsync(argv, { from: "user" });
 	if (!shouldAutoOpenBrowserTabForInvocation(argv)) {
 		await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
+		// process.stdout is asynchronous when it points at a pipe. Calling
+		// process.exit() before the write queue drains truncates the output at
+		// the pipe buffer size (64 KiB on Linux). Wait for stdout to flush so
+		// JSON commands stay complete when piped. See #623.
+		//
+		// If the pipe consumer closes early (EPIPE), the drain callback still
+		// fires, but Node emits an unhandled "error" event on stdout that would
+		// crash the process. Attach a no-op error handler for the drain so a
+		// closed pipe exits cleanly instead of throwing.
+		if (process.stdout.writableLength > 0) {
+			const drainErrorHandler = () => {};
+			process.stdout.once("error", drainErrorHandler);
+			await new Promise<void>((resolve) => {
+				process.stdout.write("", () => resolve());
+			});
+			process.stdout.off("error", drainErrorHandler);
+		}
 		process.exit(process.exitCode ?? 0);
 	}
 }
