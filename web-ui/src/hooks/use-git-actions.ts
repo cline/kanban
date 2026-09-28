@@ -18,6 +18,7 @@ import {
 } from "@/stores/workspace-metadata-store";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import type { BoardCard, BoardData, CardSelection } from "@/types";
+import { isPendingGitActionStale } from "@/types";
 
 type TaskGitActionSource = "card" | "agent";
 
@@ -70,7 +71,6 @@ export interface UseGitActionsResult {
 	handleOpenPrTask: (taskId: string) => void;
 	handleAgentCommitTask: (taskId: string) => void;
 	handleAgentOpenPrTask: (taskId: string) => void;
-	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	resetGitActionState: () => void;
 }
 
@@ -223,6 +223,12 @@ export function useGitActions({
 			const taskLoadingState = taskGitActionLoadingByTaskId[taskId];
 			const actionInFlightSource = action === "commit" ? taskLoadingState?.commitSource : taskLoadingState?.prSource;
 			if (actionInFlightSource !== null && actionInFlightSource !== undefined) {
+				return false;
+			}
+			// Cross-tab/runtime lock: refuse a manual git action while another one is
+			// armed on the card. The arming state is server-side, so every actor sees it.
+			const pendingGitAction = findCardSelection(board, taskId)?.card.pendingGitAction ?? null;
+			if (pendingGitAction && !isPendingGitActionStale(pendingGitAction)) {
 				return false;
 			}
 			setTaskGitActionLoading(taskId, action, source);
@@ -498,13 +504,6 @@ export function useGitActions({
 		}
 	}, [currentProjectId, isDiscardingHomeWorkingChanges, refreshGitHistory]);
 
-	const runAutoReviewGitAction = useCallback(
-		async (taskId: string, action: TaskGitAction) => {
-			return await runTaskGitAction(taskId, action, "card");
-		},
-		[runTaskGitAction],
-	);
-
 	const resetGitActionState = useCallback(() => {
 		setRunningGitAction(null);
 		setTaskGitActionLoadingByTaskId({});
@@ -548,7 +547,6 @@ export function useGitActions({
 		handleOpenPrTask,
 		handleAgentCommitTask,
 		handleAgentOpenPrTask,
-		runAutoReviewGitAction,
 		resetGitActionState,
 	};
 }

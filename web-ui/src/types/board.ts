@@ -1,11 +1,14 @@
+import { isPendingGitActionStale, PENDING_GIT_ACTION_STALE_AFTER_MS } from "@runtime-task-state";
 import type {
 	RuntimeAgentId,
 	RuntimeBoardColumnId,
 	RuntimeTaskAutoReviewMode,
 	RuntimeTaskClineSettings,
 	RuntimeTaskImage,
+	RuntimeTaskPendingGitAction,
 } from "@/runtime/types";
 
+export { isPendingGitActionStale, PENDING_GIT_ACTION_STALE_AFTER_MS };
 export type BoardColumnId = RuntimeBoardColumnId;
 
 export type TaskAutoReviewMode = RuntimeTaskAutoReviewMode;
@@ -36,6 +39,8 @@ export function getTaskAutoReviewCancelButtonLabel(mode: TaskAutoReviewMode | nu
 	return "Cancel Auto-commit";
 }
 
+export type TaskPendingGitAction = RuntimeTaskPendingGitAction;
+
 export interface BoardCard {
 	id: string;
 	title: string;
@@ -49,6 +54,7 @@ export interface BoardCard {
 	baseRef: string;
 	createdAt: number;
 	updatedAt: number;
+	pendingGitAction?: TaskPendingGitAction | null;
 }
 
 export interface BoardColumn {

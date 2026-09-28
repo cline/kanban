@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-
+import { runtimeBoardCardSchema } from "../../src/core/api-contract";
 import {
 	parseHookIngestRequest,
 	parseTaskSessionStartRequest,
@@ -87,5 +87,58 @@ describe("parseTaskSessionStartRequest", () => {
 			baseRef: "main",
 			resumeFromTrash: true,
 		});
+	});
+});
+
+describe("runtimeBoardCardSchema pendingGitAction", () => {
+	const legacyCard = {
+		id: "task-1",
+		prompt: "Do the thing",
+		startInPlanMode: false,
+		baseRef: "main",
+		createdAt: 1,
+		updatedAt: 2,
+	};
+
+	it("parses legacy cards without pendingGitAction unchanged", () => {
+		const parsed = runtimeBoardCardSchema.parse(legacyCard);
+		expect(parsed.pendingGitAction).toBeUndefined();
+		expect(parsed.id).toBe("task-1");
+		expect(parsed.prompt).toBe("Do the thing");
+	});
+
+	it("parses null pendingGitAction", () => {
+		const parsed = runtimeBoardCardSchema.parse({ ...legacyCard, pendingGitAction: null });
+		expect(parsed.pendingGitAction).toBeNull();
+	});
+
+	it("parses a persisted pendingGitAction and defaults attempt to 0", () => {
+		const parsed = runtimeBoardCardSchema.parse({
+			...legacyCard,
+			pendingGitAction: {
+				action: "commit",
+				requestedAt: 123,
+				headCommitAtRequest: "abc123",
+			},
+		});
+		expect(parsed.pendingGitAction).toEqual({
+			action: "commit",
+			requestedAt: 123,
+			headCommitAtRequest: "abc123",
+			attempt: 0,
+		});
+	});
+
+	it("rejects an unknown pendingGitAction action", () => {
+		expect(() =>
+			runtimeBoardCardSchema.parse({
+				...legacyCard,
+				pendingGitAction: {
+					action: "push",
+					requestedAt: 123,
+					headCommitAtRequest: null,
+				},
+			}),
+		).toThrow();
 	});
 });

@@ -16,6 +16,7 @@ import {
 	resolveTaskAutoReviewMode,
 	type TaskAutoReviewMode,
 	type TaskImage,
+	type TaskPendingGitAction,
 } from "@/types";
 
 export interface TaskDraft {
@@ -143,6 +144,37 @@ function normalizeTaskClineSettings(input: {
 	};
 }
 
+function normalizeTaskPendingGitAction(rawPending: unknown): TaskPendingGitAction | undefined {
+	if (!rawPending || typeof rawPending !== "object") {
+		return undefined;
+	}
+	const pending = rawPending as {
+		action?: unknown;
+		requestedAt?: unknown;
+		headCommitAtRequest?: unknown;
+		attempt?: unknown;
+	};
+	if (pending.action !== "commit" && pending.action !== "pr") {
+		return undefined;
+	}
+	if (typeof pending.requestedAt !== "number") {
+		return undefined;
+	}
+	const headCommitAtRequest =
+		pending.headCommitAtRequest === null || typeof pending.headCommitAtRequest === "string"
+			? pending.headCommitAtRequest
+			: undefined;
+	if (headCommitAtRequest === undefined) {
+		return undefined;
+	}
+	return {
+		action: pending.action,
+		requestedAt: pending.requestedAt,
+		headCommitAtRequest,
+		attempt: typeof pending.attempt === "number" && pending.attempt >= 0 ? Math.floor(pending.attempt) : 0,
+	};
+}
+
 function normalizeCard(rawCard: unknown): BoardCard | null {
 	if (!rawCard || typeof rawCard !== "object") {
 		return null;
@@ -164,6 +196,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		clineReasoningEffort?: unknown;
 		createdAt?: unknown;
 		updatedAt?: unknown;
+		pendingGitAction?: unknown;
 	};
 	const prompt = typeof card.prompt === "string" ? card.prompt.trim() : "";
 	if (!prompt) {
@@ -185,6 +218,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	});
 
 	const now = Date.now();
+	const pendingGitAction = normalizeTaskPendingGitAction(card.pendingGitAction);
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
@@ -201,6 +235,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		...(clineSettings !== undefined ? { clineSettings } : {}),
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
+		...(pendingGitAction !== undefined ? { pendingGitAction } : {}),
 	};
 }
 
