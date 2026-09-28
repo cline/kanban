@@ -47,6 +47,7 @@ function rawDataToBuffer(data: RawData): Buffer {
 
 class FakeTerminalManager implements TerminalSessionService {
 	private readonly listenersByTaskId = new Map<string, Set<TerminalSessionListener>>();
+	restoreGeneration = 1;
 
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null {
 		const listeners = this.listenersByTaskId.get(taskId) ?? new Set<TerminalSessionListener>();
@@ -66,8 +67,13 @@ class FakeTerminalManager implements TerminalSessionService {
 			snapshot: "",
 			cols: 80,
 			rows: 24,
+			restoreGeneration: this.restoreGeneration,
 		}),
 	);
+
+	beginNewSession(): void {
+		this.restoreGeneration += 1;
+	}
 	recoverStaleSession = vi.fn(() => createSummary());
 	writeInput = vi.fn(() => createSummary());
 	resize = vi.fn(() => true);
@@ -463,5 +469,45 @@ describe("createTerminalWebSocketBridge", () => {
 		await closeSocket(controlSocketA.socket);
 		await closeSocket(ioSocketB.socket);
 		await closeSocket(controlSocketB.socket);
+	});
+
+	it("includes restoreGeneration on restore and keeps it for the same session", async () => {
+		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=client-a`;
+
+		const first = await openQueuedWebSocket(controlUrl);
+		const restoreA = await waitForControlMessage(first, (message) => message.type === "restore");
+		expect(restoreA).toMatchObject({
+			type: "restore",
+			restoreGeneration: 1,
+		});
+		await closeSocket(first.socket);
+
+		const second = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=client-b`,
+		);
+		const restoreB = await waitForControlMessage(second, (message) => message.type === "restore");
+		expect(restoreB).toMatchObject({
+			type: "restore",
+			restoreGeneration: 1,
+		});
+		await closeSocket(second.socket);
+	});
+
+	it("sends a higher restoreGeneration after a new session starts", async () => {
+		const first = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=client-a`,
+		);
+		const restoreA = await waitForControlMessage(first, (message) => message.type === "restore");
+		expect(restoreA).toMatchObject({ type: "restore", restoreGeneration: 1 });
+		await closeSocket(first.socket);
+
+		terminalManager.beginNewSession();
+
+		const second = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=client-b`,
+		);
+		const restoreB = await waitForControlMessage(second, (message) => message.type === "restore");
+		expect(restoreB).toMatchObject({ type: "restore", restoreGeneration: 2 });
+		await closeSocket(second.socket);
 	});
 });

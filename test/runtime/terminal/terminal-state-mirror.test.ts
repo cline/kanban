@@ -67,4 +67,53 @@ describe("TerminalStateMirror", () => {
 
 		expect(onInputResponse).toHaveBeenCalledWith("\u001b[1;1R");
 	});
+
+	it("keeps lines above the viewport in the restore snapshot", async () => {
+		const rows = 8;
+		const mirror = createMirror(40, rows);
+		const lines = Array.from({ length: rows + 12 }, (_, i) => `line-${i}`);
+		mirror.applyOutput(Buffer.from(`${lines.join("\r\n")}\r\n`, "utf8"));
+
+		const snapshot = await mirror.getSnapshot();
+
+		expect(snapshot.snapshot).toContain("line-0");
+		expect(snapshot.snapshot).toContain(`line-${rows + 11}`);
+	});
+
+	it("reuses the restore snapshot when nothing has been written or resized", async () => {
+		const mirror = createMirror();
+		mirror.applyOutput(Buffer.from("stable-output\r\n", "utf8"));
+
+		const first = await mirror.getSnapshot();
+		const second = await mirror.getSnapshot();
+
+		expect(second).toBe(first);
+		expect(second.snapshot).toContain("stable-output");
+	});
+
+	it("rebuilds the restore snapshot after new output", async () => {
+		const mirror = createMirror();
+		mirror.applyOutput(Buffer.from("before-output\r\n", "utf8"));
+		const first = await mirror.getSnapshot();
+
+		mirror.applyOutput(Buffer.from("after-output\r\n", "utf8"));
+		const second = await mirror.getSnapshot();
+
+		expect(second).not.toBe(first);
+		expect(second.snapshot).toContain("before-output");
+		expect(second.snapshot).toContain("after-output");
+	});
+
+	it("rebuilds the restore snapshot after a resize", async () => {
+		const mirror = createMirror(80, 24);
+		mirror.applyOutput(Buffer.from("before-resize\r\n", "utf8"));
+		const first = await mirror.getSnapshot();
+
+		mirror.resize(120, 40);
+		const second = await mirror.getSnapshot();
+
+		expect(second).not.toBe(first);
+		expect(second.cols).toBe(120);
+		expect(second.rows).toBe(40);
+	});
 });

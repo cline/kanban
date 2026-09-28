@@ -13,6 +13,16 @@ const TERMINAL_WORD_SEPARATOR = " ()[]{}',\"`";
 const TERMINAL_FONT_FAMILY =
 	"'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace";
 
+/**
+ * Browser display cap for the last 1,000 lines.
+ *
+ * This is the room the client needs to hold a full 1k restore snapshot.
+ * It is not a second restore-size cap, and it does not have to match the
+ * server buffer in order to shrink the payload. Restore is a cached full
+ * serialize applied in 16 KiB writes; warm reconnects can skip reset.
+ */
+const TERMINAL_SCROLLBACK = 1_000;
+
 export function createKanbanTerminalOptions({
 	cursorColor,
 	isMacPlatform,
@@ -38,7 +48,7 @@ export function createKanbanTerminalOptions({
 		rightClickSelectsWord: false,
 		scrollOnEraseInDisplay: true,
 		scrollOnUserInput: true,
-		scrollback: 10_000,
+		scrollback: TERMINAL_SCROLLBACK,
 		smoothScrollDuration: 0,
 		theme: {
 			background: terminalBackgroundColor,
