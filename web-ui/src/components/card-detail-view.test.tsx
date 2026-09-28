@@ -464,6 +464,8 @@ describe("CardDetailView", () => {
 						exitCode: null,
 						lastHookAt: null,
 						latestHookActivity: null,
+						modelId: null,
+						reasoningEffort: null,
 						warningMessage: null,
 					}}
 					taskSessions={{}}
@@ -502,6 +504,8 @@ describe("CardDetailView", () => {
 						exitCode: null,
 						lastHookAt: null,
 						latestHookActivity: null,
+						modelId: null,
+						reasoningEffort: null,
 						warningMessage: null,
 					}}
 					taskSessions={{}}

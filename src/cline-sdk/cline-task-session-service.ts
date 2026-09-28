@@ -72,7 +72,12 @@ export interface StartClineTaskSessionRequest {
 	mode?: RuntimeTaskSessionMode;
 	apiKey?: string | null;
 	baseUrl?: string | null;
+	// Per-task override in the narrow Cline effort vocabulary; null means
+	// "explicitly cleared to the model default".
 	reasoningEffort?: RuntimeClineReasoningEffort | null;
+	// Non-fatal launch warnings surfaced on the session summary (e.g. an invalid
+	// card effort value that was ignored in favor of provider settings).
+	startWarnings?: string[];
 	systemPrompt?: string | null;
 }
 
@@ -372,6 +377,17 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 				} satisfies ClineTaskSessionEntry);
 		this.messageRepository.setTaskEntry(request.taskId, entry);
 		this.pendingTurnCancelTaskIds.delete(request.taskId);
+
+		// Record what this session actually launched with so the UI/sidebar agent can see it.
+		// Non-fatal start warnings (e.g. an ignored invalid card effort) land on the summary.
+		const normalizedStartWarnings = (request.startWarnings ?? [])
+			.map((warning) => warning.trim())
+			.filter((warning) => warning.length > 0);
+		updateSummary(entry, {
+			modelId,
+			reasoningEffort: request.reasoningEffort ?? null,
+			...(normalizedStartWarnings.length > 0 ? { warningMessage: normalizedStartWarnings.join(" ") } : {}),
+		});
 
 		if (!request.resumeFromTrash && (normalizedPrompt.length > 0 || hasRequestImages)) {
 			const message = createMessage(request.taskId, "user", normalizedPrompt, request.images);

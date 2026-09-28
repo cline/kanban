@@ -613,9 +613,13 @@ describe("source task commands", () => {
 
 				const inheritedPayload = JSON.parse(inheritedCreate.stdout) as {
 					ok?: boolean;
-					task?: { clineSettings?: Record<string, unknown> };
+					task?: {
+						agentSettings?: Record<string, unknown>;
+						clineSettings?: Record<string, unknown>;
+					};
 				};
 				expect(inheritedPayload.ok).toBe(true);
+				expect(inheritedPayload.task?.agentSettings).toBeUndefined();
 				expect(inheritedPayload.task?.clineSettings).toBeUndefined();
 
 				const defaultCreate = await runCliCommandAndCollectOutput({
@@ -637,9 +641,13 @@ describe("source task commands", () => {
 
 				const defaultPayload = JSON.parse(defaultCreate.stdout) as {
 					ok?: boolean;
-					task?: { clineSettings?: Record<string, unknown> };
+					task?: {
+						agentSettings?: Record<string, unknown>;
+						clineSettings?: Record<string, unknown>;
+					};
 				};
 				expect(defaultPayload.ok).toBe(true);
+				expect(defaultPayload.task?.agentSettings).toEqual({});
 				expect(defaultPayload.task?.clineSettings).toEqual({});
 			} finally {
 				await requestGracefulShutdown(serverProcess);
