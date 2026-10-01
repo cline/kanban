@@ -246,7 +246,6 @@ export function AddProjectDialog({
 								type="button"
 								onClick={() => {
 									setActiveTab("path");
-									setPendingGitInitPath(null);
 								}}
 								disabled={isBusy}
 								className={cn(
@@ -264,7 +263,6 @@ export function AddProjectDialog({
 								type="button"
 								onClick={() => {
 									setActiveTab("clone");
-									setPendingGitInitPath(null);
 								}}
 								disabled={isBusy}
 								className={cn(
