@@ -180,6 +180,54 @@ describe("BoardCard", () => {
 		}
 	});
 
+	it("settles fallback description measurements under fractional scaling", async () => {
+		mockMeasureWidths = [0, 0, 0];
+		let measurements = 0;
+		vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockImplementation(() => {
+			const width = measurements++ % 2 === 0 ? 240.49 : 240.51;
+			return { x: 0, y: 0, left: 0, top: 0, width, height: 32, right: width, bottom: 32, toJSON: () => ({}) };
+		});
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard({ prompt: "Review API changes||Description at fractional scale" })}
+					index={0}
+					columnId="backlog"
+				/>,
+			);
+		});
+		expect(container.textContent).toContain("Description at");
+		expect(measurements).toBeLessThan(5);
+	});
+
+	it("updates truncation on a width-only observer resize", async () => {
+		mockMeasureWidths = [0, 0, 0];
+		const description = "This description contains enough words to wrap and truncate in a narrow card.";
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard({ prompt: `Review API changes||${description}` })}
+					index={0}
+					columnId="backlog"
+				/>,
+			);
+		});
+		const wideText = container.textContent;
+		mockMeasureWidths = [80.25, 80.25, 80.25];
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard({ prompt: `Review API changes||${description}` })}
+					index={0}
+					columnId="backlog"
+				/>,
+			);
+		});
+		expect(container.textContent).not.toBe(wideText);
+		expect(container.textContent).toContain("This");
+		expect(container.textContent).not.toContain("contains enough words");
+	});
+
 	it("shows a mode-specific cancel button and hides it after canceling auto review", async () => {
 		await act(async () => {
 			root.render(<Harness />);
