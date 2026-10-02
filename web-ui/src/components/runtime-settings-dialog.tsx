@@ -110,6 +110,8 @@ const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 	{ id: "project", label: "Project", icon: <FolderOpen size={16} /> },
 ];
 
+const SETTINGS_SCROLL_BOTTOM_TOLERANCE_PX = 2;
+
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
 }
@@ -600,6 +602,7 @@ export function RuntimeSettingsDialog({
 		if (!body) return;
 		const headings = body.querySelectorAll<HTMLElement>("[data-settings-section]");
 		const bodyRect = body.getBoundingClientRect();
+		const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
 		let current: SettingsNavId = "general";
 
 		for (const heading of headings) {
@@ -608,6 +611,12 @@ export function RuntimeSettingsDialog({
 				const id = heading.getAttribute("data-settings-section");
 				if (id) current = id as SettingsNavId;
 			}
+		}
+
+		if (maxScrollTop > 0 && body.scrollTop >= maxScrollTop - SETTINGS_SCROLL_BOTTOM_TOLERANCE_PX) {
+			const lastHeading = headings.item(headings.length - 1);
+			const id = lastHeading?.getAttribute("data-settings-section");
+			if (id) current = id as SettingsNavId;
 		}
 
 		setActiveSection(current);

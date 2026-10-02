@@ -166,6 +166,13 @@ function findButtonByAriaLabel(container: ParentNode, ariaLabel: string): HTMLBu
 	) ?? null) as HTMLButtonElement | null;
 }
 
+function setScrollMetric(element: HTMLElement, property: "clientHeight" | "scrollHeight" | "scrollTop", value: number) {
+	Object.defineProperty(element, property, {
+		value,
+		configurable: true,
+	});
+}
+
 const savedClineOauthConfig = {
 	selectedAgentId: "cline",
 	selectedShortcutLabel: null,
@@ -280,6 +287,64 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(resetLayoutCustomizationsMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("activates the final settings nav item when the dialog is scrolled to the bottom", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const projectMarker = document.querySelector<HTMLElement>('[data-settings-section="project"]');
+		const scrollBody = projectMarker?.parentElement;
+		if (!projectMarker || !(scrollBody instanceof HTMLElement)) {
+			throw new Error("Expected the Project settings section to render inside a scrollable body.");
+		}
+
+		setScrollMetric(scrollBody, "scrollHeight", 1000);
+		setScrollMetric(scrollBody, "clientHeight", 400);
+		setScrollMetric(scrollBody, "scrollTop", 600);
+		scrollBody.getBoundingClientRect = () =>
+			({
+				top: 100,
+				bottom: 500,
+				left: 0,
+				right: 600,
+				width: 600,
+				height: 400,
+				x: 0,
+				y: 100,
+				toJSON: () => ({}),
+			}) satisfies DOMRect;
+
+		for (const marker of Array.from(scrollBody.querySelectorAll<HTMLElement>("[data-settings-section]"))) {
+			const markerTop = marker === projectMarker ? 170 : 120;
+			marker.getBoundingClientRect = () =>
+				({
+					top: markerTop,
+					bottom: markerTop,
+					left: 0,
+					right: 0,
+					width: 0,
+					height: 0,
+					x: 0,
+					y: markerTop,
+					toJSON: () => ({}),
+				}) satisfies DOMRect;
+		}
+
+		await act(async () => {
+			scrollBody.dispatchEvent(new Event("scroll", { bubbles: true }));
+		});
+
+		const projectNavButton = findButtonByText(document.body, "Project");
+		expect(projectNavButton?.className).toContain("bg-surface-3");
 	});
 
 	it("enables save on theme change and reverts preview on cancel", async () => {
