@@ -36,7 +36,7 @@
 	"overrides": {
 		"undici": ">=6.27.0 <7",
 		"esbuild": "$esbuild",
-		"js-yaml": ">=4.3.1 <5",
+		"js-yaml": ">=4.3.2 <5",
 		"nanoid@<4": ">=3.3.17 <4",
 		"postcss": ">=8.5.23 <9"
 	}
