@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,6 +87,8 @@ describe("PtySession", () => {
 	it("launches through cmd shell on Windows", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATH = "";
+		process.env.PATHEXT = ".com;.exe;.bat;.cmd";
 		const ptyProcess = createMockPtyProcess();
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 
@@ -94,7 +96,12 @@ describe("PtySession", () => {
 			binary: "codex",
 			args: ["--foo", "hello world"],
 			cwd: "C:/repo",
-			env: { TERM: "xterm-256color" },
+			env: {
+				TERM: "xterm-256color",
+				PATH: "",
+				PATHEXT: ".com;.exe;.bat;.cmd",
+				ComSpec: "C:\\Windows\\System32\\cmd.exe",
+			},
 			cols: 120,
 			rows: 40,
 		});
@@ -111,6 +118,8 @@ describe("PtySession", () => {
 	it("does not over-quote bare executables on Windows", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATH = "";
+		process.env.PATHEXT = ".com;.exe;.bat;.cmd";
 		const ptyProcess = createMockPtyProcess();
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 
@@ -159,9 +168,63 @@ describe("PtySession", () => {
 		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual(["--foo", "bar"]);
 	});
 
+	it("launches npm cmd shims directly on Windows without an extra cmd wrapper", () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATHEXT = ".com;.exe;.bat;.cmd";
+		const windowsBinDir = mkdtempSync(join(tmpdir(), "kanban-win-path-"));
+		const nodeModulesBinDir = join(windowsBinDir, "node_modules", "@openai", "codex", "bin");
+		mkdirSync(nodeModulesBinDir, { recursive: true });
+		writeFileSync(
+			join(windowsBinDir, "codex.cmd"),
+			[
+				"@ECHO off",
+				'IF EXIST "%dp0%\\node.exe" (',
+				'  SET "_prog=%dp0%\\node.exe"',
+				") ELSE (",
+				'  SET "_prog=node"',
+				")",
+				'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*',
+			].join("\r\n"),
+		);
+		writeFileSync(join(windowsBinDir, "node.exe"), "");
+		writeFileSync(join(nodeModulesBinDir, "codex.js"), "");
+		process.env.PATH = "";
+
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+
+		try {
+			PtySession.spawn({
+				binary: "codex",
+				args: ["exec", "x".repeat(12_000)],
+				cwd: "C:/repo",
+				env: {
+					PATH: windowsBinDir,
+					PATHEXT: ".com;.exe;.bat;.cmd",
+					ComSpec: "C:\\Windows\\System32\\cmd.exe",
+				},
+				cols: 120,
+				rows: 40,
+			});
+		} finally {
+			rmSync(windowsBinDir, { recursive: true, force: true });
+		}
+
+		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
+		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe(join(windowsBinDir, "node.exe"));
+		expect(ptyMocks.spawn.mock.calls[0]?.[1]).toEqual([
+			join(windowsBinDir, "node_modules", "@openai", "codex", "bin", "codex.js"),
+			"exec",
+			"x".repeat(12_000),
+		]);
+	});
+
 	it("preserves full prompt text on Windows", () => {
 		setPlatform("win32");
 		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		process.env.PATH = "";
+		process.env.PATHEXT = ".com;.exe;.bat;.cmd";
 		const ptyProcess = createMockPtyProcess();
 		ptyMocks.spawn.mockReturnValue(ptyProcess);
 

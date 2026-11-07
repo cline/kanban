@@ -6,7 +6,7 @@ import type { Command } from "commander";
 import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-contract";
 import { buildKanbanCommandParts } from "../core/kanban-command";
 import { buildKanbanRuntimeUrl, getRuntimeFetch } from "../core/runtime-endpoint";
-import { buildWindowsCmdArgsArray, resolveWindowsComSpec, shouldUseWindowsCmdLaunch } from "../core/windows-cmd-launch";
+import { buildWindowsCmdArgsArray, resolveWindowsSpawnLaunch } from "../core/windows-cmd-launch";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context";
 import type { RuntimeAppRouter } from "../trpc/app-router";
 import {
@@ -602,15 +602,10 @@ export function buildCodexWrapperSpawn(
 	env: NodeJS.ProcessEnv = process.env,
 ): { binary: string; args: string[] } {
 	const childArgs = buildCodexWrapperChildArgs(agentArgs);
-	if (!shouldUseWindowsCmdLaunch(realBinary, platform, env)) {
-		return {
-			binary: realBinary,
-			args: childArgs,
-		};
-	}
+	const resolvedLaunch = resolveWindowsSpawnLaunch(realBinary, childArgs, platform, env);
 	return {
-		binary: resolveWindowsComSpec(env),
-		args: buildWindowsCmdArgsArray(realBinary, childArgs),
+		binary: resolvedLaunch.binary,
+		args: resolvedLaunch.useCmdShell ? buildWindowsCmdArgsArray(realBinary, childArgs) : resolvedLaunch.args,
 	};
 }
 
