@@ -22,6 +22,8 @@ import type {
 	RuntimeTaskClineSettings,
 } from "@/runtime/types";
 
+const TASK_AGENT_PICKER_ORDER: readonly RuntimeAgentId[] = ["cline", "hermes", "claude", "codex", "droid", "kiro"];
+
 // ---------------------------------------------------------------------------
 // Hook: manages fetch state for Cline provider catalog + model lists
 // ---------------------------------------------------------------------------
@@ -128,7 +130,12 @@ export function useTaskAgentModelPicker({
 	}, [active, effectiveAgentId, effectiveProviderId, workspaceId]);
 
 	const agentOptions = useMemo(() => {
-		const catalog = getRuntimeLaunchSupportedAgentCatalog();
+		const orderIndexByAgentId = new Map(TASK_AGENT_PICKER_ORDER.map((agentId, index) => [agentId, index] as const));
+		const catalog = [...getRuntimeLaunchSupportedAgentCatalog()].sort((left, right) => {
+			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+			return leftOrderIndex - rightOrderIndex;
+		});
 		let firstLabel = "Default";
 		if (defaultAgentId) {
 			const defaultAgent = catalog.find((a) => a.id === defaultAgentId);
