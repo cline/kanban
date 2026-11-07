@@ -412,9 +412,19 @@ export function GitCommitDiffPanel({
 													Renamed from <code className="font-mono">{commitFile.previousPath}</code>
 												</div>
 											) : null}
-											{!isBinaryFile && rows.length > 0 ? (
+											{isBinaryFile ? (
+												<div
+													style={{
+														padding: "12px",
+														fontSize: 12,
+														color: "var(--color-text-tertiary)",
+													}}
+												>
+													Binary file not shown.
+												</div>
+											) : rows.length > 0 ? (
 												<ReadOnlyUnifiedDiff rows={rows} path={path} />
-											) : !isBinaryFile ? (
+											) : (
 												<div
 													style={{
 														padding: "12px",
@@ -424,7 +434,7 @@ export function GitCommitDiffPanel({
 												>
 													No textual diff available.
 												</div>
-											) : null}
+											)}
 										</div>
 									</div>
 								) : null}
