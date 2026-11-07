@@ -22,6 +22,7 @@ import {
 	type ToolApprovalResult,
 	type UserInstructionConfigService,
 } from "@clinebot/core";
+import { resolveSdkRuntimeProviderId } from "./cline-pass-provider";
 import { CLINE_BUILTIN_SLASH_COMMANDS } from "./cline-slash-commands";
 import { getCliTelemetryService } from "./cline-telemetry-service";
 
@@ -111,15 +112,17 @@ export async function resolveClineSdkSystemPrompt(input: {
 	providerId: string;
 	rules?: string;
 }): Promise<string> {
-	// The Cline SDK can run against non-Cline providers too, but only the
-	// "cline" provider expects the extra workspace metadata block that powers
-	// its repo-aware behavior in the same way the official CLI does.
-	const shouldAppendWorkspaceMetadata = input.providerId === "cline";
+	// The Cline SDK can run against non-Cline providers too, but only the Cline
+	// providers ("cline" and ClinePass, which runs on the same endpoint) expect
+	// the extra workspace metadata block that powers their repo-aware behavior in
+	// the same way the official CLI does.
+	const sdkProviderId = resolveSdkRuntimeProviderId(input.providerId);
+	const shouldAppendWorkspaceMetadata = sdkProviderId === "cline";
 	const workspaceMetadata = shouldAppendWorkspaceMetadata ? await buildWorkspaceMetadata(input.cwd) : "";
 	return getClineDefaultSystemPrompt({
 		ide: "Kanban",
 		rootPath: input.cwd,
-		providerId: input.providerId,
+		providerId: sdkProviderId,
 		metadata: workspaceMetadata,
 		rules: input.rules ?? "",
 	});

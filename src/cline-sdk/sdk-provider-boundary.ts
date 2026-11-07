@@ -20,6 +20,7 @@ import {
 	DEFAULT_INTERNAL_IDCS_CLIENT_ID,
 	DEFAULT_INTERNAL_IDCS_SCOPES,
 	DEFAULT_INTERNAL_IDCS_URL,
+	DEFAULT_MODELS_CATALOG_URL,
 	ensureCustomProvidersLoaded,
 	getLocalProviderModels,
 	getValidClineCredentials,
@@ -37,11 +38,22 @@ import {
 	startClineDeviceAuth as sdkStartClineDeviceAuth,
 } from "@clinebot/core";
 import type { AgentTool } from "@clinebot/shared";
+import {
+	CLINE_PASS_BASE_URL,
+	CLINE_PASS_DEFAULT_MODEL_ID,
+	CLINE_PASS_PROVIDER_ID,
+	CLINE_PASS_PROVIDER_NAME,
+	CLINE_PROVIDER_ID,
+	isClinePassProviderId,
+	resolveSdkRuntimeProviderId,
+} from "./cline-pass-provider";
 
-export type ManagedClineOauthProviderId = "cline" | "oca" | "openai-codex";
+export type ManagedClineOauthProviderId = "cline" | "cline-pass" | "oca" | "openai-codex";
 export type SdkReasoningEffort = NonNullable<NonNullable<ProviderSettings["reasoning"]>["effort"]>;
 export const SDK_DEFAULT_PROVIDER_ID = "cline";
 export const SDK_DEFAULT_MODEL_ID = "anthropic/claude-sonnet-4.6";
+// The public model catalog the SDK itself reads for live model metadata.
+export const SDK_MODELS_CATALOG_URL: string = DEFAULT_MODELS_CATALOG_URL;
 export const CLINE_MODEL_CATALOG_DEFAULTS = {
 	loadLatestOnInit: true,
 	loadPrivateOnAuth: true,
@@ -235,7 +247,9 @@ export async function refreshManagedOauthCredentials(input: {
 	baseUrl?: string | null;
 	oauthProvider?: string | null;
 }): Promise<ManagedOauthCredentials | null> {
-	if (input.providerId === "cline") {
+	// ClinePass authenticates with the same Cline account credentials as the
+	// usage-billing `cline` provider, so it refreshes through the same flow.
+	if (resolveSdkRuntimeProviderId(input.providerId) === "cline") {
 		const credentials = await getValidClineCredentials(input.currentCredentials, {
 			apiBaseUrl: input.baseUrl?.trim() || "https://api.cline.bot",
 			provider: input.oauthProvider?.trim() || undefined,
@@ -262,7 +276,7 @@ export async function loginManagedOauthProvider(input: {
 	oauthProvider?: string | null;
 	callbacks: ManagedOauthCallbacks;
 }): Promise<ManagedOauthCredentials> {
-	if (input.providerId === "cline") {
+	if (resolveSdkRuntimeProviderId(input.providerId) === "cline") {
 		return await loginClineOAuth({
 			apiBaseUrl: input.baseUrl?.trim() || "https://api.cline.bot",
 			provider: input.oauthProvider?.trim() || undefined,
@@ -314,8 +328,29 @@ export async function completeClineDeviceAuth(input: {
 	};
 }
 
+// ClinePass shares the Cline provider's endpoint, credentials and capabilities,
+// so the catalog entry is derived from the registered `cline` provider instead of
+// restating them here.
+function buildClinePassCatalogItem(providers: SdkProviderCatalogItem[]): SdkProviderCatalogItem {
+	const clineProvider = providers.find((provider) => provider.id === CLINE_PROVIDER_ID);
+	return {
+		id: CLINE_PASS_PROVIDER_ID,
+		name: CLINE_PASS_PROVIDER_NAME,
+		defaultModelId: CLINE_PASS_DEFAULT_MODEL_ID,
+		baseUrl: clineProvider?.baseUrl ?? CLINE_PASS_BASE_URL,
+		env: clineProvider?.env ? [...clineProvider.env] : ["CLINE_API_KEY"],
+		capabilities: clineProvider?.capabilities ? [...clineProvider.capabilities] : ["oauth"],
+	};
+}
+
 export async function listSdkProviderCatalog(): Promise<SdkProviderCatalogItem[]> {
-	return await ClineCore.Llms.getAllProviders();
+	const providers = await ClineCore.Llms.getAllProviders();
+	// The bundled SDK has no ClinePass provider yet, so Kanban contributes the
+	// entry and stands down once the SDK registers its own.
+	if (providers.some((provider) => isClinePassProviderId(provider.id))) {
+		return providers;
+	}
+	return [...providers, buildClinePassCatalogItem(providers)];
 }
 
 function toSdkProviderModel(model: SdkLocalProviderModel): SdkProviderModel {

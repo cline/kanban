@@ -85,6 +85,7 @@ vi.mock("@clinebot/core", () => ({
 	resolveClineDataDir: oauthMocks.resolveClineDataDir,
 	loadMcpSettingsFile: oauthMocks.loadMcpSettingsFile,
 	resolveProviderConfig: llmsModelMocks.resolveProviderConfig,
+	DEFAULT_MODELS_CATALOG_URL: "https://models.dev/api.json",
 	ClineAccountService: class {
 		constructor(options: { apiBaseUrl: string; getAuthToken: () => Promise<string | undefined | null> }) {
 			clineAccountMocks.constructedOptions.push(options);

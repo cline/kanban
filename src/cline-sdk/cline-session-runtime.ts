@@ -8,6 +8,7 @@ import {
 	type ClineMcpToolBundle,
 	createClineMcpRuntimeService,
 } from "./cline-mcp-runtime-service";
+import { resolveSdkRuntimeProviderId } from "./cline-pass-provider";
 import { createKanbanClineLogger } from "./cline-runtime-logger";
 import { buildSessionIdPrefix, createSessionId } from "./cline-session-state";
 import { CLINE_MODEL_CATALOG_DEFAULTS } from "./sdk-provider-boundary";
@@ -207,7 +208,9 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 			startResult = await sessionHost.start({
 				config: {
 					sessionId: requestedSessionId,
-					providerId: request.providerId,
+					// ClinePass rides the registered `cline` provider; its `cline-pass/*`
+					// model id is what routes the request to the subscription.
+					providerId: resolveSdkRuntimeProviderId(request.providerId),
 					modelId: request.modelId,
 					apiKey: request.apiKey?.trim() || undefined,
 					baseUrl: request.baseUrl?.trim() || undefined,
