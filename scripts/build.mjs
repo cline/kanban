@@ -28,7 +28,7 @@ const cjsShimBanner = [
 	"const require = __kanban_createRequire(import.meta.url);",
 ].join("\n");
 
-/** Shared esbuild options for both entry points. */
+/** Shared esbuild options for all entry points. */
 const shared = {
 	bundle: true,
 	format: "esm",
@@ -55,6 +55,14 @@ await Promise.all([
 		entryPoints: ["src/index.ts"],
 		outfile: "dist/index.js",
 	}),
+	// Hub daemon spawn target — re-exports @clinebot/core/hub/daemon-entry.
+	// The CLI spawns the daemon from dist/entry.js; without this entry point
+	// the published package crashes with MODULE_NOT_FOUND on startup (#495).
+	esbuild.build({
+		...shared,
+		entryPoints: ["src/entry.ts"],
+		outfile: "dist/entry.js",
+	}),
 ]);
 
-console.log("esbuild: bundled dist/cli.js and dist/index.js");
+console.log("esbuild: bundled dist/cli.js, dist/index.js, and dist/entry.js");
