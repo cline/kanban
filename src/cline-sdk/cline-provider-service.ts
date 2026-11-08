@@ -26,6 +26,7 @@ import {
 	addSdkCustomProvider,
 	completeClineDeviceAuth as completeSdkDeviceAuth,
 	deleteSdkCustomProvider,
+	ensureSdkCustomProvidersLoaded,
 	fetchSdkClineAccountBalance,
 	fetchSdkClineAccountProfile,
 	fetchSdkClineUserRemoteConfig,
@@ -39,6 +40,7 @@ import {
 	loginManagedOauthProvider,
 	type ManagedClineOauthProviderId,
 	refreshManagedOauthCredentials,
+	resolveSdkLaunchProviderId,
 	SDK_DEFAULT_MODEL_ID,
 	SDK_DEFAULT_PROVIDER_ID,
 	type SdkCustomProviderCapability,
@@ -460,6 +462,13 @@ async function refreshManagedOauthSettings(
 }
 
 export function createClineProviderService() {
+	let initialProviderLoadPromise: Promise<void> | null = ensureSdkCustomProvidersLoaded();
+	const ensureProvidersLoaded = (): Promise<void> => {
+		const providerLoadPromise = initialProviderLoadPromise ?? ensureSdkCustomProvidersLoaded();
+		initialProviderLoadPromise = null;
+		return providerLoadPromise;
+	};
+
 	const getProviderSettingsSummary = (): RuntimeClineProviderSettings =>
 		toProviderSettingsSummary(getSelectedProviderSettings());
 
@@ -784,6 +793,7 @@ export function createClineProviderService() {
 			modelIdOverride?: string;
 			reasoningEffortOverride?: RuntimeClineReasoningEffort | null;
 		}): Promise<ResolvedClineLaunchConfig> {
+			await ensureProvidersLoaded();
 			const selectedSettings = overrides?.providerIdOverride
 				? (getSdkProviderSettings(overrides.providerIdOverride) ?? getSelectedProviderSettings())
 				: getSelectedProviderSettings();
@@ -813,7 +823,7 @@ export function createClineProviderService() {
 				resolvedSettings.model?.trim() ||
 				(await resolveDefaultModelIdForProvider(normalizedProviderId));
 			return {
-				providerId: normalizedProviderId,
+				providerId: resolveSdkLaunchProviderId(normalizedProviderId),
 				modelId,
 				apiKey,
 				baseUrl: resolvedSettings.baseUrl?.trim() || null,
@@ -825,6 +835,7 @@ export function createClineProviderService() {
 		},
 
 		async getProviderCatalog(): Promise<RuntimeClineProviderCatalogResponse> {
+			await ensureProvidersLoaded();
 			const selectedProviderId = getProviderSettingsSummary().providerId?.trim().toLowerCase() ?? "";
 			const providers: RuntimeClineProviderCatalogItem[] = await listSdkProviderCatalog()
 				.then((sdkProviders) =>
@@ -871,6 +882,7 @@ export function createClineProviderService() {
 		},
 
 		async getProviderModels(providerId: string): Promise<RuntimeClineProviderModelsResponse> {
+			await ensureProvidersLoaded();
 			const normalizedProviderId = providerId.trim().toLowerCase();
 			let providerModels =
 				normalizedProviderId.length > 0
