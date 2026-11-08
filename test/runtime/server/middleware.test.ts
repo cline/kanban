@@ -1,10 +1,24 @@
 import type { IncomingMessage } from "node:http";
 import { PassThrough } from "node:stream";
-import { describe, expect, it } from "vitest";
-import { evaluateCors, evaluateHost, handleSocketUpgrade } from "../../../src/server/middleware";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+	getKanbanRuntimeHost,
+	getKanbanRuntimePort,
+	setKanbanRuntimeHost,
+	setKanbanRuntimePort,
+} from "../../../src/core/runtime-endpoint";
+import { evaluateCors, evaluateHost, getAllowedHostHeaders, handleSocketUpgrade } from "../../../src/server/middleware";
 
 const ALLOWED_ORIGIN = "http://127.0.0.1:3484";
 const ALLOWED_HOSTS = new Set(["localhost:3484", "127.0.0.1:3484"]);
+
+const originalRuntimePort = getKanbanRuntimePort();
+const originalRuntimeHost = getKanbanRuntimeHost();
+
+afterEach(() => {
+	setKanbanRuntimePort(originalRuntimePort);
+	setKanbanRuntimeHost(originalRuntimeHost);
+});
 
 function makeFakeRequest(headers: Partial<IncomingMessage["headers"]>, method = "GET"): IncomingMessage {
 	return { method, headers } as IncomingMessage;
@@ -127,6 +141,27 @@ describe("evaluateHost", () => {
 			host: "localhost:9999",
 		});
 	});
+
+	it("when wildcard-bound (0.0.0.0), allows any Host header", () => {
+		setKanbanRuntimeHost("0.0.0.0");
+		setKanbanRuntimePort(3484);
+		const decision = evaluateHost({ hostHeader: "attacker.com:3484", allowedHosts: new Set() });
+		expect(decision).toEqual({ kind: "allow" });
+	});
+
+	it("when wildcard-bound (::), allows any Host header", () => {
+		setKanbanRuntimeHost("::");
+		setKanbanRuntimePort(3484);
+		const decision = evaluateHost({ hostHeader: "evil.host:3484", allowedHosts: new Set() });
+		expect(decision).toEqual({ kind: "allow" });
+	});
+
+	it("when wildcard-bound, allows Host header with an external IP", () => {
+		setKanbanRuntimeHost("0.0.0.0");
+		setKanbanRuntimePort(3484);
+		const decision = evaluateHost({ hostHeader: "192.168.1.3:3484", allowedHosts: new Set() });
+		expect(decision).toEqual({ kind: "allow" });
+	});
 });
 
 describe("handleSocketUpgrade", () => {
@@ -165,5 +200,76 @@ describe("handleSocketUpgrade", () => {
 		const result = handleSocketUpgrade(request, socket);
 		expect(result).toEqual({ end: true });
 		expect(socket.destroyed).toBe(true);
+	});
+
+	it("when wildcard-bound, passes through upgrades from any host and origin", () => {
+		setKanbanRuntimeHost("0.0.0.0");
+		setKanbanRuntimePort(3484);
+		const socket = new PassThrough();
+		const request = makeFakeRequest({ host: "192.168.1.3:3484", origin: "http://192.168.1.3:3484" });
+		const result = handleSocketUpgrade(request, socket);
+		expect(result).toEqual({ end: false });
+		expect(socket.destroyed).toBe(false);
+	});
+});
+
+describe("getAllowedHostHeaders", () => {
+	it("includes localhost entries for default (localhost) binding", () => {
+		setKanbanRuntimeHost("127.0.0.1");
+		setKanbanRuntimePort(3484);
+		const allowed = getAllowedHostHeaders();
+		expect(allowed.has("localhost:3484")).toBe(true);
+		expect(allowed.has("127.0.0.1:3484")).toBe(true);
+	});
+
+	it("includes only the remote host for remote binding", () => {
+		setKanbanRuntimeHost("192.168.1.100");
+		setKanbanRuntimePort(3484);
+		const allowed = getAllowedHostHeaders();
+		expect(allowed.has("192.168.1.100:3484")).toBe(true);
+		expect(allowed.has("localhost:3484")).toBe(false);
+		expect(allowed.has("127.0.0.1:3484")).toBe(false);
+	});
+
+	it("returns empty set for wildcard binding", () => {
+		setKanbanRuntimeHost("0.0.0.0");
+		setKanbanRuntimePort(3484);
+		const allowed = getAllowedHostHeaders();
+		expect(allowed.size).toBe(0);
+	});
+});
+
+describe("evaluateCors (wildcard bound)", () => {
+	it("when wildcard-bound, allows any origin", () => {
+		setKanbanRuntimeHost("0.0.0.0");
+		setKanbanRuntimePort(3484);
+		const decision = evaluateCors({
+			method: "GET",
+			originHeader: "http://evil.example.com:3484",
+			allowedOrigin: "http://0.0.0.0:3484",
+		});
+		expect(decision).toEqual({ kind: "allow", origin: "http://evil.example.com:3484" });
+	});
+
+	it("when wildcard-bound, allows preflight from any origin", () => {
+		setKanbanRuntimeHost("0.0.0.0");
+		setKanbanRuntimePort(3484);
+		const decision = evaluateCors({
+			method: "OPTIONS",
+			originHeader: "http://evil.example.com:3484",
+			allowedOrigin: "http://0.0.0.0:3484",
+		});
+		expect(decision).toEqual({ kind: "preflight", origin: "http://evil.example.com:3484" });
+	});
+
+	it("when wildcard-bound, allows origin from an external host", () => {
+		setKanbanRuntimeHost("0.0.0.0");
+		setKanbanRuntimePort(3484);
+		const decision = evaluateCors({
+			method: "GET",
+			originHeader: "http://192.168.1.3:3484",
+			allowedOrigin: "http://0.0.0.0:3484",
+		});
+		expect(decision).toEqual({ kind: "allow", origin: "http://192.168.1.3:3484" });
 	});
 });
