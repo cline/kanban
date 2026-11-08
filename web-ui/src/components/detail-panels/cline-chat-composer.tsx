@@ -113,7 +113,7 @@ export function ClineChatComposer({
 	const [slashSuggestions, setSlashSuggestions] = useState<ClineComposerCompletionSuggestion[]>([]);
 	const [isMentionSearchLoading, setIsMentionSearchLoading] = useState(false);
 	const [isSlashSearchLoading, setIsSlashSearchLoading] = useState(false);
-	const canSubmit = canSend && !isModelSaving && (draft.trim().length > 0 || images.length > 0);
+	const canSubmit = canSend && !isModelSaving && !attachmentWarningMessage && (draft.trim().length > 0 || images.length > 0);
 
 	const activeToken = useMemo(() => detectActiveClineComposerToken(draft, cursorIndex), [cursorIndex, draft]);
 	const completionSuggestions = useMemo(() => {
