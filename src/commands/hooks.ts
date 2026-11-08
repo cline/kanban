@@ -50,6 +50,8 @@ interface CodexWrapperArgs {
 	agentArgs: string[];
 }
 
+type AntigravityHookEvent = "PreInvocation" | "PreToolUse" | "PostToolUse" | "PostInvocation" | "Stop";
+
 function formatError(error: unknown): string {
 	if (error instanceof TRPCClientError) {
 		return error.message;
@@ -81,6 +83,21 @@ function parseHookEvent(value: string): RuntimeHookEvent {
 		throw new Error(`Invalid event "${value}". Must be one of: ${[...VALID_EVENTS].join(", ")}`);
 	}
 	return value as RuntimeHookEvent;
+}
+
+function parseAntigravityHookEvent(value: string): AntigravityHookEvent {
+	if (
+		value !== "PreInvocation" &&
+		value !== "PreToolUse" &&
+		value !== "PostToolUse" &&
+		value !== "PostInvocation" &&
+		value !== "Stop"
+	) {
+		throw new Error(
+			`Invalid Antigravity hook event "${value}". Must be one of: PreInvocation, PreToolUse, PostToolUse, PostInvocation, Stop`,
+		);
+	}
+	return value;
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {
@@ -518,15 +535,15 @@ async function readStdinText(): Promise<string> {
 	return chunks.join("");
 }
 
-function mapGeminiHookEvent(eventName: string): RuntimeHookEvent | null {
-	if (eventName === "AfterAgent") {
-		return "to_review";
-	}
-	if (eventName === "BeforeAgent") {
+function mapAntigravityHookEvent(eventName: string): RuntimeHookEvent | null {
+	if (eventName === "PreInvocation") {
 		return "to_in_progress";
 	}
-	if (eventName === "AfterTool" || eventName === "BeforeTool" || eventName === "Notification") {
+	if (eventName === "PreToolUse" || eventName === "PostToolUse" || eventName === "PostInvocation") {
 		return "activity";
+	}
+	if (eventName === "Stop") {
+		return "to_review";
 	}
 	return null;
 }
@@ -554,7 +571,7 @@ async function runCodexHookSubcommand(
 	}
 }
 
-async function runGeminiHookSubcommand(): Promise<void> {
+async function runAntigravityHookSubcommand(eventNameArg: AntigravityHookEvent | undefined): Promise<void> {
 	let payload = "";
 	try {
 		payload = await readStdinText();
@@ -568,24 +585,31 @@ async function runGeminiHookSubcommand(): Promise<void> {
 		const parsed = JSON.parse(payload || "{}") as { hook_event_name?: unknown };
 		payloadRecord = asRecord(parsed);
 		hookEventName =
-			typeof parsed.hook_event_name === "string"
+			eventNameArg ??
+			(typeof parsed.hook_event_name === "string"
 				? parsed.hook_event_name
 				: payloadRecord && typeof payloadRecord.hookEventName === "string"
 					? payloadRecord.hookEventName
-					: "";
+					: payloadRecord && typeof payloadRecord.hookName === "string"
+						? payloadRecord.hookName
+						: payloadRecord && typeof payloadRecord.eventName === "string"
+							? payloadRecord.eventName
+							: payloadRecord && typeof payloadRecord.event === "string"
+								? payloadRecord.event
+								: "");
 	} catch {
-		hookEventName = "";
+		hookEventName = eventNameArg ?? "";
 		payloadRecord = null;
 	}
 
 	process.stdout.write("{}\n");
 
-	const mappedEvent = mapGeminiHookEvent(hookEventName);
+	const mappedEvent = mapAntigravityHookEvent(hookEventName);
 	if (!mappedEvent) {
 		return;
 	}
 	const metadata = normalizeHookMetadata(mappedEvent, payloadRecord, {
-		source: "gemini",
+		source: "antigravity",
 		hookEventName: hookEventName || undefined,
 	});
 	spawnBackgroundKanban(appendMetadataFlags(["hooks", "notify", "--event", mappedEvent], metadata));
@@ -780,10 +804,11 @@ export function registerHooksCommand(program: Command): void {
 		);
 
 	hooks
-		.command("gemini-hook")
-		.description("Gemini hook entrypoint.")
-		.action(async () => {
-			await runGeminiHookSubcommand();
+		.command("antigravity-hook")
+		.description("Antigravity hook entrypoint.")
+		.option("--event <event>", "Antigravity hook event name.", parseAntigravityHookEvent)
+		.action(async (options: { event?: AntigravityHookEvent }) => {
+			await runAntigravityHookSubcommand(options.event);
 		});
 
 	hooks

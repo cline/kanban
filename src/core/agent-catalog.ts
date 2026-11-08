@@ -60,24 +60,22 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	},
 	{
 		id: "gemini",
-		label: "Gemini CLI",
-		binary: "gemini",
+		label: "Antigravity CLI",
+		binary: "agy",
 		baseArgs: [],
-		autonomousArgs: ["--yolo"],
-		installUrl: "https://github.com/google-gemini/gemini-cli",
+		autonomousArgs: ["--dangerously-skip-permissions"],
+		installUrl: "https://antigravity.google/docs/cli-getting-started",
 	},
 ];
 
-// Temporarily keep launch support scoped to the core agent set.
-// Re-enable additional CLIs by uncommenting entries below when ready.
 export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"cline",
 	"claude",
 	"codex",
+	"opencode",
 	"droid",
 	"kiro",
-	// "opencode",
-	// "gemini",
+	"gemini",
 ];
 
 const RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET = new Set<RuntimeAgentId>(RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS);

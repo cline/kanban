@@ -54,7 +54,14 @@ const PROJECT_CONFIG_PARENT_DIR = ".cline";
 const PROJECT_CONFIG_DIR = "kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
-const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "droid", "kiro"];
+const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = [
+	"claude",
+	"codex",
+	"opencode",
+	"droid",
+	"kiro",
+	"gemini",
+];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
 const DEFAULT_COMMIT_PROMPT_TEMPLATE = `You are in a worktree on a detached HEAD. When you are finished with the task, commit the working changes onto {{base_ref}}.
@@ -105,7 +112,8 @@ export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly 
 	for (const agentId of AUTO_SELECT_AGENT_PRIORITY) {
 		const catalogEntry = getRuntimeAgentCatalogEntry(agentId);
 		const binary = catalogEntry?.binary ?? agentId;
-		if (detected.has(binary) || detected.has(agentId)) {
+		const idAliasMatchesInstalledCommand = agentId !== "gemini" && detected.has(agentId);
+		if (detected.has(binary) || idAliasMatchesInstalledCommand) {
 			return agentId;
 		}
 	}
