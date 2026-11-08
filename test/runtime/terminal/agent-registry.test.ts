@@ -10,6 +10,7 @@ vi.mock("../../../src/terminal/command-discovery.js", () => ({
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config";
 import {
+	buildAgentCapabilityReport,
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	resolveAgentCommand,
@@ -149,5 +150,35 @@ describe("buildRuntimeConfigResponse", () => {
 			oauthExpiresAt: null,
 		});
 		expect(response.debugModeEnabled).toBe(true);
+	});
+});
+
+describe("buildAgentCapabilityReport", () => {
+	it("reports mechanism-only capabilities with no value lists", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+
+		const report = buildAgentCapabilityReport(createRuntimeConfigState());
+
+		expect(report.length).toBeGreaterThan(0);
+		for (const entry of report) {
+			expect(typeof entry.id).toBe("string");
+			expect(typeof entry.label).toBe("string");
+			expect(typeof entry.installed).toBe("boolean");
+			expect(typeof entry.configured).toBe("boolean");
+			expect(typeof entry.launchSupported).toBe("boolean");
+			expect(["flag", "config", "sdk", "none"]).toContain(entry.capabilities.modelOverride);
+			expect(["flag", "config", "sdk", "none"]).toContain(entry.capabilities.effortOverride);
+			expect(["flag", "config", "sdk", "none"]).toContain(entry.capabilities.providerOverride);
+			expect(entry.capabilities.docsUrl).toMatch(/^https?:\/\//);
+		}
+	});
+
+	it("marks the embedded Cline runtime as installed regardless of binary detection", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+
+		const report = buildAgentCapabilityReport(createRuntimeConfigState());
+
+		expect(report.find((entry) => entry.id === "cline")?.installed).toBe(true);
+		expect(report.find((entry) => entry.id === "cline")?.launchSupported).toBe(true);
 	});
 });
