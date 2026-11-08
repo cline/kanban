@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
 import type {
+	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
 	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
@@ -598,6 +599,139 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).modelId).toBe("anthropic/claude-sonnet-4.6");
 		expect(requireSnapshot(latestSnapshot).reasoningEffort).toBe("");
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("uses the overridden provider default model when a task override omits modelId", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "anthropic",
+			modelId: "anthropic/claude-opus-4.7",
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "anthropic",
+				name: "Anthropic",
+				oauthSupported: false,
+				enabled: true,
+				defaultModelId: "anthropic/claude-opus-4.7",
+				baseUrl: null,
+			},
+			{
+				id: "groq",
+				name: "Groq",
+				oauthSupported: false,
+				enabled: true,
+				defaultModelId: "groq/llama-4-maverick",
+				baseUrl: null,
+			},
+		]);
+		fetchClineProviderModelsMock.mockResolvedValue([
+			{
+				id: "groq/llama-4-maverick",
+				name: "Llama 4 Maverick",
+				contextWindow: null,
+				maxOutputTokens: null,
+				supportsReasoningEffort: false,
+			},
+		]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					taskClineSettings={{
+						providerId: "groq",
+					}}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).providerId).toBe("groq");
+		expect(requireSnapshot(latestSnapshot).modelId).toBe("groq/llama-4-maverick");
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("does not transiently mark provider-default task overrides dirty while the provider catalog loads", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "anthropic",
+			modelId: "anthropic/claude-opus-4.7",
+		});
+		const catalogDeferred = createDeferred<RuntimeClineProviderCatalogItem[]>();
+		const snapshots: HookSnapshot[] = [];
+		fetchClineProviderCatalogMock.mockReturnValue(catalogDeferred.promise);
+		fetchClineProviderModelsMock.mockResolvedValue([
+			{
+				id: "groq/llama-4-maverick",
+				name: "Llama 4 Maverick",
+				contextWindow: null,
+				maxOutputTokens: null,
+				supportsReasoningEffort: false,
+			},
+		]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					taskClineSettings={{
+						providerId: "groq",
+					}}
+					onSnapshot={(snapshot) => {
+						snapshots.push(snapshot);
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		expect(snapshots.at(-1)?.providerId).toBe("groq");
+		expect(snapshots.at(-1)?.modelId).toBe("");
+		expect(snapshots.at(-1)?.hasUnsavedChanges).toBe(false);
+
+		await act(async () => {
+			catalogDeferred.resolve([
+				{
+					id: "anthropic",
+					name: "Anthropic",
+					oauthSupported: false,
+					enabled: true,
+					defaultModelId: "anthropic/claude-opus-4.7",
+					baseUrl: null,
+				},
+				{
+					id: "groq",
+					name: "Groq",
+					oauthSupported: false,
+					enabled: true,
+					defaultModelId: "groq/llama-4-maverick",
+					baseUrl: null,
+				},
+			]);
+			await flushAsyncWork();
+			await flushAsyncWork();
+		});
+
+		expect(
+			snapshots.some(
+				(snapshot) => snapshot.providerId === "groq" && snapshot.modelId === "" && snapshot.hasUnsavedChanges,
+			),
+		).toBe(false);
+		expect(snapshots.at(-1)?.modelId).toBe("groq/llama-4-maverick");
+		expect(snapshots.at(-1)?.hasUnsavedChanges).toBe(false);
 	});
 
 	it("treats an explicit task-level default reasoning override as the clean baseline", async () => {
