@@ -129,6 +129,14 @@ function normalizeRuntimeTaskClineSettings(input: {
 	};
 }
 
+export const runtimeTaskPendingGitActionSchema = z.object({
+	action: runtimeTaskAutoReviewModeSchema,
+	requestedAt: z.number(),
+	headCommitAtRequest: z.string().nullable(),
+	attempt: z.number().int().nonnegative().default(0),
+});
+export type RuntimeTaskPendingGitAction = z.infer<typeof runtimeTaskPendingGitActionSchema>;
+
 export const runtimeBoardCardSchema = z
 	.object({
 		id: z.string(),
@@ -146,6 +154,7 @@ export const runtimeBoardCardSchema = z
 		baseRef: z.string(),
 		createdAt: z.number(),
 		updatedAt: z.number(),
+		pendingGitAction: runtimeTaskPendingGitActionSchema.nullable().optional(),
 	})
 	.transform(
 		({

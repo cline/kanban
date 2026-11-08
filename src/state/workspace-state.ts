@@ -645,6 +645,22 @@ export async function loadWorkspaceState(cwd: string): Promise<RuntimeWorkspaceS
 	return toWorkspaceStateResponse(context, board, sessions, meta.revision);
 }
 
+/**
+ * Read-only variant of loadWorkspaceState keyed by workspace id. Unlike
+ * loadWorkspaceContext(cwd), it never auto-registers the repository, so
+ * reading a workspace that was removed cannot resurrect its index entry.
+ */
+export async function loadWorkspaceStateById(workspaceId: string): Promise<RuntimeWorkspaceStateResponse | null> {
+	const context = await loadWorkspaceContextById(workspaceId);
+	if (!context) {
+		return null;
+	}
+	const board = await readWorkspaceBoard(workspaceId);
+	const sessions = await readWorkspaceSessions(workspaceId);
+	const meta = await readWorkspaceMeta(workspaceId);
+	return toWorkspaceStateResponse(context, board, sessions, meta.revision);
+}
+
 export async function saveWorkspaceState(
 	cwd: string,
 	payload: RuntimeWorkspaceStateSaveRequest,
