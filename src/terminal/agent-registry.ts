@@ -1,5 +1,9 @@
 import type { RuntimeConfigState } from "../config/runtime-config";
-import { getRuntimeLaunchSupportedAgentCatalog, RUNTIME_AGENT_CATALOG } from "../core/agent-catalog";
+import {
+	getRuntimeAgentBinaryCandidates,
+	getRuntimeLaunchSupportedAgentCatalog,
+	RUNTIME_AGENT_CATALOG,
+} from "../core/agent-catalog";
 import type {
 	RuntimeAgentDefinition,
 	RuntimeAgentId,
@@ -49,7 +53,10 @@ function isRuntimeDebugModeEnabled(): boolean {
 }
 
 export function detectInstalledCommands(): string[] {
-	const candidates = [...RUNTIME_AGENT_CATALOG.map((entry) => entry.binary), "npx"];
+	const candidates = [
+		...new Set(RUNTIME_AGENT_CATALOG.flatMap((entry) => [entry.binary, ...(entry.binaryAliases ?? [])])),
+		"npx",
+	];
 	const detected: string[] = [];
 
 	for (const candidate of candidates) {
@@ -65,12 +72,17 @@ function getCuratedDefinitions(runtimeConfig: RuntimeConfigState, detected: stri
 	const detectedSet = new Set(detected);
 	return getRuntimeLaunchSupportedAgentCatalog().map((entry) => {
 		const defaultArgs = getDefaultArgs(entry.id);
-		const command = joinCommand(entry.binary, defaultArgs);
-		const isInstalled = entry.id === "cline" ? true : detectedSet.has(entry.binary);
+		const binary =
+			getRuntimeAgentBinaryCandidates(entry.id).find((candidate) => detectedSet.has(candidate)) ?? entry.binary;
+		const command = joinCommand(binary, defaultArgs);
+		const hasDetectedBinary = getRuntimeAgentBinaryCandidates(entry.id).some((candidate) =>
+			detectedSet.has(candidate),
+		);
+		const isInstalled = entry.id === "cline" ? true : hasDetectedBinary;
 		return {
 			id: entry.id,
 			label: entry.label,
-			binary: entry.binary,
+			binary,
 			command,
 			defaultArgs,
 			installed: isInstalled,
@@ -85,13 +97,14 @@ export function resolveAgentCommand(runtimeConfig: RuntimeConfigState): Resolved
 		return null;
 	}
 	const defaultArgs = getDefaultArgs(selected.id);
-	const command = joinCommand(selected.binary, defaultArgs);
-	if (isBinaryAvailableOnPath(selected.binary)) {
+	const binary = getRuntimeAgentBinaryCandidates(selected.id).find((candidate) => isBinaryAvailableOnPath(candidate));
+	if (binary) {
+		const command = joinCommand(binary, defaultArgs);
 		return {
 			agentId: selected.id,
 			label: selected.label,
 			command,
-			binary: selected.binary,
+			binary,
 			args: defaultArgs,
 		};
 	}

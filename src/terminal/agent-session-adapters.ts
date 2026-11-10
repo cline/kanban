@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -107,6 +107,14 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 		parts.push("--notification-type", metadata.notificationType);
 	}
 	return parts.map(quoteShellArg).join(" ");
+}
+
+function buildCursorHookCommand(event: RuntimeHookEvent, hookEventName: string, activityText?: string): string {
+	return buildHookCommand(event, {
+		source: "cursor",
+		hookEventName,
+		activityText,
+	});
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
@@ -580,6 +588,88 @@ async function ensureTextFile(filePath: string, content: string, executable = fa
 	});
 }
 
+async function readOptionalTextFile(filePath: string): Promise<string | null> {
+	try {
+		return await readFile(filePath, "utf8");
+	} catch {
+		return null;
+	}
+}
+
+function parseJsonRecord(raw: string | null): Record<string, unknown> {
+	if (!raw) {
+		return {};
+	}
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			return parsed as Record<string, unknown>;
+		}
+	} catch {
+		// Invalid existing hook configs are preserved during cleanup.
+	}
+	return {};
+}
+
+function normalizeHookEntries(value: unknown): Array<Record<string, unknown>> {
+	return Array.isArray(value)
+		? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
+		: [];
+}
+
+function mergeCursorHooksConfig(rawConfig: string | null): string {
+	const config = parseJsonRecord(rawConfig);
+	const hooksRecord =
+		config.hooks && typeof config.hooks === "object" && !Array.isArray(config.hooks)
+			? (config.hooks as Record<string, unknown>)
+			: {};
+	const hooksToAdd: Record<string, Array<Record<string, string>>> = {
+		beforeSubmitPrompt: [{ command: buildCursorHookCommand("to_in_progress", "beforeSubmitPrompt") }],
+		beforeShellExecution: [{ command: buildCursorHookCommand("to_in_progress", "beforeShellExecution") }],
+		beforeMCPExecution: [{ command: buildCursorHookCommand("to_in_progress", "beforeMCPExecution") }],
+		beforeReadFile: [{ command: buildCursorHookCommand("activity", "beforeReadFile") }],
+		afterFileEdit: [{ command: buildCursorHookCommand("activity", "afterFileEdit") }],
+		stop: [{ command: buildCursorHookCommand("to_review", "stop", "Waiting for review") }],
+	};
+
+	const nextHooks: Record<string, Array<Record<string, unknown>>> = {};
+	for (const [hookName, existingEntries] of Object.entries(hooksRecord)) {
+		nextHooks[hookName] = normalizeHookEntries(existingEntries);
+	}
+	for (const [hookName, entries] of Object.entries(hooksToAdd)) {
+		nextHooks[hookName] = [...(nextHooks[hookName] ?? []), ...entries];
+	}
+
+	return JSON.stringify(
+		{
+			...config,
+			version: typeof config.version === "number" ? config.version : 1,
+			hooks: nextHooks,
+		},
+		null,
+		2,
+	);
+}
+
+async function configureCursorHooks(cwd: string): Promise<(() => Promise<void>) | null> {
+	const hooksPath = join(cwd, ".cursor", "hooks.json");
+	const originalContent = await readOptionalTextFile(hooksPath);
+	const nextContent = mergeCursorHooksConfig(originalContent);
+	await ensureTextFile(hooksPath, nextContent);
+
+	return async () => {
+		const currentContent = await readOptionalTextFile(hooksPath);
+		if (currentContent !== nextContent) {
+			return;
+		}
+		if (originalContent === null) {
+			await rm(hooksPath, { force: true });
+			return;
+		}
+		await ensureTextFile(hooksPath, originalContent);
+	};
+}
+
 function withPrompt(args: string[], prompt: string, mode: "append" | "flag", flag?: string): PreparedAgentLaunch {
 	const trimmed = prompt.trim();
 	if (!trimmed) {
@@ -601,6 +691,38 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 
 function toBracketedPasteSubmission(command: string): string {
 	return `\u001b[200~${command}\u001b[201~\r`;
+}
+
+// Cursor CLI does not expose a separate append-system-prompt flag, so home
+// sidebar guidance is passed as the initial prompt content.
+function mergeCursorPromptWithHomeSystemPrompt(prompt: string, appendedSystemPrompt: string | null): string {
+	if (!appendedSystemPrompt) {
+		return prompt;
+	}
+	const trimmedPrompt = prompt.trim();
+	if (!trimmedPrompt) {
+		return appendedSystemPrompt;
+	}
+	return `${appendedSystemPrompt}\n\n# User Request\n\n${trimmedPrompt}`;
+}
+
+function removeCursorPlanModeConflicts(args: string[]): string[] {
+	const filtered: string[] = [];
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--force" || arg === "-f" || arg === "--yolo" || arg === "--plan") {
+			continue;
+		}
+		if (arg === "--mode") {
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--mode=")) {
+			continue;
+		}
+		filtered.push(arg);
+	}
+	return filtered;
 }
 
 const claudeAdapter: AgentSessionAdapter = {
@@ -708,6 +830,57 @@ const claudeAdapter: AgentSessionAdapter = {
 				...withPromptLaunch.env,
 				...env,
 			},
+		};
+	},
+};
+
+const cursorAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+		let cleanup: (() => Promise<void>) | null = null;
+
+		if (input.startInPlanMode) {
+			const filteredArgs = removeCursorPlanModeConflicts(args);
+			args.length = 0;
+			args.push(...filteredArgs, "--plan");
+		} else if (
+			input.autonomousModeEnabled &&
+			!hasCliOption(args, "--force") &&
+			!hasCliOption(args, "-f") &&
+			!hasCliOption(args, "--yolo")
+		) {
+			args.push("--force");
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--resume") && !hasCliOption(args, "--continue")) {
+			args.push("--continue");
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			cleanup = await configureCursorHooks(input.cwd);
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		const prompt = mergeCursorPromptWithHomeSystemPrompt(
+			input.prompt,
+			resolveHomeAgentAppendSystemPrompt(input.taskId),
+		);
+		const withPromptLaunch = withPrompt(args, prompt, "append");
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+			cleanup: cleanup ?? undefined,
 		};
 	},
 };
@@ -1432,6 +1605,7 @@ const clineAdapter: AgentSessionAdapter = {
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
+	cursor: cursorAdapter,
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
