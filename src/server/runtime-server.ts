@@ -151,6 +151,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			service = createInMemoryClineTaskSessionService({
 				watcherRegistry: clineWatcherRegistry,
 			});
+			// Pre-warm the SDK session host in the background so the first card
+			// open or agent action does not pay the ClineCore.create cold-start
+			// cost (hub discovery + local runtime host initialization). Prewarm
+			// before registering the service; ensureSessionHost memoizes its
+			// promise, so ordering does not matter.
+			void service.prewarm().catch(() => undefined);
 			clineTaskSessionServiceByWorkspaceId.set(scope.workspaceId, service);
 			deps.runtimeStateHub.trackClineTaskSessionService(scope.workspaceId, scope.workspacePath, service);
 		}
