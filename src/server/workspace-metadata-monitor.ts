@@ -7,7 +7,12 @@ import type {
 import { getGitSyncSummary, probeGitWorkspaceState } from "../workspace/git-sync";
 import { getTaskWorkspacePathInfo } from "../workspace/task-worktree";
 
-const WORKSPACE_METADATA_POLL_INTERVAL_MS = 1_000;
+// The UI refreshes imperatively via updateWorkspaceState whenever the board
+// changes, so this timer only needs to catch external edits (out-of-band
+// commits, agent file writes). Polling more aggressively just spawns a
+// continuous stream of git subprocesses (~3·(N+1) per tick) even when no
+// task is running, which shows up as sustained energy impact at idle.
+const WORKSPACE_METADATA_POLL_INTERVAL_MS = 10_000;
 
 interface TrackedTaskWorkspace {
 	taskId: string;
@@ -18,11 +23,13 @@ interface CachedHomeGitMetadata {
 	summary: RuntimeGitSyncSummary | null;
 	stateToken: string | null;
 	stateVersion: number;
+	repoRoot: string | null;
 }
 
 interface CachedTaskWorkspaceMetadata {
 	data: RuntimeTaskWorkspaceMetadata;
 	stateToken: string | null;
+	repoRoot: string | null;
 }
 
 interface WorkspaceMetadataEntry {
@@ -147,6 +154,7 @@ function createWorkspaceEntry(workspacePath: string): WorkspaceMetadataEntry {
 			summary: null,
 			stateToken: null,
 			stateVersion: 0,
+			repoRoot: null,
 		},
 		taskMetadataByTaskId: new Map<string, CachedTaskWorkspaceMetadata>(),
 	};
@@ -164,18 +172,21 @@ function buildWorkspaceMetadataSnapshot(entry: WorkspaceMetadataEntry): RuntimeW
 
 async function loadHomeGitMetadata(entry: WorkspaceMetadataEntry): Promise<CachedHomeGitMetadata> {
 	try {
-		const probe = await probeGitWorkspaceState(entry.workspacePath);
+		const probe = await probeGitWorkspaceState(entry.workspacePath, {
+			repoRoot: entry.homeGit.repoRoot ?? undefined,
+		});
 		if (entry.homeGit.stateToken === probe.stateToken) {
-			return entry.homeGit;
+			return { ...entry.homeGit, repoRoot: probe.repoRoot };
 		}
 		const summary = await getGitSyncSummary(entry.workspacePath, { probe });
 		return {
 			summary,
 			stateToken: probe.stateToken,
 			stateVersion: Date.now(),
+			repoRoot: probe.repoRoot,
 		};
 	} catch {
-		return entry.homeGit;
+		return { ...entry.homeGit, repoRoot: null };
 	}
 }
 
@@ -214,11 +225,14 @@ async function loadTaskWorkspaceMetadata(
 				stateVersion: Date.now(),
 			},
 			stateToken: null,
+			repoRoot: null,
 		};
 	}
 
 	try {
-		const probe = await probeGitWorkspaceState(pathInfo.path);
+		const probe = await probeGitWorkspaceState(pathInfo.path, {
+			repoRoot: current && current.data.path === pathInfo.path && current.repoRoot ? current.repoRoot : undefined,
+		});
 		if (
 			current &&
 			current.stateToken === probe.stateToken &&
@@ -243,6 +257,7 @@ async function loadTaskWorkspaceMetadata(
 				stateVersion: Date.now(),
 			},
 			stateToken: probe.stateToken,
+			repoRoot: probe.repoRoot,
 		};
 	} catch {
 		if (current) {
@@ -263,6 +278,7 @@ async function loadTaskWorkspaceMetadata(
 				stateVersion: Date.now(),
 			},
 			stateToken: null,
+			repoRoot: null,
 		};
 	}
 }
