@@ -196,6 +196,12 @@ function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactEl
 
 type MobileTab = "chat" | "diff" | "files";
 
+// At most one side-by-side detail panel can own the full width at a time, so the
+// expanded panel is modelled as a single exclusive value rather than one flag per panel.
+type ExpandedDetailPanel = "agent" | "diff" | null;
+
+const TOGGLE_EXPANDED_PANEL_HOTKEY = "mod+shift+f";
+
 const MOBILE_TABS: { id: MobileTab; label: string; icon: React.ReactElement }[] = [
 	{ id: "chat", label: "Chat", icon: <MessageSquare size={14} /> },
 	{ id: "diff", label: "Diff", icon: <GitCompareArrows size={14} /> },
@@ -304,6 +310,27 @@ function DiffToolbar({
 					aria-label={isExpanded ? "Collapse split diff view" : "Expand split diff view"}
 				/>
 			) : null}
+		</div>
+	);
+}
+
+function AgentToolbar({
+	isExpanded,
+	onToggleExpand,
+}: {
+	isExpanded: boolean;
+	onToggleExpand: () => void;
+}): React.ReactElement {
+	return (
+		<div className="flex items-center gap-1 border-b border-divider px-2 py-1">
+			<Button
+				variant="ghost"
+				size="sm"
+				icon={isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+				onClick={onToggleExpand}
+				className="ml-auto h-5"
+				aria-label={isExpanded ? "Collapse full width agent view" : "Expand agent view to full width"}
+			/>
 		</div>
 	);
 }
@@ -439,7 +466,9 @@ export function CardDetailView({
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 	const [diffMode, setDiffMode] = useState<RuntimeWorkspaceChangesMode>("working_copy");
-	const [isDiffExpanded, setIsDiffExpanded] = useState(false);
+	const [expandedPanel, setExpandedPanel] = useState<ExpandedDetailPanel>(null);
+	const isDiffExpanded = expandedPanel === "diff";
+	const isAgentExpanded = expandedPanel === "agent";
 	const {
 		taskCardsPanelRatio,
 		setTaskCardsPanelRatio,
@@ -564,12 +593,12 @@ export function CardDetailView({
 				if (isTypingTarget(event.target)) {
 					return;
 				}
-				if (isDiffExpanded) {
+				if (expandedPanel) {
 					event.preventDefault();
-					setIsDiffExpanded(false);
+					setExpandedPanel(null);
 				}
 			},
-			[gitHistoryPanel, isDiffExpanded, onCloseGitHistory],
+			[expandedPanel, gitHistoryPanel, onCloseGitHistory],
 		),
 	);
 
@@ -601,32 +630,53 @@ export function CardDetailView({
 		if (!isDiffExpanded && bottomTerminalOpen) {
 			onBottomTerminalClose();
 		}
-		setIsDiffExpanded((previous) => !previous);
+		setExpandedPanel((previous) => (previous === "diff" ? null : "diff"));
 	}, [bottomTerminalOpen, isDiffExpanded, onBottomTerminalClose]);
+
+	const handleToggleAgentExpand = useCallback(() => {
+		setExpandedPanel((previous) => (previous === "agent" ? null : "agent"));
+	}, []);
+
+	useHotkeys(
+		TOGGLE_EXPANDED_PANEL_HOTKEY,
+		handleToggleAgentExpand,
+		{
+			enableOnFormTags: true,
+			enableOnContentEditable: true,
+			preventDefault: true,
+		},
+		[handleToggleAgentExpand],
+	);
+
+	// Only the diff panel opts out of expansion here; collapsing the agent panel from a
+	// diff interaction would hide a panel the user never expanded from this surface.
+	const collapseExpandedDiff = useCallback(() => {
+		setExpandedPanel((previous) => (previous === "diff" ? null : previous));
+	}, []);
 
 	const handleAddDiffComments = useCallback(
 		(formatted: string) => {
 			if (showClineAgentChatPanel) {
 				clineAgentChatPanelRef.current?.appendToDraft(formatted);
-				setIsDiffExpanded(false);
+				collapseExpandedDiff();
 				return;
 			}
 			onAddReviewComments?.(selection.card.id, formatted);
 		},
-		[onAddReviewComments, selection.card.id, showClineAgentChatPanel],
+		[collapseExpandedDiff, onAddReviewComments, selection.card.id, showClineAgentChatPanel],
 	);
 
 	const handleSendDiffComments = useCallback(
 		(formatted: string) => {
 			if (showClineAgentChatPanel) {
 				void clineAgentChatPanelRef.current?.sendText(formatted);
-				setIsDiffExpanded(false);
+				collapseExpandedDiff();
 				return;
 			}
 			onSendReviewComments?.(selection.card.id, formatted);
-			setIsDiffExpanded(false);
+			collapseExpandedDiff();
 		},
-		[onSendReviewComments, selection.card.id, showClineAgentChatPanel],
+		[collapseExpandedDiff, onSendReviewComments, selection.card.id, showClineAgentChatPanel],
 	);
 
 	const showBottomTerminal = bottomTerminalOpen && !!bottomTerminalTaskId;
@@ -796,7 +846,7 @@ export function CardDetailView({
 
 	return (
 		<div ref={detailLayoutRef} className="flex min-h-0 flex-1 overflow-hidden bg-surface-0">
-			{!isDiffExpanded ? (
+			{!expandedPanel ? (
 				<>
 					<div className="flex min-h-0 min-w-0" style={{ width: taskCardsPanelPercent }}>
 						<ColumnContextPanel
@@ -834,7 +884,7 @@ export function CardDetailView({
 			) : null}
 			<div
 				className="flex min-h-0 min-w-0 flex-col overflow-hidden"
-				style={{ width: isDiffExpanded ? "100%" : detailContentPanelPercent }}
+				style={{ width: expandedPanel ? "100%" : detailContentPanelPercent }}
 			>
 				{gitHistoryPanel ? (
 					<div className="flex min-h-0 flex-1 overflow-hidden">{gitHistoryPanel}</div>
@@ -842,12 +892,18 @@ export function CardDetailView({
 					<>
 						<div ref={mainRowRef} className="flex min-h-0 flex-1 overflow-hidden">
 							<div
-								className="min-h-0 min-w-0"
-								style={{ display: isDiffExpanded ? "none" : "flex", width: agentPanelPercent }}
+								className="min-h-0 min-w-0 flex-col"
+								style={{
+									display: isDiffExpanded ? "none" : "flex",
+									width: isAgentExpanded ? "100%" : agentPanelPercent,
+								}}
 							>
-								{agentChatPanel}
+								{!isDiffExpanded ? (
+									<AgentToolbar isExpanded={isAgentExpanded} onToggleExpand={handleToggleAgentExpand} />
+								) : null}
+								<div className="flex min-h-0 min-w-0 flex-1">{agentChatPanel}</div>
 							</div>
-							{!isDiffExpanded ? (
+							{!expandedPanel ? (
 								<ResizeHandle
 									orientation="vertical"
 									ariaLabel="Resize agent and diff panels"
@@ -856,10 +912,13 @@ export function CardDetailView({
 								/>
 							) : null}
 							<div
-								className="flex min-h-0 min-w-0 flex-col"
-								style={{ width: isDiffExpanded ? "100%" : diffPanelPercent }}
+								className="min-h-0 min-w-0 flex-col"
+								style={{
+									display: isAgentExpanded ? "none" : "flex",
+									width: isDiffExpanded ? "100%" : diffPanelPercent,
+								}}
 							>
-								{isRuntimeAvailable ? (
+								{isRuntimeAvailable && !isAgentExpanded ? (
 									<DiffToolbar
 										mode={diffMode}
 										onModeChange={setDiffMode}
