@@ -6,11 +6,11 @@
 import {
 	type AgentEvent,
 	type BasicLogger,
-	buildWorkspaceMetadata,
 	ClineCore,
 	type ClineCoreStartInput,
 	type CoreSessionEvent,
 	createUserInstructionConfigService,
+	buildWorkspaceMetadata as fetchSdkWorkspaceMetadata,
 	formatRulesForSystemPrompt,
 	getClineDefaultSystemPrompt,
 	isRuleEnabled,
@@ -104,6 +104,31 @@ export function loadClineSdkRulesForSystemPrompt(service: ClineSdkUserInstructio
 		.filter(isRuleEnabled)
 		.sort((left, right) => left.name.localeCompare(right.name));
 	return formatRulesForSystemPrompt(rules);
+}
+
+// Cache of workspace metadata results keyed by cwd with a 30-second TTL.
+// The SDK's buildWorkspaceMetadata spawns several git subprocesses
+// (checkIsRepo, getRemotes, revparse HEAD, branch) on every call; the cache
+// avoids repeating them for every session start within the same workspace.
+// The SDK import is aliased to fetchSdkWorkspaceMetadata and shadowed by the
+// cached wrapper below so existing call sites stay unchanged.
+const WORKSPACE_METADATA_CACHE_TTL_MS = 30_000;
+const workspaceMetadataCache = new Map<string, { value: string; expiresAt: number }>();
+
+/** Clear the cached workspace metadata (e.g., after a git branch switch). */
+export function clearWorkspaceMetadataCache(): void {
+	workspaceMetadataCache.clear();
+}
+
+async function buildWorkspaceMetadata(cwd: string): Promise<string> {
+	const now = Date.now();
+	const cached = workspaceMetadataCache.get(cwd);
+	if (cached && cached.expiresAt > now) {
+		return cached.value;
+	}
+	const value = await fetchSdkWorkspaceMetadata(cwd);
+	workspaceMetadataCache.set(cwd, { value, expiresAt: now + WORKSPACE_METADATA_CACHE_TTL_MS });
+	return value;
 }
 
 export async function resolveClineSdkSystemPrompt(input: {

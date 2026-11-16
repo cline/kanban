@@ -1,4 +1,5 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
+import { appendFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type ClineSdkBasicLogger as BasicLogger, resolveClineSdkDataDir } from "./sdk-runtime-boundary.js";
 
@@ -35,6 +36,23 @@ function isLoggingEnabled(): boolean {
 	return configured === "1" || configured === "true" || configured === "yes" || configured === "on";
 }
 
+// Create the log directory once at logger construction time instead of on
+// every write. The previous per-line mkdirSync + appendFileSync blocked the
+// event loop during high-frequency SDK events (streaming chunks, tool calls).
+let logDirectoryEnsured = false;
+
+function ensureLogDirectory(destination: string): void {
+	if (logDirectoryEnsured) {
+		return;
+	}
+	try {
+		mkdirSync(dirname(destination), { recursive: true });
+		logDirectoryEnsured = true;
+	} catch {
+		// Best-effort only; per-write attempts will also catch errors.
+	}
+}
+
 function writeLogLine(level: LogLevel, message: string, metadata?: Record<string, unknown>): void {
 	if (!isLoggingEnabled()) {
 		return;
@@ -45,13 +63,11 @@ function writeLogLine(level: LogLevel, message: string, metadata?: Record<string
 		message,
 		...(metadata ? { metadata } : {}),
 	});
-	try {
-		const destination = normalizeLogPath();
-		mkdirSync(dirname(destination), { recursive: true });
-		appendFileSync(destination, `${line}\n`, "utf8");
-	} catch {
-		// Best-effort logging only.
-	}
+	const destination = normalizeLogPath();
+	ensureLogDirectory(destination);
+	// Use async appendFile instead of appendFileSync to avoid blocking the
+	// event loop. Fire-and-forget: log ordering is best-effort.
+	void appendFile(destination, `${line}\n`, "utf8").catch(() => undefined);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
