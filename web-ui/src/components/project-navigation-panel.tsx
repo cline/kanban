@@ -595,6 +595,7 @@ const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "G"], label: "Toggle git view" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
+	{ keys: [MOD, "E"], label: "Toggle sidebar" },
 ];
 
 const MORE_SHORTCUTS = [

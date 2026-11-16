@@ -64,6 +64,7 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={handleOpenSettings}
 					handleToggleGitHistory={handleToggleGitHistory}
 					handleCloseGitHistory={() => {}}
+					handleToggleSidebar={() => {}}
 					onStartAllTasks={() => {}}
 				/>,
 			);
@@ -108,6 +109,7 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={() => {}}
 					handleToggleGitHistory={() => {}}
 					handleCloseGitHistory={handleCloseGitHistory}
+					handleToggleSidebar={() => {}}
 					onStartAllTasks={() => {}}
 				/>,
 			);
@@ -145,6 +147,7 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={() => {}}
 					handleToggleGitHistory={() => {}}
 					handleCloseGitHistory={() => {}}
+					handleToggleSidebar={() => {}}
 					onStartAllTasks={onStartAllTasks}
 				/>,
 			);
@@ -182,6 +185,7 @@ describe("useAppHotkeys", () => {
 					handleOpenSettings={() => {}}
 					handleToggleGitHistory={() => {}}
 					handleCloseGitHistory={() => {}}
+					handleToggleSidebar={() => {}}
 					onStartAllTasks={() => {}}
 				/>,
 			);
