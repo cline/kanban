@@ -225,6 +225,11 @@ They are distinct from Cline SDK plugin runtime hooks such as `beforeRun`,
   - `PreToolUse` for active tools like `Read`, `Grep`, `Glob`, `FetchUrl`, `WebSearch`, `Execute`, `Task`, `Edit`, and `Create` emits `to_in_progress`
   - `PreToolUse` for `AskUser` and `Stop` emit `to_review`
   - `PostToolUse` for `AskUser` and `UserPromptSubmit` emit `to_in_progress`
+- Kimi Code
+  - Kanban launches with a generated `--config-file` that preserves the user's default TOML config and appends Kanban hook entries
+  - `UserPromptSubmit` and `PreToolUse` emit `to_in_progress`
+  - `Stop`, `StopFailure`, and approval/attention notifications emit `to_review`
+  - the initial task prompt is bracketed-pasted into the interactive TUI after the first terminal output
 
 Important behavior details:
 
