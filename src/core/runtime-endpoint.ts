@@ -106,6 +106,12 @@ export function getKanbanRuntimeOrigin(): string {
 	return `${scheme}://${getKanbanRuntimeHost()}:${getKanbanRuntimePort()}`;
 }
 
+export function getKanbanOauthRedirectOrigin(): string {
+	const scheme = isKanbanRuntimeHttps() ? "https" : "http";
+	const host = runtimeHost === "0.0.0.0" ? "127.0.0.1" : runtimeHost;
+	return `${scheme}://${host}:${getKanbanRuntimePort()}`;
+}
+
 export function getKanbanRuntimeWsOrigin(): string {
 	const scheme = isKanbanRuntimeHttps() ? "wss" : "ws";
 	return `${scheme}://${getKanbanRuntimeHost()}:${getKanbanRuntimePort()}`;

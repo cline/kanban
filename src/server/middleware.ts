@@ -70,6 +70,10 @@ export function getAllowedHostHeaders(): ReadonlySet<string> {
 
 	if (isKanbanRemoteHost()) {
 		addHostPort(boundHost);
+		if (boundHost === "0.0.0.0") {
+			addHostPort("localhost");
+			addHostPort("127.0.0.1");
+		}
 		return allowed;
 	}
 
@@ -109,18 +113,22 @@ function rejectSocket(socket: Duplex): { end: boolean } {
 }
 
 export function handleHttpRequest(req: IncomingMessage, res: ServerResponse): { end: boolean } {
-	const hostDecision = evaluateHost({
-		hostHeader: req.headers.host,
-		allowedHosts: getAllowedHostHeaders(),
-	});
-	if (hostDecision.kind === "reject") {
-		return rejectRequest(res, "Host not allowed.");
+	const boundHost = getKanbanRuntimeHost().toLowerCase();
+	if (boundHost !== "0.0.0.0") {
+		const hostDecision = evaluateHost({
+			hostHeader: req.headers.host,
+			allowedHosts: getAllowedHostHeaders(),
+		});
+		if (hostDecision.kind === "reject") {
+			return rejectRequest(res, "Host not allowed.");
+		}
 	}
 
+	const allowedOrigin = boundHost === "0.0.0.0" && req.headers.origin ? req.headers.origin : getKanbanRuntimeOrigin();
 	const corsDecision = evaluateCors({
 		method: req.method,
 		originHeader: req.headers.origin,
-		allowedOrigin: getKanbanRuntimeOrigin(),
+		allowedOrigin,
 	});
 
 	switch (corsDecision.kind) {
@@ -146,18 +154,23 @@ export function handleHttpRequest(req: IncomingMessage, res: ServerResponse): { 
 }
 
 export function handleSocketUpgrade(request: IncomingMessage, socket: Duplex): { end: boolean } {
-	const hostDecision = evaluateHost({
-		hostHeader: request.headers.host,
-		allowedHosts: getAllowedHostHeaders(),
-	});
-	if (hostDecision.kind === "reject") {
-		return rejectSocket(socket);
+	const boundHost = getKanbanRuntimeHost().toLowerCase();
+	if (boundHost !== "0.0.0.0") {
+		const hostDecision = evaluateHost({
+			hostHeader: request.headers.host,
+			allowedHosts: getAllowedHostHeaders(),
+		});
+		if (hostDecision.kind === "reject") {
+			return rejectSocket(socket);
+		}
 	}
 
+	const allowedOrigin =
+		boundHost === "0.0.0.0" && request.headers.origin ? request.headers.origin : getKanbanRuntimeOrigin();
 	const corsDecision = evaluateCors({
 		method: request.method,
 		originHeader: request.headers.origin,
-		allowedOrigin: getKanbanRuntimeOrigin(),
+		allowedOrigin,
 	});
 	if (corsDecision.kind === "reject") {
 		return rejectSocket(socket);
