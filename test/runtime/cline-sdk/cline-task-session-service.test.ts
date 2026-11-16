@@ -10,8 +10,12 @@ import type {
 } from "../../../src/cline-sdk/cline-session-runtime";
 import { createSessionId } from "../../../src/cline-sdk/cline-session-state";
 import type { ClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
-import { createInMemoryClineTaskSessionService } from "../../../src/cline-sdk/cline-task-session-service";
+import {
+	createInMemoryClineTaskSessionService,
+	stripIncompleteToolTurns,
+} from "../../../src/cline-sdk/cline-task-session-service";
 import { createClineWatcherRegistry } from "../../../src/cline-sdk/cline-watcher-registry";
+import type { ClineSdkPersistedMessage } from "../../../src/cline-sdk/sdk-runtime-boundary";
 import type { RuntimeTaskImage, RuntimeTaskSessionMode } from "../../../src/core/api-contract";
 
 const originalArgv = [...process.argv];
@@ -1841,5 +1845,110 @@ describe("InMemoryClineTaskSessionService", () => {
 			.filter((message) => message.role === "assistant")
 			.map((message) => message.content);
 		expect(assistantMessages).toEqual(["Done."]);
+	});
+});
+
+describe("stripIncompleteToolTurns", () => {
+	type PersistedMessage = ClineSdkPersistedMessage;
+
+	it("returns the input unchanged when there are no tool calls", () => {
+		const messages: PersistedMessage[] = [
+			{ role: "user", content: "plan the feature" },
+			{ role: "assistant", content: "Here is the plan." },
+		];
+		expect(stripIncompleteToolTurns(messages)).toBe(messages);
+	});
+
+	it("returns the input unchanged when every tool call is resolved", () => {
+		const messages: PersistedMessage[] = [
+			{ role: "user", content: "run the tests" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "text", text: "Running tests." },
+					{ type: "tool_use", id: "call-1", name: "run_tests", input: {} },
+				],
+			},
+			{
+				role: "user",
+				content: [{ type: "tool_result", tool_use_id: "call-1", content: "all passing" }],
+			},
+			{ role: "assistant", content: "All tests passed." },
+		];
+		expect(stripIncompleteToolTurns(messages)).toBe(messages);
+	});
+
+	it("drops the trailing assistant message when its tool call has no result", () => {
+		const messages: PersistedMessage[] = [
+			{ role: "user", content: "run the tests" },
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "call-1", name: "run_tests", input: {} }],
+			},
+		];
+		const stripped = stripIncompleteToolTurns(messages);
+		expect(stripped).toHaveLength(1);
+		expect(stripped[0]?.role).toBe("user");
+	});
+
+	it("drops the incomplete turn and everything after it, keeping earlier complete turns", () => {
+		const messages: PersistedMessage[] = [
+			{ role: "user", content: "first" },
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "call-1", name: "read_file", input: {} }],
+			},
+			{
+				role: "user",
+				content: [{ type: "tool_result", tool_use_id: "call-1", content: "file body" }],
+			},
+			{ role: "assistant", content: "First step done." },
+			{ role: "user", content: "second" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "text", text: "Crashed mid-call." },
+					{ type: "tool_use", id: "call-2", name: "edit_file", input: {} },
+				],
+			},
+			{ role: "assistant", content: "never persisted" },
+		];
+		const stripped = stripIncompleteToolTurns(messages);
+		expect(stripped).toHaveLength(5);
+		expect(stripped.at(-1)?.role).toBe("user");
+		expect(stripped.some((message) => JSON.stringify(message).includes("call-2"))).toBe(false);
+	});
+
+	it("keeps a partially resolved turn only when at least one call is unresolved", () => {
+		const messages: PersistedMessage[] = [
+			{ role: "user", content: "do both" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "tool_use", id: "call-1", name: "step_one", input: {} },
+					{ type: "tool_use", id: "call-2", name: "step_two", input: {} },
+				],
+			},
+			{
+				role: "user",
+				content: [{ type: "tool_result", tool_use_id: "call-1", content: "done" }],
+			},
+		];
+		// call-2 has no result, so the whole turn is dropped from the assistant message on.
+		const stripped = stripIncompleteToolTurns(messages);
+		expect(stripped).toHaveLength(1);
+		expect(stripped[0]?.role).toBe("user");
+	});
+
+	it("ignores string content and non-assistant tool blocks", () => {
+		const messages: PersistedMessage[] = [
+			{ role: "user", content: [{ type: "tool_result", tool_use_id: "call-x", content: "stray" }] },
+			{ role: "assistant", content: "plain text only" },
+		];
+		expect(stripIncompleteToolTurns(messages)).toBe(messages);
+	});
+
+	it("returns an empty array for empty input", () => {
+		expect(stripIncompleteToolTurns([])).toEqual([]);
 	});
 });
