@@ -12,6 +12,7 @@ import { TaskImageStrip } from "@/components/task-image-strip";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 
 function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
 	const parsed = useMemo(() => parseToolMessageContent(message.content), [message.content]);
@@ -130,7 +131,9 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 
 function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
 	const isStreaming = message.meta?.hookEventName === "reasoning_delta";
-	const [expanded, setExpanded] = useState(isStreaming);
+	const [expanded, setExpanded] = useState(
+		() => isStreaming && readLocalStorageItem(LocalStorageKey.ReasoningCollapsed) !== "true",
+	);
 	const wasStreamingRef = useRef(isStreaming);
 
 	useEffect(() => {
@@ -140,8 +143,13 @@ function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): Reac
 		wasStreamingRef.current = isStreaming;
 	}, [isStreaming]);
 
+	const handleOpenChange = (open: boolean) => {
+		setExpanded(open);
+		writeLocalStorageItem(LocalStorageKey.ReasoningCollapsed, String(!open));
+	};
+
 	return (
-		<Collapsible.Root open={expanded} onOpenChange={setExpanded} className="w-full">
+		<Collapsible.Root open={expanded} onOpenChange={handleOpenChange} className="w-full">
 			<Collapsible.Trigger asChild>
 				<button
 					type="button"
