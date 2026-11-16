@@ -3,6 +3,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TopBar } from "@/components/top-bar";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { resetWorkspaceMetadataStore, setHomeGitSummary } from "@/stores/workspace-metadata-store";
+
+const isMobileMock = vi.hoisted(() => ({ current: false }));
+
+vi.mock("@/hooks/use-is-mobile", () => ({
+	useIsMobile: () => isMobileMock.current,
+}));
 
 function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement | null {
 	return (Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === text) ??
@@ -21,6 +29,8 @@ describe("TopBar script shortcut onboarding", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		isMobileMock.current = false;
+		resetWorkspaceMetadataStore();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -34,6 +44,8 @@ describe("TopBar script shortcut onboarding", () => {
 			root.unmount();
 		});
 		container.remove();
+		resetWorkspaceMetadataStore();
+		isMobileMock.current = false;
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 		} else {
@@ -130,5 +142,147 @@ describe("TopBar script shortcut onboarding", () => {
 		});
 
 		expect(onOpenSettings).toHaveBeenCalledTimes(1);
+	});
+});
+
+const HOME_GIT_SUMMARY = {
+	currentBranch: "main",
+	upstreamBranch: "origin/main",
+	changedFiles: 0,
+	additions: 0,
+	deletions: 0,
+	aheadCount: 2,
+	behindCount: 1,
+};
+
+function renderTopBarWithGit(root: Root, overrides: Record<string, unknown> = {}): void {
+	act(() => {
+		root.render(
+			<TooltipProvider>
+				<TopBar
+					openTargetOptions={[]}
+					selectedOpenTargetId="vscode"
+					onSelectOpenTarget={() => {}}
+					onOpenWorkspace={() => {}}
+					canOpenWorkspace={false}
+					isOpeningWorkspace={false}
+					showHomeGitSummary
+					onGitFetch={vi.fn()}
+					onGitPull={vi.fn()}
+					onGitPush={vi.fn()}
+					{...overrides}
+				/>
+			</TooltipProvider>,
+		);
+	});
+}
+
+describe("TopBar mobile git actions", () => {
+	let container: HTMLDivElement;
+	let root: Root;
+	let previousActEnvironment: boolean | undefined;
+
+	beforeEach(() => {
+		isMobileMock.current = true;
+		resetWorkspaceMetadataStore();
+		setHomeGitSummary(HOME_GIT_SUMMARY);
+		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+	});
+
+	afterEach(() => {
+		act(() => {
+			root.unmount();
+		});
+		container.remove();
+		resetWorkspaceMetadataStore();
+		isMobileMock.current = false;
+		if (previousActEnvironment === undefined) {
+			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+		} else {
+			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+				previousActEnvironment;
+		}
+	});
+
+	it("exposes fetch, pull, and push in a mobile overflow menu", async () => {
+		const onGitFetch = vi.fn();
+		const onGitPull = vi.fn();
+		const onGitPush = vi.fn();
+		renderTopBarWithGit(root, { onGitFetch, onGitPull, onGitPush });
+
+		expect(container.querySelector('[aria-label="Fetch from upstream"]')).toBeNull();
+		const menuTrigger = container.querySelector('[aria-label="Git sync actions"]');
+		expect(menuTrigger).toBeInstanceOf(HTMLButtonElement);
+
+		await act(async () => {
+			menuTrigger?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+			(menuTrigger as HTMLButtonElement).click();
+		});
+
+		const fetchItem = Array.from(document.body.querySelectorAll("[role='menuitem']")).find((item) =>
+			item.textContent?.includes("Fetch"),
+		);
+		const pullItem = Array.from(document.body.querySelectorAll("[role='menuitem']")).find((item) =>
+			item.textContent?.includes("Pull"),
+		);
+		const pushItem = Array.from(document.body.querySelectorAll("[role='menuitem']")).find((item) =>
+			item.textContent?.includes("Push"),
+		);
+		expect(fetchItem).toBeTruthy();
+		expect(pullItem?.textContent).toContain("1");
+		expect(pushItem?.textContent).toContain("2");
+
+		await act(async () => {
+			fetchItem?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+			(fetchItem as HTMLElement).click();
+		});
+		expect(onGitFetch).toHaveBeenCalledTimes(1);
+
+		await act(async () => {
+			menuTrigger?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+			(menuTrigger as HTMLButtonElement).click();
+		});
+		const pullItemAgain = Array.from(document.body.querySelectorAll("[role='menuitem']")).find((item) =>
+			item.textContent?.includes("Pull"),
+		);
+		await act(async () => {
+			pullItemAgain?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+			(pullItemAgain as HTMLElement).click();
+		});
+		expect(onGitPull).toHaveBeenCalledTimes(1);
+
+		await act(async () => {
+			menuTrigger?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+			(menuTrigger as HTMLButtonElement).click();
+		});
+		const pushItemAgain = Array.from(document.body.querySelectorAll("[role='menuitem']")).find((item) =>
+			item.textContent?.includes("Push"),
+		);
+		await act(async () => {
+			pushItemAgain?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+			(pushItemAgain as HTMLElement).click();
+		});
+		expect(onGitPush).toHaveBeenCalledTimes(1);
+	});
+
+	it("hides mobile git actions when the home git summary is missing", () => {
+		resetWorkspaceMetadataStore();
+		renderTopBarWithGit(root);
+		expect(container.querySelector('[aria-label="Git sync actions"]')).toBeNull();
+		expect(container.querySelector('[aria-label="Fetch from upstream"]')).toBeNull();
+	});
+
+	it("keeps desktop fetch, pull, and push inline", () => {
+		isMobileMock.current = false;
+		renderTopBarWithGit(root);
+		expect(container.querySelector('[aria-label="Git sync actions"]')).toBeNull();
+		expect(container.querySelector('[aria-label="Fetch from upstream"]')).toBeInstanceOf(HTMLButtonElement);
+		expect(container.querySelector('[aria-label="Pull from upstream"]')).toBeInstanceOf(HTMLButtonElement);
+		expect(container.querySelector('[aria-label="Push to upstream"]')).toBeInstanceOf(HTMLButtonElement);
 	});
 });

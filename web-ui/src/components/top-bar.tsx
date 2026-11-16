@@ -1,3 +1,4 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as RadixPopover from "@radix-ui/react-popover";
 import {
 	ArrowDown,
@@ -8,6 +9,7 @@ import {
 	ChevronDown,
 	CircleArrowDown,
 	Command,
+	Ellipsis,
 	GitBranch,
 	Menu,
 	Play,
@@ -43,6 +45,8 @@ type SettingsSection = "shortcuts";
 type CreateShortcutResult = { ok: boolean; message?: string };
 
 const MOBILE_TOUCH_TARGET = "min-w-[44px] min-h-[44px]";
+const HOME_GIT_MENU_ITEM_CLASS =
+	"flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-text-primary outline-none data-[disabled]:cursor-not-allowed data-[highlighted]:bg-surface-3 data-[disabled]:opacity-50";
 
 function getWorkspacePathSegments(path: string): string[] {
 	return path
@@ -166,6 +170,71 @@ function GitBranchStatusControl({
 	);
 }
 
+function HomeGitSyncMenu({
+	pullCount,
+	pushCount,
+	runningGitAction,
+	onGitFetch,
+	onGitPull,
+	onGitPush,
+}: {
+	pullCount: number;
+	pushCount: number;
+	runningGitAction?: RuntimeGitSyncAction | null;
+	onGitFetch?: () => void;
+	onGitPull?: () => void;
+	onGitPush?: () => void;
+}): React.ReactElement {
+	return (
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger asChild>
+				<Button
+					variant="ghost"
+					size="sm"
+					icon={<Ellipsis size={16} />}
+					aria-label="Git sync actions"
+					className={MOBILE_TOUCH_TARGET}
+				/>
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Portal>
+				<DropdownMenu.Content
+					side="bottom"
+					align="end"
+					sideOffset={4}
+					className="z-50 min-w-[160px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
+				>
+					<DropdownMenu.Item
+						className={HOME_GIT_MENU_ITEM_CLASS}
+						disabled={runningGitAction === "fetch"}
+						onSelect={onGitFetch}
+					>
+						{runningGitAction === "fetch" ? <Spinner size={14} /> : <CircleArrowDown size={16} />}
+						Fetch
+					</DropdownMenu.Item>
+					<DropdownMenu.Item
+						className={HOME_GIT_MENU_ITEM_CLASS}
+						disabled={runningGitAction === "pull"}
+						onSelect={onGitPull}
+					>
+						{runningGitAction === "pull" ? <Spinner size={14} /> : <ArrowDown size={14} />}
+						<span>Pull</span>
+						<span className="text-text-tertiary">{pullCount}</span>
+					</DropdownMenu.Item>
+					<DropdownMenu.Item
+						className={HOME_GIT_MENU_ITEM_CLASS}
+						disabled={runningGitAction === "push"}
+						onSelect={onGitPush}
+					>
+						{runningGitAction === "push" ? <Spinner size={14} /> : <ArrowUp size={14} />}
+						<span>Push</span>
+						<span className="text-text-tertiary">{pushCount}</span>
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Portal>
+		</DropdownMenu.Root>
+	);
+}
+
 function TopBarGitStatusSection({
 	showHomeGitSummary,
 	selectedTaskId,
@@ -176,6 +245,7 @@ function TopBarGitStatusSection({
 	onGitFetch,
 	onGitPull,
 	onGitPush,
+	layout = "inline",
 }: {
 	showHomeGitSummary: boolean;
 	selectedTaskId: string | null;
@@ -186,6 +256,7 @@ function TopBarGitStatusSection({
 	onGitFetch?: () => void;
 	onGitPull?: () => void;
 	onGitPush?: () => void;
+	layout?: "inline" | "menu";
 }): React.ReactElement | null {
 	const homeGitSummary = useHomeGitSummaryValue();
 	const taskWorkspaceInfo = useTaskWorkspaceInfoValue(selectedTaskId, selectedTaskBaseRef);
@@ -195,6 +266,18 @@ function TopBarGitStatusSection({
 		const branchLabel = homeGitSummary.currentBranch ?? "detached HEAD";
 		const pullCount = homeGitSummary.behindCount ?? 0;
 		const pushCount = homeGitSummary.aheadCount ?? 0;
+		if (layout === "menu") {
+			return (
+				<HomeGitSyncMenu
+					pullCount={pullCount}
+					pushCount={pushCount}
+					runningGitAction={runningGitAction}
+					onGitFetch={onGitFetch}
+					onGitPull={onGitPull}
+					onGitPush={onGitPush}
+				/>
+			);
+		}
 		const pullTooltip =
 			pullCount > 0
 				? `Pull ${pullCount} commit${pullCount === 1 ? "" : "s"} from upstream into your local branch.`
@@ -255,6 +338,10 @@ function TopBarGitStatusSection({
 				</div>
 			</>
 		);
+	}
+
+	if (layout === "menu") {
+		return null;
 	}
 
 	if (selectedTaskId && (taskWorkspaceInfo || taskWorkspaceSnapshot)) {
@@ -645,9 +732,21 @@ export function TopBar({
 						</>
 					) : null}
 
-					{/* Mobile: inline run + terminal buttons (icon-only) */}
+					{/* Mobile: git overflow + inline run + terminal buttons (icon-only) */}
 					{isMobile ? (
 						<>
+							{!hideProjectDependentActions ? (
+								<TopBarGitStatusSection
+									layout="menu"
+									showHomeGitSummary={showHomeGitSummary === true}
+									selectedTaskId={selectedTaskId ?? null}
+									selectedTaskBaseRef={selectedTaskBaseRef ?? null}
+									runningGitAction={runningGitAction}
+									onGitFetch={onGitFetch}
+									onGitPull={onGitPull}
+									onGitPush={onGitPush}
+								/>
+							) : null}
 							{!hideProjectDependentActions && onRunShortcut && selectedShortcut ? (
 								<Button
 									variant="ghost"
