@@ -503,6 +503,7 @@ export function createTerminalWebSocketBridge({
 					snapshot: snapshot?.snapshot ?? "",
 					cols: snapshot?.cols ?? null,
 					rows: snapshot?.rows ?? null,
+					restoreGeneration: snapshot?.restoreGeneration,
 				});
 			})
 			.catch(() => {

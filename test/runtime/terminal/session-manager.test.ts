@@ -216,6 +216,7 @@ describe("TerminalSessionManager", () => {
 			terminalStateMirror: {
 				getSnapshot: getSnapshotSpy,
 			},
+			restoreGeneration: 7,
 			listenerIdCounter: 1,
 			listeners: new Map(),
 		};
@@ -231,6 +232,7 @@ describe("TerminalSessionManager", () => {
 			snapshot: "serialized terminal",
 			cols: 120,
 			rows: 40,
+			restoreGeneration: 7,
 		});
 		expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
 	});
