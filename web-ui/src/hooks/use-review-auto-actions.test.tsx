@@ -3,6 +3,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskGitAction } from "@/git-actions/build-task-git-action-prompt";
 import { useReviewAutoActions } from "@/hooks/use-review-auto-actions";
+import type {
+	RuntimeTaskSessionReviewReason,
+	RuntimeTaskSessionState,
+	RuntimeTaskSessionSummary,
+} from "@/runtime/types";
 import { resetWorkspaceMetadataStore, setTaskWorkspaceSnapshot } from "@/stores/workspace-metadata-store";
 import type { BoardColumnId, BoardData, ReviewTaskWorkspaceSnapshot } from "@/types";
 
@@ -47,18 +52,41 @@ const workspaceSnapshots: Record<string, ReviewTaskWorkspaceSnapshot> = {
 	},
 };
 
+function createSessionSummary(
+	state: RuntimeTaskSessionState,
+	reviewReason: RuntimeTaskSessionReviewReason,
+): RuntimeTaskSessionSummary {
+	return {
+		taskId: "task-1",
+		state,
+		agentId: "cline",
+		workspacePath: "/tmp/task-1",
+		pid: null,
+		startedAt: 1,
+		updatedAt: 1,
+		lastOutputAt: 1,
+		reviewReason,
+		exitCode: null,
+		lastHookAt: null,
+		latestHookActivity: null,
+	};
+}
+
 function HookHarness({
 	board,
+	sessions = {},
 	runAutoReviewGitAction,
 	requestMoveTaskToTrash,
 }: {
 	board: BoardData;
+	sessions?: Record<string, RuntimeTaskSessionSummary>;
 	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	requestMoveTaskToTrash: (taskId: string, fromColumnId: BoardColumnId) => Promise<void>;
 }): null {
 	setTaskWorkspaceSnapshot(workspaceSnapshots["task-1"] ?? null);
 	useReviewAutoActions({
 		board,
+		sessions,
 		taskGitActionLoadingByTaskId: {},
 		runAutoReviewGitAction,
 		requestMoveTaskToTrash,
@@ -126,5 +154,84 @@ describe("useReviewAutoActions", () => {
 
 		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
 		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("does not auto-commit or auto-move a review card whose session failed", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(true)}
+					sessions={{ "task-1": createSessionSummary("awaiting_review", "error") }}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("cancels an already scheduled auto action when the session fails before the timer fires", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(true)}
+					sessions={{ "task-1": createSessionSummary("awaiting_review", "exit") }}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(true)}
+					sessions={{ "task-1": createSessionSummary("awaiting_review", "error") }}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).not.toHaveBeenCalled();
+		expect(requestMoveTaskToTrash).not.toHaveBeenCalled();
+	});
+
+	it("still auto-commits a clean review card when the session ended without error", async () => {
+		const runAutoReviewGitAction = vi.fn(async () => true);
+		const requestMoveTaskToTrash = vi.fn(async () => {});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					board={createBoard(true)}
+					sessions={{ "task-1": createSessionSummary("awaiting_review", "exit") }}
+					runAutoReviewGitAction={runAutoReviewGitAction}
+					requestMoveTaskToTrash={requestMoveTaskToTrash}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			vi.advanceTimersByTime(1000);
+		});
+
+		expect(runAutoReviewGitAction).toHaveBeenCalledWith("task-1", "commit");
 	});
 });

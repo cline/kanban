@@ -695,6 +695,92 @@ describe("BoardCard", () => {
 		expect(container.textContent).not.toContain("Thinking...");
 	});
 
+	it("shows a red failure indicator for a review card whose session ended in an error", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="review"
+					sessionSummary={createSummary("awaiting_review", {
+						reviewReason: "error",
+						warningMessage: "Unknown agent error",
+						latestHookActivity: {
+							activityText: "Agent error: boom",
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: "boom",
+							hookEventName: "agent_error",
+							notificationType: null,
+							source: "cline-sdk",
+						},
+					})}
+				/>,
+			);
+		});
+
+		const dot = container.querySelector(".rounded-full") as HTMLElement | null;
+		expect(dot).not.toBeNull();
+		expect(dot?.style.backgroundColor).toBe("var(--color-status-red)");
+		expect(container.textContent).toContain("boom");
+	});
+
+	it("shows a red failure indicator when a failed session carries a final assistant message", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="in_progress"
+					sessionSummary={createSummary("failed", {
+						latestHookActivity: {
+							activityText: null,
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: "Provider connection lost",
+							hookEventName: "agent_end",
+							notificationType: null,
+							source: "cline-sdk",
+						},
+					})}
+				/>,
+			);
+		});
+
+		const dot = container.querySelector(".rounded-full") as HTMLElement | null;
+		expect(dot).not.toBeNull();
+		expect(dot?.style.backgroundColor).toBe("var(--color-status-red)");
+		expect(container.textContent).toContain("Provider connection lost");
+	});
+
+	it("keeps the green success indicator for a clean review card", async () => {
+		await act(async () => {
+			root.render(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="review"
+					sessionSummary={createSummary("awaiting_review", {
+						latestHookActivity: {
+							activityText: null,
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: "Ready for review",
+							hookEventName: "assistant_delta",
+							notificationType: null,
+							source: "cline-sdk",
+						},
+					})}
+				/>,
+			);
+		});
+
+		const dot = container.querySelector(".rounded-full") as HTMLElement | null;
+		expect(dot).not.toBeNull();
+		expect(dot?.style.backgroundColor).toBe("var(--color-status-green)");
+		expect(container.textContent).toContain("Ready for review");
+	});
+
 	it("shows normal agent messages without the agent prefix", async () => {
 		await act(async () => {
 			root.render(
