@@ -298,7 +298,8 @@ export function BoardCard({
 			return;
 		}
 		const nextWidth = descriptionRef.current?.parentElement?.getBoundingClientRect().width ?? 0;
-		if (nextWidth > 0 && nextWidth !== descriptionWidthFallback) {
+		// Fractional layout widths can oscillate between renders before useMeasure reports a width.
+		if (nextWidth > 0 && Math.abs(nextWidth - descriptionWidthFallback) >= 1) {
 			setDescriptionWidthFallback(nextWidth);
 		}
 	}, [descriptionRect.width, descriptionWidthFallback, displayDescription]);
