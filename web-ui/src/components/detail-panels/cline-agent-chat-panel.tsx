@@ -78,6 +78,7 @@ export interface ClineAgentChatPanelProps {
 		modelId: string;
 		reasoningEffort: RuntimeClineReasoningEffort | "";
 	}) => void;
+	showClineModelPicker?: boolean;
 	onSendMessage?: (
 		taskId: string,
 		text: string,
@@ -107,6 +108,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			defaultMode = "act",
 			composerPlaceholder = "Ask Cline to add, edit, start, or link tasks",
 			showComposerModeToggle = true,
+			showClineModelPicker = true,
 			workspaceId = null,
 			runtimeConfig = null,
 			taskClineSettings,
@@ -443,6 +445,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						canCancel={canCancel}
 						onSend={handleComposerSend}
 						onCancel={handleCancelTurn}
+						showModelPicker={showClineModelPicker}
 						modelOptions={modelOptions}
 						recommendedModelIds={modelPickerOptions.recommendedModelIds}
 						pinSelectedModelToTop={modelPickerOptions.shouldPinSelectedModelToTop}

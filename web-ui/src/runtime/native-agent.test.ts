@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getChatComposerPlaceholder,
 	getTaskAgentNavbarHint,
 	isClineProviderAuthenticated,
+	isNativeChatPanelAgent,
 	isNativeClineAgentSelected,
 	isTaskAgentSetupSatisfied,
 	selectLatestTaskChatMessageForTask,
@@ -85,6 +87,20 @@ describe("native-agent helpers", () => {
 	it("treats cline as the native chat agent", () => {
 		expect(isNativeClineAgentSelected("cline")).toBe(true);
 		expect(isNativeClineAgentSelected("codex")).toBe(false);
+		expect(isNativeClineAgentSelected("ag2")).toBe(false);
+	});
+
+	it("shows the native chat panel for AG2 without taking the Cline SDK path", () => {
+		expect(isNativeChatPanelAgent("ag2")).toBe(true);
+		expect(isNativeChatPanelAgent("cline")).toBe(true);
+		expect(isNativeChatPanelAgent("claude")).toBe(false);
+		expect(isNativeChatPanelAgent("codex")).toBe(false);
+	});
+
+	it("builds the chat composer placeholder from the catalog label", () => {
+		expect(getChatComposerPlaceholder("ag2")).toBe("Message AG2");
+		expect(getChatComposerPlaceholder("cline")).toBeUndefined();
+		expect(getChatComposerPlaceholder("claude")).toBeUndefined();
 	});
 
 	it("treats selected cline as task-ready when cline authentication is configured", () => {

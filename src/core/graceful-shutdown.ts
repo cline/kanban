@@ -97,9 +97,23 @@ function normalizePath(path: string): string {
 	return path.replaceAll("\\", "/").toLowerCase();
 }
 
+function isTsxWrapperLaunch(argv: string[], execArgv: string[]): boolean {
+	return [...argv, ...execArgv].some((value) => {
+		if (value === "tsx") {
+			return true;
+		}
+		const normalized = normalizePath(value);
+		if (normalized.endsWith("/tsx") || normalized.endsWith("/tsx.js")) {
+			return true;
+		}
+		return normalized.includes("/tsx/") && normalized.endsWith("/cli.mjs");
+	});
+}
+
 export function shouldSuppressImmediateDuplicateShutdownSignals(options?: {
 	argv?: string[];
 	env?: NodeJS.ProcessEnv;
+	execArgv?: string[];
 }): boolean {
 	const env = options?.env ?? process.env;
 	if (typeof env.npm_execpath === "string" && env.npm_execpath.length > 0) {
@@ -107,6 +121,11 @@ export function shouldSuppressImmediateDuplicateShutdownSignals(options?: {
 	}
 
 	const argv = options?.argv ?? process.argv;
+	const execArgv = options?.execArgv ?? process.execArgv;
+	if (isTsxWrapperLaunch(argv, execArgv)) {
+		return true;
+	}
+
 	const entrypointPath = argv[1];
 	if (typeof entrypointPath !== "string" || entrypointPath.length === 0) {
 		return false;

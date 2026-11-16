@@ -243,6 +243,7 @@ function createClineTaskSessionServiceMock() {
 		listMessages: vi.fn<(...args: unknown[]) => unknown[]>(() => []),
 		loadTaskSessionMessages: vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => []),
 		applyTurnCheckpoint: vi.fn<(...args: unknown[]) => RuntimeTaskSessionSummary | null>(() => null),
+		listSlashCommands: vi.fn<(...args: unknown[]) => Promise<unknown[]>>(async () => []),
 		dispose: vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
 	};
 }
@@ -1379,7 +1380,10 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
-			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "cline" as const,
+			})),
 			setActiveRuntimeConfig: vi.fn(),
 			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
 			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
@@ -1422,6 +1426,97 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 		expect(cancelResponse.ok).toBe(true);
 		expect(clineTaskSessionService.cancelTaskTurn).toHaveBeenCalledWith("task-1");
+	});
+
+	it("starts a new AG2 PTY turn when the chat composer sends a follow-up", async () => {
+		const summary = createSummary({ agentId: "ag2", pid: 99, state: "awaiting_review" });
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "ag2",
+			label: "AG2",
+			command: "mlx-agents ag2-run",
+			binary: "mlx-agents",
+			args: ["ag2-run"],
+		});
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/repo");
+		const terminalManager = {
+			getSummary: vi.fn(() => summary),
+			listChatMessages: vi.fn(() => []),
+			appendChatMessage: vi.fn(),
+			startTaskSession: vi.fn(async () => summary),
+		};
+		const clineTaskSessionService = createClineTaskSessionServiceMock();
+		clineTaskSessionService.sendTaskSessionInput.mockResolvedValue(null);
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "ag2" as const,
+			})),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const sendResponse = await api.sendTaskChatMessage(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-ag2", text: "now summarize the architecture" },
+		);
+
+		expect(sendResponse.ok).toBe(true);
+		expect(terminalManager.appendChatMessage).toHaveBeenCalledWith(
+			"task-ag2",
+			expect.objectContaining({
+				role: "user",
+				content: "now summarize the architecture",
+			}),
+		);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				taskId: "task-ag2",
+				agentId: "ag2",
+				prompt: "now summarize the architecture",
+			}),
+		);
+		expect(clineTaskSessionService.startTaskSession).not.toHaveBeenCalled();
+		expect(clineTaskSessionService.sendTaskSessionInput).not.toHaveBeenCalled();
+	});
+
+	it("lists AG2 slash skills from the project path without the Cline SDK", async () => {
+		const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const root = await mkdtemp(join(tmpdir(), "kanban-ag2-slash-"));
+		try {
+			await mkdir(join(root, ".cline", "skills", "boot-coder"), { recursive: true });
+			await writeFile(
+				join(root, ".cline", "skills", "boot-coder", "SKILL.md"),
+				"---\nname: boot-coder\ndescription: Boot the coder profile.\n---\n",
+			);
+			const clineTaskSessionService = createClineTaskSessionServiceMock();
+			const api = createTestRuntimeApi({
+				getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+				loadScopedRuntimeConfig: vi.fn(async () => ({
+					...createRuntimeConfigState(),
+					selectedAgentId: "ag2" as const,
+				})),
+				setActiveRuntimeConfig: vi.fn(),
+				getScopedTerminalManager: vi.fn(async () => ({}) as never),
+				getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
+				resolveInteractiveShellCommand: vi.fn(),
+				runCommand: vi.fn(),
+			});
+			const response = await api.getClineSlashCommands({
+				workspaceId: "workspace-1",
+				workspacePath: root,
+			});
+			expect(response.commands.some((command) => command.name === "boot-coder")).toBe(true);
+			expect(response.commands.some((command) => command.name === "clear")).toBe(true);
+			expect(clineTaskSessionService.listSlashCommands).not.toHaveBeenCalled();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	it("handles clear slash commands without sending them to the model", async () => {
@@ -1529,6 +1624,181 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(clineTaskSessionService.loadTaskSessionMessages).toHaveBeenCalledWith("task-1");
 	});
 
+	it("loads AG2 chat from the PTY without hydrating a Cline session host", async () => {
+		const ptyMessages = [
+			{
+				id: "ag2-assistant",
+				role: "assistant" as const,
+				content: "hello from AG2",
+				createdAt: 1,
+			},
+		];
+		const terminalManager = {
+			getSummary: vi.fn(() => createSummary({ agentId: "ag2", state: "idle", pid: null })),
+			listChatMessages: vi.fn(() => ptyMessages),
+		};
+		const getScopedClineTaskSessionService = vi.fn(async () => {
+			throw new Error("Cline session host should not start for AG2 chat history");
+		});
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "ag2" as const,
+			})),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService,
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.getTaskChatMessages(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-1" },
+		);
+
+		expect(response).toEqual({
+			ok: true,
+			messages: ptyMessages,
+		});
+		expect(getScopedClineTaskSessionService).not.toHaveBeenCalled();
+	});
+
+	it("returns an empty AG2 chat for a new task instead of a missing-session error", async () => {
+		const terminalManager = {
+			getSummary: vi.fn(() => null),
+			listChatMessages: vi.fn(() => []),
+		};
+		const getScopedClineTaskSessionService = vi.fn(async () => {
+			throw new Error("Cline session host should not start for a new AG2 task");
+		});
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "ag2" as const,
+			})),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService,
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.getTaskChatMessages(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "new-task" },
+		);
+
+		expect(response).toEqual({
+			ok: true,
+			messages: [],
+		});
+		expect(getScopedClineTaskSessionService).not.toHaveBeenCalled();
+	});
+
+	it("aborts a PTY chat turn by stopping the terminal session", async () => {
+		const summary = createSummary({ agentId: "ag2", pid: 42, state: "running" });
+		const terminalManager = {
+			getSummary: vi.fn(() => summary),
+			stopTaskSession: vi.fn(() => summary),
+		};
+		const getScopedClineTaskSessionService = vi.fn(async () => {
+			throw new Error("Cline session host should not start for PTY chat abort");
+		});
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "ag2" as const,
+			})),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService,
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.abortTaskChatTurn(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-ag2" },
+		);
+
+		expect(response).toEqual({ ok: true, summary });
+		expect(terminalManager.stopTaskSession).toHaveBeenCalledWith("task-ag2");
+		expect(getScopedClineTaskSessionService).not.toHaveBeenCalled();
+	});
+
+	it("reloads a PTY chat session without starting a Cline host", async () => {
+		const summary = createSummary({ agentId: "ag2", pid: null, state: "idle" });
+		const terminalManager = {
+			getSummary: vi.fn(() => summary),
+		};
+		const getScopedClineTaskSessionService = vi.fn(async () => {
+			throw new Error("Cline session host should not start for PTY chat reload");
+		});
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "ag2" as const,
+			})),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService,
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+
+		const response = await api.reloadTaskChatSession(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-ag2" },
+		);
+
+		expect(response).toEqual({ ok: true, summary });
+		expect(getScopedClineTaskSessionService).not.toHaveBeenCalled();
+	});
+
+	it("clears PTY chat for project-skills slash without the Cline SDK", async () => {
+		const summary = createSummary({ agentId: "ag2", pid: null, state: "idle" });
+		const terminalManager = {
+			getSummary: vi.fn(() => summary),
+			clearChatMessages: vi.fn(),
+		};
+		const getScopedClineTaskSessionService = vi.fn(async () => {
+			throw new Error("Cline session host should not start for PTY /clear");
+		});
+		const broadcastTaskChatCleared = vi.fn();
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "ag2" as const,
+			})),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(async () => terminalManager as never),
+			getScopedClineTaskSessionService,
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+			broadcastTaskChatCleared,
+		});
+
+		const response = await api.sendTaskChatMessage(
+			{ workspaceId: "workspace-1", workspacePath: "/tmp/repo" },
+			{ taskId: "task-ag2", text: "  /clear  " },
+		);
+
+		expect(response).toEqual({
+			ok: true,
+			summary,
+			message: null,
+		});
+		expect(terminalManager.clearChatMessages).toHaveBeenCalledWith("task-ag2");
+		expect(broadcastTaskChatCleared).toHaveBeenCalledWith("workspace-1", "task-ag2");
+		expect(getScopedClineTaskSessionService).not.toHaveBeenCalled();
+	});
+
 	it("reloads a chat session through the Cline task session service", async () => {
 		const summary = createSummary({ agentId: "cline", pid: null });
 		const clineTaskSessionService = createClineTaskSessionServiceMock();
@@ -1536,7 +1806,10 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
-			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "cline" as const,
+			})),
 			setActiveRuntimeConfig: vi.fn(),
 			getScopedTerminalManager: vi.fn(async () => ({}) as never),
 			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
@@ -1571,7 +1844,10 @@ describe("createRuntimeApi startTaskSession", () => {
 
 		const api = createTestRuntimeApi({
 			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
-			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			loadScopedRuntimeConfig: vi.fn(async () => ({
+				...createRuntimeConfigState(),
+				selectedAgentId: "cline" as const,
+			})),
 			setActiveRuntimeConfig: vi.fn(),
 			getScopedTerminalManager: vi.fn(async () => ({}) as never),
 			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),

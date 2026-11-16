@@ -392,6 +392,129 @@ describe("CardDetailView", () => {
 		expect(onCloseGitHistory).toHaveBeenCalledTimes(1);
 	});
 
+	it("renders native chat panel for a new ag2 task before a session agentId is recorded", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="ag2"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "idle",
+						agentId: null,
+						workspacePath: null,
+						pid: null,
+						startedAt: null,
+						updatedAt: Date.now(),
+						lastOutputAt: null,
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: null,
+						latestHookActivity: null,
+						warningMessage: null,
+					}}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeInstanceOf(HTMLDivElement);
+		expect(mockAgentTerminalPanel).not.toHaveBeenCalled();
+	});
+
+	it("renders native chat panel for ag2 agent instead of the PTY terminal", async () => {
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="ag2"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "running",
+						agentId: "ag2",
+						workspacePath: null,
+						pid: null,
+						startedAt: null,
+						updatedAt: Date.now(),
+						lastOutputAt: null,
+						reviewReason: null,
+						exitCode: null,
+						lastHookAt: null,
+						latestHookActivity: null,
+						warningMessage: null,
+					}}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="cline-agent-chat-panel"]')).toBeInstanceOf(HTMLDivElement);
+		expect(mockAgentTerminalPanel).not.toHaveBeenCalled();
+	});
+
+	it("wires composer send for ag2 so follow-up messages stay enabled", async () => {
+		const onSendClineChatMessage = vi.fn(async () => ({ ok: true }));
+		await act(async () => {
+			root.render(
+				<CardDetailView
+					selection={createSelection()}
+					currentProjectId="workspace-1"
+					selectedAgentId="ag2"
+					sessionSummary={{
+						taskId: "task-1",
+						state: "awaiting_review",
+						agentId: "ag2",
+						workspacePath: null,
+						pid: null,
+						startedAt: null,
+						updatedAt: Date.now(),
+						lastOutputAt: null,
+						reviewReason: null,
+						exitCode: 0,
+						lastHookAt: null,
+						latestHookActivity: null,
+						warningMessage: null,
+					}}
+					taskSessions={{}}
+					onSessionSummary={() => {}}
+					onCardSelect={() => {}}
+					onTaskDragEnd={() => {}}
+					onMoveToTrash={() => {}}
+					onSendClineChatMessage={onSendClineChatMessage}
+					bottomTerminalOpen={false}
+					bottomTerminalTaskId={null}
+					bottomTerminalSummary={null}
+					onBottomTerminalClose={() => {}}
+				/>,
+			);
+		});
+
+		expect(mockClineAgentChatPanel).toHaveBeenCalledWith(
+			expect.objectContaining({
+				onSendMessage: onSendClineChatMessage,
+				composerPlaceholder: "Message AG2",
+			}),
+		);
+	});
+
 	it("renders native chat panel for cline agent", async () => {
 		await act(async () => {
 			root.render(

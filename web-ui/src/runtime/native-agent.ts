@@ -1,4 +1,10 @@
-import { isRuntimeAgentLaunchSupported } from "@runtime-agent-catalog";
+import {
+	getAgentCapabilities,
+	getRuntimeAgentCatalogEntry,
+	isChatPanelAgent,
+	isClineSdkBackend,
+	isRuntimeAgentLaunchSupported,
+} from "@runtime-agent-catalog";
 import type {
 	RuntimeAgentId,
 	RuntimeClineProviderSettings,
@@ -8,7 +14,26 @@ import type {
 } from "@/runtime/types";
 
 export function isNativeClineAgentSelected(agentId: RuntimeAgentId | null | undefined): boolean {
-	return agentId === "cline";
+	return isClineSdkBackend(agentId);
+}
+
+export function isNativeChatPanelAgent(agentId: RuntimeAgentId | null | undefined): boolean {
+	return isChatPanelAgent(agentId);
+}
+
+export function shouldShowClineModelPicker(agentId: RuntimeAgentId | null | undefined): boolean {
+	return getAgentCapabilities(agentId)?.showModelPicker === true;
+}
+
+export function getChatComposerPlaceholder(agentId: RuntimeAgentId | null | undefined): string | undefined {
+	if (!isChatPanelAgent(agentId) || !agentId) {
+		return undefined;
+	}
+	if (getAgentCapabilities(agentId)?.backend === "cline-sdk") {
+		return undefined;
+	}
+	const label = getRuntimeAgentCatalogEntry(agentId)?.label;
+	return label ? `Message ${label}` : undefined;
 }
 
 export function getRuntimeClineProviderSettings(
