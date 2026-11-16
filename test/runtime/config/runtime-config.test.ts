@@ -294,6 +294,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					shortcuts: [],
 					commitPromptTemplate: current.commitPromptTemplateDefault,
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
+					terminalShell: null,
 				});
 
 				const globalPayload = JSON.parse(
@@ -304,12 +305,14 @@ describe.sequential("runtime-config auto agent selection", () => {
 					readyForReviewNotificationsEnabled?: boolean;
 					commitPromptTemplate?: string;
 					openPrPromptTemplate?: string;
+					terminalShell?: string;
 				};
 				expect(globalPayload.selectedAgentId).toBeUndefined();
 				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
 				expect(globalPayload.commitPromptTemplate).toBeUndefined();
 				expect(globalPayload.openPrPromptTemplate).toBeUndefined();
+				expect(globalPayload.terminalShell).toBeUndefined();
 				expect(existsSync(join(tempProject, ".cline", "kanban", "config.json"))).toBe(false);
 			});
 		} finally {
@@ -339,6 +342,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					shortcuts: [],
 					commitPromptTemplate: current.commitPromptTemplateDefault,
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
+					terminalShell: null,
 				});
 
 				expect(existsSync(join(tempProject, ".cline", "kanban", "config.json"))).toBe(false);
@@ -366,6 +370,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 					shortcuts: [{ label: "Ship", command: "npm run ship", icon: "rocket" }],
 					commitPromptTemplate: current.commitPromptTemplateDefault,
 					openPrPromptTemplate: current.openPrPromptTemplateDefault,
+					terminalShell: null,
 				});
 				expect(existsSync(join(tempProject, ".cline", "kanban", "config.json"))).toBe(true);
 
@@ -406,6 +411,78 @@ describe.sequential("runtime-config auto agent selection", () => {
 				expect(globalPayload.selectedShortcutLabel).toBeUndefined();
 				expect(globalPayload.agentAutonomousModeEnabled).toBeUndefined();
 				expect(globalPayload.readyForReviewNotificationsEnabled).toBeUndefined();
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("persists, reloads, and clears the terminal shell preference", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-terminal-shell-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanban-project-runtime-config-terminal-shell-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const initial = await loadRuntimeConfig(tempProject);
+				expect(initial.terminalShell).toBeNull();
+
+				const updated = await updateRuntimeConfig(tempProject, {
+					terminalShell: "pwsh",
+				});
+				expect(updated.terminalShell).toBe("pwsh");
+
+				const globalPayload = JSON.parse(
+					readFileSync(join(tempHome, ".cline", "kanban", "config.json"), "utf8"),
+				) as {
+					terminalShell?: string;
+				};
+				expect(globalPayload.terminalShell).toBe("pwsh");
+
+				const reloaded = await loadRuntimeConfig(tempProject);
+				expect(reloaded.terminalShell).toBe("pwsh");
+
+				const cleared = await updateRuntimeConfig(tempProject, {
+					terminalShell: null,
+				});
+				expect(cleared.terminalShell).toBeNull();
+				const clearedPayload = JSON.parse(
+					readFileSync(join(tempHome, ".cline", "kanban", "config.json"), "utf8"),
+				) as {
+					terminalShell?: string;
+				};
+				expect(clearedPayload.terminalShell).toBeUndefined();
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("normalizes a blank terminal shell preference to null", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-terminal-blank-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanban-project-runtime-config-terminal-blank-",
+		);
+
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const updated = await updateRuntimeConfig(tempProject, {
+					terminalShell: "   ",
+					agentAutonomousModeEnabled: false,
+				});
+				expect(updated.terminalShell).toBeNull();
+
+				const globalPayload = JSON.parse(
+					readFileSync(join(tempHome, ".cline", "kanban", "config.json"), "utf8"),
+				) as {
+					agentAutonomousModeEnabled?: boolean;
+					terminalShell?: string;
+				};
+				expect(globalPayload.agentAutonomousModeEnabled).toBe(false);
+				expect(globalPayload.terminalShell).toBeUndefined();
 			});
 		} finally {
 			cleanupProject();

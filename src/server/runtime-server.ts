@@ -59,7 +59,7 @@ export interface CreateRuntimeServerDependencies {
 	runtimeStateHub: RuntimeStateHub;
 	warn: (message: string) => void;
 	ensureTerminalManagerForWorkspace: (workspaceId: string, repoPath: string) => Promise<TerminalSessionManager>;
-	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
+	resolveInteractiveShellCommand: (preferredShell?: string | null) => { binary: string; args: string[] };
 	runCommand: (command: string, cwd: string) => Promise<RuntimeCommandRunResponse>;
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
 	assertPathIsDirectory: (targetPath: string) => Promise<void>;
