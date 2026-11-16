@@ -4,7 +4,7 @@ Thanks for your interest in contributing to Kanban! This project is in research 
 
 ## What We're Looking For
 
-Kanban currently supports Claude, Codex, Gemini, OpenCode, Droid, and Cline as runtime agents, and runs on macOS, Linux, and Windows. The surface area for cross-compatibility issues is large, and that's where contributions have the most impact.
+Kanban currently supports Cline, Claude, Codex, Droid, Kiro, and Pi as launch-supported runtime agents, and runs on macOS, Linux, and Windows. The surface area for cross-compatibility issues is large, and that's where contributions have the most impact.
 
 We are actively looking for help with:
 

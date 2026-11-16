@@ -225,6 +225,11 @@ They are distinct from Cline SDK plugin runtime hooks such as `beforeRun`,
   - `PreToolUse` for active tools like `Read`, `Grep`, `Glob`, `FetchUrl`, `WebSearch`, `Execute`, `Task`, `Edit`, and `Create` emits `to_in_progress`
   - `PreToolUse` for `AskUser` and `Stop` emit `to_review`
   - `PostToolUse` for `AskUser` and `UserPromptSubmit` emit `to_in_progress`
+- Pi
+  - Interactive TUI via `hooks pi-wrapper` (never `--mode json`)
+  - JSONL watcher: user → `to_in_progress`; toolCall / toolResult / bashExecution → `activity`; assistant `stopReason === "stop"` with no tools → `to_review`
+  - Clean wrapper exit also ingests `to_review`
+  - `autoRestartOnExit: false` because the session dir is durable
 
 Important behavior details:
 

@@ -2,6 +2,7 @@
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type {
+	RuntimeTaskAgentSettings,
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
 	RuntimeTaskSessionReviewReason,
@@ -11,6 +12,7 @@ import type {
 } from "../core/api-contract";
 import {
 	type AgentAdapterLaunchInput,
+	type AgentExitReviewActivityResolver,
 	type AgentOutputTransitionDetector,
 	type AgentOutputTransitionInspectionPredicate,
 	prepareAgentLaunch,
@@ -61,6 +63,8 @@ interface ActiveProcessState {
 	awaitingCodexPromptAfterEnter: boolean;
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
+	autoRestartOnExit: boolean;
+	resolveExitReviewActivity: AgentExitReviewActivityResolver | null;
 }
 
 interface SessionEntry {
@@ -90,6 +94,7 @@ export interface StartTaskSessionRequest {
 	rows?: number;
 	env?: Record<string, string | undefined>;
 	workspaceId?: string;
+	agentSettings?: RuntimeTaskAgentSettings;
 }
 
 export interface StartShellSessionRequest {
@@ -121,6 +126,8 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		lastHookAt: null,
 		latestHookActivity: null,
 		warningMessage: null,
+		modelId: null,
+		reasoningEffort: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};
@@ -151,6 +158,7 @@ function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): StartTa
 		args: [...request.args],
 		images: request.images ? request.images.map((image) => ({ ...image })) : undefined,
 		env: request.env ? { ...request.env } : undefined,
+		agentSettings: request.agentSettings ? { ...request.agentSettings } : undefined,
 	};
 }
 
@@ -334,6 +342,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			resumeFromTrash: request.resumeFromTrash,
 			env: request.env,
 			workspaceId: request.workspaceId,
+			agentSettings: request.agentSettings,
 		});
 
 		const env = buildTerminalEnvironment(request.env, launch.env);
@@ -453,12 +462,31 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 					stopWorkspaceTrustTimers(currentActive);
 
+					const interrupted = currentActive.session.wasInterrupted();
+					if (currentActive.resolveExitReviewActivity) {
+						void currentActive
+							.resolveExitReviewActivity(currentEntry.summary, event.exitCode, interrupted)
+							.then((metadata) => {
+								if (!metadata) {
+									return;
+								}
+								const liveEntry = this.entries.get(request.taskId);
+								if (!liveEntry) {
+									return;
+								}
+								this.applyHookActivity(request.taskId, metadata);
+							})
+							.catch(() => {
+								// Best effort only.
+							});
+					}
 					const summary = this.applySessionEvent(currentEntry, {
 						type: "process.exit",
 						exitCode: event.exitCode,
-						interrupted: currentActive.session.wasInterrupted(),
+						interrupted,
 					});
-					const shouldAutoRestart = this.shouldAutoRestart(currentEntry);
+					const shouldAutoRestart =
+						currentActive.autoRestartOnExit !== false && this.shouldAutoRestart(currentEntry);
 
 					for (const taskListener of currentEntry.listeners.values()) {
 						taskListener.onState?.(cloneSummary(summary));
@@ -525,9 +553,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
+			autoRestartOnExit: launch.autoRestartOnExit !== false,
+			resolveExitReviewActivity: launch.resolveExitReviewActivity ?? null,
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
+
+		if (launch.sessionWarning) {
+			const warningOutput = Buffer.from(`\r\n[kanban] ${launch.sessionWarning}\r\n`, "utf8");
+			terminalStateMirror.applyOutput(warningOutput);
+			for (const taskListener of entry.listeners.values()) {
+				taskListener.onOutput?.(warningOutput);
+			}
+		}
 
 		const startedAt = now();
 		updateSummary(entry, {
@@ -536,12 +574,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 			workspacePath: request.cwd,
 			pid: session.pid,
 			startedAt,
-			lastOutputAt: null,
+			lastOutputAt: launch.sessionWarning ? startedAt : null,
 			reviewReason: request.resumeFromTrash ? "attention" : null,
 			exitCode: null,
 			lastHookAt: null,
 			latestHookActivity: null,
-			warningMessage: null,
+			warningMessage: launch.sessionWarning ?? null,
+			modelId: request.agentSettings?.modelId ?? null,
+			reasoningEffort: request.agentSettings?.reasoningEffort ?? null,
 			latestTurnCheckpoint: null,
 			previousTurnCheckpoint: null,
 		});
@@ -678,6 +718,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
+			autoRestartOnExit: true,
+			resolveExitReviewActivity: null,
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;

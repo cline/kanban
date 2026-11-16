@@ -1,6 +1,8 @@
 // Owns the Cline-specific settings state machine inside the settings dialog.
 // It loads provider data, drives model selection, saves settings, and runs
 // OAuth login flows so the dialog component can stay presentation-focused.
+
+import { parseRuntimeClineReasoningEffort } from "@runtime-task-agent-settings";
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import {
@@ -21,9 +23,8 @@ import type {
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
-	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
-	RuntimeTaskClineSettings,
+	RuntimeTaskAgentSettings,
 } from "@/runtime/types";
 import { isLocalhostAccess } from "@/utils/localhost-detection";
 
@@ -32,7 +33,7 @@ interface UseRuntimeSettingsClineControllerOptions {
 	workspaceId: string | null;
 	selectedAgentId: RuntimeAgentId;
 	config: RuntimeConfigResponse | null;
-	taskClineSettings?: RuntimeTaskClineSettings;
+	taskAgentSettings?: RuntimeTaskAgentSettings;
 }
 
 interface SaveResult {
@@ -45,7 +46,7 @@ interface SaveProviderSettingsOverrides {
 	modelId?: string | null;
 	apiKey?: string | null;
 	baseUrl?: string | null;
-	reasoningEffort?: RuntimeClineReasoningEffort | null;
+	reasoningEffort?: string | null;
 	region?: string | null;
 	aws?: {
 		accessKey?: string | null;
@@ -100,8 +101,8 @@ export interface UseRuntimeSettingsClineControllerResult {
 	setBaseUrl: Dispatch<SetStateAction<string>>;
 	region: string;
 	setRegion: Dispatch<SetStateAction<string>>;
-	reasoningEffort: RuntimeClineReasoningEffort | "";
-	setReasoningEffort: Dispatch<SetStateAction<RuntimeClineReasoningEffort | "">>;
+	reasoningEffort: string;
+	setReasoningEffort: Dispatch<SetStateAction<string>>;
 	awsAccessKey: string;
 	setAwsAccessKey: Dispatch<SetStateAction<string>>;
 	awsSecretKey: string;
@@ -201,13 +202,13 @@ function getDefaultModelIdForProvider(providers: RuntimeClineProviderCatalogItem
 export function useRuntimeSettingsClineController(
 	options: UseRuntimeSettingsClineControllerOptions,
 ): UseRuntimeSettingsClineControllerResult {
-	const { open, workspaceId, selectedAgentId, config, taskClineSettings } = options;
+	const { open, workspaceId, selectedAgentId, config, taskAgentSettings } = options;
 	const [providerId, setProviderId] = useState("");
 	const [modelId, setModelId] = useState("");
 	const [apiKey, setApiKey] = useState("");
 	const [baseUrl, setBaseUrl] = useState("");
 	const [region, setRegion] = useState("");
-	const [reasoningEffort, setReasoningEffort] = useState<RuntimeClineReasoningEffort | "">("");
+	const [reasoningEffort, setReasoningEffort] = useState("");
 	const [awsAccessKey, setAwsAccessKey] = useState("");
 	const [awsSecretKey, setAwsSecretKey] = useState("");
 	const [awsSessionToken, setAwsSessionToken] = useState("");
@@ -231,20 +232,20 @@ export function useRuntimeSettingsClineController(
 
 	const effectiveProviderSettings = getEffectiveProviderSettings(config, providerSettingsOverride);
 	const configProviderSettings = getRuntimeClineProviderSettings(config);
-	const hasTaskClineSettingsOverride = taskClineSettings !== undefined;
+	const hasTaskAgentSettingsOverride = taskAgentSettings !== undefined;
 	const initialProviderId =
-		taskClineSettings?.providerId ||
+		taskAgentSettings?.providerId ||
 		effectiveProviderSettings?.providerId ||
 		effectiveProviderSettings?.oauthProvider ||
 		"";
-	const initialModelId = taskClineSettings?.modelId || effectiveProviderSettings?.modelId || "";
+	const initialModelId = taskAgentSettings?.modelId || effectiveProviderSettings?.modelId || "";
 	const initialBaseUrl = resolveBaseUrlForProvider(
 		providerCatalog,
 		initialProviderId,
 		effectiveProviderSettings?.baseUrl,
 	);
-	const initialReasoningEffort = hasTaskClineSettingsOverride
-		? (taskClineSettings?.reasoningEffort ?? "")
+	const initialReasoningEffort = hasTaskAgentSettingsOverride
+		? (parseRuntimeClineReasoningEffort(taskAgentSettings?.reasoningEffort) ?? "")
 		: (effectiveProviderSettings?.reasoningEffort ?? "");
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	const managedOauthProvider = toManagedClineOauthProvider(normalizedProviderId);
@@ -262,7 +263,7 @@ export function useRuntimeSettingsClineController(
 			providerId: managedOauthProvider === null ? providerId.trim() || null : null,
 			modelId: modelId.trim() || null,
 			baseUrl: managedOauthProvider === null ? baseUrl.trim() || null : null,
-			reasoningEffort: reasoningEffort || null,
+			reasoningEffort: parseRuntimeClineReasoningEffort(reasoningEffort),
 			apiKeyConfigured: managedOauthProvider === null ? baseSettings.apiKeyConfigured : false,
 			oauthProvider: managedOauthProvider,
 			oauthAccessTokenConfigured: isSelectedManagedOauthProvider ? baseSettings.oauthAccessTokenConfigured : false,
@@ -332,16 +333,16 @@ export function useRuntimeSettingsClineController(
 			return;
 		}
 		const nextProviderId =
-			taskClineSettings?.providerId ||
+			taskAgentSettings?.providerId ||
 			(configProviderSettings.providerId ?? configProviderSettings.oauthProvider ?? "");
 		setProviderId(nextProviderId);
-		setModelId(taskClineSettings?.modelId || (configProviderSettings.modelId ?? ""));
+		setModelId(taskAgentSettings?.modelId || (configProviderSettings.modelId ?? ""));
 		setApiKey("");
 		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, configProviderSettings.baseUrl));
 		setRegion("");
 		setReasoningEffort(
-			hasTaskClineSettingsOverride
-				? (taskClineSettings?.reasoningEffort ?? "")
+			hasTaskAgentSettingsOverride
+				? (parseRuntimeClineReasoningEffort(taskAgentSettings?.reasoningEffort) ?? "")
 				: (configProviderSettings.reasoningEffort ?? ""),
 		);
 		setAwsAccessKey("");
@@ -360,9 +361,9 @@ export function useRuntimeSettingsClineController(
 		configProviderSettings.oauthProvider,
 		configProviderSettings.providerId,
 		configProviderSettings.reasoningEffort,
-		hasTaskClineSettingsOverride,
+		hasTaskAgentSettingsOverride,
 		open,
-		taskClineSettings,
+		taskAgentSettings,
 	]);
 
 	useEffect(() => {
@@ -552,7 +553,7 @@ export function useRuntimeSettingsClineController(
 					providerId: trimmedProviderId,
 					modelId: trimmedModelId,
 					baseUrl: trimmedBaseUrl,
-					reasoningEffort: nextReasoningEffort,
+					reasoningEffort: parseRuntimeClineReasoningEffort(nextReasoningEffort),
 					...(trimmedApiKey !== undefined ? { apiKey: trimmedApiKey } : {}),
 					...(isVertexProvider ? { region: payloadRegion } : {}),
 					...(nextAws !== undefined ? { aws: nextAws } : {}),

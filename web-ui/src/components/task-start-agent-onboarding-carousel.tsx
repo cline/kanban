@@ -83,7 +83,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 ];
 
-const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro"];
+const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro", "pi"];
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
 	kind: "agent-selection",
 	title: "",
@@ -305,6 +305,9 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	if (agentId === "kiro") {
 		return "Amazon's coding agent with access to the latest frontier models.";
 	}
+	if (agentId === "pi") {
+		return "Install with npm i -g --ignore-scripts @earendil-works/pi-coding-agent or curl -fsSL https://pi.dev/install.sh | sh.";
+	}
 	return "Install from the official docs.";
 }
 
@@ -319,6 +322,9 @@ function getInstallLinkLabel(agentId: RuntimeAgentId): string {
 		return "Learn more";
 	}
 	if (agentId === "kiro") {
+		return "Learn more";
+	}
+	if (agentId === "pi") {
 		return "Learn more";
 	}
 	return "Install guide";

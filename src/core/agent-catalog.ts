@@ -1,5 +1,16 @@
 import type { RuntimeAgentId } from "./api-contract";
 
+// How an agent accepts launch-time model/effort overrides. Mechanisms only — never value lists.
+export type RuntimeAgentOverrideMechanism = "flag" | "config" | "sdk" | "none";
+
+export interface RuntimeAgentCapabilities {
+	modelOverride: RuntimeAgentOverrideMechanism;
+	effortOverride: RuntimeAgentOverrideMechanism;
+	/** Whether the agent consumes `providerId` at launch (Cline SDK, OpenCode `provider/model`). */
+	providerOverride: RuntimeAgentOverrideMechanism;
+	docsUrl: string;
+}
+
 export interface RuntimeAgentCatalogEntry {
 	id: RuntimeAgentId;
 	label: string;
@@ -7,6 +18,9 @@ export interface RuntimeAgentCatalogEntry {
 	baseArgs: string[];
 	autonomousArgs: string[];
 	installUrl: string;
+	/** Built-in runtime (e.g. the embedded Cline SDK) that needs no external binary detection. */
+	embedded?: boolean;
+	capabilities: RuntimeAgentCapabilities;
 }
 
 export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
@@ -17,6 +31,12 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: [],
 		autonomousArgs: ["--permission-mode", "auto"],
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code/quickstart",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "flag",
+			providerOverride: "none",
+			docsUrl: "https://code.claude.com/docs/en/cli-reference",
+		},
 	},
 	{
 		id: "codex",
@@ -25,6 +45,12 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: [],
 		autonomousArgs: ["--dangerously-bypass-approvals-and-sandbox"],
 		installUrl: "https://github.com/openai/codex",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "config",
+			providerOverride: "none",
+			docsUrl: "https://developers.openai.com/codex/cli/reference",
+		},
 	},
 	{
 		id: "cline",
@@ -33,6 +59,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: [],
 		autonomousArgs: ["--auto-approve-all"],
 		installUrl: "https://github.com/cline/cline",
+		// Embedded SDK runtime: always available, no external binary to detect.
+		embedded: true,
+		capabilities: {
+			modelOverride: "sdk",
+			effortOverride: "sdk",
+			providerOverride: "sdk",
+			docsUrl: "https://github.com/cline/cline",
+		},
 	},
 	{
 		id: "opencode",
@@ -41,6 +75,12 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: [],
 		autonomousArgs: [],
 		installUrl: "https://github.com/sst/opencode",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "none",
+			providerOverride: "flag",
+			docsUrl: "https://opencode.ai/docs/cli/",
+		},
 	},
 	{
 		id: "droid",
@@ -49,6 +89,12 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: [],
 		autonomousArgs: ["--auto", "high"],
 		installUrl: "https://docs.factory.ai/cli/getting-started/quickstart",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "flag",
+			providerOverride: "none",
+			docsUrl: "https://docs.factory.ai/droid-cli/cli-reference",
+		},
 	},
 	{
 		id: "kiro",
@@ -57,6 +103,26 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: ["chat"],
 		autonomousArgs: ["--trust-all-tools"],
 		installUrl: "https://kiro.dev",
+		capabilities: {
+			modelOverride: "none",
+			effortOverride: "none",
+			providerOverride: "none",
+			docsUrl: "https://kiro.dev/docs/reference/cli-commands/",
+		},
+	},
+	{
+		id: "pi",
+		label: "Pi",
+		binary: "pi",
+		baseArgs: [],
+		autonomousArgs: [],
+		installUrl: "https://pi.dev/",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "flag",
+			providerOverride: "flag",
+			docsUrl: "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/usage.md",
+		},
 	},
 	{
 		id: "gemini",
@@ -65,6 +131,12 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: [],
 		autonomousArgs: ["--yolo"],
 		installUrl: "https://github.com/google-gemini/gemini-cli",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "none",
+			providerOverride: "none",
+			docsUrl: "https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/cli-reference.md",
+		},
 	},
 ];
 
@@ -76,6 +148,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"codex",
 	"droid",
 	"kiro",
+	"pi",
 	// "opencode",
 	// "gemini",
 ];
@@ -92,4 +165,9 @@ export function getRuntimeLaunchSupportedAgentCatalog(): RuntimeAgentCatalogEntr
 
 export function getRuntimeAgentCatalogEntry(agentId: RuntimeAgentId): RuntimeAgentCatalogEntry | null {
 	return RUNTIME_AGENT_CATALOG.find((entry) => entry.id === agentId) ?? null;
+}
+
+/** Core Pi has no plan mode; other launch-supported CLIs do or emulate it. */
+export function runtimeAgentSupportsPlanMode(agentId: RuntimeAgentId | null | undefined): boolean {
+	return agentId !== "pi";
 }

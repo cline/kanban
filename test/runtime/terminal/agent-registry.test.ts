@@ -10,6 +10,7 @@ vi.mock("../../../src/terminal/command-discovery.js", () => ({
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config";
 import {
+	buildAgentCapabilityReport,
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	resolveAgentCommand,
@@ -47,7 +48,7 @@ describe("agent-registry", () => {
 		const detected = detectInstalledCommands();
 
 		expect(detected).toEqual(["claude"]);
-		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(8);
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(9);
 	});
 
 	it("treats shell-only agents as unavailable", () => {
@@ -78,12 +79,13 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(true);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro", "pi"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "kiro")?.defaultArgs).toEqual(["chat"]);
+		expect(response.agents.find((agent) => agent.id === "pi")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.installed).toBe(true);
 	});
 
@@ -106,17 +108,19 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(false);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro", "pi"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "kiro")?.defaultArgs).toEqual(["chat"]);
+		expect(response.agents.find((agent) => agent.id === "pi")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.installed).toBe(true);
 		expect(response.agents.find((agent) => agent.id === "claude")?.command).toBe("claude");
 		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");
 		expect(response.agents.find((agent) => agent.id === "droid")?.command).toBe("droid");
 		expect(response.agents.find((agent) => agent.id === "kiro")?.command).toBe("kiro-cli chat");
+		expect(response.agents.find((agent) => agent.id === "pi")?.command).toBe("pi");
 	});
 
 	it("sets debug mode from runtime environment variables", () => {
@@ -149,5 +153,50 @@ describe("buildRuntimeConfigResponse", () => {
 			oauthExpiresAt: null,
 		});
 		expect(response.debugModeEnabled).toBe(true);
+	});
+});
+
+describe("buildAgentCapabilityReport", () => {
+	it("reports mechanism-only capabilities with no value lists", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+
+		const report = buildAgentCapabilityReport(createRuntimeConfigState());
+
+		expect(report.length).toBeGreaterThan(0);
+		for (const entry of report) {
+			expect(typeof entry.id).toBe("string");
+			expect(typeof entry.label).toBe("string");
+			expect(typeof entry.installed).toBe("boolean");
+			expect(typeof entry.configured).toBe("boolean");
+			expect(typeof entry.launchSupported).toBe("boolean");
+			expect(["flag", "config", "sdk", "none"]).toContain(entry.capabilities.modelOverride);
+			expect(["flag", "config", "sdk", "none"]).toContain(entry.capabilities.effortOverride);
+			expect(["flag", "config", "sdk", "none"]).toContain(entry.capabilities.providerOverride);
+			expect(entry.capabilities.docsUrl).toMatch(/^https?:\/\//);
+		}
+	});
+
+	it("marks the embedded Cline runtime as installed regardless of binary detection", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+
+		const report = buildAgentCapabilityReport(createRuntimeConfigState());
+
+		expect(report.find((entry) => entry.id === "cline")?.installed).toBe(true);
+		expect(report.find((entry) => entry.id === "cline")?.launchSupported).toBe(true);
+	});
+
+	it("reports Pi model/effort/provider as flag capabilities and launch-supported", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+
+		const report = buildAgentCapabilityReport(createRuntimeConfigState());
+		const pi = report.find((entry) => entry.id === "pi");
+
+		expect(pi?.launchSupported).toBe(true);
+		expect(pi?.capabilities).toEqual({
+			modelOverride: "flag",
+			effortOverride: "flag",
+			providerOverride: "flag",
+			docsUrl: "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/usage.md",
+		});
 	});
 });

@@ -74,6 +74,8 @@ describe.sequential("runtime-config auto agent selection", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["gemini", "cline"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "codex", "cline"])).toBe("claude");
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "droid"])).toBe("claude");
+		expect(pickBestInstalledAgentIdFromDetected(["pi"])).toBe("pi");
+		expect(pickBestInstalledAgentIdFromDetected(["claude", "pi"])).toBe("claude");
 		expect(pickBestInstalledAgentIdFromDetected(["cline"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected([])).toBeNull();
 	});
@@ -232,6 +234,39 @@ describe.sequential("runtime-config auto agent selection", () => {
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
 				const state = await loadRuntimeConfig(tempProject);
 				expect(state.selectedAgentId).toBe("cline");
+			});
+		} finally {
+			cleanupBin();
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
+	it("keeps a configured pi agent when launch support is enabled", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-pi-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir("kanban-project-runtime-config-pi-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("kanban-bin-runtime-config-pi-");
+
+		try {
+			writeFakeCommand(tempBin, "pi");
+
+			const runtimeConfigDir = join(tempHome, ".cline", "kanban");
+			mkdirSync(runtimeConfigDir, { recursive: true });
+			writeFileSync(
+				join(runtimeConfigDir, "config.json"),
+				JSON.stringify(
+					{
+						selectedAgentId: "pi",
+					},
+					null,
+					2,
+				),
+				"utf8",
+			);
+
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
+				const state = await loadRuntimeConfig(tempProject);
+				expect(state.selectedAgentId).toBe("pi");
 			});
 		} finally {
 			cleanupBin();

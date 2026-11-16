@@ -34,6 +34,15 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				installed: true,
 				configured: selectedAgentId === "codex",
 			},
+			{
+				id: "pi",
+				label: "Pi",
+				binary: "pi",
+				command: "pi",
+				defaultArgs: [],
+				installed: true,
+				configured: selectedAgentId === "pi",
+			},
 		],
 		shortcuts: [],
 		clineProviderSettings: {
@@ -166,6 +175,10 @@ describe("useStartupOnboarding", () => {
 
 		expect(result).toEqual({ ok: true });
 		expect(saveRuntimeConfigMock).toHaveBeenCalledWith(null, { selectedAgentId: "codex" });
+
+		const piResult = await snapshot.handleSelectOnboardingAgent("pi");
+		expect(piResult).toEqual({ ok: true });
+		expect(saveRuntimeConfigMock).toHaveBeenCalledWith(null, { selectedAgentId: "pi" });
 	});
 
 	it("waits for runtime config to finish loading before opening onboarding", async () => {

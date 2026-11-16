@@ -19,6 +19,7 @@ import type {
 	RuntimeRunUpdateResponse,
 	RuntimeUpdateStatusResponse,
 } from "../core/api-contract";
+import { runtimeClineReasoningEffortSchema } from "../core/api-contract";
 import {
 	parseClineAccountSwitchRequest,
 	parseClineAddProviderRequest,
@@ -42,6 +43,7 @@ import {
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { parseRuntimeClineReasoningEffort } from "../core/task-agent-settings";
 import { resolveTaskTitle } from "../core/task-title.js";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
@@ -190,7 +192,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				//   2. body.agentId — the card's current per-task agent override.
 				//   3. scopedRuntimeConfig.selectedAgentId — the workspace-level default.
 				//
-				// clineSettings (which LLM model and reasoning profile the Cline agent uses):
+				// agentSettings (provider/model/reasoning-effort overrides for the launch):
 				//   Always taken from the card's current override object. There is no
 				//   session-level persistence for these;
 				//   if the user changes the model on the card, the next session launch
@@ -217,13 +219,23 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				}
 
 				if (useClinePath) {
-					const hasTaskLevelClineSettingsOverride = body.clineSettings !== undefined;
+					const hasTaskLevelAgentSettingsOverride = body.agentSettings !== undefined;
+					const taskReasoningEffort = body.agentSettings?.reasoningEffort;
+					const parsedTaskReasoningEffort =
+						taskReasoningEffort !== undefined ? parseRuntimeClineReasoningEffort(taskReasoningEffort) : undefined;
+					const invalidTaskReasoningEffort =
+						taskReasoningEffort !== undefined && parsedTaskReasoningEffort === null ? taskReasoningEffort : null;
+					const clineStartWarnings = invalidTaskReasoningEffort
+						? [
+								`Task reasoning effort "${invalidTaskReasoningEffort}" is not a valid Cline effort (${runtimeClineReasoningEffortSchema.options.join(" | ")}); falling back to the provider's configured effort.`,
+							]
+						: undefined;
 					const clineLaunchConfig = await clineProviderService.resolveLaunchConfig({
-						providerIdOverride: body.clineSettings?.providerId ?? undefined,
-						modelIdOverride: body.clineSettings?.modelId ?? undefined,
-						...(hasTaskLevelClineSettingsOverride
+						providerIdOverride: body.agentSettings?.providerId ?? undefined,
+						modelIdOverride: body.agentSettings?.modelId ?? undefined,
+						...(hasTaskLevelAgentSettingsOverride && !invalidTaskReasoningEffort
 							? {
-									reasoningEffortOverride: body.clineSettings?.reasoningEffort ?? null,
+									reasoningEffortOverride: parsedTaskReasoningEffort ?? null,
 								}
 							: {}),
 					});
@@ -243,6 +255,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						apiKey: clineLaunchConfig.apiKey,
 						baseUrl: clineLaunchConfig.baseUrl,
 						reasoningEffort: clineLaunchConfig.reasoningEffort,
+						startWarnings: clineStartWarnings,
 					});
 
 					let nextSummary = summary;
@@ -292,6 +305,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					cols: body.cols,
 					rows: body.rows,
 					workspaceId: workspaceScope.workspaceId,
+					agentSettings: body.agentSettings,
 				});
 
 				let nextSummary = summary;

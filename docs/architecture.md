@@ -124,7 +124,7 @@ Kanban currently supports three runtime modes.
 | Runtime mode | Used for | Scope | Backing implementation | Why it exists |
 | --- | --- | --- | --- | --- |
 | Native Cline chat | Cline | task-scoped, plus a project-scoped sidebar surface | Cline SDK session host | Cline exposes richer chat semantics, provider settings, OAuth, and persisted session history |
-| CLI-backed task terminal | Claude Code, Codex, Gemini, OpenCode, Droid, and similar agents | task-scoped | PTY-backed process runtime | these agents are command-driven CLIs and already fit the terminal model well |
+| CLI-backed task terminal | Claude Code, Codex, Gemini, OpenCode, Droid, Kiro, Pi, and similar agents | task-scoped | PTY-backed process runtime | these agents are command-driven CLIs and already fit the terminal model well |
 | Workspace shell terminal | the bottom shell panel | workspace-scoped | PTY-backed shell process | this is for manual commands in the repo, not task execution |
 
 The crucial point is that Cline is not just "another agent command". It is a native runtime path. Treating it like a terminal process would throw away useful structure that the SDK already gives us.
@@ -201,7 +201,7 @@ The `src/terminal/` area owns everything process-oriented:
 - translating process lifecycle into Kanban runtime summaries
 - handling the workspace shell terminal
 
-This is the path for Claude Code, Codex, Gemini, OpenCode, Droid, and any other command-driven agent.
+This is the path for Claude Code, Codex, Gemini, OpenCode, Droid, Kiro, Pi, and any other command-driven agent.
 
 ### Native Cline integration
 
@@ -391,7 +391,7 @@ When you are making a change, this table is often more useful than a file list.
 
 | If you are changing... | Think about this first | Common mistake to avoid |
 | --- | --- | --- |
-| task startup for Claude Code, Codex, Gemini, OpenCode, or Droid | the PTY runtime and agent launch path | accidentally adding special logic to the Cline path |
+| task startup for Claude Code, Codex, Gemini, OpenCode, Droid, Kiro, or Pi | the PTY runtime and agent launch path | accidentally adding special logic to the Cline path |
 | Cline provider settings, models, or OAuth | the Cline provider service and SDK provider boundary | storing secrets in Kanban config or duplicating OAuth policy |
 | Cline message rendering or send/cancel behavior | the shared Cline hooks and task-session service | making detail view and sidebar behave differently |
 | live board updates | the runtime state hub and browser stream consumers | falling back to polling or duplicating summary logic |
