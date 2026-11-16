@@ -677,6 +677,7 @@ export const runtimeClineProviderCatalogItemSchema = z.object({
 	name: z.string(),
 	oauthSupported: z.boolean(),
 	enabled: z.boolean(),
+	apiKeyConfigured: z.boolean().optional(),
 	defaultModelId: z.string().nullable(),
 	baseUrl: z.string().nullable(),
 	supportsBaseUrl: z.boolean(),

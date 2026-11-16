@@ -71,6 +71,7 @@ export function ClineSetupSection({
 	const mcpControlsDisabled = controlsDisabled || (mcpController?.isSavingMcpSettings ?? false);
 	const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
 	const [providerDialogMode, setProviderDialogMode] = useState<ClineProviderDialogMode>("add");
+	const [isApiKeyFieldFocused, setIsApiKeyFieldFocused] = useState(false);
 	const [isDeviceCodeCopied, setIsDeviceCodeCopied] = useState(false);
 	const deviceCodeCopiedResetTimerRef = useRef<number | null>(null);
 	const [copiedDeviceCodeState, copyDeviceCode] = useCopyToClipboard();
@@ -137,11 +138,15 @@ export function ClineSetupSection({
 			) ?? null,
 		[controller.normalizedProviderId, controller.providerCatalog],
 	);
-	const apiKeyPlaceholder = controller.apiKeyConfigured ? "Saved" : "Enter API key";
 	const providerEnvHint = (selectedProvider?.env ?? [])
 		.map((value) => value.trim())
 		.filter((value) => value.length > 0)
 		.join(", ");
+	const savedApiKeyMask = "••••••••••••••••";
+	const apiKeyPlaceholder = "";
+	const selectedProviderHasSavedApiKey = selectedProvider?.apiKeyConfigured === true;
+	const shouldShowSavedApiKeyMask =
+		selectedProviderHasSavedApiKey && controller.apiKey.length === 0 && !isApiKeyFieldFocused;
 	const shouldShowBaseUrlField =
 		!controller.isOauthProviderSelected &&
 		(selectedProvider?.supportsBaseUrl ?? controller.baseUrl.trim().length > 0);
@@ -351,14 +356,23 @@ export function ClineSetupSection({
 					{controller.isOauthProviderSelected ? null : (
 						<div className="min-w-0">
 							<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
-							<input
-								type="password"
-								value={controller.apiKey}
-								onChange={(event) => controller.setApiKey(event.target.value)}
-								placeholder={apiKeyPlaceholder}
-								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-							/>
+							<div className="relative">
+								<input
+									type="password"
+									value={controller.apiKey}
+									onChange={(event) => controller.setApiKey(event.target.value)}
+									onFocus={() => setIsApiKeyFieldFocused(true)}
+									onBlur={() => setIsApiKeyFieldFocused(false)}
+									placeholder={apiKeyPlaceholder}
+									disabled={controlsDisabled}
+									className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								/>
+								{shouldShowSavedApiKeyMask ? (
+									<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-2 text-[13px] font-medium tracking-[0.18em] text-text-primary opacity-90">
+										{savedApiKeyMask}
+									</span>
+								) : null}
+							</div>
 							{providerEnvHint ? (
 								<p className="text-text-tertiary text-[11px] mt-1 mb-0 break-all">Or use {providerEnvHint}</p>
 							) : null}
