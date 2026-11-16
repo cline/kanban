@@ -20,6 +20,9 @@ This doc covers the runtime terminal agents:
 2. Codex
 3. Gemini
 4. OpenCode
+5. Droid
+6. Kiro
+7. Grok Build
 
 It does not cover adding new agents in detail.
 
@@ -94,6 +97,9 @@ Generated files by agent:
 4. Codex
    1. No persistent wrapper script file is generated now.
    2. Codex uses `kanban hooks codex-wrapper` as the wrapper command.
+5. Grok Build
+   1. `<worktree>/.grok/hooks/kanban.json`
+   2. Launch with `--trust` so the fresh worktree is trusted for project hooks.
 
 Generated hook files are written through idempotent text writes. Files only update when content changes.
 

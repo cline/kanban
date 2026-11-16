@@ -1,5 +1,5 @@
 import type { SearchSelectOption } from "@/components/search-select-dropdown";
-import type { RuntimeClineProviderModel, RuntimeClineReasoningEffort } from "@/runtime/types";
+import type { RuntimeClineProviderModel } from "@/runtime/types";
 
 const CLINE_PROVIDER_ID = "cline";
 
@@ -62,8 +62,14 @@ export function buildClineAgentModelPickerOptions(
 	};
 }
 
-export function formatClineReasoningEffortLabel(value: RuntimeClineReasoningEffort | "" | null | undefined): string {
-	return CLINE_REASONING_EFFORT_OPTIONS.find((option) => option.value === (value ?? ""))?.label ?? "Default";
+export function formatClineReasoningEffortLabel(value: string | null | undefined): string {
+	const normalized = value ?? "";
+	const knownLabel = CLINE_REASONING_EFFORT_OPTIONS.find((option) => option.value === normalized)?.label;
+	if (knownLabel) {
+		return knownLabel;
+	}
+	// Per-task effort values are opaque; show unknown values verbatim.
+	return normalized || "Default";
 }
 
 export function formatClineSelectedModelButtonText({
@@ -72,7 +78,7 @@ export function formatClineSelectedModelButtonText({
 	showReasoningEffort = false,
 }: {
 	modelName: string;
-	reasoningEffort?: RuntimeClineReasoningEffort | "" | null;
+	reasoningEffort?: string | "" | null;
 	showReasoningEffort?: boolean;
 }): string {
 	if (!showReasoningEffort || !reasoningEffort) {
@@ -106,7 +112,7 @@ export function buildClineSelectedModelButtonText({
 }: {
 	modelOptions: readonly SearchSelectOption[];
 	selectedModelId: string;
-	reasoningEffort?: RuntimeClineReasoningEffort | "" | null;
+	reasoningEffort?: string | "" | null;
 	showReasoningEffort: boolean;
 	isModelLoading?: boolean;
 	isModelSaving?: boolean;

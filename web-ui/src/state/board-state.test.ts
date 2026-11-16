@@ -5,8 +5,8 @@ import {
 	addTaskDependency,
 	addTaskToColumn,
 	applyDragResult,
-	applyTaskDetailClineSettingsChange,
-	applyTaskDetailClineSettingsSelection,
+	applyTaskDetailAgentSettingsChange,
+	applyTaskDetailAgentSettingsSelection,
 	clearColumnTasks,
 	disableTaskAutoReview,
 	getTaskColumnId,
@@ -615,7 +615,7 @@ describe("board dependency state", () => {
 		board = addTaskToColumn(board, "backlog", {
 			prompt: "Task with cline overrides",
 			agentId: "cline",
-			clineSettings: {
+			agentSettings: {
 				providerId: "openrouter",
 				modelId: "openai/gpt-5.4",
 				reasoningEffort: "low",
@@ -633,7 +633,7 @@ describe("board dependency state", () => {
 		const updatedTask = updated.board.columns.find((column) => column.id === "backlog")?.cards[0];
 		expect(updatedTask?.title).toBe("Updated title");
 		expect(updatedTask?.agentId).toBe("cline");
-		expect(updatedTask?.clineSettings).toEqual({
+		expect(updatedTask?.agentSettings).toEqual({
 			providerId: "openrouter",
 			modelId: "openai/gpt-5.4",
 			reasoningEffort: "low",
@@ -647,7 +647,7 @@ describe("board dependency state", () => {
 			autoReviewEnabled: true,
 			autoReviewMode: "commit",
 			agentId: "codex",
-			clineSettings: {
+			agentSettings: {
 				providerId: "my-provider",
 				modelId: "my-model",
 				reasoningEffort: "high",
@@ -660,7 +660,7 @@ describe("board dependency state", () => {
 			throw new Error("Expected review task to exist");
 		}
 		expect(task.agentId).toBe("codex");
-		expect(task.clineSettings).toEqual({
+		expect(task.agentSettings).toEqual({
 			providerId: "my-provider",
 			modelId: "my-model",
 			reasoningEffort: "high",
@@ -672,7 +672,7 @@ describe("board dependency state", () => {
 		const updatedTask = disabled.board.columns.find((column) => column.id === "review")?.cards[0];
 		expect(updatedTask?.autoReviewEnabled).toBe(false);
 		expect(updatedTask?.agentId).toBe("codex");
-		expect(updatedTask?.clineSettings).toEqual({
+		expect(updatedTask?.agentSettings).toEqual({
 			providerId: "my-provider",
 			modelId: "my-model",
 			reasoningEffort: "high",
@@ -691,9 +691,9 @@ describe("board dependency state", () => {
 			throw new Error("Expected backlog task to exist");
 		}
 
-		const result = applyTaskDetailClineSettingsSelection(board, task.id, {
+		const result = applyTaskDetailAgentSettingsSelection(board, task.id, {
 			agentId: "cline",
-			clineSettings: {
+			agentSettings: {
 				providerId: "openrouter",
 				modelId: "anthropic/claude-opus-4.6",
 			},
@@ -701,7 +701,7 @@ describe("board dependency state", () => {
 		expect(result.updated).toBe(false);
 		const unchangedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
 		expect(unchangedTask?.agentId).toBeUndefined();
-		expect(unchangedTask?.clineSettings).toBeUndefined();
+		expect(unchangedTask?.agentSettings).toBeUndefined();
 	});
 
 	it("updates task model overrides when the task already has explicit task-level settings", () => {
@@ -709,7 +709,7 @@ describe("board dependency state", () => {
 		board = addTaskToColumn(board, "backlog", {
 			prompt: "Task with explicit override",
 			agentId: "cline",
-			clineSettings: {
+			agentSettings: {
 				providerId: "openrouter",
 				modelId: "anthropic/claude-sonnet-4.6",
 				reasoningEffort: "low",
@@ -722,9 +722,9 @@ describe("board dependency state", () => {
 			throw new Error("Expected backlog task to exist");
 		}
 
-		const result = applyTaskDetailClineSettingsSelection(board, task.id, {
+		const result = applyTaskDetailAgentSettingsSelection(board, task.id, {
 			agentId: "cline",
-			clineSettings: {
+			agentSettings: {
 				providerId: "openrouter",
 				modelId: "anthropic/claude-opus-4.6",
 				reasoningEffort: "high",
@@ -733,7 +733,7 @@ describe("board dependency state", () => {
 		expect(result.updated).toBe(true);
 		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
 		expect(updatedTask?.agentId).toBe("cline");
-		expect(updatedTask?.clineSettings).toEqual({
+		expect(updatedTask?.agentSettings).toEqual({
 			providerId: "openrouter",
 			modelId: "anthropic/claude-opus-4.6",
 			reasoningEffort: "high",
@@ -744,7 +744,7 @@ describe("board dependency state", () => {
 		let board = createInitialBoardData();
 		board = addTaskToColumn(board, "backlog", {
 			prompt: "Task with reasoning-only override",
-			clineSettings: {
+			agentSettings: {
 				reasoningEffort: "low",
 			},
 			baseRef: "main",
@@ -755,15 +755,15 @@ describe("board dependency state", () => {
 			throw new Error("Expected backlog task to exist");
 		}
 
-		const result = applyTaskDetailClineSettingsSelection(board, task.id, {
-			clineSettings: {
+		const result = applyTaskDetailAgentSettingsSelection(board, task.id, {
+			agentSettings: {
 				reasoningEffort: "high",
 			},
 		});
 		expect(result.updated).toBe(true);
 		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
 		expect(updatedTask?.agentId).toBeUndefined();
-		expect(updatedTask?.clineSettings).toEqual({
+		expect(updatedTask?.agentSettings).toEqual({
 			reasoningEffort: "high",
 		});
 	});
@@ -781,9 +781,9 @@ describe("board dependency state", () => {
 			throw new Error("Expected backlog task to exist");
 		}
 
-		const result = applyTaskDetailClineSettingsSelection(board, task.id, {
+		const result = applyTaskDetailAgentSettingsSelection(board, task.id, {
 			agentId: "cline",
-			clineSettings: {
+			agentSettings: {
 				providerId: "openrouter",
 				modelId: "anthropic/claude-opus-4.6",
 			},
@@ -791,14 +791,14 @@ describe("board dependency state", () => {
 		expect(result.updated).toBe(false);
 		const unchangedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
 		expect(unchangedTask?.agentId).toBe("codex");
-		expect(unchangedTask?.clineSettings).toBeUndefined();
+		expect(unchangedTask?.agentSettings).toBeUndefined();
 	});
 
 	it("materializes a concrete cline override when saving task-level chat settings", () => {
 		let board = createInitialBoardData();
 		board = addTaskToColumn(board, "backlog", {
 			prompt: "Task with explicit empty override",
-			clineSettings: {},
+			agentSettings: {},
 			baseRef: "main",
 		});
 		const task = board.columns.find((column) => column.id === "backlog")?.cards[0];
@@ -807,7 +807,7 @@ describe("board dependency state", () => {
 			throw new Error("Expected backlog task to exist");
 		}
 
-		const result = applyTaskDetailClineSettingsChange(
+		const result = applyTaskDetailAgentSettingsChange(
 			board,
 			task.id,
 			{
@@ -823,7 +823,7 @@ describe("board dependency state", () => {
 		expect(result.updated).toBe(true);
 		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
 		expect(updatedTask?.agentId).toBe("cline");
-		expect(updatedTask?.clineSettings).toEqual({
+		expect(updatedTask?.agentSettings).toEqual({
 			providerId: "anthropic",
 			modelId: "claude-sonnet-4.6",
 		});
@@ -834,7 +834,7 @@ describe("board dependency state", () => {
 		board = addTaskToColumn(board, "backlog", {
 			prompt: "Task pinned to cline",
 			agentId: "cline",
-			clineSettings: {
+			agentSettings: {
 				providerId: "openrouter",
 				modelId: "anthropic/claude-sonnet-4.6",
 			},
@@ -846,7 +846,7 @@ describe("board dependency state", () => {
 			throw new Error("Expected backlog task to exist");
 		}
 
-		const result = applyTaskDetailClineSettingsChange(
+		const result = applyTaskDetailAgentSettingsChange(
 			board,
 			task.id,
 			{
@@ -862,7 +862,7 @@ describe("board dependency state", () => {
 		expect(result.updated).toBe(true);
 		const updatedTask = result.board.columns.find((column) => column.id === "backlog")?.cards[0];
 		expect(updatedTask?.agentId).toBe("cline");
-		expect(updatedTask?.clineSettings).toEqual({
+		expect(updatedTask?.agentSettings).toEqual({
 			providerId: "openrouter",
 			modelId: "anthropic/claude-opus-4.6",
 			reasoningEffort: "medium",

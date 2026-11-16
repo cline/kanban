@@ -17,6 +17,8 @@ function createSummary(state: RuntimeTaskSessionSummary["state"], updatedAt: num
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity: null,
+		modelId: null,
+		reasoningEffort: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 	};

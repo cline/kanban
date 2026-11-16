@@ -71,7 +71,7 @@ export const runtimeSlashCommandsResponseSchema = z.object({
 });
 export type RuntimeSlashCommandsResponse = z.infer<typeof runtimeSlashCommandsResponseSchema>;
 
-export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "kiro", "cline"]);
+export const runtimeAgentIdSchema = z.enum(["claude", "codex", "gemini", "opencode", "droid", "kiro", "grok", "cline"]);
 export type RuntimeAgentId = z.infer<typeof runtimeAgentIdSchema>;
 
 const runtimeBoardColumnIdEnum = z.enum(["backlog", "in_progress", "review", "trash"]);
@@ -90,12 +90,15 @@ export type RuntimeTaskAutoReviewMode = z.infer<typeof runtimeTaskAutoReviewMode
 
 export const runtimeClineReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
 export type RuntimeClineReasoningEffort = z.infer<typeof runtimeClineReasoningEffortSchema>;
-export const runtimeTaskClineSettingsSchema = z.object({
+// Opaque per-task agent settings. Kanban stores and carries these values verbatim; it never
+// validates model IDs or reasoning-effort vocabularies because those change per agent and over
+// time. Validity is the target agent's concern at launch, not Kanban's.
+export const runtimeAgentSettingsSchema = z.object({
 	providerId: z.string().optional(),
 	modelId: z.string().optional(),
-	reasoningEffort: runtimeClineReasoningEffortSchema.optional(),
+	reasoningEffort: z.string().optional(),
 });
-export type RuntimeTaskClineSettings = z.infer<typeof runtimeTaskClineSettingsSchema>;
+export type RuntimeTaskAgentSettings = z.infer<typeof runtimeAgentSettingsSchema>;
 export const runtimeTaskImageSchema = z.object({
 	id: z.string(),
 	data: z.string(),
@@ -106,12 +109,16 @@ export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
 
 const runtimeLegacyTaskClineReasoningEffortSchema = z.enum(["default", "low", "medium", "high", "xhigh"]);
 
-function normalizeRuntimeTaskClineSettings(input: {
-	clineSettings?: RuntimeTaskClineSettings;
+function normalizeRuntimeTaskAgentSettings(input: {
+	agentSettings?: RuntimeTaskAgentSettings;
+	clineSettings?: RuntimeTaskAgentSettings;
 	clineProviderId?: string;
 	clineModelId?: string;
 	clineReasoningEffort?: z.infer<typeof runtimeLegacyTaskClineReasoningEffortSchema>;
-}): RuntimeTaskClineSettings | undefined {
+}): RuntimeTaskAgentSettings | undefined {
+	if (input.agentSettings !== undefined) {
+		return input.agentSettings;
+	}
 	if (input.clineSettings !== undefined) {
 		return input.clineSettings;
 	}
@@ -139,7 +146,8 @@ export const runtimeBoardCardSchema = z
 		autoReviewMode: runtimeTaskAutoReviewModeSchema.optional(),
 		images: z.array(runtimeTaskImageSchema).optional(),
 		agentId: runtimeAgentIdSchema.optional(),
-		clineSettings: runtimeTaskClineSettingsSchema.optional(),
+		agentSettings: runtimeAgentSettingsSchema.optional(),
+		clineSettings: runtimeAgentSettingsSchema.optional(),
 		clineProviderId: z.string().optional(),
 		clineModelId: z.string().optional(),
 		clineReasoningEffort: runtimeLegacyTaskClineReasoningEffortSchema.optional(),
@@ -152,17 +160,19 @@ export const runtimeBoardCardSchema = z
 			clineProviderId: _legacyProviderId,
 			clineModelId: _legacyModelId,
 			clineReasoningEffort: _legacyReasoningEffort,
+			clineSettings: _legacyClineSettings,
 			...card
 		}) => {
-			const clineSettings = normalizeRuntimeTaskClineSettings({
-				clineSettings: card.clineSettings,
+			const agentSettings = normalizeRuntimeTaskAgentSettings({
+				agentSettings: card.agentSettings,
+				clineSettings: _legacyClineSettings,
 				clineProviderId: _legacyProviderId,
 				clineModelId: _legacyModelId,
 				clineReasoningEffort: _legacyReasoningEffort,
 			});
 			return {
 				...card,
-				...(clineSettings !== undefined ? { clineSettings } : {}),
+				...(agentSettings !== undefined ? { agentSettings } : {}),
 				title: resolveTaskTitle(card.title, card.prompt),
 			};
 		},
@@ -294,6 +304,8 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	lastHookAt: z.number().nullable().default(null),
 	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
 	warningMessage: z.string().nullable().optional(),
+	modelId: z.string().nullable().default(null),
+	reasoningEffort: z.string().nullable().default(null),
 	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 });
@@ -982,7 +994,7 @@ export const runtimeTaskSessionStartRequestSchema = z.object({
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),
 	agentId: runtimeAgentIdSchema.optional(),
-	clineSettings: runtimeTaskClineSettingsSchema.optional(),
+	agentSettings: runtimeAgentSettingsSchema.optional(),
 });
 export type RuntimeTaskSessionStartRequest = z.infer<typeof runtimeTaskSessionStartRequestSchema>;
 

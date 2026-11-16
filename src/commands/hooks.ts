@@ -15,6 +15,7 @@ import {
 	startCodexSessionWatcher,
 } from "./hook-events/codex-hook-events";
 import { enrichDroidReviewMetadata } from "./hook-events/droid-hook-events";
+import { resolveGrokHookIngestEvent } from "./hook-events/grok-hook-events";
 import { asRecord, normalizeWhitespace, readNestedString, readStringField } from "./hook-events/hook-utils";
 import { normalizeKiroHookMetadata } from "./hook-events/kiro-hook-events";
 
@@ -278,6 +279,9 @@ export function inferHookSourceFromPayload(payload: Record<string, unknown> | nu
 	if (normalizedTranscriptPath?.includes("/.kiro/")) {
 		return "kiro";
 	}
+	if (normalizedTranscriptPath?.includes("/.grok/")) {
+		return "grok";
+	}
 	if (normalizedTranscriptPath?.includes("/.factory/")) {
 		return "droid";
 	}
@@ -366,8 +370,11 @@ function parseHooksIngestArgs(
 	const payloadFromArg = payloadArg ? parseJsonObject(payloadArg) : null;
 	const payload = payloadFromBase64 ?? payloadFromStdin ?? payloadFromArg;
 	const metadata = normalizeHookMetadata(event, payload, flagMetadata);
+	const source = metadata?.source ?? inferHookSourceFromPayload(payload);
+	const resolvedEvent =
+		source?.toLowerCase() === "grok" ? resolveGrokHookIngestEvent(event, payload, metadata?.hookEventName) : event;
 	return {
-		event,
+		event: resolvedEvent,
 		taskId: context.taskId,
 		workspaceId: context.workspaceId,
 		metadata,

@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { buildTaskAgentSettingsForUpdate } from "../../../src/commands/task";
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
 
 const originalHome = process.env.HOME;
@@ -594,6 +595,18 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(kiroLaunch.args).toContain("--resume");
 
+		const grokLaunch = await prepareAgentLaunch({
+			taskId: "task-grok",
+			agentId: "grok",
+			binary: "grok",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(grokLaunch.args).toContain("--continue");
+		expect(grokLaunch.args).not.toContain("--resume");
+
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline",
 			agentId: "cline",
@@ -686,6 +699,19 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(kiroLaunch.args).toContain("--trust-all-tools");
+
+		const grokLaunch = await prepareAgentLaunch({
+			taskId: "task-grok-auto",
+			agentId: "grok",
+			binary: "grok",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(grokLaunch.args).toContain("--always-approve");
+		expect(grokLaunch.args).not.toContain("--permission-mode");
+		expect(grokLaunch.args).not.toContain("--yolo");
 
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline-auto",
@@ -809,5 +835,362 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(kiroLaunch.args).toContain("--trust-all-tools");
+
+		const grokLaunch = await prepareAgentLaunch({
+			taskId: "task-grok-no-auto",
+			agentId: "grok",
+			binary: "grok",
+			args: ["--always-approve"],
+			autonomousModeEnabled: false,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(grokLaunch.args).toContain("--always-approve");
+	});
+
+	it("writes Grok project hooks and launches with trust, rules, and no nested worktree", async () => {
+		const home = setupTempHome();
+		setKanbanProcessContext();
+		const cwd = join(home, "worktree");
+		mkdirSync(cwd, { recursive: true });
+
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:grok",
+			agentId: "grok",
+			binary: "grok",
+			args: ["--worktree", "/tmp/nested", "--system-prompt-override", "wipe"],
+			autonomousModeEnabled: true,
+			cwd,
+			prompt: "Fix the flaky test",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("__home_agent__:workspace-1:grok");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.args).toContain("--trust");
+		expect(launch.args).toContain("--verbatim");
+		expect(launch.args).toContain("Fix the flaky test");
+		expect(launch.args).not.toContain("--worktree");
+		expect(launch.args).not.toContain("/tmp/nested");
+		expect(launch.args).not.toContain("--system-prompt-override");
+		expect(launch.args).not.toContain("wipe");
+
+		expect(launch.args).toContain("--always-approve");
+		expect(launch.args).not.toContain("--permission-mode");
+
+		const rulesIndex = launch.args.indexOf("--rules");
+		expect(rulesIndex).toBeGreaterThan(-1);
+		expect(launch.args[rulesIndex + 1]).toContain("Kanban sidebar agent");
+		expect(launch.args[rulesIndex + 1]).toContain(
+			"grok mcp add --transport http --scope user linear https://mcp.linear.app/mcp",
+		);
+
+		const hooksPath = join(cwd, ".grok", "hooks", "kanban.json");
+		const hooks = JSON.parse(readFileSync(hooksPath, "utf8")) as {
+			hooks?: Record<string, Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>>;
+		};
+		expect(hooks.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
+		expect(hooks.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("--source");
+		expect(hooks.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("grok");
+		expect(hooks.hooks?.PreToolUse?.[0]?.matcher).toBe("*");
+		expect(hooks.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
+		expect(hooks.hooks?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
+		expect(hooks.hooks?.PostToolUseFailure?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
+		expect(hooks.hooks?.Stop?.[0]?.hooks?.[0]?.command).toContain("to_review");
+		expect(hooks.hooks?.Stop?.[0]?.hooks?.[0]?.command).toContain("Waiting for review");
+		expect(hooks.hooks?.StopCancelled?.[0]?.hooks?.[0]?.command).toContain("activity");
+		const permissionNotification = hooks.hooks?.Notification?.find((hook) => hook.matcher === "permission_prompt");
+		expect(permissionNotification?.hooks?.[0]?.command).toContain("to_review");
+		const idleNotification = hooks.hooks?.Notification?.find((hook) => hook.matcher === "idle_prompt");
+		expect(idleNotification?.hooks?.[0]?.command).toContain("to_review");
+	});
+
+	it("starts Grok autonomous tasks with always-approve even if permission-mode auto is already set", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-grok-card-auto",
+			agentId: "grok",
+			binary: "grok",
+			args: ["--permission-mode", "auto"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "Implement the card",
+		});
+		expect(launch.args).toContain("--always-approve");
+		expect(launch.args.filter((arg) => arg === "--always-approve")).toHaveLength(1);
+	});
+
+	it("starts Grok plan mode without auto or always-approve flags", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-grok-plan",
+			agentId: "grok",
+			binary: "grok",
+			args: ["--always-approve", "--permission-mode", "auto"],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "Plan the migration",
+			startInPlanMode: true,
+		});
+		expect(launch.args).not.toContain("--always-approve");
+		expect(launch.args).not.toContain("--yolo");
+		expect(launch.args.filter((arg) => arg === "--permission-mode")).toHaveLength(1);
+		expect(launch.args[launch.args.indexOf("--permission-mode") + 1]).toBe("plan");
+	});
+});
+
+describe("per-task agentSettings overrides", () => {
+	const SENTINEL = {
+		providerId: "acme-provider",
+		modelId: "not-a-real-model-xyz",
+		reasoningEffort: "MAXIMUM_OVERDRIVE",
+	};
+
+	it("claude: passes model/effort verbatim as --model/--effort", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("--model");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		const effortIndex = launch.args.indexOf("--effort");
+		expect(effortIndex).toBeGreaterThan(-1);
+		expect(launch.args[effortIndex + 1]).toBe(SENTINEL.reasoningEffort);
+	});
+
+	it("claude: keeps an existing --model arg and does not duplicate", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--model", "user-pinned-model"],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		expect(launch.args.filter((arg) => arg === "--model")).toHaveLength(1);
+		expect(launch.args).toContain("user-pinned-model");
+		expect(launch.args).not.toContain(SENTINEL.modelId);
+		expect(launch.args).toContain("--effort");
+	});
+
+	it("codex: model via -m and effort via -c model_reasoning_effort=", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("-m");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		expect(getCodexConfigOverrideValues(launch.args, "model_reasoning_effort")).toEqual([SENTINEL.reasoningEffort]);
+	});
+
+	it("codex: does not duplicate when -m or model_reasoning_effort is already set", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: ["-m", "user-pinned-model", "-c", "model_reasoning_effort=user-effort"],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		expect(launch.args.filter((arg) => arg === "-m")).toHaveLength(1);
+		expect(launch.args).toContain("user-pinned-model");
+		expect(getCodexConfigOverrideValues(launch.args, "model_reasoning_effort")).toEqual(["user-effort"]);
+	});
+
+	it("droid: long-form --model and --reasoning-effort only (no -r)", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "droid",
+			binary: "droid",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("--model");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		const effortIndex = launch.args.indexOf("--reasoning-effort");
+		expect(effortIndex).toBeGreaterThan(-1);
+		expect(launch.args[effortIndex + 1]).toBe(SENTINEL.reasoningEffort);
+		expect(launch.args).not.toContain("-r");
+	});
+
+	it("grok: passes model/effort verbatim as --model/--reasoning-effort", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "grok",
+			binary: "grok",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("--model");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		const effortIndex = launch.args.indexOf("--reasoning-effort");
+		expect(effortIndex).toBeGreaterThan(-1);
+		expect(launch.args[effortIndex + 1]).toBe(SENTINEL.reasoningEffort);
+	});
+
+	it("grok: keeps existing --model or --effort flags and does not duplicate", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "grok",
+			binary: "grok",
+			args: ["--model", "user-pinned-model", "--effort", "high"],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		expect(launch.args.filter((arg) => arg === "--model")).toHaveLength(1);
+		expect(launch.args).toContain("user-pinned-model");
+		expect(launch.args).not.toContain(SENTINEL.modelId);
+		expect(launch.args).toContain("--effort");
+		expect(launch.args).not.toContain("--reasoning-effort");
+		expect(launch.args).not.toContain(SENTINEL.reasoningEffort);
+	});
+
+	it("gemini: model via -m only; effort has no flag and is not injected", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "gemini",
+			binary: "gemini",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId, reasoningEffort: SENTINEL.reasoningEffort },
+		});
+
+		const modelIndex = launch.args.indexOf("-m");
+		expect(modelIndex).toBeGreaterThan(-1);
+		expect(launch.args[modelIndex + 1]).toBe(SENTINEL.modelId);
+		expect(launch.args).not.toContain(SENTINEL.reasoningEffort);
+	});
+
+	it("opencode: composes provider/model when both set; unprefixed when only modelId", async () => {
+		setupTempHome();
+		const withProvider = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { providerId: "openrouter", modelId: "acme-model" },
+		});
+		const modelFlag = withProvider.args.indexOf("--model");
+		expect(modelFlag).toBeGreaterThan(-1);
+		expect(withProvider.args[modelFlag + 1]).toBe("openrouter/acme-model");
+
+		const withoutProvider = await prepareAgentLaunch({
+			taskId: "task-2",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: "acme-model" },
+		});
+		const bareFlag = withoutProvider.args.indexOf("--model");
+		expect(bareFlag).toBeGreaterThan(-1);
+		expect(withoutProvider.args[bareFlag + 1]).toBe("acme-model");
+	});
+
+	it("opencode: task model wins over config-derived preferred model", async () => {
+		setupTempHome();
+		const stateDir = join(tempHome ?? "", ".local", "state", "opencode");
+		mkdirSync(stateDir, { recursive: true });
+		writeFileSync(
+			join(stateDir, "model.json"),
+			JSON.stringify({ recent: [{ providerID: "openrouter", modelID: "config-preferred-model" }] }),
+		);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "opencode",
+			binary: "opencode",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: "task-pinned-model" },
+		});
+
+		expect(launch.args.filter((arg) => arg === "--model")).toHaveLength(1);
+		const modelFlag = launch.args.indexOf("--model");
+		expect(launch.args[modelFlag + 1]).toBe("task-pinned-model");
+	});
+
+	it("omits --model after task update --model default clears the card setting", async () => {
+		const cleared = buildTaskAgentSettingsForUpdate({ modelId: SENTINEL.modelId }, { modelId: null });
+		expect(cleared).toBeNull();
+
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: cleared ?? undefined,
+		});
+
+		expect(launch.args).not.toContain("--model");
+	});
+
+	it("kiro: emits a visible session warning when settings are present; none when absent", async () => {
+		setupTempHome();
+		const withSettings = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "kiro",
+			binary: "kiro-cli",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: { modelId: SENTINEL.modelId },
+		});
+		expect(withSettings.sessionWarning).toBeDefined();
+		expect(withSettings.sessionWarning).toContain("kiro");
+
+		const withoutSettings = await prepareAgentLaunch({
+			taskId: "task-2",
+			agentId: "kiro",
+			binary: "kiro-cli",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(withoutSettings.sessionWarning).toBeUndefined();
 	});
 });
