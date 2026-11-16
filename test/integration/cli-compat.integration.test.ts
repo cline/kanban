@@ -34,4 +34,32 @@ describe("cli compatibility flags", () => {
 		expect(result.stdout).not.toContain("--agent");
 		expect(result.stdout).not.toContain("Agent IDs:");
 	});
+
+	it("exposes daemon process commands and shared launch flags", () => {
+		const result = spawnSync(
+			process.execPath,
+			["--import", resolveTsxLoaderImportSpecifier(), resolve(process.cwd(), "src/cli.ts"), "--help"],
+			{
+				encoding: "utf8",
+			},
+		);
+
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain("start [options]");
+		expect(result.stdout).toContain("stop [pid]");
+		expect(result.stdout).toContain("restart [options] [pid]");
+		expect(result.stdout).toContain("status [options]");
+
+		const startHelp = spawnSync(
+			process.execPath,
+			["--import", resolveTsxLoaderImportSpecifier(), resolve(process.cwd(), "src/cli.ts"), "start", "--help"],
+			{
+				encoding: "utf8",
+			},
+		);
+		expect(startHelp.status).toBe(0);
+		expect(startHelp.stdout).toContain("--port");
+		expect(startHelp.stdout).toContain("--https");
+		expect(startHelp.stdout).toContain("--no-passcode");
+	});
 });
