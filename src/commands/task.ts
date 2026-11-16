@@ -670,6 +670,77 @@ async function unlinkTasks(input: { cwd: string; dependencyId: string; projectPa
 	};
 }
 
+async function readStdinText(): Promise<string> {
+	if (process.stdin.isTTY) {
+		return "";
+	}
+	const chunks: Buffer[] = [];
+	for await (const chunk of process.stdin) {
+		chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+	}
+	return Buffer.concat(chunks)
+		.toString("utf8")
+		.replace(/\r?\n$/, "");
+}
+
+async function resolveSendTaskText(text: string | undefined): Promise<string> {
+	if (text !== undefined) {
+		if (text.length === 0) {
+			throw new Error("--text value cannot be empty. Omit the flag to read from stdin.");
+		}
+		return text;
+	}
+	const stdinText = await readStdinText();
+	if (stdinText.length > 0) {
+		return stdinText;
+	}
+	throw new Error("task send requires --text or stdin input.");
+}
+
+async function sendTaskInput(input: {
+	cwd: string;
+	taskId: string;
+	projectPath?: string;
+	text?: string;
+	submit: boolean;
+}): Promise<JsonRecord> {
+	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
+	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
+	const runtimeClient = createRuntimeTrpcClient(workspaceId);
+	const sent = await runtimeClient.runtime.sendTaskSessionInput.mutate({
+		taskId: input.taskId,
+		text: await resolveSendTaskText(input.text),
+		appendNewline: false,
+	});
+	if (!sent.ok) {
+		throw new Error(sent.error ?? "Could not send task input.");
+	}
+	if (!input.submit || sent.summary?.agentId === "cline") {
+		return {
+			ok: true,
+			workspacePath: workspaceRepoPath,
+			taskId: input.taskId,
+			summary: sent.summary,
+			submitted: input.submit,
+		};
+	}
+	const submitted = await runtimeClient.runtime.sendTaskSessionInput.mutate({
+		taskId: input.taskId,
+		text: "\r",
+		appendNewline: false,
+	});
+	if (!submitted.ok) {
+		throw new Error(submitted.error ?? "Could not submit task input.");
+	}
+	return {
+		ok: true,
+		workspacePath: workspaceRepoPath,
+		taskId: input.taskId,
+		summary: submitted.summary,
+		submitted: true,
+	};
+}
+
 async function startTask(input: { cwd: string; taskId: string; projectPath?: string }): Promise<JsonRecord> {
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
@@ -1325,6 +1396,26 @@ export function registerTaskCommand(program: Command): void {
 						cwd: process.cwd(),
 						dependencyId: options.dependencyId,
 						projectPath: options.projectPath,
+					}),
+			);
+		});
+
+	task
+		.command("send")
+		.description("Send follow-up input to an existing task session.")
+		.requiredOption("--task-id <id>", "Task ID.")
+		.option("--text <text>", "Text to send. Reads stdin when omitted.")
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.option("--no-submit", "Type the text without pressing Enter.")
+		.action(async (options: { taskId: string; text?: string; projectPath?: string; submit: boolean }) => {
+			await runTaskCommand(
+				async () =>
+					await sendTaskInput({
+						cwd: process.cwd(),
+						taskId: options.taskId,
+						text: options.text,
+						projectPath: options.projectPath,
+						submit: options.submit,
 					}),
 			);
 		});
