@@ -49,6 +49,12 @@ interface EnsurePersistentTerminalInput extends PersistentTerminalAppearance {
 	workspaceId: string;
 }
 
+interface TerminalViewportSnapshot {
+	userInteractionSequence: number;
+	viewportY: number;
+	wasAtBottom: boolean;
+}
+
 function generateTerminalClientId(): string {
 	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
 		return crypto.randomUUID();
@@ -161,6 +167,7 @@ class PersistentTerminal {
 	private restoreCompleted = false;
 	private outputTextDecoder = new TextDecoder();
 	private terminalWriteQueue: Promise<void> = Promise.resolve();
+	private userViewportInteractionSequence = 0;
 	private disposed = false;
 
 	constructor(
@@ -204,7 +211,16 @@ class PersistentTerminal {
 			}
 			this.sendIoData(bytes);
 		});
+		this.hostElement.addEventListener("wheel", this.trackUserViewportInteraction, { capture: true, passive: true });
+		this.hostElement.addEventListener("touchmove", this.trackUserViewportInteraction, {
+			capture: true,
+			passive: true,
+		});
+		this.hostElement.addEventListener("pointerdown", this.trackScrollbarViewportInteraction, { capture: true });
 		this.terminal.attachCustomKeyEventHandler((event) => {
+			if (event.type === "keydown") {
+				this.trackUserViewportInteraction();
+			}
 			if (event.key === "Enter" && event.shiftKey) {
 				if (event.type === "keydown") {
 					this.terminal.input(SHIFT_ENTER_SEQUENCE);
@@ -232,6 +248,19 @@ class PersistentTerminal {
 
 		this.ensureConnected();
 	}
+
+	private readonly trackUserViewportInteraction = (): void => {
+		this.userViewportInteractionSequence += 1;
+	};
+
+	private readonly trackScrollbarViewportInteraction = (event: PointerEvent): void => {
+		if (!(event.target instanceof Element)) {
+			return;
+		}
+		if (event.target.closest(".xterm-viewport")) {
+			this.trackUserViewportInteraction();
+		}
+	};
 
 	private notifyLastError(): void {
 		for (const subscriber of this.subscribers) {
@@ -279,10 +308,12 @@ class PersistentTerminal {
 		options: {
 			ackBytes?: number;
 			notifyText?: string | null;
+			preserveViewport?: boolean;
 		} = {},
 	): Promise<void> {
 		const ackBytes = options.ackBytes ?? 0;
 		const notifyText = options.notifyText ?? null;
+		const preserveViewport = options.preserveViewport ?? true;
 		this.terminalWriteQueue = this.terminalWriteQueue
 			.catch(() => undefined)
 			.then(
@@ -292,7 +323,11 @@ class PersistentTerminal {
 							resolve();
 							return;
 						}
+						const viewportSnapshot = preserveViewport ? this.captureViewport() : null;
 						this.terminal.write(data, () => {
+							if (viewportSnapshot) {
+								this.restoreViewport(viewportSnapshot);
+							}
 							if (notifyText) {
 								this.notifyOutputText(notifyText);
 							}
@@ -309,27 +344,51 @@ class PersistentTerminal {
 		return this.terminalWriteQueue;
 	}
 
+	private captureViewport(): TerminalViewportSnapshot {
+		const { baseY, viewportY } = this.terminal.buffer.active;
+		return {
+			userInteractionSequence: this.userViewportInteractionSequence,
+			viewportY,
+			wasAtBottom: viewportY >= baseY,
+		};
+	}
+
+	private restoreViewport(snapshot: TerminalViewportSnapshot): void {
+		if (snapshot.userInteractionSequence !== this.userViewportInteractionSequence) {
+			return;
+		}
+		if (snapshot.wasAtBottom) {
+			this.terminal.scrollToBottom();
+			return;
+		}
+		const targetViewportY = Math.min(Math.max(snapshot.viewportY, 0), this.terminal.buffer.active.baseY);
+		this.terminal.scrollToLine(targetViewportY);
+	}
+
 	private async applyRestore(
 		snapshot: string,
 		cols: number | null | undefined,
 		rows: number | null | undefined,
 	): Promise<void> {
 		await this.terminalWriteQueue.catch(() => undefined);
+		const viewportSnapshot = this.captureViewport();
 		this.terminal.reset();
 		if (cols && rows && (this.terminal.cols !== cols || this.terminal.rows !== rows)) {
 			this.terminal.resize(cols, rows);
 		}
-		if (!snapshot) {
-			return;
+		if (snapshot) {
+			await this.enqueueTerminalWrite(snapshot, { preserveViewport: false });
 		}
-		await this.enqueueTerminalWrite(snapshot);
+		this.restoreViewport(viewportSnapshot);
 	}
 
 	private requestResize(): void {
 		if (!this.visibleContainer) {
 			return;
 		}
+		const viewportSnapshot = this.captureViewport();
 		this.fitAddon.fit();
+		this.restoreViewport(viewportSnapshot);
 		const bounds = this.visibleContainer.getBoundingClientRect();
 		const pixelWidth = Math.round(bounds.width);
 		const pixelHeight = Math.round(bounds.height);
@@ -614,7 +673,9 @@ class PersistentTerminal {
 				if (this.disposed) {
 					return;
 				}
+				const viewportSnapshot = this.captureViewport();
 				this.terminal.reset();
+				this.restoreViewport(viewportSnapshot);
 			});
 	}
 
@@ -691,6 +752,9 @@ class PersistentTerminal {
 		this.ioSocket = null;
 		this.controlSocket = null;
 		this.subscribers.clear();
+		this.hostElement.removeEventListener("wheel", this.trackUserViewportInteraction, { capture: true });
+		this.hostElement.removeEventListener("touchmove", this.trackUserViewportInteraction, { capture: true });
+		this.hostElement.removeEventListener("pointerdown", this.trackScrollbarViewportInteraction, { capture: true });
 		this.terminal.dispose();
 		this.hostElement.remove();
 	}
