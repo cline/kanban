@@ -211,6 +211,18 @@ describe("ProjectNavigationPanel width persistence", () => {
 		expect(container.textContent).not.toContain("Report issue");
 	});
 
+	it("keeps the Add Project button rendered while the project list reloads after a switch", () => {
+		renderPanel({ isLoadingProjects: true });
+		expect(() => getButtonByText(container, "Add Project")).not.toThrow();
+	});
+
+	it("hides the Add Project button on initial load while projects are still being fetched", () => {
+		renderPanel({ projects: [], currentProjectId: null, isLoadingProjects: true });
+		expect(
+			Array.from(container.querySelectorAll("button")).some((button) => button.textContent === "Add Project"),
+		).toBe(false);
+	});
+
 	it("persists terminal tips dismissal", () => {
 		renderPanel({
 			activeSection: "agent",
