@@ -50,10 +50,10 @@ function createLockOptions(request: LockRequest, lockfilePath: string): LockOpti
 		retries: request.retries ?? DEFAULT_LOCK_RETRIES,
 		realpath: false,
 		lockfilePath,
+		// Don't crash on ECOMPROMISED — the lock is silently released instead.
+		// This prevents process crashes under disk I/O pressure.
+		onCompromised: request.onCompromised ?? (() => {}),
 	};
-	if (typeof request.onCompromised === "function") {
-		options.onCompromised = request.onCompromised;
-	}
 	return options;
 }
 
@@ -108,7 +108,11 @@ export class LockedFileSystem {
 			return await operation();
 		} finally {
 			for (const release of releases.reverse()) {
-				await release();
+				try {
+					await release();
+				} catch {
+					/* lock already released (e.g. ECOMPROMISED) */
+				}
 			}
 		}
 	}
