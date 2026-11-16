@@ -83,7 +83,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 ];
 
-const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro"];
+const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "cline-cli", "claude", "codex", "droid", "kiro"];
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
 	kind: "agent-selection",
 	title: "",
@@ -293,6 +293,9 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	if (agentId === "cline") {
 		return "Built-in agent with support for any LLM provider. No CLI install needed.";
 	}
+	if (agentId === "cline-cli") {
+		return "Cline's terminal coding agent CLI with plan/act modes, MCP support, and any LLM provider.";
+	}
 	if (agentId === "claude") {
 		return "Anthropic's coding agent CLI with access to Claude models.";
 	}
@@ -309,6 +312,9 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 }
 
 function getInstallLinkLabel(agentId: RuntimeAgentId): string {
+	if (agentId === "cline-cli") {
+		return "Learn more";
+	}
 	if (agentId === "claude") {
 		return "Learn more";
 	}

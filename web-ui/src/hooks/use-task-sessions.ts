@@ -165,7 +165,7 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					cols: geometry.cols,
 					rows: geometry.rows,
 					agentId: task.agentId,
-					clineSettings: task.clineSettings,
+					agentSettings: task.agentSettings,
 				});
 				if (!payload.ok || !payload.summary) {
 					return {

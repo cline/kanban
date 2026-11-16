@@ -87,6 +87,7 @@ vi.mock("@runtime-agent-catalog", () => ({
 	})),
 	getRuntimeLaunchSupportedAgentCatalog: vi.fn(() => [
 		{ id: "cline", label: "Cline", binary: "cline" },
+		{ id: "cline-cli", label: "Cline CLI", binary: "cline" },
 		{ id: "claude", label: "Claude Code", binary: "claude" },
 	]),
 }));
@@ -195,6 +196,13 @@ const savedClineOauthConfig = {
 			command: "claude",
 			installed: true,
 		},
+		{
+			id: "cline-cli",
+			label: "Cline CLI",
+			binary: "cline",
+			command: "cline",
+			installed: true,
+		},
 	],
 	clineProviderSettings: {
 		providerId: null,
@@ -242,6 +250,24 @@ describe("RuntimeSettingsDialog", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+	});
+
+	it("lists Cline CLI as a launch-supported agent", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const clineCliRow = Array.from(document.body.querySelectorAll('[role="button"]')).find((element) =>
+			element.textContent?.includes("Cline CLI"),
+		);
+		expect(clineCliRow).toBeTruthy();
 	});
 
 	it("does not render support actions inside settings", async () => {

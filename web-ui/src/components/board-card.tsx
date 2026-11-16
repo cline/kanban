@@ -435,19 +435,19 @@ export function BoardCard({
 		[card.agentId],
 	);
 	const modelOverrideLabel = useMemo(() => {
-		if (card.clineSettings === undefined) {
+		if (card.agentSettings === undefined) {
 			return null;
 		}
-		const explicitReasoningLabel = card.clineSettings.reasoningEffort
-			? formatClineReasoningEffortLabel(card.clineSettings.reasoningEffort)
-			: !card.clineSettings.providerId && !card.clineSettings.modelId
+		const explicitReasoningLabel = card.agentSettings.reasoningEffort
+			? formatClineReasoningEffortLabel(card.agentSettings.reasoningEffort)
+			: !card.agentSettings.providerId && !card.agentSettings.modelId
 				? "Default"
 				: null;
-		if (card.clineSettings.providerId && !card.clineSettings.modelId) {
-			const providerLabel = `Provider: ${card.clineSettings.providerId}`;
+		if (card.agentSettings.providerId && !card.agentSettings.modelId) {
+			const providerLabel = `Provider: ${card.agentSettings.providerId}`;
 			return explicitReasoningLabel ? `${providerLabel} (${explicitReasoningLabel})` : providerLabel;
 		}
-		const effectiveModelId = card.clineSettings.modelId ?? defaultClineModelId;
+		const effectiveModelId = card.agentSettings.modelId ?? defaultClineModelId;
 		if (!effectiveModelId) {
 			return explicitReasoningLabel ? `Default model (${explicitReasoningLabel})` : null;
 		}
@@ -461,7 +461,7 @@ export function BoardCard({
 			reasoningEffort: inheritedReasoningEffort,
 			showReasoningEffort: Boolean(inheritedReasoningEffort),
 		});
-	}, [card.clineSettings, defaultClineModelId]);
+	}, [card.agentSettings, defaultClineModelId]);
 	const taskAgentSettingsLabel = useMemo(() => {
 		const parts = [agentOverrideLabel, modelOverrideLabel].filter((value): value is string => Boolean(value));
 		return parts.length > 0 ? parts.join(" · ") : null;

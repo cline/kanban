@@ -26,6 +26,8 @@ function createSummary(
 		exitCode: null,
 		lastHookAt: null,
 		latestHookActivity,
+		modelId: null,
+		reasoningEffort: null,
 		latestTurnCheckpoint: null,
 		previousTurnCheckpoint: null,
 		...overrides,
