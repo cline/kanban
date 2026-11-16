@@ -464,4 +464,234 @@ describe("createTerminalWebSocketBridge", () => {
 		await closeSocket(ioSocketB.socket);
 		await closeSocket(controlSocketB.socket);
 	});
+
+	it("terminates an unresponsive viewer and releases its PTY backpressure", async () => {
+		const heartbeatManager = new FakeTerminalManager();
+		const heartbeatServer = createServer((_request, response) => {
+			response.writeHead(404);
+			response.end();
+		});
+		const heartbeatBridge = createTerminalWebSocketBridge({
+			server: heartbeatServer,
+			resolveTerminalManager: (workspaceId) => (workspaceId === WORKSPACE_ID ? heartbeatManager : null),
+			isTerminalIoWebSocketPath: (pathname) => pathname === "/api/terminal/io",
+			isTerminalControlWebSocketPath: (pathname) => pathname === "/api/terminal/control",
+			heartbeatIntervalMs: 50,
+		});
+		heartbeatServer.listen(0, "127.0.0.1");
+		await once(heartbeatServer, "listening");
+		const heartbeatAddress = heartbeatServer.address() as AddressInfo | null;
+		if (!heartbeatAddress) {
+			throw new Error("Expected websocket server address.");
+		}
+		setKanbanRuntimePort(heartbeatAddress.port);
+		const heartbeatUrl = `ws://127.0.0.1:${heartbeatAddress.port}`;
+
+		let ioSocket: WebSocket | null = null;
+		let controlSocket: WebSocket | null = null;
+		try {
+			const ioUrl = `${heartbeatUrl}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=zombie`;
+			const controlUrl = `${heartbeatUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=zombie`;
+
+			// Zombie viewer: connected, but never acks output and never replies to pings.
+			ioSocket = new WebSocket(ioUrl, { autoPong: false });
+			await once(ioSocket, "open");
+			controlSocket = new WebSocket(controlUrl, { autoPong: false });
+			// Register before "open" resolves: the server sends restore immediately.
+			const restoreReceived = new Promise<void>((resolve) => {
+				controlSocket?.on("message", (message) => {
+					const parsed = JSON.parse(rawDataToBuffer(message).toString("utf8")) as RuntimeTerminalWsServerMessage;
+					if (parsed.type === "restore") {
+						resolve();
+					}
+				});
+			});
+			await once(controlSocket, "open");
+			await restoreReceived;
+			controlSocket.send(JSON.stringify({ type: "restore_complete" }));
+
+			const output = "x".repeat(120_000);
+			heartbeatManager.emitOutput(TASK_ID, output);
+			await waitForAssertion(() => {
+				expect(heartbeatManager.pauseOutput).toHaveBeenCalledTimes(1);
+			});
+			expect(heartbeatManager.resumeOutput).not.toHaveBeenCalled();
+
+			// The heartbeat terminates the unresponsive sockets, and the close path
+			// releases the viewer's backpressure claim on the shared PTY.
+			await waitForAssertion(() => {
+				expect(heartbeatManager.resumeOutput).toHaveBeenCalledTimes(1);
+			}, 2_000);
+			await waitForAssertion(() => {
+				expect(ioSocket?.readyState).toBe(WebSocket.CLOSED);
+			}, 2_000);
+		} finally {
+			for (const socket of [ioSocket, controlSocket]) {
+				if (socket && socket.readyState !== WebSocket.CLOSED) {
+					socket.terminate();
+				}
+			}
+			await heartbeatBridge.close();
+			await new Promise<void>((resolve, reject) => {
+				heartbeatServer.close((error) => {
+					if (error) {
+						reject(error);
+						return;
+					}
+					resolve();
+				});
+			});
+		}
+	});
+
+	it("releases PTY backpressure from a viewer that pongs but never acknowledges output", async () => {
+		// A backgrounded mobile tab is not a zombie socket: browsers answer ping
+		// frames from the network stack, so the heartbeat sees it as alive. But its
+		// renderer is frozen, so xterm never fires the write callback that sends
+		// output_ack. Without the ack-stall watchdog this viewer holds pauseOutput()
+		// on the shared PTY forever and the agent blocks on its next stdout write.
+		const stallManager = new FakeTerminalManager();
+		const stallServer = createServer((_request, response) => {
+			response.writeHead(404);
+			response.end();
+		});
+		const stallBridge = createTerminalWebSocketBridge({
+			server: stallServer,
+			resolveTerminalManager: (workspaceId) => (workspaceId === WORKSPACE_ID ? stallManager : null),
+			isTerminalIoWebSocketPath: (pathname) => pathname === "/api/terminal/io",
+			isTerminalControlWebSocketPath: (pathname) => pathname === "/api/terminal/control",
+			// Long enough that the heartbeat cannot be what releases the PTY.
+			heartbeatIntervalMs: 60_000,
+			ackStallTimeoutMs: 150,
+		});
+		stallServer.listen(0, "127.0.0.1");
+		await once(stallServer, "listening");
+		const stallAddress = stallServer.address() as AddressInfo | null;
+		if (!stallAddress) {
+			throw new Error("Expected websocket server address.");
+		}
+		setKanbanRuntimePort(stallAddress.port);
+		const stallUrl = `ws://127.0.0.1:${stallAddress.port}`;
+
+		let ioSocket: QueuedWebSocket | null = null;
+		let controlSocket: QueuedWebSocket | null = null;
+		try {
+			const ioUrl = `${stallUrl}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=backgrounded`;
+			const controlUrl = `${stallUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=backgrounded`;
+
+			// Note: default autoPong. This viewer answers every ping, exactly like a
+			// real suspended tab, so the liveness heartbeat will never terminate it.
+			ioSocket = await openQueuedWebSocket(ioUrl);
+			controlSocket = await openQueuedWebSocket(controlUrl);
+
+			await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+			controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+
+			stallManager.emitOutput(TASK_ID, "x".repeat(120_000));
+			await waitForAssertion(() => {
+				expect(stallManager.pauseOutput).toHaveBeenCalledTimes(1);
+			});
+			expect(stallManager.resumeOutput).not.toHaveBeenCalled();
+
+			// No output_ack is ever sent. The stall watchdog disconnects the viewer
+			// and the close path releases its claim on the shared PTY.
+			await waitForAssertion(() => {
+				expect(stallManager.resumeOutput).toHaveBeenCalledTimes(1);
+			}, 2_000);
+			await waitForAssertion(() => {
+				expect(ioSocket?.socket.readyState).toBe(WebSocket.CLOSED);
+			}, 2_000);
+		} finally {
+			for (const queued of [ioSocket, controlSocket]) {
+				if (queued && queued.socket.readyState !== WebSocket.CLOSED) {
+					queued.socket.terminate();
+				}
+			}
+			await stallBridge.close();
+			await new Promise<void>((resolve, reject) => {
+				stallServer.close((error) => {
+					if (error) {
+						reject(error);
+						return;
+					}
+					resolve();
+				});
+			});
+		}
+	});
+
+	it("keeps a slow but progressing viewer connected while it drains", async () => {
+		// The watchdog must not punish a genuinely slow renderer. Partial acks are
+		// progress and rearm the timer, so only a fully stalled viewer is dropped.
+		const slowManager = new FakeTerminalManager();
+		const slowServer = createServer((_request, response) => {
+			response.writeHead(404);
+			response.end();
+		});
+		const slowBridge = createTerminalWebSocketBridge({
+			server: slowServer,
+			resolveTerminalManager: (workspaceId) => (workspaceId === WORKSPACE_ID ? slowManager : null),
+			isTerminalIoWebSocketPath: (pathname) => pathname === "/api/terminal/io",
+			isTerminalControlWebSocketPath: (pathname) => pathname === "/api/terminal/control",
+			heartbeatIntervalMs: 60_000,
+			ackStallTimeoutMs: 200,
+		});
+		slowServer.listen(0, "127.0.0.1");
+		await once(slowServer, "listening");
+		const slowAddress = slowServer.address() as AddressInfo | null;
+		if (!slowAddress) {
+			throw new Error("Expected websocket server address.");
+		}
+		setKanbanRuntimePort(slowAddress.port);
+		const slowUrl = `ws://127.0.0.1:${slowAddress.port}`;
+
+		let ioSocket: QueuedWebSocket | null = null;
+		let controlSocket: QueuedWebSocket | null = null;
+		try {
+			const ioUrl = `${slowUrl}/api/terminal/io?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=slow`;
+			const controlUrl = `${slowUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=slow`;
+
+			ioSocket = await openQueuedWebSocket(ioUrl);
+			controlSocket = await openQueuedWebSocket(controlUrl);
+
+			await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+			controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+
+			const totalBytes = 120_000;
+			slowManager.emitOutput(TASK_ID, "x".repeat(totalBytes));
+			await waitForAssertion(() => {
+				expect(slowManager.pauseOutput).toHaveBeenCalledTimes(1);
+			});
+
+			// Dribble acks in over more than one watchdog period.
+			let acknowledged = 0;
+			while (acknowledged < totalBytes) {
+				const chunk = Math.min(20_000, totalBytes - acknowledged);
+				controlSocket.socket.send(JSON.stringify({ type: "output_ack", bytes: chunk }));
+				acknowledged += chunk;
+				await new Promise((resolve) => setTimeout(resolve, 60));
+			}
+
+			await waitForAssertion(() => {
+				expect(slowManager.resumeOutput).toHaveBeenCalledTimes(1);
+			}, 2_000);
+			expect(ioSocket.socket.readyState).toBe(WebSocket.OPEN);
+		} finally {
+			for (const queued of [ioSocket, controlSocket]) {
+				if (queued && queued.socket.readyState !== WebSocket.CLOSED) {
+					queued.socket.terminate();
+				}
+			}
+			await slowBridge.close();
+			await new Promise<void>((resolve, reject) => {
+				slowServer.close((error) => {
+					if (error) {
+						reject(error);
+						return;
+					}
+					resolve();
+				});
+			});
+		}
+	});
 });
