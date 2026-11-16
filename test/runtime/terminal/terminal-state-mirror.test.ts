@@ -41,6 +41,17 @@ describe("TerminalStateMirror", () => {
 		expect(snapshot.snapshot).toContain("fullscreen");
 	});
 
+	it("returns current visible terminal text", async () => {
+		const mirror = createMirror(20, 3);
+
+		mirror.applyOutput(Buffer.from("line 1\r\nStarting MCP servers (1/1)\r\n› ", "utf8"));
+
+		const visibleText = await mirror.getVisibleText();
+
+		expect(visibleText).toContain("Starting MCP servers");
+		expect(visibleText).toContain("›");
+	});
+
 	it("applies queued resizes before generating a snapshot", async () => {
 		const mirror = createMirror(80, 24);
 
