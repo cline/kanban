@@ -159,6 +159,33 @@ function buildClineStartPrompt(prompt: string, startInPlanMode?: boolean): strin
 		trimmedPrompt ? `\n\nTask:\n${trimmedPrompt}` : " Ask the user what they want planned if the task is unclear.",
 	].join(" ");
 }
+
+function stripIncompleteToolTurns(messages: any[]): any[] {
+	// Collect tool_use IDs and tool_result IDs across ALL messages
+	const resultIds = new Set<string>();
+	let lastIncompleteIdx = -1;
+	for (let i = 0; i < messages.length; i++) {
+		const msg = messages[i] as Record<string, unknown>;
+		const content = msg.content as Array<Record<string, unknown>> | undefined;
+		if (!content) continue;
+		for (const block of content) {
+			if (block.type === "tool_result" && typeof block.tool_use_id === "string") {
+				resultIds.add(block.tool_use_id);
+			}
+		}
+		if (msg.role === "assistant") {
+			let hasUnresolvedCalls = false;
+			for (const block of content) {
+				if (block.type === "tool_use" && typeof block.id === "string") {
+					if (!resultIds.has(block.id)) hasUnresolvedCalls = true;
+				}
+			}
+			if (hasUnresolvedCalls) lastIncompleteIdx = i;
+		}
+	}
+	if (lastIncompleteIdx === -1) return messages;
+	return messages.slice(0, lastIncompleteIdx);
+}
 export class InMemoryClineTaskSessionService implements ClineTaskSessionService {
 	private readonly pendingTurnCancelTaskIds = new Set<string>();
 	private readonly providerIdByTaskId = new Map<string, string>();
@@ -278,7 +305,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			prompt: input.prompt,
 			mode: input.mode,
 			images: input.images,
-			initialMessages: persistedSnapshot?.messages,
+			initialMessages: stripIncompleteToolTurns(persistedSnapshot?.messages ?? []),
 		});
 		return {
 			result: restartedSession.result,
@@ -309,7 +336,7 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 			prompt: input.prompt,
 			mode: input.mode,
 			images: input.images,
-			initialMessages: compactedMessages,
+			initialMessages: stripIncompleteToolTurns(compactedMessages),
 		});
 		return {
 			result: restartedSession.result,
@@ -420,7 +447,9 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					cwd: request.cwd,
 					prompt: runtimePrompt,
 					taskTitle: request.taskTitle,
-					initialMessages: persistedResumeSnapshot?.messages ?? request.initialMessages,
+					initialMessages: stripIncompleteToolTurns(
+						persistedResumeSnapshot?.messages ?? request.initialMessages ?? [],
+					),
 					images: request.images,
 					providerId,
 					modelId,
