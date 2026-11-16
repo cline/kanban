@@ -1,6 +1,6 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
-import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import React, { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import {
 	formatToolInputForDisplay,
 	getToolDisplay,
@@ -175,7 +175,11 @@ function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): Reac
 	);
 }
 
-export function ClineChatMessageItem({ message }: { message: ClineChatMessage }): ReactElement {
+export const ClineChatMessageItem = React.memo(function ClineChatMessageItem({
+	message,
+}: {
+	message: ClineChatMessage;
+}): ReactElement {
 	if (message.role === "tool") {
 		return <ToolMessageBlock message={message} />;
 	}
@@ -209,4 +213,4 @@ export function ClineChatMessageItem({ message }: { message: ClineChatMessage })
 			{message.content}
 		</div>
 	);
-}
+});
