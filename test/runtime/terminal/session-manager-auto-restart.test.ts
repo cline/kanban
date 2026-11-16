@@ -195,4 +195,50 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(session.write).toHaveBeenCalledWith(deferredStartupInput);
 		expect(session.write).toHaveBeenCalledTimes(1);
 	});
+
+	it("auto-restarts up to MAX_AUTO_RESTARTS_PER_WINDOW times, then refuses the next exit in the same window", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(100 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager();
+		manager.attach("task-1", {
+			onState: vi.fn(),
+			onOutput: vi.fn(),
+			onExit: vi.fn(),
+		});
+
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Fix the bug",
+		});
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+
+		// First 3 qualifying exits (within the trailing AUTO_RESTART_WINDOW_MS) each auto-restart.
+		for (let restart = 1; restart <= 3; restart += 1) {
+			spawnedSessions[spawnedSessions.length - 1]?.triggerExit(1);
+			await vi.waitFor(() => {
+				expect(ptySessionSpawnMock).toHaveBeenCalledTimes(restart + 1);
+			});
+			expect(manager.getSummary("task-1")?.state).toBe("running");
+		}
+
+		// The 4th qualifying exit within the same window hits MAX_AUTO_RESTARTS_PER_WINDOW and is refused.
+		spawnedSessions[spawnedSessions.length - 1]?.triggerExit(1);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(4);
+		expect(manager.getSummary("task-1")?.state).toBe("awaiting_review");
+		expect(manager.getSummary("task-1")?.reviewReason).toBe("error");
+		expect(manager.getSummary("task-1")?.pid).toBeNull();
+	});
 });
