@@ -525,6 +525,125 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(postToolUseScript).toContain("plan_mode_respond");
 	});
 
+	it("writes a merged Devin hooks config and launches with --config", async () => {
+		const home = setupTempHome();
+		const userConfigDir = join(home, ".config", "devin");
+		mkdirSync(userConfigDir, { recursive: true });
+		writeFileSync(
+			join(userConfigDir, "config.json"),
+			JSON.stringify({ version: 1, devin: { org_id: "org-test" }, theme_mode: "dark" }),
+		);
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-devin",
+			agentId: "devin",
+			binary: "devin",
+			args: [],
+			cwd: "/tmp",
+			prompt: "fix the flaky test",
+			workspaceId: "workspace-1",
+		});
+
+		const configIndex = launch.args.indexOf("--config");
+		expect(configIndex).toBeGreaterThanOrEqual(0);
+		const configPath = launch.args[configIndex + 1];
+		expect(configPath).toBe(join(home, ".cline", "kanban", "hooks", "devin", "config.json"));
+
+		const written = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+		expect(written.devin).toEqual({ org_id: "org-test" });
+		expect(written.theme_mode).toBe("dark");
+		const hooks = written.hooks as Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+		for (const event of [
+			"SessionStart",
+			"UserPromptSubmit",
+			"PreToolUse",
+			"PostToolUse",
+			"PermissionRequest",
+			"Stop",
+			"PostCompaction",
+			"SessionEnd",
+		]) {
+			expect(hooks[event]).toBeDefined();
+		}
+		const allCommands = Object.values(hooks)
+			.flat()
+			.flatMap((entry) => entry.hooks.map((hook) => hook.command))
+			.join(" ");
+		expect(allCommands).toContain("hooks' 'ingest");
+		expect(allCommands).toContain("'--event' 'to_review'");
+		expect(allCommands).toContain("'--event' 'to_in_progress'");
+		expect(allCommands).toContain("'--event' 'activity'");
+		expect(allCommands).toContain("'--source' 'devin'");
+
+		expect(launch.args).toContain("--respect-workspace-trust");
+		expect(launch.args[launch.args.indexOf("--respect-workspace-trust") + 1]).toBe("false");
+		const separatorIndex = launch.args.indexOf("--");
+		expect(separatorIndex).toBeGreaterThanOrEqual(0);
+		expect(launch.args[separatorIndex + 1]).toBe("fix the flaky test");
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-devin");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+
+		const rulesPath = join(home, ".cline", "kanban", "hooks", "devin", "AGENTS.md");
+		const rules = readFileSync(rulesPath, "utf8");
+		expect(rules).toContain("Kanban task session");
+		expect(rules).not.toContain("Kanban sidebar agent");
+	});
+
+	it("writes a hooks-only Devin config when no user config exists", async () => {
+		const home = setupTempHome();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "task-devin-nouser",
+			agentId: "devin",
+			binary: "devin",
+			args: [],
+			autonomousModeEnabled: true,
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+			workspaceId: "workspace-1",
+		});
+
+		const configIndex = launch.args.indexOf("--config");
+		const configPath = launch.args[configIndex + 1];
+		expect(configPath).toBe(join(home, ".cline", "kanban", "hooks", "devin", "config.json"));
+		const written = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+		expect(written.hooks).toBeDefined();
+		expect(written.devin).toBeUndefined();
+
+		const permissionModeIndex = launch.args.indexOf("--permission-mode");
+		expect(launch.args[permissionModeIndex + 1]).toBe("dangerous");
+		expect(launch.args).toContain("--continue");
+		expect(launch.args.indexOf("--")).toBe(-1);
+	});
+
+	it("writes sidebar rules for Devin home sessions", async () => {
+		const home = setupTempHome();
+		setKanbanProcessContext();
+
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:devin",
+			agentId: "devin",
+			binary: "devin",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+
+		const configIndex = launch.args.indexOf("--config");
+		expect(configIndex).toBeGreaterThanOrEqual(0);
+		const configDir = join(home, ".cline", "kanban", "hooks", "devin");
+		expect(launch.args[configIndex + 1]).toBe(join(configDir, "config.json"));
+
+		const written = JSON.parse(readFileSync(launch.args[configIndex + 1], "utf8")) as Record<string, unknown>;
+		expect(written.hooks).toBeUndefined();
+
+		const rules = readFileSync(join(configDir, "AGENTS.md"), "utf8");
+		expect(rules).toContain("Kanban sidebar agent");
+		expect(rules).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBeUndefined();
+	});
+
 	it("adds resume flags for each agent", async () => {
 		setupTempHome();
 

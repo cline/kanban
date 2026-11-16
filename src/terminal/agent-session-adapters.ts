@@ -1372,6 +1372,157 @@ const kiroAdapter: AgentSessionAdapter = {
 	},
 };
 
+function getDevinUserConfigPath(): string {
+	if (process.platform === "win32") {
+		const appData = process.env.APPDATA?.trim();
+		if (appData) {
+			return join(appData, "devin", "config.json");
+		}
+	}
+	return join(homedir(), ".config", "devin", "config.json");
+}
+
+async function readJsonConfigFile(filePath: string): Promise<Record<string, unknown>> {
+	try {
+		const raw = await readFile(filePath, "utf8");
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			parsed = JSON.parse(stripJsonComments(raw));
+		}
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			return {};
+		}
+		return parsed as Record<string, unknown>;
+	} catch {
+		return {};
+	}
+}
+
+function buildDevinHooksConfig(): Record<string, unknown> {
+	const reviewCommand = buildHookCommand("to_review", { source: "devin" });
+	const inProgressCommand = buildHookCommand("to_in_progress", { source: "devin" });
+	const activityCommand = buildHookCommand("activity", { source: "devin" });
+	const sessionEndedCommand = buildHookCommand("activity", {
+		source: "devin",
+		activityText: "Session ended",
+	});
+	const askToolMatcher = "ask_user_question|AskUser";
+	return {
+		SessionStart: [
+			{
+				matcher: "",
+				hooks: [
+					{
+						type: "command",
+						command: buildHookCommand("to_in_progress", {
+							source: "devin",
+							hookEventName: "SessionStart",
+							activityText: "Devin session started",
+						}),
+					},
+				],
+			},
+		],
+		UserPromptSubmit: [{ matcher: "", hooks: [{ type: "command", command: inProgressCommand }] }],
+		PreToolUse: [
+			{ matcher: "", hooks: [{ type: "command", command: activityCommand }] },
+			{ matcher: askToolMatcher, hooks: [{ type: "command", command: reviewCommand }] },
+		],
+		PostToolUse: [
+			{ matcher: "", hooks: [{ type: "command", command: activityCommand }] },
+			{ matcher: askToolMatcher, hooks: [{ type: "command", command: inProgressCommand }] },
+		],
+		PermissionRequest: [{ matcher: "", hooks: [{ type: "command", command: reviewCommand }] }],
+		Stop: [{ matcher: "", hooks: [{ type: "command", command: reviewCommand }] }],
+		PostCompaction: [{ matcher: "", hooks: [{ type: "command", command: activityCommand }] }],
+		SessionEnd: [{ matcher: "", hooks: [{ type: "command", command: sessionEndedCommand }] }],
+	};
+}
+
+const DEVIN_TASK_SESSION_RULES = `# Kanban task session
+
+You are running inside a Kanban-managed git worktree created for a single board task.
+
+- Complete the task described in the prompt, then stop. When you stop, the card moves to review on the board.
+- Keep your changes inside this worktree.
+`;
+
+const devinAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.autonomousModeEnabled && !hasCliOption(args, "--permission-mode")) {
+			args.push("--permission-mode", "dangerous");
+		}
+		if (input.resumeFromTrash && !hasCliOption(args, "--continue") && !hasCliOption(args, "-c")) {
+			args.push("--continue");
+		}
+		// Kanban worktrees are never in the user's trusted-dir set; without this the
+		// session blocks on the interactive workspace-trust prompt before the first turn.
+		if (!hasCliOption(args, "--respect-workspace-trust")) {
+			args.push("--respect-workspace-trust", "false");
+		}
+
+		const hooks = resolveHookContext(input);
+		const homeSessionPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		if (hooks || homeSessionPrompt) {
+			// `devin --config` fully replaces the user config, so merge the user's
+			// existing settings into the kanban-managed file to preserve them.
+			const userConfig = await readJsonConfigFile(getDevinUserConfigPath());
+			const mergedConfig = {
+				...userConfig,
+				...(hooks ? { hooks: buildDevinHooksConfig() } : {}),
+			};
+			const configDir = getHookAgentDirectory("devin");
+			const configPath = join(configDir, "config.json");
+			await ensureTextFile(configPath, JSON.stringify(mergedConfig, null, 2));
+			// Devin resolves global rules relative to the --config directory, so a
+			// scoped AGENTS.md here reaches only Kanban-launched sessions. Home
+			// sessions get the sidebar-agent briefing; task sessions get worktree
+			// rules so the sidebar rules can never leak into a coding session.
+			const rulesPath = join(configDir, "AGENTS.md");
+			await ensureTextFile(rulesPath, homeSessionPrompt ?? DEVIN_TASK_SESSION_RULES);
+			if (!hasCliOption(args, "--config")) {
+				args.push("--config", configPath);
+			}
+			if (hooks) {
+				Object.assign(
+					env,
+					createHookRuntimeEnv({
+						taskId: hooks.taskId,
+						workspaceId: hooks.workspaceId,
+					}),
+				);
+			}
+		}
+
+		const trimmedPrompt = input.prompt.trim();
+		const planPrompt = input.startInPlanMode
+			? [
+					"First, inspect the codebase and produce a clear implementation plan only.",
+					"Do not modify files, do not use write tools, and do not implement anything yet.",
+					"After you present the plan, ask for approval before making changes.",
+					trimmedPrompt
+						? `\n\nTask:\n${trimmedPrompt}`
+						: " Ask the user what they want planned if the task is unclear.",
+				].join(" ")
+			: input.prompt;
+		// Devin CLI positional args are PATHs; the prompt must follow `--`.
+		const withPromptLaunch = withPrompt(args, planPrompt, "flag", "--");
+		return {
+			binary: input.binary,
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+		};
+	},
+};
+
 const clineAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -1437,6 +1588,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	droid: droidAdapter,
 	kiro: kiroAdapter,
 	cline: clineAdapter,
+	devin: devinAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
