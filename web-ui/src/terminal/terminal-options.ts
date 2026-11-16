@@ -13,6 +13,18 @@ const TERMINAL_WORD_SEPARATOR = " ()[]{}',\"`";
 const TERMINAL_FONT_FAMILY =
 	"'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace";
 
+/**
+ * Browser xterm scrollback.
+ *
+ * Must stay in sync with the server-side `TERMINAL_SCROLLBACK` in
+ * `src/terminal/terminal-state-mirror.ts`. On every task switch the browser
+ * receives a full `restore` snapshot and does `terminal.reset()` +
+ * `terminal.write(snapshot)`. A 10,000-line scrollback made this write block
+ * the main thread for ~60s during long agent runs (#581). 1,000 lines keeps
+ * recent output visible while capping the restore cost at ~10x smaller.
+ */
+const TERMINAL_SCROLLBACK = 1_000;
+
 export function createKanbanTerminalOptions({
 	cursorColor,
 	isMacPlatform,
@@ -38,7 +50,7 @@ export function createKanbanTerminalOptions({
 		rightClickSelectsWord: false,
 		scrollOnEraseInDisplay: true,
 		scrollOnUserInput: true,
-		scrollback: 10_000,
+		scrollback: TERMINAL_SCROLLBACK,
 		smoothScrollDuration: 0,
 		theme: {
 			background: terminalBackgroundColor,
