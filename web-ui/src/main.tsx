@@ -15,8 +15,15 @@ initializeSentry();
 // Apply the persisted theme synchronously before first paint to prevent a flash.
 try {
 	const _savedTheme = localStorage.getItem("kanban.theme");
-	if (isThemeId(_savedTheme) && _savedTheme !== "default") {
-		document.documentElement.setAttribute("data-theme", _savedTheme);
+	if (isThemeId(_savedTheme)) {
+		if (_savedTheme === "default") {
+			document.documentElement.removeAttribute("data-theme");
+		} else {
+			document.documentElement.setAttribute("data-theme", _savedTheme);
+		}
+	} else {
+		// No saved theme — use light as default
+		document.documentElement.setAttribute("data-theme", "light");
 	}
 } catch {
 	// Ignore storage access failures and keep the default theme.
