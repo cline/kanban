@@ -429,9 +429,12 @@ export default function App(): ReactElement {
 		sendTaskSessionInput,
 	});
 	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
+	const sidebarLayout = useProjectNavigationLayout();
 	const homeSidebarAgentPanel = useHomeSidebarAgentPanel({
 		currentProjectId,
 		hasNoProjects,
+		homeSidebarWidth: sidebarLayout.sidebarWidth,
+		isAgentSectionActive: !selectedCard && homeSidebarSection === "agent" && !sidebarLayout.isCollapsed,
 		runtimeProjectConfig,
 		clineSessionContextVersion,
 		taskSessions: sessions,
@@ -687,7 +690,6 @@ export default function App(): ReactElement {
 		return undefined;
 	}, [selectedCard]);
 
-	const sidebarLayout = useProjectNavigationLayout();
 	const handleToggleSidebar = useCallback(() => {
 		sidebarLayout.setSidebarCollapsed(!sidebarLayout.isCollapsed);
 	}, [sidebarLayout]);

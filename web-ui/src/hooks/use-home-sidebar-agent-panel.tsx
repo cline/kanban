@@ -26,6 +26,8 @@ import { useTerminalThemeColors } from "@/terminal/theme-colors";
 interface UseHomeSidebarAgentPanelInput {
 	currentProjectId: string | null;
 	hasNoProjects: boolean;
+	homeSidebarWidth: number;
+	isAgentSectionActive: boolean;
 	runtimeProjectConfig: RuntimeConfigResponse | null;
 	clineSessionContextVersion: number;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
@@ -47,6 +49,8 @@ async function stopHomeSidebarTaskSession(workspaceId: string, taskId: string): 
 export function useHomeSidebarAgentPanel({
 	currentProjectId,
 	hasNoProjects,
+	homeSidebarWidth,
+	isAgentSectionActive,
 	runtimeProjectConfig,
 	clineSessionContextVersion,
 	taskSessions,
@@ -81,7 +85,9 @@ export function useHomeSidebarAgentPanel({
 		return mergedSessionSummaries;
 	}, [sessionSummaries, taskSessions]);
 	const { panelMode, taskId } = useHomeAgentSession({
+		canStartTerminalSession: isAgentSectionActive,
 		currentProjectId,
+		homeSidebarWidth,
 		runtimeProjectConfig,
 		workspaceGit,
 		clineSessionContextVersion,
