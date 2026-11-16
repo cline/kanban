@@ -802,6 +802,7 @@ export function CardDetailView({
 						<ColumnContextPanel
 							selection={selection}
 							workspacePath={workspacePath}
+							projectId={currentProjectId}
 							onCardSelect={onCardSelect}
 							taskSessions={taskSessions}
 							onTaskDragEnd={onTaskDragEnd}

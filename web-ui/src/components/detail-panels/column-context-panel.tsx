@@ -6,14 +6,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardCard } from "@/components/board-card";
 import { Button } from "@/components/ui/button";
 import { ColumnIndicator } from "@/components/ui/column-indicator";
+import { useColumnCollapseState } from "@/hooks/use-column-collapse-state";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { findCardColumnId, isCardDropDisabled } from "@/state/drag-rules";
-import type { BoardCard as BoardCardModel, BoardColumn, BoardColumnId, CardSelection } from "@/types";
+import type { BoardCard as BoardCardModel, BoardColumn, BoardColumnId, CardSelection } from "@/types/board";
 
 function ColumnSection({
 	column,
 	selectedCardId,
-	defaultOpen,
+	isOpen,
+	onToggle,
 	onCardClick,
 	taskSessions,
 	onCreateTask,
@@ -37,7 +39,8 @@ function ColumnSection({
 }: {
 	column: BoardColumn;
 	selectedCardId: string;
-	defaultOpen: boolean;
+	isOpen: boolean;
+	onToggle?: (columnId: BoardColumnId, open: boolean) => void;
 	onCardClick: (card: BoardCardModel) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onCreateTask?: () => void;
@@ -59,19 +62,34 @@ function ColumnSection({
 	workspacePath?: string | null;
 	defaultClineModelId?: string | null;
 }): React.ReactElement {
-	const [open, setOpen] = useState(defaultOpen);
+	const [open, setOpen] = useState(isOpen);
 	const canCreate = column.id === "backlog" && onCreateTask;
 	const canStartAllTasks = column.id === "backlog" && onStartAllTasks;
 	const canClearTrash = column.id === "trash" && onClearTrash;
 	const cardDropType = "CARD";
 	const isDropDisabled = isCardDropDisabled(column.id, activeDragSourceColumnId ?? null);
 
+	// Sync with external isOpen state (from persisted state)
+	useEffect(() => {
+		setOpen(isOpen);
+	}, [isOpen]);
+
+	// Auto-expand when card is selected (does not persist)
 	useEffect(() => {
 		if (!column.cards.some((card) => card.id === selectedCardId)) {
 			return;
 		}
 		setOpen(true);
 	}, [column.cards, selectedCardId]);
+
+	// Handle toggle with persistence
+	const handleToggle = useCallback(() => {
+		setOpen((prev) => {
+			const newOpen = !prev;
+			onToggle?.(column.id, newOpen);
+			return newOpen;
+		});
+	}, [column.id, onToggle]);
 
 	return (
 		<div className="bg-surface-1 rounded-lg shrink-0 border border-border">
@@ -84,7 +102,7 @@ function ColumnSection({
 			>
 				<button
 					type="button"
-					onClick={() => setOpen((prev) => !prev)}
+					onClick={handleToggle}
 					className="hover:bg-surface-0 rounded-md"
 					style={{
 						height: 32,
@@ -230,6 +248,7 @@ function ColumnSection({
 export function ColumnContextPanel({
 	selection,
 	workspacePath,
+	projectId,
 	defaultClineModelId,
 	onCardSelect,
 	taskSessions,
@@ -253,6 +272,7 @@ export function ColumnContextPanel({
 }: {
 	selection: CardSelection;
 	workspacePath?: string | null;
+	projectId?: string | null;
 	onCardSelect: (taskId: string) => void;
 	taskSessions: Record<string, RuntimeTaskSessionSummary>;
 	onTaskDragEnd: (result: DropResult) => void;
@@ -276,6 +296,7 @@ export function ColumnContextPanel({
 }): React.ReactElement {
 	const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<BoardColumnId | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+	const { collapseState, toggleColumn } = useColumnCollapseState(projectId);
 
 	const handleBeforeCapture = useCallback(
 		(start: BeforeCapture) => {
@@ -342,7 +363,8 @@ export function ColumnContextPanel({
 							key={column.id}
 							column={column}
 							selectedCardId={selection.card.id}
-							defaultOpen={column.id !== "trash"}
+							isOpen={collapseState[column.id]}
+							onToggle={toggleColumn}
 							onCardClick={(card) => onCardSelect(card.id)}
 							taskSessions={taskSessions}
 							onCreateTask={column.id === "backlog" ? onCreateTask : undefined}
