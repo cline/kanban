@@ -205,6 +205,15 @@ class PersistentTerminal {
 			this.sendIoData(bytes);
 		});
 		this.terminal.attachCustomKeyEventHandler((event) => {
+			if (event.key === "Meta") {
+				// Bare Meta is how macOS dictation is stopped, and it arrives while the
+				// dictation composition session is still active. xterm's CompositionHelper
+				// only exempts Shift/Ctrl/Alt from its "real keydown interrupts composition"
+				// rule, so the Meta keydown makes it flush the composed text early and the
+				// following compositionend flushes it again, duplicating dictated text.
+				// A bare Meta press means nothing to the terminal, so swallow it entirely.
+				return false;
+			}
 			if (event.key === "Enter" && event.shiftKey) {
 				if (event.type === "keydown") {
 					this.terminal.input(SHIFT_ENTER_SEQUENCE);
