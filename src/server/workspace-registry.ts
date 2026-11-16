@@ -11,6 +11,7 @@ import {
 	loadWorkspaceBoardById,
 	loadWorkspaceContext,
 	loadWorkspaceState,
+	detectGitRemoteVcs,
 	type RuntimeWorkspaceIndexEntry,
 	removeWorkspaceIndexEntry,
 	removeWorkspaceStateFiles,
@@ -179,6 +180,7 @@ function toProjectSummary(project: {
 		id: project.workspaceId,
 		path: project.repoPath,
 		name,
+		vcs: detectGitRemoteVcs(project.repoPath),
 		taskCounts: project.taskCounts,
 	};
 }

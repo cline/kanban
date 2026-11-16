@@ -335,10 +335,14 @@ export const runtimeProjectTaskCountsSchema = z.object({
 });
 export type RuntimeProjectTaskCounts = z.infer<typeof runtimeProjectTaskCountsSchema>;
 
+export const runtimeProjectVcsSchema = z.enum(["github", "gerrit", "local"]);
+export type RuntimeProjectVcs = z.infer<typeof runtimeProjectVcsSchema>;
+
 export const runtimeProjectSummarySchema = z.object({
 	id: z.string(),
 	path: z.string(),
 	name: z.string(),
+	vcs: runtimeProjectVcsSchema.optional(),
 	taskCounts: runtimeProjectTaskCountsSchema,
 });
 export type RuntimeProjectSummary = z.infer<typeof runtimeProjectSummarySchema>;
