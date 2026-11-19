@@ -44,17 +44,39 @@ export interface AtomicTextWriteOptions {
 	executable?: boolean;
 }
 
+function describeError(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function emitLockWarning(message: string, code: string): void {
+	process.emitWarning(message, { type: "KanbanLockWarning", code });
+}
+
 function createLockOptions(request: LockRequest, lockfilePath: string): LockOptions {
-	const options: LockOptions = {
+	const callerOnCompromised = request.onCompromised;
+	return {
 		stale: request.staleMs ?? DEFAULT_LOCK_STALE_MS,
 		retries: request.retries ?? DEFAULT_LOCK_RETRIES,
 		realpath: false,
 		lockfilePath,
+		// proper-lockfile invokes onCompromised from a timer callback, and its own default
+		// handler rethrows. Without a handler here, that throw becomes an uncaught
+		// exception and takes the whole process down. Report the lost lock instead.
+		onCompromised: (error: Error) => {
+			emitLockWarning(`Lock compromised for ${lockfilePath}: ${error.message}`, "KANBAN_LOCK_COMPROMISED");
+			if (typeof callerOnCompromised !== "function") {
+				return;
+			}
+			try {
+				callerOnCompromised(error);
+			} catch (handlerError) {
+				emitLockWarning(
+					`onCompromised handler failed for ${lockfilePath}: ${describeError(handlerError)}`,
+					"KANBAN_LOCK_HANDLER_FAILED",
+				);
+			}
+		},
 	};
-	if (typeof request.onCompromised === "function") {
-		options.onCompromised = request.onCompromised;
-	}
-	return options;
 }
 
 async function readFileIfExists(path: string): Promise<string | null> {
@@ -108,7 +130,13 @@ export class LockedFileSystem {
 			return await operation();
 		} finally {
 			for (const release of releases.reverse()) {
-				await release();
+				try {
+					await release();
+				} catch (error) {
+					// A compromised lock is already released, so releasing it again throws.
+					// Never let cleanup hide the result of the operation.
+					emitLockWarning(`Lock release failed: ${describeError(error)}`, "KANBAN_LOCK_RELEASE_FAILED");
+				}
 			}
 		}
 	}
